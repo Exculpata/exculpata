@@ -4056,6 +4056,120 @@
       });
     });
 
+    // Draft questions from an answer's passages: a proposal card that saves nothing
+    // until the reviewer chooses Save. Drafted text is only ever set as text.
+    assistantDock.querySelectorAll("[data-assistant-draft-questions]").forEach((draftForm) => {
+      const card = draftForm.nextElementSibling;
+      const feedback = draftForm.querySelector("[data-question-draft-status]");
+      const element = (tag, text, className) => {
+        const node = document.createElement(tag);
+        if (text) node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      };
+      const hidden = (name, value) => {
+        const input = element("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        return input;
+      };
+      const showDraft = (draft, opener) => {
+        card.replaceChildren();
+        const heading = element("h3", `${draft.label} · draft for review`);
+        heading.tabIndex = -1;
+        card.append(heading, element("p", "Nothing is saved yet. Check each question against its sources.", "question-draft-hint"));
+        if (draft.notice) card.append(element("p", draft.notice, "question-draft-notice"));
+        const saveForm = element("form");
+        saveForm.method = "post";
+        saveForm.action = draft.save_url;
+        saveForm.append(hidden("csrf_token", csrfToken), hidden("purpose", draft.purpose));
+        const list = element("ol", "", "question-draft-list");
+        draft.questions.forEach((question) => {
+          const item = element("li");
+          item.append(element("p", question.text), element("small", `Sources: ${question.sources.join("; ")}`));
+          saveForm.append(hidden("question", question.text), hidden("passages", question.passages.join(",")));
+          list.append(item);
+        });
+        const actions = element("div", "", "question-draft-card-actions");
+        const save = element("button", "Save to case notes", "button-primary");
+        save.type = "submit";
+        const dismiss = element("button", "Dismiss");
+        dismiss.type = "button";
+        const status = element("span", "", "question-draft-save-status");
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        actions.append(save, dismiss, status);
+        saveForm.append(list, actions);
+        card.append(saveForm);
+        card.hidden = false;
+        heading.focus();
+        dismiss.addEventListener("click", () => {
+          // While Save is pending its outcome is unknown, so Dismiss cannot claim nothing was saved.
+          if (saveForm.getAttribute("aria-busy") === "true") return;
+          card.replaceChildren();
+          card.hidden = true;
+          feedback.textContent = "Draft dismissed; nothing was saved.";
+          opener?.focus();
+        });
+        saveForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (saveForm.getAttribute("aria-busy") === "true") return;
+          saveForm.setAttribute("aria-busy", "true");
+          const held = [save, dismiss, ...draftForm.querySelectorAll("button")];
+          held.forEach((control) => control.setAttribute("aria-disabled", "true"));
+          status.textContent = "Saving…";
+          try {
+            const response = await fetch(saveForm.action, {
+              method: "POST", body: new FormData(saveForm),
+              headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+            });
+            const result = await assistantJson(response);
+            if (!result.item_id) throw new Error("The note could not be confirmed.");
+            if (!saveForm.isConnected) return;
+            status.textContent = result.message;
+            const link = element("a", "Open case notes");
+            link.href = result.notebook_url;
+            actions.replaceChildren(status, link);
+          } catch (error) {
+            if (saveForm.isConnected) status.textContent = `${error.message} You can safely try again.`;
+          } finally {
+            saveForm.removeAttribute("aria-busy");
+            held.forEach((control) => control.removeAttribute("aria-disabled"));
+          }
+        });
+      };
+      draftForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        // No new draft replaces a card whose Save is still pending.
+        if (draftForm.getAttribute("aria-busy") === "true" || card.querySelector('form[aria-busy="true"]')) return;
+        const opener = event.submitter;
+        const body = new FormData(draftForm);
+        body.set("purpose", opener?.value || "witness");
+        draftForm.setAttribute("aria-busy", "true");
+        draftForm.querySelectorAll("button").forEach((button) => button.setAttribute("aria-disabled", "true"));
+        feedback.textContent = "Drafting from the cited passages… this can take a minute.";
+        try {
+          const response = await fetch(draftForm.action, {
+            method: "POST", body,
+            headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+          });
+          const draft = await assistantJson(response);
+          if (!Array.isArray(draft.questions) || !draft.questions.length || !draft.save_url) {
+            throw new Error("The draft could not be confirmed.");
+          }
+          if (!draftForm.isConnected) return;
+          feedback.textContent = `Drafted ${draft.questions.length} question${draft.questions.length === 1 ? "" : "s"} for review.`;
+          showDraft(draft, opener);
+        } catch (error) {
+          if (draftForm.isConnected) feedback.textContent = `${error.message} You can safely try again.`;
+        } finally {
+          draftForm.removeAttribute("aria-busy");
+          draftForm.querySelectorAll("button").forEach((button) => button.removeAttribute("aria-disabled"));
+        }
+      });
+    });
+
     const conversationPicker = assistantDock.querySelector("[data-assistant-conversation-picker]");
     conversationPicker?.addEventListener("change", async () => {
       const conversationId = conversationPicker.value;

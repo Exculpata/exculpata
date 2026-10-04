@@ -574,6 +574,31 @@ class OllamaGenerator:
             raise GenerationUnavailable("The answer service returned an invalid response.")
         return _parse_model_content(message.get("content"))
 
+    def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
+        from .question_drafting import QUESTION_SCHEMA, question_prompt
+
+        system, user = question_prompt(purpose, topic, evidence)
+        response = _bounded_json_request(
+            f"{self.endpoint}/api/chat",
+            {
+                "model": self.model,
+                "stream": False,
+                "format": QUESTION_SCHEMA,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": DEFAULT_REVIEW_BUDGET.output_tokens},
+                "keep_alive": "5m",
+            },
+            timeout=self.timeout,
+            **({"opener": self._opener} if self._opener is not None else {}),
+        )
+        message = response.get("message")
+        if not isinstance(message, dict):
+            raise GenerationUnavailable("The answer service returned an invalid response.")
+        return _parse_model_content(message.get("content"))
+
     def classify_source(
         self,
         *,
@@ -739,6 +764,39 @@ class OpenAICompatibleGenerator:
         return _parse_model_content(message.get("content"))
 
 
+    def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
+        from .question_drafting import QUESTION_SCHEMA, question_prompt
+
+        system, user = question_prompt(purpose, topic, evidence)
+        request: dict[str, object] = {
+            "model": self.model,
+            "temperature": 0.2,
+            "max_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "drafted_questions", "strict": True, "schema": QUESTION_SCHEMA},
+            },
+        }
+        if self.disable_thinking:
+            request["chat_template_kwargs"] = {"enable_thinking": False}
+        response = _bounded_json_request(
+            f"{self.endpoint}/v1/chat/completions", request,
+            timeout=self.timeout, headers=self._headers,
+            **({"opener": self._opener} if self._opener is not None else {}),
+        )
+        choices = response.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise GenerationUnavailable("The answer service returned an invalid response.")
+        message = choices[0].get("message")
+        if not isinstance(message, dict):
+            raise GenerationUnavailable("The answer service returned an invalid response.")
+        return _parse_model_content(message.get("content"))
+
+
 class UnavailableGenerator:
     @property
     def available(self) -> bool:
@@ -749,6 +807,9 @@ class UnavailableGenerator:
 
     def classify_source(self, **_: object) -> Mapping[str, object]:
         raise GenerationUnavailable("Answering is temporarily unavailable. Search and source review still work.")
+
+    def draft_questions(self, **_: object) -> Mapping[str, object]:
+        raise GenerationUnavailable("Drafting is temporarily unavailable. Search and source review still work.")
 
 
 def generator_from_environment() -> GeneratorClient:

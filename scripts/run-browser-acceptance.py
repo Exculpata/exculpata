@@ -41,7 +41,7 @@ JOURNEYS = (
     ('matter-context', 'browser-accept-matter-context.py', 'receipt.json', 7, ()),
     ('cited-context', 'browser-accept-cited-context.py', 'receipt.json', 11, ()),
     ('assertions', 'browser-accept-assertions.py', 'receipt.json', 14, ()),
-    ('assistant-dock', 'browser-accept-assistant-dock.py', 'receipt.json', 10, ()),
+    ('assistant-dock', 'browser-accept-assistant-dock.py', 'receipt.json', 13, ()),
     ('one-box', 'browser-accept-one-box.py', 'receipt.json', 15, ()),
     ('briefing', 'browser-accept-briefing.py', 'receipt.json', 12, ()),
 )
@@ -75,6 +75,7 @@ ARTIFACT_NAMES = (
     'assertion-chronology.png',
     'dock-source-1440.png', 'dock-source-390.png', 'dock-source-320.png',
     'dock-suggest-preview-1440.png', 'dock-suggested-1440.png', 'dock-suggest-390.png', 'dock-suggest-320.png', 'dock-suggest-preview-320.png',
+    'dock-draft-1440.png', 'dock-draft-390.png', 'dock-draft-320.png',
 )
 
 

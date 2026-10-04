@@ -115,6 +115,17 @@
               {% endif %}
             </div>
             {% endif %}
+            {% if message.payload.claims %}
+            <form class="question-draft-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ assistant.conversation.conversation_id }}/messages/{{ message.message_id }}/questions" data-assistant-draft-questions role="group" aria-labelledby="dock-question-draft-{{ message.message_id }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="return_to" value="{{ source_review_return_href(matter.slug, request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) if not request.url.path.endswith('/assistant') else assistant.open_url }}">
+              <span id="dock-question-draft-{{ message.message_id }}" class="question-draft-label">Draft from this answer's passages:</span>
+              <button type="submit" name="purpose" value="witness">Questions for a witness</button>
+              <button type="submit" name="purpose" value="discovery">Discovery requests</button>
+              <span data-question-draft-status role="status" aria-live="polite" aria-atomic="true"></span>
+            </form>
+            <div class="question-draft-card" data-question-draft-card hidden></div>
+            {% endif %}
           {% elif message.payload.kind == 'not-supported' %}
             <p>{{ rejected_answer_notice(message.payload.missing_information or message.content) }}</p>
             {% if message.payload.source_matches %}<span class="assistant-citations">{% for citation in message.payload.source_matches[:3] %}<a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">Review {{ citation.source_name }} · {{ citation.location }}</a>{% endfor %}</span>{% endif %}

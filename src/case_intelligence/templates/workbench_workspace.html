@@ -425,6 +425,18 @@
                     {% endif %}
                   </div>
                   {% endif %}
+                  {% if message.payload.claims %}
+                  <div class="question-draft-actions" role="group" aria-labelledby="question-draft-{{ message.message_id }}">
+                    <span id="question-draft-{{ message.message_id }}" class="question-draft-label">Draft from this answer's passages:</span>
+                    {% for purpose, label in (('witness', 'Questions for a witness'), ('discovery', 'Discovery requests')) %}
+                    <form class="save-claim-form" method="post" action="/matters/{{ matter.slug }}/conversations/{{ conversation.conversation_id }}/messages/{{ message.message_id }}/questions" data-working-form data-working-label="Drafting…">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <input type="hidden" name="purpose" value="{{ purpose }}">
+                      <button type="submit">{{ label }}</button>
+                    </form>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
                 {% elif message.payload.kind == 'not-supported' %}
                   <p class="answer-not-supported">{{ rejected_answer_notice(message.payload.missing_information or message.content) }}</p>
                   {% if message.payload.source_matches %}

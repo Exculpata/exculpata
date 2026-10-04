@@ -109,7 +109,12 @@ reconciled), passing Quality and maintainer acceptance. Increment 5
 ([assistant actions](product-slices/assistant-actions.md)) is approved: A (assistant
 panel basics) landed in [PR #140](https://github.com/Exculpata/exculpata/pull/140)
 at `809676f`; B (suggest people, things and dates from an answer's cited passages,
-no schema change) is proposed in its own PR; C follows. Each PR follows the [review policy](QUALITY_GATES.md#review-policy). See
+previewed before adding, no schema change) landed in
+[PR #141](https://github.com/Exculpata/exculpata/pull/141) at `d811d64`
+after clean final-head hosted code review (all 14 review threads reconciled),
+passing Quality and maintainer acceptance; C (draft witness questions and discovery
+requests, [question drafts](QUESTION_DRAFTS.md)) is proposed in its own PR, with its
+real-model gate on the fixed synthetic set still outstanding. Each PR follows the [review policy](QUALITY_GATES.md#review-policy). See
 the [workspace layout contract](WORKSPACE_LAYOUT.md#compact-matter-bar) and
 [entity discovery](ENTITY_DISCOVERY.md#automatic-discovery-after-processing).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the assistant dock's Close control, page-aware suggestions and answer-passage suggestions with synthetic records."""
+"""Check the assistant dock's Close control, page-aware suggestions and answer-passage actions with synthetic records."""
 from __future__ import annotations
 
 import argparse
@@ -65,6 +65,19 @@ def seed_answer(bench, prefix, document=None):
     bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "assistant", "Synthetic answer",
         {"kind": "generated", "claims": [{"text": "Alex Example signed for the blue crate.",
                                           "citations": [bench._saved_answer_citation_payload(citation)]}]})
+
+
+class SyntheticDrafts:
+    """A deterministic drafting client for the journey; it drafts fixed questions from the passage it is given."""
+    available = True
+
+    def draft_questions(self, *, purpose, topic, evidence):
+        first = evidence[0].evidence_id
+        return {"questions": [
+            {"text": "Who else was at the North Annex when the blue crate arrived on 2026-03-05?", "evidence_ids": [first]},
+            {"text": "How did Alex Example confirm what was in the blue crate before signing?", "evidence_ids": [first]},
+            {"text": "Why does the record say \"it was already open\"?", "evidence_ids": [first]},
+        ]}
 
 
 def main(argv=None):
@@ -338,6 +351,71 @@ def main(argv=None):
             no_page_overflow()
             driver.save_screenshot(str(args.output / "dock-suggest-preview-320.png"))
             checks.append("At 390px and 320px the answer-passage Suggest control fits, and an open proposal naming a long unbroken filename wraps without sideways scrolling")
+
+            # Draft questions: a proposal card that saves nothing until Save.
+            bench = app.state.workbench
+            bench.generator.client = SyntheticDrafts()
+            # The journey added a second source above, so draft from Case notes, where the dock also opens.
+            notes = prefix + "/notebook"
+            matter = bench.workspace.get_matter(prefix.rsplit("/", 1)[1], ACTOR)
+            saved_notes = lambda: len(bench.workspace.all_notebook_items(matter.matter_id, ACTOR))
+            viewport(1440, 900)
+            open_page(notes)
+            witness = wait.until(lambda _: driver.find_element(By.CSS_SELECTOR, '[data-assistant-draft-questions] button[value="witness"]'))
+            js("arguments[0].focus()", witness)
+            witness.send_keys(Keys.ENTER)
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            heading = card.find_element(By.CSS_SELECTOR, "h3")
+            assert heading.text == "Questions for a witness · draft for review", heading.text
+            assert js("return document.activeElement") == heading
+            items = card.find_elements(By.CSS_SELECTOR, ".question-draft-list li")
+            # The invented quotation failed the check and is not shown.
+            assert len(items) == 2 and all("Sources: " in item.text for item in items), [item.text for item in items]
+            assert "did not pass citation and text checks" in card.text
+            assert saved_notes() == 0
+            no_page_overflow()
+            driver.save_screenshot(str(args.output / "dock-draft-1440.png"))
+            dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
+            js("arguments[0].focus()", dismiss)
+            dismiss.send_keys(Keys.ENTER)
+            wait.until(lambda _: not card.is_displayed())
+            assert js("return document.activeElement") == witness
+            assert find("[data-question-draft-status]").text == "Draft dismissed; nothing was saved."
+            assert saved_notes() == 0
+            checks.append("Draft questions works from the keyboard: the proposal card takes focus, shows only questions that pass the check with their sources, and Dismiss saves nothing and returns focus")
+
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            assert card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Discovery requests")
+            # A slow Save holds Dismiss and the draft buttons until its result is known.
+            js("const original = window.fetch; window.fetch = (url, init) => /\\/questions\\/save$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => original(url, init)) : original(url, init);")
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in card.text)
+            held_dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
+            assert held_dismiss.get_attribute("aria-disabled") == "true"
+            held_dismiss.click()
+            assert card.is_displayed() and saved_notes() == 0
+            wait.until(lambda _: "Questions saved to case notes for review." in card.text)
+            assert card.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
+            assert saved_notes() == 1
+            assert driver.current_url.startswith(base + notes), driver.current_url
+            checks.append("While a slow Save is pending Dismiss is held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
+
+            for width, height in ((390, 844), (320, 640)):
+                viewport(width, height)
+                open_page(notes)
+                witness = wait.until(lambda _: driver.find_element(By.CSS_SELECTOR, '[data-assistant-draft-questions] button[value="witness"]'))
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", witness)
+                witness.click()
+                card = find("[data-question-draft-card]")
+                wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+                box = rect(card)
+                assert box["left"] >= -1 and box["right"] <= width + 1, (width, box)
+                no_page_overflow()
+                driver.save_screenshot(str(args.output / f"dock-draft-{width}.png"))
+            checks.append("At 390px and 320px the draft actions and proposal card fit without sideways scrolling")
 
             receipt["passed"] = True
             (args.output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")

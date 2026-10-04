@@ -119,6 +119,14 @@ and links to **Dates found in sources** on the timeline only when it added a dat
 - Needs a fixed synthetic evaluation set meeting the pass bar under maintainer
   decisions below.
 
+As built: the source is the passages an answer cites, with the reviewer's
+question as the topic; each generated answer offers **Questions for a witness**
+and **Discovery requests**. The proposal card's **Save to case notes** re-checks
+every question against the current passages before saving one Suggested note;
+**Dismiss** saves nothing. A note set as the source is deferred. The fixed set,
+check and receipt are described in [question drafts](../QUESTION_DRAFTS.md); the
+model gate is recorded in C's pull request.
+
 Deferred: proposing timeline events (needs an anchor decision, as found in 3c),
 model-chosen actions, cross-matter anything.
 

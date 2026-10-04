@@ -1,0 +1,35 @@
+{% extends "workbench_base.html" %}
+
+{% block title %}{{ draft.label }} · {{ product_name }}{% endblock %}
+{% block body_class %}close-matter-page question-draft-page{% endblock %}
+
+{% block content %}
+<main id="main-content" tabindex="-1" class="single-page-main close-matter-main">
+  {% with active='review' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  <section class="close-matter-card question-draft-proposal" aria-labelledby="question-draft-heading">
+    <p class="eyebrow">Draft for review · nothing is saved yet</p>
+    <h1 id="question-draft-heading">{{ draft.label }}</h1>
+    <p>Drafted from the passages this answer cites. Check each question against its sources; saving adds one Suggested note to case notes.</p>
+    {% if draft.notice %}<div class="notice notice-neutral" role="status">{{ draft.notice }}</div>{% endif %}
+    <form method="post" action="{{ save_url }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="purpose" value="{{ draft.purpose }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <ol class="question-draft-list">
+        {% for question in draft.questions %}
+        <li>
+          <p>{{ question.text }}</p>
+          <small>Sources: {{ question.sources|join('; ') }}</small>
+          <input type="hidden" name="question" value="{{ question.text }}">
+          <input type="hidden" name="passages" value="{{ question.passages|join(',') }}">
+        </li>
+        {% endfor %}
+      </ol>
+      <div class="close-matter-actions">
+        <button class="button button-primary" type="submit">Save to case notes</button>
+        <a class="button button-secondary" href="{{ back_url }}">Dismiss</a>
+      </div>
+    </form>
+  </section>
+</main>
+{% endblock %}

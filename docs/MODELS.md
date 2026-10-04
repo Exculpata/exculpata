@@ -64,3 +64,8 @@ The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challe
 separates raw generation errors from deterministic verifier false acceptance and
 rejection, and retains pinned-profile and execution evidence. Injected probes do
 not establish model quality, offline inference or supported-hardware acceptance.
+
+[Question drafting](QUESTION_DRAFTS.md) uses the same configured generator with
+its own schema and check; it adds no model or revision. Its fixed synthetic set
+and pass bar are recorded there, and its model gate stays outstanding until the
+evaluation runs against a configured runtime.
