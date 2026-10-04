@@ -28,7 +28,10 @@ case notes**, which adds one Suggested note.
   as a whole word in a cited passage, so an altered identifier is dropped, and so
   is an internal passage label such as `S1` written without brackets, unless the
   passage itself contains it. Leading list markers such as "1." are removed
-  first, and possessives and contractions are not treated as quotations.
+  first. A single quote opens a quotation only at the start, after a space or after
+  opening punctuation such as `(`, so possessives and contractions outside a
+  quotation are not treated as quotations, while a quotation containing one
+  (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes

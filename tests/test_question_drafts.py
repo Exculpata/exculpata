@@ -109,11 +109,22 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     # Quotations of any length must be in the cited passage, in either quote style.
     witness = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness saw a blue truck near the gate.')}
     for text in ('Did the witness say "red"?', "Did the witness say 'red'?", 'Did the witness say \u201cred\u201d?',
-                 'Did the witness say "' + 'z' * 241 + '"?'):
+                 'Did the witness say "' + 'z' * 241 + '"?', "Did the witness say ('red')?",
+                 "Did the witness say 'it's red'?", 'Did the witness say \u2018it\u2019s red\u2019?',
+                 "Did the witness say ['red']?", "Did the witness say 'red', then leave?"):
         assert verify_question(text, ['S1'], witness) is None, text
     assert verify_question('Did the witness say "blue"?', ['S1'], witness)
     assert verify_question("Did the witness say 'blue truck'?", ['S1'], witness)
     assert unsupported_quotes('Was it "red" or "blue"?', [witness['S1']]) == ('red',)
+    assert unsupported_quotes("Did the witness say 'it's red'?", [witness['S1']]) == ("it's red",)
+    assert unsupported_quotes('Did the witness say "\'blue truck\'"?', [witness['S1']]) == ()
+    # Quotations containing a contraction are checked whole, in either apostrophe style;
+    # unquoted possessives and contractions are not quotations.
+    said = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', "The driver said it's blue and parked at the gate.")}
+    for text in ("Did the driver say ('it's blue')?", 'Did the driver say \u2018it\u2019s blue\u2019?',
+                 "Why did the driver's note say it's blue?", "Did the drivers' log mention the gate?"):
+        assert verify_question(text, ['S1'], said), text
+        assert unsupported_quotes(text, [said['S1']]) == (), text
     # A quotation must match whole words: "red" is not in "covered".
     covered = EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The truck was covered near the gate.')
     assert unsupported_quotes('Was the truck "red"?', [covered]) == ('red',)

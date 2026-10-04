@@ -49,11 +49,15 @@ PURPOSES: Mapping[str, tuple[str, str, str]] = {
         "material and its time, place or people as the passages describe them.",
     ),
 }
-# A quoted span opened by a single quote only after whitespace or the start, so
-# possessives and contractions are not mistaken for quotations.
 # A list marker a model may put before a question ("1.", "2)", "Q3:"), not part of it.
 _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNORECASE)
-_SINGLE_QUOTE_SPAN = re.compile(r"(?:(?<=\s)|^)['‘]([^'’]+)['’](?=[\s.,;:?!)]|$)")
+# A single-quoted span opens only at the start, after whitespace or after opening
+# punctuation, and closes at the first quote followed by a word boundary. So an
+# unquoted possessive or contraction (the driver's) is not a quotation, but a
+# quotation containing one ('it's red') is checked whole.
+_SINGLE_QUOTE_SPAN = re.compile(
+    r"(?:(?<=[\s(\[{\"“—–-])|^)['‘](\S.*?)['’](?=[\s.,;:?!)\]}\"”—–-]|$)")
+_APOSTROPHES = str.maketrans("‘’", "''")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
@@ -129,7 +133,7 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
 
 
 def _normalized(value: str) -> str:
-    return " ".join(value.casefold().split())
+    return " ".join(value.translate(_APOSTROPHES).casefold().split())
 
 
 def quoted_spans(text: str) -> tuple[str, ...]:
@@ -145,7 +149,7 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
     source = _normalized("\n".join(item.excerpt for item in cited))
 
     def present(span: str) -> bool:
-        wanted = _normalized(span)
+        wanted = _normalized(span).strip("'\"“” ")  # a quotation nested in another
         return bool(wanted) and re.search(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", source) is not None
     return tuple(span for span in quoted_spans(text) if not present(span))
 
