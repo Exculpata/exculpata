@@ -106,6 +106,18 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
                       ('Who counted the postcards?', ['S1']),  # shares no wording with its passage
                       ('What does [S1] say about the crate?', ['S1']), ('Why?', ['S1'])]:
         assert verify_question(text, ids, EVIDENCE) is None, text
+    # Quotations of any length must be in the cited passage, in either quote style.
+    witness = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness saw a blue truck near the gate.')}
+    for text in ('Did the witness say "red"?', "Did the witness say 'red'?", 'Did the witness say \u201cred\u201d?',
+                 'Did the witness say "' + 'z' * 241 + '"?'):
+        assert verify_question(text, ['S1'], witness) is None, text
+    assert verify_question('Did the witness say "blue"?', ['S1'], witness)
+    assert verify_question("Did the witness say 'blue truck'?", ['S1'], witness)
+    assert unsupported_quotes('Was it "red" or "blue"?', [witness['S1']]) == ('red',)
+    # A quotation must match whole words: "red" is not in "covered".
+    covered = EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The truck was covered near the gate.')
+    assert unsupported_quotes('Was the truck "red"?', [covered]) == ('red',)
+    assert unsupported_quotes('Was the truck "covered"?', [covered]) == ()
     # A leading list marker is not part of the question.
     assert verify_question('3. ' + GOOD[0]['text'], ['S1'], EVIDENCE).text == GOOD[0]['text']
     assert verify_question('Q12: ' + GOOD[0]['text'], ['S1'], EVIDENCE).text == GOOD[0]['text']

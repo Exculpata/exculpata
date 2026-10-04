@@ -22,8 +22,9 @@ case notes**, which adds one Suggested note.
   treated as untrusted data. The model does not choose actions or tools.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
-  span and number in it appears in a cited passage. Leading list markers such as
-  "1." are removed first, and possessives are not treated as quotations.
+  span (of any length, in double or single quotes) appears as whole words in a cited
+  passage, as does every number. Leading list markers such as "1." are removed
+  first, and possessives and contractions are not treated as quotations.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes

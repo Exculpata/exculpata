@@ -61,6 +61,9 @@ def test_drafts_citing_unrelated_passages_quoting_absent_text_or_too_few_fail():
     quoting = run(Scripted(lambda evidence, index: evidence[0], quote="it was already open"))
     assert quoting["passed"] is False and quoting["shown_unsupported_quotes"] == 0
     assert quoting["raw_unsupported_quotes"] == 30 and len(quoting["cases_below_minimum"]) == 10
+    # A one-word invented quotation is counted and kept from the reviewer too.
+    short = run(Scripted(lambda evidence, index: evidence[0], quote="red"))
+    assert short["passed"] is False and short["raw_unsupported_quotes"] == 30 and short["shown_unsupported_quotes"] == 0
     thin = run(Scripted(lambda evidence, index: evidence[0], count=2))
     assert thin["passed"] is False and thin["relevant_rate"] == 1.0 and len(thin["cases_below_minimum"]) == 10
 

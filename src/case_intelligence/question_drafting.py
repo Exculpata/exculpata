@@ -15,7 +15,6 @@ from typing import Mapping, Sequence
 from .generation import (
     _EVIDENCE_MARKER,
     _NUMBER,
-    _QUOTE,
     _STOP_WORDS,
     MAX_EVIDENCE_CHARS,
     MAX_EVIDENCE_ITEM_CHARS,
@@ -54,7 +53,10 @@ PURPOSES: Mapping[str, tuple[str, str, str]] = {
 # possessives and contractions are not mistaken for quotations.
 # A list marker a model may put before a question ("1.", "2)", "Q3:"), not part of it.
 _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNORECASE)
-_SINGLE_QUOTE_SPAN = re.compile(r"(?:(?<=\s)|^)['‘]([^'’]{4,240})['’](?=[\s.,;:?!)]|$)")
+_SINGLE_QUOTE_SPAN = re.compile(r"(?:(?<=\s)|^)['‘]([^'’]+)['’](?=[\s.,;:?!)]|$)")
+# Any double-quoted span, whatever its length: a one-word quotation must be in its
+# passage too. (The answer verifier's own pattern bounds length for its own reasons.)
+_DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
 
 QUESTION_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -127,13 +129,21 @@ def _normalized(value: str) -> str:
 
 
 def quoted_spans(text: str) -> tuple[str, ...]:
-    return (*_QUOTE.findall(text), *_SINGLE_QUOTE_SPAN.findall(text))
+    return tuple(span for span in (*_DOUBLE_QUOTE_SPAN.findall(text), *_SINGLE_QUOTE_SPAN.findall(text))
+                 if span.strip())
 
 
 def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, ...]:
-    """Quoted spans in text that do not appear in any cited passage."""
+    """Quoted spans in text that do not appear, as whole words, in any cited passage.
+
+    A quotation must match on word boundaries, so "red" is not found in "recorded".
+    """
     source = _normalized("\n".join(item.excerpt for item in cited))
-    return tuple(span for span in quoted_spans(text) if _normalized(span) not in source)
+
+    def present(span: str) -> bool:
+        wanted = _normalized(span)
+        return bool(wanted) and re.search(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", source) is not None
+    return tuple(span for span in quoted_spans(text) if not present(span))
 
 
 def verify_question(text: object, evidence_ids: object,
