@@ -118,6 +118,16 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     covered = EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The truck was covered near the gate.')
     assert unsupported_quotes('Was the truck "red"?', [covered]) == ('red',)
     assert unsupported_quotes('Was the truck "covered"?', [covered]) == ()
+    # Identifiers, numbers and ordinals with digits must match whole tokens in the passage.
+    log = {'S1': EvidenceItem('S1', 'Synthetic sheet', 'Row 18', 'Count recorded 48 cartons of model K7 filters at bay 4.')}
+    assert verify_question('Who counted the model K7 filters at bay 4?', ['S1'], log)
+    for text in ('Who counted the model K9 filters at bay 4?', 'Who counted the cartons at bay 5A?',
+                 'Who counted the 4th row of model K7 filters?', 'What does S1 say about the K7 filters?',
+                 'Who counted the K7 filters (S1)?', 'Who counted the K7 filters per E2?'):
+        assert verify_question(text, ['S1'], log) is None, text
+    # An identifier that really is in the passage, even one shaped like an evidence ID, is allowed.
+    unit = {'S1': EvidenceItem('S1', 'Synthetic roster', 'Row 2', 'Unit S2 was assigned the dash camera.')}
+    assert verify_question('Who in unit S2 used the dash camera?', ['S1'], unit)
     # A leading list marker is not part of the question.
     assert verify_question('3. ' + GOOD[0]['text'], ['S1'], EVIDENCE).text == GOOD[0]['text']
     assert verify_question('Q12: ' + GOOD[0]['text'], ['S1'], EVIDENCE).text == GOOD[0]['text']
@@ -232,6 +242,25 @@ def test_failures_say_what_happened_and_access_is_checked(tmp_path, monkeypatch)
         assert client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).status_code in (403, 404)
 
 
+
+class RevokingDrafts(ScriptedDrafts):
+    """Access is revoked while the model is drafting."""
+    def draft_questions(self, *, purpose, topic, evidence):
+        bench, matter = self.revoke
+        bench.workspace.revoke_member(matter.matter_id, ACTOR, OWNER)
+        return super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+
+
+def test_access_revoked_during_drafting_returns_no_questions(tmp_path, monkeypatch):
+    generator = RevokingDrafts(GOOD)
+    with app_client(tmp_path, monkeypatch, generator) as client:
+        client.get('/')
+        bench = client.app.state.workbench
+        matter, conversation, message, base = seed(bench)
+        generator.revoke = (bench, matter)
+        response = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'})
+        assert generator.calls and response.status_code in (403, 404)
+        assert 'Who else was present' not in response.text and not notes(bench, matter)
 def test_drafting_and_saving_require_the_session_csrf_token(tmp_path, monkeypatch):
     from tests.test_identity_membership_audit import _login
     with app_client(tmp_path, monkeypatch, ScriptedDrafts(GOOD), auth_mode='preview') as client:

@@ -31,7 +31,7 @@ def main(argv=None):
         args.output.write_text(text)
     print(text, end="")
     summary = result.get("limitation") or (
-        f"{result['relevant_questions']}/{result['shown_questions']} shown questions cite a relevant passage; "
+        f"{result['relevant_questions']}/{result['shown_questions']} shown questions cite only relevant passages; "
         f"{result['shown_unsupported_quotes']} quote text outside their passages; gate {result['model_gate']}.")
     print(summary, file=sys.stderr)
     return 0 if result["model_gate"] == "passed" or not args.require_model else 1

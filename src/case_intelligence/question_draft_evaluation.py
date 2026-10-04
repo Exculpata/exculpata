@@ -1,7 +1,7 @@
 """Score drafted questions on the fixed synthetic set (assistant actions brief, increment C).
 
 Pass bar, recorded by the maintainer: at least 90% of the questions shown to a
-reviewer cite a relevant passage, and none quotes text that is not in its cited
+reviewer cite only relevant passages, and none quotes text that is not in its cited
 passages. So that dropping questions cannot pass on its own, every case must
 also show at least MIN_QUESTIONS_PER_CASE questions.
 """
@@ -72,11 +72,16 @@ def evaluate(service, data: dict) -> dict:
             raw_questions = recording.raw.get("questions") if isinstance(recording.raw, dict) else None
             for value in raw_questions if isinstance(raw_questions, list) else ():
                 if isinstance(value, dict) and isinstance(value.get("text"), str):
-                    cited = [by_id[i] for i in value.get("evidence_ids") or () if isinstance(i, str) and i in by_id]
+                    ids = value.get("evidence_ids")
+                    # A malformed reply (not a list) is scored, never allowed to stop the run.
+                    ids = ids if isinstance(ids, (list, tuple)) else ()
+                    cited = [by_id[i] for i in ids if isinstance(i, str) and i in by_id]
                     raw_bad_quotes += bool(unsupported_quotes(value["text"], cited or evidence[:0]))
             questions = []
             for question in shown:
-                relevant = bool(set(question.evidence_ids) & set(case["relevant"]))
+                # Relevant only if every cited passage is one the case allows: citing a
+                # distractor alongside a relevant passage does not count.
+                relevant = set(question.evidence_ids) <= set(case["relevant"])
                 bad = unsupported_quotes(question.text, [by_id[i] for i in question.evidence_ids])
                 relevant_total += relevant
                 shown_bad_quotes += bool(bad)

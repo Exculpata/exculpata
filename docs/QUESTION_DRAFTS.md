@@ -23,7 +23,11 @@ case notes**, which adds one Suggested note.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes) appears as whole words in a cited
-  passage, as does every number. Leading list markers such as "1." are removed
+  passage, as does every number. Every word containing a digit (a date, a time,
+  an identifier such as `K7` or `5A`, an ordinal such as `4th`) must also appear
+  as a whole word in a cited passage, so an altered identifier is dropped, and so
+  is an internal passage label such as `S1` written without brackets, unless the
+  passage itself contains it. Leading list markers such as "1." are removed
   first, and possessives and contractions are not treated as quotations.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again.
@@ -54,13 +58,15 @@ the set means a new file and a new recorded fingerprint.
 
 The maintainer's pass bar, applied to the questions a reviewer would see:
 
-- at least 90% cite a relevant passage;
+- at least 90% cite only relevant passages (a question that also cites the
+  distractor does not count);
 - none quotes text that is not in its cited passages; and
 - so that dropping questions cannot pass on its own, every case shows at least
   three questions.
 
 The receipt also counts quotations the raw model output invented before the check
-removed them.
+removed them. A raw reply whose citations are malformed is scored as shown
+nothing, rather than stopping the run.
 
 Run it against the configured generator (the same `CASE_INTELLIGENCE_GENERATOR_*`
 settings the application uses; nothing is selected or downloaded):

@@ -33,6 +33,30 @@ class Scripted:
         return {"questions": questions}
 
 
+class MixedCitations(Scripted):
+    """Cites the distractor (S3) together with a relevant passage."""
+    def __init__(self):
+        super().__init__(lambda evidence, index: evidence[2])
+
+    def draft_questions(self, *, purpose, topic, evidence):
+        reply = super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+        for question in reply["questions"]:
+            question["evidence_ids"] = [evidence[0].evidence_id, evidence[2].evidence_id]
+        return reply
+
+
+class Malformed(Scripted):
+    """Ignores the schema: evidence_ids is a scalar."""
+    def __init__(self):
+        super().__init__(lambda evidence, index: evidence[0])
+
+    def draft_questions(self, *, purpose, topic, evidence):
+        reply = super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+        for question in reply["questions"]:
+            question["evidence_ids"] = 1
+        return reply
+
+
 def run(client):
     data, _ = load_cases()
     return evaluate(GroundedGenerationService(client), data)
@@ -64,6 +88,13 @@ def test_drafts_citing_unrelated_passages_quoting_absent_text_or_too_few_fail():
     # A one-word invented quotation is counted and kept from the reviewer too.
     short = run(Scripted(lambda evidence, index: evidence[0], quote="red"))
     assert short["passed"] is False and short["raw_unsupported_quotes"] == 30 and short["shown_unsupported_quotes"] == 0
+    # Citing a distractor alongside a relevant passage does not make a question relevant.
+    mixed = run(MixedCitations())
+    assert mixed["passed"] is False and mixed["relevant_rate"] == 0.0 and mixed["shown_questions"] == 30
+    # A malformed citation list is scored, not allowed to stop the run.
+    malformed = run(Malformed())
+    assert malformed["passed"] is False and malformed["shown_questions"] == 0
+    assert len(malformed["cases_below_minimum"]) == 10
     thin = run(Scripted(lambda evidence, index: evidence[0], count=2))
     assert thin["passed"] is False and thin["relevant_rate"] == 1.0 and len(thin["cases_below_minimum"]) == 10
 

@@ -57,6 +57,10 @@ _SINGLE_QUOTE_SPAN = re.compile(r"(?:(?<=\s)|^)['‘]([^'’]+)['’](?=[\s.,;:?
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
+# Every token containing a digit (2026-03-05, 09:15, K7, 5A, S1) must appear as a
+# whole token in a cited passage, so an altered identifier, number or ordinal, or
+# an internal evidence ID written without brackets, is not shown.
+_DIGIT_TOKEN = re.compile(r"[^\W_]*\d[^\W_]*(?:[:./-][^\W_]+)*")
 
 QUESTION_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -166,6 +170,9 @@ def verify_question(text: object, evidence_ids: object,
     source_text = "\n".join(item.excerpt for item in cited).casefold()
     source_numbers = set(_NUMBER.findall(source_text))
     if any(number not in source_numbers for number in _NUMBER.findall(normalized.casefold())):
+        return None
+    source_tokens = set(_DIGIT_TOKEN.findall(source_text))
+    if any(token not in source_tokens for token in _DIGIT_TOKEN.findall(normalized.casefold())):
         return None
     # A question must be about its passages: it shares at least one content word.
     source_terms = set(_tokens(source_text))

@@ -3616,6 +3616,8 @@ class CaseIntelligenceWorkbench:
             topic, passages = self._answer_passages(matter, conversation_id, message_id)
         evidence = [passage[0] for passage in passages]
         draft = draft_questions(self.generator, purpose, topic, evidence)
+        # Access may have been revoked during the model call: nothing is returned then.
+        self.workspace.membership(matter.matter_id, actor_id)
         labels = {item.evidence_id: f"{item.source_name} · {item.location}" for item in evidence}
         return {
             "purpose": purpose, "label": PURPOSES[purpose][0], "notice": draft.notice,
