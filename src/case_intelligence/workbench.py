@@ -3604,7 +3604,8 @@ class CaseIntelligenceWorkbench:
         """Draft witness questions or discovery requests from an answer's cited passages.
 
         Nothing is saved. Passages are read and verified under the guards, which
-        are released before the model is called.
+        are released before the model is called, then read again under the guards
+        afterwards; if access or any passage changed, nothing is returned.
         """
         from .question_drafting import PURPOSES, draft_questions
 
@@ -3616,8 +3617,13 @@ class CaseIntelligenceWorkbench:
             topic, passages = self._answer_passages(matter, conversation_id, message_id)
         evidence = [passage[0] for passage in passages]
         draft = draft_questions(self.generator, purpose, topic, evidence)
-        # Access may have been revoked during the model call: nothing is returned then.
-        self.workspace.membership(matter.matter_id, actor_id)
+        # Access may have been revoked, or a cited passage changed, during the model
+        # call: nothing is returned then, so a draft is only shown against current passages.
+        with self.source_store(matter).mutation_guard(), self.workspace._lock:
+            self.workspace.membership(matter.matter_id, actor_id)
+            _topic, current = self._answer_passages(matter, conversation_id, message_id)
+            if [passage[0] for passage in current] != evidence:
+                raise WorkspaceProblem("The cited passages changed while drafting, so nothing was drafted.")
         labels = {item.evidence_id: f"{item.source_name} · {item.location}" for item in evidence}
         return {
             "purpose": purpose, "label": PURPOSES[purpose][0], "notice": draft.notice,

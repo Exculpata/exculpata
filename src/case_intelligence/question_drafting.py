@@ -61,10 +61,15 @@ _APOSTROPHES = str.maketrans("‘’", "''")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
-# Every token containing a digit (2026-03-05, 09:15, K7, 5A, S1) must appear as a
-# whole token in a cited passage, so an altered identifier, number or ordinal, or
-# an internal evidence ID written without brackets, is not shown.
-_DIGIT_TOKEN = re.compile(r"[^\W_]*\d[^\W_]*(?:[:./-][^\W_]+)*")
+# Every token containing a digit (2026-03-05, 09:15, K7, K-7, 5A, S1) must appear
+# as a whole token in a cited passage, so an altered identifier, number or ordinal,
+# or an internal evidence ID written without brackets, is not shown. A token is a
+# run of letters and digits joined by ":./-", so a prefix before a separator is kept.
+_COMPOUND_TOKEN = re.compile(r"[^\W_]+(?:[:./-][^\W_]+)*")
+
+
+def _digit_tokens(text: str) -> set[str]:
+    return {token for token in _COMPOUND_TOKEN.findall(text) if any(char.isdigit() for char in token)}
 
 QUESTION_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -142,15 +147,17 @@ def quoted_spans(text: str) -> tuple[str, ...]:
 
 
 def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, ...]:
-    """Quoted spans in text that do not appear, as whole words, in any cited passage.
+    """Quoted spans in text that do not appear, as whole words, in any one cited passage.
 
-    A quotation must match on word boundaries, so "red" is not found in "recorded".
+    A quotation must match on word boundaries, so "red" is not found in "recorded",
+    and within a single passage, so it cannot be assembled across two of them.
     """
-    source = _normalized("\n".join(item.excerpt for item in cited))
+    sources = [_normalized(item.excerpt) for item in cited]
 
     def present(span: str) -> bool:
         wanted = _normalized(span).strip("'\"“” ")  # a quotation nested in another
-        return bool(wanted) and re.search(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)", source) is not None
+        pattern = re.compile(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)")
+        return bool(wanted) and any(pattern.search(source) for source in sources)
     return tuple(span for span in quoted_spans(text) if not present(span))
 
 
@@ -175,8 +182,7 @@ def verify_question(text: object, evidence_ids: object,
     source_numbers = set(_NUMBER.findall(source_text))
     if any(number not in source_numbers for number in _NUMBER.findall(normalized.casefold())):
         return None
-    source_tokens = set(_DIGIT_TOKEN.findall(source_text))
-    if any(token not in source_tokens for token in _DIGIT_TOKEN.findall(normalized.casefold())):
+    if not _digit_tokens(normalized.casefold()) <= _digit_tokens(source_text):
         return None
     # A question must be about its passages: it shares at least one content word.
     source_terms = set(_tokens(source_text))

@@ -1,10 +1,12 @@
 """Synthetic regression: the fixed question-draft set and its scoring."""
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 from case_intelligence.generation import GroundedGenerationService, UnavailableGenerator
+from case_intelligence import question_draft_evaluation
 from case_intelligence.question_draft_evaluation import (
     DEFAULT_CASES, MIN_QUESTIONS_PER_CASE, QUESTION_SET_FINGERPRINT, evaluate, load_cases, receipt,
 )
@@ -106,3 +108,74 @@ def test_without_a_runtime_the_model_gate_stays_outstanding():
                                capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, check=True)
     assert json.loads(completed.stdout)["model_gate"] == "outstanding"
     assert DEFAULT_CASES.is_file()
+
+
+ARTIFACT = 'a' * 64
+CLEAN = dict(git_commit='1' * 40, working_tree_dirty=False, implementation_sha256={})
+
+
+def identity_of(*artifacts):
+    snapshots = iter(artifacts)
+
+    def observe(client):
+        return dict(method='test', model='synthetic', artifact_sha256=next(snapshots))
+    return observe
+
+
+def test_the_gate_passes_only_for_a_committed_revision_and_one_model_artifact(monkeypatch):
+    good = Scripted(lambda evidence, index: evidence[index % 2])
+    monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda: dict(CLEAN))
+    bound = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT),
+                    expected_artifact='sha256:' + ARTIFACT)
+    assert bound['model_gate'] == 'passed' and bound['binding_problems'] == []
+    assert bound['model_identity']['before']['artifact_sha256'] == ARTIFACT and bound['execution'] == CLEAN
+    for identity, expected, problem in [
+        (identity_of(None, None), None, 'no immutable model artifact'),
+        (identity_of(ARTIFACT, 'b' * 64), None, 'changed or could not be observed'),
+        (identity_of(ARTIFACT, ARTIFACT), 'c' * 64, 'not the expected digest'),
+    ]:
+        result = receipt(GroundedGenerationService(good), identity=identity, expected_artifact=expected)
+        assert result['passed'] is True and result['model_gate'] == 'unbound', problem
+        assert any(problem in text for text in result['binding_problems']), problem
+    for execution, problem in [(dict(CLEAN, working_tree_dirty=True), 'uncommitted changes'),
+                               (dict(CLEAN, git_commit=None, working_tree_dirty=None), 'No Git commit')]:
+        monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda execution=execution: execution)
+        result = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT))
+        assert result['model_gate'] == 'unbound' and any(problem in text for text in result['binding_problems'])
+    # A failing score fails, however well bound.
+    monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda: dict(CLEAN))
+    failing = receipt(GroundedGenerationService(Scripted(lambda evidence, index: evidence[2])),
+                      identity=identity_of(ARTIFACT, ARTIFACT))
+    assert failing['model_gate'] == 'failed'
+
+
+def test_the_receipt_records_the_code_it_ran():
+    execution = question_draft_evaluation.execution_metadata()
+    assert set(execution) == {'git_commit', 'working_tree_dirty', 'implementation_sha256'}
+    assert set(execution['implementation_sha256']) == set(question_draft_evaluation.IMPLEMENTATION_PATHS)
+    assert all(len(value) == 64 for value in execution['implementation_sha256'].values())
+    # Runtimes without a content digest record no artifact.
+    assert question_draft_evaluation.model_identity(Scripted(lambda evidence, index: evidence[0])) == dict(
+        method='none', model=None, artifact_sha256=None)
+
+
+class TagsOpener:
+    """Answers the Ollama model list with a fixed synthetic payload."""
+    def __init__(self, models):
+        self.body = json.dumps({'models': models}).encode()
+
+    def open(self, request, timeout):
+        assert request.full_url.endswith('/api/tags')
+        return io.BytesIO(self.body)
+
+
+def test_an_ollama_runtime_reports_its_model_digest():
+    from case_intelligence.generation import OllamaGenerator
+    observe = question_draft_evaluation.model_identity
+    one = TagsOpener([{'name': 'synthetic:4b', 'digest': 'sha256:' + ARTIFACT}, {'name': 'other', 'digest': 'b' * 64}])
+    client = OllamaGenerator('http://127.0.0.1:11434', 'synthetic:4b', opener=one)
+    assert observe(client) == dict(method='ollama_tag_digest', model='synthetic:4b', artifact_sha256=ARTIFACT)
+    for models in ([], [{'name': 'synthetic:4b', 'digest': 'not-a-digest'}],
+                   [{'name': 'synthetic:4b', 'digest': ARTIFACT}, {'name': 'synthetic:4b', 'digest': ARTIFACT}]):
+        missing = OllamaGenerator('http://127.0.0.1:11434', 'synthetic:4b', opener=TagsOpener(models))
+        assert observe(missing)['artifact_sha256'] is None, models

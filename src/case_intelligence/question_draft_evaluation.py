@@ -10,11 +10,24 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
+import subprocess
 
-from .generation import EvidenceItem, GenerationRejected, GenerationUnavailable
+from .generation import (
+    EvidenceItem, GenerationRejected, GenerationUnavailable, OllamaGenerator, _bounded_json_get,
+)
 from .question_drafting import PURPOSES, draft_questions, unsupported_quotes
 
-DEFAULT_CASES = Path(__file__).resolve().parents[2] / "benchmarks" / "question-drafts-v1.json"
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CASES = ROOT / "benchmarks" / "question-drafts-v1.json"
+# The code a receipt is bound to: the drafting check and prompt, the model adapters,
+# and this scorer and its command.
+IMPLEMENTATION_PATHS = (
+    "src/case_intelligence/question_drafting.py",
+    "src/case_intelligence/question_draft_evaluation.py",
+    "src/case_intelligence/generation.py",
+    "scripts/evaluate-question-drafts.py",
+)
 # The set is fixed: changing it needs a new file and a new recorded fingerprint.
 QUESTION_SET_FINGERPRINT = "7674d1da108db0dffe5392a7ca841c483e09e9ec220838a1afac5b5f99a5ea95"
 RELEVANT_RATE_BAR = 0.90
@@ -104,7 +117,72 @@ def evaluate(service, data: dict) -> dict:
     )
 
 
-def receipt(service, path: Path = DEFAULT_CASES) -> dict:
+def execution_metadata() -> dict:
+    """The code that ran: commit, uncommitted changes and implementation hashes.
+
+    Hostname, user, endpoint and paths are deliberately not recorded.
+    """
+    record = dict(git_commit=None, working_tree_dirty=None,
+                  implementation_sha256={name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
+                                         for name in IMPLEMENTATION_PATHS})
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+                                         stderr=subprocess.DEVNULL).strip()
+        dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT,
+                                             stderr=subprocess.DEVNULL))
+    except (OSError, subprocess.CalledProcessError):
+        return record
+    if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        record.update(git_commit=commit, working_tree_dirty=dirty)
+    return record
+
+
+def model_identity(client) -> dict:
+    """Observe the runtime's immutable model artifact, when it exposes one.
+
+    Ollama reports a content digest for each installed model; a model name alone is
+    mutable, so other runtimes record no artifact and cannot pass the gate.
+    """
+    snapshot = dict(method="none", model=getattr(client, "model", None), artifact_sha256=None)
+    if isinstance(client, OllamaGenerator):
+        snapshot["method"] = "ollama_tag_digest"
+        opener = getattr(client, "_opener", None)
+        payload = _bounded_json_get(f"{client.endpoint}/api/tags", timeout=5.0,
+                                    **({"opener": opener} if opener is not None else {}))
+        models = payload.get("models")
+        matches = [item for item in models if isinstance(item, dict) and item.get("name") == client.model] \
+            if isinstance(models, list) else []
+        value = matches[0].get("digest") if len(matches) == 1 else None
+        if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value.removeprefix("sha256:")):
+            snapshot["artifact_sha256"] = value.removeprefix("sha256:")
+    return snapshot
+
+
+def binding_problems(execution: dict, identity: dict, expected_artifact: str | None = None) -> list[str]:
+    """Why a receipt cannot stand for a committed revision and one model artifact."""
+    problems = []
+    if not execution.get("git_commit"):
+        problems.append("No Git commit was recorded.")
+    elif execution.get("working_tree_dirty") is not False:
+        problems.append("The checkout had uncommitted changes.")
+    before, after = identity.get("before"), identity.get("after")
+    if not (isinstance(before, dict) and before.get("artifact_sha256")):
+        problems.append("The runtime exposed no immutable model artifact digest.")
+    elif before != after:
+        problems.append("The model artifact changed or could not be observed after the run.")
+    elif expected_artifact and before["artifact_sha256"] != expected_artifact.removeprefix("sha256:"):
+        problems.append("The observed model artifact is not the expected digest.")
+    return problems
+
+
+def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
+            expected_artifact: str | None = None) -> dict:
+    """Run the set and record a receipt bound to the code and the model artifact.
+
+    The gate passes only when the pass bar is met on the pinned set, from a clean
+    checkout at a recorded commit, with the same immutable model artifact observed
+    before and after the run (and matching expected_artifact when one is given).
+    """
     data, fingerprint = load_cases(path)
     client = service.client
     result = dict(format="recordbench-question-draft-evaluation-v1", synthetic_only=True,
@@ -112,7 +190,8 @@ def receipt(service, path: Path = DEFAULT_CASES) -> dict:
                   case_count=len(data["cases"]),
                   pass_bar=dict(relevant_rate=RELEVANT_RATE_BAR, unsupported_quotes=0,
                                 minimum_questions_per_case=MIN_QUESTIONS_PER_CASE),
-                  adapter=type(client).__name__, model=getattr(client, "model", None), model_gate="outstanding")
+                  adapter=type(client).__name__, model=getattr(client, "model", None),
+                  execution=execution_metadata(), model_gate="outstanding")
     try:
         available = service.available
     except Exception:
@@ -121,11 +200,25 @@ def receipt(service, path: Path = DEFAULT_CASES) -> dict:
         result["limitation"] = ("Configured runtime unavailable. No model evaluation was executed; "
                                 "deterministic tests are separate.")
         return result
+    def observe():
+        try:
+            return identity(client)
+        except Exception:
+            return None
+    observed = dict(before=observe())
     try:
         result.update(evaluate(service, data))
     except GenerationUnavailable as exc:
         result["limitation"] = f"The configured runtime failed during evaluation: {exc}"
         return result
-    # Only the pinned set can pass the gate recorded in a pull request.
-    result["model_gate"] = "passed" if result["passed"] and result["pinned_set"] else "failed"
+    observed["after"] = observe()
+    result["model_identity"] = observed
+    # Only the pinned set can pass the gate recorded in a pull request, and only a
+    # run bound to a committed revision and one model artifact.
+    problems = binding_problems(result["execution"], observed, expected_artifact)
+    result["binding_problems"] = problems
+    if not (result["passed"] and result["pinned_set"]):
+        result["model_gate"] = "failed"
+    else:
+        result["model_gate"] = "unbound" if problems else "passed"
     return result

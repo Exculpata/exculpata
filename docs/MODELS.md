@@ -68,4 +68,5 @@ not establish model quality, offline inference or supported-hardware acceptance.
 [Question drafting](QUESTION_DRAFTS.md) uses the same configured generator with
 its own schema and check; it adds no model or revision. Its fixed synthetic set
 and pass bar are recorded there, and its model gate stays outstanding until the
-evaluation runs against a configured runtime.
+evaluation runs against a configured runtime. A passing receipt is bound to a clean
+commit, implementation hashes and the model's content digest.

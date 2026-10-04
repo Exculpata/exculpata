@@ -3,7 +3,9 @@
 
 Uses only CASE_INTELLIGENCE_GENERATOR_* settings, never selects or downloads a
 model, and reads no matter data. Without a configured runtime the receipt
-records the model gate as outstanding.
+records the model gate as outstanding. The gate passes only for a clean checkout
+at a recorded commit with one immutable model artifact observed before and after
+the run; otherwise a passing score is recorded as unbound.
 """
 import argparse
 import json
@@ -22,8 +24,10 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Write the receipt here (a new file).")
     parser.add_argument("--require-model", action="store_true",
                         help="Exit non-zero unless the model gate passed.")
+    parser.add_argument("--model-digest", help="Expected SHA-256 of the model artifact (Ollama digest).")
     args = parser.parse_args(argv)
-    result = receipt(GroundedGenerationService(generator_from_environment()), args.cases)
+    result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
+                     expected_artifact=args.model_digest)
     text = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     if args.output:
         if args.output.exists():
@@ -32,7 +36,8 @@ def main(argv=None):
     print(text, end="")
     summary = result.get("limitation") or (
         f"{result['relevant_questions']}/{result['shown_questions']} shown questions cite only relevant passages; "
-        f"{result['shown_unsupported_quotes']} quote text outside their passages; gate {result['model_gate']}.")
+        f"{result['shown_unsupported_quotes']} quote text outside their passages; gate {result['model_gate']}."
+        + "".join(f" {problem}" for problem in result.get("binding_problems", ())))
     print(summary, file=sys.stderr)
     return 0 if result["model_gate"] == "passed" or not args.require_model else 1
 

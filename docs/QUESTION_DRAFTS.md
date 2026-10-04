@@ -15,16 +15,19 @@ case notes**, which adds one Suggested note.
   topic. If any cited passage changed or is unavailable, nothing is drafted. The
   model reads each passage's display text (up to 6,000 characters). Passages are
   read under the source and workspace guards, which are released before the model
-  is called.
+  is called. Afterwards they are read again under the guards with the reviewer's
+  membership; if access was revoked or any passage changed during the call, the
+  draft is not shown.
 - **Model contract.** A dedicated JSON schema (`questions`: up to eight, each with
   `text` and one to four `evidence_ids`) and prompt in
   `src/case_intelligence/question_drafting.py`. Source text and the topic are
   treated as untrusted data. The model does not choose actions or tools.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
-  span (of any length, in double or single quotes) appears as whole words in a cited
-  passage, as does every number. Every word containing a digit (a date, a time,
-  an identifier such as `K7` or `5A`, an ordinal such as `4th`) must also appear
+  span (of any length, in double or single quotes) appears as whole words within
+  one cited passage (not assembled across two), as does every number. Every word
+  containing a digit (a date, a time, an identifier such as `K7`, `K-7` or `5A`,
+  an ordinal such as `4th`) must also appear
   as a whole word in a cited passage, so an altered identifier is dropped, and so
   is an internal passage label such as `S1` written without brackets, unless the
   passage itself contains it. Leading list markers such as "1." are removed
@@ -75,10 +78,21 @@ Run it against the configured generator (the same `CASE_INTELLIGENCE_GENERATOR_*
 settings the application uses; nothing is selected or downloaded):
 
 ```bash
-.venv/bin/python scripts/evaluate-question-drafts.py --output question-drafts-receipt.json --require-model
+.venv/bin/python scripts/evaluate-question-drafts.py --output question-drafts-receipt.json \
+  --require-model --model-digest <sha256 of the installed model>
 ```
 
 Without a configured runtime the receipt records `model_gate: outstanding`.
+
+The receipt is bound to what ran. It records the Git commit, whether the checkout
+had uncommitted changes, and SHA-256 hashes of the drafting check, the model
+adapters and the scorer. It also records the model's content digest as Ollama
+reports it, observed before and after the run; a model name alone is mutable. The
+gate is `passed` only when the pass bar is met on the pinned set, from a clean
+checkout at a recorded commit, with the same digest before and after (and equal to
+`--model-digest` when given). A passing score without that binding is recorded as
+`unbound` with its reasons, and a runtime that reports no digest cannot pass. No
+hostname, user, endpoint or path is recorded.
 `tests/test_question_draft_evaluation.py` checks the set and the scoring with
 deterministic clients; `tests/test_question_drafts.py` covers the check, routes,
 saving and refusals; the `assistant-dock` browser journey covers the dock card

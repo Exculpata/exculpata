@@ -118,6 +118,13 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     assert unsupported_quotes('Was it "red" or "blue"?', [witness['S1']]) == ('red',)
     assert unsupported_quotes("Did the witness say 'it's red'?", [witness['S1']]) == ("it's red",)
     assert unsupported_quotes('Did the witness say "\'blue truck\'"?', [witness['S1']]) == ()
+    # A quotation must be in one passage, not assembled across two.
+    split = [EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness said the car was red'),
+             EvidenceItem('S2', 'Synthetic note', 'Line 2', 'truck tires were left near the gate.')]
+    assert unsupported_quotes('Who saw the "red truck" near the gate?', split) == ('red truck',)
+    assert verify_question('Who saw the "red truck" near the gate?', ['S1', 'S2'],
+                           {item.evidence_id: item for item in split}) is None
+    assert unsupported_quotes('Was the car "red" near the "gate"?', split) == ()
     # Quotations containing a contraction are checked whole, in either apostrophe style;
     # unquoted possessives and contractions are not quotations.
     said = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', "The driver said it's blue and parked at the gate.")}
@@ -136,6 +143,11 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
                  'Who counted the 4th row of model K7 filters?', 'What does S1 say about the K7 filters?',
                  'Who counted the K7 filters (S1)?', 'Who counted the K7 filters per E2?'):
         assert verify_question(text, ['S1'], log) is None, text
+    # A prefix before a separator is part of the identifier: K-7 is not K-8, even
+    # when a passage has an unrelated 7 elsewhere.
+    hyphen = {'S1': EvidenceItem('S1', 'Synthetic sheet', 'Row 7', 'Row 7 lists model K-8 filters at the dock.')}
+    assert verify_question('Who stocked the model K-8 filters at the dock?', ['S1'], hyphen)
+    assert verify_question('Who stocked the model K-7 filters at the dock?', ['S1'], hyphen) is None
     # An identifier that really is in the passage, even one shaped like an evidence ID, is allowed.
     unit = {'S1': EvidenceItem('S1', 'Synthetic roster', 'Row 2', 'Unit S2 was assigned the dash camera.')}
     assert verify_question('Who in unit S2 used the dash camera?', ['S1'], unit)
@@ -260,6 +272,29 @@ class RevokingDrafts(ScriptedDrafts):
         bench, matter = self.revoke
         bench.workspace.revoke_member(matter.matter_id, ACTOR, OWNER)
         return super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+
+
+class ChangingDrafts(ScriptedDrafts):
+    """A cited source is removed while the model is drafting."""
+    def draft_questions(self, *, purpose, topic, evidence):
+        bench, matter = self.change
+        store = bench.source_store(matter)
+        for document_id in list(store.documents):
+            store.remove(document_id)
+        return super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+
+
+def test_a_passage_changed_during_drafting_returns_no_questions(tmp_path, monkeypatch):
+    generator = ChangingDrafts(GOOD)
+    with app_client(tmp_path, monkeypatch, generator) as client:
+        client.get('/')
+        bench = client.app.state.workbench
+        matter, conversation, message, base = seed(bench)
+        generator.change = (bench, matter)
+        response = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'})
+        assert generator.calls and response.status_code == 409
+        assert 'nothing was drafted' in response.json()['message'] and 'questions' not in response.json()
+        assert not notes(bench, matter)
 
 
 def test_access_revoked_during_drafting_returns_no_questions(tmp_path, monkeypatch):
