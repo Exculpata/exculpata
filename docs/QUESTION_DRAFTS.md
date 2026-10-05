@@ -48,7 +48,9 @@ case notes**, which adds one Suggested note.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
-  held, so the card never says nothing was saved while the save may succeed; while
+  held, so the card never says nothing was saved while the save may succeed. The
+  conversation picker and New chat are held until every pending save (from any
+  open card) is known, so the dock is never replaced before a result shows. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
   its own page with the same choices. Saving checks every question again against

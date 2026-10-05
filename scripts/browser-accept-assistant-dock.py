@@ -77,6 +77,8 @@ class SyntheticDrafts:
             {"text": "Who else was at the North Annex when the blue crate arrived on 2026-03-05?", "evidence_ids": [first]},
             {"text": "How did Alex Example confirm what was in the blue crate before signing?", "evidence_ids": [first]},
             {"text": "Why does the record say \"it was already open\"?", "evidence_ids": [first]},
+            # Grounded only in the second answer's passage; the check drops it for the first.
+            {"text": "Who saw Morgan Example sign the second log on 2026-04-01?", "evidence_ids": [first]},
         ]}
 
 
@@ -402,11 +404,21 @@ def main(argv=None):
             wait.until(lambda _: card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Questions for a witness"))
             assert saved_notes() == 0
             js("window.fetch = window.__originalFetch;")
-            # A slow Save holds Dismiss and the draft buttons until its result is known.
+            # The second answer's card is open too, so two saves can overlap.
+            second_form = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")[1]
+            second_card = driver.find_elements(By.CSS_SELECTOR, "[data-question-draft-card]")[1]
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", second_form)
+            second_form.find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            wait.until(lambda _: second_card.is_displayed() and second_card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            # A slow Save holds Dismiss and the draft buttons until its result is known; the second
+            # card's save is slower, so navigation stays held until both are known.
             js("const original = window.fetch; window.fetch = (url, init) => /\\/questions\\/save$/.test(String(url))"
-               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => original(url, init)) : original(url, init);")
+               " ? new Promise((resolve) => setTimeout(resolve, url === arguments[0] ? 4000 : 1500)).then(() => original(url, init))"
+               " : original(url, init);", second_card.find_element(By.CSS_SELECTOR, "form").get_attribute("action"))
             card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
             wait.until(lambda _: "Saving…" in card.text)
+            second_card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in second_card.text)
             held_dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
             assert held_dismiss.get_attribute("aria-disabled") == "true"
             # Conversation navigation is held too, so the dock is not replaced before the result shows.
@@ -417,9 +429,16 @@ def main(argv=None):
             assert card.is_displayed() and saved_notes() == 0
             wait.until(lambda _: "Questions saved to case notes for review." in card.text)
             assert card.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
-            assert saved_notes() == 1
+            # The first save finished, but the second is still pending: navigation stays held.
+            assert "Saving…" in second_card.text
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            assert all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
+            wait.until(lambda _: "Questions saved to case notes for review." in second_card.text)
+            assert not js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? false")
+            assert all(button.get_attribute("aria-disabled") is None for button in new_chat)
+            assert saved_notes() == 2
             assert driver.current_url.startswith(base + notes), driver.current_url
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss and conversation navigation are held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss and conversation navigation are held until every overlapping save is known; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)
