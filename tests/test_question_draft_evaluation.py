@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from case_intelligence.generation import GroundedGenerationService, UnavailableGenerator
 from case_intelligence import question_draft_evaluation
 from case_intelligence.question_draft_evaluation import (
@@ -114,6 +116,16 @@ ARTIFACT = 'a' * 64
 CLEAN = dict(git_commit='1' * 40, working_tree_dirty=False, implementation_sha256={})
 
 
+def runtime_profile(**changes):
+    """A synthetic runtime declaration for the portable profile's repository pin."""
+    pinned = next(item for item in json.loads((ROOT / 'config' / 'models.json').read_text())['models']
+                  if item['role'] == 'generator' and item['profile'] == 'portable')
+    return {**dict(runtime_name='synthetic', runtime_version='0', accelerator='CPU', accelerator_memory_gib=0,
+                   driver='none', model_artifact_sha256=ARTIFACT, upstream_model_id=pinned['model_id'],
+                   upstream_revision=pinned['revision'], license=pinned['license'],
+                   offline_readiness='not_exercised', offline_evidence_sha256=None), **changes}
+
+
 def identity_of(*artifacts):
     snapshots = iter(artifacts)
 
@@ -122,31 +134,48 @@ def identity_of(*artifacts):
     return observe
 
 
-def test_the_gate_passes_only_for_a_committed_revision_and_one_model_artifact(monkeypatch):
+def test_the_gate_passes_only_for_a_committed_revision_and_the_pinned_model_artifact(monkeypatch):
     good = Scripted(lambda evidence, index: evidence[index % 2])
+    pinned = dict(profile='portable', runtime=runtime_profile())
     monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda: dict(CLEAN))
-    bound = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT),
-                    expected_artifact='sha256:' + ARTIFACT)
+    bound = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT), **pinned)
     assert bound['model_gate'] == 'passed' and bound['binding_problems'] == []
     assert bound['model_identity']['before']['artifact_sha256'] == ARTIFACT and bound['execution'] == CLEAN
-    for identity, expected, problem in [
-        (identity_of(None, None), None, 'no immutable model artifact'),
-        (identity_of(ARTIFACT, 'b' * 64), None, 'changed or could not be observed'),
-        (identity_of(ARTIFACT, ARTIFACT), 'c' * 64, 'not the expected digest'),
+    pin = bound['model_pin']
+    assert pin['artifact_sha256'] == ARTIFACT and pin['revision'] == pinned['runtime']['upstream_revision']
+    assert pin['basis'] == 'operator_declared_not_independently_verified' and len(pin['manifest_sha256']) == 64
+    for identity, extra, problem in [
+        (identity_of(None, None), pinned, 'no immutable model artifact'),
+        (identity_of(ARTIFACT, 'b' * 64), pinned, 'changed or could not be observed'),
+        (identity_of('c' * 64, 'c' * 64), pinned, 'not the one the runtime profile declares'),
+        (identity_of(ARTIFACT, ARTIFACT), {}, 'No runtime profile linked'),
     ]:
-        result = receipt(GroundedGenerationService(good), identity=identity, expected_artifact=expected)
+        result = receipt(GroundedGenerationService(good), identity=identity, **extra)
         assert result['passed'] is True and result['model_gate'] == 'unbound', problem
         assert any(problem in text for text in result['binding_problems']), problem
     for execution, problem in [(dict(CLEAN, working_tree_dirty=True), 'uncommitted changes'),
                                (dict(CLEAN, git_commit=None, working_tree_dirty=None), 'No Git commit')]:
         monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda execution=execution: execution)
-        result = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT))
+        result = receipt(GroundedGenerationService(good), identity=identity_of(ARTIFACT, ARTIFACT), **pinned)
         assert result['model_gate'] == 'unbound' and any(problem in text for text in result['binding_problems'])
     # A failing score fails, however well bound.
     monkeypatch.setattr(question_draft_evaluation, 'execution_metadata', lambda: dict(CLEAN))
     failing = receipt(GroundedGenerationService(Scripted(lambda evidence, index: evidence[2])),
-                      identity=identity_of(ARTIFACT, ARTIFACT))
+                      identity=identity_of(ARTIFACT, ARTIFACT), **pinned)
     assert failing['model_gate'] == 'failed'
+
+
+def test_a_runtime_profile_that_contradicts_the_pin_is_refused_before_any_model_call():
+    class Untouchable(Scripted):
+        def draft_questions(self, **_):
+            raise AssertionError('the model must not be called')
+    service = GroundedGenerationService(Untouchable(lambda evidence, index: evidence[0]))
+    for profile, runtime in [('portable', runtime_profile(upstream_revision='0' * 40)),
+                             ('quality', runtime_profile()),
+                             ('portable', runtime_profile(model_artifact_sha256='not-a-digest')),
+                             ('portable', None), (None, runtime_profile())]:
+        with pytest.raises(ValueError):
+            receipt(service, profile=profile, runtime=runtime)
 
 
 def test_the_receipt_records_the_code_it_ran():

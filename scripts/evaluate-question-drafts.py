@@ -5,7 +5,8 @@ Uses only CASE_INTELLIGENCE_GENERATOR_* settings, never selects or downloads a
 model, and reads no matter data. Without a configured runtime the receipt
 records the model gate as outstanding. The gate passes only for a clean checkout
 at a recorded commit with one immutable model artifact observed before and after
-the run; otherwise a passing score is recorded as unbound.
+the run, declared by a runtime profile that matches the selected pinned generator
+in config/models.json; otherwise a passing score is recorded as unbound.
 """
 import argparse
 import json
@@ -24,10 +25,22 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Write the receipt here (a new file).")
     parser.add_argument("--require-model", action="store_true",
                         help="Exit non-zero unless the model gate passed.")
-    parser.add_argument("--model-digest", help="Expected SHA-256 of the model artifact (Ollama digest).")
+    parser.add_argument("--profile", choices=("portable", "quality"),
+                        help="The pinned generator profile in config/models.json that was run.")
+    parser.add_argument("--runtime-profile", type=Path,
+                        help="Runtime-profile JSON declaring the model artifact digest and its upstream pin "
+                             "(the format docs/CLAIM_EVALUATION.md describes).")
     args = parser.parse_args(argv)
-    result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
-                     expected_artifact=args.model_digest)
+    if (args.profile is None) != (args.runtime_profile is None):
+        parser.error("Give --profile and --runtime-profile together.")
+    if args.output and args.output.exists():
+        parser.error("Choose a new output file; the existing receipt was preserved.")
+    try:
+        runtime = json.loads(args.runtime_profile.read_text(encoding="utf-8")) if args.runtime_profile else None
+        result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
+                         profile=args.profile, runtime=runtime)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     text = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
     if args.output:
         if args.output.exists():

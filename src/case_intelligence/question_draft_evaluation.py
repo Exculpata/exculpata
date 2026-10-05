@@ -16,10 +16,12 @@ import subprocess
 from .generation import (
     EvidenceItem, GenerationRejected, GenerationUnavailable, OllamaGenerator, _bounded_json_get,
 )
+from .claim_evaluation import validate_runtime
 from .question_drafting import PURPOSES, draft_questions, unsupported_quotes
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASES = ROOT / "benchmarks" / "question-drafts-v1.json"
+MODEL_MANIFEST = ROOT / "config" / "models.json"
 # The code a receipt is bound to: the drafting check and prompt, the model adapters,
 # and this scorer and its command.
 IMPLEMENTATION_PATHS = (
@@ -158,8 +160,31 @@ def model_identity(client) -> dict:
     return snapshot
 
 
-def binding_problems(execution: dict, identity: dict, expected_artifact: str | None = None) -> list[str]:
-    """Why a receipt cannot stand for a committed revision and one model artifact."""
+def model_pin(profile: str, runtime: dict) -> dict:
+    """Link a declared runtime artifact to the repository-pinned generator revision.
+
+    The runtime profile is the operator's declaration (as for the claim evaluation):
+    the artifact digest it names must be the one observed, and its upstream model,
+    revision and license must equal the selected profile in config/models.json.
+    """
+    validate_runtime(runtime)
+    raw = MODEL_MANIFEST.read_bytes()
+    entries = [item for item in json.loads(raw)["models"]
+               if item.get("role") == "generator" and item.get("profile") == profile]
+    if len(entries) != 1:
+        raise ValueError("Choose a documented generator profile from config/models.json.")
+    pinned = entries[0]
+    if any(runtime[key] != pinned[field] for key, field in (
+            ("upstream_model_id", "model_id"), ("upstream_revision", "revision"), ("license", "license"))):
+        raise ValueError("Declared artifact provenance must match the selected pinned model profile.")
+    return dict(profile=profile, model_id=pinned["model_id"], revision=pinned["revision"],
+                license=pinned["license"], manifest_sha256=hashlib.sha256(raw).hexdigest(),
+                artifact_sha256=runtime["model_artifact_sha256"],
+                basis="operator_declared_not_independently_verified")
+
+
+def binding_problems(execution: dict, identity: dict, pin: dict | None = None) -> list[str]:
+    """Why a receipt cannot stand for a committed revision and one pinned model artifact."""
     problems = []
     if not execution.get("git_commit"):
         problems.append("No Git commit was recorded.")
@@ -170,19 +195,27 @@ def binding_problems(execution: dict, identity: dict, expected_artifact: str | N
         problems.append("The runtime exposed no immutable model artifact digest.")
     elif before != after:
         problems.append("The model artifact changed or could not be observed after the run.")
-    elif expected_artifact and before["artifact_sha256"] != expected_artifact.removeprefix("sha256:"):
-        problems.append("The observed model artifact is not the expected digest.")
+    if pin is None:
+        problems.append("No runtime profile linked the model artifact to a repository-pinned revision.")
+    elif isinstance(before, dict) and before.get("artifact_sha256") \
+            and before["artifact_sha256"] != pin["artifact_sha256"]:
+        problems.append("The observed model artifact is not the one the runtime profile declares.")
     return problems
 
 
 def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
-            expected_artifact: str | None = None) -> dict:
-    """Run the set and record a receipt bound to the code and the model artifact.
+            profile: str | None = None, runtime: dict | None = None) -> dict:
+    """Run the set and record a receipt bound to the code and the pinned model.
 
     The gate passes only when the pass bar is met on the pinned set, from a clean
     checkout at a recorded commit, with the same immutable model artifact observed
-    before and after the run (and matching expected_artifact when one is given).
+    before and after the run, and that artifact declared by a runtime profile whose
+    upstream model, revision and license match the selected pinned profile. An
+    invalid or conflicting runtime profile is refused before any model call.
     """
+    if (profile is None) != (runtime is None):
+        raise ValueError("Give both a generator profile and a runtime profile, or neither.")
+    pin = model_pin(profile, runtime) if runtime is not None else None
     data, fingerprint = load_cases(path)
     client = service.client
     result = dict(format="recordbench-question-draft-evaluation-v1", synthetic_only=True,
@@ -191,7 +224,8 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
                   pass_bar=dict(relevant_rate=RELEVANT_RATE_BAR, unsupported_quotes=0,
                                 minimum_questions_per_case=MIN_QUESTIONS_PER_CASE),
                   adapter=type(client).__name__, model=getattr(client, "model", None),
-                  execution=execution_metadata(), model_gate="outstanding")
+                  execution=execution_metadata(), model_pin=pin, runtime=runtime,
+                  model_gate="outstanding")
     try:
         available = service.available
     except Exception:
@@ -215,7 +249,7 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
     result["model_identity"] = observed
     # Only the pinned set can pass the gate recorded in a pull request, and only a
     # run bound to a committed revision and one model artifact.
-    problems = binding_problems(result["execution"], observed, expected_artifact)
+    problems = binding_problems(result["execution"], observed, pin)
     result["binding_problems"] = problems
     if not (result["passed"] and result["pinned_set"]):
         result["model_gate"] = "failed"

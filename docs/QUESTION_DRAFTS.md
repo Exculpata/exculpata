@@ -79,8 +79,14 @@ settings the application uses; nothing is selected or downloaded):
 
 ```bash
 .venv/bin/python scripts/evaluate-question-drafts.py --output question-drafts-receipt.json \
-  --require-model --model-digest <sha256 of the installed model>
+  --require-model --profile portable --runtime-profile runtime.json
 ```
+
+`runtime.json` is the runtime-profile declaration described in
+[CLAIM_EVALUATION.md](CLAIM_EVALUATION.md): the model artifact digest (for Ollama,
+its immutable tag digest) and the selected profile's exact upstream model,
+revision and license from `config/models.json`. A profile that is malformed or
+contradicts the pin is refused before any model call.
 
 Without a configured runtime the receipt records `model_gate: outstanding`.
 
@@ -88,11 +94,14 @@ The receipt is bound to what ran. It records the Git commit, whether the checkou
 had uncommitted changes, and SHA-256 hashes of the drafting check, the model
 adapters and the scorer. It also records the model's content digest as Ollama
 reports it, observed before and after the run; a model name alone is mutable. The
-gate is `passed` only when the pass bar is met on the pinned set, from a clean
-checkout at a recorded commit, with the same digest before and after (and equal to
-`--model-digest` when given). A passing score without that binding is recorded as
-`unbound` with its reasons, and a runtime that reports no digest cannot pass. No
-hostname, user, endpoint or path is recorded.
+`model_pin` records the selected profile's upstream model, revision and license,
+the model catalog's SHA-256, and the declared artifact; like the claim
+evaluation, that linkage is an operator declaration, not an attestation of loaded
+weights. The gate is `passed` only when the pass bar is met on the pinned set,
+from a clean checkout at a recorded commit, with the same digest before and after,
+equal to the artifact the runtime profile declares. A passing score without that
+binding is recorded as `unbound` with its reasons, and a runtime that reports no
+digest cannot pass. No hostname, user, endpoint or path is recorded.
 `tests/test_question_draft_evaluation.py` checks the set and the scoring with
 deterministic clients; `tests/test_question_drafts.py` covers the check, routes,
 saving and refusals; the `assistant-dock` browser journey covers the dock card

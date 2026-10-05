@@ -69,4 +69,5 @@ not establish model quality, offline inference or supported-hardware acceptance.
 its own schema and check; it adds no model or revision. Its fixed synthetic set
 and pass bar are recorded there, and its model gate stays outstanding until the
 evaluation runs against a configured runtime. A passing receipt is bound to a clean
-commit, implementation hashes and the model's content digest.
+commit, implementation hashes, the model's content digest, and a runtime profile
+linking that digest to the pinned generator revision.
