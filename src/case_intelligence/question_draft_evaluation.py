@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import subprocess
@@ -34,6 +35,21 @@ IMPLEMENTATION_PATHS = (
 QUESTION_SET_FINGERPRINT = "7674d1da108db0dffe5392a7ca841c483e09e9ec220838a1afac5b5f99a5ea95"
 RELEVANT_RATE_BAR = 0.90
 MIN_QUESTIONS_PER_CASE = 3
+
+
+def json_safe(value):
+    """A copy of value that strict JSON can hold: non-finite numbers become strings.
+
+    A runtime that ignores the schema can return NaN or Infinity in raw output, which
+    Python parses but strict JSON cannot represent; the receipt keeps them as text.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    return value
 
 
 def load_cases(path: Path = DEFAULT_CASES) -> tuple[dict, str]:

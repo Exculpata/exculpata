@@ -438,7 +438,44 @@ def main(argv=None):
             assert all(button.get_attribute("aria-disabled") is None for button in new_chat)
             assert saved_notes() == 2
             assert driver.current_url.startswith(base + notes), driver.current_url
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss and conversation navigation are held until every overlapping save is known; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+            # A dock refresh (here through the dock's Cancel path, answered synthetically) that
+            # arrives during a slow save waits for it, then keeps its result and link.
+            js("window.fetch = (url, init) => String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : /\\/questions\\/save$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : window.__originalFetch(url, init);")
+            press_cancel = ("const dock = document.querySelector('[data-assistant-dock]'); window.__oldDock = dock;"
+                            " const button = document.createElement('button'); button.type = 'button';"
+                            " button.dataset.assistantCancel = ''; button.dataset.actionUrl = '/synthetic-cancel';"
+                            " dock.append(button); button.click();")
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in card.text)
+            js(press_cancel)
+            assert js("return window.__oldDock.isConnected") and "Saving…" in card.text
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            carried = find("[data-assistant-draft-questions] [data-question-draft-status]")
+            assert "Questions saved to case notes for review." in carried.text, carried.text
+            assert carried.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
+            assert saved_notes() == 3
+            # And no save starts while a refresh is already in flight.
+            find('[data-assistant-draft-questions] button[value="witness"]').click()
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            js("const fragment = document.querySelector('[data-assistant-dock]').dataset.fragmentUrl;"
+               " const previous = window.fetch; window.fetch = (url, init) => String(url).includes(fragment)"
+               " ? new Promise((resolve) => setTimeout(resolve, 2000)).then(() => window.__originalFetch(url, init))"
+               " : previous(url, init);")
+            js(press_cancel)
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            assert "The assistant is updating. Try Save again in a moment." in card.text, card.text
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert saved_notes() == 3
+            js("window.fetch = window.__originalFetch;")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save is known, keeping each result; no save starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

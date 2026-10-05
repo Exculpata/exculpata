@@ -3440,6 +3440,10 @@
   let assistantDraft = false;
   let assistantDraftBuffer = null;
   let assistantEpoch = 0;
+  // Draft saves and dock refreshes are coordinated: no save starts while a refresh is in
+  // flight, and a refresh waits for pending saves, then keeps their results visible.
+  let assistantRefreshesInFlight = 0;
+  let assistantSavesSettled = [];
   let assistantHistorySwitch = null;
   let reviewQuestionScope = null;
   // Set by the source reader: limits the next question to the open source.
@@ -3731,7 +3735,7 @@
     }
   };
 
-  const refreshAssistant = async (requestedFragmentUrl, operation) => {
+  const replaceAssistantDock = async (requestedFragmentUrl, operation) => {
     window.clearTimeout(assistantPollTimer);
     if (!requestedFragmentUrl) releaseAssistantHistorySwitch();
     const fragmentUrl = requestedFragmentUrl || assistantDock?.dataset.fragmentUrl;
@@ -3752,6 +3756,17 @@
     if (!ownsAssistantOperation(operation)) return;
     const replacement = holder.querySelector("[data-assistant-dock]");
     if (!replacement || !assistantDock) throw new Error("Assistant response was incomplete.");
+    // Replacing the dock would hide a pending draft save's result, so wait for every one.
+    if (Number(assistantDock.dataset.questionSavesPending || 0) > 0) {
+      await new Promise((resolve) => assistantSavesSettled.push(resolve));
+      if (!ownsAssistantOperation(operation)) return;
+    }
+    let savedNotices = [];
+    try {
+      savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
+    } catch (_error) {
+      savedNotices = [];
+    }
     // A terminal job enables writing before its refreshed history arrives.
     // Preserve the current composer state, including choices made before the
     // fetch, only within the same conversation and epoch (scope changes and
@@ -3779,12 +3794,32 @@
     saveAssistantConversationPreference(assistantDock.dataset.conversationId || "");
     ensureAssistantDraftOption();
     bindAssistant();
+    // A draft save that finished while this refresh waited keeps its result and link.
+    savedNotices.forEach((notice) => {
+      const draftForm = Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+        .find((candidate) => candidate.getAttribute("action") === notice.action);
+      const feedback = draftForm?.querySelector("[data-question-draft-status]");
+      if (!feedback) return;
+      const link = document.createElement("a");
+      link.href = notice.url;
+      link.textContent = "Open case notes";
+      feedback.replaceChildren(document.createTextNode(`${notice.message} `), link);
+    });
     if (retainFocus && replacementTextarea && !replacementTextarea.disabled) {
       replacementTextarea.focus({ preventScroll: true });
       replacementTextarea.setSelectionRange(...selection);
     }
     const thread = assistantDock.querySelector("[data-assistant-thread]");
     if (thread?.dataset.hasMessages === "true") thread.scrollTop = thread.scrollHeight;
+  };
+
+  const refreshAssistant = async (requestedFragmentUrl, operation) => {
+    assistantRefreshesInFlight += 1;
+    try {
+      return await replaceAssistantDock(requestedFragmentUrl, operation);
+    } finally {
+      assistantRefreshesInFlight -= 1;
+    }
   };
 
   const pollAssistant = async () => {
@@ -4117,6 +4152,11 @@
           event.preventDefault();
           // No save starts while a replacement draft is pending: its result would be lost with this card.
           if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
+          // Nor while the dock is being refreshed: the refresh would replace this card.
+          if (assistantRefreshesInFlight > 0) {
+            status.textContent = "The assistant is updating. Try Save again in a moment.";
+            return;
+          }
           saveForm.setAttribute("aria-busy", "true");
           const held = [save, dismiss, ...draftForm.querySelectorAll("button")];
           held.forEach((control) => control.setAttribute("aria-disabled", "true"));
@@ -4142,6 +4182,12 @@
             const link = element("a", "Open case notes");
             link.href = result.notebook_url;
             actions.replaceChildren(status, link);
+            if (assistantRefreshesInFlight > 0) {
+              // A refresh is waiting to replace the dock; it carries this result over.
+              const notices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
+              notices.push({ action: draftForm.getAttribute("action"), message: result.message, url: result.notebook_url });
+              assistantDock.dataset.questionSaveNotices = JSON.stringify(notices);
+            }
           } catch (error) {
             if (saveForm.isConnected) status.textContent = `${error.message} You can safely try again.`;
           } finally {
@@ -4156,6 +4202,7 @@
               delete assistantDock.dataset.questionPickerWasDisabled;
               if (picker && !pickerWasDisabled) picker.disabled = false;
               newChat?.removeAttribute("aria-disabled");
+              assistantSavesSettled.splice(0).forEach((resolve) => resolve());
             }
           }
         });

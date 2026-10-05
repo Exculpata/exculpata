@@ -50,7 +50,10 @@ case notes**, which adds one Suggested note.
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
   held, so the card never says nothing was saved while the save may succeed. The
   conversation picker and New chat are held until every pending save (from any
-  open card) is known, so the dock is never replaced before a result shows. While
+  open card) is known, so the dock is never replaced before a result shows. A dock
+  refresh that arrives meanwhile (for example when an answer finishes) waits for
+  those saves and keeps their results and case-notes link; no save starts while a
+  refresh is in flight. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
   its own page with the same choices. Saving checks every question again against
@@ -115,7 +118,9 @@ weights. The gate is `passed` only when the pass bar is met on the pinned set,
 from a clean checkout at a recorded commit, with the same digest before and after,
 equal to the artifact the runtime profile declares. A passing score without that
 binding is recorded as `unbound` with its reasons, and a runtime that reports no
-digest cannot pass. No hostname, user, endpoint or path is recorded.
+digest cannot pass. No hostname, user, endpoint or path is recorded. The receipt is
+strict JSON: text that is not valid UTF-8 is escaped, and non-finite numbers from a
+runtime that ignores the schema are kept as text.
 `tests/test_question_draft_evaluation.py` checks the set and the scoring with
 deterministic clients; `tests/test_question_drafts.py` covers the check, routes,
 saving and refusals; the `assistant-dock` browser journey covers the dock card

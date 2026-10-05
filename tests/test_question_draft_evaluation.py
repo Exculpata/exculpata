@@ -237,3 +237,18 @@ def test_a_receipt_with_non_utf8_model_text_is_still_written(tmp_path, monkeypat
     assert result["shown_questions"] == 20 and result["passed"] is False
     text = json.dumps(result, ensure_ascii=True)
     assert "\\ud800" in text and text.encode("utf-8")
+
+
+def test_a_receipt_with_non_finite_model_values_is_strict_json():
+    """NaN or Infinity in raw model output is dropped from what is shown and kept as text."""
+    class NonFinite(Scripted):
+        def draft_questions(self, **kwargs):
+            reply = super().draft_questions(**kwargs)
+            reply["questions"][0]["text"] = float("nan")
+            reply["questions"][1]["evidence_ids"] = [float("inf")]
+            return reply
+    result = run(NonFinite(lambda evidence, index: evidence[index % 2]))
+    assert result["shown_questions"] == 10 and result["passed"] is False
+    text = json.dumps(question_draft_evaluation.json_safe(result), allow_nan=False)
+    assert '"nan"' in text and '"inf"' in text
+    assert json.loads(text, parse_constant=lambda name: (_ for _ in ()).throw(ValueError(name)))

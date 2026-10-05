@@ -16,7 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from case_intelligence.generation import GroundedGenerationService, generator_from_environment
-from case_intelligence.question_draft_evaluation import DEFAULT_CASES, receipt
+from case_intelligence.question_draft_evaluation import DEFAULT_CASES, json_safe, receipt
 
 
 def main(argv=None):
@@ -41,9 +41,10 @@ def main(argv=None):
                          profile=args.profile, runtime=runtime)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
-    # ASCII escapes keep a receipt writable even when raw model output holds
-    # text that is not valid UTF-8 (such as a lone surrogate).
-    text = json.dumps(result, indent=2, ensure_ascii=True) + "\n"
+    # ASCII escapes keep a receipt writable even when raw model output holds text
+    # that is not valid UTF-8 (such as a lone surrogate), and non-finite numbers are
+    # kept as text, so the receipt is always strict JSON.
+    text = json.dumps(json_safe(result), indent=2, ensure_ascii=True, allow_nan=False) + "\n"
     if args.output:
         if args.output.exists():
             raise SystemExit("Choose a new output file; the existing receipt was preserved.")
