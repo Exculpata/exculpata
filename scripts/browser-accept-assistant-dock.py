@@ -355,6 +355,11 @@ def main(argv=None):
             checks.append("At 390px and 320px the answer-passage Suggest control fits, and an open proposal naming a long unbroken filename wraps without sideways scrolling")
 
             # Draft questions: a proposal card that saves nothing until Save.
+            # Rendering a draft rebuilds the card, so read it in the page, not through held elements.
+            draft_shown = lambda target, label: js(
+                "const card = arguments[0]; return Boolean(card.querySelector('h3')?.textContent.startsWith(arguments[1])"
+                " && [...card.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Save to case notes'));",
+                target, label)
             bench = app.state.workbench
             bench.generator.client = SyntheticDrafts()
             # The journey added a second source above, so draft from Case notes, where the dock also opens.
@@ -401,7 +406,7 @@ def main(argv=None):
             assert card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']").get_attribute("aria-disabled") == "true"
             old_save.click()
             assert saved_notes() == 0
-            wait.until(lambda _: card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Questions for a witness"))
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
             assert saved_notes() == 0
             js("window.fetch = window.__originalFetch;")
             # The second answer's card is open too, so two saves can overlap.
@@ -451,7 +456,8 @@ def main(argv=None):
                             " button.dataset.assistantCancel = ''; button.dataset.actionUrl = '/synthetic-cancel';"
                             " dock.append(button); button.click();")
             find('[data-assistant-draft-questions] button[value="discovery"]').click()
-            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            # The card still shows the saved witness draft until the new one replaces it.
+            wait.until(lambda _: draft_shown(card, "Discovery requests"))
             card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
             wait.until(lambda _: "Saving…" in card.text)
             js(press_cancel)
@@ -464,7 +470,8 @@ def main(argv=None):
             # And no save starts while a refresh is already in flight.
             find('[data-assistant-draft-questions] button[value="witness"]').click()
             card = find("[data-question-draft-card]")
-            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            wait.until(lambda _: card.is_displayed()
+                       and card.find_elements(By.XPATH, ".//button[normalize-space()='Save to case notes']"))
             js("const fragment = document.querySelector('[data-assistant-dock]').dataset.fragmentUrl;"
                " const previous = window.fetch; window.fetch = (url, init) => String(url).includes(fragment)"
                " ? new Promise((resolve) => setTimeout(resolve, 2000)).then(() => window.__originalFetch(url, init))"
