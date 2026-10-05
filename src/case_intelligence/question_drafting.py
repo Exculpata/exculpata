@@ -8,6 +8,8 @@ in a cited passage. Questions that fail are dropped with an omission notice.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 import time
 from typing import Mapping, Sequence
@@ -58,11 +60,11 @@ _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNOR
 # contraction (the driver's) is not a quotation, but a quotation containing one
 # ('it's red') is checked whole.
 _SINGLE_QUOTE_SPAN = re.compile(
-    r"(?<![\w'‘’])['‘](\S.*?)['’](?!\w)")
+    r"(?<![\w'‘’])['‘’](\S.*?)['’](?!\w)")
 _APOSTROPHES = str.maketrans("‘’", "''")
 # A single quote where a quotation could open; one left after matched spans are
 # removed has no closing quote.
-_SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘](?=\S)")
+_SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘’](?=\S)")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
@@ -260,6 +262,17 @@ def verify_question_draft(raw: Mapping[str, object], evidence: Sequence[Evidence
             seen.add(question_key(question.text))
             accepted.append(question)
     return tuple(accepted), omitted
+
+
+def passage_basis(evidence: Sequence[EvidenceItem]) -> str:
+    """A digest of exactly the passages a draft was made from, to bind its save to them.
+
+    A corrected transcript can keep its passage identity while its text changes, so
+    the basis covers each passage's label, location, kind and text.
+    """
+    rows = [[item.evidence_id, item.source_name, item.location, item.evidence_kind, item.excerpt]
+            for item in evidence]
+    return hashlib.sha256(json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 def validate_evidence(evidence: Sequence[EvidenceItem]) -> tuple[EvidenceItem, ...]:

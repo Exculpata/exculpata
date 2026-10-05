@@ -119,7 +119,7 @@ def notes(bench, matter):
 
 
 def save_form(draft):
-    return {'purpose': draft['purpose'], 'question': [q['text'] for q in draft['questions']],
+    return {'purpose': draft['purpose'], 'basis': draft['basis'], 'question': [q['text'] for q in draft['questions']],
             'passages': [','.join(map(str, q['passages'])) for q in draft['questions']]}
 
 
@@ -163,6 +163,10 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     assert verify_question('Who saw the "red truck" near the gate?', ['S1', 'S2'],
                            {item.evidence_id: item for item in split}) is None
     assert unsupported_quotes('Was the car "red" near the "gate"?', split) == ()
+    # A right-curly mark can open a quotation too, as in an apostrophe-style pair.
+    for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
+        assert verify_question(text, ['S1'], witness) is None, text
+    assert verify_question('Did the witness say \u2019blue truck\u2019?', ['S1'], witness)
     # Quotations containing a contraction are checked whole, in either apostrophe style;
     # unquoted possessives and contractions are not quotations.
     said = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', "The driver said it's blue and parked at the gate.")}
@@ -281,6 +285,7 @@ def test_without_javascript_the_draft_is_a_page_with_save_and_dismiss(drafting):
     assert 'nothing is saved yet' in text and QUESTION_OMISSION_NOTICE in text
     assert f'href="{html.escape(reader)}">Dismiss</a>' in text
     form = {'purpose': 'discovery', 'return_to': reader,
+            'basis': re.search(r'name="basis" value="([0-9a-f]{64})"', text).group(1),
             'question': [html.unescape(v) for v in re.findall(r'name="question" value="([^"]+)"', text)],
             'passages': re.findall(r'name="passages" value="([^"]+)"', text)}
     assert len(form['question']) == 2
@@ -405,7 +410,7 @@ def test_a_source_backed_limitation_is_drafted_from_too(tmp_path, monkeypatch):
 
 def test_the_same_question_saved_against_two_like_named_passages_keeps_both(tmp_path, monkeypatch):
     question = 'Who else saw the blue crate arrive at the North Annex?'
-    with app_client(tmp_path, monkeypatch, ScriptedDrafts([])) as client:
+    with app_client(tmp_path, monkeypatch, ScriptedDrafts([{'text': question, 'evidence_ids': ['S1']}])) as client:
         client.get('/')
         bench = client.app.state.workbench
         matter, base = seed_two(bench, [b'The blue crate arrived at the North Annex.\n',
@@ -415,10 +420,30 @@ def test_the_same_question_saved_against_two_like_named_passages_keeps_both(tmp_
         monkeypatch.setattr(bench, '_answer_passages', lambda *args: (lambda topic, items: (topic, [
             (dataclasses.replace(item, source_name='Synthetic receiving log.txt'), reference)
             for item, reference in items]))(*passages(*args)))
-        first = client.post(base + '/save', data={'purpose': 'witness', 'question': [question], 'passages': ['1']},
-                            headers={'Accept': 'application/json'}).json()
-        second = client.post(base + '/save', data={'purpose': 'witness', 'question': [question], 'passages': ['2']},
-                             headers={'Accept': 'application/json'}).json()
+        basis = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).json()['basis']
+        first = client.post(base + '/save', data={'purpose': 'witness', 'basis': basis, 'question': [question],
+                                                  'passages': ['1']}, headers={'Accept': 'application/json'}).json()
+        second = client.post(base + '/save', data={'purpose': 'witness', 'basis': basis, 'question': [question],
+                                                   'passages': ['2']}, headers={'Accept': 'application/json'}).json()
         assert first['created'] is True and second['created'] is True
         saved = notes(bench, matter)
         assert len(saved) == 2 and saved[0].body == saved[1].body
+
+
+def test_a_save_is_bound_to_the_passages_the_draft_was_made_from(drafting, monkeypatch):
+    """A corrected passage that keeps its identity still refuses a draft made from the old text."""
+    client, generator, (matter, conversation, message, base) = drafting
+    bench = client.app.state.workbench
+    draft = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).json()
+    assert len(draft['basis']) == 64
+    for basis in ('', '0' * 64):
+        refused = client.post(draft['save_url'], data={**save_form(draft), 'basis': basis},
+                              headers={'Accept': 'application/json'})
+        assert refused.status_code == 409 and 'changed since this draft' in refused.json()['message']
+    passages = bench._answer_passages
+    monkeypatch.setattr(bench, '_answer_passages', lambda *args: (lambda topic, items: (topic, [
+        (dataclasses.replace(item, excerpt=item.excerpt + ' Corrected: the camera was working.'), reference)
+        for item, reference in items]))(*passages(*args)))
+    refused = client.post(draft['save_url'], data=save_form(draft), headers={'Accept': 'application/json'})
+    assert refused.status_code == 409 and 'changed since this draft' in refused.json()['message']
+    assert not notes(bench, matter)

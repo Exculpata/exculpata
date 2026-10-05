@@ -355,10 +355,13 @@ def main(argv=None):
             checks.append("At 390px and 320px the answer-passage Suggest control fits, and an open proposal naming a long unbroken filename wraps without sideways scrolling")
 
             # Draft questions: a proposal card that saves nothing until Save.
-            # Rendering a draft rebuilds the card, so read it in the page, not through held elements.
+            # Rendering a draft rebuilds the card, so read it in the page, not through held elements:
+            # the drafting request has settled, and the card shows the expected heading and a Save.
             draft_shown = lambda target, label: js(
-                "const card = arguments[0]; return Boolean(card.querySelector('h3')?.textContent.startsWith(arguments[1])"
-                " && [...card.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Save to case notes'));",
+                "const card = arguments[0]; return Boolean(!card.previousElementSibling?.hasAttribute('aria-busy')"
+                " && card.querySelector('h3')?.textContent.startsWith(arguments[1])"
+                " && [...card.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Save to case notes'"
+                " && b.getAttribute('aria-disabled') !== 'true'));",
                 target, label)
             bench = app.state.workbench
             bench.generator.client = SyntheticDrafts()
@@ -448,7 +451,7 @@ def main(argv=None):
             js("window.fetch = (url, init) => String(url).endsWith('/synthetic-cancel')"
                " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
                " {headers: {'Content-Type': 'application/json'}}))"
-               " : /\\/questions\\/save$/.test(String(url))"
+               " : /\\/questions(\\/save)?$/.test(String(url))"
                " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
                " : window.__originalFetch(url, init);")
             press_cancel = ("const dock = document.querySelector('[data-assistant-dock]'); window.__oldDock = dock;"
@@ -456,7 +459,7 @@ def main(argv=None):
                             " button.dataset.assistantCancel = ''; button.dataset.actionUrl = '/synthetic-cancel';"
                             " dock.append(button); button.click();")
             find('[data-assistant-draft-questions] button[value="discovery"]').click()
-            # The card still shows the saved witness draft until the new one replaces it.
+            # The card still shows the saved witness draft until the slow replacement arrives.
             wait.until(lambda _: draft_shown(card, "Discovery requests"))
             card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
             wait.until(lambda _: "Saving…" in card.text)

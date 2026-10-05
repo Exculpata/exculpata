@@ -14,6 +14,7 @@
     <form method="post" action="{{ save_url }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="purpose" value="{{ draft.purpose }}">
+      <input type="hidden" name="basis" value="{{ draft.basis }}">
       <input type="hidden" name="return_to" value="{{ return_to }}">
       <ol class="question-draft-list">
         {% for question in draft.questions %}

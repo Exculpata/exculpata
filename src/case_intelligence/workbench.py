@@ -3614,7 +3614,7 @@ class CaseIntelligenceWorkbench:
         are released before the model is called, then read again under the guards
         afterwards; if access or any passage changed, nothing is returned.
         """
-        from .question_drafting import PURPOSES, draft_questions
+        from .question_drafting import PURPOSES, draft_questions, passage_basis
 
         if purpose not in PURPOSES:
             raise WorkspaceProblem("Choose witness questions or discovery requests.")
@@ -3634,6 +3634,7 @@ class CaseIntelligenceWorkbench:
         labels = {item.evidence_id: f"{item.source_name} · {item.location}" for item in evidence}
         return {
             "purpose": purpose, "label": PURPOSES[purpose][0], "notice": draft.notice,
+            "basis": passage_basis(evidence),
             "questions": [{"text": question.text,
                            "passages": [int(identifier[1:]) for identifier in question.evidence_ids],
                            "sources": [labels[identifier] for identifier in question.evidence_ids]}
@@ -3642,13 +3643,16 @@ class CaseIntelligenceWorkbench:
 
     def save_answer_questions(self, matter: MatterRecord, actor_id: str, conversation_id: str,
                               message_id: str, purpose: str,
-                              questions: Sequence[tuple[str, Sequence[int]]]) -> tuple[NotebookItemRecord, bool]:
+                              questions: Sequence[tuple[str, Sequence[int]]],
+                              basis: str = "") -> tuple[NotebookItemRecord, bool]:
         """Save a reviewed draft as one Suggested note, after checking it again.
 
-        Every question is re-verified against the answer's current passages; if a
-        passage it cites changed, or a question no longer passes, nothing is saved.
+        The draft's basis must match the answer's current passages exactly, and every
+        question is re-verified against them; if a passage changed (even a corrected
+        transcript that keeps its identity), or a question no longer passes, nothing
+        is saved.
         """
-        from .question_drafting import MAX_DRAFTED_QUESTIONS, PURPOSES, verify_question
+        from .question_drafting import MAX_DRAFTED_QUESTIONS, PURPOSES, passage_basis, verify_question
 
         if purpose not in PURPOSES:
             raise WorkspaceProblem("Choose witness questions or discovery requests.")
@@ -3658,6 +3662,8 @@ class CaseIntelligenceWorkbench:
         with self.source_store(matter).mutation_guard(), self.workspace._lock:
             self.workspace.membership(matter.matter_id, actor_id)
             topic, passages = self._answer_passages(matter, conversation_id, message_id)
+            if not hmac.compare_digest(basis.encode(), passage_basis([passage[0] for passage in passages]).encode()):
+                raise WorkspaceProblem("The cited passages changed since this draft. Draft the questions again.")
             evidence = {passage[0].evidence_id: passage for passage in passages}
             lines, used = [], []
             for number, (text, passages) in enumerate(questions, 1):
@@ -16153,6 +16159,7 @@ def create_workbench_app(
         purpose: str = Form("", max_length=20),
         question: list[str] = Form(default=[]),
         passages: list[str] = Form(default=[]),
+        basis: str = Form("", max_length=64),
         return_to: str = Form("", max_length=4000),
     ):
         context = auth_context(request)
@@ -16169,7 +16176,7 @@ def create_workbench_app(
                 parsed.append((text, [int(n) for n in numbers]))
             matter = authorized_matter(request, slug)
             item, created = bench.save_answer_questions(
-                matter, context.principal_id, conversation_id, message_id, purpose, parsed)
+                matter, context.principal_id, conversation_id, message_id, purpose, parsed, basis)
         except KeyError as exc:
             raise HTTPException(404, "Answer not found") from exc
         except WorkspaceProblem as exc:

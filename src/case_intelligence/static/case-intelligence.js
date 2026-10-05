@@ -4118,7 +4118,7 @@
         const saveForm = element("form");
         saveForm.method = "post";
         saveForm.action = draft.save_url;
-        saveForm.append(hidden("csrf_token", csrfToken), hidden("purpose", draft.purpose));
+        saveForm.append(hidden("csrf_token", csrfToken), hidden("purpose", draft.purpose), hidden("basis", draft.basis || ""));
         const list = element("ol", "", "question-draft-list");
         draft.questions.forEach((question) => {
           const item = element("li");
@@ -4225,7 +4225,7 @@
             headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
           });
           const draft = await assistantJson(response);
-          if (!Array.isArray(draft.questions) || !draft.questions.length || !draft.save_url) {
+          if (!Array.isArray(draft.questions) || !draft.questions.length || !draft.save_url || !draft.basis) {
             throw new Error("The draft could not be confirmed.");
           }
           if (!draftForm.isConnected) return;

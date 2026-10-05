@@ -36,8 +36,8 @@ case notes**, which adds one Suggested note.
   as a whole word in a cited passage, so an altered identifier is dropped, and so
   is an internal passage label such as `S1` written without brackets, unless the
   passage itself contains it. Leading list markers such as "1." are removed
-  first. A single quote opens a quotation only at the start, after a space, after
-  opening punctuation such as `(`, or after `:` or `,`, so possessives and contractions outside a
+  first. A single quote (straight, or either curly mark) opens a quotation wherever it
+  does not follow a letter, digit or another apostrophe, so possessives and contractions outside a
   quotation are not treated as quotations, while a quotation containing one
   (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal.
   A quotation mark that is never closed fails the check, since its quotation cannot
@@ -56,9 +56,12 @@ case notes**, which adds one Suggested note.
   refresh is in flight. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
-  its own page with the same choices. Saving checks every question again against
-  the answer's current passages; if a cited passage changed or a question no
-  longer passes, nothing is saved. The note is a Suggested `note` with origin
+  its own page with the same choices. The draft carries a basis, a digest of the
+  exact passages it was made from, and saving requires the answer's current
+  passages to match it, so a corrected transcript that keeps its passage identity
+  still refuses an older draft. Saving also checks every question again against
+  the current passages; if a cited passage changed or a question no longer passes,
+  nothing is saved. The note is a Suggested `note` with origin
   `answer`, the questions and their sources as its body, the cited passages as its
   references (up to 12), and the answer as its origin. Saving the same draft again,
   with the same questions citing the same passages, does not add a second note. Wording is the reviewer's to edit once saved.
