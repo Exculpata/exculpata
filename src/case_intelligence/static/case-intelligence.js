@@ -3796,8 +3796,21 @@
       .map((form) => [form.getAttribute("action"), form.nextElementSibling])
       .filter(([, card]) => card && !card.hidden && card.questionDraft)
       .map(([action, card]) => [action, card.questionDraft]));
-    // The dock shows only recent messages; an answer with an open draft that the refresh
-    // would leave out is kept at the top of the new thread so the draft is not lost.
+    let savedNotices = [];
+    try {
+      savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
+    } catch (_error) {
+      savedNotices = [];
+    }
+    // A terminal job enables writing before its refreshed history arrives.
+    // Preserve the current composer state, including choices made before the
+    // fetch, only within the same conversation and epoch (scope changes and
+    // New chat invalidate the refresh above).
+    const sameConversation = replacement.dataset.conversationId === originatingDock.dataset.conversationId;
+    // The dock shows only recent messages; an answer with an open draft that a refresh of
+    // the same conversation would leave out is kept at the top of the new thread so the
+    // draft is not lost. Switching conversations leaves the other conversation's drafts.
+    if (!sameConversation) assistantCarriedDrafts = new Map();
     const replacementThread = replacement.querySelector("[data-assistant-thread]");
     const replacementActions = new Set(Array.from(replacement.querySelectorAll("[data-assistant-draft-questions]"))
       .map((form) => form.getAttribute("action")));
@@ -3823,17 +3836,6 @@
         replacementThread.prepend(kept);
         replacementThread.dataset.hasMessages = "true";
       });
-    let savedNotices = [];
-    try {
-      savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
-    } catch (_error) {
-      savedNotices = [];
-    }
-    // A terminal job enables writing before its refreshed history arrives.
-    // Preserve the current composer state, including choices made before the
-    // fetch, only within the same conversation and epoch (scope changes and
-    // New chat invalidate the refresh above).
-    const sameConversation = replacement.dataset.conversationId === originatingDock.dataset.conversationId;
     const currentTextarea = originatingComposer?.querySelector("textarea");
     const replacementComposer = replacement.querySelector("[data-assistant-question-form]");
     const replacementTextarea = replacementComposer?.querySelector("textarea");

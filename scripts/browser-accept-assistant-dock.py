@@ -544,7 +544,35 @@ def main(argv=None):
             js("window.fetch = window.__originalFetch;")
             # Later checks reload the page; give them a recent answer again.
             seed_answer(bench, prefix)
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft, even one whose answer leaves the dock's recent messages; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+            # Switching conversations never copies another conversation's answer or open draft.
+            first_conversation = conversation.conversation_id
+            other = bench.workspace.create_conversation(matter.matter_id, "Synthetic second chat")
+            bench.workspace.append_message(matter.matter_id, other.conversation_id, "user", "Synthetic other question")
+            js("window.fetch = (url, init) => String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : window.__originalFetch(url, init);")
+            js(press_cancel)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            wait.until(lambda _: js("return [...document.querySelectorAll('[data-assistant-conversation-picker] option')]"
+                                    ".some((option) => option.value === arguments[0])", other.conversation_id))
+            forms = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")
+            forms[-1].find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            card = forms[-1].find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            choose_conversation = ("window.__oldDock = document.querySelector('[data-assistant-dock]');"
+                                   " const picker = document.querySelector('[data-assistant-conversation-picker]');"
+                                   " picker.value = arguments[0]; picker.dispatchEvent(new Event('change', {bubbles: true}));")
+            js(choose_conversation, other.conversation_id)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert js("return document.querySelector('[data-assistant-dock]').dataset.conversationId") == other.conversation_id
+            assert driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]") == []
+            assert first_conversation not in js("return document.querySelector('[data-assistant-thread]').innerHTML")
+            js(choose_conversation, first_conversation)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert js("return document.querySelector('[data-assistant-dock]').dataset.conversationId") == first_conversation
+            js("window.fetch = window.__originalFetch;")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft, even one whose answer leaves the dock's recent messages, but never into another conversation; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

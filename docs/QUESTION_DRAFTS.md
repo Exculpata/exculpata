@@ -60,7 +60,8 @@ case notes**, which adds one Suggested note.
   those saves, and for any draft in flight, and keeps their results and case-notes
   link; an open, unsaved draft stays open in the refreshed dock, and if newer
   messages would push its answer out of the dock's recent messages, that answer is
-  kept at the top of the refreshed thread. No save or draft
+  kept at the top of the refreshed thread. Switching to another conversation never
+  carries a draft into it. No save or draft
   starts while a refresh is in flight. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
