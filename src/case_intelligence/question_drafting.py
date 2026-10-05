@@ -19,6 +19,7 @@ from .generation import (
     MAX_EVIDENCE_CHARS,
     MAX_EVIDENCE_ITEM_CHARS,
     MAX_EVIDENCE_ITEMS,
+    TRANSCRIPT_EVIDENCE_KIND,
     EvidenceItem,
     GenerationGroundingRejected,
     GenerationRejected,
@@ -51,25 +52,28 @@ PURPOSES: Mapping[str, tuple[str, str, str]] = {
 }
 # A list marker a model may put before a question ("1.", "2)", "Q3:"), not part of it.
 _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNORECASE)
-# A single-quoted span opens only at the start, after whitespace or after opening
-# punctuation, and closes at the first quote followed by a word boundary. So an
+# A single-quoted span opens only at the start, after whitespace, after opening
+# punctuation or after punctuation that introduces speech (":" and ","), and closes at the first quote followed by a word boundary. So an
 # unquoted possessive or contraction (the driver's) is not a quotation, but a
 # quotation containing one ('it's red') is checked whole.
 _SINGLE_QUOTE_SPAN = re.compile(
-    r"(?:(?<=[\s(\[{\"“—–-])|^)['‘](\S.*?)['’](?=[\s.,;:?!)\]}\"”—–-]|$)")
+    r"(?:(?<=[\s(\[{\"“—–:,-])|^)['‘](\S.*?)['’](?=[\s.,;:?!)\]}\"”—–-]|$)")
 _APOSTROPHES = str.maketrans("‘’", "''")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
-# Every token containing a digit (2026-03-05, 09:15, K7, K-7, 5A, S1) must appear
-# as a whole token in a cited passage, so an altered identifier, number or ordinal,
-# or an internal evidence ID written without brackets, is not shown. A token is a
-# run of letters and digits joined by ":./-", so a prefix before a separator is kept.
-_COMPOUND_TOKEN = re.compile(r"[^\W_]+(?:[:./-][^\W_]+)*")
+# Every token containing a digit (2026-03-05, 09:15, K7, K-7, K_7, 5A, S1) must
+# appear as a whole token in a cited passage, so an altered identifier, number or
+# ordinal, or an internal evidence ID written without brackets, is not shown. A
+# token is a whitespace-separated word without surrounding punctuation or a
+# trailing possessive, so a prefix is kept whatever separator joins it.
+_TOKEN_EDGES = "\"'“”‘’()[]{}<>.,;:!?¿¡…*"
+_POSSESSIVE = re.compile(r"['’]s$")
 
 
 def _digit_tokens(text: str) -> set[str]:
-    return {token for token in _COMPOUND_TOKEN.findall(text) if any(char.isdigit() for char in token)}
+    tokens = (_POSSESSIVE.sub("", word.strip(_TOKEN_EDGES)).strip(_TOKEN_EDGES) for word in text.split())
+    return {token for token in tokens if any(char.isdigit() for char in token)}
 
 QUESTION_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -129,7 +133,17 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
         "state, and do not answer the questions. Do not put evidence IDs or citation brackets "
         "inside question text. Return only JSON matching the required schema."
     )
-    lines = [f"[{item.evidence_id}] {item.source_name} · {item.location}\n{item.excerpt}" for item in evidence]
+    if any(item.evidence_kind == TRANSCRIPT_EVIDENCE_KIND for item in evidence):
+        system += (
+            " Passages marked machine transcript are a fallible representation of what may have "
+            "been said: words, speakers and timing may be wrong. Do not treat transcript wording "
+            "as an established event, or a speaker label such as 'Speaker 1' as an identified "
+            "person; ask about what the recording or transcript appears to say, without leading "
+            "the witness or assuming who spoke."
+        )
+    lines = [f"[{item.evidence_id}] {item.source_name} · {item.location}"
+             f"{' (machine transcript)' if item.evidence_kind == TRANSCRIPT_EVIDENCE_KIND else ''}\n{item.excerpt}"
+             for item in evidence]
     user = (
         f"Topic the reviewer asked about:\n{topic.strip() or 'Not stated.'}\n\n"
         "Passages:\n" + "\n\n".join(lines)
@@ -192,6 +206,11 @@ def verify_question(text: object, evidence_ids: object,
     return DraftedQuestion(normalized, tuple(identifiers))
 
 
+def question_key(text: str) -> str:
+    """The wording of a question without case, spacing or punctuation, for duplicates."""
+    return " ".join(re.findall(r"\w+", _normalized(text)))
+
+
 def verify_question_draft(raw: Mapping[str, object], evidence: Sequence[EvidenceItem]
                           ) -> tuple[tuple[DraftedQuestion, ...], int]:
     if not isinstance(raw, Mapping) or set(raw) != {"questions"} or not isinstance(raw.get("questions"), list):
@@ -209,8 +228,8 @@ def verify_question_draft(raw: Mapping[str, object], evidence: Sequence[Evidence
             question = verify_question(value.get("text"), value.get("evidence_ids"), evidence_map)
         if question is None:
             omitted += 1
-        elif question.text.casefold() not in seen:
-            seen.add(question.text.casefold())
+        elif question_key(question.text) not in seen:
+            seen.add(question_key(question.text))
             accepted.append(question)
     return tuple(accepted), omitted
 

@@ -3569,9 +3569,16 @@ class CaseIntelligenceWorkbench:
         if position is None or messages[position].payload.get("kind") != "generated":
             raise KeyError(message_id)
         topic = next((item.content for item in reversed(messages[:position]) if item.role == "user"), "")
-        claims = messages[position].payload.get("claims")
+        payload = messages[position].payload
+        claims = payload.get("claims")
+        # A source-backed limitation is shown with the answer, so its passages are
+        # drafted from too, as Report copy includes them.
+        limitation = (payload.get("source_limitation") if "source_limitation" in payload else
+                      payload.get("limitation") if not payload.get("verification_notice") else None)
+        groups = [*(claims if isinstance(claims, list) else ()),
+                  *((limitation,) if isinstance(limitation, Mapping) else ())]
         citations, tokens = [], set()
-        for claim in claims if isinstance(claims, list) else ():
+        for claim in groups:
             values = claim.get("citations") if isinstance(claim, Mapping) else None
             for citation in values if isinstance(values, list) else ():
                 if not isinstance(citation, Mapping):
@@ -3667,7 +3674,11 @@ class CaseIntelligenceWorkbench:
                 lines.append(f"{number}. {question.text}\n   Sources: {sources}")
             body = "\n".join(lines)
             title = self._notebook_title(f"{PURPOSES[purpose][1]}: {topic}" if topic.strip() else PURPOSES[purpose][1])
-            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:24]
+            # Bind the dedupe key to the cited passages' identities, not only the text:
+            # two passages can share a display name and location.
+            basis = json.dumps([body, [evidence[identifier][1] for identifier in used]],
+                               sort_keys=True, ensure_ascii=False, default=str)
+            digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:24]
             return self.workspace.create_notebook_item(
                 matter.matter_id, actor_id, item_type="note", status="suggested", title=title, body=body,
                 origin="answer", source_conversation_id=conversation_id, source_message_id=message_id,

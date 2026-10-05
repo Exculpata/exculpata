@@ -1,5 +1,6 @@
 """Synthetic regression: draft witness questions or discovery requests from an answer's passages."""
 import copy
+import dataclasses
 import html
 import io
 import re
@@ -10,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.generation import EvidenceItem, GenerationRejected, UnavailableGenerator
 from case_intelligence.question_drafting import (
-    QUESTION_OMISSION_NOTICE, unsupported_quotes, verify_question, verify_question_draft,
+    QUESTION_OMISSION_NOTICE, question_prompt, unsupported_quotes, verify_question, verify_question_draft,
 )
 from case_intelligence.workbench import create_workbench_app
 
@@ -72,6 +73,34 @@ def seed(bench, text=TEXT, *, stale=False):
     return matter, conversation, message, base
 
 
+def seed_two(bench, texts, *, name='Synthetic receiving log.txt', limitation=False):
+    """An answer citing one passage in each of two sources (the second in a limitation, if asked)."""
+    bench.workspace.upsert_principal('test', OWNER, 'Synthetic Owner', OWNER, preferred_principal_id=OWNER)
+    matter = bench.create_matter('Synthetic question drafts', 'Generated evidence', OWNER)
+    bench.workspace.add_member(matter.matter_id, ACTOR, OWNER)
+    store = bench.source_store(matter)
+    citations = []
+    for number, text in enumerate(texts, 1):
+        # Separate folders, so both sources can share a display name.
+        document = store.store_stream(name, 'text/plain', io.BytesIO(text),
+                                      relative_path=f'box-{number}/{name}')[0]
+        bench._sync_source_catalog(matter, (document,))
+        citations.append(bench._saved_answer_citation_payload(
+            bench._citation(matter, bench._candidate(matter, document, document.parsed_units()[0], 1))))
+    conversation = bench.workspace.get_conversation(matter.matter_id)
+    bench.workspace.append_message(matter.matter_id, conversation.conversation_id, 'user', TOPIC)
+    claims = [{'text': 'Synthetic claim.', 'citations': [citations[0]]}]
+    payload = {'kind': 'generated', 'claims': claims}
+    if limitation:
+        payload['source_limitation'] = {'text': 'Synthetic limitation.', 'citations': [citations[1]]}
+    else:
+        claims.append({'text': 'Synthetic second claim.', 'citations': [citations[1]]})
+    message = bench.workspace.append_message(matter.matter_id, conversation.conversation_id,
+                                             'assistant', 'Synthetic answer', payload)
+    base = f'/matters/{matter.slug}/conversations/{conversation.conversation_id}/messages/{message.message_id}/questions'
+    return matter, base
+
+
 def app_client(tmp_path, monkeypatch, generator, auth_mode='test'):
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
     return TestClient(create_workbench_app(tmp_path / 'runtime', generator=generator, auth_mode=auth_mode))
@@ -111,7 +140,8 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     for text in ('Did the witness say "red"?', "Did the witness say 'red'?", 'Did the witness say \u201cred\u201d?',
                  'Did the witness say "' + 'z' * 241 + '"?', "Did the witness say ('red')?",
                  "Did the witness say 'it's red'?", 'Did the witness say \u2018it\u2019s red\u2019?',
-                 "Did the witness say ['red']?", "Did the witness say 'red', then leave?"):
+                 "Did the witness say ['red']?", "Did the witness say 'red', then leave?",
+                 "Did the witness say:'purple' near the truck?", "Did the witness say,'purple' near the truck?"):
         assert verify_question(text, ['S1'], witness) is None, text
     assert verify_question('Did the witness say "blue"?', ['S1'], witness)
     assert verify_question("Did the witness say 'blue truck'?", ['S1'], witness)
@@ -148,6 +178,12 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     hyphen = {'S1': EvidenceItem('S1', 'Synthetic sheet', 'Row 7', 'Row 7 lists model K-8 filters at the dock.')}
     assert verify_question('Who stocked the model K-8 filters at the dock?', ['S1'], hyphen)
     assert verify_question('Who stocked the model K-7 filters at the dock?', ['S1'], hyphen) is None
+    # So is a prefix joined by any other separator.
+    underscore = {'S1': EvidenceItem('S1', 'Synthetic sheet', 'Row 7', 'Row 7 lists model K_8 filters at the dock.')}
+    assert verify_question("Who stocked the model K_8 filters at the dock?", ['S1'], underscore)
+    assert verify_question("Who stocked the model K_8's filters at the dock?", ['S1'], underscore)
+    for text in ('Who stocked the model K_7 filters at the dock?', 'Who stocked the model K+7 filters at the dock?'):
+        assert verify_question(text, ['S1'], underscore) is None, text
     # An identifier that really is in the passage, even one shaped like an evidence ID, is allowed.
     unit = {'S1': EvidenceItem('S1', 'Synthetic roster', 'Row 2', 'Unit S2 was assigned the dash camera.')}
     assert verify_question('Who in unit S2 used the dash camera?', ['S1'], unit)
@@ -163,6 +199,11 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
 def test_a_draft_keeps_verified_questions_drops_the_rest_and_rejects_a_malformed_reply():
     questions, omitted = verify_question_draft({'questions': GOOD + BAD + [GOOD[0], 'loose text']}, tuple(EVIDENCE.values()))
     assert [q.text for q in questions] == [GOOD[0]['text'], GOOD[1]['text']] and omitted == 4
+    # A question repeated with different punctuation, case or spacing is one question.
+    stem = GOOD[0]['text'][:-1]
+    variants = [{'text': text, 'evidence_ids': ['S1']} for text in (stem + '?', stem + '??', stem + '?!', '  ' + stem.upper() + ' ?')]
+    questions, omitted = verify_question_draft({'questions': variants}, tuple(EVIDENCE.values()))
+    assert [q.text for q in questions] == [GOOD[0]['text']] and omitted == 0
     for raw in ({'questions': 'none'}, {'questions': [], 'extra': 1}, {'answer': []}, {'questions': GOOD * 5}):
         with pytest.raises(GenerationRejected):
             verify_question_draft(raw, tuple(EVIDENCE.values()))
@@ -331,3 +372,45 @@ def test_the_actions_appear_on_answers_in_the_dock_and_the_full_conversation(dra
     assert '<input type="hidden" name="purpose" value="witness">' in full
     identifiers = re.findall(r'\bid="([^"]+)"', full)
     assert len(identifiers) == len(set(identifiers))
+
+
+def test_transcript_passages_are_labelled_with_a_caution():
+    transcript = EvidenceItem('S1', 'Synthetic interview.wav', '00:01:05', 'Speaker 1: the gate was open.', 'transcript')
+    document = EvidenceItem('S2', 'Synthetic log', 'Line 1', 'The gate was logged as open.')
+    system, user = question_prompt('witness', TOPIC, [transcript, document])
+    assert '[S1] Synthetic interview.wav · 00:01:05 (machine transcript)' in user
+    assert '[S2] Synthetic log · Line 1\n' in user and 'fallible representation' in system and 'Speaker 1' in system
+    plain_system, plain_user = question_prompt('witness', TOPIC, [document])
+    assert 'machine transcript' not in plain_system + plain_user
+
+
+def test_a_source_backed_limitation_is_drafted_from_too(tmp_path, monkeypatch):
+    generator = ScriptedDrafts(GOOD)
+    with app_client(tmp_path, monkeypatch, generator) as client:
+        client.get('/')
+        matter, base = seed_two(client.app.state.workbench, [TEXT, b'The North Annex gate log for the blue crate is incomplete.\n'],
+                                name='Synthetic note.txt', limitation=True)
+        assert client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).status_code == 200
+        purpose, topic, evidence = generator.calls[0]
+        assert [item.evidence_id for item in evidence] == ['S1', 'S2'] and 'incomplete' in evidence[1].excerpt
+
+
+def test_the_same_question_saved_against_two_like_named_passages_keeps_both(tmp_path, monkeypatch):
+    question = 'Who else saw the blue crate arrive at the North Annex?'
+    with app_client(tmp_path, monkeypatch, ScriptedDrafts([])) as client:
+        client.get('/')
+        bench = client.app.state.workbench
+        matter, base = seed_two(bench, [b'The blue crate arrived at the North Annex.\n',
+                                        b'The blue crate arrived at the North Annex dock.\n'])
+        # Two distinct passages that display identically (for example two versions of a source).
+        passages = bench._answer_passages
+        monkeypatch.setattr(bench, '_answer_passages', lambda *args: (lambda topic, items: (topic, [
+            (dataclasses.replace(item, source_name='Synthetic receiving log.txt'), reference)
+            for item, reference in items]))(*passages(*args)))
+        first = client.post(base + '/save', data={'purpose': 'witness', 'question': [question], 'passages': ['1']},
+                            headers={'Accept': 'application/json'}).json()
+        second = client.post(base + '/save', data={'purpose': 'witness', 'question': [question], 'passages': ['2']},
+                             headers={'Accept': 'application/json'}).json()
+        assert first['created'] is True and second['created'] is True
+        saved = notes(bench, matter)
+        assert len(saved) == 2 and saved[0].body == saved[1].body

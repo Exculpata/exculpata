@@ -9,7 +9,8 @@ case notes**, which adds one Suggested note.
 
 ## What is sent and what is shown
 
-- **Input.** Only the answer's distinct cited passages (up to 12, within the usual
+- **Input.** Only the answer's distinct cited passages, including those supporting a
+  source-backed limitation shown with the answer (up to 12, within the usual
   evidence limits), checked together in one bounded pass with the rules saving a
   passage uses, plus the reviewer's question that the answer replied to as the
   topic. If any cited passage changed or is unavailable, nothing is drafted. The
@@ -21,22 +22,27 @@ case notes**, which adds one Suggested note.
 - **Model contract.** A dedicated JSON schema (`questions`: up to eight, each with
   `text` and one to four `evidence_ids`) and prompt in
   `src/case_intelligence/question_drafting.py`. Source text and the topic are
-  treated as untrusted data. The model does not choose actions or tools.
+  treated as untrusted data. The model does not choose actions or tools. Machine
+  transcript passages are labelled as such, and the prompt says transcript wording
+  and speaker labels such as "Speaker 1" are not established events or identities,
+  so questions about them should ask what the recording appears to say without
+  leading.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes) appears as whole words within
   one cited passage (not assembled across two), as does every number. Every word
-  containing a digit (a date, a time, an identifier such as `K7`, `K-7` or `5A`,
-  an ordinal such as `4th`) must also appear
+  containing a digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or
+  `5A`, an ordinal such as `4th`) must also appear
   as a whole word in a cited passage, so an altered identifier is dropped, and so
   is an internal passage label such as `S1` written without brackets, unless the
   passage itself contains it. Leading list markers such as "1." are removed
-  first. A single quote opens a quotation only at the start, after a space or after
-  opening punctuation such as `(`, so possessives and contractions outside a
+  first. A single quote opens a quotation only at the start, after a space, after
+  opening punctuation such as `(`, or after `:` or `,`, so possessives and contractions outside a
   quotation are not treated as quotations, while a quotation containing one
   (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal.
   Questions that fail are dropped and the draft says some were omitted; if none
-  pass, nothing is shown and the reviewer can try again.
+  pass, nothing is shown and the reviewer can try again. Questions that differ only
+  in case, spacing or punctuation count once.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
@@ -45,8 +51,8 @@ case notes**, which adds one Suggested note.
   the answer's current passages; if a cited passage changed or a question no
   longer passes, nothing is saved. The note is a Suggested `note` with origin
   `answer`, the questions and their sources as its body, the cited passages as its
-  references (up to 12), and the answer as its origin. Saving the same draft again
-  does not add a second note. Wording is the reviewer's to edit once saved.
+  references (up to 12), and the answer as its origin. Saving the same draft again,
+  with the same questions citing the same passages, does not add a second note. Wording is the reviewer's to edit once saved.
 - **Audit.** `answer.draft_questions` records each successful draft and the number
   of questions shown; `notebook.capture_questions` records each save. Both
   routes require the session CSRF token and current matter membership. No schema
