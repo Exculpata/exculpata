@@ -30,7 +30,8 @@ case notes**, which adds one Suggested note.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes, including angle, low-9, CJK
-  corner and fullwidth quotation marks; an outer quotation is checked whole,
+  corner, fullwidth, reversed and ornamental quotation marks, with any other
+  unpaired quotation punctuation treated as unclosed; an outer quotation is checked whole,
   including any quotation nested inside it) appears as whole words within
   one cited passage (not assembled across two), as does every number. Every word
   containing a digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or

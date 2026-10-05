@@ -187,6 +187,17 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
         assert verify_question(text, ['S1'], witness) is None, text
     assert verify_question('Did the witness say \u2019blue truck\u2019?', ['S1'], witness)
+    # Fullwidth, reversed and ornamental single and double marks are checked as the quote
+    # they stand for, and any other quotation punctuation left unpaired is unclosed.
+    for text in ('Did the witness say \uff07purple\uff07 near the truck?', 'Did the witness say \u201bpurple\u2019 near the truck?',
+                 'Did the witness say \u275bpurple\u275c near the truck?', 'Did the witness say \u201fpurple\u201d near the truck?',
+                 'Did the witness say \u275dpurple\u275e near the truck?', 'Did the witness say \u2e0cpurple\u2e0d near the truck?',
+                 'Did the witness say \uff07blue truck near the gate?'):
+        assert verify_question(text, ['S1'], witness) is None, text
+    assert unsupported_quotes('Did the witness say \uff07purple\uff07 near the truck?', [witness['S1']]) == ('purple',)
+    for text in ('Did the witness say \uff07blue truck\uff07?', 'Did the witness say \u201fblue truck\u201d?',
+                 'Did the witness say \u275dblue truck\u275e?'):
+        assert verify_question(text, ['S1'], witness), text
     # Quotations containing a contraction are checked whole, in either apostrophe style;
     # unquoted possessives and contractions are not quotations.
     said = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', "The driver said it's blue and parked at the gate.")}

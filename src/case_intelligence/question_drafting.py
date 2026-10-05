@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import time
+import unicodedata
 from typing import Mapping, Sequence
 
 from .generation import (
@@ -80,6 +81,9 @@ _ANGLE_QUOTE_SPANS = {
     "«": _paired_quote_span("«", "»"), "»": _paired_quote_span("»", "«"),
     "‹": _paired_quote_span("‹", "›"), "›": _paired_quote_span("›", "‹"),
 }
+# Variant marks are checked as the single or double quote they stand for: fullwidth
+# and reversed single quotes as ', and reversed or ornamental double quotes as ".
+_QUOTE_FOLD = str.maketrans({"＇": "'", "‛": "'", "❛": "'", "❜": "'", "‟": '"', "❝": '"', "❞": '"'})
 # Every double-style quotation mark: one left after matched spans are removed is unclosed.
 _QUOTE_MARKS = re.compile('["“”„«»‹›「」『』〝〞〟＂‚]')
 _EDGE_QUOTES = '\'"‘’“”„«»‹›「」『』〝〞〟＂‚ '
@@ -183,6 +187,7 @@ def _without_paired_spans(text: str) -> tuple[str, list[str]]:
     quotation around a nested one) is read from the original text, nested quotation
     included, and the gap between two quotations is never mistaken for a span.
     """
+    text = text.translate(_QUOTE_FOLD)
     spans: list[str] = []
     masked = text
     angles = [_ANGLE_QUOTE_SPANS[found.group()] for found in
@@ -215,6 +220,12 @@ def unmatched_quote(text: str) -> str | None:
     single = _SINGLE_QUOTE_OPENER.search(rest)
     if single:
         return rest[single.end():].strip() or rest[single.start()]
+    # Any other opening or closing quotation punctuation cannot be paired with
+    # confidence, so it is treated as unclosed too. Curly apostrophes inside words
+    # (the driver’s) are ordinary prose and were handled above.
+    for index, char in enumerate(rest):
+        if char not in "‘’" and unicodedata.category(char) in {"Pi", "Pf"}:
+            return rest[index + 1:].strip() or char
     return None
 
 
@@ -227,7 +238,7 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
     """
     # Double-style marks are compared as spaces on both sides, so an outer quotation
     # with a quotation nested inside it must still appear whole in one passage.
-    sources = [_normalized(_QUOTE_MARKS.sub(" ", item.excerpt)) for item in cited]
+    sources = [_normalized(_QUOTE_MARKS.sub(" ", item.excerpt.translate(_QUOTE_FOLD))) for item in cited]
 
     def present(span: str) -> bool:
         wanted = _normalized(_QUOTE_MARKS.sub(" ", span)).strip(_EDGE_QUOTES)
