@@ -252,3 +252,17 @@ def test_a_receipt_with_non_finite_model_values_is_strict_json():
     text = json.dumps(question_draft_evaluation.json_safe(result), allow_nan=False)
     assert '"nan"' in text and '"inf"' in text
     assert json.loads(text, parse_constant=lambda name: (_ for _ in ()).throw(ValueError(name)))
+
+
+def test_a_receipt_is_published_atomically_and_never_replaces_one(tmp_path):
+    path = tmp_path / "receipt.json"
+    text = question_draft_evaluation.write_new_receipt(path, {"model_gate": "failed", "value": float("nan")})
+    assert json.loads(path.read_text()) == {"model_gate": "failed", "value": "nan"} and path.read_text() == text
+    with pytest.raises(FileExistsError):
+        question_draft_evaluation.write_new_receipt(path, {"model_gate": "passed"})
+    assert json.loads(path.read_text())["model_gate"] == "failed"
+    assert [item.name for item in tmp_path.iterdir()] == ["receipt.json"]  # no temporary file is left
+    completed = subprocess.run([sys.executable, str(ROOT / "scripts" / "evaluate-question-drafts.py"),
+                                "--output", str(path)], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+    assert completed.returncode != 0 and "existing receipt was preserved" in completed.stderr
+    assert json.loads(path.read_text())["model_gate"] == "failed"

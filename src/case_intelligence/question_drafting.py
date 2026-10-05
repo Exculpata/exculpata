@@ -69,11 +69,17 @@ _SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘’](?=\S)")
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
 # Other paired quotation marks a model may use: low-9, angle, CJK corner and fullwidth.
-_PAIRED_QUOTES = (("„", "“”"), ("«", "»"), ("»", "«"), ("‹", "›"), ("›", "‹"),
-                  ("「", "」"), ("『", "』"), ("〝", "〞〟"), ("＂", "＂"))
-_PAIRED_QUOTE_SPANS = tuple(
-    re.compile(f"{re.escape(opener)}([^{re.escape(opener + closers)}]+)[{re.escape(closers)}]")
-    for opener, closers in _PAIRED_QUOTES)
+def _paired_quote_span(opener: str, closers: str) -> re.Pattern[str]:
+    return re.compile(f"{re.escape(opener)}([^{re.escape(opener + closers)}]+)[{re.escape(closers)}]")
+
+
+_PAIRED_QUOTE_SPANS = tuple(_paired_quote_span(opener, closers) for opener, closers in (
+    ("„", "“”"), ("「", "」"), ("『", "』"), ("〝", "〞〟"), ("＂", "＂")))
+# Angle quotes open either way («…» or »…«); a question's first angle mark decides.
+_ANGLE_QUOTE_SPANS = {
+    "«": _paired_quote_span("«", "»"), "»": _paired_quote_span("»", "«"),
+    "‹": _paired_quote_span("‹", "›"), "›": _paired_quote_span("›", "‹"),
+}
 # Every double-style quotation mark: one left after matched spans are removed is unclosed.
 _QUOTE_MARKS = re.compile('["“”„«»‹›「」『』〝〞〟＂‚]')
 _EDGE_QUOTES = '\'"‘’“”„«»‹›「」『』〝〞〟＂‚ '
@@ -171,15 +177,26 @@ def _normalized(value: str) -> str:
 
 
 def _without_paired_spans(text: str) -> tuple[str, list[str]]:
-    """Text with every double-style quoted span removed, and those spans."""
+    """Text with every double-style quoted span removed, and those spans.
+
+    Matched spans are masked rather than deleted, so a span found later (an outer
+    quotation around a nested one) is read from the original text, nested quotation
+    included, and the gap between two quotations is never mistaken for a span.
+    """
     spans: list[str] = []
-    for pattern in (_DOUBLE_QUOTE_SPAN, *_PAIRED_QUOTE_SPANS):
-        spans.extend(pattern.findall(text))
-        text = pattern.sub(" ", text)
-    return text, spans
+    masked = text
+    angles = [_ANGLE_QUOTE_SPANS[found.group()] for found in
+              (re.search("[«»]", text), re.search("[‹›]", text)) if found]
+    for pattern in (_DOUBLE_QUOTE_SPAN, *_PAIRED_QUOTE_SPANS, *angles):
+        def take(match: re.Match[str]) -> str:
+            spans.append(text[match.start(1):match.end(1)])
+            return "\0" * (match.end() - match.start())
+        masked = pattern.sub(take, masked)
+    return masked.replace("\0", " "), spans
 
 
 def quoted_spans(text: str) -> tuple[str, ...]:
+    """Every quoted span, an outer one keeping any quotation nested inside it."""
     rest, spans = _without_paired_spans(text)
     return tuple(span for span in (*spans, *_SINGLE_QUOTE_SPAN.findall(rest)) if span.strip())
 
@@ -208,10 +225,12 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
     and within a single passage, so it cannot be assembled across two of them. The
     text after a quotation mark that is never closed is always unsupported.
     """
-    sources = [_normalized(item.excerpt) for item in cited]
+    # Double-style marks are compared as spaces on both sides, so an outer quotation
+    # with a quotation nested inside it must still appear whole in one passage.
+    sources = [_normalized(_QUOTE_MARKS.sub(" ", item.excerpt)) for item in cited]
 
     def present(span: str) -> bool:
-        wanted = _normalized(span).strip(_EDGE_QUOTES)  # a quotation nested in another
+        wanted = _normalized(_QUOTE_MARKS.sub(" ", span)).strip(_EDGE_QUOTES)
         pattern = re.compile(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)")
         return bool(wanted) and any(pattern.search(source) for source in sources)
     unsupported = tuple(span for span in quoted_spans(text) if not present(span))

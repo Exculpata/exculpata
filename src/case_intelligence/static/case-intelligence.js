@@ -3444,6 +3444,13 @@
   // flight, and a refresh waits for pending saves, then keeps their results visible.
   let assistantRefreshesInFlight = 0;
   let assistantSavesSettled = [];
+  // Open, unsaved question drafts keyed by their form's action, carried into a refreshed dock.
+  let assistantCarriedDrafts = new Map();
+  const assistantQuestionWritesPending = () => Number(assistantDock?.dataset.questionSavesPending || 0)
+    + Number(assistantDock?.dataset.questionDraftsPending || 0);
+  const settleAssistantQuestionWrites = () => {
+    if (!assistantQuestionWritesPending()) assistantSavesSettled.splice(0).forEach((resolve) => resolve());
+  };
   let assistantHistorySwitch = null;
   let reviewQuestionScope = null;
   // Set by the source reader: limits the next question to the open source.
@@ -3756,11 +3763,16 @@
     if (!ownsAssistantOperation(operation)) return;
     const replacement = holder.querySelector("[data-assistant-dock]");
     if (!replacement || !assistantDock) throw new Error("Assistant response was incomplete.");
-    // Replacing the dock would hide a pending draft save's result, so wait for every one.
-    if (Number(assistantDock.dataset.questionSavesPending || 0) > 0) {
+    // Replacing the dock would hide a pending draft or draft save's result, so wait for every one.
+    while (assistantQuestionWritesPending() > 0) {
       await new Promise((resolve) => assistantSavesSettled.push(resolve));
       if (!ownsAssistantOperation(operation)) return;
     }
+    // Open, unsaved drafts stay open for review in the refreshed dock.
+    assistantCarriedDrafts = new Map(Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+      .map((form) => [form.getAttribute("action"), form.nextElementSibling])
+      .filter(([, card]) => card && !card.hidden && card.questionDraft)
+      .map(([action, card]) => [action, card.questionDraft]));
     let savedNotices = [];
     try {
       savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
@@ -4109,8 +4121,9 @@
         input.value = value;
         return input;
       };
-      const showDraft = (draft, opener) => {
+      const showDraft = (draft, opener, { focus = true } = {}) => {
         card.replaceChildren();
+        card.questionDraft = draft;
         const heading = element("h3", `${draft.label} · draft for review`);
         heading.tabIndex = -1;
         card.append(heading, element("p", "Nothing is saved yet. Check each question against its sources.", "question-draft-hint"));
@@ -4138,13 +4151,14 @@
         saveForm.append(list, actions);
         card.append(saveForm);
         card.hidden = false;
-        heading.focus();
+        if (focus) heading.focus();
         dismiss.addEventListener("click", () => {
           // While Save is pending its outcome is unknown, so Dismiss cannot claim nothing was saved;
           // while a replacement draft is pending, this card is about to be replaced.
           if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
           card.replaceChildren();
           card.hidden = true;
+          card.questionDraft = null;
           feedback.textContent = "Draft dismissed; nothing was saved.";
           opener?.focus();
         });
@@ -4182,6 +4196,7 @@
             const link = element("a", "Open case notes");
             link.href = result.notebook_url;
             actions.replaceChildren(status, link);
+            card.questionDraft = null;
             if (assistantRefreshesInFlight > 0) {
               // A refresh is waiting to replace the dock; it carries this result over.
               const notices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
@@ -4202,7 +4217,7 @@
               delete assistantDock.dataset.questionPickerWasDisabled;
               if (picker && !pickerWasDisabled) picker.disabled = false;
               newChat?.removeAttribute("aria-disabled");
-              assistantSavesSettled.splice(0).forEach((resolve) => resolve());
+              settleAssistantQuestionWrites();
             }
           }
         });
@@ -4211,6 +4226,11 @@
         event.preventDefault();
         // No new draft replaces a card whose Save is still pending.
         if (draftForm.getAttribute("aria-busy") === "true" || card.querySelector('form[aria-busy="true"]')) return;
+        // Nor starts while the dock is being refreshed, which would replace this form.
+        if (assistantRefreshesInFlight > 0) {
+          feedback.textContent = "The assistant is updating. Try drafting again in a moment.";
+          return;
+        }
         const opener = event.submitter;
         const body = new FormData(draftForm);
         body.set("purpose", opener?.value || "witness");
@@ -4219,6 +4239,9 @@
         const held = [...draftForm.querySelectorAll("button"), ...card.querySelectorAll("button")];
         held.forEach((button) => button.setAttribute("aria-disabled", "true"));
         feedback.textContent = "Drafting from the cited passages… this can take a minute.";
+        // A refresh that arrives meanwhile waits for this draft, then carries it over.
+        const dock = assistantDock;
+        dock.dataset.questionDraftsPending = String(Number(dock.dataset.questionDraftsPending || 0) + 1);
         try {
           const response = await fetch(draftForm.action, {
             method: "POST", body,
@@ -4236,8 +4259,19 @@
         } finally {
           draftForm.removeAttribute("aria-busy");
           held.forEach((button) => button.removeAttribute("aria-disabled"));
+          const remaining = Number(dock.dataset.questionDraftsPending || 1) - 1;
+          if (remaining > 0) dock.dataset.questionDraftsPending = String(remaining);
+          else delete dock.dataset.questionDraftsPending;
+          settleAssistantQuestionWrites();
         }
       });
+      // A draft that was open when the dock refreshed stays open for review.
+      const carried = assistantCarriedDrafts.get(draftForm.getAttribute("action"));
+      if (carried) {
+        assistantCarriedDrafts.delete(draftForm.getAttribute("action"));
+        showDraft(carried, null, { focus: false });
+        feedback.textContent = "The chat updated; this draft is still open for review.";
+      }
     });
 
     const conversationPicker = assistantDock.querySelector("[data-assistant-conversation-picker]");

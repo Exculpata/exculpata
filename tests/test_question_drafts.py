@@ -173,6 +173,16 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     for text in ('Did the witness say \u00abblue truck\u00bb?', 'Did the witness say \u300cblue truck\u300d?'):
         assert verify_question(text, ['S1'], witness), text
     assert unsupported_quotes('Was it \u00abred\u00bb or \u00abblue\u00bb?', [witness['S1']]) == ('red',)
+    # Reversed angle quotes pair the same way, and the gap between two quotations is not a span.
+    assert unsupported_quotes('Was it \u00bbred\u00ab or \u00bbblue\u00ab?', [witness['S1']]) == ('red',)
+    assert verify_question('Did the witness see the \u00bbblue\u00ab \u00bbtruck\u00ab near the gate?', ['S1'], witness)
+    # An outer quotation is checked whole, with any quotation nested inside it.
+    separate = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1',
+                                   'The witness said "purple truck" and later "blue" near the gate.')}
+    assert verify_question('Did the witness say \u00abpurple "blue" truck\u00bb near the gate?', ['S1'], separate) is None
+    assert unsupported_quotes('Did the witness say \u00abpurple "blue" truck\u00bb?', [separate['S1']]) == ('purple "blue" truck',)
+    nested = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness heard him say "stop" loudly near the gate.')}
+    assert verify_question('Did the witness hear \u00abhim say "stop" loudly\u00bb near the gate?', ['S1'], nested)
     # A right-curly mark can open a quotation too, as in an apostrophe-style pair.
     for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
         assert verify_question(text, ['S1'], witness) is None, text

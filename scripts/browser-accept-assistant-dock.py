@@ -484,8 +484,37 @@ def main(argv=None):
             assert "The assistant is updating. Try Save again in a moment." in card.text, card.text
             wait.until(lambda _: not js("return window.__oldDock.isConnected"))
             assert saved_notes() == 3
+            # The open, unsaved draft is carried into the refreshed dock for review.
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            draft_status = lambda: find("[data-assistant-draft-questions] [data-question-draft-status]").text
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            # No draft starts while a refresh is in flight.
+            js(press_cancel)
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            assert draft_status() == "The assistant is updating. Try drafting again in a moment.", draft_status()
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            # A refresh that arrives while a slow draft is in flight waits for it, then carries it over.
+            js("window.fetch = (url, init) => /\\/questions$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : window.__originalFetch(url, init);")
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            wait.until(lambda _: draft_status().startswith("Drafting from the cited passages"))
+            js(press_cancel)
+            assert js("return window.__oldDock.isConnected")
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: draft_shown(card, "Discovery requests"))
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            # Saving the carried card works; this discovery draft was already saved above, so it adds nothing.
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Those questions were already saved to case notes." in card.text)
+            assert saved_notes() == 3
             js("window.fetch = window.__originalFetch;")
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save is known, keeping each result; no save starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

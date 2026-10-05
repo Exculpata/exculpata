@@ -10,9 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 
 from .generation import (
     EvidenceItem, GenerationRejected, GenerationUnavailable, OllamaGenerator, _bounded_json_get,
@@ -50,6 +52,35 @@ def json_safe(value):
     if isinstance(value, (list, tuple)):
         return [json_safe(item) for item in value]
     return value
+
+
+def receipt_text(result: dict) -> str:
+    """The receipt as strict JSON, ASCII-escaped so any raw model text can be written."""
+    return json.dumps(json_safe(result), indent=2, ensure_ascii=True, allow_nan=False) + "\n"
+
+
+def write_new_receipt(path: Path, result: dict) -> str:
+    """Publish a receipt at a new path atomically, never replacing an existing file.
+
+    The receipt is written to a private temporary file in the same directory and
+    hard-linked into place, so a concurrently created destination is never
+    overwritten and an interrupted write never leaves a partial receipt.
+    """
+    text = receipt_text(result)
+    path = Path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="wb", dir=path.parent, prefix=".question-draft-receipt-",
+                                         delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(text.encode("ascii"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return text
 
 
 def load_cases(path: Path = DEFAULT_CASES) -> tuple[dict, str]:

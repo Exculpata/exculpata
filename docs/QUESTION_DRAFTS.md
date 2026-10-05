@@ -30,7 +30,8 @@ case notes**, which adds one Suggested note.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes, including angle, low-9, CJK
-  corner and fullwidth quotation marks) appears as whole words within
+  corner and fullwidth quotation marks; an outer quotation is checked whole,
+  including any quotation nested inside it) appears as whole words within
   one cited passage (not assembled across two), as does every number. Every word
   containing a digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or
   `5A`, an ordinal such as `4th`) must also appear
@@ -53,8 +54,9 @@ case notes**, which adds one Suggested note.
   conversation picker and New chat are held until every pending save (from any
   open card) is known, so the dock is never replaced before a result shows. A dock
   refresh that arrives meanwhile (for example when an answer finishes) waits for
-  those saves and keeps their results and case-notes link; no save starts while a
-  refresh is in flight. While
+  those saves, and for any draft in flight, and keeps their results and case-notes
+  link; an open, unsaved draft stays open in the refreshed dock. No save or draft
+  starts while a refresh is in flight. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
   its own page with the same choices. The draft carries a basis, a digest of the
@@ -124,7 +126,8 @@ equal to the artifact the runtime profile declares. A passing score without that
 binding is recorded as `unbound` with its reasons, and a runtime that reports no
 digest cannot pass. No hostname, user, endpoint or path is recorded. The receipt is
 strict JSON: text that is not valid UTF-8 is escaped, and non-finite numbers from a
-runtime that ignores the schema are kept as text.
+runtime that ignores the schema are kept as text. It is published atomically at a
+new path; an existing or concurrently created file is never replaced.
 `tests/test_question_draft_evaluation.py` checks the set and the scoring with
 deterministic clients; `tests/test_question_drafts.py` covers the check, routes,
 saving and refusals; the `assistant-dock` browser journey covers the dock card
