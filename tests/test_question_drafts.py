@@ -163,6 +163,16 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     assert verify_question('Who saw the "red truck" near the gate?', ['S1', 'S2'],
                            {item.evidence_id: item for item in split}) is None
     assert unsupported_quotes('Was the car "red" near the "gate"?', split) == ()
+    # Angle, low-9, CJK corner and fullwidth quotation marks are checked too, and an
+    # unpaired one is an unclosed quotation.
+    for text in ('Did the witness say \u00abpurple\u00bb near the truck?', 'Did the witness say \u2039purple\u203a near the truck?',
+                 'Did the witness say \u201epurple\u201c near the truck?', 'Did the witness say \u300cpurple\u300d near the truck?',
+                 'Did the witness say \uff02purple\uff02 near the truck?', 'Did the witness say \u00bbpurple\u00ab near the truck?',
+                 'Did the witness say \u00abblue truck near the gate?', 'Did the witness say blue\u300d near the truck?'):
+        assert verify_question(text, ['S1'], witness) is None, text
+    for text in ('Did the witness say \u00abblue truck\u00bb?', 'Did the witness say \u300cblue truck\u300d?'):
+        assert verify_question(text, ['S1'], witness), text
+    assert unsupported_quotes('Was it \u00abred\u00bb or \u00abblue\u00bb?', [witness['S1']]) == ('red',)
     # A right-curly mark can open a quotation too, as in an apostrophe-style pair.
     for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
         assert verify_question(text, ['S1'], witness) is None, text

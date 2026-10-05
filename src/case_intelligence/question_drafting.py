@@ -68,6 +68,15 @@ _SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘’](?=\S)")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
+# Other paired quotation marks a model may use: low-9, angle, CJK corner and fullwidth.
+_PAIRED_QUOTES = (("„", "“”"), ("«", "»"), ("»", "«"), ("‹", "›"), ("›", "‹"),
+                  ("「", "」"), ("『", "』"), ("〝", "〞〟"), ("＂", "＂"))
+_PAIRED_QUOTE_SPANS = tuple(
+    re.compile(f"{re.escape(opener)}([^{re.escape(opener + closers)}]+)[{re.escape(closers)}]")
+    for opener, closers in _PAIRED_QUOTES)
+# Every double-style quotation mark: one left after matched spans are removed is unclosed.
+_QUOTE_MARKS = re.compile('["“”„«»‹›「」『』〝〞〟＂‚]')
+_EDGE_QUOTES = '\'"‘’“”„«»‹›「」『』〝〞〟＂‚ '
 # Every token containing a digit (2026-03-05, 09:15, K7, K-7, K_7, 5A, S1) must
 # appear as a whole token in a cited passage, so an altered identifier, number or
 # ordinal, or an internal evidence ID written without brackets, is not shown. A
@@ -161,9 +170,18 @@ def _normalized(value: str) -> str:
     return " ".join(value.translate(_APOSTROPHES).casefold().split())
 
 
+def _without_paired_spans(text: str) -> tuple[str, list[str]]:
+    """Text with every double-style quoted span removed, and those spans."""
+    spans: list[str] = []
+    for pattern in (_DOUBLE_QUOTE_SPAN, *_PAIRED_QUOTE_SPANS):
+        spans.extend(pattern.findall(text))
+        text = pattern.sub(" ", text)
+    return text, spans
+
+
 def quoted_spans(text: str) -> tuple[str, ...]:
-    return tuple(span for span in (*_DOUBLE_QUOTE_SPAN.findall(text), *_SINGLE_QUOTE_SPAN.findall(text))
-                 if span.strip())
+    rest, spans = _without_paired_spans(text)
+    return tuple(span for span in (*spans, *_SINGLE_QUOTE_SPAN.findall(rest)) if span.strip())
 
 
 def unmatched_quote(text: str) -> str | None:
@@ -172,8 +190,8 @@ def unmatched_quote(text: str) -> str | None:
     An unclosed quotation cannot be checked against its passage, so it is treated
     as unsupported rather than as ordinary prose.
     """
-    rest = _DOUBLE_QUOTE_SPAN.sub(" ", text)
-    double = re.search(r"[\"“”]", rest)
+    rest, _spans = _without_paired_spans(text)
+    double = _QUOTE_MARKS.search(rest)
     if double:
         return rest[double.end():].strip() or rest[double.start()]
     rest = _SINGLE_QUOTE_SPAN.sub(" ", rest)
@@ -193,7 +211,7 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
     sources = [_normalized(item.excerpt) for item in cited]
 
     def present(span: str) -> bool:
-        wanted = _normalized(span).strip("'\"“” ")  # a quotation nested in another
+        wanted = _normalized(span).strip(_EDGE_QUOTES)  # a quotation nested in another
         pattern = re.compile(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)")
         return bool(wanted) and any(pattern.search(source) for source in sources)
     unsupported = tuple(span for span in quoted_spans(text) if not present(span))
