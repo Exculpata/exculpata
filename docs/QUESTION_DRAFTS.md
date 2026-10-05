@@ -88,7 +88,7 @@ Run it against the configured generator (the same `CASE_INTELLIGENCE_GENERATOR_*
 settings the application uses; nothing is selected or downloaded):
 
 ```bash
-.venv/bin/python scripts/evaluate-question-drafts.py --output question-drafts-receipt.json \
+.venv/bin/python scripts/evaluate-question-drafts.py --output /tmp/question-drafts-receipt.json \
   --require-model --profile portable --runtime-profile /tmp/runtime.json
 ```
 
