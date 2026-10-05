@@ -40,13 +40,17 @@ case notes**, which adds one Suggested note.
   opening punctuation such as `(`, or after `:` or `,`, so possessives and contractions outside a
   quotation are not treated as quotations, while a quotation containing one
   (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal.
+  A quotation mark that is never closed fails the check, since its quotation cannot
+  be compared with the passage.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again. Questions that differ only
   in case, spacing or punctuation count once.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
-  held, so the card never says nothing was saved while the save may succeed. Without JavaScript, and from the full conversation, the draft is
+  held, so the card never says nothing was saved while the save may succeed; while
+  a replacement draft is pending, the open card's Save and Dismiss are held, so no
+  save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is
   its own page with the same choices. Saving checks every question again against
   the answer's current passages; if a cited passage changed or a question no
   longer passes, nothing is saved. The note is a Suggested `note` with origin

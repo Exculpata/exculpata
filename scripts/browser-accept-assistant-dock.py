@@ -388,6 +388,20 @@ def main(argv=None):
             find('[data-assistant-draft-questions] button[value="discovery"]').click()
             wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
             assert card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Discovery requests")
+            # A slow replacement draft holds the open card's Save and Dismiss, so no save is lost with the card.
+            js("window.__originalFetch = window.fetch; window.fetch = (url, init) => /\\/questions$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : window.__originalFetch(url, init);")
+            find('[data-assistant-draft-questions] button[value="witness"]').click()
+            wait.until(lambda _: find("[data-question-draft-status]").text.startswith("Drafting from the cited passages"))
+            old_save = card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']")
+            assert old_save.get_attribute("aria-disabled") == "true"
+            assert card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']").get_attribute("aria-disabled") == "true"
+            old_save.click()
+            assert saved_notes() == 0
+            wait.until(lambda _: card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Questions for a witness"))
+            assert saved_notes() == 0
+            js("window.fetch = window.__originalFetch;")
             # A slow Save holds Dismiss and the draft buttons until its result is known.
             js("const original = window.fetch; window.fetch = (url, init) => /\\/questions\\/save$/.test(String(url))"
                " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => original(url, init)) : original(url, init);")
@@ -401,7 +415,7 @@ def main(argv=None):
             assert card.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
             assert saved_notes() == 1
             assert driver.current_url.startswith(base + notes), driver.current_url
-            checks.append("While a slow Save is pending Dismiss is held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss is held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

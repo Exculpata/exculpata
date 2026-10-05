@@ -59,6 +59,9 @@ _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNOR
 _SINGLE_QUOTE_SPAN = re.compile(
     r"(?:(?<=[\s(\[{\"“—–:,-])|^)['‘](\S.*?)['’](?=[\s.,;:?!)\]}\"”—–-]|$)")
 _APOSTROPHES = str.maketrans("‘’", "''")
+# A single quote where a quotation could open; one left after matched spans are
+# removed has no closing quote.
+_SINGLE_QUOTE_OPENER = re.compile(r"(?:(?<=[\s(\[{\"“—–:,-])|^)['‘](?=\S)")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
@@ -160,11 +163,29 @@ def quoted_spans(text: str) -> tuple[str, ...]:
                  if span.strip())
 
 
+def unmatched_quote(text: str) -> str | None:
+    """The text after a quotation mark that is never closed, if there is one.
+
+    An unclosed quotation cannot be checked against its passage, so it is treated
+    as unsupported rather than as ordinary prose.
+    """
+    rest = _DOUBLE_QUOTE_SPAN.sub(" ", text)
+    double = re.search(r"[\"“”]", rest)
+    if double:
+        return rest[double.end():].strip() or rest[double.start()]
+    rest = _SINGLE_QUOTE_SPAN.sub(" ", rest)
+    single = _SINGLE_QUOTE_OPENER.search(rest)
+    if single:
+        return rest[single.end():].strip() or rest[single.start()]
+    return None
+
+
 def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, ...]:
     """Quoted spans in text that do not appear, as whole words, in any one cited passage.
 
     A quotation must match on word boundaries, so "red" is not found in "recorded",
-    and within a single passage, so it cannot be assembled across two of them.
+    and within a single passage, so it cannot be assembled across two of them. The
+    text after a quotation mark that is never closed is always unsupported.
     """
     sources = [_normalized(item.excerpt) for item in cited]
 
@@ -172,7 +193,9 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
         wanted = _normalized(span).strip("'\"“” ")  # a quotation nested in another
         pattern = re.compile(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)")
         return bool(wanted) and any(pattern.search(source) for source in sources)
-    return tuple(span for span in quoted_spans(text) if not present(span))
+    unsupported = tuple(span for span in quoted_spans(text) if not present(span))
+    unclosed = unmatched_quote(text)
+    return unsupported + ((unclosed,) if unclosed is not None else ())
 
 
 def verify_question(text: object, evidence_ids: object,

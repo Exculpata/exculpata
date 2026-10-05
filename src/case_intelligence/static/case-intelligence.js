@@ -4105,8 +4105,9 @@
         card.hidden = false;
         heading.focus();
         dismiss.addEventListener("click", () => {
-          // While Save is pending its outcome is unknown, so Dismiss cannot claim nothing was saved.
-          if (saveForm.getAttribute("aria-busy") === "true") return;
+          // While Save is pending its outcome is unknown, so Dismiss cannot claim nothing was saved;
+          // while a replacement draft is pending, this card is about to be replaced.
+          if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
           card.replaceChildren();
           card.hidden = true;
           feedback.textContent = "Draft dismissed; nothing was saved.";
@@ -4114,7 +4115,8 @@
         });
         saveForm.addEventListener("submit", async (event) => {
           event.preventDefault();
-          if (saveForm.getAttribute("aria-busy") === "true") return;
+          // No save starts while a replacement draft is pending: its result would be lost with this card.
+          if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
           saveForm.setAttribute("aria-busy", "true");
           const held = [save, dismiss, ...draftForm.querySelectorAll("button")];
           held.forEach((control) => control.setAttribute("aria-disabled", "true"));
@@ -4147,7 +4149,9 @@
         const body = new FormData(draftForm);
         body.set("purpose", opener?.value || "witness");
         draftForm.setAttribute("aria-busy", "true");
-        draftForm.querySelectorAll("button").forEach((button) => button.setAttribute("aria-disabled", "true"));
+        // An open card's Save and Dismiss are held too, until the replacement arrives or fails.
+        const held = [...draftForm.querySelectorAll("button"), ...card.querySelectorAll("button")];
+        held.forEach((button) => button.setAttribute("aria-disabled", "true"));
         feedback.textContent = "Drafting from the cited passages… this can take a minute.";
         try {
           const response = await fetch(draftForm.action, {
@@ -4165,7 +4169,7 @@
           if (draftForm.isConnected) feedback.textContent = `${error.message} You can safely try again.`;
         } finally {
           draftForm.removeAttribute("aria-busy");
-          draftForm.querySelectorAll("button").forEach((button) => button.removeAttribute("aria-disabled"));
+          held.forEach((button) => button.removeAttribute("aria-disabled"));
         }
       });
     });
