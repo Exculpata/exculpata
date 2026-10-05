@@ -187,6 +187,18 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
         assert verify_question(text, ['S1'], witness) is None, text
     assert verify_question('Did the witness say \u2019blue truck\u2019?', ['S1'], witness)
+    # A curly outer quotation is checked whole, whatever marks the nested one uses.
+    paint = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness saw red and blue paint near the truck.')}
+    for text in ('Did the witness say \u201cred "purple" blue\u201d near the truck?',
+                 'Did the witness say \u2018red "purple" blue\u2019 near the truck?',
+                 'Did the witness say "red \u201cpurple\u201d blue" near the truck?'):
+        assert verify_question(text, ['S1'], paint) is None, text
+    assert 'red "purple" blue' in unsupported_quotes('Did the witness say \u201cred "purple" blue\u201d?', [paint['S1']])
+    assert verify_question('Did the witness say \u201cred "and" blue\u201d near the truck?', ['S1'], paint)
+    # Quotation marks the checker cannot pair, such as ornaments, are unclosed quotations.
+    for text in ('Did the witness say \u276epurple\u276f near the truck?', 'Did the witness say \U0001f676purple\U0001f677 near the truck?',
+                 'Did the witness say \u276ered\u276f near the truck?'):
+        assert verify_question(text, ['S1'], paint) is None, text
     # Fullwidth, reversed and ornamental single and double marks are checked as the quote
     # they stand for, and any other quotation punctuation left unpaired is unclosed.
     for text in ('Did the witness say \uff07purple\uff07 near the truck?', 'Did the witness say \u201bpurple\u2019 near the truck?',
@@ -244,7 +256,8 @@ def test_a_draft_keeps_verified_questions_drops_the_rest_and_rejects_a_malformed
     assert [q.text for q in questions] == [GOOD[0]['text'], GOOD[1]['text']] and omitted == 4
     # A question repeated with different punctuation, case or spacing is one question.
     stem = GOOD[0]['text'][:-1]
-    variants = [{'text': text, 'evidence_ids': ['S1']} for text in (stem + '?', stem + '??', stem + '?!', '  ' + stem.upper() + ' ?')]
+    variants = [{'text': text, 'evidence_ids': ['S1']} for text in (stem + '?', stem + '??', stem + '?!', '  ' + stem.upper() + ' ?',
+                                                                     stem.replace(' ', '_', 1) + '?', stem.replace(' ', '__', 1) + '?')]
     questions, omitted = verify_question_draft({'questions': variants}, tuple(EVIDENCE.values()))
     assert [q.text for q in questions] == [GOOD[0]['text']] and omitted == 0
     for raw in ({'questions': 'none'}, {'questions': [], 'extra': 1}, {'answer': []}, {'questions': GOOD * 5}):

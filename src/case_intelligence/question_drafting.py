@@ -66,27 +66,20 @@ _APOSTROPHES = str.maketrans("‘’", "''")
 # A single quote where a quotation could open; one left after matched spans are
 # removed has no closing quote.
 _SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘’](?=\S)")
-# Any double-quoted span, whatever its length: a one-word quotation must be in its
-# passage too. (The answer verifier's own pattern bounds length for its own reasons.)
-_DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
-# Other paired quotation marks a model may use: low-9, angle, CJK corner and fullwidth.
-def _paired_quote_span(opener: str, closers: str) -> re.Pattern[str]:
-    return re.compile(f"{re.escape(opener)}([^{re.escape(opener + closers)}]+)[{re.escape(closers)}]")
-
-
-_PAIRED_QUOTE_SPANS = tuple(_paired_quote_span(opener, closers) for opener, closers in (
-    ("„", "“”"), ("「", "」"), ("『", "』"), ("〝", "〞〟"), ("＂", "＂")))
-# Angle quotes open either way («…» or »…«); a question's first angle mark decides.
-_ANGLE_QUOTE_SPANS = {
-    "«": _paired_quote_span("«", "»"), "»": _paired_quote_span("»", "«"),
-    "‹": _paired_quote_span("‹", "›"), "›": _paired_quote_span("›", "‹"),
-}
-# Variant marks are checked as the single or double quote they stand for: fullwidth
-# and reversed single quotes as ', and reversed or ornamental double quotes as ".
-_QUOTE_FOLD = str.maketrans({"＇": "'", "‛": "'", "❛": "'", "❜": "'", "‟": '"', "❝": '"', "❞": '"'})
-# Every double-style quotation mark: one left after matched spans are removed is unclosed.
-_QUOTE_MARKS = re.compile('["“”„«»‹›「」『』〝〞〟＂‚]')
-_EDGE_QUOTES = '\'"‘’“”„«»‹›「」『』〝〞〟＂‚ '
+# Variant marks are checked as the quote they stand for: fullwidth, reversed and
+# ornamental single quotes as ', reversed or ornamental double quotes as curly ones, and
+# vertical presentation forms as the corner brackets they render.
+_QUOTE_FOLD = str.maketrans({"＇": "'", "‛": "'", "❛": "'", "❜": "'", "‟": "“", "❝": "“", "❞": "”",
+                             "﹁": "「", "﹂": "」", "﹃": "『", "﹄": "』"})
+_SINGLE_MARKS = "'‘’"
+# Double-style quotations are parsed with a stack, so a quotation nested inside another
+# (in any combination of marks) never splits the outer one. A straight or fullwidth
+# double mark closes an open one of its own kind and otherwise opens; each directional
+# opener lists the marks that close it. Angle quotes open either way («…» or »…«), and a
+# question's first angle mark decides which.
+_TOGGLE_MARKS = '"＂'
+_DIRECTIONAL_MARKS = {"“": "”", "„": "“”", "「": "」", "『": "』", "〝": "〞〟"}
+_ANGLE_MARKS = {"«": "»", "‹": "›"}
 # Every token containing a digit (2026-03-05, 09:15, K7, K-7, K_7, 5A, S1) must
 # appear as a whole token in a cited passage, so an altered identifier, number or
 # ordinal, or an internal evidence ID written without brackets, is not shown. A
@@ -180,53 +173,85 @@ def _normalized(value: str) -> str:
     return " ".join(value.translate(_APOSTROPHES).casefold().split())
 
 
-def _without_paired_spans(text: str) -> tuple[str, list[str]]:
-    """Text with every double-style quoted span removed, and those spans.
+def _is_double_style(char: str) -> bool:
+    """Whether a character is quotation punctuation other than a single quote."""
+    if char in _SINGLE_MARKS:
+        return False
+    return (char in _TOGGLE_MARKS or char in _DIRECTIONAL_MARKS or char in "”」』〞〟«»‹›"
+            or unicodedata.category(char) in {"Pi", "Pf"}
+            or "QUOTATION" in unicodedata.name(char, ""))
 
-    Matched spans are masked rather than deleted, so a span found later (an outer
-    quotation around a nested one) is read from the original text, nested quotation
-    included, and the gap between two quotations is never mistaken for a span.
+
+def _double_quotations(text: str) -> tuple[list[tuple[int, int]], int | None]:
+    """The (start, end) of every double-style quotation's content, and an unpaired mark.
+
+    Every quotation is returned, an outer one with any quotation nested inside it.
+    Any quotation mark that cannot be paired (an unclosed opener, a stray closer, or an
+    unrecognized mark such as an ornament) is reported by position instead.
     """
-    text = text.translate(_QUOTE_FOLD)
-    spans: list[str] = []
-    masked = text
-    angles = [_ANGLE_QUOTE_SPANS[found.group()] for found in
-              (re.search("[«»]", text), re.search("[‹›]", text)) if found]
-    for pattern in (_DOUBLE_QUOTE_SPAN, *_PAIRED_QUOTE_SPANS, *angles):
-        def take(match: re.Match[str]) -> str:
-            spans.append(text[match.start(1):match.end(1)])
-            return "\0" * (match.end() - match.start())
-        masked = pattern.sub(take, masked)
-    return masked.replace("\0", " "), spans
+    # A straight double mark may also be closed by a curly one, as models mix them; a
+    # straight mark inside a curly quotation always nests, so it never splits the outer one.
+    closers = {**_DIRECTIONAL_MARKS, '"': "”"}
+    for opener, closer in _ANGLE_MARKS.items():
+        first = next((char for char in text if char in opener + closer), None)
+        if first is not None:
+            closers[first] = closer if first == opener else opener
+    spans: list[tuple[int, int]] = []
+    stack: list[tuple[str, int]] = []
+    for index, char in enumerate(text):
+        if not _is_double_style(char):
+            continue
+        if stack and (char == stack[-1][0] and char in _TOGGLE_MARKS
+                      or char in closers.get(stack[-1][0], "")):
+            spans.append((stack.pop()[1] + 1, index))
+        elif char in _TOGGLE_MARKS or char in closers:
+            stack.append((char, index))
+        else:
+            return spans, index
+    return spans, (stack[0][1] if stack else None)
+
+
+def _single_quotations(text: str, double: Sequence[tuple[int, int]]) -> tuple[list[tuple[int, int]], int | None]:
+    """Single-quoted spans outside double-style quotations, and an unclosed opener."""
+    masked = list(text)
+    for start, end in double:
+        masked[start - 1:end + 1] = " " * (end - start + 2)
+    rest = "".join(masked)
+    spans = [match.span(1) for match in _SINGLE_QUOTE_SPAN.finditer(rest)]
+    for start, end in spans:
+        masked[start - 1:end + 1] = " " * (end - start + 2)
+    opener = _SINGLE_QUOTE_OPENER.search("".join(masked))
+    return spans, (opener.start() if opener else None)
 
 
 def quoted_spans(text: str) -> tuple[str, ...]:
     """Every quoted span, an outer one keeping any quotation nested inside it."""
-    rest, spans = _without_paired_spans(text)
-    return tuple(span for span in (*spans, *_SINGLE_QUOTE_SPAN.findall(rest)) if span.strip())
+    text = text.translate(_QUOTE_FOLD)
+    double, _unpaired = _double_quotations(text)
+    single, _unclosed = _single_quotations(text, double)
+    return tuple(span for span in (text[start:end] for start, end in (*double, *single)) if span.strip())
 
 
 def unmatched_quote(text: str) -> str | None:
-    """The text after a quotation mark that is never closed, if there is one.
+    """The text after a quotation mark that cannot be paired, if there is one.
 
-    An unclosed quotation cannot be checked against its passage, so it is treated
-    as unsupported rather than as ordinary prose.
+    An unclosed quotation, or one in marks that cannot be paired with confidence,
+    cannot be checked against its passage, so it is treated as unsupported rather
+    than as ordinary prose.
     """
-    rest, _spans = _without_paired_spans(text)
-    double = _QUOTE_MARKS.search(rest)
-    if double:
-        return rest[double.end():].strip() or rest[double.start()]
-    rest = _SINGLE_QUOTE_SPAN.sub(" ", rest)
-    single = _SINGLE_QUOTE_OPENER.search(rest)
-    if single:
-        return rest[single.end():].strip() or rest[single.start()]
-    # Any other opening or closing quotation punctuation cannot be paired with
-    # confidence, so it is treated as unclosed too. Curly apostrophes inside words
-    # (the driver’s) are ordinary prose and were handled above.
-    for index, char in enumerate(rest):
-        if char not in "‘’" and unicodedata.category(char) in {"Pi", "Pf"}:
-            return rest[index + 1:].strip() or char
-    return None
+    text = text.translate(_QUOTE_FOLD)
+    double, unpaired = _double_quotations(text)
+    if unpaired is None:
+        _single, unpaired = _single_quotations(text, double)
+    if unpaired is None:
+        return None
+    return text[unpaired + 1:].strip() or text[unpaired]
+
+
+def _comparable(text: str) -> str:
+    """Text for comparison: folded, with double-style marks as spaces."""
+    folded = text.translate(_QUOTE_FOLD)
+    return _normalized("".join(" " if _is_double_style(char) else char for char in folded))
 
 
 def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, ...]:
@@ -234,14 +259,14 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
 
     A quotation must match on word boundaries, so "red" is not found in "recorded",
     and within a single passage, so it cannot be assembled across two of them. The
-    text after a quotation mark that is never closed is always unsupported.
+    text after a quotation mark that cannot be paired is always unsupported.
     """
     # Double-style marks are compared as spaces on both sides, so an outer quotation
     # with a quotation nested inside it must still appear whole in one passage.
-    sources = [_normalized(_QUOTE_MARKS.sub(" ", item.excerpt.translate(_QUOTE_FOLD))) for item in cited]
+    sources = [_comparable(item.excerpt) for item in cited]
 
     def present(span: str) -> bool:
-        wanted = _normalized(_QUOTE_MARKS.sub(" ", span)).strip(_EDGE_QUOTES)
+        wanted = _comparable(span).strip(_SINGLE_MARKS + " ")
         pattern = re.compile(r"(?<!\w)" + re.escape(wanted) + r"(?!\w)")
         return bool(wanted) and any(pattern.search(source) for source in sources)
     unsupported = tuple(span for span in quoted_spans(text) if not present(span))
@@ -285,8 +310,8 @@ def verify_question(text: object, evidence_ids: object,
 
 
 def question_key(text: str) -> str:
-    """The wording of a question without case, spacing or punctuation, for duplicates."""
-    return " ".join(re.findall(r"\w+", _normalized(text)))
+    """The wording of a question without case, spacing or punctuation (underscores included), for duplicates."""
+    return " ".join(re.findall(r"[^\W_]+", _normalized(text)))
 
 
 def verify_question_draft(raw: Mapping[str, object], evidence: Sequence[EvidenceItem]

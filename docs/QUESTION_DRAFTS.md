@@ -31,8 +31,9 @@ case notes**, which adds one Suggested note.
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes, including angle, low-9, CJK
   corner, fullwidth, reversed and ornamental quotation marks, with any other
-  unpaired quotation punctuation treated as unclosed; an outer quotation is checked whole,
-  including any quotation nested inside it) appears as whole words within
+  unpaired quotation punctuation, such as an ornament, treated as unclosed; quotations
+  are paired with a stack, so an outer quotation is checked whole, including any
+  quotation nested inside it, whatever marks each uses) appears as whole words within
   one cited passage (not assembled across two), as does every number. Every word
   containing a digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or
   `5A`, an ordinal such as `4th`) must also appear
@@ -47,7 +48,7 @@ case notes**, which adds one Suggested note.
   be compared with the passage.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again. Questions that differ only
-  in case, spacing or punctuation count once.
+  in case, spacing or punctuation (underscores included) count once.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
@@ -57,7 +58,9 @@ case notes**, which adds one Suggested note.
   shows. A dock
   refresh that arrives meanwhile (for example when an answer finishes) waits for
   those saves, and for any draft in flight, and keeps their results and case-notes
-  link; an open, unsaved draft stays open in the refreshed dock. No save or draft
+  link; an open, unsaved draft stays open in the refreshed dock, and if newer
+  messages would push its answer out of the dock's recent messages, that answer is
+  kept at the top of the refreshed thread. No save or draft
   starts while a refresh is in flight. While
   a replacement draft is pending, the open card's Save and Dismiss are held, so no
   save is lost when the card is replaced. Without JavaScript, and from the full conversation, the draft is

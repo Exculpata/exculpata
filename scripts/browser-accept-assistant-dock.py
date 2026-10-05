@@ -521,8 +521,30 @@ def main(argv=None):
             card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
             wait.until(lambda _: "Those questions were already saved to case notes." in card.text)
             assert saved_notes() == 3
+            # An answer with an open draft that newer messages push out of the dock's recent
+            # window is kept in the refreshed dock, so the draft is not lost.
+            first_form = find("[data-assistant-draft-questions]")
+            kept_action = first_form.get_attribute("action")
+            first_form.find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            card = first_form.find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            conversation = bench.workspace.get_conversation(matter.matter_id)
+            for index in range(4):
+                bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "user", f"Synthetic follow-up {index}")
+                bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "assistant", f"Synthetic note {index}", {})
+            js(press_cancel)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            forms = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")
+            assert [form.get_attribute("action") for form in forms] == [kept_action], [form.get_attribute("action") for form in forms]
+            card = forms[0].find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "saved to case notes" in card.text)
             js("window.fetch = window.__originalFetch;")
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+            # Later checks reload the page; give them a recent answer again.
+            seed_answer(bench, prefix)
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft, even one whose answer leaves the dock's recent messages; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

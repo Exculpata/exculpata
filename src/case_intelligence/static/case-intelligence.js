@@ -3796,6 +3796,33 @@
       .map((form) => [form.getAttribute("action"), form.nextElementSibling])
       .filter(([, card]) => card && !card.hidden && card.questionDraft)
       .map(([action, card]) => [action, card.questionDraft]));
+    // The dock shows only recent messages; an answer with an open draft that the refresh
+    // would leave out is kept at the top of the new thread so the draft is not lost.
+    const replacementThread = replacement.querySelector("[data-assistant-thread]");
+    const replacementActions = new Set(Array.from(replacement.querySelectorAll("[data-assistant-draft-questions]"))
+      .map((form) => form.getAttribute("action")));
+    Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+      .filter((form) => assistantCarriedDrafts.has(form.getAttribute("action"))
+        && !replacementActions.has(form.getAttribute("action")))
+      .reverse()
+      .forEach((form) => {
+        const message = form.closest(".assistant-message");
+        if (!message || !replacementThread) return;
+        const kept = message.cloneNode(true);
+        // The copy starts clean; binding the new dock restores its open draft.
+        kept.querySelectorAll("[data-question-draft-card], [data-suggest-preview-card]").forEach((card) => {
+          card.replaceChildren();
+          card.hidden = true;
+        });
+        kept.querySelectorAll("[data-question-draft-status], [data-save-passage-status], [data-suggest-passage-status]")
+          .forEach((status) => status.replaceChildren());
+        kept.querySelectorAll("[aria-busy], [aria-disabled]").forEach((node) => {
+          node.removeAttribute("aria-busy");
+          node.removeAttribute("aria-disabled");
+        });
+        replacementThread.prepend(kept);
+        replacementThread.dataset.hasMessages = "true";
+      });
     let savedNotices = [];
     try {
       savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");

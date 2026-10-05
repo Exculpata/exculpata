@@ -74,6 +74,19 @@ class Echo(Scripted):
         return reply
 
 
+class Underscored(Scripted):
+    """Repeats one valid question three times, joining two words with underscores."""
+    def __init__(self):
+        super().__init__(lambda evidence, index: evidence[0])
+
+    def draft_questions(self, *, purpose, topic, evidence):
+        reply = super().draft_questions(purpose=purpose, topic=topic, evidence=evidence)
+        text = reply["questions"][0]["text"]
+        for question, joiner in zip(reply["questions"], (" ", "_", "__")):
+            question["text"] = text.replace(" can ", joiner + "can ", 1)
+        return reply
+
+
 def run(client):
     data, _ = load_cases()
     return evaluate(GroundedGenerationService(client), data)
@@ -115,6 +128,9 @@ def test_drafts_citing_unrelated_passages_quoting_absent_text_or_too_few_fail():
     # Repeating one question with different punctuation does not meet the minimum.
     echo = run(Echo())
     assert echo["passed"] is False and len(echo["cases_below_minimum"]) == 10
+    # So does repeating it with words joined by underscores.
+    underscored = run(Underscored())
+    assert underscored["passed"] is False and len(underscored["cases_below_minimum"]) == 10
     thin = run(Scripted(lambda evidence, index: evidence[0], count=2))
     assert thin["passed"] is False and thin["relevant_rate"] == 1.0 and len(thin["cases_below_minimum"]) == 10
 
