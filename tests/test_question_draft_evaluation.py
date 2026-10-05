@@ -224,3 +224,16 @@ def test_an_ollama_runtime_reports_its_model_digest():
                    [{'name': 'synthetic:4b', 'digest': ARTIFACT}, {'name': 'synthetic:4b', 'digest': ARTIFACT}]):
         missing = OllamaGenerator('http://127.0.0.1:11434', 'synthetic:4b', opener=TagsOpener(models))
         assert observe(missing)['artifact_sha256'] is None, models
+
+
+def test_a_receipt_with_non_utf8_model_text_is_still_written(tmp_path, monkeypatch):
+    """A lone surrogate in raw model output is dropped from what is shown and escaped in the receipt."""
+    class Surrogate(Scripted):
+        def draft_questions(self, **kwargs):
+            reply = super().draft_questions(**kwargs)
+            reply["questions"][0]["text"] = reply["questions"][0]["text"][:-1] + " \ud800?"
+            return reply
+    result = run(Surrogate(lambda evidence, index: evidence[index % 2]))
+    assert result["shown_questions"] == 20 and result["passed"] is False
+    text = json.dumps(result, ensure_ascii=True)
+    assert "\\ud800" in text and text.encode("utf-8")

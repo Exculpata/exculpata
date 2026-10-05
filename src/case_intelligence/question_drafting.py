@@ -52,16 +52,17 @@ PURPOSES: Mapping[str, tuple[str, str, str]] = {
 }
 # A list marker a model may put before a question ("1.", "2)", "Q3:"), not part of it.
 _LIST_MARKER = re.compile(r"^(?:q(?:uestion)?\s*)?\d{1,2}\s*[.):-]\s+", re.IGNORECASE)
-# A single-quoted span opens only at the start, after whitespace, after opening
-# punctuation or after punctuation that introduces speech (":" and ","), and closes at the first quote followed by a word boundary. So an
-# unquoted possessive or contraction (the driver's) is not a quotation, but a
-# quotation containing one ('it's red') is checked whole.
+# A single-quoted span opens wherever the quote does not follow a letter, digit or
+# another apostrophe (the start, a space or any punctuation), and closes at the
+# first quote not followed by a letter or digit. So an unquoted possessive or
+# contraction (the driver's) is not a quotation, but a quotation containing one
+# ('it's red') is checked whole.
 _SINGLE_QUOTE_SPAN = re.compile(
-    r"(?:(?<=[\s(\[{\"“—–:,-])|^)['‘](\S.*?)['’](?=[\s.,;:?!)\]}\"”—–-]|$)")
+    r"(?<![\w'‘’])['‘](\S.*?)['’](?!\w)")
 _APOSTROPHES = str.maketrans("‘’", "''")
 # A single quote where a quotation could open; one left after matched spans are
 # removed has no closing quote.
-_SINGLE_QUOTE_OPENER = re.compile(r"(?:(?<=[\s(\[{\"“—–:,-])|^)['‘](?=\S)")
+_SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘](?=\S)")
 # Any double-quoted span, whatever its length: a one-word quotation must be in its
 # passage too. (The answer verifier's own pattern bounds length for its own reasons.)
 _DOUBLE_QUOTE_SPAN = re.compile(r"[\"“]([^\"”]+)[\"”]")
@@ -201,6 +202,10 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
 def verify_question(text: object, evidence_ids: object,
                     evidence: Mapping[str, EvidenceItem]) -> DraftedQuestion | None:
     if not isinstance(text, str):
+        return None
+    try:
+        text.encode("utf-8")  # e.g. an escaped lone surrogate from a runtime's JSON
+    except UnicodeEncodeError:
         return None
     normalized = _LIST_MARKER.sub("", " ".join(text.split()).strip())
     if not 8 <= len(normalized) <= MAX_DRAFTED_QUESTION_CHARS or _EVIDENCE_MARKER.search(normalized):

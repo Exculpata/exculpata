@@ -41,7 +41,9 @@ def main(argv=None):
                          profile=args.profile, runtime=runtime)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
-    text = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+    # ASCII escapes keep a receipt writable even when raw model output holds
+    # text that is not valid UTF-8 (such as a lone surrogate).
+    text = json.dumps(result, indent=2, ensure_ascii=True) + "\n"
     if args.output:
         if args.output.exists():
             raise SystemExit("Choose a new output file; the existing receipt was preserved.")

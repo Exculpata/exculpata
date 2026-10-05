@@ -89,14 +89,16 @@ settings the application uses; nothing is selected or downloaded):
 
 ```bash
 .venv/bin/python scripts/evaluate-question-drafts.py --output question-drafts-receipt.json \
-  --require-model --profile portable --runtime-profile runtime.json
+  --require-model --profile portable --runtime-profile /tmp/runtime.json
 ```
 
-`runtime.json` is the runtime-profile declaration described in
+`/tmp/runtime.json` is the runtime-profile declaration described in
 [CLAIM_EVALUATION.md](CLAIM_EVALUATION.md): the model artifact digest (for Ollama,
 its immutable tag digest) and the selected profile's exact upstream model,
 revision and license from `config/models.json`. A profile that is malformed or
-contradicts the pin is refused before any model call.
+contradicts the pin is refused before any model call. Keep it, and the output
+receipt, outside the checkout, or the checkout counts as having uncommitted changes
+and the receipt is unbound.
 
 Without a configured runtime the receipt records `model_gate: outstanding`.
 

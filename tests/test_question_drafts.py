@@ -142,6 +142,8 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
                  "Did the witness say 'it's red'?", 'Did the witness say \u2018it\u2019s red\u2019?',
                  "Did the witness say ['red']?", "Did the witness say 'red', then leave?",
                  "Did the witness say:'purple' near the truck?", "Did the witness say,'purple' near the truck?",
+                 "Did the witness say;'purple' near the truck?", "Did the witness say.'purple' near the truck?",
+                 "Did the witness say?'purple' near the truck?", "Did the witness say!'purple' near the truck?",
                  'Did the witness say "purple near the truck?', 'Did the witness say \u201cblue truck near the gate?',
                  "Did the witness say 'blue truck near the gate?", 'Did the witness see the blue truck" near the gate?'):
         assert verify_question(text, ['S1'], witness) is None, text
@@ -149,6 +151,8 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     assert verify_question("Did the witness say 'blue truck'?", ['S1'], witness)
     assert unsupported_quotes('Was it "red" or "blue"?', [witness['S1']]) == ('red',)
     assert unsupported_quotes("Did the witness say 'it's red'?", [witness['S1']]) == ("it's red",)
+    # Text that is not valid UTF-8 (a lone surrogate from a runtime's JSON) is never kept.
+    assert verify_question('Who saw the blue truck near the gate \ud800?', ['S1'], witness) is None
     # An unclosed quotation cannot be checked, so it is unsupported even if its words are present.
     assert unsupported_quotes('Did the witness say "blue truck?', [witness['S1']]) == ('blue truck?',)
     assert unsupported_quotes('Did the witness say "\'blue truck\'"?', [witness['S1']]) == ()

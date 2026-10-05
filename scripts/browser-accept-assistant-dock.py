@@ -409,13 +409,17 @@ def main(argv=None):
             wait.until(lambda _: "Saving…" in card.text)
             held_dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
             assert held_dismiss.get_attribute("aria-disabled") == "true"
+            # Conversation navigation is held too, so the dock is not replaced before the result shows.
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            new_chat = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-new-chat]")
+            assert all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
             held_dismiss.click()
             assert card.is_displayed() and saved_notes() == 0
             wait.until(lambda _: "Questions saved to case notes for review." in card.text)
             assert card.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
             assert saved_notes() == 1
             assert driver.current_url.startswith(base + notes), driver.current_url
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss is held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss and conversation navigation are held; saving a draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)
