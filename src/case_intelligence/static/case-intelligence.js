@@ -3451,6 +3451,29 @@
   const settleAssistantQuestionWrites = () => {
     if (!assistantQuestionWritesPending()) assistantSavesSettled.splice(0).forEach((resolve) => resolve());
   };
+  // Changing or starting a conversation would replace the dock and hide a pending draft or
+  // save, so the picker and New chat are held until every pending draft and save is known.
+  const holdAssistantNavigation = (dock) => {
+    const picker = dock.querySelector("[data-assistant-conversation-picker]");
+    const holds = Number(dock.dataset.questionNavigationHolds || 0);
+    if (!holds) dock.dataset.questionPickerWasDisabled = String(Boolean(picker?.disabled));
+    dock.dataset.questionNavigationHolds = String(holds + 1);
+    if (picker) picker.disabled = true;
+    dock.querySelector("[data-assistant-new-chat]")?.setAttribute("aria-disabled", "true");
+  };
+  const releaseAssistantNavigation = (dock) => {
+    const remaining = Number(dock.dataset.questionNavigationHolds || 1) - 1;
+    if (remaining > 0) {
+      dock.dataset.questionNavigationHolds = String(remaining);
+      return;
+    }
+    const picker = dock.querySelector("[data-assistant-conversation-picker]");
+    const pickerWasDisabled = dock.dataset.questionPickerWasDisabled === "true";
+    delete dock.dataset.questionNavigationHolds;
+    delete dock.dataset.questionPickerWasDisabled;
+    if (picker && !pickerWasDisabled) picker.disabled = false;
+    dock.querySelector("[data-assistant-new-chat]")?.removeAttribute("aria-disabled");
+  };
   let assistantHistorySwitch = null;
   let reviewQuestionScope = null;
   // Set by the source reader: limits the next question to the open source.
@@ -4174,15 +4197,9 @@
           saveForm.setAttribute("aria-busy", "true");
           const held = [save, dismiss, ...draftForm.querySelectorAll("button")];
           held.forEach((control) => control.setAttribute("aria-disabled", "true"));
-          // Changing or starting a conversation would replace the dock and hide a save's
-          // result, so the picker and New chat are held until every pending save is known.
-          const picker = assistantDock.querySelector("[data-assistant-conversation-picker]");
-          const newChat = assistantDock.querySelector("[data-assistant-new-chat]");
-          const pending = Number(assistantDock.dataset.questionSavesPending || 0);
-          if (!pending) assistantDock.dataset.questionPickerWasDisabled = String(Boolean(picker?.disabled));
-          assistantDock.dataset.questionSavesPending = String(pending + 1);
-          if (picker) picker.disabled = true;
-          newChat?.setAttribute("aria-disabled", "true");
+          const dock = assistantDock;
+          dock.dataset.questionSavesPending = String(Number(dock.dataset.questionSavesPending || 0) + 1);
+          holdAssistantNavigation(dock);
           status.textContent = "Saving…";
           try {
             const response = await fetch(saveForm.action, {
@@ -4208,17 +4225,11 @@
           } finally {
             saveForm.removeAttribute("aria-busy");
             held.forEach((control) => control.removeAttribute("aria-disabled"));
-            const remaining = Number(assistantDock.dataset.questionSavesPending || 1) - 1;
-            if (remaining > 0) {
-              assistantDock.dataset.questionSavesPending = String(remaining);
-            } else {
-              const pickerWasDisabled = assistantDock.dataset.questionPickerWasDisabled === "true";
-              delete assistantDock.dataset.questionSavesPending;
-              delete assistantDock.dataset.questionPickerWasDisabled;
-              if (picker && !pickerWasDisabled) picker.disabled = false;
-              newChat?.removeAttribute("aria-disabled");
-              settleAssistantQuestionWrites();
-            }
+            const remaining = Number(dock.dataset.questionSavesPending || 1) - 1;
+            if (remaining > 0) dock.dataset.questionSavesPending = String(remaining);
+            else delete dock.dataset.questionSavesPending;
+            releaseAssistantNavigation(dock);
+            settleAssistantQuestionWrites();
           }
         });
       };
@@ -4242,6 +4253,7 @@
         // A refresh that arrives meanwhile waits for this draft, then carries it over.
         const dock = assistantDock;
         dock.dataset.questionDraftsPending = String(Number(dock.dataset.questionDraftsPending || 0) + 1);
+        holdAssistantNavigation(dock);
         try {
           const response = await fetch(draftForm.action, {
             method: "POST", body,
@@ -4262,6 +4274,7 @@
           const remaining = Number(dock.dataset.questionDraftsPending || 1) - 1;
           if (remaining > 0) dock.dataset.questionDraftsPending = String(remaining);
           else delete dock.dataset.questionDraftsPending;
+          releaseAssistantNavigation(dock);
           settleAssistantQuestionWrites();
         }
       });
@@ -4276,7 +4289,7 @@
 
     const conversationPicker = assistantDock.querySelector("[data-assistant-conversation-picker]");
     conversationPicker?.addEventListener("change", async () => {
-      if (Number(assistantDock.dataset.questionSavesPending || 0) > 0) return;
+      if (assistantQuestionWritesPending() > 0) return;
       const conversationId = conversationPicker.value;
       if (conversationId === "__draft__") {
         beginAssistantDraft();
@@ -4309,8 +4322,8 @@
     });
 
     assistantDock.querySelector("[data-assistant-new-chat]")?.addEventListener("click", () => {
-      // A pending draft save keeps this dock until its result is shown.
-      if (Number(assistantDock.dataset.questionSavesPending || 0) > 0) return;
+      // A pending draft or draft save keeps this dock until its result is shown.
+      if (assistantQuestionWritesPending() > 0) return;
       beginAssistantDraft();
     });
 

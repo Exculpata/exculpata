@@ -409,8 +409,16 @@ def main(argv=None):
             assert card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']").get_attribute("aria-disabled") == "true"
             old_save.click()
             assert saved_notes() == 0
+            # Conversation navigation is held while the draft is pending, so New chat cannot discard it.
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            new_chat = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-new-chat]")
+            assert new_chat and all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
+            js("arguments[0].click()", new_chat[0])
+            assert js("return arguments[0].isConnected", card)
             wait.until(lambda _: draft_shown(card, "Questions for a witness"))
             assert saved_notes() == 0
+            assert not js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? false")
+            assert all(button.get_attribute("aria-disabled") is None for button in new_chat)
             js("window.fetch = window.__originalFetch;")
             # The second answer's card is open too, so two saves can overlap.
             second_form = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")[1]
@@ -514,7 +522,7 @@ def main(argv=None):
             wait.until(lambda _: "Those questions were already saved to case notes." in card.text)
             assert saved_notes() == 3
             js("window.fetch = window.__originalFetch;")
-            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
 
             for width, height in ((390, 844), (320, 640)):
                 viewport(width, height)

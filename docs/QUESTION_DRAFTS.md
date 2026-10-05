@@ -51,8 +51,9 @@ case notes**, which adds one Suggested note.
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
   held, so the card never says nothing was saved while the save may succeed. The
-  conversation picker and New chat are held until every pending save (from any
-  open card) is known, so the dock is never replaced before a result shows. A dock
+  conversation picker and New chat are held until every pending draft and save
+  (from any open card) is known, so the dock is never replaced before a result
+  shows. A dock
   refresh that arrives meanwhile (for example when an answer finishes) waits for
   those saves, and for any draft in flight, and keeps their results and case-notes
   link; an open, unsaved draft stays open in the refreshed dock. No save or draft
