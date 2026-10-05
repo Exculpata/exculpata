@@ -187,6 +187,18 @@ def test_a_question_must_cite_its_passages_and_keep_their_quotes_and_numbers():
     for text in ('Did the witness say \u2019purple\u2019 near the truck?', 'Did the witness say (\u2019purple\u2019) near the truck?'):
         assert verify_question(text, ['S1'], witness) is None, text
     assert verify_question('Did the witness say \u2019blue truck\u2019?', ['S1'], witness)
+    # A word-initial elision (the \u201990s, 'em, 'til) is prose, not an unclosed quotation,
+    # but it can never hide a real quotation: spans are checked with and without it.
+    decade = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1',
+                                 "The witness reviewed truck records from the \u201990s and said 'em boxes were red 'til noon.")}
+    for text in ('Which truck records from the \u201990s did the witness review?',
+                 "Which truck records from the '90s did the witness review?",
+                 "Did the witness say 'em boxes were red?", "Were the boxes red 'til noon?",
+                 "Did the witness say 'em boxes were red'?"):
+        assert verify_question(text, ['S1'], decade), text
+    for text in ("Did the witness say 'em purple'?", 'Did the \u201990s records say \u2018purple\u2019?',
+                 "Did the witness say 'purple near the truck?", 'Which truck records from the \u201980s did the witness review?'):
+        assert verify_question(text, ['S1'], decade) is None, text
     # A curly outer quotation is checked whole, whatever marks the nested one uses.
     paint = {'S1': EvidenceItem('S1', 'Synthetic note', 'Line 1', 'The witness saw red and blue paint near the truck.')}
     for text in ('Did the witness say \u201cred "purple" blue\u201d near the truck?',

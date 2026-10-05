@@ -43,7 +43,10 @@ case notes**, which adds one Suggested note.
   first. A single quote (straight, or either curly mark) opens a quotation wherever it
   does not follow a letter, digit or another apostrophe, so possessives and contractions outside a
   quotation are not treated as quotations, while a quotation containing one
-  (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal.
+  (`'it's red'`) is checked whole. Curly and straight apostrophes compare equal. A
+  word-initial elision such as `’90s`, `'em` or `'til` is prose, not an unclosed
+  quotation, but quotations are also checked as if it were an opener, so it can
+  never hide one.
   A quotation mark that is never closed fails the check, since its quotation cannot
   be compared with the passage.
   Questions that fail are dropped and the draft says some were omitted; if none

@@ -66,6 +66,10 @@ _APOSTROPHES = str.maketrans("‘’", "''")
 # A single quote where a quotation could open; one left after matched spans are
 # removed has no closing quote.
 _SINGLE_QUOTE_OPENER = re.compile(r"(?<![\w'‘’])['‘’](?=\S)")
+# A word-initial elision (the ’90s, 'em, 'til) is prose, not a quotation opener; it is
+# set aside before single quotes are paired. A decade is still a digit token, so it must
+# appear in a cited passage.
+_LEADING_ELISION = re.compile(r"(?<![\w'‘’])['’](?=(?:\d0s|em|til|tis|twas|cause|n)(?![\w'’]))", re.IGNORECASE)
 # Variant marks are checked as the quote they stand for: fullwidth, reversed and
 # ornamental single quotes as ', reversed or ornamental double quotes as curly ones, and
 # vertical presentation forms as the corner brackets they render.
@@ -211,12 +215,19 @@ def _double_quotations(text: str) -> tuple[list[tuple[int, int]], int | None]:
     return spans, (stack[0][1] if stack else None)
 
 
-def _single_quotations(text: str, double: Sequence[tuple[int, int]]) -> tuple[list[tuple[int, int]], int | None]:
-    """Single-quoted spans outside double-style quotations, and an unclosed opener."""
+def _single_quotations(text: str, double: Sequence[tuple[int, int]], *,
+                       elisions: bool = True) -> tuple[list[tuple[int, int]], int | None]:
+    """Single-quoted spans outside double-style quotations, and an unclosed opener.
+
+    With elisions, word-initial elisions (the ’90s) are set aside before pairing.
+    """
     masked = list(text)
     for start, end in double:
         masked[start - 1:end + 1] = " " * (end - start + 2)
     rest = "".join(masked)
+    if elisions:
+        rest = _LEADING_ELISION.sub("\x01", rest)
+    masked = list(rest)
     spans = [match.span(1) for match in _SINGLE_QUOTE_SPAN.finditer(rest)]
     for start, end in spans:
         masked[start - 1:end + 1] = " " * (end - start + 2)
@@ -228,8 +239,12 @@ def quoted_spans(text: str) -> tuple[str, ...]:
     """Every quoted span, an outer one keeping any quotation nested inside it."""
     text = text.translate(_QUOTE_FOLD)
     double, _unpaired = _double_quotations(text)
+    # Single quotes are paired both with elisions set aside and without, and every span
+    # either way must be supported, so an elision mark can never hide a real quotation.
     single, _unclosed = _single_quotations(text, double)
-    return tuple(span for span in (text[start:end] for start, end in (*double, *single)) if span.strip())
+    literal, _unclosed = _single_quotations(text, double, elisions=False)
+    found = dict.fromkeys((*double, *single, *literal))
+    return tuple(span for span in (text[start:end] for start, end in found) if span.strip())
 
 
 def unmatched_quote(text: str) -> str | None:
