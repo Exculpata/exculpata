@@ -1,0 +1,13 @@
+Trolley condition note
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-016
+Record date: 2034-04-17
+Person: Vela Quenrix
+Object: Brindlequay Storehouse
+
+Vela Quenrix checked the folding trolley at Brindlequay storehouse. The left wheel made
+a soft clicking sound when unloaded. The trolley could carry one teal case at a time. No
+recording of the wheel sound exists in this synthetic collection.
+
+All names, locations, dates and identifiers in this record were invented.

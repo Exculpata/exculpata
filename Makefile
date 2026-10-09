@@ -4,7 +4,7 @@ PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/recordbench-publication-guard
 GITLEAKS ?= gitleaks
 .DEFAULT_GOAL := test
 
-.PHONY: bootstrap hooks check check-fast compile compose-check publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
+.PHONY: bootstrap hooks check check-fast compile compose-check demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
 
 bootstrap:
 	"$(SYSTEM_PYTHON)" scripts/bootstrap-dev.py
@@ -31,6 +31,9 @@ hooks:
 		"$$guard/python/bin/python" -m pip install --disable-pip-version-check 'pypdf>=6,<7'; \
 		"$$guard/python/bin/python" scripts/install-publication-hook.py "$$guard/hooks"; \
 	fi
+
+demo:
+	"$(PYTHON)" scripts/demo.py
 
 test:
 	"$(PYTHON)" -m pytest -q

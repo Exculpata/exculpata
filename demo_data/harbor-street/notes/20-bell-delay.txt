@@ -1,0 +1,14 @@
+Rehearsal bell delay
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-020
+Record date: 2034-04-18
+Person: Sovi Pellune
+Object: Kestrelune Arcade
+
+Sovi Pellune wrote that the first rehearsal bell at Kestrelune arcade started late
+because the demonstration timer had to be reset. No elapsed delay was measured. Later
+recollections based on bell order preserve sequence but do not establish exact clock
+times.
+
+All names, locations, dates and identifiers in this record were invented.

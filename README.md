@@ -53,6 +53,35 @@ actions are real. These walkthroughs are previews, not production validation.
 Want to help shape it? [Help build Exculpata](#help-build-it)—workflow feedback,
 synthetic test material, and clear bug reports are as useful as code.
 
+## Try the demo
+
+From a [development checkout](CONTRIBUTING.md), run:
+
+```console
+make demo
+```
+
+The command prepares **Harbor Street**, a wholly invented matter with 40 records,
+then prints a loopback URL and a synthetic sign-in: choose **Taylor Morgan**,
+with no password. Text reports, email, a CSV and two PDFs provide recurring
+people, places and dates. One deliberately damaged text file remains visible as
+unreadable. The folder goes through ordinary intake, with a selection receipt,
+and processing and automatic discovery finish before the URL is printed.
+
+Home shows the landed discovery briefing: who appears most, the busiest dates,
+and what could not be read. The demo also enables one-box routing and deeper
+investigation. Explore the originals, exact search, and the suggested people,
+places, and dates. Answers and automatic every-source analysis need a configured
+generator; the existing unavailable message keeps this limitation visible, while
+search and manual source review work offline.
+
+No model, service or network connection is needed after development dependencies
+are installed. The demo ignores deployment settings, uses only synthetic records,
+and binds to `127.0.0.1`. It keeps its throwaway data in the system temporary
+directory, outside the checkout. Press **Ctrl-C** to stop and remove that data;
+each run starts fresh. This preview sign-in is for synthetic evaluation only.
+See the [corpus provenance](demo_data/README.md).
+
 ## Help build Exculpata
 
 This is a maintainer-led community beta candidate. It does not publish any

@@ -13,6 +13,14 @@ full-text synthesis adapter, graph exploration, Linux CPU B-lite and trusted
 matter continuity A, B and C are landed.
 Historical receipts below retain their original scope and evidence.
 
+**Harbor Street demo (local implementation, not landed):**
+[`make demo`](../README.md#try-the-demo) seeds a disposable, offline preview through
+ordinary folder intake with synthetic records and automatic discovery. Draft PR
+publication is authorized; hosted review and merge are not requested. The demo
+enables the landed discovery briefing, one-box routing, and deeper-investigation
+offer. Home is checked for suggested people, busiest dates, and what could not
+be read.
+
 **Ask routing foundation (approved; local implementation, not landed):**
 [Pure intent classification](EXACT_SEARCH.md#ask-intent-classification) selects
 exact search, every-source review or a question from typed text, with a short

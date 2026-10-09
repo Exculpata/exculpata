@@ -1,0 +1,17 @@
+Follow-up inventory
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-008
+Record date: 2034-04-19
+Person: Vela Quenrix
+Person: Nerin Talvex
+Person: Sovi Pellune
+Object: Brindlequay Storehouse
+Object: Kestrelune Arcade
+
+Vela Quenrix, Nerin Talvex and Sovi Pellune counted eleven teal cases at Brindlequay
+Storehouse and one empty teal case at Kestrelune arcade. An unopened parcel behind a
+fabric screen carried the band DEMO-HS-271. Its contents were not inspected. The earlier
+discrepancy therefore remained an open question in the demonstration.
+
+All names, locations, dates and identifiers in this record were invented.

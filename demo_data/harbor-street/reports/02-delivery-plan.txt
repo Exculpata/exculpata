@@ -1,0 +1,17 @@
+Delivery plan
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-002
+Record date: 2034-04-17
+Person: Vela Quenrix
+Person: Nerin Talvex
+Person: Sovi Pellune
+Object: Brindlequay Storehouse
+Object: Kestrelune Arcade
+
+Vela Quenrix planned to carry the teal lantern parcel from Brindlequay storehouse to
+Kestrelune arcade on 2034-04-18. Nerin Talvex would prepare the route sheet, and Sovi
+Pellune would confirm receipt. The working plan used the covered west passage. No final
+dispatch time was entered.
+
+All names, locations, dates and identifiers in this record were invented.
