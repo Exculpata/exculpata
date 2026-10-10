@@ -28,3 +28,19 @@ docs and a clear user outcome. Run applicable validation and the publication
 sanitizer before committing. Keep deployment overlays external and release tags
 immutable; corrections get new commits and releases. See [Contributing](CONTRIBUTING.md)
 and [development guidance](docs/DEVELOPMENT.md).
+
+## Cursor Cloud specific instructions
+
+Python 3.12, ffmpeg, ImageMagick, poppler, English and Spanish Tesseract, the Docker CLI with Compose v2, and Gitleaks 8.30.1 are installed for contributor checks. PostgreSQL 17 with pgvector is installed as a disposable loopback database. The environment start command brings that cluster up; it is not left running by install.
+
+Refresh the virtualenv with `python3.12 scripts/bootstrap-dev.py`. `make bootstrap` also runs `make hooks`, which fails while Cursor owns `core.hooksPath`. Before pushing, run `.venv/bin/python scripts/publication-check.py`. That scan uses `git rev-list --all`, so a full clone can report historical findings that are only reachable from other remote branches.
+
+`make test-postgres` and `make check-fast` need `CASE_REVIEW_POSTGRES_TEST_DSN` set to the synthetic value in `.github/workflows/quality-gates.yml`. On this smaller VM also export `CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0`, as that workflow does. `docker compose config` validates the Compose files without a running Docker engine.
+
+For a loopback UI check:
+
+```console
+CASE_INTELLIGENCE_AUTH_MODE=preview .venv/bin/recordbench-workbench --host 127.0.0.1
+```
+
+Sign in with a synthetic preview identity and create a synthetic matter. Keep this mode on loopback.
