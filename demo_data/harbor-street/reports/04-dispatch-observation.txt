@@ -1,0 +1,15 @@
+Dispatch observation
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-004
+Record date: 2034-04-18
+Person: Vela Quenrix
+Person: Nerin Talvex
+Object: Brindlequay Storehouse
+
+Nerin Talvex recorded that Vela Quenrix left Brindlequay storehouse at 09:14 carrying a
+teal case with a paper band. Nerin Talvex did not read the band number. The wall clock
+above the loading table had not been checked that morning. This observation identifies a
+case, not its contents.
+
+All names, locations, dates and identifiers in this record were invented.

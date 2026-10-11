@@ -1,0 +1,16 @@
+Parcel discrepancy
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-006
+Record date: 2034-04-18
+Person: Nerin Talvex
+Person: Sovi Pellune
+Object: Brindlequay Storehouse
+Object: Kestrelune Arcade
+
+Sovi Pellune reported that the case beside the platform contained paper dividers rather
+than lanterns. Nerin Talvex compared the route sheet with the opening inventory at
+Brindlequay storehouse. Neither document linked a readable band number to the case
+observed at Kestrelune arcade. The missing link was left unresolved.
+
+All names, locations, dates and identifiers in this record were invented.

@@ -1,0 +1,14 @@
+Platform layout note
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-019
+Record date: 2034-04-18
+Person: Sovi Pellune
+Person: Ilex Rovanni
+Object: Kestrelune Arcade
+
+Sovi Pellune asked Ilex Rovanni to clear the rehearsal platform at Kestrelune arcade. A
+striped cover and an empty teal case remained beside the platform steps. This note does
+not establish when the empty case was put there.
+
+All names, locations, dates and identifiers in this record were invented.

@@ -1,0 +1,15 @@
+Arrival observation
+Synthetic demonstration record - no real people, places or events.
+Matter reference: harbor-street
+ID: DEMO-HS-005
+Record date: 2034-04-18
+Person: Vela Quenrix
+Person: Sovi Pellune
+Object: Kestrelune Arcade
+
+Sovi Pellune saw Vela Quenrix at Kestrelune arcade near 09:26 with an empty folding
+trolley. Sovi Pellune remembered a teal case beside the rehearsal platform but did not
+see who placed it there. A rehearsal bell was sounding, and no written delivery receipt
+was signed at that time.
+
+All names, locations, dates and identifiers in this record were invented.

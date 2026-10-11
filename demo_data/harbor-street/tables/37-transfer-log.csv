@@ -1,0 +1,9 @@
+synthetic_record,invented_date,stated_time,person,place,entry,qualification
+DEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory
+DEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection
+DEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified
+DEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells
+DEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt
+DEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured
+DEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset
+DEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected
