@@ -1,5 +1,5 @@
 {% extends "workbench_base.html" %}
-{% block title %}Objective and background · {{ matter.display_name }}{% endblock %}
+{% block title %}Objective and background · {{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block content %}
 <main id="main-content" tabindex="-1" class="matter-home-main">
   {% with active='home' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
