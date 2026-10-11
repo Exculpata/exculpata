@@ -54,6 +54,38 @@ def _patch_limits(monkeypatch, getrlimit, setrlimit) -> None:
     monkeypatch.setattr(pdf_extract_helper.resource, "setrlimit", setrlimit)
 
 
+_WORKER_LIMITS = (
+    resource.RLIMIT_CPU,
+    resource.RLIMIT_AS,
+    resource.RLIMIT_FSIZE,
+    resource.RLIMIT_NOFILE,
+)
+
+
+def _worker_resource_limits(getrlimit) -> dict[int, tuple[int, int]]:
+    return {kind: getrlimit(kind) for kind in _WORKER_LIMITS}
+
+
+def _patch_limits_without_applying(monkeypatch) -> list[tuple[int, tuple[int, int]]]:
+    """Record helper limit requests without installing them on this process.
+
+    ``main`` applies CPU, address-space, file-size, and descriptor ceilings.
+    Those belong to the extraction child. An in-process call must not lower
+    the pytest worker's limits.
+    """
+    calls: list[tuple[int, tuple[int, int]]] = []
+
+    def getrlimit(kind):
+        assert kind == resource.RLIMIT_AS
+        return (resource.RLIM_INFINITY, resource.RLIM_INFINITY)
+
+    def setrlimit(kind, limits):
+        calls.append((kind, limits))
+
+    _patch_limits(monkeypatch, getrlimit, setrlimit)
+    return calls
+
+
 def test_refused_address_space_ceiling_is_not_document_damage(tmp_path, monkeypatch, capsys):
     source = tmp_path / "synthetic-readable.pdf"
     _readable_pdf(source, "Synthetic harbor page")
@@ -340,9 +372,15 @@ def test_refused_ceiling_installs_growth_budget_above_mapped_size(tmp_path, monk
 def test_bad_pdf_signature_stays_malformed(tmp_path, monkeypatch, capsys):
     source = tmp_path / "synthetic-not-a-pdf.pdf"
     source.write_bytes(b"not a pdf")
+    real_getrlimit = resource.getrlimit
+    before = _worker_resource_limits(real_getrlimit)
+    calls = _patch_limits_without_applying(monkeypatch)
     monkeypatch.setattr(sys, "argv", ["pdf_extract_helper.py", str(source)])
     assert pdf_extract_helper.main() == 2
     assert json.loads(capsys.readouterr().out) == {"error": "malformed"}
+    assert _worker_resource_limits(real_getrlimit) == before
+    assert (resource.RLIMIT_CPU, (10, 10)) in calls
+    assert (resource.RLIMIT_NOFILE, (32, 32)) in calls
 
 
 def test_parser_import_failure_is_startup_not_document_damage(tmp_path, monkeypatch, capsys):
@@ -355,12 +393,18 @@ def test_parser_import_failure_is_startup_not_document_damage(tmp_path, monkeypa
             raise ImportError("synthetic parser unavailable")
         return real_import(name, globals, locals, fromlist, level)
 
+    real_getrlimit = resource.getrlimit
+    before = _worker_resource_limits(real_getrlimit)
+    calls = _patch_limits_without_applying(monkeypatch)
     monkeypatch.setattr(builtins, "__import__", blocked)
     monkeypatch.setattr(sys, "argv", ["pdf_extract_helper.py", str(source)])
     assert pdf_extract_helper.main() == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload == {"error": pdf_extract_helper.HELPER_STARTUP_ERROR}
     assert "malformed" not in payload["error"]
+    assert _worker_resource_limits(real_getrlimit) == before
+    assert (resource.RLIMIT_CPU, (10, 10)) in calls
+    assert (resource.RLIMIT_NOFILE, (32, 32)) in calls
 
 
 @pytest.mark.parametrize(
