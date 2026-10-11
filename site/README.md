@@ -57,6 +57,23 @@ local paths, fragment targets, GitHub destinations, source asset fidelity, font
 notices, and the page's script-free security policy. Before publishing, also run
 the repository gates and installed pre-push publication check.
 
+With Node.js, Playwright, and a Chromium executable available, run the standalone
+browser regression from the repository root (the same dependency arrangement as
+the other `scripts/browser-accept-*.cjs` checks):
+
+```console
+node scripts/browser-accept-static-site.cjs /path/to/chromium /tmp/fresh-site-check
+```
+
+It starts a disposable loopback server, blocks external requests, checks five
+desktop/mobile viewports, and saves screenshots plus a receipt. Both section
+links must put their own section 32px from the viewport top, with different
+scroll positions and visible heading text; back navigation and direct fragment
+loads must work too. This catches bottom-of-page scroll clamping on tall screens,
+where different fragment IDs alone can still produce identical views. A selected
+section expands to provide the required scroll room and highlights its heading;
+the unanchored page remains compact. No client JavaScript is needed.
+
 For browser acceptance, inspect desktop and mobile pixels, keyboard focus and
 the skip link, all navigation destinations, and the network log. Confirm every
 initial request stays on the preview origin and that no content overflows at

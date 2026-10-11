@@ -40,6 +40,10 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
 h1, h2, h3, p { margin: 0; }
 svg { flex: none; }
 section { scroll-margin-top: 32px; }
+/* Give either anchor room to align even when the whole page nearly fits.
+   Only the selected section expands; the initial landing page stays compact. */
+.capabilities:target, .audience:target { min-height: calc(100vh - 32px); }
+.capabilities:target h2, .audience:target h2 { color: var(--accent); }
 .page { width: min(1280px, 90%); margin-inline: auto; }
 
 .skip-link {
