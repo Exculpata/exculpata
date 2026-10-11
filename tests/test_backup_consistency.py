@@ -34,8 +34,10 @@ def _version(path: Path) -> str:
 
 class SyntheticNode:
     def __init__(self, root: Path, monkeypatch, *, wal: bool = False,
-                 node_path: Path | None = None, storage_path: Path | None = None):
+                 node_path: Path | None = None, storage_path: Path | None = None, names: str = "recordbench"):
         self.root = root
+        self.names = names
+        self.restic_arguments = []
         self.node = node_path or root / "node"
         self.storage = storage_path or root / "separate-storage"
         self.archive = root / "archive"
@@ -47,7 +49,10 @@ class SyntheticNode:
         for name in ("runtime", "config", "secrets", "state"):
             (self.node / name).mkdir(parents=True, exist_ok=True)
         self.storage.mkdir(exist_ok=storage_path is not None)
-        (self.storage / ".recordbench-managed-storage.json").write_text("{}")
+        from case_intelligence.managed_storage import ManagedMatterStorage
+        with monkeypatch.context() as naming:
+            naming.setenv("EXCULPATA_STORAGE_NAMES", names)
+            ManagedMatterStorage.initialize(self.storage)
         repository = root / "repository"
         repository.mkdir()
         (repository / "config").write_text("synthetic repository stub")
@@ -66,6 +71,7 @@ class SyntheticNode:
             "RECORDBENCH_SECRETS_ROOT": str(self.node / "secrets"),
             "RECORDBENCH_STORAGE_ROOT": str(self.storage),
         }
+        environment = {key.replace("RECORDBENCH_", names.upper() + "_"): value for key, value in environment.items()}
         env = self.node / "compose.env"
         env.write_text("".join(f"{key}={json.dumps(value)}\n" for key, value in environment.items()))
         env.chmod(0o600)
@@ -128,6 +134,7 @@ class SyntheticNode:
 
     def restic(self, config, password, arguments, **kwargs):
         arguments = tuple(arguments)
+        self.restic_arguments.append(arguments)
         action = arguments[0]
         if action == "backup":
             self.events.append("transfer")
@@ -310,7 +317,8 @@ def test_snapshot_does_not_follow_managed_symlinks(node_factory):
     os.environ.get("RECORDBENCH_BACKUP_INTEGRATION") != "1",
     reason="opt-in synthetic restic/PostgreSQL drill",
 )
-def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch):
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch, names):
     """Real repository and dump/import; simulated app stop/restart only.
 
     Requires restic and an already installed pgvector image. No image pull,
@@ -318,7 +326,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
     """
     assert shutil.which("restic") and shutil.which("docker")
     original_restic = backup._restic
-    node = node_factory(wal=True)
+    node = node_factory(wal=True, names=names)
     monkeypatch.setattr(backup, "_restic", original_restic)
     config = backup._backup_config(node.node)
     password = node.node / "secrets/restic-password"
@@ -384,9 +392,14 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         assert node.backup() == 0
         original_restic(config, password, ("check", "--read-data"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         receipt = json.loads((node.node / "state/backup-status.json").read_text())
+        snapshots = json.loads(original_restic(config, password, ("snapshots", "--json"), stdout=subprocess.PIPE).stdout)
+        assert len(snapshots) == 1
+        assert names in snapshots[0]["tags"]
+        other = "recordbench" if names == "exculpata" else "exculpata"
+        assert other not in snapshots[0]["tags"]
         target = node.root / "restored"
         assert backup.restore(argparse.Namespace(
-            node_root=node.node, target=target, snapshot=receipt["snapshot_id"],
+            node_root=node.node, target=target, snapshot="latest",
         )) == 0
         files = backup._snapshot_files(target)
         databases = backup._sqlite_files(files)
@@ -693,3 +706,23 @@ def test_full_text_ledger_and_budget_survive_normal_backup_restore(node_factory)
         assert restored.connection.execute('PRAGMA foreign_key_check').fetchall()==[]
     finally:
         restored.close()
+
+
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_backup_and_restore_preserve_generation_and_accept_both_tags(node_factory, names):
+    node = node_factory(names=names)
+    before = (node.node / "compose.env").read_bytes()
+    assert node.backup() == 0
+    assert node.restore() == 0
+    marker = f".{names}-managed-storage.json"
+    assert (node.root / "restored/managed-storage" / marker).read_bytes() == (node.storage / marker).read_bytes()
+    assert (node.root / "restored/payload/control/compose.env").read_bytes() == before
+    assert (node.node / "compose.env").read_bytes() == before
+    transfer = next(args for args in node.restic_arguments if args[0] == "backup")
+    retention = next(args for args in node.restic_arguments if args[0] == "forget")
+    restore = next(args for args in node.restic_arguments if args[0] == "restore")
+    assert transfer[transfer.index("--tag") + 1] == names
+    assert retention[retention.index("--tag") + 1] == names
+    assert restore[restore.index("--tag"):restore.index("--tag") + 4] == ("--tag", "recordbench", "--tag", "exculpata")
+    assert not list(node.node.glob(f".{names}-backup-snapshot-*"))
+    assert not list(node.storage.parent.glob(f".{names}-storage-snapshot-*"))

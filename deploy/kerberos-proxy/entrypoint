@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-server_name="${RECORDBENCH_SERVER_NAME:-}"
-expected_principal="${RECORDBENCH_KERBEROS_PRINCIPAL:-}"
+server_name="${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-}}"
+expected_principal="${EXCULPATA_KERBEROS_PRINCIPAL:-${RECORDBENCH_KERBEROS_PRINCIPAL:-}}"
 source_keytab=/run/recordbench-secrets/recordbench.keytab
 source_secret=/run/recordbench-secrets/kerberos-proxy-secret
 runtime=/run/recordbench-auth
@@ -34,6 +34,7 @@ install -d -m 0750 -o root -g www-data "$runtime"
 install -d -m 0700 -o www-data -g www-data "$runtime/rcache"
 install -m 0440 -o root -g www-data "$source_keytab" "$runtime/recordbench.keytab"
 printf 'RequestHeader set X-RecordBench-Proxy-Secret "%s"\n' "$proxy_secret" > "$runtime/proxy-secret.conf"
+printf 'RequestHeader set X-Exculpata-Proxy-Secret "%s"\n' "$proxy_secret" >> "$runtime/proxy-secret.conf"
 chmod 0600 "$runtime/proxy-secret.conf"
 sed "s/__SERVER_NAME__/$server_name/g" \
     /etc/apache2/sites-available/recordbench-auth.conf.template \

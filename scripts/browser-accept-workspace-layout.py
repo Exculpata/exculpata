@@ -124,8 +124,18 @@ def main(argv=None):
                 driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
                     "width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
 
-            def go(suffix):
+            def settle_fonts():
+                # Geist swaps in after first paint. The section navigator
+                # detaches when that swap moves the tab bar across its content
+                # breakpoint, so measurements wait until the faces have loaded.
+                wait.until(lambda _: js("return document.fonts.status === 'loaded'"))
+
+            def open_page(suffix):
                 driver.get(base + prefix + suffix)
+                settle_fonts()
+
+            def go(suffix):
+                open_page(suffix)
                 # Use the existing dock control so all pages expose their main
                 # working area; this preference is retained across navigation.
                 buttons = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-collapse]")
@@ -371,7 +381,7 @@ def main(argv=None):
                 return links
 
             viewport(1024, 768)
-            driver.get(base + prefix + paths["notes"])
+            open_page(paths["notes"])
             expanded_panels()
             tools, library = find(".notebook-tools"), find(".notebook-library")
             wait.until(lambda _: rect(library)["top"] >= rect(tools)["bottom"] - 1)
@@ -405,7 +415,7 @@ def main(argv=None):
             # A compact navigation action must not cover destinations or destroy
             # an in-progress question. Resizing must preserve visible focus.
             viewport(1024, 768)
-            driver.get(base + prefix + paths["notes"])
+            open_page(paths["notes"])
             expanded_panels()
             preference = "recordbench:assistant:display:v2"
             js("localStorage.setItem(arguments[0], 'open')", preference + ":compact")
@@ -442,13 +452,13 @@ def main(argv=None):
             # All destinations are actual working links. Keep query and fragment contracts.
             for width, height in ((390, 844), (320, 568)):
                 viewport(width, height)
-                driver.get(base + prefix + "/setup?view=list")
+                open_page("/setup?view=list")
                 disclosure, summary, links = disclosure_links()
                 assert "Review" in summary.text
                 destinations = [(link.text, link.get_attribute("href")) for link in links]
                 if width == 390:
                     for label, destination in destinations:
-                        driver.get(base + prefix + "/setup?view=list")
+                        open_page("/setup?view=list")
                         _, _, choices = disclosure_links()
                         link = next(link for link in choices if link.get_attribute("href") == destination)
                         reachable(link)
@@ -460,7 +470,7 @@ def main(argv=None):
                             assert urlsplit(driver.current_url).query == urlsplit(destination).query, (label, driver.current_url)
                         if urlsplit(destination).fragment:
                             assert urlsplit(driver.current_url).fragment == urlsplit(destination).fragment, (label, driver.current_url)
-                driver.get(base + prefix + "/setup?view=list")
+                open_page("/setup?view=list")
                 disclosure = find(".matter-section-disclosure")
                 summary = disclosure.find_element(By.CSS_SELECTOR, "summary")
                 # Enter is native disclosure activation; Tab must visit links in order.
@@ -472,7 +482,7 @@ def main(argv=None):
                 destination = links[-1].get_attribute("href")
                 driver.switch_to.active_element.send_keys(Keys.ENTER)
                 wait.until(lambda _: urlsplit(driver.current_url).path == urlsplit(destination).path)
-                driver.get(base + prefix + "/setup?view=list")
+                open_page("/setup?view=list")
                 summary = find(".matter-section-disclosure summary")
                 summary.send_keys(Keys.TAB)
                 assert not js("return arguments[0].contains(document.activeElement)", find(".matter-section-disclosure")), "Closed links remain in tab order"
@@ -573,8 +583,8 @@ def main(argv=None):
                 return style
 
             viewport(1440, 900)
-            for theme in ("light", "dusk"):
-                driver.get(base + prefix + paths["notes"])
+            for theme in ("dark", "light", "dusk"):
+                open_page(paths["notes"])
                 js("document.documentElement.dataset.theme=arguments[0]", theme)
                 driver.find_element(By.TAG_NAME, "body").send_keys(Keys.TAB)
                 skip = find(".skip-link")
@@ -598,13 +608,13 @@ def main(argv=None):
                 js("document.documentElement.dataset.theme=arguments[0]", theme)
                 question = find('.composer-wrap textarea[name="question"]')
                 measurements[f"question_focus_{theme}"] = keyboard_focus(question)
-            checks.append("Light and Dusk skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
+            checks.append("Dark, Light and Dusk skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
 
             # Font preference and WCAG-style spacing are separate stress cases.
             # Neither this nor a CSS viewport change is evidence of native zoom.
             for treatment in ("root-font-200-percent", "text-spacing"):
                 viewport(1024, 768)
-                driver.get(base + prefix + paths["notes"])
+                open_page(paths["notes"])
                 expanded_panels()
                 if treatment == "root-font-200-percent":
                     js("document.documentElement.style.fontSize='200%'")

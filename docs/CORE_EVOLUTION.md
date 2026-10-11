@@ -1,4 +1,4 @@
-# Evolving the RecordBench core
+# Evolving the Exculpata core
 
 Status: architectural direction; no runtime or storage change in this document.
 The [north star](PRODUCT_NORTH_STAR.md) defines why these boundaries matter.

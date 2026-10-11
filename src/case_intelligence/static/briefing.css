@@ -1,0 +1,25 @@
+/* Loaded only for the optional Home briefing. */
+[data-briefing-region][hidden] { display: none; }
+.discovery-briefing { margin: 20px 0; padding: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow-wrap: anywhere; }
+.discovery-briefing h2, .discovery-briefing h3 { margin: 0 0 10px; }
+.discovery-briefing h3 { font-size: 16px; }
+.discovery-briefing header > p:last-child, .briefing-questions > p { color: var(--ink-soft); font-size: 13px; }
+.briefing-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 28px; margin-top: 22px; }
+.discovery-briefing ul { display: grid; gap: 12px; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; }
+.briefing-links { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
+.briefing-links a { color: var(--blue-action); }
+.briefing-questions { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.briefing-questions button { max-width: 100%; text-align: left; border: 1px solid var(--line-strong); border-radius: 7px; padding: 10px 12px; background: var(--surface); color: var(--blue-action); font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.briefing-questions button > span { display: inline-block; margin-right: 6px; font-size: 11px; color: var(--ink-soft); }
+.briefing-questions button:disabled { cursor: not-allowed; opacity: .65; }
+.briefing-coverage { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px; color: var(--ink-soft); font-size: 13px; }
+.briefing-coverage summary { cursor: pointer; }
+.briefing-coverage ul { margin-top: 14px; }
+.briefing-unavailable { padding: 14px 0; font-size: 13px; color: var(--ink-soft); }
+.discovery-briefing button:focus-visible, .discovery-briefing a:focus-visible, .briefing-coverage summary:focus-visible { outline: 2px solid var(--blue-action); outline-offset: 3px; }
+.discovery-briefing button, .discovery-briefing a, .briefing-coverage summary { scroll-margin-block: 100px; }
+@media (max-width: 760px) {
+  .discovery-briefing { padding: 16px; }
+  .briefing-sections { grid-template-columns: minmax(0, 1fr); }
+  .briefing-questions button { min-height: 44px; }
+}

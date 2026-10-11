@@ -113,7 +113,7 @@ behavior changes are included.
 The portable browser acceptance script starts a loopback-only app with temporary
 synthetic sources and writes screenshots plus a receipt containing the tested
 checkout commit and whether its working tree was clean. It ignores inherited
-RecordBench backend/storage environment settings inside the acceptance process
+Exculpata backend/storage environment settings inside the acceptance process
 and uses an unavailable model plus deterministic retrieval. Install Selenium and supply matching Chrome/ChromeDriver
 binaries for the host; run from the checkout under test:
 

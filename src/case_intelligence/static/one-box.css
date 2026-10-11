@@ -1,0 +1,21 @@
+/* Optional shared entry point; loaded only when its feature flag is enabled. */
+.one-box-form { display: grid; gap: 8px; padding: 8px 19px 0; }
+.one-box-form > label { font-weight: 700; color: var(--ink); }
+.one-box-input-row { display: flex; gap: 10px; align-items: stretch; }
+.one-box-input-row input { flex: 1 1 auto; width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.one-box-input-row button { flex: 0 0 auto; }
+.one-box-form [data-one-box-readiness-hint] { margin: 0; color: var(--ink-soft); font-size: 13px; }
+.one-box-form [data-one-box-readiness-hint][hidden] { display: none; }
+.one-box-quiet-links { display: flex; flex-wrap: wrap; gap: 12px 22px; margin: 14px 19px 18px; font-size: 13px; }
+.one-box-route { margin-block: 8px 14px; padding: 10px 14px; border-left: 3px solid var(--line-strong); color: var(--ink-soft); font-size: 13px; overflow-wrap: anywhere; }
+.one-box-route-reason { margin: 0 0 4px; }
+.one-box-route summary { cursor: pointer; color: var(--blue-action); }
+.one-box-alternatives { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.one-box-alternatives button { padding: 8px 12px; color: var(--blue-action); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; font: inherit; cursor: pointer; }
+.one-box-input-row input:focus-visible, .one-box-alternatives button:focus-visible, .one-box-route summary:focus-visible { outline: 2px solid var(--blue-action); outline-offset: 3px; }
+.one-box-form input, .one-box-form button, .one-box-route summary, .one-box-alternatives button { scroll-margin-block: 100px; }
+@media (max-width: 520px) {
+  .one-box-input-row { flex-direction: column; }
+  .one-box-input-row button { min-height: 44px; }
+  .one-box-alternatives { flex-direction: column; align-items: stretch; }
+}

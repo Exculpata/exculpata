@@ -152,10 +152,25 @@ def test_cli_falls_back_to_full_when_comparison_is_unavailable(history, tmp_path
 def test_required_application_check_cannot_succeed_after_classification_or_publication_failure():
     workflow = (ROOT / ".github/workflows/quality-gates.yml").read_text()
     application = workflow.split("\n  application:\n", 1)[1].split("\n  postgres-integration:\n", 1)[0]
-    assert "needs: [change-scope, publication-scan]" in application
+    # Keep the required checks fail-closed while application and publication run
+    # concurrently. The existing required deployment check now enforces publication.
+    assert "needs: [change-scope]\n" in application
     assert "if: ${{ always() }}" in application
-    assert 'test "$SCOPE_RESULT" = success && test "$PUBLICATION_RESULT" = success' in application
-    for job in ("postgres-integration", "transcription", "deployment-contract", "synthetic-browser"):
+    assert 'SCOPE_RESULT: ${{ needs.change-scope.result }}' in application
+    assert 'run: test "$SCOPE_RESULT" = success' in application
+    deployment = workflow.split("\n  deployment-contract:\n", 1)[1].split("\n  synthetic-browser:\n", 1)[0]
+    assert "needs: [change-scope, publication-scan]" in deployment
+    assert "if: ${{ always() && (needs.change-scope.result != 'success' || needs.publication-scan.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}" in deployment
+    assert 'SCOPE_RESULT: ${{ needs.change-scope.result }}' in deployment
+    assert 'PUBLICATION_RESULT: ${{ needs.publication-scan.result }}' in deployment
+    assert 'test "$SCOPE_RESULT" = success && test "$PUBLICATION_RESULT" = success' in deployment
+    assert "continue-on-error:" not in application + deployment
+    for job in ("postgres-integration", "transcription"):
         block = workflow.split(f"\n  {job}:\n", 1)[1]
         assert block.startswith("    needs: change-scope\n    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}\n")
+    browser = workflow.split("\n  synthetic-browser:\n", 1)[1]
+    assert browser.startswith("    needs: change-scope\n    if: ${{ always() && contains(fromJSON('[\"merge_group\", \"schedule\", \"workflow_dispatch\"]'), github.event_name) && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}\n")
+    assert 'run: test "$SCOPE_RESULT" = success' in browser
+    assert "  push:\n    branches: [main]\n" in workflow
+    assert "  pull_request:\n  merge_group:\n  schedule:\n    - cron: '17 7 * * *'\n  workflow_dispatch:\n" in workflow
     assert "paths-ignore:" not in workflow and "paths:" not in workflow

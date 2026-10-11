@@ -11,6 +11,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
+from .compat_env import env
 
 EMBEDDING_MODEL = os.getenv(
     "CASE_REVIEW_EMBEDDING_MODEL", "ibm-granite/granite-embedding-english-r2"
@@ -165,7 +166,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1" and not (
         args.host == "0.0.0.0"
-        and os.getenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
+        and env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
     ):
         parser.error(
             "non-loopback binding is allowed only in the isolated container profile"

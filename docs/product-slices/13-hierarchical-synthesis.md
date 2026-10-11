@@ -1,6 +1,6 @@
 # 13: Synthesize a substantial review without losing source support
 
-Status: Done — landed in [#73](https://github.com/neilofneils404/recordbench-oss/pull/73)
+Status: Done — landed in [#73](https://github.com/Exculpata/exculpata/pull/73)
 at `c1ada89bf15ea8f61906de3c62202da4d98e279f`. Depends on 11 or 12 and their persistent findings.
 
 The initial input adapter and versioned checkpoint contract are described in

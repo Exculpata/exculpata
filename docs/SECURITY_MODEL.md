@@ -1,6 +1,6 @@
 # Security model
 
-RecordBench assumes confidential case material and a trusted internal operator.
+Exculpata assumes confidential case material and a trusted internal operator.
 It does not assume uploaded files, browser headers, model output, or model hubs
 are trustworthy.
 
@@ -31,7 +31,7 @@ extracted text** records every available text range and preserves extraction and
 analysis gaps; neither establishes recognition of every relevant fact.
 
 Manual **Close matter** is a deliberate application action: either the matter
-owner or an authenticated RecordBench administrator may request permanent
+owner or an authenticated Exculpata administrator may request permanent
 deletion. Cross-owner administrator action is labelled explicitly and is
 attributed to that administrator. The close workflow keeps a final export
 available, refuses active work, requires exact-name and permanent-deletion

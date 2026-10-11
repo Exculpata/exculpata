@@ -121,6 +121,8 @@ class VerifiedAnswer:
     # sourced qualification (possibly None); the notice has no source support.
     source_limitation: VerifiedClaim | None = None
     verification_notice: str = ""
+    # Explicit raw-model abstention, distinct from no evidence or rejected claims.
+    generator_answerable: bool | None = None
 
     @property
     def text(self) -> str:
@@ -1302,6 +1304,7 @@ class GroundedGenerationService:
                 (),
                 True,
                 elapsed_ms,
+                generator_answerable=False,
             )
         accepted: list[VerifiedClaim] = []
         accepted_keys: set[tuple[str, frozenset[str]]] = set()

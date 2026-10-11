@@ -3,14 +3,14 @@ services:
   app:
     volumes:
       - type: bind
-        source: ${RECORDBENCH_LOCAL_ACCOUNT_ROOT:?set the dedicated owner-only account directory}
+        source: ${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}
         target: /var/lib/recordbench-accounts
   account-admin:
     volumes:
       - type: bind
-        source: ${RECORDBENCH_SECRETS_ROOT:?set RECORDBENCH_SECRETS_ROOT}
+        source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
         target: /run/recordbench-secrets
         read_only: true
       - type: bind
-        source: ${RECORDBENCH_LOCAL_ACCOUNT_ROOT:?set the dedicated owner-only account directory}
+        source: ${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}
         target: /var/lib/recordbench-accounts

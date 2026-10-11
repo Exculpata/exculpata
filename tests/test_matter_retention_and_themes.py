@@ -140,8 +140,10 @@ def test_abandoned_upload_detection_and_theme_preference(tmp_path):
     now[0] = FIXED + timedelta(hours=25)
     assert store.abandoned_upload_sessions() == (session,)
 
-    assert store.principal_preference("principal-owner").theme == "light"
+    assert store.principal_preference("principal-owner").theme == "dark"
     assert store.set_principal_theme("principal-owner", "dusk").theme == "dusk"
+    assert store.set_principal_theme("principal-owner", "dark").theme == "dark"
+    assert store.principal_preference("principal-owner").theme == "dark"
     with pytest.raises(WorkspaceProblem, match="available appearance"):
         store.set_principal_theme("principal-owner", "unreviewed-theme")
     store.close()
@@ -249,15 +251,21 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         setup = client.get(f"/matters/{slug}/setup")
         assert setup.status_code == 200
         assert "data-assistant-dock" in setup.text
-        assert "Ask RecordBench" in setup.text
-        assert "data-theme=\"light\"" in setup.text
+        assert "Ask Exculpata" in setup.text
+        assert ">RB<" not in setup.text
+        assert "exculpata-mark" in setup.text
+        assert "favicon.svg" in setup.text
+        assert 'data-theme="dark"' in setup.text
+        assert 'value="dark"' in setup.text
+        assert 'value="light"' in setup.text
+        assert 'value="dusk"' in setup.text
         identifiers = re.findall(r'\bid="([^"]+)"', setup.text)
         assert len(identifiers) == len(set(identifiers))
         for accessible_control in (
             "data-rail-toggle",
             'aria-label="Open account menu"',
-            'data-assistant-expand aria-label="Open Ask RecordBench"',
-            'data-assistant-collapse aria-label="Close Ask RecordBench"',
+            'data-assistant-expand aria-label="Open Ask Exculpata"',
+            'data-assistant-collapse aria-label="Close Ask Exculpata"',
             'data-assistant-new-chat',
             'aria-label="Start a new chat"',
             'for="assistant-conversation-picker"',
@@ -271,6 +279,8 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert "data-assistant-question-form" in assistant.text
         assert "Choose a saved chat" in assistant.text
         assert "New chat" in assistant.text
+        assert ">RB<" not in assistant.text
+        assert "exculpata-mark" in assistant.text
 
         new_chat = client.post(
             f"/matters/{slug}/conversations",
@@ -297,6 +307,8 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         full_review = client.get(f"/matters/{slug}")
         assert full_review.status_code == 200
         assert 'id="conversation-heading">Ask</h2>' in full_review.text
+        assert ">RB<" not in full_review.text
+        assert "exculpata-mark" in full_review.text
         assert "data-assistant-dock" not in full_review.text
 
         themed = client.post(
@@ -308,6 +320,20 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert themed.headers["location"] == f"/matters/{slug}/setup"
         dusk = client.get(f"/matters/{slug}/setup")
         assert 'data-theme="dusk"' in dusk.text
+        light = client.post(
+            "/preferences/theme",
+            data={"theme": "light", "next": f"/matters/{slug}/setup"},
+            follow_redirects=False,
+        )
+        assert light.status_code == 303
+        assert 'data-theme="light"' in client.get(f"/matters/{slug}/setup").text
+        dark = client.post(
+            "/preferences/theme",
+            data={"theme": "dark", "next": f"/matters/{slug}/setup"},
+            follow_redirects=False,
+        )
+        assert dark.status_code == 303
+        assert 'data-theme="dark"' in client.get(f"/matters/{slug}/setup").text
 
         new_expiry = (datetime.now(timezone.utc) + timedelta(days=45)).date().isoformat()
         extended = client.post(

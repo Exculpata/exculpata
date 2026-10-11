@@ -5,17 +5,17 @@
           {% endfor %}<p id="assistant-suggestions-hint{{ suffix }}" class="assistant-suggestions-hint">{{ assistant.suggestions.hint }}</p>
           <p class="assistant-suggestions-hint" data-assistant-suggestion-status role="status"></p>
         </div>{% endmacro %}
-<aside class="matter-assistant" data-assistant-dock data-assistant-presentation="{{ assistant.presentation }}" data-fragment-url="{{ assistant.fragment_url }}" data-matter-id="{{ matter.matter_id }}" data-conversation-id="{{ assistant.conversation.conversation_id }}" data-matter-ready="{{ 'true' if assistant.matter_ready else 'false' }}" aria-label="Ask RecordBench">
-  <button class="assistant-collapsed-tab" type="button" data-assistant-expand aria-label="Open Ask RecordBench">
-    <span class="assistant-brand-mark" aria-hidden="true">RB</span>
+<aside class="matter-assistant" data-assistant-dock data-assistant-presentation="{{ assistant.presentation }}" data-fragment-url="{{ assistant.fragment_url }}" data-matter-id="{{ matter.matter_id }}" data-conversation-id="{{ assistant.conversation.conversation_id }}" data-matter-ready="{{ 'true' if assistant.matter_ready else 'false' }}" aria-label="Ask Exculpata">
+  <button class="assistant-collapsed-tab" type="button" data-assistant-expand aria-label="Open Ask Exculpata">
+    <span class="assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
     <span><strong>{{ assistant.display_label }}</strong><small data-assistant-readiness-copy>{{ assistant.searchable_source_count }} of {{ assistant.readiness.total_count }} searchable{% if assistant.readiness.excluded_count %} · {{ assistant.readiness.excluded_count }} excluded{% endif %}</small></span>
   </button>
   <div class="assistant-panel">
     <header class="assistant-header">
-      <div><span>Ask RecordBench</span><strong>{{ assistant.display_label }}</strong></div>
+      <div><span>Ask Exculpata</span><strong>{{ assistant.display_label }}</strong></div>
       <div>
         <a href="{{ assistant.open_url }}" aria-label="Open case conversation and manage conversations">Full conversation</a>
-        <button type="button" class="assistant-close" data-assistant-collapse aria-label="Close Ask RecordBench">
+        <button type="button" class="assistant-close" data-assistant-collapse aria-label="Close Ask Exculpata">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-6 6 6 6"/></svg><span>Close</span>
         </button>
       </div>
@@ -49,9 +49,9 @@
       </article>
       {% else %}
       <article class="assistant-message assistant-recordbench-message">
-        <span class="assistant-message-avatar assistant-brand-mark" aria-hidden="true">RB</span>
+        <span class="assistant-message-avatar assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
         <div>
-          <strong>Saved answer · RecordBench</strong><small class="assistant-answer-provenance">Historical answer; the scope below applies only to your next question. Inspect this answer’s citations for its sources.</small>
+          <strong>Saved answer · Exculpata</strong><small class="assistant-answer-provenance">Historical answer; the scope below applies only to your next question. Inspect this answer’s citations for its sources.</small>
           {% if message.payload.source_coverage and message.payload.source_coverage.mode == 'partial' %}
           <small class="assistant-answer-coverage">Source coverage when created · {{ message.payload.source_coverage.notice }}</small>
           {% endif %}
@@ -121,12 +121,13 @@
           {% else %}
             <p>{{ message.content }}</p>
           {% endif %}
+          {% include "workbench_deeper_investigation.html" %}
         </div>
       </article>
       {% endif %}
       {% else %}
       <div class="assistant-empty">
-        <span class="assistant-brand-mark" aria-hidden="true">RB</span>
+        <span class="assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
         <h2>Ask while you review</h2>
         <p>I’ll answer from this matter’s searchable sources and keep citations attached.</p>
         {% if assistant.matter_ready %}{{ suggestion_group() }}{% endif %}

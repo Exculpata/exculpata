@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Disabled buttons outside the source library keep their Light borders when
+  Dusk is selected. Disabled controls inside the source library still use the
+  Dusk treatment.
+
+- Opening the compact section navigator no longer makes the matter bar look
+  wide enough to replace the navigator with direct links.
+
+- The assistant and answer badges use the Exculpata icon instead of the old initials.
+
+- Apply the Exculpata theme. Dark is the default appearance, and Light and Dusk
+  remain selectable. Geist is the interface and heading face. JetBrains Mono is
+  used for code, identifiers, and citations. Both faces are self-hosted.
+
+- Add the Exculpata wordmark, icon, and favicon. The README uses the wordmark
+  and the tagline "your discovery, cited."
+
+- Renamed to Exculpata. Visible product branding changes only; existing package,
+  deployment and data identifiers remain unchanged.
+
 - Keep a bounded source list beside document and recording inspection, with
   library-scoped previous/next, keyboard navigation and retained folder/filter
   context. Clarify the existing folder entry point; see

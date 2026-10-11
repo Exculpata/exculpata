@@ -2252,7 +2252,8 @@
         // The result route is a distinct request target. Navigating through it
         // forces fresh server-rendered conversation HTML even when the final
         // workspace URL differs only by a fragment.
-        window.location.assign(job.result_url || job.workspace_url);
+        const completion = new CustomEvent("recordbench:answer-complete", { detail: job, cancelable: true });
+        if (window.dispatchEvent(completion)) window.location.assign(job.result_url || job.workspace_url);
         return;
       }
       if (["failed", "cancelled"].includes(job.state)) return;
@@ -3180,10 +3181,15 @@
     detail.textContent = description;
     link.append(detail);
   });
+  let closedWidth = tabs.clientWidth;
   const place = () => {
+    // Opening the navigator widens its row. Keep the closed measurement so the
+    // menu does not look wide enough for direct links and detach itself.
+    if (!(disclosure.isConnected && disclosure.open)) closedWidth = tabs.clientWidth;
+    const width = disclosure.isConnected && disclosure.open ? closedWidth : tabs.clientWidth;
     // A content breakpoint, scaled with the user's root font size. Direct links
     // also wrap as a fallback, so a long label can never become unreachable.
-    const narrow = tabs.clientWidth < 26 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const narrow = width < 26 * parseFloat(getComputedStyle(document.documentElement).fontSize);
     const focused = document.activeElement;
     if (narrow && !disclosure.isConnected) {
       tabs.classList.add("sections-compact");
@@ -3607,7 +3613,11 @@
     }
     const thread = assistantDock.querySelector("[data-assistant-thread]");
     if (thread) {
-      thread.innerHTML = '<div class="assistant-empty assistant-draft-empty"><span class="assistant-brand-mark" aria-hidden="true">RB</span><h2>New chat</h2><p>This draft is saved with the matter when you send its first question.</p></div>';
+      const existingMark = assistantDock.querySelector(".assistant-brand-mark");
+      const mark = existingMark
+        ? existingMark.outerHTML
+        : '<span class="assistant-brand-mark" aria-hidden="true">EX</span>';
+      thread.innerHTML = `<div class="assistant-empty assistant-draft-empty">${mark}<h2>New chat</h2><p>This draft is saved with the matter when you send its first question.</p></div>`;
       thread.dataset.hasMessages = "false";
       const suggestions = assistantDock.querySelector("[data-assistant-suggestions-template]");
       const empty = thread.querySelector(".assistant-draft-empty");

@@ -5,7 +5,7 @@ services:
       - /etc/nsswitch.conf:/etc/nsswitch.conf:ro
 
   kerberos-proxy:
-    image: ${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}/kerberos-proxy:${RECORDBENCH_RELEASE_ID:-dev}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/kerberos-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: deploy/kerberos-proxy
     restart: unless-stopped
@@ -18,10 +18,10 @@ services:
     pids_limit: 128
     environment:
       KRB5RCACHEDIR: /run/recordbench-auth/rcache
-      RECORDBENCH_SERVER_NAME: ${RECORDBENCH_SERVER_NAME:?set RECORDBENCH_SERVER_NAME}
-      RECORDBENCH_KERBEROS_PRINCIPAL: ${RECORDBENCH_KERBEROS_PRINCIPAL:?set RECORDBENCH_KERBEROS_PRINCIPAL}
+      RECORDBENCH_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-}}
+      RECORDBENCH_KERBEROS_PRINCIPAL: ${EXCULPATA_KERBEROS_PRINCIPAL:-${RECORDBENCH_KERBEROS_PRINCIPAL:-}}
     volumes:
-      - ${RECORDBENCH_SECRETS_ROOT:?set RECORDBENCH_SECRETS_ROOT}:/run/recordbench-secrets:ro
+      - ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro
       - /etc/krb5.conf:/etc/krb5.conf:ro
     tmpfs:
       - /run/recordbench-auth:rw,noexec,nosuid,nodev,size=2m,mode=0750

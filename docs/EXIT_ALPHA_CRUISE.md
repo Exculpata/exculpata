@@ -1,8 +1,9 @@
 # Exit-alpha cruise
 
-Binding execution order for leaving public contributor alpha.
-Product slice briefs under `docs/product-slices/` remain the implementation
-specs. When numeric slice order conflicts with this file, **this file wins**.
+> Retired: use [GitHub issues](https://github.com/Exculpata/exculpata/issues)
+> and [milestones](https://github.com/Exculpata/exculpata/milestones)
+> for the work queue. This cruise is retained for historical context; its old
+> PR rules are superseded by the [review policy](QUALITY_GATES.md#review-policy).
 
 ## Current state — September 30, 2026
 
@@ -16,10 +17,9 @@ Historical receipts below retain their original scope and evidence.
 [Pure intent classification](EXACT_SEARCH.md#ask-intent-classification) selects
 exact search, every-source review or a question from typed text, with a short
 explanation. This increment adds no UI, HTTP route, model call or I/O. It is
-proposed in [PR #146](https://github.com/neilofneils404/recordbench-oss/pull/146).
+proposed in [PR #146](https://github.com/Exculpata/exculpata/pull/146).
 Review corrections preserve the reusable PR template and keep ordinary statements
-about a population of records on the question path. Final-head hosted code
-review, passing Quality and maintainer acceptance remain required before landing;
+about a population of records on the question path. The [review policy](QUALITY_GATES.md#review-policy) applies before landing;
 deployment remains paused.
 
 **Trusted matter continuity A is Done**:
@@ -43,7 +43,7 @@ B acceptance remains complete.
 PR #107 landed at the reference revision above after full Quality, requested
 hosted code review and fixed-corpus real-model acceptance. The
 [landing receipt](#continuity-c-landing-receipt) records the evidence and limits.
-**Assistant dock passage save is Done:** [PR #123](https://github.com/neilofneils404/recordbench-oss/pull/123)
+**Assistant dock passage save is Done:** [PR #123](https://github.com/Exculpata/exculpata/pull/123)
 landed at `63d807f503501aec9e65b5ea3dd1199536c1459d`. Its PR records exact-head
 Quality and synthetic acceptance, including local environment limitations.
 
@@ -75,34 +75,33 @@ refinements; (3) automatic deterministic people/things/date suggestions after
 processing, with a bulk review inbox (approved in principle; suggestions stay
 Suggested until a reviewer decides); (4) compact cited answers; (5) assistant
 actions under a separate brief. Increments 0 and 1 landed in
-[PR #126](https://github.com/neilofneils404/recordbench-oss/pull/126) at `d991411`
+[PR #126](https://github.com/Exculpata/exculpata/pull/126) at `d991411`
 after hosted code review; hosted security review was unavailable and was waived for
 that PR. Increment 2 (whole-page PDF fit, folders in the reader queue, bounded find
-in this file) landed in [PR #127](https://github.com/neilofneils404/recordbench-oss/pull/127)
+in this file) landed in [PR #127](https://github.com/Exculpata/exculpata/pull/127)
 at `29f94e9` after clean final-head hosted code review and passing Quality; it also
 raised the application gate timeout to 45 minutes. Increment 3a (automatic
 discovery after processing, migration `0037`, behind
 `CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY`) landed in
-[PR #131](https://github.com/neilofneils404/recordbench-oss/pull/131) at `a53a6fa`
+[PR #131](https://github.com/Exculpata/exculpata/pull/131) at `a53a6fa`
 after clean final-head hosted code review, passing Quality and maintainer
 acceptance; its restore drill is `scripts/automatic-discovery-restore-drill.py`.
 Increment 3b (one grouped suggestions inbox on People & things, no schema change)
-landed in [PR #135](https://github.com/neilofneils404/recordbench-oss/pull/135) at
+landed in [PR #135](https://github.com/Exculpata/exculpata/pull/135) at
 `bd3333a` after a clean final-head hosted code review (all 34 earlier review threads
 reconciled), passing Quality and maintainer acceptance. Increment 4a (compact cited
 answers: numbered citations and one collapsed caveat line per answer, no schema
-change) landed in [PR #138](https://github.com/neilofneils404/recordbench-oss/pull/138)
+change) landed in [PR #138](https://github.com/Exculpata/exculpata/pull/138)
 at `0817b20` after clean final-head hosted code review, passing Quality and
 maintainer acceptance. Increment 3c (a read-only draft of found dates on the
 timeline, no schema change; reviewer-created events stay the existing flow) landed
-in [PR #139](https://github.com/neilofneils404/recordbench-oss/pull/139) at
+in [PR #139](https://github.com/Exculpata/exculpata/pull/139) at
 `a512e3c` after a clean final-head hosted code review (all 12 review threads
 reconciled), passing Quality and maintainer acceptance. Increment 5
 ([assistant actions](product-slices/assistant-actions.md)) is approved: A (assistant
-panel basics) landed in [PR #140](https://github.com/neilofneils404/recordbench-oss/pull/140)
+panel basics) landed in [PR #140](https://github.com/Exculpata/exculpata/pull/140)
 at `809676f`; B (suggest people, things and dates from an answer's cited passages,
-no schema change) is proposed in its own PR; C follows. Each PR requests hosted
-code review before merge. See
+no schema change) is proposed in its own PR; C follows. Each PR follows the [review policy](QUALITY_GATES.md#review-policy). See
 the [workspace layout contract](WORKSPACE_LAYOUT.md#compact-matter-bar) and
 [entity discovery](ENTITY_DISCOVERY.md#automatic-discovery-after-processing).
 
@@ -116,8 +115,8 @@ this increment does not qualify or change any model/runtime profile.
 The [product north star](PRODUCT_NORTH_STAR.md) governs what RecordBench is
 building: a free, local-first review workspace for case teams, with excellent
 manual review, complete exact search, accountable collection processing,
-source-supported investigation, and inspectable matter knowledge. This cruise
-remains the single binding implementation queue. Feature contracts describe
+source-supported investigation, and inspectable matter knowledge. GitHub issues and milestones
+are the implementation queue. Feature contracts describe
 current behavior; the north star describes intent; release readiness defines
 what must be proven before a supported release.
 
@@ -132,17 +131,17 @@ node path (B-lite) and Continuity A/B/C are Done. The manual review workspace in
 
 ## Continuity C landing receipt
 
-[PR #107](https://github.com/neilofneils404/recordbench-oss/pull/107) landed on
+[PR #107](https://github.com/Exculpata/exculpata/pull/107) landed on
 September 22, 2026 at `3c814e37adf18a84de9191bad84e0e8a2745e525` through a normal protected
 fast-forward. The installed outgoing publication guard passed before branch
 publication and before landing. All existing branch protections remained enabled.
 
-[Exact-head branch Quality](https://github.com/neilofneils404/recordbench-oss/actions/runs/35775440687)
-and [PR integration Quality](https://github.com/neilofneils404/recordbench-oss/actions/runs/35775533728)
+[Exact-head branch Quality](https://github.com/Exculpata/exculpata/actions/runs/35775440687)
+and [PR integration Quality](https://github.com/Exculpata/exculpata/actions/runs/35775533728)
 passed all jobs. Both application runs passed **3,329 tests, nine skipped**;
 PostgreSQL passed seven with zero skips. Browser, transcription, deployment,
 publication and secret checks passed.
-[Requested hosted Codex code review](https://github.com/neilofneils404/recordbench-oss/pull/107#issuecomment-5783033824)
+[Requested hosted Codex code review](https://github.com/Exculpata/exculpata/pull/107#issuecomment-5783033824)
 completed on the same head with no major issues and no unresolved review threads.
 
 The [real-model follow-up](CONTINUITY_C_ACCEPTANCE_2026-09-22.md#september-22-real-model-follow-up)
@@ -153,27 +152,27 @@ runs remain recorded. This accepts C's focused-answer increment only; other
 answer paths, Report compilation, model changes, deployment and supported-release
 claims remain outside it.
 
-The separate [post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/35778435161)
+The separate [post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/35778435161)
 passed all jobs on the same landed revision: application **3,329 passed, nine
 skipped**, PostgreSQL seven passed with zero skips. This is independent of the
 passing branch and PR runs above.
 
 ## Continuity B landing receipt
 
-[PR #103](https://github.com/neilofneils404/recordbench-oss/pull/103) landed on
+[PR #103](https://github.com/Exculpata/exculpata/pull/103) landed on
 September 22, 2026 at `d21c1d4849b46b8ae85db19b4d2ce80c8a9669a8` through a
 normal protected fast-forward after GitHub rejected the public no-reply address
 in its merge API. The installed publication guard passed before each push;
 branch protections and all Quality requirements remained enabled.
-[Exact-head Quality](https://github.com/neilofneils404/recordbench-oss/actions/runs/35720397034)
-and [PR integration Quality](https://github.com/neilofneils404/recordbench-oss/actions/runs/35720409778)
-passed all six jobs. [Post-merge Quality](https://github.com/neilofneils404/recordbench-oss/actions/runs/35722012792)
+[Exact-head Quality](https://github.com/Exculpata/exculpata/actions/runs/35720397034)
+and [PR integration Quality](https://github.com/Exculpata/exculpata/actions/runs/35720409778)
+passed all six jobs. [Post-merge Quality](https://github.com/Exculpata/exculpata/actions/runs/35722012792)
 also passed, with an application-only retry after the first attempt reached the
 existing 30-minute timeout at 96% progress without a reported test failure.
 That cancelled attempt is not a pass and remains in the evidence record.
 
 The user requested hosted code review immediately after landing.
-[Hosted Codex code review](https://github.com/neilofneils404/recordbench-oss/pull/103#issuecomment-5775776780)
+[Hosted Codex code review](https://github.com/Exculpata/exculpata/pull/103#issuecomment-5775776780)
 completed on the landed head with no actionable findings; no security-review
 completion is claimed. The [brief](product-slices/continuity-b-context-selection.md#landing-receipt--september-22-2026)
 records scope, exact validation, migration/restore/export/purge evidence and
@@ -182,9 +181,9 @@ select C, change models, or authorize deployment or a supported release.
 
 ## Continuity A landing receipt
 
-[PR #100](https://github.com/neilofneils404/recordbench-oss/pull/100) merged on
+[PR #100](https://github.com/Exculpata/exculpata/pull/100) merged on
 September 21, 2026 at `dd367cc3a65fa733d44b612026a9d3912523fed6`.
-[Post-merge Quality run 35610419040](https://github.com/neilofneils404/recordbench-oss/actions/runs/35610419040)
+[Post-merge Quality run 35610419040](https://github.com/Exculpata/exculpata/actions/runs/35610419040)
 passed application, PostgreSQL integration, synthetic-browser, transcription,
 deployment-contract and secret-scan on that exact revision. Final-head hosted
 code review and maintainer landing acceptance completed; the separately requested
@@ -206,7 +205,7 @@ The September 19 landing sequence on `main` is:
 
 The verified implementation snapshot before this receipt update is
 `e7a6847a717c22ea97e06608657eab9bad24590c`.
-Its [post-landing Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/35462727086)
+Its [post-landing Quality run](https://github.com/Exculpata/exculpata/actions/runs/35462727086)
 passed all six jobs: application, PostgreSQL integration, synthetic browser,
 transcription, deployment contract and secret scan. This receipt closes the
 slice-20 queue state only; it does not select slice 21 or authorize visual work,
@@ -226,22 +225,22 @@ unchanged.
 
 Verified `main` implementation snapshot after slice 19's first adapter:
 `95f290bf350742bc77c915eb0269c774069f3633`, merged in
-[PR #85](https://github.com/neilofneils404/recordbench-oss/pull/85) at
+[PR #85](https://github.com/Exculpata/exculpata/pull/85) at
 2026-09-12 at 21:59:37 UTC. Its scope prerequisite
-[#84](https://github.com/neilofneils404/recordbench-oss/pull/84) landed at
+[#84](https://github.com/Exculpata/exculpata/pull/84) landed at
 `126a468a707a6f9b66d3a4f2565585b54ff98244`; its separate
-[post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34719400464)
+[post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/34719400464)
 passed all six jobs: application 2,819 passed, nine skipped; PostgreSQL seven
 passed, zero skipped.
 
-The [final PR Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34720656875) passed on
+The [final PR Quality run](https://github.com/Exculpata/exculpata/actions/runs/34720656875) passed on
 `95f290bf350742bc77c915eb0269c774069f3633`: application 2,945 passed, nine skipped; PostgreSQL seven passed, zero skipped; all six jobs green.
-[Hosted code review](https://github.com/neilofneils404/recordbench-oss/pull/85#issuecomment-5648909015) covered that head after findings
-were resolved or reconciled. Security review did **not** run: the authorized [verified quota exception](https://github.com/neilofneils404/recordbench-oss/pull/85#issuecomment-5648923555) was recorded for this exact head before maintainer acceptance.
-[Full-head maintainer acceptance](https://github.com/neilofneils404/recordbench-oss/pull/85#issuecomment-5648957842) preceded merge.
+[Hosted code review](https://github.com/Exculpata/exculpata/pull/85#issuecomment-5648909015) covered that head after findings
+were resolved or reconciled. Security review did **not** run: the authorized [verified quota exception](https://github.com/Exculpata/exculpata/pull/85#issuecomment-5648923555) was recorded for this exact head before maintainer acceptance.
+[Full-head maintainer acceptance](https://github.com/Exculpata/exculpata/pull/85#issuecomment-5648957842) preceded merge.
 Native gate approval and strict protection were verified before the normal protected fast-forward; independent readback confirmed that protections remained unchanged.
 
-The independent [post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34721488683) passed
+The independent [post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/34721488683) passed
 on `95f290bf350742bc77c915eb0269c774069f3633` at 2026-09-12 at 22:11:43 UTC:
 application 2,945 passed, nine skipped; PostgreSQL seven passed, zero skipped; all six jobs green. This is separate from the final PR run.
 The [feature contract](FULL_TEXT_SYNTHESIS.md) and
@@ -258,20 +257,20 @@ This receipt records readiness at the time of the first slice-19 promotion.
 
 Verified `main` snapshot after slice 18:
 `19d57fbec29325ae9b5ab296e6a2adcb18a5e0ec`, the exact merged head of
-[PR #82](https://github.com/neilofneils404/recordbench-oss/pull/82), merged
+[PR #82](https://github.com/Exculpata/exculpata/pull/82), merged
 2026-09-12 at 20:06:27 UTC. Its docs prerequisite
-[#81](https://github.com/neilofneils404/recordbench-oss/pull/81) landed at
+[#81](https://github.com/Exculpata/exculpata/pull/81) landed at
 `e0301b9839b8c69d07f40c5f5827ab4873f428d6`.
 
-The final [PR Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34715322212)
-and [exact-branch run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34715316801)
+The final [PR Quality run](https://github.com/Exculpata/exculpata/actions/runs/34715322212)
+and [exact-branch run](https://github.com/Exculpata/exculpata/actions/runs/34715316801)
 passed. Final-head hosted code review completed after its actionable findings
 were corrected. Security review did **not** run: the authorized
-[verified quota exception](https://github.com/neilofneils404/recordbench-oss/pull/82#issuecomment-5648357396)
+[verified quota exception](https://github.com/Exculpata/exculpata/pull/82#issuecomment-5648357396)
 preceded full-head maintainer acceptance and native approval. Branch protections
 remained unchanged.
 
-The independent [post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34716107938)
+The independent [post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/34716107938)
 passed on that exact landed commit: application 2,819 passed, nine skipped;
 PostgreSQL seven passed, zero skipped; all six jobs green. This independent
 readback establishes readiness for the narrow slice-19 promotion below. The
@@ -284,23 +283,23 @@ not establish deployment, an installed-node update or a supported release.
 
 Verified `main` snapshot after slice 17:
 `e9ab89c792b562c2abf27715d15b5f70d3216900`, the exact merged head of
-[PR #79](https://github.com/neilofneils404/recordbench-oss/pull/79), merged
+[PR #79](https://github.com/Exculpata/exculpata/pull/79), merged
 2026-09-12 at 18:52:19 UTC. Its prerequisites are merged at their reviewed heads:
-13 ([#73](https://github.com/neilofneils404/recordbench-oss/pull/73),
+13 ([#73](https://github.com/Exculpata/exculpata/pull/73),
 `c1ada89bf15ea8f61906de3c62202da4d98e279f`) and 16
-([#77](https://github.com/neilofneils404/recordbench-oss/pull/77),
+([#77](https://github.com/Exculpata/exculpata/pull/77),
 `3f96b290ca71adbaef37b92e2d9f4d01cf7d226f`). PostgreSQL CI
-([#70](https://github.com/neilofneils404/recordbench-oss/pull/70),
+([#70](https://github.com/Exculpata/exculpata/pull/70),
 `4dea52ce42eeb01ac1cab188a99f7fc44b571ab9`) is also merged; it does not
 complete slices 00/08 exact-search acceptance.
 
-Slice 17's [final PR Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34711746368)
+Slice 17's [final PR Quality run](https://github.com/Exculpata/exculpata/actions/runs/34711746368)
 passed on the exact head: application 2,765 passed, nine skipped; all jobs green.
 Final-head hosted code review completed with no major issues after prior findings
 were corrected and reconciled. Security review did **not** run: the
-[verified quota exception](https://github.com/neilofneils404/recordbench-oss/pull/79#issuecomment-5647929760)
+[verified quota exception](https://github.com/Exculpata/exculpata/pull/79#issuecomment-5647929760)
 preceded separate full-head maintainer acceptance and native gate approval.
-The separate [post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34712490352)
+The separate [post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/34712490352)
 completed successfully at 19:05:20 UTC on the exact landed commit: application
 2,765 passed, nine skipped; PostgreSQL seven passed, zero skipped; all jobs green.
 This is independent of the final PR run. This established the prerequisites for
@@ -319,12 +318,12 @@ learned-model quality or confidential-casework readiness.
 The following receipt remains evidence for slice 16, not the current tip.
 Verified `main` snapshot before slice 17:
 `3f96b290ca71adbaef37b92e2d9f4d01cf7d226f`, the protected fast-forward of
-[slice 16 PR #77](https://github.com/neilofneils404/recordbench-oss/pull/77).
+[slice 16 PR #77](https://github.com/Exculpata/exculpata/pull/77).
 GitHub confirms MERGED at that exact commit; contract issue #76 is closed as
 implemented. Final PR CI passed, hosted code findings were reconciled, and a
 verified security-quota exception (not a completed security review) preceded
 maintainer acceptance and native approval. The separate
-[post-merge Quality run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34706467703)
+[post-merge Quality run](https://github.com/Exculpata/exculpata/actions/runs/34706467703)
 completed successfully on that exact landed commit. This is independent of
 the already-passing final PR checks. See the
 [dated slice-16 receipt](ENTITY_WORKSPACE_VALIDATION_2026-09-12.json) for tested
@@ -368,7 +367,7 @@ claims require their own acceptance. Existing holds and parallel release-readine
 requirements remain.
 
 Slice **12** needed no further product PR. **Review all extracted text** is
-already on `main` from [#59](https://github.com/neilofneils404/recordbench-oss/pull/59)
+already on `main` from [#59](https://github.com/Exculpata/exculpata/pull/59)
 (the #47 / #58 family). That work matches
 [12-full-text-review-coverage.md](product-slices/12-full-text-review-coverage.md)
 and is specified in [FULL_TEXT_REVIEW.md](FULL_TEXT_REVIEW.md): every eligible

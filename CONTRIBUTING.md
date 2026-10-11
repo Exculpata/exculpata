@@ -1,225 +1,54 @@
 # Contributing
 
-Use synthetic data only. Open an issue before changing authentication, storage,
-deletion, backup, model, or provenance contracts. Add tests and operator docs
-with every behavioral change. Model changes require immutable revisions,
-licenses, resource measurements, and representative evaluation—not only vendor
-benchmarks.
+Help a small defense team drop in discovery and get cited understanding, without
+choosing an engine, configuring anything, or letting material leave the building.
+See the [product north star](docs/PRODUCT_NORTH_STAR.md).
 
-Install the [pre-push publication check](docs/PUBLIC_ALPHA.md#prevent-disclosure-before-publishing)
-before your first push. Public issues, PR descriptions, comments, attachments,
-screenshots, and logs are also publication surfaces; the Git hook cannot scan
-uploads made through GitHub's website or API. Never copy private deployment
-history or output into them. Start with the [contributor backlog](docs/CONTRIBUTOR_BACKLOG.md).
+## Start small
 
-Before a commit, run the publication sanitizer, the main test suite, the bundled
-transcription tests, Python compilation, and Compose validation. Never commit a
-real `.env`, key, certificate, keytab, token, database, media file, transcript,
-or organization-specific deployment overlay.
+[GitHub issues](https://github.com/Exculpata/exculpata/issues) are the
+work queue. Pick an unassigned
+[`good first issue`](https://github.com/Exculpata/exculpata/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22),
+read its scope, and comment that you would like to take it on. Ask for clarification
+there if needed. Keep PRs small and focused; a draft PR is fine for early feedback.
 
-## Set up a development checkout
+## Set up and check
 
-The complete development gate is exercised on Ubuntu 24.04 with **Python 3.12**.
-The application requires 3.12 or newer, but the bundled transcription package
-requires a version below 3.13, so their shared environment currently needs 3.12.
-The contributor tests do not require a GPU or downloaded model weights.
-For code-only work, keep using `make bootstrap` and `make check` below.
-To use the product for UI work, follow the separate
-[Ubuntu CPU node path](docs/INSTALL.md#cpu-node-quick-start-ubuntu-2404), then
-[sign in and create a synthetic practice matter](docs/FIRST_RUN.md#cpu-practice-matter).
-
-Clone your fork and enter the repository. Before committing, configure Git
-with your public GitHub username and the no-reply address shown in your GitHub
-email settings (`git config user.name` and `git config user.email`). Ordinary
-personal addresses are rejected by the publication check unless explicitly
-reviewed by a maintainer. Use your own identity, not a maintainer's: contributors
-retain credit for their work when a PR lands. The maintainer's identity applies
-only to commits created by the maintainer or on their behalf. All contributors
-follow the same publication and PR review requirements.
-
-Then install the host tools. On a fresh
-Ubuntu 24.04 development machine:
-
-```console
-sudo apt-get update
-sudo apt-get install --yes git make python3.12 python3.12-venv \
-  ffmpeg imagemagick poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
-```
-
-Install Docker Engine with the Compose v2 plugin using Docker's instructions
-for your distribution. Verify `docker compose version` before running the full
-gate. These are development-machine prerequisites; the bootstrap never installs
-system packages, starts services, or downloads model weights.
-
-From the repository root:
+Clone your fork, create a branch, and configure your own public GitHub username
+and no-reply Git email. Use Python 3.12 and the
+[development prerequisites](docs/DEVELOPMENT.md#set-up-a-development-checkout).
 
 ```console
 make bootstrap
-make check
+.venv/bin/exculpata --help
+.venv/bin/exculpata-workbench --help
+make check-fast
 ```
 
-Bootstrap creates `.venv`, installs the application and bundled transcription
-service together in editable mode (including test, PostgreSQL, and browser
-client dependencies), then runs `pip check`. Package installation requires access
-to a Python package index. A browser and matching driver must be available
-separately for browser acceptance; installing Selenium alone does not install
-Chrome. Optional integration tests can skip when their prerequisites are absent.
-`make check` runs compilation, Compose validation, publication inspection,
-application tests, and transcription tests. Bare `make` still runs application
-tests; it does not install anything.
+`make bootstrap` installs development dependencies and the pre-push publication
+hook. Run `make check-fast` before pushing; see
+[local validation](docs/QUALITY_GATES.md#local-validation) for its PostgreSQL,
+Docker Compose and secret-scanner prerequisites. No GPU or model download is needed.
 
-It is safe to rerun bootstrap with the same interpreter after dependency metadata
-changes. An existing incompatible or broken environment is left untouched:
-choose a new `--venv` directory. The script never deletes an environment or
-silently replaces its interpreter. If a download or install fails, correct the
-reported problem and rerun the same command; readiness is printed only after
-all installation and dependency checks succeed.
+## Protect private material
 
-`SYSTEM_PYTHON` chooses the interpreter for `make bootstrap`:
+Use synthetic data only. Never include real case material in code, fixtures,
+issues, PRs, screenshots, logs, or attachments. Keep credentials and private
+deployment details outside this repo. Run the publication check before pushing
+and separately inspect anything you post through GitHub. Follow the
+[publication requirements](docs/PUBLIC_ALPHA.md#prevent-disclosure-before-publishing).
 
-```console
-make bootstrap SYSTEM_PYTHON=/usr/bin/python3.12
-```
+Describe what changed and how you tested it. Behavioral changes need a synthetic
+regression and relevant documentation. See the
+[review policy](docs/QUALITY_GATES.md#review-policy),
+[security model](docs/SECURITY_MODEL.md), [model rules](docs/MODELS.md), and
+[backup and restore rules](docs/STORAGE_AND_BACKUP.md) for deeper guidance.
 
-Alternatively, the script can be launched by an older Python while selecting
-Python 3.12 explicitly. Custom environment paths, including absolute paths and
-paths containing spaces, work with all Make test targets:
+## License and CLA
 
-```console
-python3 scripts/bootstrap-dev.py --python python3.12 --venv "/tmp/recordbench dev"
-make check PYTHON="/tmp/recordbench dev/bin/python"
-```
-
-Use `--dry-run` to inspect the selected/existing interpreters and preview commands
-without creating or modifying an environment or installing packages:
-
-```console
-python3 scripts/bootstrap-dev.py --python python3.12 --dry-run
-```
-
-The printed commands are for the repository root. Windows contributors should
-use a Linux development environment such as WSL2 for the complete gate; native
-Windows setup and the full native Windows suite have not been validated.
-The bootstrap's Windows interpreter-path support alone is not that validation.
-
-GitHub Actions installs and reruns the same bootstrap, then runs application,
-transcription, sanitizer, compilation,
-standard Compose, Kerberos overlay, and non-interactive installer contracts. The
-workflow actions are pinned to reviewed commit SHAs.
-
-## Development model
-
-Use the [product north star](docs/PRODUCT_NORTH_STAR.md) to frame the user outcome
-and the [exit-alpha cruise](docs/EXIT_ALPHA_CRUISE.md) to select active work.
-The [core evolution plan](docs/CORE_EVOLUTION.md) guides incremental service and
-repository extraction. A new feature should strengthen those boundaries while
-preserving atomic authorization, source validation, and saving. Update linked
-capability claims when behavior changes; keep historical receipts dated.
-
-Tests that start background workers must respect their job ownership and the
-workspace transaction lock. Prefer public workflow transitions over direct SQL
-to establish retry states. If a fixture manually claims and completes a job,
-stop and join that job's coordinator before queueing it; retain live workers in
-tests that exercise automatic processing. A passing rerun alone does not fix a
-fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
-entering the connection transaction; stopping one coordinator does not stop the
-other workers that share that connection.
-
-The frozen Review acceptance pack pins test nodes and their complete files,
-including helpers. Changes to those files require reviewed node/file digests
-and an updated aggregate content fingerprint, even when case selection and
-expected outcomes stay the same. Run `tests/test_review_acceptance_pack.py`
-alongside the affected workflow tests when updating these fixtures.
-
-RecordBench OSS is the upstream source for portable product behavior. Work from
-a focused branch or worktree, keep one reviewable concern per change, and merge
-only after its synthetic regression and relevant operator documentation pass.
-Do not develop reusable behavior only inside a private deployment and copy its
-history back later.
-
-If an issue is discovered in a downstream deployment:
-
-1. describe the behavior without private source material, logs, paths,
-   identities, hostnames, or configuration;
-2. reproduce it here with an unmistakably synthetic fixture;
-3. implement and validate the general correction in this repository; and
-4. let the downstream record and consume the resulting reviewed revision.
-
-Downstream-specific identity mappings, certificates, storage coordinates,
-capacity policy, secrets, and service wiring belong in an external deployment
-overlay. They are not acceptable additions to this repository even when the
-downstream is private.
-
-## Pull requests
-
-Every PR targeting the default branch requires actual hosted Codex **code
-review on the final implemented head**, reconciled findings and full-head
-maintainer acceptance. Request `@codex review` after implementation and local
-validation; request it again after changing the head. Local review, labels,
-quota limits and a review of a plan or earlier revision cannot substitute.
-
-Hosted `@codex security review` is optional. Its availability, credits, pending
-requests and execution status do not block merge; do not claim it passed when
-it did not run. Security-sensitive changes still require a focused assessment
-of the affected trust boundaries, abuse cases and regression evidence, recorded
-in the PR's Impact section. Fix real findings or record a reasoned maintainer
-disposition, including findings from optional security review. All review
-discussions require maintainer reconciliation.
-
-The required `hosted-review-gate` checks code-review completion, freshness,
-reconciliation and acceptance for every PR, regardless of labels. The former
-`require-hosted-review` label and security quota receipts no longer change the
-policy. No label transition or quota-exception ceremony is needed. The gate's
-native approval remains PR-specific; Quality, Gitleaks, publication safeguards,
-resolved conversations and all existing branch protections remain independent.
-See [merge and automation controls](docs/PUBLIC_ALPHA.md#merge-and-automation-boundary)
-for native full-commit review evidence, the explicit trusted verification for
-clean comment-only reviews within the same acceptance, and default-branch
-revalidation. A short SHA alone never establishes the reviewed commit.
-Review edits do not automatically revoke a previous pass; do not use auto-merge.
-
-Repository workflows must not post review commands on open or synchronize.
-Keep automatic review disabled in the Codex GitHub repository settings;
-request review deliberately once the implemented code is ready. This policy
-change does not change account or repository settings.
-
-Each pull request should explain the user problem, the resulting behavior, the
-synthetic evidence, and any security, lifecycle, migration, model, or recovery
-impact. Use the repository pull-request template and keep release tags
-immutable. A correction after a release is a new commit and, when appropriate,
-a new release.
-
-## Standalone browser journeys
-
-The quality workflow also runs the synthetic intake and Report/export-readiness
-journeys with a checksum-pinned browser and driver. See
-[browser acceptance](docs/BROWSER_ACCEPTANCE.md) for local commands, bounded
-artifacts, deliberate browser updates and rollback. These journeys use disposable
-loopback applications and require no model downloads or deployment access.
-
-## PostgreSQL integration CI
-
-The `postgres-integration` Quality gates job starts a disposable, loopback-only
-PostgreSQL 17/pgvector service from an immutable image digest and installs the
-existing PostgreSQL test dependencies. It runs the seven existing database
-acceptance tests for migration/reopen, page citations, media projection,
-matter isolation, deletion and rebuild. The report check fails on missing,
-empty, incomplete, skipped or unsuccessful results. Additional database tests
-in the same module are included automatically.
-
-To reproduce against an isolated disposable database, set
-`CASE_REVIEW_POSTGRES_TEST_DSN`, install `.[dev,postgres]`, then run:
-
-```console
-python -m pytest -q tests/test_review_bench_v2_postgres.py \
-  --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
-  --junitxml=/tmp/recordbench-postgres-results.xml
-python scripts/check-postgres-test-report.py /tmp/recordbench-postgres-results.xml
-```
-
-The tests mutate the database; use synthetic disposable data only. The service
-and data are discarded with the hosted job. No deployment credentials, models,
-or external model worker are used. Learned-model acceptance is explicitly
-excluded and remains separate. This job exercises the existing hybrid backend;
-it does not add a PostgreSQL exact-search adapter or complete the shared-corpus
-PostgreSQL acceptance required by slices 00/08.
+Exculpata is licensed under [Apache-2.0](LICENSE). Outside contributors must
+sign the [Contributor License Agreement](CLA.md) once before their first pull
+request is merged. The CLA Assistant GitHub app will prompt you on your pull
+request; signing takes a single click with your GitHub account. You keep your
+copyright. The Exculpata name and logo are not covered by Apache-2.0; see
+[TRADEMARKS.md](TRADEMARKS.md).

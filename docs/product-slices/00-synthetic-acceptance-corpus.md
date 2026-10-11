@@ -1,7 +1,7 @@
 # 00: Seed a shared product acceptance corpus
 
 Status: corpus and reference matcher are on `main` as
-[#36](https://github.com/neilofneils404/recordbench-oss/pull/36). See
+[#36](https://github.com/Exculpata/exculpata/pull/36). See
 [exact search foundation](../EXACT_SEARCH.md). PostgreSQL search-job
 acceptance remains pending. No dependencies.
 

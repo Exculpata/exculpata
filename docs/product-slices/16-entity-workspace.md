@@ -1,6 +1,6 @@
 # 16: Make People, Places, and Things a first-class workspace
 
-Status: Done. [PR #77](https://github.com/neilofneils404/recordbench-oss/pull/77)
+Status: Done. [PR #77](https://github.com/Exculpata/exculpata/pull/77)
 landed by protected fast-forward at
 `3f96b290ca71adbaef37b92e2d9f4d01cf7d226f`; contract #76 is closed.
 See [entity workspace](../ENTITY_WORKSPACE.md) and its dated validation receipt

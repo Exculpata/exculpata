@@ -10,6 +10,7 @@
     <a class="find-conversation-link" href="/matters/{{ matter.slug }}#matter-question">Ask about this matter <span aria-hidden="true">↗</span></a>
   </header>
   {% with active='search', matter_readiness=none %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  {% include "workbench_one_box_route.html" %}
 
   <section class="find-search-panel" aria-label="Find records">
     <form id="find-basic-form" class="find-sources-form" method="get" action="/matters/{{ matter.slug }}/exact-search">

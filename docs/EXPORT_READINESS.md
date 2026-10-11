@@ -79,4 +79,4 @@ work, so it costs roughly a download's preparation and is not a cheap background
 health check. Repair remains the user's decision; it never removes work or source
 references automatically. `make check` passes **1059 application tests** with nine optional skips and all
 **194 transcription tests**, compilation, both Compose graphs and publication
-inspection. Final-head hosted reviews and CI are required before merge.
+inspection. Follow the [review policy](QUALITY_GATES.md#review-policy) before merge.

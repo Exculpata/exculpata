@@ -9,7 +9,7 @@
       "headRefOid": "3f8a768d358643cf27476fc6c4e1af86ba9f076d",
       "number": 51,
       "title": "Preserve review material and source qualifications in compiler foundation",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/51"
+      "url": "https://github.com/Exculpata/exculpata/pull/51"
     },
     {
       "baseRefName": "main",
@@ -17,7 +17,7 @@
       "headRefOid": "c5afc96285cce58a8648594b578ac783542c2810",
       "number": 52,
       "title": "Keep matter navigation reachable beside long review content",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/52"
+      "url": "https://github.com/Exculpata/exculpata/pull/52"
     },
     {
       "baseRefName": "main",
@@ -25,7 +25,7 @@
       "headRefOid": "200e0621e2af951354a50254f7e3999287d53714",
       "number": 53,
       "title": "Restore complete source search and proximity evidence",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/53"
+      "url": "https://github.com/Exculpata/exculpata/pull/53"
     },
     {
       "baseRefName": "main",
@@ -33,7 +33,7 @@
       "headRefOid": "b7f00bb20a6fc8fca4be82fad8b658c948dda583",
       "number": 54,
       "title": "Validate installation inputs and protect nested storage paths",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/54"
+      "url": "https://github.com/Exculpata/exculpata/pull/54"
     },
     {
       "baseRefName": "main",
@@ -41,7 +41,7 @@
       "headRefOid": "6b28cb73c944d2b06be52de0408975abe2155a33",
       "number": 55,
       "title": "Keep local account sessions current with validated snapshot caching",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/55"
+      "url": "https://github.com/Exculpata/exculpata/pull/55"
     },
     {
       "baseRefName": "main",
@@ -49,7 +49,7 @@
       "headRefOid": "244b3c1a63ad2daf08243f7003612427a5a7544d",
       "number": 56,
       "title": "Compile saved review work into recoverable report drafts",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/56"
+      "url": "https://github.com/Exculpata/exculpata/pull/56"
     },
     {
       "baseRefName": "main",
@@ -57,7 +57,7 @@
       "headRefOid": "f312dc76e1bdbbb7691b06606f80e15884bb022e",
       "number": 57,
       "title": "Guide resumable installation and local team administration",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/57"
+      "url": "https://github.com/Exculpata/exculpata/pull/57"
     },
     {
       "baseRefName": "codex/report-workflow-cleanup-20260909",
@@ -65,7 +65,7 @@
       "headRefOid": "bcc9a82190c51b376a434c645ef9d66ee9a7c1f8",
       "number": 58,
       "title": "Review extracted text with durable limits and report support",
-      "url": "https://github.com/neilofneils404/recordbench-oss/pull/58"
+      "url": "https://github.com/Exculpata/exculpata/pull/58"
     }
   ],
   "dependencies": {

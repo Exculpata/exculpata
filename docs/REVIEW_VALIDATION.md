@@ -3,7 +3,7 @@
 Current contract, September 5, 2026.
 
 **Check every source** already shares saved criteria, runs and source decisions
-with authorized matter members. Its preliminary RecordBench label and rationale
+with authorized matter members. Its preliminary Exculpata label and rationale
 remain separate from the team's human validation. The ordinary decision page
 now calls that shared work **Team validation** and shows who saved the current
 review. This is one current shared review per source decision, not a separate
@@ -77,8 +77,7 @@ skips, 32 focused source-validation/review tests and all six browser workflows.
 Desktop/mobile rendering was inspected, and recovered changes were submitted
 in the mobile viewport. Compilation, whitespace and publication tree/history
 checks pass. Both Compose graphs and all 194 transcription tests pass.
-Hosted code/security reviews and required CI remain separate
-final-candidate merge gates; activation is separate.
+The [review policy](QUALITY_GATES.md#review-policy) applies before merge; activation is separate.
 
 This is protection of the current shared review, not a browsable revision
 history, assignment/handoff system, private per-reviewer annotations or automatic

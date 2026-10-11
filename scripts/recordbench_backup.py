@@ -22,6 +22,10 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 PROJECT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT / "src"))
+from case_intelligence.compat_env import required_env as _required_env
+sys.path.pop(0)
+from exculpata_install import NamingError, STORAGE_MARKERS, _node_names, _compose_environment
 POSTGRES_IMAGE = "pgvector/pgvector:pg17"
 ACTIVE_JOB_KEYS = (
     "ingest_jobs",
@@ -191,6 +195,7 @@ def _run(
         return subprocess.run(
             list(command),
             cwd=cwd,
+            env=_compose_environment(command),
             input=input_bytes,
             stdout=subprocess.PIPE if capture else None,
             stderr=subprocess.PIPE if capture else None,
@@ -513,6 +518,7 @@ def backup(args: argparse.Namespace) -> int:
     node = _node_root(args.node_root)
     config = _backup_config(node)
     installation = _installation(node)
+    names = _node_names(node)
     environment = _dotenv(node / "compose.env")
     compose = _compose(node, installation)
     password = _private_file(node / "secrets" / "restic-password", label="backup credential")
@@ -549,19 +555,21 @@ def backup(args: argparse.Namespace) -> int:
         return 0
 
     sources = {
-        "runtime": _exact_directory(environment["RECORDBENCH_RUNTIME_ROOT"], label="runtime storage"),
-        "configuration": _exact_directory(environment["RECORDBENCH_CONFIG_ROOT"], label="configuration root"),
-        "secrets": _exact_directory(environment["RECORDBENCH_SECRETS_ROOT"], label="secrets root"),
+        "runtime": _exact_directory(_required_env("RECORDBENCH_RUNTIME_ROOT", environ=environment), label="runtime storage"),
+        "configuration": _exact_directory(_required_env("RECORDBENCH_CONFIG_ROOT", environ=environment), label="configuration root"),
+        "secrets": _exact_directory(_required_env("RECORDBENCH_SECRETS_ROOT", environ=environment), label="secrets root"),
     }
     if installation.get("local_account_management") is True:
-        sources["accounts"] = _exact_directory(environment["RECORDBENCH_LOCAL_ACCOUNT_ROOT"], label="local account root")
+        sources["accounts"] = _exact_directory(_required_env("RECORDBENCH_LOCAL_ACCOUNT_ROOT", environ=environment), label="local account root")
     managed_storage = _exact_directory(
-        environment["RECORDBENCH_STORAGE_ROOT"], label="matter storage"
+        _required_env("RECORDBENCH_STORAGE_ROOT", environ=environment), label="matter storage"
     )
-    if not (managed_storage / ".recordbench-managed-storage.json").is_file():
+    markers = [managed_storage / name for name in STORAGE_MARKERS
+               if (managed_storage / name).exists() or (managed_storage / name).is_symlink()]
+    if len(markers) != 1 or markers[0].is_symlink() or not markers[0].is_file():
         raise BackupError("matter storage ownership marker is unavailable")
     _same_filesystem((node, *(source for name, source in sources.items() if name != "accounts")))
-    snapshot = Path(tempfile.mkdtemp(prefix=".recordbench-backup-snapshot-", dir=node))
+    snapshot = Path(tempfile.mkdtemp(prefix=f".{names}-backup-snapshot-", dir=node))
     os.chmod(snapshot, 0o700)
     payload = snapshot / "payload"
     payload.mkdir(mode=0o700)
@@ -569,7 +577,7 @@ def backup(args: argparse.Namespace) -> int:
         raise BackupError("matter storage parent cannot be a symbolic link")
     storage_snapshot_parent = Path(
         tempfile.mkdtemp(
-            prefix=".recordbench-storage-snapshot-", dir=managed_storage.parent
+            prefix=f".{names}-storage-snapshot-", dir=managed_storage.parent
         )
     )
     os.chmod(storage_snapshot_parent, 0o700)
@@ -649,7 +657,7 @@ def backup(args: argparse.Namespace) -> int:
                 "backup",
                 "--json",
                 "--tag",
-                "recordbench",
+                names,
                 "--tag",
                 f"node-{installation.get('node_id', 'default')}",
                 str(payload),
@@ -662,7 +670,7 @@ def backup(args: argparse.Namespace) -> int:
         _restic(
             config,
             password,
-            ("forget", "--tag", "recordbench", "--keep-within", str(config["retention"]), "--prune"),
+            ("forget", "--tag", names, "--keep-within", str(config["retention"]), "--prune"),
         )
         _restic(config, password, ("check", "--read-data-subset=1/14"))
         _write_status(
@@ -692,7 +700,7 @@ def backup(args: argparse.Namespace) -> int:
                 print(f"CRITICAL: automatic application restart failed: {exc}", file=sys.stderr)
         try:
             resolved = snapshot.resolve(strict=True)
-            if resolved.parent == node and resolved.name.startswith(".recordbench-backup-snapshot-"):
+            if resolved.parent == node and resolved.name.startswith(f".{names}-backup-snapshot-"):
                 shutil.rmtree(resolved)
         except FileNotFoundError:
             pass
@@ -700,7 +708,7 @@ def backup(args: argparse.Namespace) -> int:
             resolved_storage = storage_snapshot_parent.resolve(strict=True)
             if (
                 resolved_storage.parent == managed_storage.parent
-                and resolved_storage.name.startswith(".recordbench-storage-snapshot-")
+                and resolved_storage.name.startswith(f".{names}-storage-snapshot-")
             ):
                 shutil.rmtree(resolved_storage)
         except FileNotFoundError:
@@ -721,7 +729,7 @@ def status(args: argparse.Namespace) -> int:
         result = _restic(
             config,
             password,
-            ("snapshots", "--latest", "5", "--tag", "recordbench", "--json"),
+            ("snapshots", "--latest", "5", "--tag", "recordbench", "--tag", "exculpata", "--json"),
             stdout=subprocess.PIPE,
         )
         print(result.stdout.decode("utf-8", "replace"))
@@ -757,7 +765,7 @@ def restore(args: argparse.Namespace) -> int:
         _restic(
             config,
             password,
-            ("restore", args.snapshot, "--verify", "--tag", "recordbench", "--target", str(target)),
+            ("restore", args.snapshot, "--verify", "--tag", "recordbench", "--tag", "exculpata", "--target", str(target)),
         )
         files = _snapshot_files(target)
         checksums = [
@@ -773,7 +781,7 @@ def restore(args: argparse.Namespace) -> int:
             _verify_checksum_line(payload, line)
         restored_installation = _read_json(payload / "control/installation.json", label="restored installation record")
         _validate_frozen_accounts(payload, restored_installation)
-        storage_markers = [path for path in files if path.name == ".recordbench-managed-storage.json"]
+        storage_markers = [path for path in files if path.name in STORAGE_MARKERS]
         if len(storage_markers) != 1:
             raise BackupError("restored managed storage boundary is unavailable or ambiguous")
         managed_storage = storage_markers[0].parent
@@ -854,7 +862,7 @@ def main() -> int:
             "status": status,
             "restore": restore,
         }[args.command](args)
-    except (BackupError, OSError, KeyError, ValueError) as exc:
+    except (BackupError, NamingError, OSError, KeyError, ValueError) as exc:
         print(f"RecordBench backup error: {exc}", file=sys.stderr)
         return 1
 

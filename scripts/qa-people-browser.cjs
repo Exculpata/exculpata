@@ -16,14 +16,16 @@ const changedPassword = 'synthetic-reset-password';
     const second = await (await browser.newContext(options)).newPage();
     async function login(page, username, value = password) {
       await page.goto(origin + '/auth/login');
+      assert.equal(await page.title(), 'Sign in · Exculpata');
       await page.getByRole('textbox', {name: 'Username', exact: true}).fill(username);
       await page.getByLabel('Password', {exact: true}).fill(value);
-      await page.getByRole('button', {name: 'Open RecordBench'}).click();
+      await page.getByRole('button', {name: 'Open Exculpata'}).click();
       await page.waitForURL(url => !url.pathname.startsWith('/auth/'));
+      await page.getByRole('link', {name: 'Exculpata home', exact: true}).waitFor();
     }
     async function create(username, name) {
       await admin.goto(origin + '/admin/people');
-      await admin.getByLabel('Name shown in RecordBench').fill(name);
+      await admin.getByLabel('Name shown in Exculpata').fill(name);
       await admin.keyboard.press('Tab');
       await admin.keyboard.type(username);
       await admin.getByLabel('Password', {exact: true}).fill(password);
@@ -35,7 +37,7 @@ const changedPassword = 'synthetic-reset-password';
     }
     await login(admin, 'alice.admin');
     assert.equal(new URL(admin.url()).pathname, '/admin/setup');
-    await admin.getByRole('heading', {name: 'Bring your team into RecordBench'}).waitFor();
+    await admin.getByRole('heading', {name: 'Bring your team into Exculpata'}).waitFor();
     await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'setup-desktop.png'), fullPage: true});
     await admin.setViewportSize({width: 390, height: 844});
     await admin.reload();
@@ -73,7 +75,7 @@ const changedPassword = 'synthetic-reset-password';
     await admin.getByRole('status').filter({hasText: 'Sign-in access updated'}).waitFor();
     await first.reload();
     assert.equal(new URL(first.url()).pathname, '/auth/login');
-    await admin.getByLabel('Name shown in RecordBench', {exact: true}).fill('Renamed Offline Reviewer');
+    await admin.getByLabel('Name shown in Exculpata', {exact: true}).fill('Renamed Offline Reviewer');
     await admin.getByRole('button', {name: 'Save name', exact: true}).click();
     await admin.getByRole('status').filter({hasText: 'Name updated'}).waitFor();
     await admin.goto(origin + '/matters/' + slug + '/setup');

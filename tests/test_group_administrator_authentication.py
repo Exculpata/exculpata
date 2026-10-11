@@ -335,7 +335,7 @@ def test_kerberos_logout_is_labelled_as_application_session_close(tmp_path):
             follow_redirects=False,
         ).status_code == 303
         page = client.get("/matters/new", headers=_headers(ADMIN))
-        assert "Close RecordBench" in page.text
+        assert "Close Exculpata" in page.text
         closed = client.post(
             "/auth/logout",
             data={"csrf_token": _csrf(page.text)},

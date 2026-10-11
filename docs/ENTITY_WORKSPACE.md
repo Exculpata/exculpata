@@ -112,8 +112,8 @@ work first; a pre-upgrade backup does not contain it. Never move a release tag.
 ## Synthetic verification
 
 The [September 12 receipt](ENTITY_WORKSPACE_VALIDATION_2026-09-12.json) records
-local outcomes and limitations. Hosted final-head review and Quality gates
-remain separate acceptance requirements.
+local outcomes and limitations. The [review policy](QUALITY_GATES.md#review-policy)
+applies separately before merge.
 
 Run the focused service and HTTP regressions:
 

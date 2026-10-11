@@ -176,5 +176,7 @@
   [["GET"], "/matters/{slug}/answer-jobs/{job_id}"],
   [["GET"], "/matters/{slug}/answer-jobs/{job_id}/result"],
   [["POST"], "/matters/{slug}/answer-jobs/{job_id}/cancel"],
-  [["POST"], "/matters/{slug}/answer-jobs/{job_id}/retry"]
+  [["POST"], "/matters/{slug}/answer-jobs/{job_id}/retry"],
+  [["POST"], "/matters/{slug}/one-box"],
+  [["GET"], "/matters/{slug}/upload-review/{session_id}/{item_id}"]
 ]

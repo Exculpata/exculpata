@@ -37,7 +37,7 @@ EXPOSE 8786
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=6 \
   CMD python -c "import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8786/health',timeout=3)); assert p['status'] in {'ok','degraded'} and p['storage']['status']=='ready'"
 
-CMD ["python", "-m", "case_intelligence.workbench", "--host", "0.0.0.0", "--port", "8786", "--runtime", "/var/lib/recordbench/runtime"]
+CMD ["exculpata-workbench", "--host", "0.0.0.0", "--port", "8786", "--runtime", "/var/lib/recordbench/runtime"]
 
 FROM application AS retrieval
 # PyTorch native GPU kernels can compile launchers even during eager execution.
@@ -49,4 +49,4 @@ RUN pip install --no-cache-dir --no-build-isolation --require-hashes -r /opt/rec
 EXPOSE 8787
 HEALTHCHECK --interval=20s --timeout=5s --start-period=180s --retries=18 \
   CMD python -c "import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=3)); assert p['status']=='ok' and p['embedding_loaded'] and p['reranker_loaded']"
-CMD ["python", "-m", "case_intelligence.retrieval_worker", "--host", "0.0.0.0", "--port", "8787"]
+CMD ["exculpata-retrieval-worker", "--host", "0.0.0.0", "--port", "8787"]

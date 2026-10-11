@@ -2,7 +2,7 @@
 
 Status: **Done** — PR #103 landed at `d21c1d4`; see the
 [landing receipt](#landing-receipt--september-22-2026). The existing
-[cruise](../EXIT_ALPHA_CRUISE.md) is the binding queue. C is not selected.
+[cruise](../EXIT_ALPHA_CRUISE.md) is historical; GitHub issues and milestones are the work queue. C is not selected.
 
 Reviewed baseline: `0d59d5fe4f7be575a66039274415de945a6d5db5`.
 Implementation base: `91a97d2ef2b7d4733551a9189bd9c2c7c50c692c`.
@@ -223,7 +223,7 @@ deployment and unrelated working-tree edits are unchanged. No push, PR, merge,
 release, installation or deployment was performed.
 
 Outstanding gates at that revision: the failed full application result; installed publication
-clearance; current candidate hosted Quality/maintainer acceptance and authorized
+clearance; the current [review policy](../QUALITY_GATES.md#review-policy) and authorized
 landing. No hosted review was requested automatically. This is implemented local
 B, **not Done**, a supported release or deployment acceptance. C remains a
 separate unselected task.

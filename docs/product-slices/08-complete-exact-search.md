@@ -1,9 +1,9 @@
 # 08: Return a complete, scoped exact-search result set
 
 Status: exact-result service is on `main` via
-[#59](https://github.com/neilofneils404/recordbench-oss/pull/59)
-([#42](https://github.com/neilofneils404/recordbench-oss/pull/42) /
-[#53](https://github.com/neilofneils404/recordbench-oss/pull/53)). See
+[#59](https://github.com/Exculpata/exculpata/pull/59)
+([#42](https://github.com/Exculpata/exculpata/pull/42) /
+[#53](https://github.com/Exculpata/exculpata/pull/53)). See
 [exact search results](../EXACT_SEARCH_RESULTS.md). Real PostgreSQL indexed
 acceptance remains pending; no PostgreSQL exact adapter is claimed.
 Depends on 07.

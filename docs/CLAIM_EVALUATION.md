@@ -1,7 +1,7 @@
 # Generated-claim evaluation (R1b)
 
 This portable harness measures misleading claims and citation errors against a
-frozen synthetic challenge set. It supports [issue #109](https://github.com/neilofneils404/recordbench-oss/issues/109).
+frozen synthetic challenge set. It supports [issue #109](https://github.com/Exculpata/exculpata/issues/109).
 It does not change model defaults, verification rules, source bytes, saved citation
 basis, authorization, storage, or review policy. No migration or restore is needed.
 

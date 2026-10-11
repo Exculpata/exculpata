@@ -1,14 +1,14 @@
 # 19: Synthesize one full-text review with original support
 
 Status: **Done — first single-run adapter only.**
-[PR #85](https://github.com/neilofneils404/recordbench-oss/pull/85) landed at
+[PR #85](https://github.com/Exculpata/exculpata/pull/85) landed at
 `95f290bf350742bc77c915eb0269c774069f3633`; the
 [cruise receipt](../EXIT_ALPHA_CRUISE.md#current-upstream-receipt) records
 final-head acceptance and passed independent post-merge checks. See the
 [feature contract](../FULL_TEXT_SYNTHESIS.md) and
 [dated acceptance](../FULL_TEXT_SYNTHESIS_ACCEPTANCE_2026-09-12.md).
 Depends on landed 12 and 13; contract
-[#83](https://github.com/neilofneils404/recordbench-oss/issues/83).
+[#83](https://github.com/Exculpata/exculpata/issues/83).
 Future work below remains unscheduled. Capacity defaults and production model
 settings are unchanged.
 

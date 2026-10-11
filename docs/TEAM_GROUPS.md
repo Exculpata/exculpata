@@ -1,7 +1,7 @@
 # Reusable team groups
 
 Administrators open **Team groups** from the account menu to create a named
-RecordBench group and add or remove people who have signed in. Group names are
+Exculpata group and add or remove people who have signed in. Group names are
 unique without regard to ASCII case. Groups do not nest and do not synchronize
 with OIDC or Kerberos directories. Those providers continue to govern admission
 and administrator roles; their groups never become matter grants automatically.
@@ -23,7 +23,7 @@ including SQL checks used by queued answers, research, review and report
 compilation, and their completion fences. Group writes use immediate SQLite
 transactions; no per-session grant cache or copied direct membership is created.
 Open sessions lose access on their next request. Bytes already delivered to a
-browser or downloaded outside RecordBench cannot be recalled.
+browser or downloaded outside Exculpata cannot be recalled.
 
 Local account existence and enabled state are checked against the canonical
 account file from the data layer, including workers without a browser request.

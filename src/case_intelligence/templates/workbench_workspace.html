@@ -36,6 +36,7 @@
       </div>
     </header>
     {% with active='review' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+    {% include "workbench_one_box_route.html" %}
     {% include "workbench_review_modes.html" %}
     {% set review_return = source_review_return_href(matter.slug, request.query_params.get('entity_return_to', '')) %}{% if review_return %}<a class="back-link" href="{{ review_return }}">Return to review context</a>{% endif %}
 
@@ -305,7 +306,7 @@
             </article>
             {% else %}
             <article class="conversation-turn assistant-turn" {% if message.payload.kind == 'generated' %}data-answer-mode="generated"{% endif %} {% if loop.last %}id="latest"{% endif %}>
-              <div class="turn-avatar assistant-avatar" aria-hidden="true">RB</div>
+              <div class="turn-avatar assistant-avatar" aria-hidden="true">{% include "exculpata_mark.html" %}</div>
               <div class="turn-content answer-content">
                 <strong>{{ product_name }}</strong>
                 {% if message.payload.workflow == 'research' %}
@@ -440,6 +441,7 @@
                 {% else %}
                   <p class="answer-error">{{ message.content }}</p>
                 {% endif %}
+                {% include "workbench_deeper_investigation.html" %}
                 {% if message.payload.kind == 'generated' %}
                 <nav class="workflow-completion-bar answer-completion-bar" aria-label="Completed answer actions">
                   <span class="workflow-completion-state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg><span><strong>{{ 'Investigation ready' if message.payload.workflow == 'research' else 'Answer ready' }}</strong><small>Citations stay attached</small></span></span>
@@ -464,7 +466,7 @@
             {% endif %}
             {% else %}
             <div class="conversation-empty">
-              <div class="turn-avatar assistant-avatar" aria-hidden="true">RB</div>
+              <div class="turn-avatar assistant-avatar" aria-hidden="true">{% include "exculpata_mark.html" %}</div>
               <div>
                 <h3>Ask about this matter</h3>
                 <p>{{ product_name }} will search the sources, compose a direct answer, and keep each supported claim connected to the record.</p>

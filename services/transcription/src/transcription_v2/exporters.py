@@ -1166,10 +1166,10 @@ def _docx_core_properties_xml(title: str) -> bytes:
         "Machine-generated transcription delivery artifact"
     )
     ET.SubElement(root, f"{{{_DUBLIN_CORE_NS}}}creator").text = (
-        "RecordBench Transcript Studio v2"
+        "Exculpata Transcript Studio v2"
     )
     ET.SubElement(root, f"{{{_CORE_PROPERTIES_NS}}}lastModifiedBy").text = (
-        "RecordBench Transcript Studio v2"
+        "Exculpata Transcript Studio v2"
     )
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
@@ -1177,7 +1177,7 @@ def _docx_core_properties_xml(title: str) -> bytes:
 def _docx_app_properties_xml() -> bytes:
     return b"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>RecordBench Transcript Studio v2</Application>
+  <Application>Exculpata Transcript Studio v2</Application>
   <AppVersion>0.1</AppVersion>
 </Properties>
 """

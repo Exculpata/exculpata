@@ -90,5 +90,5 @@ The People setup page directs operators to the recovery documents bundled with
 the reviewed release currently running on their node. Retained account lock and
 temporary files must have service ownership and mode 0600, like the canonical
 account file; saved-node preflight refuses mismatched restore metadata. The
-synthetic People browser runner discards inherited RecordBench deployment
+synthetic People browser runner discards inherited Exculpata deployment
 settings before importing the application, retaining only its QA browser options.

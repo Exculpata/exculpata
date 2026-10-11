@@ -1,7 +1,7 @@
 # Email attachment coverage
 
-Status: implemented and locally validated. Final-commit hosted code/security reviews
-and the normal merge gate remain required. No runtime activation is implied.
+Status: implemented and locally validated. The [review policy](QUALITY_GATES.md#review-policy)
+applies before merge. No runtime activation is implied.
 
 ## Outcome and boundaries
 
@@ -177,6 +177,5 @@ with unchanged external email bytes. Desktop and narrow screenshots were
 inspected. The stopped-reader/forward-read drill also resolves the support token
 created by the old extractor to the same exact old source version and passage.
 
-Next action: complete final-commit hosted reviews, reconcile findings, satisfy
-the normal merge gate and let each deployment perform its own integration and
+Next action: follow the [review policy](QUALITY_GATES.md#review-policy) and let each deployment perform its own integration and
 activation checks. Attachment child-source extraction remains a separate slice.

@@ -9,6 +9,46 @@ For a source checkout used to write code and run tests, start with
 below installs an application node; `make bootstrap` prepares a development
 environment and does not deploy the application.
 
+Fresh nodes use an `exculpata` service account and default to `/srv/exculpata`,
+`config/exculpata.env`, an `exculpata-<hash>` Compose project/image namespace,
+and `.exculpata-managed-storage.json`. The administrator prepares the service
+account as shown below; the installer runs without root privileges.
+
+Existing nodes keep their names. A retained `config/recordbench.env`,
+`.recordbench-managed-storage.json` (including separate managed storage), or
+the existing `recordbench` account selects the legacy generation. Use the
+node's original `--root` for every command, especially with a custom root or
+multiple nodes. P2's `EXCULPATA_*` environment aliases do not identify a renamed
+node. Resume/update retain saved paths, project/image namespace and environment
+key spelling; an unchanged configuration remains byte-identical. Updates change
+only the release coordinate as before. PostgreSQL's user/database remain
+`recordbench` in both generations, as does `recordbench_principal_enabled`.
+Container-internal paths and existing service credentials also retain their
+compatibility names.
+
+`./install doctor --root <node-root>` reports the naming generation.
+`--names exculpata` explicitly selects the new generation on a fresh node;
+on a detected legacy node it refuses before changing state. This installer does
+not migrate or rename a node. Do not create a new service account, move state,
+or copy the fresh-node paths below onto an existing installation. The historical
+`scripts/recordbench_install.py` entry point continues to invoke the same installer.
+
+The Python distributions are `exculpata` and `exculpata-transcription-v2`.
+After `make bootstrap`, check the installed commands from the repository root:
+
+```console
+.venv/bin/exculpata --help
+.venv/bin/exculpata-workbench --help
+.venv/bin/exculpata-retrieval-worker --help
+.venv/bin/transcription-v2 --help
+```
+
+The `recordbench`, `recordbench-workbench`, `recordbench-retrieval-worker`,
+`case-intelligence-workbench`, and `case-review-bench` commands remain available
+and print a one-line deprecation notice to stderr. The last command retains its
+standalone synthetic review bench; its replacement is
+`python -m case_intelligence.review_bench`. `transcription-v2` keeps its name.
+
 For a new local-account node, `./install --auth local --enable-account-management`
 enables the **People** account editor and first-administrator setup checklist.
 The [browser account playbook](LOCAL_ACCOUNT_BROWSER.md) covers its narrow
@@ -38,12 +78,12 @@ unproven; the portable capabilities are listed below.
    and an empty node root. Run these once on the fresh host:
 
    ```console
-   sudo groupadd --system recordbench
-   sudo useradd --system --gid recordbench --groups docker \
-     --home-dir /var/lib/recordbench-home --shell /bin/bash recordbench
-   sudo install -d -m 0700 -o recordbench -g recordbench \
-     /var/lib/recordbench-home /srv/recordbench
-   sudo -iu recordbench
+   sudo groupadd --system exculpata
+   sudo useradd --system --gid exculpata --groups docker \
+     --home-dir /var/lib/exculpata-home --shell /bin/bash exculpata
+   sudo install -d -m 0700 -o exculpata -g exculpata \
+     /var/lib/exculpata-home /srv/exculpata
+   sudo -iu exculpata
    ```
 
    Docker-group membership grants privileged engine access. Keep the socket's
@@ -57,16 +97,16 @@ unproven; the portable capabilities are listed below.
    docker compose version
    umask 077
    git clone --single-branch --branch main --no-tags \
-     https://github.com/neilofneils404/recordbench-oss.git recordbench
-   cd recordbench
+     https://github.com/Exculpata/exculpata.git exculpata
+   cd exculpata
    ```
 
 4. Check exactly the CPU/local-account choices, then install:
 
    ```console
-   ./install preflight --root /srv/recordbench --models none --auth local \
+   ./install preflight --root /srv/exculpata --models none --auth local \
      --enable-account-management --server-name localhost --bind-address 127.0.0.1
-   COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/recordbench --models none --auth local \
+   COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models none --auth local \
      --enable-account-management --server-name localhost --bind-address 127.0.0.1
    ```
 
@@ -83,7 +123,7 @@ unproven; the portable capabilities are listed below.
 5. Verify the running node from the same checkout and account:
 
    ```console
-   ./install doctor --root /srv/recordbench
+   ./install doctor --root /srv/exculpata
    ```
 
    Expect exit status 0, **Node diagnostic complete**, and complete running,
@@ -121,7 +161,7 @@ generated answers and transcription are outside this CPU path.
 
 ## Hardware and capability profiles
 
-RecordBench targets a modern x86-64 Linux host with Docker Engine and Docker
+Exculpata targets a modern x86-64 Linux host with Docker Engine and Docker
 Compose v2. The figures below are starting targets for alpha evaluation, not
 validated minimums:
 
@@ -162,7 +202,7 @@ organization-trusted certificate.
 1. Choose a dedicated node state root. Do not use `/`, a home directory, or the
    root of a shared NAS export.
 2. Choose matter storage. A host-mounted NAS path is supported when it is stable,
-   writable by the RecordBench UID, and dedicated to this installation.
+   writable by the Exculpata UID, and dedicated to this installation.
 3. Decide between local accounts, OIDC, or Kerberos/Windows Integrated
    Authentication.
 4. Obtain DNS and a trusted TLS certificate for staff access.
@@ -180,14 +220,14 @@ host. It does not prompt, create directories, write probe files, download models
 start containers, or change permissions:
 
 ```bash
-./install preflight --root /srv/recordbench --models none --no-color
-./install preflight --root /srv/recordbench --models review --json
+./install preflight --root /srv/exculpata --models none --no-color
+./install preflight --root /srv/exculpata --models review --json
 ```
 
 Supply the same `--storage-root`, `--server-name`, `--bind-address`, TLS, model
 and GPU-selection options you intend to use for installation. Quote paths
 containing spaces.
-Omitted options select `/srv/recordbench`, storage beneath it, CPU evaluation,
+Omitted options select `/srv/exculpata`, storage beneath it, CPU evaluation,
 and loopback HTTPS. Interactive installation collects the hostname before running
 these checks, so invalid answers also stop before creating node state. `none`
 enables intake, extraction, OCR, word search, direct source review and exports. `review` adds learned search and cited generated
@@ -220,7 +260,7 @@ For missing prerequisites:
   must also be non-root. Do not use a home directory, symlink, or shared export
   root. Existing selected directories must belong to that account. A first-install
   node root must be empty. `--resume` permits a nonempty root only when it has a
-  valid RecordBench installation record and available release capsule; it does
+  valid Exculpata installation record and available release capsule; it does
   not claim unrelated directories. A missing or empty root still follows fresh
   installation prerequisites when `--resume` is supplied.
   Both preflight and installation require absolute storage paths without control
@@ -296,18 +336,18 @@ For a new account, an administrator can run this Debian-style example (adapt
 account creation to the distribution; do not recreate an existing account):
 
 ```bash
-sudo groupadd --system recordbench
-sudo useradd --system --gid recordbench --home-dir /var/lib/recordbench-home \
-  --shell /bin/bash recordbench
-sudo install -d -m 0700 -o recordbench -g recordbench /var/lib/recordbench-home
-sudo install -d -m 0700 -o recordbench -g recordbench /srv/recordbench
+sudo groupadd --system exculpata
+sudo useradd --system --gid exculpata --home-dir /var/lib/exculpata-home \
+  --shell /bin/bash exculpata
+sudo install -d -m 0700 -o exculpata -g exculpata /var/lib/exculpata-home
+sudo install -d -m 0700 -o exculpata -g exculpata /srv/exculpata
 ```
 
-For an existing system account, use `sudo usermod --home /var/lib/recordbench-home
-recordbench`, then create that dedicated home with the `install -d` command above.
+For an existing system account, retain its account name and home; repair only
+the ownership and permissions of that existing home when needed.
 Use a usable shell for the operator-driven installation session. Keep HOME
 separate from node/matter storage. Arrange approved Docker access, then start a
-fresh login session (for example `sudo -iu recordbench`) so HOME and supplementary
+fresh login session (for example `sudo -iu exculpata`) so HOME and supplementary
 groups take effect. Run `docker info` and `docker compose version` as that account
 before preflight. Membership in `docker`, where used, grants privileged engine
 access; never loosen socket permissions. HOME preflight checks metadata/access,
@@ -317,7 +357,7 @@ not quotas or a successful client write.
 
 A dedicated Linux host with its distribution-supported Docker service is the
 normal starting point. Containerized evaluation hosts may need administrator
-setup before RecordBench preflight:
+setup before Exculpata preflight:
 
 - **No systemd PID 1:** `systemctl` cannot start Docker. Follow Docker's
   [manual daemon instructions](https://docs.docker.com/engine/daemon/start/)
@@ -342,7 +382,7 @@ setup before RecordBench preflight:
   The administrator must reconcile them with the outer host policy, verify
   inter-container connectivity, and persist only the approved settings.
 
-RecordBench does not install Docker, change drivers/sysctls, or certify nested
+Exculpata does not install Docker, change drivers/sysctls, or certify nested
 host networking. Successful engine access is not a container-connectivity test.
 Keep the gateway on loopback HTTPS and companion services private.
 
@@ -357,8 +397,8 @@ installation command, as shown in the quick start. If already interrupted,
 retain the node and run from the same checkout and service-account session:
 
 ```console
-COMPOSE_PARALLEL_LIMIT=1 ./install install --root /srv/recordbench --resume
-./install doctor --root /srv/recordbench
+COMPOSE_PARALLEL_LIMIT=1 ./install install --root /srv/exculpata --resume
+./install doctor --root /srv/exculpata
 ```
 
 Resume asks for the initial password again if the account was not yet created.
@@ -382,10 +422,10 @@ Use the installed node's Compose coordinates, not an unrelated checkout's defaul
 project. The release path is recorded in `installation.json`; for diagnostics:
 
 ```bash
-release_path=$(python3 -c 'import json; print(json.load(open("/srv/recordbench/installation.json"))["release_path"])')
-docker compose --env-file /srv/recordbench/compose.env \
+release_path=$(python3 -c 'import json; print(json.load(open("/srv/exculpata/installation.json"))["release_path"])')
+docker compose --env-file /srv/exculpata/compose.env \
   -f "$release_path/compose.yaml" ps -a
-docker compose --env-file /srv/recordbench/compose.env \
+docker compose --env-file /srv/exculpata/compose.env \
   -f "$release_path/compose.yaml" logs --tail 100 clamav-updater clamav app gateway
 ```
 
@@ -416,7 +456,7 @@ signature refresh and healthy scanner before retrying acceptance.
 reserve during image construction, especially with `vfs`. The CPU 150 GiB target
 is advisory, not a guarantee. Budget peak image layers/build cache in addition to
 models, data and the protected reserve on both the engine and node/matter
-filesystems. Check `df -h /srv/recordbench` and the selected matter path after
+filesystems. Check `df -h /srv/exculpata` and the selected matter path after
 build; inspect `docker system df` and the engine host's Docker Root Dir filesystem.
 A remote engine's disk is not measured by local `df`. Runtime
 `storage.reserve_satisfied=false` means restore capacity above the configured
@@ -424,9 +464,9 @@ reserve; repeated rebuilds can worsen it. Add capacity or have the administrator
 remove only identified disposable data/cache, preserving rollback images and
 volumes. Do not lower the reserve or run indiscriminate prune commands to pass.
 
-After correcting the cause, run `./install doctor --root /srv/recordbench` if
+After correcting the cause, run `./install doctor --root /srv/exculpata` if
 services are already running, or the printed `./install install --root
-/srv/recordbench --resume` command for interrupted startup, then doctor and the
+/srv/exculpata --resume` command for interrupted startup, then doctor and the
 synthetic acceptance steps. Health diagnoses do not repair host configuration.
 
 ## Interactive installation
@@ -459,7 +499,8 @@ account contents.
 
 OIDC and Kerberos resume likewise validate the retained provider choices before
 Compose builds or service changes, including in a dry run. New provider flags do
-not override `config/recordbench.env` or replace canonical saved credentials.
+not override the saved application environment (`config/exculpata.env` on new
+nodes, `config/recordbench.env` on legacy nodes) or replace canonical credentials.
 OIDC checks the saved issuer, client, groups, scopes, claim names, token method,
 matching external origin and canonical secret reference, then validates the
 owned mode-0600 `secrets/oidc-client-secret` using the same UTF-8 rules as a fresh
@@ -540,7 +581,7 @@ reported as unavailable.
 Run:
 
 ```bash
-./install doctor --root /srv/recordbench
+./install doctor --root /srv/exculpata
 ```
 
 Doctor compares the installation's expected authentication mode with the saved
@@ -551,12 +592,12 @@ or disagreement cannot pass health acceptance; see
 Then use only synthetic fixtures to verify login, matter creation, document
 OCR, search, cited answers, video playback, transcription/diarization, exports,
 matter closure, and cleanup. Validate GPU memory and concurrent workloads
-outside RecordBench before allowing confidential material.
+outside Exculpata before allowing confidential material.
 
 ## Kerberos installations
 
 Join the Linux host to the organization domain with SSSD first. Create an HTTP
-service principal and keytab for the final RecordBench hostname, then supply the
+service principal and keytab for the final Exculpata hostname, then supply the
 keytab to the installer. The Kerberos Compose overlay mounts only the host NSS
 socket and `nsswitch.conf` into the app so group lookup behaves like the joined
 host; the authentication proxy receives the keytab and strips the browser’s
@@ -570,7 +611,7 @@ node root and gives every locally built image a release-specific tag. It does
 not fetch or merge source code: review and update the clone first, then run:
 
 ```bash
-./install update --root /srv/recordbench
+./install update --root /srv/exculpata
 ```
 
 The capsule hash and copied files use the same generated-file exclusions:
@@ -627,7 +668,7 @@ images are retained for deliberate operator cleanup; the updater never prunes th
 
 Before fresh managed-storage initialization, the reserved names `matters`,
 `.matter-purging`, and `ingestion-staging` must be absent, including broken links.
-Existing initialized storage must retain its valid RecordBench marker and three
+Existing initialized storage must retain its valid Exculpata marker and three
 writable directories on the same filesystem. Preflight inspects that metadata
 without writing or probing hardlinks; it does not delete or rename collisions.
 Choose another dedicated storage root when unrelated data already uses those names.

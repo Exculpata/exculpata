@@ -17,7 +17,7 @@ import recordbench_install as installer  # noqa: E402
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
-    args = installer._parser().parse_args(["install", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
+    args = installer._parser().parse_args(["install", "--names", "recordbench", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
     installer._collect_identity_choices(args)
     console = installer.Console(color=False)
     paths = installer._prepare_directories(console, tmp_path / "node", storage_root=None, resume=False, dry_run=False)
@@ -492,7 +492,7 @@ def test_existing_secret_must_remain_owner_only(tmp_path) -> None:
 
 def test_update_uses_versioned_images_backup_and_rollback_contracts() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
-    source = (ROOT / "scripts/recordbench_install.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts/exculpata_install.py").read_text(encoding="utf-8")
     assert "RECORDBENCH_RELEASE_ID" in compose
     assert "SNAPSHOT BEFORE MUTATION" in source
     assert "--no-backup" in source
@@ -1326,6 +1326,8 @@ def saved_gpu_node(tmp_path, *, model_profile="quality", models="review"):
     environment.update({"RECORDBENCH_GENERATOR_GPU": "0", "RECORDBENCH_TRANSCRIPTION_GPU": "0",
                    "RECORDBENCH_RETRIEVAL_DEVICE": "cpu", "RECORDBENCH_RETRIEVAL_GPU": "0",
                    "RECORDBENCH_GPU_LAYOUT": "shared", "RECORDBENCH_GENERATOR_GPU_UTILIZATION": "0.72"})
+    environment.update({key.replace("RECORDBENCH_", "EXCULPATA_", 1): value
+                        for key, value in environment.items() if key.startswith("RECORDBENCH_")})
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved GPU plan"))
     (root / "config" / "transcription.env").write_text('TRANSCRIPTION_V2_MIN_FREE_VRAM_MB="16000"\n')
     return root, installation, environment
@@ -1414,7 +1416,7 @@ def test_local_identity_preflight_accepts_account_admin_normalization(tmp_path, 
 @pytest.mark.parametrize("dtype,compute", [("half", 7.5), ("half", 8.9), ("bfloat16", 8.0)])
 def test_supported_saved_generator_precision_is_preserved(tmp_path, dtype, compute):
     root, installation, environment = saved_gpu_node(tmp_path)
-    environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
+    environment["EXCULPATA_GENERATOR_DTYPE"] = environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
     args = installer._parser().parse_args(["install", "--root", str(root)])
     installer._restore_model_options(args, installation, environment, {})
     _, plan = installer._resolve_gpu_plans(args, "review", (installer.GpuDevice("0", "Synthetic GPU", 49152, 47000, compute),))
@@ -1455,9 +1457,10 @@ def test_saved_bfloat16_blocks_older_replacement_gpu_before_commands(
 ):
     root, installation, environment = saved_gpu_node(tmp_path)
     request.getfixturevalue("ready_host")
+    environment.pop("EXCULPATA_GENERATOR_DTYPE", None)
     environment.pop("RECORDBENCH_GENERATOR_DTYPE", None)
     if dtype is not None:
-        environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
+        environment["EXCULPATA_GENERATOR_DTYPE"] = environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved precision"))
     before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
     monkeypatch.setattr(installer, "_probe", lambda cmd: subprocess.CompletedProcess(cmd, 0,
@@ -1491,7 +1494,7 @@ def test_saved_gpu_preflight_blocks_resume_update_before_commands(
         "transcription": "0, Synthetic Transcription, 49152, 44000, 8.9",
     }
     if shortage == "utilization":
-        environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = "0.90"
+        environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = "0.90"
         (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved reservation"))
     before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
     monkeypatch.setattr(installer, "_probe", lambda cmd: subprocess.CompletedProcess(cmd, 0,
@@ -1515,7 +1518,7 @@ def test_completed_diarization_resume_uses_saved_plan_without_new_token(tmp_path
     root, installation, environment = saved_gpu_node(tmp_path, model_profile="portable", models="transcription")
     installation["transcription_diarization"] = True
     installation["transcription_languages"] = ["en", "es"]
-    environment["RECORDBENCH_TRANSCRIPTION_GPU"] = "1"
+    environment["EXCULPATA_TRANSCRIPTION_GPU"] = environment["RECORDBENCH_TRANSCRIPTION_GPU"] = "1"
     (root / "installation.json").write_text(json.dumps(installation))
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved transcription"))
     installer._seal_provisioning(root, installation)
@@ -1777,8 +1780,8 @@ def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, f
     # Build the saved node using the real owner, then emulate the target Linux
     # host for read-only prerequisites and the mocked update lifecycle.
     request.getfixturevalue("ready_host")
-    environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = utilization
-    environment["RECORDBENCH_COMPOSE_PROJECT"] = "recordbench-synthetic-upgrade"
+    environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = utilization
+    environment["EXCULPATA_COMPOSE_PROJECT"] = environment["RECORDBENCH_COMPOSE_PROJECT"] = "recordbench-synthetic-upgrade"
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic current runtime"))
     old_release = Path(installation["release_path"])
     new_release = tmp_path.resolve() / "new-release"
@@ -2053,8 +2056,8 @@ def test_relative_tls_paths_keep_launch_location_in_staged_configuration(tmp_pat
     installer._collect_identity_choices(args)
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths, "synthetic-release", release, ())
     values = installer._dotenv(root / "compose.env")
-    assert values["RECORDBENCH_TLS_CERT"] == str(cert)
-    assert values["RECORDBENCH_TLS_KEY"] == str(key)
+    assert values["EXCULPATA_TLS_CERT"] == str(cert)
+    assert values["EXCULPATA_TLS_KEY"] == str(key)
 
 
 @pytest.mark.parametrize("field", ["--tls-cert", "--tls-key"])
@@ -2407,7 +2410,8 @@ def test_saved_account_preflight_allows_missing_leaf_with_initial_password_input
     ("192.0.2.44", "192.0.2.44"), ("2001:db8::44", "2001:db8::44"),
     ("0.0.0.0", "127.0.0.1"), ("::", "::1")])
 @pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
-def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, monkeypatch, bind, target, auth):
+@pytest.mark.parametrize("product_name", ["Exculpata", "RecordBench"])
+def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, monkeypatch, bind, target, auth, product_name):
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
@@ -2435,7 +2439,7 @@ def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, 
             return "Negotiate" if auth == "kerberos" else default
         def read(self, limit):
             assert limit == 262_144
-            return b"Synthetic RecordBench sign-in page"
+            return f"Synthetic {product_name} sign-in page".encode()
         def close(self):
             pass
     def health_request(request, **kwargs):
@@ -2655,7 +2659,9 @@ def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None
             "CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS": "synthetic-users@example.test",
             "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS": "synthetic-admins@example.test",
             "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": "/run/recordbench-secrets/kerberos-proxy-secret"})
-        installer._replace_env(root / "compose.env", "RECORDBENCH_KERBEROS_PRINCIPAL", "HTTP/recordbench.example.test@EXAMPLE.TEST")
+        compose = installer._dotenv(root / "compose.env")
+        compose["EXCULPATA_KERBEROS_PRINCIPAL"] = "HTTP/recordbench.example.test@EXAMPLE.TEST"
+        (root / "compose.env").write_text(installer._env_text(compose, "Synthetic Kerberos node"))
         credential = paths["secrets"] / "kerberos-proxy-secret"
         installer._private_write(credential, "synthetic_proxy_secret_" + "x" * 32 + "\r\n")
         installer._private_write(paths["secrets"] / "recordbench.keytab", "synthetic opaque keytab bytes")
@@ -2920,7 +2926,8 @@ def test_retained_account_auxiliary_metadata_rejected(tmp_path, request, monkeyp
 
 
 @pytest.mark.parametrize("problem", ["missing", "unset", "relative", "file", "symlink", "shared", "foreign", "inaccessible"])
-def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_host, monkeypatch, problem):
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_host, monkeypatch, problem, names):
     home = Path(os.environ["HOME"])
     if problem == "missing":
         home.rmdir()
@@ -2949,10 +2956,10 @@ def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_h
         monkeypatch.setattr(Path, "lstat", foreign)
     elif problem == "inaccessible":
         monkeypatch.setattr(os, "access", lambda *a: False)
-    args = preflight_args(tmp_path)
+    args = preflight_args(tmp_path, "--names", names)
     check = next(row for row in installer._collect_preflight("none", args).checks if row.name == "service-home")
     assert check.state == "fail" and check.blocking
-    assert "0700" in check.remedy and "/var/lib/recordbench-home" in check.remedy
+    assert "0700" in check.remedy and f"/var/lib/{names}-home" in check.remedy
     assert not args.root.exists()
     assert not (home / ".docker").exists()
 
@@ -3107,3 +3114,106 @@ def test_update_builds_companion_images_before_node_swap(tmp_path, monkeypatch, 
     assert len(builds) == 1
     assert {"gateway", "clamav", "postgres"} <= set(builds[0])
     assert events.index("build-new") < events.index("stop-old") < events.index("up-new")
+
+
+@pytest.mark.parametrize("prefixes", [("RECORDBENCH",), ("EXCULPATA",), ("RECORDBENCH", "EXCULPATA")])
+@pytest.mark.parametrize("ending", ["\n", "\r\n", ""])
+def test_saved_alias_updates_preserve_keys_and_unchanged_bytes(tmp_path, prefixes, ending):
+    path = tmp_path / "compose.env"
+    original = "# Synthetic operator formatting\r\n\r\n" + "\r\n".join(
+        f"  {prefix}_HTTPS_PORT= 8443  " for prefix in prefixes) + ending
+    # Keys are strict dotenv identifiers, while indentation and value spacing
+    # are accepted operator formatting and should survive a no-op update.
+    path.write_bytes(original.encode())
+    path.chmod(0o600)
+    for name in ("RECORDBENCH_HTTPS_PORT", "EXCULPATA_HTTPS_PORT"):
+        installer._replace_env(path, name, "8443")
+        assert path.read_bytes() == original.encode()
+    installer._replace_env(path, "RECORDBENCH_ABSENT", "synthetic")
+    assert path.read_bytes() == original.encode()
+    installer._replace_env(path, "RECORDBENCH_HTTPS_PORT", "9443")
+    expected = original
+    for prefix in prefixes:
+        expected = expected.replace(f"  {prefix}_HTTPS_PORT= 8443  ", f'{prefix}_HTTPS_PORT="9443"')
+    assert path.read_bytes() == expected.encode()
+    assert installer._dotenv(path) == {f"{prefix}_HTTPS_PORT": "9443" for prefix in prefixes}
+
+
+def test_configuration_writes_new_names_only_and_keeps_existing_old_file_byte_identical(tmp_path):
+    from tests.test_first_run_handoff import configured_node
+    root, args, paths = configured_node(tmp_path, names="exculpata")
+    path = root / "compose.env"
+    fresh = path.read_bytes()
+    assert b"EXCULPATA_" in fresh
+    assert b"RECORDBENCH_" not in fresh
+    old = b"# Synthetic operator note\r\n" + fresh.replace(b"EXCULPATA_", b"RECORDBENCH_").replace(b"\n", b"\r\n")
+    path.write_bytes(old)
+    installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
+                         "synthetic-release", ROOT, ())
+    assert path.read_bytes() == old
+
+
+@pytest.mark.parametrize("same_release", [True, False])
+def test_update_preserves_old_only_compose_settings(tmp_path, monkeypatch, request, same_release):
+    root, args, events, _ = synthetic_live_update(tmp_path, monkeypatch, request)
+    path = root / "compose.env"
+    settings = installer._dotenv(path)
+    old = {key.replace("EXCULPATA_", "RECORDBENCH_", 1): value
+           for key, value in settings.items()}
+    original = installer._env_text(old, "Synthetic old-only node").encode()
+    path.write_bytes(original)
+    if same_release:
+        installation = json.loads((root / "installation.json").read_text())
+        monkeypatch.setattr(installer, "_stage_release", lambda *a, **k:
+                            (installation["release_id"], Path(installation["release_path"])))
+        monkeypatch.setattr(installer, "_doctor", lambda *a, **k: events.append("doctor"))
+    installer._update(installer.Console(color=False, quiet=True), args, root)
+    if same_release:
+        assert path.read_bytes() == original
+        assert "doctor" in events
+    else:
+        # A new capsule changes the existing release coordinate, never the
+        # spelling, order, or value of any other saved setting.
+        assert path.read_bytes() == original.replace(
+            b'RECORDBENCH_RELEASE_ID="synthetic-release"',
+            b'RECORDBENCH_RELEASE_ID="synthetic-new"')
+        assert "up-new" in events
+    assert b"EXCULPATA_" not in path.read_bytes()
+
+
+@pytest.mark.parametrize("prefix", ["RECORDBENCH", "EXCULPATA"])
+@pytest.mark.parametrize("final_newline", [True, False])
+def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, monkeypatch, prefix, final_newline):
+    from tests.test_first_run_handoff import configured_node
+    root, args, paths = configured_node(tmp_path, names="exculpata")
+    path = root / "compose.env"
+    before = path.read_bytes().replace(b"EXCULPATA_", prefix.encode() + b"_")
+    if not final_newline:
+        before = before.removesuffix(b"\n")
+    path.write_bytes(before)
+    assert b"KERBEROS_PRINCIPAL" not in before
+    assert json.loads((root / "installation.json").read_text())["auth"] == "local"
+    args.auth = "kerberos"
+    args.kerberos_realm = "EXAMPLE.TEST"
+    args.kerberos_allowed_groups = "synthetic-reviewers@example.test"
+    args.kerberos_admin_groups = "synthetic-administrators@example.test"
+    installer._private_write(paths["secrets"] / "recordbench.keytab", "synthetic opaque keytab bytes")
+    original_is_dir, original_is_file = Path.is_dir, Path.is_file
+    monkeypatch.setattr(Path, "is_dir", lambda value: True if value == Path("/var/lib/sss/pipes") else original_is_dir(value))
+    monkeypatch.setattr(Path, "is_file", lambda value: True if value == Path("/etc/krb5.conf") else original_is_file(value))
+
+    installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
+                         "synthetic-release", ROOT, ())
+
+    principal = "HTTP/recordbench.example.test@EXAMPLE.TEST"
+    added = f"{prefix}_KERBEROS_PRINCIPAL={json.dumps(principal)}\n".encode()
+    expected = before + (b"" if final_newline else b"\n") + added
+    assert path.read_bytes() == expected
+    other = "EXCULPATA" if prefix == "RECORDBENCH" else "RECORDBENCH"
+    assert not any(key.startswith(other + "_") for key in installer._dotenv(path))
+    assert installer._dotenv(path)[f"{prefix}_KERBEROS_PRINCIPAL"] == principal
+    assert json.loads((root / "installation.json").read_text())["auth"] == "kerberos"
+    # Repeating the same reconfiguration must not duplicate or reformat keys.
+    installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
+                         "synthetic-release", ROOT, ())
+    assert path.read_bytes() == expected

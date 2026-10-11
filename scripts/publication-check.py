@@ -24,6 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Owner-reviewed public attribution; exact commit and name/email digest only.
 # This suppresses only the email rule, never deny terms or content checks.
 REVIEWED_COMMIT_EMAIL_IDENTITIES = {
+    "6735691a938e42173c6c7a309b700be2e19c0668": {
+        "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
+    },
+    "624fbe4dcfbae093c442955bfb6cc4b6be6fff3e": {
+        "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
+    },
     "d2f1e779e70063b94fece1291169f547c7c44d83": {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
     },
@@ -76,8 +82,19 @@ IPV6 = re.compile(
     rb"(?![A-Za-z0-9_:])"
 )
 EMAIL = re.compile(
-    rb"(?i)(?<![a-z0-9._%+-])[a-z0-9._%+-]{1,64}@([a-z0-9.-]{1,253}\.[a-z]{2,63})(?![a-z0-9.-])"
+    rb"(?i)(?<![a-z0-9._%+\[\]-])[a-z0-9._%+\[\]-]{1,64}"
+    rb"@([a-z0-9.-]{1,253}\.[a-z]{2,63})(?![a-z0-9.-])"
 )
+# Exact public automation addresses. Brackets are part of the local part so
+# Dependabot's no-reply identity is inspected rather than skipped by the grammar.
+# Deny terms still apply. The support mailbox is not an identity allowance.
+PUBLIC_BOT_NOREPLY_ADDRESSES = frozenset(
+    {
+        b"49699333+dependabot[bot]@users.noreply.github.com",
+        b"noreply@" + b"github.com",
+    }
+)
+DEPENDABOT_SIGNOFF_LINE = b"Signed-off-by: dependabot[bot] <support@" + b"github.com>"
 PUBLIC_GITHUB_CLONE_URL = re.compile(
     r"(?:git@github\.com:|https://github\.com/)"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/"
@@ -185,6 +202,23 @@ def _safe_example_ip(
     return any(address in network for network in ALLOWED_DOCUMENTATION_NETWORKS)
 
 
+def _recognized_public_automation_email(data: bytes, match: re.Match[bytes]) -> bool:
+    """True only for the two public bot no-reply addresses or Dependabot's exact sign-off line."""
+    address = match.group(0).lower()
+    if address in PUBLIC_BOT_NOREPLY_ADDRESSES:
+        return True
+    if address != b"support@" + b"github.com":
+        return False
+    line_start = data.rfind(b"\n", 0, match.start()) + 1
+    line_end = data.find(b"\n", match.end())
+    if line_end < 0:
+        line_end = len(data)
+    line = data[line_start:line_end]
+    if line.endswith(b"\r"):
+        line = line[:-1]
+    return line == DEPENDABOT_SIGNOFF_LINE
+
+
 def _mask_exact_public_literals(
     data: bytes, literals: tuple[bytes, ...]
 ) -> bytes:
@@ -243,8 +277,8 @@ def _scan_bytes(
             findings.append(Finding(location, "private-network-address"))
             break
     for match in EMAIL.finditer(data):
-        if match.group(0).lower() == b"noreply@" + b"github.com":
-            continue  # Public GitHub merge-service address; deny rules still apply.
+        if _recognized_public_automation_email(data, match):
+            continue  # Exact public bot identity or Dependabot sign-off; deny rules still apply.
         domain = match.group(1).decode("ascii", "ignore").casefold()
         if domain not in {
             "example.com",

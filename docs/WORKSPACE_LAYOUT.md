@@ -18,7 +18,9 @@ and reports) and **Settings**. The current destination carries
 per-page copies. A matter search box beside the destinations submits an ordinary
 exact search (`/exact-search?search=1&words=…`); the Search page itself uses its
 full form instead. When the bar is too narrow for direct links, the existing
-section navigator replaces them.
+section navigator replaces them. Opening that navigator can widen its row;
+the breakpoint keeps the closed-row measurement, so the menu stays instead
+of switching back to direct links.
 
 The readiness status keeps its polling, actions and focus behavior. A ready matter
 shows one line; its extraction caveat stays in the document and opens with
@@ -36,6 +38,127 @@ new page markup with an older cached stylesheet or script.
 
 `tests/test_compact_matter_navigation.py` and
 `tests/test_static_asset_versioning.py` hold the synthetic regressions.
+
+## One box on Home
+
+Set `CASE_INTELLIGENCE_ONE_BOX=1` before starting the application to replace
+Home's four task cards with **Ask, search or find records**. The flag defaults
+off; `1`, `true`, `yes` and `on` enable it, ignoring case and surrounding spaces.
+With it off, the existing cards and workflows remain and the new POST endpoint
+returns 404. **Review records manually** and **Investigate a topic** stay as
+quiet links to the source list and Ask composer.
+
+The CSRF-protected form classifies the text using the existing Ask router:
+
+- Quoted phrases, valid Boolean expressions and proximity syntax open exact
+  search with the original expression.
+- Ordinary questions use the existing focused, cited-answer handler. Request
+  keys preserve its retry handling; no separate answer implementation is added.
+- Requests for every matching record open a new criterion form with the full
+  text prefilled. An existing criterion is not overwritten or run. The eligible
+  source count remains visible; saving the rule and starting a review require
+  the existing explicit actions.
+
+Each destination explains the routing choice. **Not what you meant?** reveals
+two buttons that send the same text through either alternative. They require
+CSRF and matter access too. The box accepts up to 2,000 characters; exact search
+retains its 512-character limit. An overlong exact-search choice returns to Home
+with the unchanged text and an explanation instead of truncating it.
+Encoded destinations also have a 7,000-byte limit, with space reserved for answer
+IDs and recovery messages below the gateway's request-line limit. Text that would
+exceed it (including long Unicode input) stays in the Home form with a request to
+shorten it; no redirect or answer job is created.
+
+The form uses the existing readiness hint and polling, and remains disabled
+while sources cannot be queried or the page is an administrator's read-only
+view. The server checks readiness again on submission. Native forms and the
+switch disclosure remain keyboard accessible without JavaScript.
+
+`tests/test_one_box_routes.py` covers routing and the authorization boundaries.
+The registered `scripts/browser-accept-one-box.py` journey checks all three
+destinations, original-source links, explicit switching, a 430-pixel viewport,
+keyboard submission and the absence of a review run before confirmation:
+
+```console
+python scripts/browser-accept-one-box.py \
+  --chrome-binary /path/to/chrome \
+  --chromedriver /path/to/chromedriver \
+  --output /tmp/recordbench-one-box-acceptance
+```
+
+## Offer to investigate a thin answer
+
+Set `CASE_INTELLIGENCE_DEEPER_INVESTIGATION=1` before starting the application
+to offer **Investigate this more deeply** under a saved answer when the generator
+explicitly returned `answerable: false`. The flag defaults off and uses the same
+`1`, `true`, `yes`, `on` values as the one box. Main conversation and Ask dock
+use the same offer. Supported answers, verification rejections, no-evidence
+responses, research results, and older answers without recorded provenance get
+no extra action.
+
+The verifier records an optional `generator_answerable: false` payload marker;
+no schema changes are needed. The offer resolves the original question through
+its completed answer job and retains that job's source set. It never infers
+answerability from response wording or citation counts, substitutes another
+team member's identity, or broadens an unavailable source scope.
+`WorkspaceStore.answer_investigation_basis` owns the member-scoped, read-only
+question binding and availability checks; the shared template helper uses that
+public result without accessing the database connection or its lock.
+
+Nothing starts until the reviewer clicks. The native form posts the original
+question and conversation with `review_task=research` to the existing
+CSRF-protected Ask handler. Stable per-answer, per-reviewer request keys reuse
+the same saved investigation on retries. Existing membership, readiness, local
+answering availability, source scope and concurrent-work checks still apply.
+Saved context and case notes are not reused by research; the offer states this
+when they were supplied to the original answer.
+
+`tests/test_deeper_investigation.py` covers provenance, both presentations,
+source and question binding, authorization, and duplicate submission. The
+existing `scripts/browser-accept-one-box.py` journey also clicks the offer after
+an unsupported answer and confirms that no investigation starts automatically.
+
+## Discovery briefing on Home
+
+Set `CASE_INTELLIGENCE_BRIEFING=1` before starting the application to show the
+discovery briefing before Home's resume panel and task launcher. The flag
+defaults off; `1`, `true`, `yes` and `on` enable it, ignoring case and surrounding
+spaces. With it off, no briefing is assembled and its markup and assets are
+absent. The feature adds no route, saved briefing, or model call.
+
+Once source preparation, media overviews and automatic discovery finish, four
+sections show what arrived, suggested people and places, dates mentioned in the
+records, and recorded intake or extraction problems. Every line has source or
+review links. **Coverage and limitations** keeps the caveats in one initially
+collapsed disclosure. Counts and questions follow the deterministic rules and
+explicit read limits in [Discovery briefing](DISCOVERY_BRIEFING.md); mentioned
+dates are not document dates or established events.
+The briefing does not enable automatic discovery: it summarizes suggestions
+already recorded. Enable the existing `CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY=1`
+flag separately to discover people and dates as sources become ready.
+
+While work is active, the existing readiness line remains and the briefing is
+hidden. Readiness polling replaces only the briefing region after completion,
+preserving text and focus in the question box. Suggestion buttons use the same
+fresh readiness snapshot as the briefing. A new processing phase hides the
+previous briefing again. Read-limit and changed-record refusals leave Home's
+normal workflows available with links to sources and a manual refresh.
+
+Each **Suggested** question is a native button that fills the one box without
+submitting. When `CASE_INTELLIGENCE_ONE_BOX` is off, it opens and fills the
+existing Ask dock instead. Busy, disabled or read-only composers are left
+unchanged. Question selection never starts a search, answer or review. A
+nonmember administrator retains the existing read-only Home without assembling
+a briefing under another person's membership.
+
+`tests/test_briefing_home.py` covers visibility, authorization, completion
+boundaries, source links and graceful refusal. The registered
+`scripts/browser-accept-briefing.py` journey checks processing transitions,
+source links, question selection, both composer variants and a narrow viewport.
+Each linked destination must return HTML 200 and expose its main landmark after
+navigation; failures retain both a screenshot and page source. Run
+`scripts/browser-accept-matter-knowledge.py` with `--briefing` to check the
+existing Case notes journey with this flag enabled after fixture isolation.
 
 ## Scroll regions
 
@@ -73,7 +196,7 @@ python scripts/browser-accept-workspace-layout.py \
 
 The script uses temporary invented matters, conversations and notes, an
 unavailable generator, and an explicit synthetic storage policy. It clears
-inherited RecordBench service settings. It checks alignment at 1800×1000,
+inherited Exculpata service settings. It checks alignment at 1800×1000,
 1440×480 and 390×844, then uses native wheel events and keyboard navigation to
 verify independent scrolling beside long content. Support-open checks cover
 761, 820 and 900 pixel widths, then resize the open page to 820×650 without
@@ -123,8 +246,8 @@ replace the pinned browser or other hosted Quality gates.
 ## Assistant dock suggestions and Close
 
 The dock header has a labelled **Close** button (the chevron stays as its icon);
-its accessible name, "Close Ask RecordBench", includes the visible label. Closing
-moves focus to the collapsed **Ask RecordBench** tab, and reopening returns focus
+its accessible name, "Close Ask Exculpata", includes the visible label. Closing
+moves focus to the collapsed **Ask Exculpata** tab, and reopening returns focus
 to the question box with any unsent question kept.
 
 An empty chat, including one started with **New chat**, offers three suggested
@@ -218,9 +341,9 @@ access, source version and extraction basis before saving. A changed source is
 rejected for renewed review. Existing AI passage saves retain suggested status
 and preserve later human decisions on retries.
 
-PDF notes identify the source page selected by RecordBench's section controls.
+PDF notes identify the source page selected by Exculpata's section controls.
 The embedded browser PDF toolbar does not report page changes to the outer
-reader; select the matching RecordBench section before annotating another page.
+reader; select the matching Exculpata section before annotating another page.
 Media notes capture a playback position and attach the canonical transcript span
 containing it. A position without transcript support cannot produce a
 source-linked note through this form. The playback element remains mounted when

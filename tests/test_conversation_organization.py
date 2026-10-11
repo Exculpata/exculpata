@@ -670,6 +670,10 @@ def test_delete_page_discloses_investigations_and_offers_a_complete_export(tmp_p
             r"/matters/(m-[0-9a-f]{12})/setup", created.headers["location"]
         ).group(1)
         bench = client.app.state.workbench
+        # This fixture sets durable job states itself; the live worker must not
+        # consume its queued example between disclosure and cancellation checks.
+        assert bench.research is not None
+        bench.research.close()
         matter = bench.matter(slug, "development-taylor-morgan")
         conversation = bench.workspace.get_conversation(matter.matter_id)
         conversation = bench.workspace.rename_conversation(

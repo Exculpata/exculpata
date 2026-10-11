@@ -15,7 +15,7 @@ The generated `matter-report` cover document is separate from saved Reports.
 Indexed safe filenames prevent collisions between identical or differently
 capitalized titles. Exports contain work product and source references, without
 original document, recording, or clip bytes. They can be opened in ordinary
-editors; this does not promise RecordBench package import or archival storage.
+editors; this does not promise Exculpata package import or archival storage.
 
 ## Completeness and recovery
 
@@ -72,8 +72,8 @@ separate deployment decision.
 Local validation on September 5: 20 focused Report regressions pass; the full
 application suite passes with 706 tests and 9 environment-gated skips. The
 synthetic browser acceptance passes all seven workflow checks. Compilation,
-publication tree/history checks, and both Compose graphs pass. Hosted PR code
-and security reviews and required CI remain separate merge gates.
+publication tree/history checks, and both Compose graphs pass. The
+[review policy](QUALITY_GATES.md#review-policy) applies before merge.
 
 ## Reviewer context selection manifests
 

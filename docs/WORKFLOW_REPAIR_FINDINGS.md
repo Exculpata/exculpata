@@ -107,7 +107,7 @@ changes beyond the preview, forged saved support, unchanged Report limits and
 complete source-scan budgets. All 66 focused workflow cases and 194 transcription
 tests pass on the corrected candidate. The generated-speech Chrome journey also
 passes with the disclosed native accommodations. These are separate from the
-earlier Linux receipt and do not replace current-head Linux CI or hosted review.
+earlier Linux receipt and do not replace the [review policy](QUALITY_GATES.md#review-policy).
 
 The corrected candidate's unadapted macOS full application run returned
 2,848 passed, 127 failed, 36 fixture errors and 9 skipped. Every previously
@@ -121,7 +121,7 @@ bounded native comparison, not a green application gate.
 
 Public CI for `bbdaaef5a2a72183eef140b7c6541b5e5b751102` completed all six
 Quality gates successfully. Its unadapted Linux application run returned
-**3,011 passed, 9 skipped**. The [exact application job](https://github.com/neilofneils404/recordbench-oss/actions/runs/34732508452/job/103657780581)
+**3,011 passed, 9 skipped**. The [exact application job](https://github.com/Exculpata/exculpata/actions/runs/34732508452/job/103657780581)
 covers the complete candidate at that revision, including the Note-preview
 follow-up; it is separate from the earlier returned patch-only receipt.
 
@@ -140,7 +140,7 @@ and the authored corpus manifest includes these controls. Mutation tests fail
 against the previous fingerprint for both questions and all seven rubric
 definitions. Earlier receipts remain intact with their original, narrower hash.
 These corrections change no application workflow, source-support validator,
-model artifact or stored user work. Fresh CI and hosted review must cover the
+model artifact or stored user work. The [review policy](QUALITY_GATES.md#review-policy) applies to the
 corrected commit; the successful checks above apply to their recorded revision.
 
 Local validation of these review corrections passed **103 focused checks**
@@ -158,7 +158,7 @@ follow-up; the existing workflow browser evidence above retains its scope.
 At `0251b3093b4bfc25c3d160c0df9c00ccba6dc0a9`, the pull-request application
 job passed **3,045 tests with 9 skips**, while the separate push application
 job failed two investigation tests and three Report fixture setups. Both jobs
-tested the same source tree. The [failed run](https://github.com/neilofneils404/recordbench-oss/actions/runs/34758515661)
+tested the same source tree. The [failed run](https://github.com/Exculpata/exculpata/actions/runs/34758515661)
 remains part of the evidence; the passing run does not erase its fixture races.
 
 The investigation fixture treated a ready source document as permission to

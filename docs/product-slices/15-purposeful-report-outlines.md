@@ -1,9 +1,9 @@
 # 15: Automatically compile useful reports from saved review
 
 Status: implemented on `main` via
-[#59](https://github.com/neilofneils404/recordbench-oss/pull/59)
-([#44](https://github.com/neilofneils404/recordbench-oss/pull/44) /
-[#56](https://github.com/neilofneils404/recordbench-oss/pull/56)). See
+[#59](https://github.com/Exculpata/exculpata/pull/59)
+([#44](https://github.com/Exculpata/exculpata/pull/44) /
+[#56](https://github.com/Exculpata/exculpata/pull/56)). See
 [report compilation](../REPORT_COMPILATION.md). Depends on 14; integrates
 deeper synthesis from 13 later.
 

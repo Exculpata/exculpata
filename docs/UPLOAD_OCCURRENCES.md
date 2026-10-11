@@ -132,7 +132,7 @@ with nine optional skips, all 194 transcription tests, compilation, both Compose
 graphs and publication inspection. Six real Chrome workflows and the stopped
 previous-reader/forward-retry check passed on the combined prerequisite revision.
 The normal synthetic backup/restore coverage is included in the application suite.
-Release acceptance requires final-commit hosted reviews and the normal merge gate.
+Before merge, follow the [review policy](QUALITY_GATES.md#review-policy).
 
 The browser navigation harness treats the specific ChromeDriver detached-node
 inspector error as stale, matching the folder-navigation harness; other browser

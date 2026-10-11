@@ -27,6 +27,8 @@
 
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
+  {% if error %}{% include "workbench_one_box_route.html" %}{% endif %}
+  {% include "workbench_home_briefing.html" %}
 
   <section class="cockpit-hero" aria-labelledby="cockpit-hero-heading">
     <div class="cockpit-thread-node" aria-hidden="true"></div>
@@ -38,7 +40,7 @@
       {% elif stats.total %}
       <p>Your sources are saved. Start with the oldest item waiting for review.</p>
       {% else %}
-      <p>Add the material you want RecordBench to process and review.</p>
+      <p>Add the material you want Exculpata to process and review.</p>
       {% endif %}
     </div>
     <a class="button button-primary cockpit-primary-action" href="{{ continue_url }}">
@@ -50,8 +52,27 @@
   <section class="cockpit-task-launcher" data-task-launcher aria-labelledby="task-launcher-heading">
     <header>
       <h2 id="task-launcher-heading">What do you want to accomplish?</h2>
+      {% if one_box_enabled %}<p>Enter a question, exact search, or request to find matching records.</p>{% else %}
       <p>Use Ask for questions and investigations, or choose a specialized source task.</p>
+      {% endif %}
     </header>
+    {% if one_box_enabled %}
+    {% set one_box_draft = one_box_context(request, matter) %}
+    <form class="one-box-form" data-one-box-form data-read-only="{{ 'true' if administrator_view else 'false' }}" method="post" action="/matters/{{ matter.slug }}/one-box">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="request_key" value="{{ one_box_request_key() }}">
+      <label for="one-box-question">Ask, search or find records</label>
+      <div class="one-box-input-row">
+        <input id="one-box-question" name="question" value="{{ one_box_draft.text if one_box_draft else '' }}" maxlength="2000" required autocomplete="off" aria-describedby="one-box-readiness-hint" {% if not matter_readiness.can_query or administrator_view %}disabled{% endif %}>
+        <button class="button button-primary" type="submit" {% if not matter_readiness.can_query or administrator_view %}disabled{% endif %}>Continue</button>
+      </div>
+      <p id="one-box-readiness-hint" data-one-box-readiness-hint {% if matter_readiness.can_query and not matter_readiness.partial_query and not administrator_view %}hidden{% endif %}>{% if administrator_view %}Join this matter's team before submitting a request.{% elif matter_readiness.partial_query %}{{ matter_readiness.coverage_notice }}{% elif matter_readiness.state == 'preparing' %}Questions will be available when active preparation finishes.{% else %}{{ matter_readiness.guidance }}{% endif %}</p>
+    </form>
+    <div class="one-box-quiet-links">
+      <a href="/matters/{{ matter.slug }}/setup?view=list&amp;sort=oldest#source-library">Review records manually</a>
+      <a href="/matters/{{ matter.slug }}#matter-question">Investigate a topic</a>
+    </div>
+    {% else %}
     <nav aria-label="Choose a review task">
       <a href="/matters/{{ matter.slug }}#matter-question">
         <span class="task-launcher-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/></svg></span>
@@ -74,6 +95,7 @@
         <svg class="task-launcher-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </a>
     </nav>
+    {% endif %}
   </section>
 
   <div class="cockpit-thread">

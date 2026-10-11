@@ -21,7 +21,7 @@ not reinterpret decoded original files using the presentation policy. A future
 CR/LF-only extraction rule needs explicit versioning/reprocessing treatment so
 old saved digests and locators cannot silently acquire a different basis.
 That versioned TXT extraction/reprocessing work remains an open follow-up in
-[issue #109](https://github.com/neilofneils404/recordbench-oss/issues/109); this
+[issue #109](https://github.com/Exculpata/exculpata/issues/109); this
 bounded save/export correction does not close it.
 
 This presentation correction leaves original uploaded bytes, file digests,
@@ -122,4 +122,4 @@ the unchanged stored transcript and original bytes. They do not establish that
 today's recording intake or transcript edit validators admit these controls.
 
 This implements R4/revised F5 in
-[the independent review tracker](https://github.com/neilofneils404/recordbench-oss/issues/109).
+[the independent review tracker](https://github.com/Exculpata/exculpata/issues/109).

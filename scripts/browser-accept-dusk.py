@@ -13,6 +13,7 @@ import threading
 
 import uvicorn
 from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -52,6 +53,30 @@ const lum = c => c.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/
 const a=lum(fg),b=lum(bg);
 return {ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),fg,bg};
 """
+
+
+def wait_for_light_snapshot(wait, snapshot, light):
+    actual = None
+
+    def matches(_):
+        nonlocal actual
+        actual = snapshot()
+        return actual == light
+
+    try:
+        wait.until(matches)
+    except TimeoutException as exc:
+        if len(actual) != len(light):
+            difference = f'element count: expected {len(light)}, got {len(actual)}'
+        else:
+            properties = ('color', 'backgroundColor', 'opacity', 'borderColor')
+            difference = next(
+                f'element {index} {property}: expected {expected!r}, got {observed!r}'
+                for index, (expected_row, actual_row) in enumerate(zip(light, actual))
+                for property, expected, observed in zip(properties, expected_row, actual_row)
+                if expected != observed
+            )
+        raise AssertionError(f'Light computed styles did not settle: {difference}') from exc
 
 
 def main():
@@ -126,6 +151,9 @@ def main():
             driver.execute_script('arguments[0].parentElement.remove()', probe)
             report['checks'].append('Contrast calculation composites transparent text and ancestor backgrounds')
             one('[data-assistant-collapse]').click()
+            # Dark is the default appearance. Capture Light only after it is applied.
+            Select(one('[data-theme-picker]')).select_by_value('light')
+            wait.until(lambda _: one('html').get_attribute('data-theme') == 'light')
             light = snapshot()
             def outside_disabled_style():
                 return driver.execute_script("""
@@ -140,7 +168,10 @@ def main():
             outside_light = outside_disabled_style()
             Select(one('[data-theme-picker]')).select_by_value('dusk')
             wait.until(lambda _: one('html').get_attribute('data-theme') == 'dusk')
-            assert outside_disabled_style() == outside_light
+            # Dusk must not restyle this control. Danger and secondary borders
+            # are pinned to the Light tokens in case-intelligence.css.
+            dusk_disabled = outside_disabled_style()
+            assert dusk_disabled == outside_light, (outside_light, dusk_disabled)
             report['checks'].append('Disabled buttons outside the source library retain their existing styles')
             one('.source-status-overview').screenshot(str(output / 'dusk-status.png'))
             one('.source-library-filters').screenshot(str(output / 'dusk-filters.png'))
@@ -201,7 +232,7 @@ def main():
             driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
             Select(one('[data-theme-picker]')).select_by_value('light')
             wait.until(lambda _: one('html').get_attribute('data-theme') == 'light')
-            assert snapshot() == light
+            wait_for_light_snapshot(wait, snapshot, light)
             report['checks'].append('Light computed styles preserved after theme round trip')
             report['passed'] = True
         finally:

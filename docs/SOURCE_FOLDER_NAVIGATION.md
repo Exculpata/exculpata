@@ -68,4 +68,4 @@ Validation on September 8, 2026: `make check` passed 926 application tests
 with nine optional skips, all 194 transcription tests, compilation, both Compose
 graphs and publication inspection. Seven real Chrome workflows passed, including
 desktop/narrow layouts, exact source support, saved-note export and owner closure.
-Release acceptance requires final-commit hosted reviews and the normal merge gate.
+Before merge, follow the [review policy](QUALITY_GATES.md#review-policy).

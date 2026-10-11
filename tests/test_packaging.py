@@ -19,4 +19,4 @@ def test_application_transcription_and_installer_versions_agree():
     assert tomllib.loads((root / 'services/transcription/pyproject.toml').read_text())['project']['version'] == version
     assert constant(root / 'src/case_intelligence/__init__.py', '__version__') == version
     assert constant(root / 'services/transcription/src/transcription_v2/__init__.py', '__version__') == version
-    assert constant(root / 'scripts/recordbench_install.py', 'VERSION').replace('-beta.', 'b') == version
+    assert constant(root / 'scripts/exculpata_install.py', 'VERSION').replace('-beta.', 'b') == version

@@ -2,11 +2,12 @@ name: Quality gates
 
 on:
   push:
-    branches:
-      - '**'
-    tags:
-      - '**'
+    branches: [main]
   pull_request:
+  merge_group:
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,7 +23,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -35,7 +36,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out exact publication head separately
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -43,7 +44,7 @@ jobs:
         env:
           EXPECTED_PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_PUBLICATION_SHA"
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
       - name: Install publication inspection dependencies
@@ -65,7 +66,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -84,27 +85,29 @@ jobs:
           fi
 
   application:
-    needs: [change-scope, publication-scan]
+    needs: [change-scope]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - name: Require successful classification and publication scan
+      - name: Require successful classification
         env:
           SCOPE_RESULT: ${{ needs.change-scope.result }}
-          PUBLICATION_RESULT: ${{ needs.publication-scan.result }}
-        run: test "$SCOPE_RESULT" = success && test "$PUBLICATION_RESULT" = success
+        run: test "$SCOPE_RESULT" = success
       - name: Check out integration candidate
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify integration checkout
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            services/transcription/pyproject.toml
       - name: Install lightweight documentation test dependencies
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
@@ -114,18 +117,28 @@ jobs:
       - name: Record documentation-only acceptance
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: echo 'Documentation and scope contracts passed; the full application suite is not applicable. Publication and secret checks remain required.' >> "$GITHUB_STEP_SUMMARY"
+      # Only trusted main runs share apt archives; PRs install from fresh signed indexes.
+      # Cache downloads only: apt update/install always run, including on cache hits.
+      - name: Cache trusted apt downloads
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.change-scope.outputs.docs_only != 'true' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('.github/workflows/quality-gates.yml') }}
       - name: Install document and media test dependencies
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: |
+          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends \
+          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
+            -o APT::Keep-Downloaded-Packages=true install --yes --no-install-recommends \
             ffmpeg imagemagick poppler-utils tesseract-ocr \
             tesseract-ocr-eng tesseract-ocr-spa
       - name: Bootstrap contributor environment
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: make bootstrap SYSTEM_PYTHON=python
       - name: Verify repeatable setup
-        if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
+        if: ${{ github.event_name == 'schedule' }}
         run: make bootstrap SYSTEM_PYTHON=python
       - name: Compile Python sources
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
@@ -136,15 +149,23 @@ jobs:
           # Hosted runners are intentionally smaller than supported review nodes.
           # Production keeps the 100 GiB default from recordbench.env.example.
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: "0"
+          # A bounded pool overlaps SQLite/filesystem waits on the same hosted
+          # runner; xdist's documented auto-worker override retains -n auto.
+          PYTEST_XDIST_AUTO_NUM_WORKERS: "6"
+          # xdist already occupies the runner CPUs. Bound each worker's native
+          # OCR/numerical thread pools instead of multiplying runnable threads.
+          OMP_THREAD_LIMIT: "1"
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
         # Unbuffered verbose output identifies failed/active nodes before timeout.
         # Captured streams stay private; only synthetic failure tracebacks are shown.
         run: >-
-          .venv/bin/python -u -m pytest -v --tb=short --show-capture=no
+          .venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no
           -ra --durations=25 -o junit_logging=no
           --junitxml="${{ runner.temp }}/application-results.xml"
       - name: Retain application test report
         if: ${{ always() && needs.change-scope.outputs.docs_only != 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: application-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/application-results.xml
@@ -179,7 +200,7 @@ jobs:
           SCOPE_RESULT: ${{ needs.change-scope.result }}
         run: test "$SCOPE_RESULT" = success
       - name: Check out integration candidate
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Verify integration checkout
@@ -187,7 +208,7 @@ jobs:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -211,12 +232,12 @@ jobs:
         env:
           SCOPE_RESULT: ${{ needs.change-scope.result }}
         run: test "$SCOPE_RESULT" = success
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify integration checkout
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -229,25 +250,63 @@ jobs:
         run: python -m pip install --disable-pip-version-check -e './services/transcription[dev]'
       - name: Run bundled transcription suite
         working-directory: services/transcription
-        run: python -m pytest -q
+        run: python -m pytest -q -o addopts=''
 
   deployment-contract:
-    needs: change-scope
-    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
+    # This existing required check keeps publication failure blocking while the
+    # application suite runs concurrently; branch protection remains unchanged.
+    needs: [change-scope, publication-scan]
+    if: ${{ always() && (needs.change-scope.result != 'success' || needs.publication-scan.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Require successful classification
+      - name: Require successful classification and publication scan
         env:
           SCOPE_RESULT: ${{ needs.change-scope.result }}
-        run: test "$SCOPE_RESULT" = success
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+          PUBLICATION_RESULT: ${{ needs.publication-scan.result }}
+        run: test "$SCOPE_RESULT" = success && test "$PUBLICATION_RESULT" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify integration checkout
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Validate standard and Kerberos Compose graphs
         run: ./scripts/compose-check.sh
+      - name: Verify real gateway strips forged authentication headers
+        run: python3 -m unittest tests.test_gateway_nginx -v
+      - name: Select Python 3.12 for restore acceptance
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install encrypted restore drill dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends restic
+          python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
+          image=pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+          docker pull "$image"
+          docker tag "$image" pgvector/pgvector:pg17
+      - name: Run both encrypted restore naming generations without skips
+        env:
+          RECORDBENCH_BACKUP_INTEGRATION: "1"
+        run: |
+          python -m pytest -q -o addopts='' \
+            tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore \
+            --junitxml="$RUNNER_TEMP/restore-results.xml"
+          python - "$RUNNER_TEMP/restore-results.xml" <<'PYCODE'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).getroot().iter("testcase"))
+          expected = {f"test_encrypted_split_snapshot_and_postgres_restore[{names}]"
+                      for names in ("recordbench", "exculpata")}
+          if len(cases) != 2 or {case.get("name") for case in cases} != expected:
+              raise SystemExit("Restore acceptance requires both naming generations")
+          if any(case.find(outcome) is not None for case in cases
+                 for outcome in ("skipped", "failure", "error")):
+              raise SystemExit("Restore acceptance must pass without skips")
+          print("Restore acceptance: 2 passed, zero skipped")
+          PYCODE
       - name: Exercise read-only installer diagnostics
         run: |
           python3 - <<'PYCODE'
@@ -274,7 +333,7 @@ jobs:
 
   synthetic-browser:
     needs: change-scope
-    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
+    if: ${{ always() && contains(fromJSON('["merge_group", "schedule", "workflow_dispatch"]'), github.event_name) && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -283,7 +342,7 @@ jobs:
           SCOPE_RESULT: ${{ needs.change-scope.result }}
         run: test "$SCOPE_RESULT" = success
       - name: Check out integration candidate
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Verify integration checkout
@@ -291,7 +350,7 @@ jobs:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -307,7 +366,7 @@ jobs:
         run: python scripts/run-browser-acceptance.py --output "$RUNNER_TEMP/recordbench-browser-artifacts"
       - name: Retain bounded synthetic diagnostics
         if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: synthetic-browser-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/recordbench-browser-artifacts

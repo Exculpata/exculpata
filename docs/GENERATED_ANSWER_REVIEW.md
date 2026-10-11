@@ -61,7 +61,7 @@ and speaker attribution too. The recorded-context answer path retains its extra
 original-span checks; those checks also do not establish general factual truth.
 
 This is the first R1a mitigation in the [review correction plan](REVIEW_CORRECTION_PLAN.md),
-tracked in [issue #109](https://github.com/neilofneils404/recordbench-oss/issues/109).
+tracked in [issue #109](https://github.com/Exculpata/exculpata/issues/109).
 It does not change the generator, verifier acceptance algorithm, citation basis,
 or storage schema. Direct inline excerpt comparison and real-model evaluation
 remain separate sections with their own acceptance evidence. Saved research

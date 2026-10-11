@@ -248,7 +248,7 @@ def main():
             assert 'Alex Example' in body()
             record('Find more originals opens the selected name through the literal phrase search control')
 
-            for theme, label in (('light', 'day'), ('dusk', 'dusk')):
+            for theme, label in (('dark', 'dark'), ('light', 'day'), ('dusk', 'dusk')):
                 driver.get(graph_url)
                 picker = driver.find_element(By.CSS_SELECTOR, '#appearance-theme')
                 Select(picker).select_by_value(theme)
@@ -263,7 +263,7 @@ def main():
                 readable_cards()
                 diagram_size = driver.find_element(By.CSS_SELECTOR, 'svg.evidence-graph').rect
                 assert diagram_size['width'] >= 1000 and diagram_size['height'] >= 200, diagram_size
-            record('Day and Dusk themes preserve the diagram, labeled roles, competing accounts, and original-source actions')
+            record('Dark, Day and Dusk themes preserve the diagram, labeled roles, competing accounts, and original-source actions')
 
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(
                 width=390, height=844, deviceScaleFactor=1, mobile=False))

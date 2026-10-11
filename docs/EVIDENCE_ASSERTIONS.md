@@ -2,9 +2,9 @@
 
 Slice 18 connects the [entity workspace](ENTITY_WORKSPACE.md) to reviewer-owned
 events and assertions. The storage and provenance contract is
-[issue #80](https://github.com/neilofneils404/recordbench-oss/issues/80).
+[issue #80](https://github.com/Exculpata/exculpata/issues/80).
 The implementation depends on the cruise promotion in
-[PR #81](https://github.com/neilofneils404/recordbench-oss/pull/81), including
+[PR #81](https://github.com/Exculpata/exculpata/pull/81), including
 commit `e0301b9839b8c69d07f40c5f5827ab4873f428d6`. That prerequisite and this
 behavioral PR have separate final-head review and main acceptance gates.
 
@@ -132,7 +132,7 @@ back completely. Chronology export refuses an oversized result instead of
 silently dropping records; use individual exports if necessary. These limits
 are not measured corpus-capacity qualification. Final bundles remain bounded by
 the existing aggregate work-product limit. Work-product exports do not contain
-original files and are not reopenable RecordBench packages.
+original files and are not reopenable Exculpata packages.
 
 Entity-to-Report compilation, matter memory/background, production import,
 larger capacity, learned relationship extraction, a visual graph, held Mac work
@@ -178,9 +178,8 @@ The browser journey also runs in the required
 [synthetic browser runner](BROWSER_ACCEPTANCE.md) (`scripts/run-browser-acceptance.py`).
 
 The [dated validation receipt](EVIDENCE_ASSERTIONS_VALIDATION_2026-09-12.json)
-records actual results and limitations. Hosted
-final-head code/security review, required CI and maintainer acceptance are
-separate gates; synthetic acceptance is not confidential-casework readiness.
+records actual results and limitations. The
+[review policy](QUALITY_GATES.md#review-policy) applies separately; synthetic acceptance is not confidential-casework readiness.
 
 The [historical post-18 receipt](EXIT_ALPHA_CRUISE.md#historical-post-18-receipt-superseded-snapshot)
 records this feature's final-head gates and passed independent post-merge checks.

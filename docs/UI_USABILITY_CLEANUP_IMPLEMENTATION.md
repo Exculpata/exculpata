@@ -158,7 +158,7 @@ The Activity journey additionally checks focus on the second of three answer job
 sharing one destination across an actual poll, and native keyboard skip-link
 activation with page JavaScript disabled. Its ten-check receipt is mandatory;
 the runner rejects truncated results. The focused regression suite passed 131
-cases. Final-head hosted reviews and Linux CI must cover this correction too.
+cases. The [review policy](QUALITY_GATES.md#review-policy) applies to this correction too.
 
 ## Remaining acceptance and handoff
 
@@ -167,7 +167,5 @@ and a screen-reader pass remain unrun. WebKit viewport testing does not establis
 physical-phone or native Safari acceptance. These limits remain explicit; no
 full accessibility certification is claimed.
 
-Before merge, require passing current-head Linux CI and hosted code/security
-review (or the verified security-quota exception), reconciled findings, and
-full-head maintainer acceptance under `PUBLIC_ALPHA.md`. Local validation does
-not substitute for these gates. No deployment is part of this change.
+Before merge, follow the [review policy](QUALITY_GATES.md#review-policy). Local validation does
+not substitute for the required CI checks. No deployment is part of this change.

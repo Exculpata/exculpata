@@ -97,8 +97,8 @@ Both Compose graphs, compilation, publication tree/history and whitespace checks
 passed. All eight final two-reviewer Chrome checks passed, with desktop/mobile
 rendering inspected; the existing seven Report-bundle browser checks also
 passed. The local bundle-script runner disabled unused WebSocket autodetection
-to avoid an unrelated inherited system-package mismatch. Hosted code/security
-review and required CI are separate gates before merging.
+to avoid an unrelated inherited system-package mismatch. The
+[review policy](QUALITY_GATES.md#review-policy) applies before merging.
 Production activation remains a separate deployment decision.
 
 Older software can read the existing schema but cannot enforce these guards.

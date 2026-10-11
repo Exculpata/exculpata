@@ -76,8 +76,7 @@ used by hosted CI. The skipped PDF/audio case still requires Linux.
 
 The existing browser acceptance passed again on the rebased implementation,
 including keyboard entry/refocus, supporting and competing originals, full-reader
-return, literal phrase search, Day/Dusk contrast and 390-pixel reflow. Full hosted
-CI, hosted review and merge acceptance remain outstanding.
+return, literal phrase search, Day/Dusk contrast and 390-pixel reflow. The [review policy](QUALITY_GATES.md#review-policy) still applies before merge.
 
 The executable browser check is `scripts/browser-accept-evidence-graph.py`.
 These checks establish the bounded graph workflow only. They do not establish

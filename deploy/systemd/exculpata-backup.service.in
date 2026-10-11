@@ -1,0 +1,14 @@
+[Unit]
+Description=Encrypted Exculpata node backup (@NODE_ID@)
+Documentation=file:@RELEASE_ROOT@/docs/STORAGE_AND_BACKUP.md
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@PYTHON@ @TOOL@ backup --node-root @NODE_ROOT@
+TimeoutStartSec=infinity
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true

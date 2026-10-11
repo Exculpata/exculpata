@@ -1,6 +1,6 @@
 # Release readiness
 
-RecordBench is currently alpha. The next community beta should make it easier
+Exculpata is currently alpha. The next community beta should make it easier
 to install, try with synthetic material, and contribute using public instructions.
 The full supported-deployment requirements below remain a separate acceptance
 target; they should not prevent publishing reviewed source improvements.
@@ -60,7 +60,7 @@ above has a narrower installation and contribution promise.
 
 ## First-party release authorization
 
-The maintainer has confirmed that release of RecordBench's first-party code
+The maintainer has confirmed that release of Exculpata's first-party code
 under Apache-2.0 is approved. This records the maintainer-confirmed approval
 status; it does not complete third-party license review, sanitization, or
 deployment acceptance. Keep any supporting private approval records outside

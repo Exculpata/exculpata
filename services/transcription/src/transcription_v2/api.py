@@ -378,7 +378,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     app = FastAPI(
-        title="RecordBench Transcription v2",
+        title="Exculpata Transcription v2",
         version="0.1.0",
         docs_url=None,
         redoc_url=None,

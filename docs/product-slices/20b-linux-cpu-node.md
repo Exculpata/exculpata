@@ -46,5 +46,5 @@ published material and run the installed pre-push guard before upload.
 Use `./install`; do not create another installer or merge/rebase #87 wholesale.
 GPU, transcription, OIDC/Kerberos, cross-distribution installation, Mac/#34,
 visual/slice 21 and later-19 remain outside this substep. No schema, model or
-storage change is selected. Follow the current PUBLIC_ALPHA policy: final-head
-hosted code review is mandatory; hosted security review is optional.
+storage change is selected. Follow the
+[review policy](../QUALITY_GATES.md#review-policy).

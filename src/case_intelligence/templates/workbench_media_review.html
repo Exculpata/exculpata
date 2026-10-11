@@ -133,7 +133,7 @@
           {% if media.document.playback_state in ('failed', 'original', 'ready') %}<form method="post" action="/matters/{{ matter.slug }}/sources/{{ media.row.action_token }}/playback/retry"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="quiet-action" type="submit">{{ 'Try playback again' if media.document.playback_state == 'failed' else 'Playback trouble? Convert video' }}</button></form>{% endif %}
         </div>
         {% endif %}
-        <details class="media-playback-provenance"><summary>Playback &amp; original provenance</summary><p class="media-security-note">Playback is available independently from transcription. It is membership-checked and byte-range streamed from this matter; when a browser copy is needed, RecordBench reuses compatible streams and converts only what is necessary while the original remains unchanged.</p></details>
+        <details class="media-playback-provenance"><summary>Playback &amp; original provenance</summary><p class="media-security-note">Playback is available independently from transcription. It is membership-checked and byte-range streamed from this matter; when a browser copy is needed, Exculpata reuses compatible streams and converts only what is necessary while the original remains unchanged.</p></details>
       </section>
 
       {% if media.transcript %}
@@ -143,7 +143,7 @@
           {% if media.summary %}<span class="summary-state summary-{{ media.summary.state }}" data-summary-state-label>{{ media.summary.state|title }}</span>{% endif %}
         </div>
         {% if media.summary and media.summary.state in ('ready', 'stale') %}
-          <div class="media-summary-warning" role="status" data-summary-refresh-notice {% if media.summary.state != 'stale' %}hidden{% endif %}><strong>Refreshing after transcript changes.</strong> The previous overview is shown temporarily while RecordBench creates a current one.</div>
+          <div class="media-summary-warning" role="status" data-summary-refresh-notice {% if media.summary.state != 'stale' %}hidden{% endif %}><strong>Refreshing after transcript changes.</strong> The previous overview is shown temporarily while Exculpata creates a current one.</div>
           <p class="media-summary-caution">{{ media.summary.payload.get('evidence_notice') or 'This is orientation from a machine-generated transcript, not a finding that an event occurred. Transcription and speaker labels may be mistaken; review the recording at the cited timestamps.' }}</p>
           <ol class="media-summary-points">
             {% for claim in media.summary.payload.get('claims', []) %}
@@ -243,7 +243,7 @@
       <details class="speaker-review-panel" id="speaker-review" data-speaker-review data-focus-speaker="{{ speaker_review }}" {% if speaker_review %}open{% endif %}>
         <summary><span><small>Speaker labels</small><strong>Review and correct speaker labels</strong></span><span>{{ media.speakers|length }} speaker{% if media.speakers|length != 1 %}s{% endif %}</span></summary>
         <div class="speaker-review-body">
-          <div class="speaker-review-intro"><p>Automatic speaker groupings are anonymous and unconfirmed. RecordBench never identifies or confirms a person automatically from their voice. Saving a label deliberately updates every passage assigned to that speaker; verify it against the recording.</p><button class="quiet-action" type="button" data-close-speaker-review>Done reviewing speakers</button></div>
+          <div class="speaker-review-intro"><p>Automatic speaker groupings are anonymous and unconfirmed. Exculpata never identifies or confirms a person automatically from their voice. Saving a label deliberately updates every passage assigned to that speaker; verify it against the recording.</p><button class="quiet-action" type="button" data-close-speaker-review>Done reviewing speakers</button></div>
           <p class="speaker-review-status" role="status" aria-live="polite" data-speaker-review-status hidden></p>
           <div class="speaker-mapping-list">
             {% for mapping in media.speakers %}

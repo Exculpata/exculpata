@@ -21,9 +21,34 @@ that Dismiss adds nothing; that a slow Add holds Dismiss and Suggest; then adds 
 and its links, the **From an answer** mark in the inbox and the found date in the
 timeline draft, that a repeat finds nothing new, and that the control fits at 390
 and 320 pixels.
+The [one-box journey](WORKSPACE_LAYOUT.md#one-box-on-home) enables the optional
+Home entry point and checks exact search, cited answers and a prefilled
+every-source criterion, route switching, native keyboard use and a 430-pixel
+viewport. It confirms that opening the criterion creates no review run.
+With `CASE_INTELLIGENCE_DEEPER_INVESTIGATION` enabled, the same journey also
+checks that a supported answer shows no additional offer, while a deterministic
+`answerable=false` result offers **Investigate this more deeply** without
+starting work. One native click at 430 pixels posts the same question through
+the existing CSRF-protected Ask flow and creates exactly one queued research
+job in the same conversation. Refreshing before or after the click creates no
+extra work. The research worker is stopped only to keep this queue-state check
+deterministic; the journey does not assess investigation quality.
+The discovery briefing journey enables `CASE_INTELLIGENCE_BRIEFING`, holds a
+synthetic indexing job to check the existing processing presentation, then
+waits for real extraction, indexing and automatic discovery to finish. It
+checks all four sections, exact counts, recorded intake reasons, Suggested
+labels and every source link, including the collapsed coverage caveats. At
+430 pixels it chooses a question with native Tab and Enter, verifies the
+unobscured focused input and unchanged answer/research counts, and repeats
+with one box disabled to check the existing Ask composer. A final application
+restart checks that disabling the briefing flag restores the existing Home.
+It also holds actual Home responses across two controlled readiness cycles to
+verify that an obsolete response cannot replace the briefing, a fresh read is
+required, and the unsent draft and focus outside the briefing survive.
 
 All applications are generated for the run and listen on ephemeral loopback
-ports. They use the unavailable generator and synthetic text fixtures. This is
+ports. They use the unavailable generator or a fixed synthetic generator and
+synthetic text fixtures. This is
 not a model-quality, media-codec, live PostgreSQL or deployed-node acceptance
 check. No model weights or external evidence are downloaded. Production resource
 settings are not changed: the runner supplies a zero storage reserve only to its
@@ -170,9 +195,8 @@ omitted, each line bounded to 300 characters), so the job log shows where it
 stopped even when the artifact cannot be downloaded.
 
 Check `summary.json` first, then the failed journey's log and screenshot. A
-receipt proves only the generated steps recorded in its `checks` array. CI
-application/transcription tests, final-commit code/security reviews and the
-maintainer merge gate remain separate requirements.
+receipt proves only the generated steps recorded in its `checks` array. The
+[review policy](QUALITY_GATES.md#review-policy) applies separately before merge.
 
 The additional `browser-accept-source-folders.py` journey also checks continuous
 source inspection, list-only keyboard navigation, retained library filters, and
@@ -219,3 +243,8 @@ helper. This applies both to direct invocation and invocation through the runner
 
 The Dusk journey checks that disabled-button overrides remain confined to the
 source library and preserve disabled styling elsewhere.
+After switching back to Light, it waits for the complete computed-style snapshot
+to match the original, including color, background color, opacity and border
+color for every captured element. The theme attribute alone does not establish
+that styles have settled. A timeout identifies the first differing element and
+property (or a changed element count); the comparison and timeout remain strict.
