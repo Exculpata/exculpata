@@ -151,6 +151,9 @@ def main():
             driver.execute_script('arguments[0].parentElement.remove()', probe)
             report['checks'].append('Contrast calculation composites transparent text and ancestor backgrounds')
             one('[data-assistant-collapse]').click()
+            # Dark is the default appearance. Capture Light only after it is applied.
+            Select(one('[data-theme-picker]')).select_by_value('light')
+            wait.until(lambda _: one('html').get_attribute('data-theme') == 'light')
             light = snapshot()
             def outside_disabled_style():
                 return driver.execute_script("""

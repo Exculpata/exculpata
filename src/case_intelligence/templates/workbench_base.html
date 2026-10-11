@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{{ theme|default('light') }}">
+<html lang="en" data-theme="{{ theme|default('dark') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,6 +10,7 @@
   <link rel="icon" href="{{ asset_url('favicon-32.png') }}" type="image/png" sizes="32x32">
   <link rel="icon" href="{{ asset_url('favicon-16.png') }}" type="image/png" sizes="16x16">
   <link rel="apple-touch-icon" href="{{ asset_url('apple-touch-icon.png') }}" sizes="180x180">
+  <link rel="stylesheet" href="{{ asset_url('theme-tokens.css') }}">
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
   <link rel="stylesheet" href="{{ asset_url('report-compilation.css') }}">
   <link rel="stylesheet" href="{{ asset_url('workspace-layout.css') }}">
@@ -58,6 +59,7 @@
         <input type="hidden" name="next" value="{{ current_path }}">
         <label class="visually-hidden" for="appearance-theme">Appearance</label>
         <select id="appearance-theme" name="theme" aria-label="Appearance theme" data-theme-picker>
+          <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
           <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
           <option value="dusk" {% if theme == 'dusk' %}selected{% endif %}>Dusk</option>
         </select>
@@ -76,6 +78,7 @@
             <input type="hidden" name="next" value="{{ current_path }}">
             <label for="account-appearance-theme">Appearance</label>
             <select id="account-appearance-theme" name="theme" data-theme-picker>
+              <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
               <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
               <option value="dusk" {% if theme == 'dusk' %}selected{% endif %}>Dusk</option>
             </select>

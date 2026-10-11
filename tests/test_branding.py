@@ -84,6 +84,27 @@ def test_application_favicon_matches_brand_icon() -> None:
     assert 'fill="#0B0D10"' in brand
 
 
+def test_product_avatars_use_the_exculpata_icon() -> None:
+    root = Path(__file__).parents[1]
+    templates = root / "src/case_intelligence/templates"
+    visible_initials = [
+        path.name
+        for path in templates.glob("*.html")
+        if ">RB<" in path.read_text(encoding="utf-8")
+    ]
+    assert visible_initials == []
+    script = (root / "src/case_intelligence/static/case-intelligence.js").read_text(encoding="utf-8")
+    assert ">RB<" not in script
+    assert 'aria-hidden="true">RB' not in script
+    assert 'querySelector(".assistant-brand-mark")' in script
+    assert 'aria-hidden="true">EX</span>' in script
+    mark = (templates / "exculpata_mark.html").read_text(encoding="utf-8")
+    assert "asset_url('favicon.svg')" in mark
+    for name in ("workbench_assistant.html", "workbench_workspace.html", "workbench_login.html"):
+        text = (templates / name).read_text(encoding="utf-8")
+        assert 'include "exculpata_mark.html"' in text
+
+
 def test_readme_hero_uses_exculpata_wordmark() -> None:
     readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
     assert "<picture>" in readme

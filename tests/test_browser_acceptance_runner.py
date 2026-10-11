@@ -359,7 +359,7 @@ import importlib.util, os, pathlib, signal, sys
 spec=importlib.util.spec_from_file_location('runner', sys.argv[1]);r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
 signal.signal(signal.SIGTERM, r.interrupted)
 try:
-    r.run_process([sys.executable, '-c', 'import os,pathlib,sys,time;pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));time.sleep(60)', sys.argv[2]], pathlib.Path(sys.argv[3]), dict(os.environ), 30)
+    r.run_process([sys.executable, '-c', 'import os,pathlib,sys,time;p=pathlib.Path(sys.argv[1]);t=p.with_name(p.name+".partial");t.write_text(str(os.getpid()));t.replace(p);time.sleep(60)', sys.argv[2]], pathlib.Path(sys.argv[3]), dict(os.environ), 30)
 except InterruptedError:
     sys.exit(17)
 """
@@ -367,12 +367,17 @@ except InterruptedError:
         str(marker), str(tmp_path / 'log')])
     try:
         deadline = time.monotonic() + 5
-        while not marker.exists() and time.monotonic() < deadline:
+        pid = ""
+        while time.monotonic() < deadline:
+            if marker.is_file():
+                pid = marker.read_text().strip()
+                if pid.isdigit():
+                    break
             time.sleep(.02)
-        assert marker.exists()
+        assert pid.isdigit()
         parent.send_signal(signal.SIGTERM)
         assert parent.wait(timeout=5) == 17
-        assert not alive(int(marker.read_text()))
+        assert not alive(int(pid))
     finally:
         if parent.poll() is None:
             parent.kill()

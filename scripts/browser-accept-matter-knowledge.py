@@ -361,7 +361,7 @@ def main():
             assert 'Showing 8 of 10 identities' in body()
             record('Independent knowledge pagination survives reload, note-filter submission and status tiles with explicit omission counts')
 
-            for theme in ('light', 'dusk'):
+            for theme in ('dark', 'light', 'dusk'):
                 driver.get(base + path)
                 Select(driver.find_element(By.ID, 'appearance-theme')).select_by_value(theme)
                 wait.until(lambda current: current.find_element(By.TAG_NAME, 'html').get_attribute('data-theme') == theme)
@@ -370,7 +370,7 @@ def main():
                 section = driver.find_element(By.CSS_SELECTOR, '.knowledge-sections')
                 driver.execute_script("arguments[0].scrollIntoView({block:'start',behavior:'instant'})", section)
                 driver.save_screenshot(str(output / f'knowledge-{theme}-desktop.png'))
-            record('Light and Dusk render saved identities and both source stances without desktop overflow')
+            record('Dark, Light and Dusk render saved identities and both source stances without desktop overflow')
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(width=390, height=844, deviceScaleFactor=1, mobile=False))
             driver.get(base + path)
             open_support()

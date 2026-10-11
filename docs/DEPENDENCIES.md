@@ -72,6 +72,21 @@ and validate fresh environments before publishing updates. GPU execution,
 image builds and recovery need their own evidence; resolver success is not
 runtime acceptance.
 
+## Bundled interface fonts
+
+The workbench self-hosts two variable fonts. Stylesheets load them with relative
+`@font-face` URLs under `src/case_intelligence/static/fonts/`. The application
+does not contact a font service at runtime.
+
+| Font | Files | License |
+| --- | --- | --- |
+| Geist | `Geist-Variable.woff2` | SIL Open Font License 1.1, [OFL-Geist.txt](../src/case_intelligence/static/fonts/OFL-Geist.txt). Copyright 2024 The Geist Project Authors. |
+| JetBrains Mono | `JetBrainsMono-Variable.woff2`, `JetBrainsMono-Variable-Italic.woff2` | SIL Open Font License 1.1, [OFL-JetBrainsMono.txt](../src/case_intelligence/static/fonts/OFL-JetBrainsMono.txt). Copyright 2020 The JetBrains Mono Project Authors. |
+
+Geist is the interface and heading face. JetBrains Mono is the face for code,
+identifiers, and citations. Both include system-font fallbacks. The Latin-subset
+files are the Fontsource variable builds of the upstream OFL fonts.
+
 ## Tokenizer resource
 
 `config/models.json` records the exact NLTK `punkt_tab` archive revision and

@@ -18,8 +18,11 @@ Visual colors, the wordmark, and the icon are specified in [BRAND.md](BRAND.md).
 The icon is a Proof Cyan `>` chevron and solid block cursor on a near-black
 rounded square. Keep its geometry, colors, and proportions intact. Give it
 clear space and use a solid background with enough contrast. The application
-sign-in screen still shows "Review the record. Build the work." Product UI
-colors and type are unchanged.
+sign-in screen still shows "Review the record. Build the work."
+
+The workbench appearance is the theme in [Exculpata theme](EXCULPATA_THEME.md).
+Dark is the default. Light and Dusk stay available from the appearance control.
+Geist and JetBrains Mono are self-hosted; the app does not load them from a font service.
 
 ## Assets
 
