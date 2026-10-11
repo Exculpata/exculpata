@@ -6365,11 +6365,11 @@ class CaseIntelligenceWorkbench:
             "ingestion": "background queue" if self.background_ingestion else "request-bound",
             "ocr": os.getenv("CASE_INTELLIGENCE_OCR_MODE", "off") or "off",
             "malware_scan": (
-                "ready"
-                if malware.ready
+                "not required"
+                if self.malware_scan_mode == "disabled"
                 else (
-                    "not required"
-                    if self.malware_scan_mode == "disabled"
+                    "ready"
+                    if malware.ready
                     else "administrator setup required"
                 )
             ),
