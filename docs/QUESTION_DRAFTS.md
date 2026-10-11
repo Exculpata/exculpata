@@ -79,8 +79,10 @@ case notes**, which adds one Suggested note.
   with the same questions citing the same passages, does not add a second note. Wording is the reviewer's to edit once saved.
 - **Audit.** `answer.draft_questions` records each successful draft and the number
   of questions shown; `notebook.capture_questions` records each save. Both
-  routes require the session CSRF token and current matter membership. No schema
-  or storage change is involved.
+  routes require the session CSRF token and current matter membership. The
+  passage selection, draft and save handlers, and those routes live in
+  `src/case_intelligence/answer_question_drafts.py`. No schema or storage
+  change is involved.
 
 ## Evaluation and pass bar
 
