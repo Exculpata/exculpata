@@ -5,6 +5,12 @@ The workbench uses the approved tokens in
 appearance. Light remains available, and Dusk keeps its existing palette.
 The appearance control still switches among Dark, Light, and Dusk.
 
+In Dark appearance, the Review / Add sources page heading uses the theme text
+color. Selected Ask conversations use the raised-panel background with the
+existing theme title and muted metadata colors. Light retains its pale selected
+card and existing text colors. The Ask matter heading keeps its separate theme
+treatment. See the [synthetic Chrome evidence](ui-usability-audit/2026-10-11/review-conversation/receipt.json).
+
 Disabled buttons outside the source library stay on the Light disabled
 treatment when Dusk is selected. Their fill and text are already fixed, and
 their danger or secondary border stays on the Light error and strong-border

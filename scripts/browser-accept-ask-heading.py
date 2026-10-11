@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure the real Ask heading with the offline, synthetic Harbor Street demo."""
+"""Measure Ask and Review readability with the offline Harbor Street demo."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
-from demo import seed_demo
+from demo import require_response, seed_demo
 
 ROOT = Path(__file__).resolve().parents[1]
 # Reuse the existing ancestor-background/opacity-aware contrast measurement.
@@ -126,7 +126,71 @@ def main():
                     navigate(one(f'.matter-section-tabs a[href="{prefix}"]'))
                     current_section('Ask')
                     report['checks'].append(f'{width}px: Ask → Search → Ask navigation')
-                # Capture both widths/themes even when the original dark contrast fails.
+                # Reproduce the remaining Review/selected-conversation contrast gaps
+                # at the reported viewport, using saved empty conversations (no inference).
+                driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                    'width': 1920, 'height': 1080, 'deviceScaleFactor': 1, 'mobile': False})
+                conversations = []
+                for title in ('Harbor Street timeline', 'Harbor Street records'):
+                    response = require_response(demo.client.post(prefix + '/conversations',
+                        headers={'Accept': 'application/json'}), 201).json()
+                    conversations.append(response['conversation_id'])
+                    require_response(demo.client.post(
+                        prefix + '/conversations/' + response['conversation_id'] + '/rename',
+                        data={'title': title}), 303)
+                light_before = None
+                for appearance in ('light', 'dark', 'light'):
+                    theme(appearance)
+                    driver.get(base + prefix + '/setup')
+                    assert one('.setup-heading h1').text == 'Review'
+                    assert one('.source-intake-heading h2').text == 'Add sources'
+                    review = one('.setup-heading h1')
+                    assert review.is_displayed()
+                    measured = driver.execute_script(CONTRAST, review, None, 'color', False)
+                    report['measurements'].append({
+                        'width': 1920, 'theme': appearance, 'target': 'review-heading', **measured})
+                    driver.save_screenshot(str(output / f'ask-heading-review-{appearance}-1920.png'))
+                    report['checks'].append(f'1920px {appearance}: Review / Add sources heading visible')
+
+                    driver.get(base + prefix + '?conversation=' + conversations[0])
+                    selected = one('.conversation-history-item.selected')
+                    assert selected.get_attribute('aria-current') == 'true'
+                    assert selected.find_element(By.CSS_SELECTOR, 'span').text == 'Harbor Street timeline'
+                    colors = {'ask-heading': driver.execute_script(
+                        CONTRAST, one('.matter-heading h1'), None, 'color', False)}
+                    report['measurements'].append({'width': 1920, 'theme': appearance,
+                        'target': 'ask-heading', **colors['ask-heading']})
+                    driver.execute_script(
+                        'arguments[0].scrollIntoView({block:"center",behavior:"instant"})', selected)
+                    for target, selector in (
+                        ('selected-title', '.conversation-history-item.selected > span'),
+                        ('selected-metadata', '.conversation-history-item.selected small'),
+                        ('unselected-title', '.conversation-history-item:not(.selected) > span'),
+                        ('unselected-metadata', '.conversation-history-item:not(.selected) small'),
+                    ):
+                        element = one(selector)
+                        assert element.is_displayed()
+                        assert driver.execute_script('''const r=arguments[0].getBoundingClientRect();
+                            return innerWidth === 1920 && innerHeight === 1080 && r.left >= 0
+                                && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight
+                                && document.documentElement.scrollWidth <= innerWidth;''', element)
+                        measured = driver.execute_script(CONTRAST, element, None, 'color', False)
+                        colors[target] = measured
+                        report['measurements'].append({
+                            'width': 1920, 'theme': appearance, 'target': target, **measured})
+                    if appearance == 'light':
+                        # The selected card's original Light fill and foregrounds are contractual.
+                        assert colors['selected-title']['fg'] == [11, 13, 16, 1]
+                        assert colors['selected-metadata']['fg'] == [90, 96, 105, 1]
+                        assert colors['selected-title']['bg'] == [245, 247, 250, 1]
+                        assert colors['selected-metadata']['bg'] == [245, 247, 250, 1]
+                        if light_before is not None:
+                            assert colors == light_before
+                        light_before = colors
+                    driver.save_screenshot(str(output / f'ask-heading-conversation-{appearance}-1920.png'))
+                    report['checks'].append(f'1920px {appearance}: selected and unselected conversation labels visible')
+                report['checks'].append('1920px: Light selected-card colors preserved through theme round trip')
+                # Capture every state even when the original dark contrast fails.
                 for measured in report['measurements']:
                     assert measured['ratio'] >= 4.5, measured
                 report['checks'].append('All measured heading colors meet 4.5:1 against the painted background')

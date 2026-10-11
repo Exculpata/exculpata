@@ -77,6 +77,18 @@ not run inference or assess model quality. The [October 11 receipt](ui-usability
 and adjacent screenshots record Dark heading contrast improving from 1.08:1 to
 16.19:1 at both widths, with Light unchanged at 16.47:1 and Dusk at 16.49:1.
 
+The same journey also checks Review / Add sources and saved Ask conversations at
+a 1920 × 1080 CSS viewport. It creates two empty synthetic conversations without
+inference, then measures the Review heading and selected/unselected conversation
+title and metadata in Light → Dark → Light. Each measured text pair must meet
+4.5:1; the original Light selected-card fill and foregrounds must remain exact.
+The existing Ask-heading checks remain required. The expanded runner requires
+20 checks and allows four additional bounded `ask-heading-*-1920.png` stills.
+The [Review/conversation receipt](ui-usability-audit/2026-10-11/review-conversation/receipt.json)
+records the measurements; adjacent Dark and Light screenshots show the actual
+browser states. This extension does not validate Dusk conversation cards or
+model quality.
+
 Install the normal contributor Python dependencies first. On Ubuntu 24.04 install
 the browser libraries listed in `scripts/install-ci-browser-deps.py`. Then run:
 
