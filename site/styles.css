@@ -60,8 +60,8 @@ section { scroll-margin-top: 32px; }
 nav { display: flex; align-items: center; gap: 36px; }
 nav a { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); font-size: 16px; text-decoration: none; }
 
-.hero { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; padding: 118px 0 82px; }
-h1 { font-size: clamp(60px, 9vw, 120px); font-weight: 640; line-height: 1.02; letter-spacing: -.055em; }
+.hero { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; padding: 118px 0 82px; }
+h1 { font-size: clamp(60px, 9vw, 120px); font-weight: 640; line-height: 1.02; letter-spacing: -.055em; white-space: nowrap; }
 h1 span { color: var(--accent); }
 .hero-intro { margin-top: 142px; }
 .hero-intro > p:first-child { max-width: 380px; font-size: 25px; line-height: 1.45; letter-spacing: -.02em; }
@@ -127,7 +127,7 @@ footer > a { color: var(--accent); }
 
 @media (max-width: 360px) {
   .page { width: calc(100% - 40px); }
-  h1 { font-size: 43px; }
+  h1 { font-size: 40px; }
   .audience h2 { font-size: 44px; }
   nav { gap: 22px; }
   .hero-intro > p:first-child { font-size: 20px; }
