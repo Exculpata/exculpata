@@ -5,6 +5,21 @@
 > for the work queue. This cruise is retained for historical context; its old
 > PR rules are superseded by the [review policy](QUALITY_GATES.md#review-policy).
 
+## Milestone 2: C1–C4 contract
+
+C1 adds optional reviewer-authored **objective** (short) and **background**
+(longer) to Matter Home. Team reviewers can set, edit and clear both fields;
+revision checks prevent silent overwrites. Existing matter access, lifecycle,
+content-free actor/time audit, backup, restore, complete export and purge rules
+apply. No answer, briefing or other feature consumes these fields in C1.
+See [the storage/API contract](STORAGE_AND_BACKUP.md#matter-objective-and-background-c1).
+
+C2 treats charging papers as background documents. C3 steers the briefing with
+the reviewer objective. C4 supplies the tie-in and polish. These are separate
+bounded increments; C1 implements none of C2–C4. The historical charging-document
+hold below is removed only for this sequence. The retired-history notice and
+all unrelated holds remain in force; merge and deployment are not selected here.
+
 ## Current state — September 30, 2026
 
 Reference upstream revision: `3c814e37adf18a84de9191bad84e0e8a2745e525`.
@@ -453,7 +468,6 @@ Do not take these as the next ticket:
 
 - Apple Silicon / Mac exit path (#33, #34)
 - Reopenable matters and mega-integrations
-- Charging-document matter frame (after cast exists)
 - Agentic playbook / single-shot “Prompt 1” client-summary architecture
 - One-shot “ask the corpus” as the complex-case product story
 - Raising one retrieval limit instead of slices 11 / 13

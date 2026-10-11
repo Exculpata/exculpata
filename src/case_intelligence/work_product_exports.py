@@ -2213,7 +2213,7 @@ def export_matter_bundle(
                     r"[A-Za-z0-9][A-Za-z0-9._/-]{0,240}",
                     path,
                 )
-                or kind not in {"investigation", "source_check", "intake_receipt", "full_text_review", "entity", "entity_discovery", "assertion", "context_selection", "answer_context"}
+                or kind not in {"investigation", "source_check", "intake_receipt", "full_text_review", "entity", "entity_discovery", "assertion", "context_selection", "answer_context", "matter_purpose"}
                 or ".." in path.split("/")
                 or path.casefold() in seen_additional_paths
                 or not isinstance(body, bytes)
