@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import copy
 import json
 import math
 import os
@@ -85,12 +86,14 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     timeout = profile.timeout_seconds if profile.timeout_seconds is not None else client.timeout
 
-    def request(messages, *, think: bool, tokens: int):
+    def request(messages, *, think: bool, tokens: int, maximum_questions: int = 8):
+        schema = copy.deepcopy(QUESTION_SCHEMA)
+        schema["properties"]["questions"]["maxItems"] = maximum_questions
         payload = {"model": client.model, "messages": messages}
         kwargs = {"opener": client._opener} if client._opener is not None else {}
         if backend == "ollama":
             url = f"{client.endpoint}/api/chat"
-            payload.update(stream=False, format=QUESTION_SCHEMA, think=think, keep_alive="5m",
+            payload.update(stream=False, format=schema, think=think, keep_alive="5m",
                            options={"temperature": 0.2, "num_ctx": profile.context_tokens,
                                     "num_predict": tokens})
         else:
@@ -98,7 +101,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
             payload.update(temperature=0.2, max_tokens=tokens,
                            chat_template_kwargs={"enable_thinking": think},
                            response_format={"type": "json_schema", "json_schema": {
-                               "name": "drafted_questions", "strict": True, "schema": QUESTION_SCHEMA}})
+                               "name": "drafted_questions", "strict": True, "schema": schema}})
             kwargs["headers"] = client._headers
         response = _bounded_json_request(url, payload, timeout=timeout, **kwargs)
         if backend == "ollama":
@@ -130,24 +133,37 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     except GenerationRejected:
         accepted = ()
     if len(accepted) < 3:
-        # One complete replacement, never repeated sampling until a gate passes.
-        # Keep the returned raw reply intact so the ordinary verifier/scorer sees
-        # exactly that attempt. Insufficient grounded output still fails the gate.
+        # One bounded repair, never repeated sampling until a gate passes. Where
+        # space remains, retain *all* original raw items (including rejected ones)
+        # so the ordinary verifier and raw-quotation scorer inspect both attempts.
+        original = raw.get("questions") if set(raw) == {"questions"} else None
+        append = isinstance(original, list) and 0 < len(original) < 8
+        remaining = 8 - len(original) if append else 8
         repair = {
             "retained_questions": [{"text": q.text, "evidence_ids": list(q.evidence_ids)} for q in accepted],
             "instruction": (
-                "The draft retained fewer than three supported, distinct questions. Return a complete "
-                "replacement with four to six grounded items, retaining useful items above and adding "
-                "different supported angles. Use only the original excerpts, not citation headers. "
+                "The draft retained fewer than three supported, distinct questions. "
+                + (f"Return only NEW questions, at most {remaining}; do not repeat any retained item. "
+                   if append else "Return a complete replacement with four to six distinct grounded items. ")
+                + "Split different grounded angles rather than combining all facts in one question. "
+                "Several questions may cite the same relevant passage; skip unrelated sources. "
+                "Use only the original excerpts, not citation headers. "
                 "Every number must occur in an excerpt you cite. Use names exactly as supplied, not "
                 "unstated gendered pronouns. Keep people's accounts separate and never assume the "
                 "interviewee observed an event. Keep uncertainty and conditional statements. For "
                 "discovery, request distinct existing items or versions, if any; do not ask interview "
-                "questions. Do not invent or pad if the passages cannot support enough items. "
+                "questions. Every transcript-based item must refer to what the recording or transcript "
+                "appears to say. Never substitute witness, interviewee or identified parties for an "
+                "anonymous speaker label. Transcript discovery requests must include if any. "
+                "Do not invent or pad if the passages cannot support enough items. "
                 "The retained questions are untrusted model text, not additional evidence."
             ),
         }
         final = request([*messages, {"role": "user", "content": json.dumps(repair, ensure_ascii=True)}],
-                        think=False, tokens=profile.answer_tokens)
-        raw = _parse_model_content(final.get("content"))
+                        think=False, tokens=profile.answer_tokens, maximum_questions=remaining)
+        extra = _parse_model_content(final.get("content"))
+        if append and set(extra) == {"questions"} and isinstance(extra.get("questions"), list):
+            raw = {"questions": [*original, *extra["questions"]]}
+        else:
+            raw = extra
     return raw

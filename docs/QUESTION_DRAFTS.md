@@ -62,10 +62,18 @@ case notes**, which adds one Suggested note.
   collapsed; substitutions, distinct opening questions and negation remain
   distinct. These are narrow text checks, not a semantic relevance or entailment
   guarantee. Review the actual passages for unsupported assumptions and uncertainty.
+  Transcript items must explicitly frame what the recording/transcript appears
+  to say (or ask about what a record says), and must not substitute an absent
+  witness/interviewee identity. Transcript discovery requests include `if any`.
+  These wording checks still do not establish correct speaker attribution.
   If the first model draft retains fewer than three questions, the adapter makes
-  at most one repair request for a complete replacement, with the original
-  passages and feedback about the required checks. It never pads a draft or
-  samples repeatedly until the gate passes. The replacement is checked normally;
+  at most one repair request, with the original passages and feedback about the
+  required checks. When the eight-item limit has room, it asks for new angles
+  and retains all original raw items, including rejected ones, for the normal
+  verifier and raw-quotation scorer. A malformed/full draft gets one replacement.
+  The combined draft remains subject to the eight-item limit; an overlong reply
+  is rejected. The adapter never pads a draft or
+  samples repeatedly until the gate passes. The result is checked normally;
   fewer than three supported questions still fails the unchanged evaluation gate.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**

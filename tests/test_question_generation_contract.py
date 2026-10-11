@@ -109,10 +109,13 @@ def test_short_draft_gets_exactly_one_repair_without_inventing_questions(monkeyp
     client = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model')
     result = client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE)
     assert len(calls) == 2 and all(call['think'] is False for call in calls)
-    assert result == (FINAL if repair_succeeds else short)
+    assert result == {'questions': [*short['questions'], *(FINAL if repair_succeeds else short)['questions']]}
     assert calls[0]['messages'] == calls[1]['messages'][:2]
     feedback = json.loads(calls[1]['messages'][-1]['content'])
     assert feedback['retained_questions'] == short['questions']
+    assert calls[1]['format']['properties']['questions']['maxItems'] == 7
+    shown, _ = verify_question_draft(result, EVIDENCE)
+    assert len(shown) == (3 if repair_succeeds else 1)
 
 
 def test_absent_gendered_pronouns_are_rejected_but_direct_address_is_allowed():
@@ -122,6 +125,19 @@ def test_absent_gendered_pronouns_are_rejected_but_direct_address_is_allowed():
     assert verify_question('Where did he carry the green box?', ['S1'], evidence) is None
     stated = {'S1': EvidenceItem('S1', 'Synthetic account.txt', 'Line 1', 'Rowan Example said she carried the box.')}
     assert verify_question('What did she say about the box?', ['S1'], stated)
+
+
+def test_transcript_questions_preserve_uncertainty_and_do_not_identify_the_interviewee():
+    evidence = {'S1': EvidenceItem('S1', 'Synthetic interview.wav', '00:02:10',
+                    'Speaker 1: If the parcel was sent, it went to the former office.', 'transcript')}
+    assert verify_question('What does the recording appear to say about where the parcel went if it was sent?', ['S1'], evidence)
+    assert verify_question('Please provide parcel records, if any, to clarify what the recording appears to say about the former office.', ['S1'], evidence)
+    for text in [
+        'What does the recording appear to say about the parcel the interviewee sent?',
+        'Please provide the parcel sent to the former office.',
+        'Please provide parcel records about the former office that the recording appears to describe.',
+    ]:
+        assert verify_question(text, ['S1'], evidence) is None
 
 
 def test_minor_qualifier_duplicates_collapse_but_different_targets_and_negation_survive():
