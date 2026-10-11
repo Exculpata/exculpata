@@ -66,12 +66,23 @@ Routing precedence is:
    expression. Adjacent plain words and grouping alone remain questions. The
    router detects uppercase operator tokens outside quoted phrases in the original
    text because the parser retains explicit `AND` provenance but not operator case.
+   A phrase alone does not establish exact intent inside a question or an ordinary
+   non-exhaustive request: `Who mentioned "red bicycle"` and
+   `Show texts between "Dana" and "Lee"` stay questions, with or without `?`.
+   Interrogative and auxiliary prefixes, explanation/summarization verbs and
+   retrieval verbs identify these requests, including polite wrappers and
+   `I need to know`, `I want to understand` or `I need an explanation`. Uppercase
+   Boolean and proximity expressions still take precedence (`who OR what`,
+   `show AND texts`, `did NEAR/3 witness`). Quoted enumeration retains exact
+   precedence (`find every document containing "red bicycle"`).
    Exact-search parsing and matching semantics remain case-insensitive and unchanged.
 2. `every_source` for case-insensitive positive requests to enumerate matching
    records, such as `find every email`, `list all`, `show me all of the reports`,
    `check every source`, or `I need to find all records mentioning bicycles`. Retrieval
    verbs must begin the request, optionally with `please` before or after
-   `can/could/would/will you`; `review` and `enumerate` are also supported.
+   `can/could/would/will you`; `review`, `enumerate`, `pull` and `pull up` are also
+   supported. `pull all`, `show me each report` and `list every report where
+   the witness describes the bridge` work in lowercase too.
    `I need` and `I want` can introduce a population directly only when it ends
    the request. Filtered populations require a retrieval verb, including forms
    such as `I need to find` or `I want you to list`. This avoids guessing whether
@@ -88,27 +99,81 @@ Routing precedence is:
    boundary avoids guessing from a verb list; add `List` or `I need to find` to request
    enumeration. Casual uses of `all`, interrogative wrappers, negations, and
    conditional mentions do not qualify through an incidental retrieval phrase.
+   A population immediately followed by a statement predicate (`is`, `are`,
+   `was`, `were`, `has`, `have`, `had`, `seem(s)` or `agree(s)`) stays a question: `Show all reports
+   are consistent` asks about a proposition, not an exhaustive collection.
+   Unquoted cancellation or deferral cues also stay questions: a new sentence
+   starting with `No`, `but do not`/`but don't`, or `only if`/`only when`/`only after`.
+   For example, `pull all documents? No, just summarize.` and `Pull every source
+   only if I say so` do not request exhaustive review now. Quoted filter text
+   cannot activate this guard, and negative filters such as `Find every report
+   where they said not to search all sources` still enumerate.
 3. `question` otherwise, including empty input, whose reason says nothing was
    typed. Parse failures fall through to these natural-language rules, so an
    unbalanced quote alone does not select exact search.
 
 The existing parser is the sole authority on exact syntax, including its limits
-and punctuation rules. For example, `What does "red bicycle" mean` is `exact`,
-but `What does "red bicycle" mean?` is `question` because the whole input fails
-to parse. `list all documents with "red` is `every_source` after parsing fails.
+and punctuation rules. `What does "red bicycle" mean` is now a question whether
+or not it ends in `?`; quoted topic words no longer turn the surrounding prose
+into literal search terms. `list all documents with "red` is `every_source` after parsing fails.
 The helper does not extract or repair fragments of a malformed query.
+Legal-search shorthand such as `w/5` is unsupported by the parser and remains a
+question; supported proximity uses `NEAR/n` or `BEFORE/n`. No matching semantics
+or syntax were added to `exact_search.py`. One-word inputs, bare Bates-style
+identifiers, uncertain fragments and typos without recognized syntax stay
+questions; the router does not autocorrect them into an exhaustive review.
 Lowercase or mixed-case `and`, `or` and `not` do not establish exact intent in
 Ask. `Did Smith and Jones meet on Tuesday` is `question` with or without `?`;
 `show me all the texts between Dana and Lee` and `List each and every document`
 are `every_source` with or without `?`. `Smith AND Jones` and `Smith NOT Jones`
-are `exact` when the whole input parses. Quoted phrases and proximity expressions
-still establish exact intent, including inside lowercase Boolean expressions.
+are `exact` when the whole input parses. Outside natural-language requests,
+quoted phrases still establish exact intent inside lowercase Boolean expressions.
 For example, `"red AND blue" and green` selects exact search because of its quoted
 phrase; the uppercase `AND` inside that phrase is literal text, not an operator.
 
 `tests/test_ask_router.py` covers synthetic intent examples, ambiguous inputs,
 precedence, immutable decisions and explanations. This foundation does not
 claim that enumeration, source coverage or cited answers have run.
+
+### Frozen reviewer-language benchmark
+
+[`benchmarks/ask-router-v1.json`](../benchmarks/ask-router-v1.json) contains 238
+synthetic inputs with independently authored expected kinds and one-line
+rationales. It covers people, places, dates, events, Boolean/proximity/phrase
+searches, exhaustive commands, imperatives, quoted questions, typos, single
+words, Bates-style identifiers and names containing `and`. Ambiguous fragments
+prefer `question`; the set includes negative controls for accidental expensive
+enumeration. The test pins the complete file's SHA-256:
+`64fae76af910dee404dbae35a4073e492cfb224e7309671c445075518d21bb43`.
+
+The same frozen inputs were measured against main revision
+`61c4bbd8027c192b87180071cc0c0c0ff96e3131` and the M1-Q1 router changes:
+
+| Expected kind | Before | After |
+| --- | ---: | ---: |
+| `exact` | 64/64 (100.00%) | 64/64 (100.00%) |
+| `question` | 79/111 (71.17%) | 111/111 (100.00%) |
+| `every_source` | 49/63 (77.78%) | 63/63 (100.00%) |
+| Overall | 192/238 (80.67%) | 238/238 (100.00%) |
+
+The 46 corrected cases are 28 quoted questions/ordinary requests, 14 `pull`
+or `pull up` exhaustive requests and four accidental enumeration decisions.
+Accidental `every_source` selections fell from four to zero. There are no
+remaining misses in this version. The initial whole-percent floors were
+100/71/77 by kind and 80 overall; after the fixes, all floors are ratcheted to
+100%, exceeding the 95% overall target and preserving 100% on exact syntax.
+The benchmark also independently forbids accidental `every_source` decisions.
+
+Run the pinned benchmark and print counts and accuracy per kind:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m pytest -q -s tests/test_ask_router_benchmark.py
+```
+
+These results measure deterministic classification on a synthetic regression set,
+not observed reviewer traffic, retrieval completeness or answer quality. The
+router remains local, pure and unconnected to the Ask UI; the benchmark selects
+no engine and uses no model, network, source material or configuration.
 
 ## Known-answer corpus and validation
 
