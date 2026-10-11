@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .pdf_extract_helper import HELPER_STARTUP_ERROR
 from .review_budget import validate_primary_limit
 
 import hashlib
@@ -119,6 +120,8 @@ def extract_pdf_pages(path: Path) -> tuple[PdfPage, ...]:
     try:
         payload = json.loads(completed.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        if completed.returncode != 0:
+            raise ValueError("PDF extraction could not start.") from exc
         raise ValueError("PDF could not be extracted") from exc
     if not isinstance(payload, dict):
         raise ValueError("PDF extraction returned invalid output")
@@ -127,6 +130,8 @@ def extract_pdf_pages(path: Path) -> tuple[PdfPage, ...]:
         raise ValueError("Encrypted PDFs are not accepted in this pilot.")
     if error in {"page_limit", "page_text_limit", "total_text_limit", "chunk_limit"}:
         raise ValueError("That PDF exceeds the pilot extraction limits.")
+    if error == HELPER_STARTUP_ERROR or (completed.returncode != 0 and not error):
+        raise ValueError("PDF extraction could not start.")
     if completed.returncode != 0 or error:
         raise ValueError("That PDF is damaged or malformed.")
     pages = payload.get("pages")

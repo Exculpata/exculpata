@@ -188,17 +188,90 @@ def page_image_evidence(page: object, reader: object) -> tuple[float, bool]:
 
 
 _ADDRESS_SPACE_CEILING = 512 * 1024 * 1024
+# RLIM_INFINITY is -1 on some platforms, so the probe range cannot be derived
+# by subtracting from it. This cap is only the search bound used when the hard
+# limit is already unlimited.
+_ADDRESS_SPACE_SEARCH_CAP = 1 << 62
+HELPER_STARTUP_ERROR = "helper_startup"
+
+
+def _try_set_address_space(soft: int, hard: int) -> bool:
+    if hard != resource.RLIM_INFINITY and soft > hard:
+        return False
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+    except (ValueError, OSError):
+        return False
+    return True
+
+
+def _growth_budget(floor: int, ceiling: int, cap: int) -> int:
+    """Limit at or above ``floor`` that still leaves a ``ceiling`` growth budget."""
+    if floor >= cap:
+        return cap
+    room = cap - floor
+    return floor + (ceiling if ceiling <= room else room)
+
+
+def _lowest_accepted_address_space(
+    refused_soft: int, hard: int, ceiling: int, cap: int,
+) -> int | None:
+    """Lowest soft limit above ``refused_soft`` that this kernel accepts.
+
+    xnu's ``vm_map_set_size_limit`` rejects a soft limit below the process's
+    current virtual size and accepts every limit at or above that size. A
+    successful probe is relaxed by the growth budget before the search
+    continues, so the process is not pinned to its current virtual size. That
+    pin would reject the next allocation, including the PDF parser.
+    """
+    if cap <= refused_soft:
+        return None
+    previous = refused_soft
+    step = max(refused_soft, 1)
+    accepted: int | None = None
+    while previous < cap:
+        room = cap - previous
+        if step > room:
+            step = room
+        candidate = previous + step
+        if _try_set_address_space(candidate, hard):
+            slack = _growth_budget(candidate, ceiling, cap)
+            if slack != candidate:
+                _try_set_address_space(slack, hard)
+            accepted = candidate
+            break
+        previous = candidate
+        if step > (1 << 61):
+            break
+        step *= 2
+    if accepted is None:
+        return None
+    low = previous
+    high = accepted
+    while low + 1 < high:
+        mid = (low + high) // 2
+        if _try_set_address_space(mid, hard):
+            slack = _growth_budget(mid, ceiling, cap)
+            if slack != mid:
+                _try_set_address_space(slack, hard)
+            high = mid
+        else:
+            low = mid
+    return high
 
 
 def _limit_address_space(ceiling: int = _ADDRESS_SPACE_CEILING) -> None:
-    """Apply an address-space ceiling when this platform accepts it.
+    """Apply the strongest address-space ceiling this kernel will accept.
 
-    Linux can lower ``RLIMIT_AS``. macOS often rejects that call with
-    ``ValueError`` ("current limit exceeds maximum limit") because the current
-    soft limit already exceeds the requested hard ceiling, or because the kernel
-    will not set the resource. A matching hard ceiling is tried first. If that
-    fails, only the soft limit is lowered and the current hard limit is kept.
-    If neither applies, extraction continues. Refusal is not document damage.
+    Linux can lower ``RLIMIT_AS`` to the paired 512 MiB hard and soft limits.
+    macOS rejects that pair, and a soft-only change at the same 512 MiB,
+    because the current virtual size is already larger (``vm_map_set_size_limit``
+    returns failure and ``setrlimit`` raises ``ValueError``). The address space
+    would otherwise stay unlimited. The Mac-safe bound is the lowest limit the
+    kernel accepts plus the same 512 MiB growth budget, with the hard ceiling
+    lowered to match. A tighter inherited soft limit is not raised. If every
+    finite limit is refused, extraction continues. CPU, file-size and open-file
+    limits are unchanged. Refusal is not document damage.
     """
     try:
         soft, hard = resource.getrlimit(resource.RLIMIT_AS)
@@ -213,11 +286,21 @@ def _limit_address_space(ceiling: int = _ADDRESS_SPACE_CEILING) -> None:
     if hard != target_hard:
         attempts.append((target_soft, hard))
     for limits in attempts:
-        try:
-            resource.setrlimit(resource.RLIMIT_AS, limits)
-        except (ValueError, OSError):
-            continue
+        if _try_set_address_space(*limits):
+            return
+    if soft != infinity and soft <= ceiling:
         return
+    cap = _ADDRESS_SPACE_SEARCH_CAP if soft == infinity else soft
+    if hard != infinity and hard < cap:
+        cap = hard
+    floor = _lowest_accepted_address_space(ceiling, hard, ceiling, cap)
+    if floor is None:
+        return
+    budget = _growth_budget(floor, ceiling, cap)
+    if hard == infinity or budget < hard:
+        _try_set_address_space(budget, budget)
+    elif budget != soft:
+        _try_set_address_space(budget, hard)
 
 
 def _limit_process() -> None:
@@ -229,12 +312,19 @@ def _limit_process() -> None:
 
 
 def main() -> int:
-    _limit_process()
-    source = Path(sys.argv[1])
     try:
+        _limit_process()
         from pypdf import PdfReader
 
-        with source.open("rb") as stream:
+        source = Path(sys.argv[1])
+        stream = source.open("rb")
+    except Exception:
+        # Limit setup, parser import, and opening the source all happen before
+        # any PDF bytes are interpreted. Those failures are infrastructure.
+        print(json.dumps({"error": HELPER_STARTUP_ERROR}))
+        return 2
+    try:
+        with stream:
             if stream.read(5) != b"%PDF-":
                 raise ValueError("signature")
             stream.seek(0)
