@@ -29,7 +29,13 @@
     </section>
 
     <div class="source-intake-heading" id="source-intake"><div><p class="eyebrow">Bring in records</p><h2>Add sources</h2></div><a href="#source-library">Skip to review</a></div>
-    {% if capabilities.malware_scan != 'ready' and capabilities.malware_scan != 'not required' %}<div class="notice notice-neutral"><strong>Extended source security setup is pending.</strong> Images, email, and spreadsheets will remain blocked until the private security scanner and signatures are available. PDF, Word, text, audio, and video intake continues normally.</div>{% else %}<div class="intake-security-ready" role="status"><span aria-hidden="true">&#10003;</span><span><strong>Private security checks are active.</strong> Images, email, and spreadsheets are scanned before they enter the matter.</span></div>{% endif %}
+    {% if capabilities.malware_scan == 'not required' %}
+    <div class="notice notice-neutral" role="status"><strong>Security scanning is disabled.</strong> Files are not scanned for malware before they enter this matter.</div>
+    {% elif capabilities.malware_scan == 'ready' %}
+    <div class="intake-security-ready" role="status"><span aria-hidden="true">&#10003;</span><span><strong>Private security checks are active.</strong> Images, email, and spreadsheets are scanned before they enter the matter.</span></div>
+    {% else %}
+    <div class="notice notice-neutral" role="status"><strong>Security scanning needs setup.</strong> Files that require a malware scan cannot enter the matter until the private security scanner and signatures are available.</div>
+    {% endif %}
     <form class="upload-zone scalable-upload" method="post" action="/matters/{{ matter.slug }}/uploads" enctype="multipart/form-data" data-upload-form data-preflight-url="/matters/{{ matter.slug }}/upload-preflight" data-session-url="/matters/{{ matter.slug }}/upload-sessions" data-intake-url="/matters/{{ matter.slug }}/intake-receipts" data-matter-slug="{{ matter.slug }}" data-max-upload-items="{{ upload_limits['items'] }}" data-max-upload-batch-items="{{ upload_limits.batch_items }}" data-max-preflight-request-bytes="{{ upload_limits.preflight_request_bytes }}" data-max-document-bytes="{{ upload_limits.document_bytes }}" data-max-media-bytes="{{ upload_limits.media_bytes }}" data-max-collection-bytes="{{ upload_limits.collection_bytes }}" data-document-limit-label="{{ upload_limits.document_label }}" data-media-limit-label="{{ upload_limits.media_label }}" data-collection-limit-label="{{ upload_limits.collection_label }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="upload-collection-name">

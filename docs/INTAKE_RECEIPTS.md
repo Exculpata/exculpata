@@ -5,6 +5,13 @@ workspace remains temporary; receipts are deleted with the matter.
 
 ## Staff workflow
 
+The Add sources status distinguishes disabled scanning, an enabled ready scanner,
+and scanning that needs setup. Disabled scanning explicitly says that files are
+not scanned for malware, even if a scanner is available. A ready scanner only
+gets the active-checks message when scanning is enabled. When setup is needed,
+files requiring a scan remain blocked. This status describes the current policy;
+it does not certify that a selected file has already been scanned.
+
 Choose files or a folder in **Sources**, review the complete selection, and
 confirm the ready files. Confirmation first saves a receipt of every selected
 item, including unsupported, empty, repeated-path, over-limit and other skipped
