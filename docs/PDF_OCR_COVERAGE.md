@@ -8,13 +8,16 @@ opening a source or restarting the application never replaces its saved text.
 
 Native extraction remains in the bounded child process (500 pages, 250,000
 characters per page, 5 million total characters, 10 CPU seconds and 15 seconds
-wall time). The child also requests a 512 MiB address-space ceiling. Where the
-platform can lower that hard limit, it is installed. Where it cannot, including
-macOS when the current soft limit exceeds the requested hard ceiling, the child
-keeps the current hard limit and lowers the soft limit when that is allowed. If
-neither change is accepted, extraction continues. A refused ceiling is not
-reported as a damaged or malformed PDF. CPU, file-size, descriptor and wall-time
-limits still apply. That process also inspects image placements without
+wall time). The child requests a 512 MiB address-space ceiling. Where the
+platform accepts that paired hard and soft limit, it is installed. Where the
+kernel rejects a limit below the process's current virtual size, including
+macOS, the child installs the lowest limit that kernel accepts plus the same
+512 MiB as a growth budget, and lowers the hard ceiling to match. A tighter
+inherited soft limit is not raised. If no finite limit is accepted, extraction
+continues. A refused ceiling is not a damaged or malformed PDF. A helper
+startup or other pre-parse failure is reported separately and is not described
+as document damage. CPU, file-size, descriptor and wall-time limits still
+apply. That process also inspects image placements without
 decoding image pixels. It sums image bounding boxes clipped to the page
 CropBox, including inline images and nested Form objects. Overlap, skew and
 nonrectangular clipping can cause overestimation. The traversal stops at 50,000 operations, 256 image

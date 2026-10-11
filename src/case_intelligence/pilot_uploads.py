@@ -2249,7 +2249,7 @@ class PilotStore:
                 message = str(exc)
                 if "Encrypted PDFs" in message:
                     raise UploadProblem(message) from exc
-                if "exceeds" in message or "timed out" in message:
+                if "exceeds" in message or "timed out" in message or "could not start" in message:
                     raise UploadProblem(message) from exc
                 raise UploadProblem("That PDF is damaged or malformed. Check the file and try again.") from exc
             ocr_mode = os.getenv(
