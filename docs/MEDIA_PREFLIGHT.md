@@ -27,6 +27,8 @@ remain independent of a held transcription decision.
 
 `media_preflight.py` uses offline FFmpeg decoding and pinned
 `webrtcvad-wheels==2.0.14`, mode 3, 16 kHz mono signed 16-bit PCM, 30 ms frames.
+A later wheel such as 2.0.14.post1 reports a different `__version__` and is refused;
+the speech check stays uncertain until the pin and policy revision change together.
 The [upstream API](https://github.com/roman-nekrasov/py-webrtcvad-wheels)
 classifies voiced/unvoiced frames; it does not establish language, intelligibility,
 speaker identity or evidentiary truth. The component's MIT/WebRTC BSD notices
