@@ -1862,6 +1862,10 @@ textarea::placeholder,
   line-height: 1.12;
 }
 
+html[data-theme="dark"] .workspace-page .matter-heading h1 {
+  color: var(--ink);
+}
+
 .matter-heading p {
   font-size: 14px;
 }

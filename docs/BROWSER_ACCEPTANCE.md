@@ -65,6 +65,18 @@ small disposable test applications.
 
 ## Contributor commands
 
+The Ask-heading journey uses the offline Harbor Street demo with one box,
+briefing, deeper investigation and automatic discovery enabled. At 1440 and
+390 CSS pixels it measures the rendered heading against its composited background
+in Dark, Light and Dusk, requiring at least 4.5:1 contrast. It preserves the
+existing Light foreground through a theme round trip, checks heading visibility
+and horizontal overflow, and follows Home → Ask → Search → Ask using native
+Enter activation of the real navigation. The bounded `ask-heading-*.png`
+screenshots and receipt contain only synthetic demo content; this journey does
+not run inference or assess model quality. The [October 11 receipt](ui-usability-audit/2026-10-11/ask-heading/receipt.json)
+and adjacent screenshots record Dark heading contrast improving from 1.08:1 to
+16.19:1 at both widths, with Light unchanged at 16.47:1 and Dusk at 16.49:1.
+
 Install the normal contributor Python dependencies first. On Ubuntu 24.04 install
 the browser libraries listed in `scripts/install-ci-browser-deps.py`. Then run:
 
