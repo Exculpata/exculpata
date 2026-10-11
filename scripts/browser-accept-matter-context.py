@@ -169,13 +169,13 @@ def main():
             assert 'Alex Role Corrected' in body() and context['person'] in body()
             inspect('assertion', assertion_id)
             activate(button('Accept current basis'))
-            for theme in ('light','dusk'):
+            for theme in ('dark', 'light','dusk'):
                 inspect('assertion', assertion_id)
                 Select(driver.find_element(By.ID,'appearance-theme')).select_by_value(theme)
                 wait.until(lambda _: driver.find_element(By.TAG_NAME,'html').get_attribute('data-theme') == theme)
                 no_overflow()
                 driver.save_screenshot(str(output/f'context-{theme}-desktop.png'))
-            record('Changed role identity retains recorded name and current review status; explicit approval and Light/Dusk inspection fit desktop')
+            record('Changed role identity retains recorded name and current review status; explicit approval and Dark/Light/Dusk inspection fit desktop')
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',dict(width=390,height=844,deviceScaleFactor=1,mobile=False))
             inspect('assertion', assertion_id)
             no_overflow()

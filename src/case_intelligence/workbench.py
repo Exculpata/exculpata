@@ -8730,7 +8730,7 @@ def create_workbench_app(
         context = auth_context(request)
         # Cyberpunk and retro are schema-ready design directions. Only themes
         # with a complete, reviewed component treatment are exposed to staff.
-        if theme not in {"light", "dusk"}:
+        if theme not in {"dark", "light", "dusk"}:
             raise HTTPException(400, "Choose an available appearance theme.")
         try:
             preference = bench.workspace.set_principal_theme(

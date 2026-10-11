@@ -2,8 +2,12 @@
 
 ## Unreleased
 
+- Apply the Exculpata theme. Dark is the default appearance, and Light and Dusk
+  remain selectable. Geist is the interface and heading face. JetBrains Mono is
+  used for code, identifiers, and citations. Both faces are self-hosted.
+
 - Add the Exculpata wordmark, icon, and favicon. The README uses the wordmark
-  and the tagline "your discovery, cited." Application colors and type are unchanged.
+  and the tagline "your discovery, cited."
 
 - Renamed to Exculpata. Visible product branding changes only; existing package,
   deployment and data identifiers remain unchanged.
