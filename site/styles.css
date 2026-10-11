@@ -128,6 +128,7 @@ footer > a { color: var(--accent); }
 @media (max-width: 360px) {
   .page { width: calc(100% - 40px); }
   h1 { font-size: 43px; }
+  .audience h2 { font-size: 44px; }
   nav { gap: 22px; }
   .hero-intro > p:first-child { font-size: 20px; }
 }
