@@ -1,15 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark light">
   <title>Sign in · {{ product_name }}</title>
   <link rel="icon" href="{{ asset_url('favicon.ico') }}" sizes="any">
   <link rel="icon" href="{{ asset_url('favicon.svg') }}" type="image/svg+xml">
   <link rel="icon" href="{{ asset_url('favicon-32.png') }}" type="image/png" sizes="32x32">
   <link rel="icon" href="{{ asset_url('favicon-16.png') }}" type="image/png" sizes="16x16">
   <link rel="apple-touch-icon" href="{{ asset_url('apple-touch-icon.png') }}" sizes="180x180">
+  <link rel="stylesheet" href="{{ asset_url('theme-tokens.css') }}">
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
 </head>
 <body class="login-page">
@@ -30,7 +31,7 @@
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ kerberos_continue_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
           <span><strong>Open a new Exculpata session</strong><small>Continue as the current Windows user</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>
@@ -48,7 +49,7 @@
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ kerberos_continue_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
           <span><strong>Try Windows sign-in again</strong><small>Organization domain single sign-on</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>
@@ -69,7 +70,7 @@
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ oidc_start_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
           <span><strong>Continue to organization sign-in</strong><small>OIDC identity provider</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>

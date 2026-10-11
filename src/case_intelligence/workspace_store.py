@@ -153,7 +153,7 @@ _AUDIT_DETAIL_STATES = {
     "unreviewed",
     "uploaded",
 }
-PREFERENCE_THEMES = ("light", "dusk", "cyberpunk", "retro")
+PREFERENCE_THEMES = ("dark", "light", "dusk", "cyberpunk", "retro")
 MATTER_ACTIVITY_KINDS = ("source", "conversation", "notebook", "analysis", "report")
 MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS = 3
 _ANALYSIS_RESTART_MESSAGE = (
@@ -820,7 +820,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
                 (principal.principal_id,),
             ).fetchone()
         if row is None:
-            return PrincipalPreferenceRecord(principal.principal_id, "light", principal.created_at)
+            return PrincipalPreferenceRecord(principal.principal_id, "dark", principal.created_at)
         return self._preference(row)
 
     def set_principal_theme(
@@ -832,6 +832,15 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
             raise WorkspaceProblem("Choose an available appearance theme.")
         now = self._now()
         with self._lock, self.connection:
+            if selected == "dark":
+                # Dark is the default. The preference check constraint stores
+                # light, dusk, and the unreleased directions, so choosing dark
+                # clears a saved override instead of inserting a new value.
+                self.connection.execute(
+                    "DELETE FROM workbench_principal_preference WHERE principal_id=?",
+                    (principal.principal_id,),
+                )
+                return PrincipalPreferenceRecord(principal.principal_id, "dark", now)
             self.connection.execute(
                 "INSERT INTO workbench_principal_preference(principal_id,theme,updated_at) "
                 "VALUES (?,?,?) ON CONFLICT(principal_id) DO UPDATE SET "

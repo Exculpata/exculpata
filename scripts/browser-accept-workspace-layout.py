@@ -573,7 +573,7 @@ def main(argv=None):
                 return style
 
             viewport(1440, 900)
-            for theme in ("light", "dusk"):
+            for theme in ("dark", "light", "dusk"):
                 driver.get(base + prefix + paths["notes"])
                 js("document.documentElement.dataset.theme=arguments[0]", theme)
                 driver.find_element(By.TAG_NAME, "body").send_keys(Keys.TAB)
@@ -598,7 +598,7 @@ def main(argv=None):
                 js("document.documentElement.dataset.theme=arguments[0]", theme)
                 question = find('.composer-wrap textarea[name="question"]')
                 measurements[f"question_focus_{theme}"] = keyboard_focus(question)
-            checks.append("Light and Dusk skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
+            checks.append("Dark, Light and Dusk skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
 
             # Font preference and WCAG-style spacing are separate stress cases.
             # Neither this nor a CSS viewport change is evidence of native zoom.

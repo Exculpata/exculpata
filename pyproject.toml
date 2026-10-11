@@ -57,6 +57,7 @@ case_intelligence = [
   "migrations/postgresql/*.sql",
   "migrations/sqlite/*.sql",
   "static/*",
+  "static/fonts/*",
   "templates/*.html",
 ]
 
