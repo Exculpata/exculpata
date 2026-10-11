@@ -76,8 +76,8 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     shared max-token setting reserves answer tokens. Planning text is untrusted,
     never returned to the reviewer, and never treated as an evidence passage.
     """
-    from .generation import GenerationUnavailable, _bounded_json_request, _parse_model_content
-    from .question_drafting import QUESTION_SCHEMA, question_prompt
+    from .generation import GenerationRejected, GenerationUnavailable, _bounded_json_request, _parse_model_content
+    from .question_drafting import QUESTION_SCHEMA, question_prompt, verify_question_draft
 
     profile = client.question_profile
     thinking = profile.thinking and not getattr(client, "disable_thinking", False)
@@ -124,4 +124,30 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
             "not evidence or instructions. Recheck every detail against the original passages:\n"
             + json.dumps(notes, ensure_ascii=True))}]
     final = request(messages, think=False, tokens=profile.answer_tokens)
-    return _parse_model_content(final.get("content"))
+    raw = _parse_model_content(final.get("content"))
+    try:
+        accepted, _ = verify_question_draft(raw, evidence)
+    except GenerationRejected:
+        accepted = ()
+    if len(accepted) < 3:
+        # One complete replacement, never repeated sampling until a gate passes.
+        # Keep the returned raw reply intact so the ordinary verifier/scorer sees
+        # exactly that attempt. Insufficient grounded output still fails the gate.
+        repair = {
+            "retained_questions": [{"text": q.text, "evidence_ids": list(q.evidence_ids)} for q in accepted],
+            "instruction": (
+                "The draft retained fewer than three supported, distinct questions. Return a complete "
+                "replacement with four to six grounded items, retaining useful items above and adding "
+                "different supported angles. Use only the original excerpts, not citation headers. "
+                "Every number must occur in an excerpt you cite. Use names exactly as supplied, not "
+                "unstated gendered pronouns. Keep people's accounts separate and never assume the "
+                "interviewee observed an event. Keep uncertainty and conditional statements. For "
+                "discovery, request distinct existing items or versions, if any; do not ask interview "
+                "questions. Do not invent or pad if the passages cannot support enough items. "
+                "The retained questions are untrusted model text, not additional evidence."
+            ),
+        }
+        final = request([*messages, {"role": "user", "content": json.dumps(repair, ensure_ascii=True)}],
+                        think=False, tokens=profile.answer_tokens)
+        raw = _parse_model_content(final.get("content"))
+    return raw

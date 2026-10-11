@@ -62,6 +62,11 @@ case notes**, which adds one Suggested note.
   collapsed; substitutions, distinct opening questions and negation remain
   distinct. These are narrow text checks, not a semantic relevance or entailment
   guarantee. Review the actual passages for unsupported assumptions and uncertainty.
+  If the first model draft retains fewer than three questions, the adapter makes
+  at most one repair request for a complete replacement, with the original
+  passages and feedback about the required checks. It never pads a draft or
+  samples repeatedly until the gate passes. The replacement is checked normally;
+  fewer than three supported questions still fails the unchanged evaluation gate.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
@@ -128,7 +133,8 @@ request with thinking enabled, then a request with thinking disabled and its own
 final-answer allocation. A planning length stop cannot consume that allocation.
 Earlier model notes are labelled untrusted and are not evidence, not returned to
 the reviewer, and not saved to the matter. The final answer still passes the
-same citation/text checks. This costs two requests and does not promise that
+same citation/text checks. This costs two requests, plus at most one replacement
+request if too few questions pass, and does not promise that
 either model output is correct. Transport errors still fail explicitly.
 
 This separate request is the answer reserve: neither adapter pretends that

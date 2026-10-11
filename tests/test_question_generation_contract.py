@@ -11,7 +11,11 @@ from case_intelligence.question_drafting import verify_question, verify_question
 
 EVIDENCE = (EvidenceItem('S1', 'Synthetic dispatch.txt', 'Line 1',
                          'Rowan Example carried a green box to the depot at 09:10 and returned at 09:12.'),)
-FINAL = {'questions': [{'text': 'What did Rowan Example carry to the depot?', 'evidence_ids': ['S1']}]}
+FINAL = {'questions': [
+    {'text': 'What did Rowan Example carry to the depot?', 'evidence_ids': ['S1']},
+    {'text': 'Where did Rowan Example carry the green box?', 'evidence_ids': ['S1']},
+    {'text': 'When did Rowan Example return from the depot?', 'evidence_ids': ['S1']},
+]}
 
 
 @pytest.mark.parametrize('backend,client_type', [('ollama', OllamaGenerator), ('openai', OpenAICompatibleGenerator)])
@@ -89,6 +93,26 @@ def test_profiles_can_enable_thinking_and_expand_each_capacity_without_a_model_s
 def test_invalid_question_capacities_are_rejected(changes):
     with pytest.raises(ValueError):
         QuestionGenerationProfile(**changes)
+
+
+@pytest.mark.parametrize('repair_succeeds', [True, False])
+def test_short_draft_gets_exactly_one_repair_without_inventing_questions(monkeypatch, repair_succeeds):
+    calls = []
+    short = {'questions': FINAL['questions'][:1]}
+
+    def send(url, payload, **kwargs):
+        calls.append(payload)
+        result = FINAL if repair_succeeds and len(calls) == 2 else short
+        return {'message': {'content': json.dumps(result)}}
+
+    monkeypatch.setattr(generation, '_bounded_json_request', send)
+    client = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model')
+    result = client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE)
+    assert len(calls) == 2 and all(call['think'] is False for call in calls)
+    assert result == (FINAL if repair_succeeds else short)
+    assert calls[0]['messages'] == calls[1]['messages'][:2]
+    feedback = json.loads(calls[1]['messages'][-1]['content'])
+    assert feedback['retained_questions'] == short['questions']
 
 
 def test_absent_gendered_pronouns_are_rejected_but_direct_address_is_allowed():
