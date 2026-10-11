@@ -7,6 +7,8 @@ from .matter_purpose_repository import MatterPurposeRepository
 
 
 def add_context_exports(workspace, matter_id, actor_id, administrator_override, add_work_product):
+    from .source_roles import add_source_role_export
+    add_source_role_export(workspace, matter_id, actor_id, administrator_override, add_work_product)
     repository = workspace.assertion_repository(export_read=True, administrator_override=administrator_override)
     from .matter_context_repository import MatterContextRepository
     with repository.transaction(matter_id, actor_id):

@@ -408,6 +408,7 @@ class SourceOrganizationRecord:
     added_at: str
     updated_by: str | None
     updated_at: str
+    source_role: str = "unclassified"
 
 
 @dataclass(frozen=True)
@@ -440,6 +441,7 @@ class SourceCatalogRecord:
     review_state: str
     added_at: str
     byte_match_count: int = 0
+    source_role: str = "unclassified"
 
 
 @dataclass(frozen=True)

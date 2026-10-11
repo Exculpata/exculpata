@@ -65,6 +65,16 @@ small disposable test applications.
 
 ## Contributor commands
 
+The C2 source-role journey reaches the editor from the document reader using
+native keyboard navigation, marks and clears a role, reloads it, and recovers a
+stale edit without overwriting another reviewer. Six checks include exact 1440,
+390 and 320 CSS pixel views. `source-role-*.png` captures contain synthetic
+charging-paper metadata only. This adds one required journey to the runner;
+missing, failed and truncated C2 receipts fail the aggregate result. The
+[native synthetic receipt](ui-usability-audit/2026-10-11/source-roles/receipt.json)
+and adjacent screenshots record the editor and conflict recovery; this does not
+replace the complete pinned Linux suite.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background

@@ -328,6 +328,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
     original_restic = backup._restic
     node = node_factory(wal=True, names=names)
     purpose_matter_id, purpose_before = _seed_matter_purpose(node.control)
+    role_matter_id, role_before = _seed_source_role(node.control)
     monkeypatch.setattr(backup, "_restic", original_restic)
     config = backup._backup_config(node.node)
     password = node.node / "secrets/restic-password"
@@ -408,6 +409,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         assert all(_version(path) == "frozen" for path in databases)
         restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
         _assert_matter_purpose_restore(restored_control, purpose_matter_id, purpose_before)
+        _assert_source_role_restore(restored_control, role_matter_id, role_before)
         dump, = [path for path in files if path.name == "review-index.dump"]
         sql("CREATE DATABASE restored_recordbench;")
         execute(
@@ -769,3 +771,44 @@ def test_matter_purpose_round_trip_through_normal_backup_restore(node_factory, n
     databases = backup._sqlite_files(backup._snapshot_files(node.root / 'restored'))
     restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
     _assert_matter_purpose_restore(restored_control, matter_id, expected)
+
+
+def _seed_source_role(path):
+    from case_intelligence.workspace_store import WorkspaceStore
+    from tests.test_source_roles import seed, update, snapshot
+    store = WorkspaceStore(path)
+    try:
+        matter = seed(store)
+        update(store, matter)
+        update(store, matter, 1, 'unclassified')
+        update(store, matter, 2)
+        return matter.matter_id, snapshot(store, matter.matter_id)
+    finally:
+        store.close()
+
+
+def _assert_source_role_restore(path, matter_id, expected):
+    from case_intelligence.workspace_store import WorkspaceStore
+    from case_intelligence.source_roles import SourceRoleService
+    from tests.test_source_roles import ACTOR, TOKEN, snapshot
+    for _ in range(2):
+        restored = WorkspaceStore(path)
+        try:
+            assert snapshot(restored, matter_id) == expected
+            saved = SourceRoleService(restored).read(matter_id, ACTOR, TOKEN)
+            assert saved['source_role'] == 'background' and saved['revision'] == 3
+            assert restored.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+            assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
+        finally:
+            restored.close()
+
+
+@pytest.mark.parametrize('names', ['recordbench', 'exculpata'])
+def test_source_role_round_trip_through_normal_backup_restore(node_factory, names):
+    node = node_factory(wal=True, names=names)
+    matter_id, expected = _seed_source_role(node.control)
+    assert node.backup() == 0
+    assert node.restore() == 0
+    databases = backup._sqlite_files(backup._snapshot_files(node.root / 'restored'))
+    restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
+    _assert_source_role_restore(restored_control, matter_id, expected)

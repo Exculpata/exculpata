@@ -1,0 +1,12 @@
+{
+  "synthetic_only": true,
+  "passed": true,
+  "checks": [
+    "Native keyboard reaches editor from source details and marks background",
+    "Designation survives reader navigation and reload",
+    "Desktop and exact 390/320 pixel editors have no horizontal overflow",
+    "Stale save retains the proposed choice and shows the competing saved role",
+    "Reviewer deliberately reconciles the conflict and clears the role",
+    "Role changes create no answer or research jobs"
+  ]
+}

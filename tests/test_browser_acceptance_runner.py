@@ -348,7 +348,7 @@ def test_existing_output_is_preserved_and_no_journey_runs(runner, tmp_path, monk
     assert marker.read_text() == 'Generated old result'
 
 
-@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17])
 @pytest.mark.parametrize('failure', ['exit', 'timeout', 'missing', 'failed', 'truncated', 'none'])
 def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_path, monkeypatch, failure, failure_position):
     scratch, output = tmp_path / 'scratch', tmp_path / 'output'
@@ -365,7 +365,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
         if failure != 'missing' or not failing_journey:
             values = {'passed': failure != 'failed' or not failing_journey}
             if failure == 'truncated' and failing_journey:
-                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 11, 15: 5, 16: 19}[failure_position]
+                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 11, 15: 5, 16: 19, 17: 5}[failure_position]
             receipt(raw / name, **values)
         if failing_journey:
             if failure == 'exit':
@@ -376,7 +376,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
 
     monkeypatch.setattr(runner, 'run_process', run)
     results = runner.run_journeys(Path('/generated/chrome'), Path('/generated/driver'), scratch, output, 1)
-    assert len(commands) == 16
+    assert len(commands) == 17
     assert '--verify-readiness' in commands[2]
     assert 'browser-accept-dusk.py' in commands[1][1]
     assert 'browser-accept-workspace-layout.py' in commands[3][1]
@@ -392,6 +392,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
     assert 'browser-accept-briefing.py' in commands[13][1]
     assert 'browser-accept-matter-purpose.py' in commands[14][1]
     assert 'browser-accept-ask-heading.py' in commands[15][1]
+    assert 'browser-accept-source-roles.py' in commands[16][1]
     assert results[failure_position - 1]['passed'] is (failure == 'none')
     assert all(result['passed'] for index, result in enumerate(results) if index != failure_position - 1)
     assert json.loads((output / 'journeys.json').read_text()) == results
@@ -485,8 +486,8 @@ def test_mismatched_driver_version_pin_is_rejected(runner, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize('outcomes,code', [
-    ([index != failing for index in range(16)], 1) for failing in range(16)
-] + [([True] * 16, 0), ([True] * 15, 1), ([], 1)])
+    ([index != failing for index in range(17)], 1) for failing in range(17)
+] + [([True] * 17, 0), ([True] * 16, 1), ([], 1)])
 def test_main_requires_all_journeys_to_pass(runner, tmp_path, monkeypatch, outcomes, code):
     monkeypatch.setattr(runner, 'install_browser', lambda *_: (Path('/generated/chrome'), Path('/generated/driver'), '1.2.3.4'))
     monkeypatch.setattr(runner, 'host_platform', lambda: 'linux64')

@@ -583,6 +583,7 @@ class SourceRow:
     byte_size: int = 0
     origin: str = "upload"
     byte_match_count: int = 0
+    source_role: str = "unclassified"
 
 
 @dataclass(frozen=True)
@@ -2307,7 +2308,7 @@ class CaseIntelligenceWorkbench:
                     collection.name if collection is not None else "Unfiled",
                     organization.added_at,
                     document.size,
-                    document.origin,
+                    document.origin, source_role=organization.source_role,
                 )
             )
         return tuple(rows)
@@ -2338,7 +2339,7 @@ class CaseIntelligenceWorkbench:
             item.added_at,
             item.byte_size,
             item.origin,
-            item.byte_match_count,
+            item.byte_match_count, item.source_role,
         )
 
     def source_library(
@@ -7632,18 +7633,7 @@ def create_workbench_app(
         )
         return transfer_matter_response_lease(request, response)
 
-    def export_source_inventory(
-        catalog: Sequence[SourceCatalogRecord],
-    ) -> tuple[dict[str, object], ...]:
-        return tuple(
-            {
-                "name": source.display_name,
-                "kind": source.kind,
-                "state": source.state_label,
-                "count_label": source.count_label,
-            }
-            for source in catalog
-        )
+    from .source_roles import export_source_inventory
 
     def export_media_work_product(
         matter: MatterRecord,
@@ -14306,6 +14296,10 @@ def create_workbench_app(
     from .matter_purpose_routes import install_matter_purpose
     install_matter_purpose(app, workspace=bench.workspace, authorized_matter=authorized_matter,
         auth_context=auth_context, refresh_authority=refresh_context_authority, require_csrf=require_csrf,
+        require_csrf_header=require_csrf_header, templates=templates, base_context=base_context)
+    from .source_role_routes import install_source_roles
+    install_source_roles(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context,
+        refresh_authority=refresh_context_authority, require_csrf=require_csrf,
         require_csrf_header=require_csrf_header, templates=templates, base_context=base_context)
     from .matter_context_routes import install_context_routes
     install_context_routes(app, assertions_for=bench.assertion_service, authorized_matter=authorized_matter,
