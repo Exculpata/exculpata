@@ -5,6 +5,12 @@ The workbench uses the approved tokens in
 appearance. Light remains available, and Dusk keeps its existing palette.
 The appearance control still switches among Dark, Light, and Dusk.
 
+Disabled buttons outside the source library stay on the Light disabled
+treatment when Dusk is selected. Their fill and text are already fixed, and
+their danger or secondary border stays on the Light error and strong-border
+tokens. Disabled controls inside the source library keep the Dusk
+source-library treatment.
+
 Fonts are self-hosted in `src/case_intelligence/static/fonts/` and loaded
 with relative `@font-face` URLs. Geist is used for interface text and
 headings. JetBrains Mono is used for code, identifiers, and citations.
