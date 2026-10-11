@@ -100,7 +100,9 @@ def main():
             driver.refresh()
             assert 'Understand the synthetic arrival timeline.' in find('#matter-purpose').text
             for width in (1440, 390, 320):
-                driver.set_window_size(width, 1100)
+                driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
+                    dict(width=width, height=1100, deviceScaleFactor=1, mobile=False))
+                assert driver.execute_script('return innerWidth') == width
                 open_editor()
                 focus(find('#matter-objective'))
                 assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
