@@ -79,7 +79,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     """
     from .generation import GenerationRejected, GenerationUnavailable, _bounded_json_request, _parse_model_content
     from .question_drafting import (
-        QUESTION_SCHEMA, _digit_tokens, question_prompt, verify_question, verify_question_draft,
+        QUESTION_SCHEMA, _EVIDENCE_MARKER, _digit_tokens, question_prompt, verify_question, verify_question_draft,
     )
 
     profile = client.question_profile
@@ -156,7 +156,11 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
             cited = [evidence_map[identifier].excerpt for identifier in ids
                      if isinstance(identifier, str) and identifier in evidence_map] if isinstance(ids, list) else []
             missing = sorted(_digit_tokens(text.casefold()) - _digit_tokens("\n".join(cited).casefold())) if isinstance(text, str) else []
-            rejected.append({"candidate": candidate, "digit_tokens_missing_from_cited_excerpts": missing})
+            rejected.append({
+                "candidate": candidate,
+                "digit_tokens_missing_from_cited_excerpts": missing,
+                "citation_label_in_text": bool(_EVIDENCE_MARKER.search(text)) if isinstance(text, str) else False,
+            })
         repair = {
             "retained_questions": [{"text": q.text, "evidence_ids": list(q.evidence_ids)} for q in accepted],
             "rejected_candidates": rejected,
@@ -170,7 +174,9 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
                 "Every number must occur in an excerpt you cite. Rejected candidates include digit tokens "
                 "missing from their cited excerpts: correct the citations to include every original "
                 "passage supplying a detail, or remove unsupported details. Do not simply copy a "
-                "rejected candidate. Use names exactly as supplied, not "
+                "rejected candidate. If citation_label_in_text is true, DELETE all citation labels "
+                "and brackets from the question text; put source IDs ONLY in evidence_ids. "
+                "Use names exactly as supplied, not "
                 "unstated gendered pronouns. Keep people's accounts separate and never assume the "
                 "interviewee observed an event. Keep uncertainty and conditional statements. For "
                 "discovery, request distinct existing items or versions, if any; do not ask interview "
@@ -187,7 +193,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
         repaired_messages = [
             {"role": "system", "content": messages[0]["content"] + "\nRepair requirements:\n" + repair["instruction"]},
             *messages[1:],
-            {"role": "user", "content": json.dumps({
+            {"role": "user", "content": "Previous draft data for correction. Return ONLY new or corrected items, never the retained list.\n" + json.dumps({
                 "retained_questions": repair["retained_questions"],
                 "rejected_candidates": repair["rejected_candidates"],
             }, ensure_ascii=True)},

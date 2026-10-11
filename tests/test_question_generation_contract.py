@@ -112,7 +112,7 @@ def test_short_draft_gets_exactly_one_repair_without_inventing_questions(monkeyp
     assert result == {'questions': [*short['questions'], *(FINAL if repair_succeeds else short)['questions']]}
     assert calls[0]['messages'][1] == calls[1]['messages'][1]
     assert 'Repair requirements:' in calls[1]['messages'][0]['content']
-    feedback = json.loads(calls[1]['messages'][-1]['content'])
+    feedback = json.loads(calls[1]['messages'][-1]['content'].split('\n', 1)[1])
     assert feedback['retained_questions'] == short['questions']
     assert calls[1]['format']['properties']['questions']['maxItems'] == 7
     shown, _ = verify_question_draft(result, EVIDENCE)
@@ -136,9 +136,10 @@ def test_repair_never_promotes_previous_model_text_into_system_instructions(monk
     assert untrusted in calls[1]['messages'][-1]['content']
 
 
-def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monkeypatch):
+@pytest.mark.parametrize('label', ['', ' [S1]'])
+def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monkeypatch, label):
     calls = []
-    invalid = {'text': 'What happened at 12:40 near the depot?', 'evidence_ids': ['S1']}
+    invalid = {'text': 'What happened at 12:40 near the depot?' + label, 'evidence_ids': ['S1']}
 
     def send(url, payload, **kwargs):
         calls.append(payload)
@@ -148,9 +149,10 @@ def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monk
     monkeypatch.setattr(generation, '_bounded_json_request', send)
     raw = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model').draft_questions(
         purpose='witness', topic='Dispatch', evidence=EVIDENCE)
-    feedback = json.loads(calls[1]['messages'][-1]['content'])
+    feedback = json.loads(calls[1]['messages'][-1]['content'].split('\n', 1)[1])
     assert feedback['rejected_candidates'] == [
-        {'candidate': invalid, 'digit_tokens_missing_from_cited_excerpts': ['12:40']}]
+        {'candidate': invalid, 'digit_tokens_missing_from_cited_excerpts': ['12:40', 's1'] if label else ['12:40'],
+         'citation_label_in_text': bool(label)}]
     assert raw['questions'] == [invalid, *FINAL['questions']]
     assert invalid['text'] not in calls[1]['messages'][0]['content']
 

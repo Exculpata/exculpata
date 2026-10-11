@@ -179,7 +179,10 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
         "clarify an unresolved fact, rather than asserting an answer. For a disputed or conditional "
         "record, request it if any exists, without asserting the disputed event happened. "
         "Do not put evidence IDs or citation brackets "
-        "inside question text. Return only JSON matching the required schema."
+        "inside question text. Return only JSON matching the required schema. "
+        "Before finishing, check each item: text has no citation labels, every detail is in "
+        "its cited excerpts, each question adds a different relevant angle, and at least "
+        "three supported items remain when the passages allow them."
     )
     if any(item.evidence_kind == TRANSCRIPT_EVIDENCE_KIND for item in evidence):
         system += (
