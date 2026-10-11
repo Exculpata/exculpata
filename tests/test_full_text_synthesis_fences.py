@@ -26,13 +26,15 @@ def test_legacy_job_mutations_cannot_bypass_full_text_fences(workspace, operatio
     _, bench, matter, _ = workspace
     run, _, _ = seed_terminal_review(bench, matter, count=1)
     job = queue(bench, matter, run)
+    # Research is stopped by the fixture, but other coordinators still share
+    # this connection. Hold the workspace lock through the fixture commit.
     if marker != "valid":
         plan = dict(job.plan)
         if marker == "missing":
             plan.pop("full_text_synthesis_version")
         else:
             plan["full_text_synthesis_version"] = marker
-        with bench.workspace.connection:
+        with bench.workspace._lock, bench.workspace.connection:
             bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
                 (json.dumps(plan), job.job_id))
     before = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
@@ -107,7 +109,7 @@ def test_invalid_version_preserves_charges_and_refuses_processing_retry_and_insp
         plan.pop("full_text_synthesis_version")
     else:
         plan["full_text_synthesis_version"] = marker
-    with bench.workspace.connection:
+    with bench.workspace._lock, bench.workspace.connection:
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
             (json.dumps(plan), job.job_id))
     corrupt = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
@@ -193,7 +195,7 @@ def test_export_rechecks_actual_reader_and_source_scope_after_render(workspace, 
     def render_then_revoke(*args, **kwargs):
         artifact = original(*args, **kwargs)
         if change == "membership":
-            with bench.workspace.connection:
+            with bench.workspace._lock, bench.workspace.connection:
                 bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
         else:
             bench.workspace.remove_source_organization(matter.matter_id, documents[0].document_id)
@@ -305,7 +307,7 @@ def test_interrupted_checkpoint_refuses_mismatched_job_binding(workspace, monkey
     assert bench._research_checkpoint_stale(matter, bad)
     # Exercise the real inspector for a plan-only mismatch without changing
     # matter routing or permission records as part of the corruption fixture.
-    with bench.workspace.connection:
+    with bench.workspace._lock, bench.workspace.connection:
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
             (json.dumps({**failed.plan, "input_digest": "0" * 64}), job.job_id))
     response = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")
@@ -324,7 +326,7 @@ def test_full_text_synthesis_report_converters_refuse_before_copy_or_generation(
         completed = replace(completed, plan={key: value for key, value in completed.plan.items() if key != "full_text_synthesis_version"})
     with pytest.raises(WorkspaceProblem, match="Copying it into a Report is not supported"):
         research_sections(completed)
-    with bench.workspace.connection:
+    with bench.workspace._lock, bench.workspace.connection:
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=?,result_json=? WHERE job_id=?",
             (json.dumps(completed.plan), json.dumps(completed.result), completed.job_id))
     calls_before = len(model.calls)
@@ -524,7 +526,7 @@ def test_response_rechecks_membership_after_the_final_original_source_scan(
         if len(scans) == 2:
             # Revocation occurs during the final potentially lengthy source
             # revalidation, after the earlier post-render membership check.
-            with bench.workspace.connection:
+            with bench.workspace._lock, bench.workspace.connection:
                 bench.workspace.connection.execute(
                     "UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?",
                     (matter.matter_id,))
