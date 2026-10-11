@@ -61,29 +61,29 @@ const server = http.createServer((request, response) => {
       if (width === 1440 && height === 1000 || width === 390) {
         await page.screenshot({ path: path.join(output, width === 390 ? 'mobile.png' : 'desktop.png'), fullPage: true });
       }
-      const destinations = [];
-      for (const [name, id] of [['What it does', 'what-it-does'], ['Who it’s for', 'who-its-for']]) {
-        await page.getByRole('link', { name, exact: true }).click();
-        assert.equal(new URL(page.url()).hash, '#' + id);
-        await page.waitForFunction(id => Math.abs(document.getElementById(id).getBoundingClientRect().top - 32) <= 2, id);
-        const result = await page.locator('#' + id).evaluate(el => ({
-          top: el.getBoundingClientRect().top,
-          scrollY,
-          heading: el.querySelector('h2').innerText.replace(/\s+/g, ' '),
-          headingColor: getComputedStyle(el.querySelector('h2')).color,
-        }));
-        assert.equal(result.headingColor, 'rgb(34, 211, 238)');
-        destinations.push(result);
-        await page.screenshot({ path: path.join(output, `${id}-${width}x${height}.png`) });
+      const headerLinks = await page.locator('header a').evaluateAll(links => links.map(link => ({
+        label: link.getAttribute('aria-label') || link.textContent.trim(),
+        href: link.getAttribute('href'),
+      })));
+      assert.deepEqual(headerLinks, [
+        { label: 'Exculpata home', href: '#main' },
+        { label: 'GitHub', href: 'https://github.com/Exculpata/exculpata' },
+      ]);
+      assert.equal(await page.locator('header nav').count(), 0);
+      for (const name of ['From discovery to understanding.', 'Built for the defense.']) {
+        await page.getByRole('heading', { name, exact: true }).scrollIntoViewIfNeeded();
+        assert(await page.getByRole('heading', { name, exact: true }).isVisible());
       }
-      assert(Math.abs(destinations[0].scrollY - destinations[1].scrollY) > 100, 'Anchors land at the same scroll position');
-      assert.notEqual(destinations[0].heading, destinations[1].heading);
-      await page.goBack();
-      assert.equal(new URL(page.url()).hash, '#what-it-does');
-      await page.waitForFunction(() => Math.abs(document.getElementById('what-it-does').getBoundingClientRect().top - 32) <= 2);
-      await page.goto(origin + '/#who-its-for');
-      await page.waitForFunction(() => Math.abs(document.getElementById('who-its-for').getBoundingClientRect().top - 32) <= 2);
-      observations.push({ width, height, destinations, backAndDirectLink: 'pass' });
+      await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+      const footer = await page.locator('footer > a').evaluate(el => ({
+        bottomClearance: innerHeight - el.getBoundingClientRect().bottom,
+        visible: el.getBoundingClientRect().top >= 0 && el.getBoundingClientRect().bottom <= innerHeight,
+      }));
+      assert(footer.visible && footer.bottomClearance >= 60, 'Footer needs bottom breathing room');
+      if (width === 1440 && height === 1000 || width === 390) {
+        await page.screenshot({ path: path.join(output, width === 390 ? 'mobile-bottom.png' : 'desktop-bottom.png') });
+      }
+      observations.push({ width, height, headerLinks, sections: 'visible', footer });
     }
     await page.goto(origin);
     await page.keyboard.press('Tab');
@@ -97,7 +97,7 @@ const server = http.createServer((request, response) => {
       dirty: Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()),
       observations, requests: [...requests], errors,
     }, null, 2) + '\n');
-    console.log('Static-site browser acceptance passed: five viewports, distinct anchors, history, direct links, keyboard and local resources.');
+    console.log('Static-site browser acceptance passed: five viewports, simple GitHub header, readable sections, keyboard and local resources.');
   } finally {
     if (browser) await browser.close();
     server.closeAllConnections();

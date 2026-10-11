@@ -66,13 +66,13 @@ node scripts/browser-accept-static-site.cjs /path/to/chromium /tmp/fresh-site-ch
 ```
 
 It starts a disposable loopback server, blocks external requests, checks five
-desktop/mobile viewports, and saves screenshots plus a receipt. Both section
-links must put their own section 32px from the viewport top, with different
-scroll positions and visible heading text; back navigation and direct fragment
-loads must work too. This catches bottom-of-page scroll clamping on tall screens,
-where different fragment IDs alone can still produce identical views. A selected
-section expands to provide the required scroll room and highlights its heading;
-the unanchored page remains compact. No client JavaScript is needed.
+desktop/mobile viewports, and saves screenshots plus a receipt. The header must
+contain only the brand/home link and GitHub link; both content sections remain
+readable by scrolling. It also checks horizontal overflow, keyboard access,
+local-only resources, and visible breathing room beneath the footer at the end
+of the page. Desktop/mobile bottom-view screenshots complement the full-page
+captures. Footer padding includes the mobile safe-area inset. The page has no
+section-navigation controls or client JavaScript.
 
 For browser acceptance, inspect desktop and mobile pixels, keyboard focus and
 the skip link, all navigation destinations, and the network log. Confirm every
