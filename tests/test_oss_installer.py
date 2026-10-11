@@ -17,7 +17,7 @@ import recordbench_install as installer  # noqa: E402
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
-    args = installer._parser().parse_args(["install", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
+    args = installer._parser().parse_args(["install", "--names", "recordbench", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
     installer._collect_identity_choices(args)
     console = installer.Console(color=False)
     paths = installer._prepare_directories(console, tmp_path / "node", storage_root=None, resume=False, dry_run=False)
@@ -492,7 +492,7 @@ def test_existing_secret_must_remain_owner_only(tmp_path) -> None:
 
 def test_update_uses_versioned_images_backup_and_rollback_contracts() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
-    source = (ROOT / "scripts/recordbench_install.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts/exculpata_install.py").read_text(encoding="utf-8")
     assert "RECORDBENCH_RELEASE_ID" in compose
     assert "SNAPSHOT BEFORE MUTATION" in source
     assert "--no-backup" in source
@@ -2926,7 +2926,8 @@ def test_retained_account_auxiliary_metadata_rejected(tmp_path, request, monkeyp
 
 
 @pytest.mark.parametrize("problem", ["missing", "unset", "relative", "file", "symlink", "shared", "foreign", "inaccessible"])
-def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_host, monkeypatch, problem):
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_host, monkeypatch, problem, names):
     home = Path(os.environ["HOME"])
     if problem == "missing":
         home.rmdir()
@@ -2955,10 +2956,10 @@ def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_h
         monkeypatch.setattr(Path, "lstat", foreign)
     elif problem == "inaccessible":
         monkeypatch.setattr(os, "access", lambda *a: False)
-    args = preflight_args(tmp_path)
+    args = preflight_args(tmp_path, "--names", names)
     check = next(row for row in installer._collect_preflight("none", args).checks if row.name == "service-home")
     assert check.state == "fail" and check.blocking
-    assert "0700" in check.remedy and "/var/lib/recordbench-home" in check.remedy
+    assert "0700" in check.remedy and f"/var/lib/{names}-home" in check.remedy
     assert not args.root.exists()
     assert not (home / ".docker").exists()
 
@@ -3140,7 +3141,7 @@ def test_saved_alias_updates_preserve_keys_and_unchanged_bytes(tmp_path, prefixe
 
 def test_configuration_writes_new_names_only_and_keeps_existing_old_file_byte_identical(tmp_path):
     from tests.test_first_run_handoff import configured_node
-    root, args, paths = configured_node(tmp_path)
+    root, args, paths = configured_node(tmp_path, names="exculpata")
     path = root / "compose.env"
     fresh = path.read_bytes()
     assert b"EXCULPATA_" in fresh
@@ -3158,7 +3159,7 @@ def test_update_preserves_old_only_compose_settings(tmp_path, monkeypatch, reque
     path = root / "compose.env"
     settings = installer._dotenv(path)
     old = {key.replace("EXCULPATA_", "RECORDBENCH_", 1): value
-           for key, value in settings.items() if not key.startswith("RECORDBENCH_")}
+           for key, value in settings.items()}
     original = installer._env_text(old, "Synthetic old-only node").encode()
     path.write_bytes(original)
     if same_release:
@@ -3184,7 +3185,7 @@ def test_update_preserves_old_only_compose_settings(tmp_path, monkeypatch, reque
 @pytest.mark.parametrize("final_newline", [True, False])
 def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, monkeypatch, prefix, final_newline):
     from tests.test_first_run_handoff import configured_node
-    root, args, paths = configured_node(tmp_path)
+    root, args, paths = configured_node(tmp_path, names="exculpata")
     path = root / "compose.env"
     before = path.read_bytes().replace(b"EXCULPATA_", prefix.encode() + b"_")
     if not final_newline:

@@ -25,12 +25,13 @@ def test_browser_account_profile_is_preserved_and_hashed_in_backup(tmp_path):
     assert f"{hashlib.sha256(account.read_bytes()).hexdigest()}  accounts/local-accounts.json" in (tmp_path / "CONTROL_SHA256SUMS").read_text()
 
 
-def test_backup_entrypoints_are_executable_and_parse() -> None:
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_backup_entrypoints_are_executable_and_parse(names) -> None:
     scripts = [
-        ROOT / "scripts/recordbench-backup.sh",
-        ROOT / "scripts/recordbench-backup-status.sh",
-        ROOT / "scripts/recordbench-restore-drill.sh",
-        ROOT / "scripts/recordbench_backup.py",
+        ROOT / f"scripts/{names}-backup.sh",
+        ROOT / f"scripts/{names}-backup-status.sh",
+        ROOT / f"scripts/{names}-restore-drill.sh",
+        ROOT / f"scripts/{names}_backup.py",
     ]
     for script in scripts:
         assert script.is_file()
@@ -108,9 +109,10 @@ def test_restore_checksum_rejects_escape_and_accepts_a_control_file(tmp_path) ->
         backup._verify_checksum_line(payload, f"{digest}  ../outside")
 
 
-def test_quiet_hour_timer_has_retry_and_is_not_host_wide() -> None:
-    service = (ROOT / "deploy/systemd/recordbench-backup.service.in").read_text()
-    timer = (ROOT / "deploy/systemd/recordbench-backup.timer.in").read_text()
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_quiet_hour_timer_has_retry_and_is_not_host_wide(names) -> None:
+    service = (ROOT / f"deploy/systemd/{names}-backup.service.in").read_text()
+    timer = (ROOT / f"deploy/systemd/{names}-backup.timer.in").read_text()
     assert "recordbench_backup.py" not in service
     assert "@TOOL@ backup --node-root @NODE_ROOT@" in service
     assert "UMask=0077" in service

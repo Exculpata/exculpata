@@ -258,7 +258,7 @@ jobs:
     needs: [change-scope, publication-scan]
     if: ${{ always() && (needs.change-scope.result != 'success' || needs.publication-scan.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Require successful classification and publication scan
         env:
@@ -274,6 +274,39 @@ jobs:
         run: ./scripts/compose-check.sh
       - name: Verify real gateway strips forged authentication headers
         run: python3 -m unittest tests.test_gateway_nginx -v
+      - name: Select Python 3.12 for restore acceptance
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Install encrypted restore drill dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends restic
+          python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
+          image=pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+          docker pull "$image"
+          docker tag "$image" pgvector/pgvector:pg17
+      - name: Run both encrypted restore naming generations without skips
+        env:
+          RECORDBENCH_BACKUP_INTEGRATION: "1"
+        run: |
+          python -m pytest -q -o addopts='' \
+            tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore \
+            --junitxml="$RUNNER_TEMP/restore-results.xml"
+          python - "$RUNNER_TEMP/restore-results.xml" <<'PYCODE'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          cases = list(ET.parse(sys.argv[1]).getroot().iter("testcase"))
+          expected = {f"test_encrypted_split_snapshot_and_postgres_restore[{names}]"
+                      for names in ("recordbench", "exculpata")}
+          if len(cases) != 2 or {case.get("name") for case in cases} != expected:
+              raise SystemExit("Restore acceptance requires both naming generations")
+          if any(case.find(outcome) is not None for case in cases
+                 for outcome in ("skipped", "failure", "error")):
+              raise SystemExit("Restore acceptance must pass without skips")
+          print("Restore acceptance: 2 passed, zero skipped")
+          PYCODE
       - name: Exercise read-only installer diagnostics
         run: |
           python3 - <<'PYCODE'

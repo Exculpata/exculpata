@@ -131,13 +131,16 @@ def test_response_aliases_emit_authoritative_equal_values_despite_inbound_header
 
 
 @pytest.mark.parametrize("mode", ["new-only", "old-only", "both-equal", "both-different"])
-def test_saved_node_resume_accepts_all_alias_layouts_without_new_requirements(tmp_path, mode):
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_saved_node_resume_accepts_all_alias_layouts_without_new_requirements(tmp_path, mode, names):
     import json
     from tests.test_first_run_handoff import configured_node
     from tests.test_oss_installer import installer
 
-    root, _, paths = configured_node(tmp_path)
+    root, _, paths = configured_node(tmp_path, names=names)
     path = root / "compose.env"
+    # P2 generated new-key environments while retaining legacy paths.
+    path.write_text(installer._env_text(installer._dotenv(path), "Synthetic P2 aliases", aliases=True))
     original = installer._dotenv(path)
     assert not any(key.startswith("RECORDBENCH_") for key in original)
     old = {key.replace("EXCULPATA_", "RECORDBENCH_", 1): value

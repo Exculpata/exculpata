@@ -16,10 +16,10 @@ ROOT = Path(__file__).parents[1]
 PASSWORD = "synthetic-handoff-password"
 
 
-def configured_node(tmp_path, *, storage_root=None):
+def configured_node(tmp_path, *, storage_root=None, names="recordbench"):
     root = tmp_path / "Synthetic Node"
     console = installer.Console(color=False)
-    args = installer._parser().parse_args(["install", "--auth", "local", "--enable-account-management",
+    args = installer._parser().parse_args(["install", "--names", names, "--auth", "local", "--enable-account-management",
         "--models", "none", "--non-interactive", "--prepare-only", "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator"])
     installer._collect_identity_choices(args)
     paths = installer._prepare_directories(console, root, storage_root=storage_root, resume=False, dry_run=False)

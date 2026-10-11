@@ -215,3 +215,50 @@ def test_managed_storage_activation_refuses_unmigrated_legacy_matter_bytes(tmp_p
             generator=UnavailableGenerator(),
             auth_mode="test",
         )
+
+
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_both_marker_generations_open_without_rewriting(tmp_path, monkeypatch, names):
+    monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", names)
+    root = tmp_path / "managed"
+    policy = StoragePolicy(100, 80, 80, 40, 0)
+    ManagedMatterStorage.initialize(root, policy=policy)
+    marker = root / f".{names}-managed-storage.json"
+    original = marker.read_bytes()
+    payload = json.loads(original)
+    assert payload["product"] == ("RecordBench" if names == "recordbench" else "Exculpata")
+    assert payload["storage_id"].startswith(f"{names}-storage-")
+    monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", "exculpata" if names == "recordbench" else "recordbench")
+    assert ManagedMatterStorage(root, policy=policy, require_marker=True).capacity().ready
+    assert marker.read_bytes() == original
+    with pytest.raises(RuntimeError, match="already initialized"):
+        ManagedMatterStorage.initialize(root, policy=policy)
+    assert marker.read_bytes() == original
+
+
+@pytest.mark.parametrize("damage", ["symlink", "oversized", "wrong-product", "wrong-prefix", "two-markers"])
+@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+def test_marker_generation_does_not_weaken_validation(tmp_path, monkeypatch, names, damage):
+    monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", names)
+    root = tmp_path / "managed"
+    policy = StoragePolicy(100, 80, 80, 40, 0)
+    ManagedMatterStorage.initialize(root, policy=policy)
+    marker = root / f".{names}-managed-storage.json"
+    payload = json.loads(marker.read_text())
+    other = "recordbench" if names == "exculpata" else "exculpata"
+    if damage == "symlink":
+        copied = tmp_path / "synthetic-marker"
+        marker.rename(copied)
+        marker.symlink_to(copied)
+    elif damage == "oversized":
+        marker.write_text(" " * 4097 + json.dumps(payload))
+    elif damage == "wrong-product":
+        payload["product"] = "Synthetic invalid product"
+        marker.write_text(json.dumps(payload))
+    elif damage == "wrong-prefix":
+        payload["storage_id"] = other + "-storage-synthetic"
+        marker.write_text(json.dumps(payload))
+    else:
+        (root / f".{other}-managed-storage.json").write_bytes(marker.read_bytes())
+    with pytest.raises(RuntimeError, match="marker"):
+        ManagedMatterStorage(root, policy=policy, require_marker=True)

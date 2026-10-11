@@ -339,7 +339,7 @@ services:
     cap_drop: [ALL]
     pids_limit: 1024
     env_file:
-      - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/recordbench.env
+      - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}
     environment:
       RECORDBENCH_ALLOW_CONTAINER_BIND: "1"
       RECORDBENCH_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
@@ -352,6 +352,7 @@ services:
       CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS: generator
       CASE_INTELLIGENCE_TRANSCRIPTION_ALLOWED_HOSTS: transcription-api
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
+      EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
     depends_on:
       postgres: {condition: service_healthy}
@@ -436,6 +437,8 @@ services:
     networks: [front]
 
   account-admin:
+    environment:
+      EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
     profiles: [tools]
     image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:

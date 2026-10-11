@@ -5,6 +5,11 @@ Exculpata ownership marker. The application will not delete outside that
 boundary. A local filesystem or host-mounted NAS path is supported; the
 installer does not mount network shares or store NAS credentials.
 
+Both `.recordbench-managed-storage.json` and `.exculpata-managed-storage.json`
+are supported, with each generation's original product/storage-ID validation.
+Opening or restoring a marker never rewrites it. Conflicting markers are refused.
+Fresh installs use the Exculpata marker; existing nodes retain the legacy marker.
+
 Capacity policy separately limits a matter, an upload collection, media files,
 documents, and the protected free-space reserve. Thousands of sources are
 represented through paginated catalogs, background jobs, readiness counts, and
@@ -51,6 +56,20 @@ The bundled method uses encrypted restic storage with the recovery password
 copied to a separate protected location. The repository and recovery credential
 must not live inside the node or inside each other. Scheduling is opt-in.
 
+The examples below are for new Exculpata nodes. Existing nodes must keep their
+original root, service account, repository and recovery-key locations. Backups
+retain the `recordbench` restic tag and `recordbench-backup-<hash>` units on legacy
+nodes. New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
+replaces legacy units with new names. Status and restore accept either restic tag;
+retention remains scoped to the node's existing generation. PostgreSQL dumps and
+imports continue to use the `recordbench` user/database.
+
+`scripts/exculpata-backup.sh`, `scripts/exculpata-backup-status.sh`,
+`scripts/exculpata-restore-drill.sh` and `scripts/exculpata_backup.py` expose the
+same operations as the retained `recordbench` entry points. Either spelling can
+read either generation. A verified restore preserves the archived config and
+marker bytes; it does not perform a naming migration.
+
 Install `restic` on the host first; the bundled tool invokes it from the service
 account's PATH. Use the distribution package when available. If its mirror fails,
 the supported alternative is the upstream precompiled binary from
@@ -72,9 +91,9 @@ separate from the repository; the existing local-backup opt-in still applies.
 Initialize and run a backup with:
 
 ```bash
-./install backup --root /srv/recordbench \
-  --repository /mnt/backup/recordbench/restic \
-  --recovery-key-output /mnt/recovery/recordbench-restic-password \
+./install backup --root /srv/exculpata \
+  --repository /mnt/backup/exculpata/restic \
+  --recovery-key-output /mnt/recovery/exculpata-restic-password \
   --schedule-backups
 ```
 
@@ -105,7 +124,7 @@ Precreate the restore-drill **parent** as administrator; the service account
 cannot create new top-level directories in root-owned `/srv`:
 
 ```bash
-sudo install -d -m 0700 -o recordbench -g recordbench /srv/recordbench-drills
+sudo install -d -m 0700 -o exculpata -g exculpata /srv/exculpata-drills
 ```
 
 Keep that parent outside the live node, matter storage and backup repository.
@@ -113,9 +132,9 @@ Leave each child target absent: restore deliberately refuses existing targets.
 As the service account, check status and perform the actual recovery test:
 
 ```bash
-./install backup --root /srv/recordbench
-./install restore --root /srv/recordbench \
-  --restore-target /srv/recordbench-drills/restore-drill-001
+./install backup --root /srv/exculpata
+./install restore --root /srv/exculpata \
+  --restore-target /srv/exculpata-drills/restore-drill-001
 ```
 
 Restore refuses an existing target and never connects drill data to the live
