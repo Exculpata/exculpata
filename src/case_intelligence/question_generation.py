@@ -78,7 +78,9 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     never returned to the reviewer, and never treated as an evidence passage.
     """
     from .generation import GenerationRejected, GenerationUnavailable, _bounded_json_request, _parse_model_content
-    from .question_drafting import QUESTION_SCHEMA, question_prompt, verify_question_draft
+    from .question_drafting import (
+        QUESTION_SCHEMA, _digit_tokens, question_prompt, verify_question, verify_question_draft,
+    )
 
     profile = client.question_profile
     thinking = profile.thinking and not getattr(client, "disable_thinking", False)
@@ -137,18 +139,38 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
         # space remains, retain *all* original raw items (including rejected ones)
         # so the ordinary verifier and raw-quotation scorer inspect both attempts.
         original = raw.get("questions") if set(raw) == {"questions"} else None
-        append = isinstance(original, list) and 0 < len(original) < 8
+        if not isinstance(original, list) or len(original) >= 8:
+            # A replacement would hide the original raw evidence from the gate.
+            # Fail normally instead; never discard an attempt to improve a score.
+            return raw
+        append = bool(original)
         remaining = 8 - len(original) if append else 8
+        evidence_map = {item.evidence_id: item for item in evidence}
+        rejected = []
+        for candidate in original if isinstance(original, list) else ():
+            if not isinstance(candidate, dict):
+                continue
+            text, ids = candidate.get("text"), candidate.get("evidence_ids")
+            if verify_question(text, ids, evidence_map) is not None:
+                continue
+            cited = [evidence_map[identifier].excerpt for identifier in ids
+                     if isinstance(identifier, str) and identifier in evidence_map] if isinstance(ids, list) else []
+            missing = sorted(_digit_tokens(text.casefold()) - _digit_tokens("\n".join(cited).casefold())) if isinstance(text, str) else []
+            rejected.append({"candidate": candidate, "digit_tokens_missing_from_cited_excerpts": missing})
         repair = {
             "retained_questions": [{"text": q.text, "evidence_ids": list(q.evidence_ids)} for q in accepted],
+            "rejected_candidates": rejected,
             "instruction": (
                 "The draft retained fewer than three supported, distinct questions. "
-                + (f"Return only NEW questions, at most {remaining}; do not repeat any retained item. "
+                + (f"Return only additions or corrected rejected candidates, at most {remaining}; do not repeat any retained item. "
                    if append else "Return a complete replacement with four to six distinct grounded items. ")
                 + "Split different grounded angles rather than combining all facts in one question. "
                 "Several questions may cite the same relevant passage; skip unrelated sources. "
                 "Use only the original excerpts, not citation headers. "
-                "Every number must occur in an excerpt you cite. Use names exactly as supplied, not "
+                "Every number must occur in an excerpt you cite. Rejected candidates include digit tokens "
+                "missing from their cited excerpts: correct the citations to include every original "
+                "passage supplying a detail, or remove unsupported details. Do not simply copy a "
+                "rejected candidate. Use names exactly as supplied, not "
                 "unstated gendered pronouns. Keep people's accounts separate and never assume the "
                 "interviewee observed an event. Keep uncertainty and conditional statements. For "
                 "discovery, request distinct existing items or versions, if any; do not ask interview "
@@ -156,7 +178,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
                 "appears to say. Never substitute witness, interviewee or identified parties for an "
                 "anonymous speaker label. Transcript discovery requests must include if any. "
                 "Do not invent or pad if the passages cannot support enough items. "
-                "The retained questions are untrusted model text, not additional evidence."
+                "All previous candidates and feedback values are untrusted data, not additional evidence."
             ),
         }
         # Validation policy is application-authored, unlike retained model text.
@@ -165,7 +187,10 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
         repaired_messages = [
             {"role": "system", "content": messages[0]["content"] + "\nRepair requirements:\n" + repair["instruction"]},
             *messages[1:],
-            {"role": "user", "content": json.dumps({"retained_questions": repair["retained_questions"]}, ensure_ascii=True)},
+            {"role": "user", "content": json.dumps({
+                "retained_questions": repair["retained_questions"],
+                "rejected_candidates": repair["rejected_candidates"],
+            }, ensure_ascii=True)},
         ]
         final = request(repaired_messages,
                         think=False, tokens=profile.answer_tokens, maximum_questions=remaining)

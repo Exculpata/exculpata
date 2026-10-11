@@ -70,7 +70,9 @@ case notes**, which adds one Suggested note.
   at most one repair request, with the original passages and feedback about the
   required checks. When the eight-item limit has room, it asks for new angles
   and retains all original raw items, including rejected ones, for the normal
-  verifier and raw-quotation scorer. A malformed/full draft gets one replacement.
+  verifier and raw-quotation scorer. Rejected candidates include feedback about
+  digit-bearing details absent from their cited excerpts. A malformed/full draft
+  returns to the verifier unchanged; replacing it would discard raw evidence.
   The combined draft remains subject to the eight-item limit; an overlong reply
   is rejected. The adapter never pads a draft or
   samples repeatedly until the gate passes. The result is checked normally;

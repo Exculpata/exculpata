@@ -136,6 +136,39 @@ def test_repair_never_promotes_previous_model_text_into_system_instructions(monk
     assert untrusted in calls[1]['messages'][-1]['content']
 
 
+def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monkeypatch):
+    calls = []
+    invalid = {'text': 'What happened at 12:40 near the depot?', 'evidence_ids': ['S1']}
+
+    def send(url, payload, **kwargs):
+        calls.append(payload)
+        result = {'questions': [invalid]} if len(calls) == 1 else FINAL
+        return {'message': {'content': json.dumps(result)}}
+
+    monkeypatch.setattr(generation, '_bounded_json_request', send)
+    raw = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model').draft_questions(
+        purpose='witness', topic='Dispatch', evidence=EVIDENCE)
+    feedback = json.loads(calls[1]['messages'][-1]['content'])
+    assert feedback['rejected_candidates'] == [
+        {'candidate': invalid, 'digit_tokens_missing_from_cited_excerpts': ['12:40']}]
+    assert raw['questions'] == [invalid, *FINAL['questions']]
+    assert invalid['text'] not in calls[1]['messages'][0]['content']
+
+
+def test_full_rejected_draft_is_not_replaced_and_hidden_from_raw_quote_scoring(monkeypatch):
+    calls = []
+    raw = {'questions': [{'text': 'Who recorded "invented words" at the depot?', 'evidence_ids': ['S1']}] * 8}
+
+    def send(url, payload, **kwargs):
+        calls.append(payload)
+        return {'message': {'content': json.dumps(raw)}}
+
+    monkeypatch.setattr(generation, '_bounded_json_request', send)
+    result = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model').draft_questions(
+        purpose='witness', topic='Dispatch', evidence=EVIDENCE)
+    assert result == raw and len(calls) == 1
+
+
 def test_absent_gendered_pronouns_are_rejected_but_direct_address_is_allowed():
     evidence = {item.evidence_id: item for item in EVIDENCE}
     assert verify_question('What did you observe Rowan Example carrying?', ['S1'], evidence)
