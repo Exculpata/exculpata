@@ -391,3 +391,7 @@ The new desktop and mobile walkthroughs, including their audio, are also
 licensed under Apache-2.0. Only the previous teaser's original soundtrack is
 excluded from the software license;
 see [media rights](docs/assets/MEDIA_RIGHTS.md).
+
+Outside contributors sign the [CLA](CLA.md) once, via the CLA Assistant
+GitHub app. The Exculpata name and logo are not licensed under Apache-2.0; see
+[TRADEMARKS.md](TRADEMARKS.md).
