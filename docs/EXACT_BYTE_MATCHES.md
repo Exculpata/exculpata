@@ -1,7 +1,7 @@
 # Identical received bytes
 
-Status: implemented and locally validated; final-commit hosted reviews and the
-normal merge gate remain required before release. This is source organization, not a
+Status: implemented and locally validated; the [review policy](QUALITY_GATES.md#review-policy)
+applies before merge. This is source organization, not a
 change to intake admission, source identity, evidence verification or retention.
 
 ## Staff workflow

@@ -26,48 +26,59 @@ done
 install -m 0600 /dev/null "$scratch/tls/tls.crt"
 install -m 0600 /dev/null "$scratch/tls/tls.key"
 
-export RECORDBENCH_CONFIG_ROOT="$scratch/config"
-export RECORDBENCH_SECRETS_ROOT="$scratch/secrets"
-export RECORDBENCH_RUNTIME_ROOT="$scratch/runtime"
-export RECORDBENCH_STORAGE_ROOT="$scratch/matter-storage"
-export RECORDBENCH_TRANSCRIPTION_ROOT="$scratch/transcription"
-export RECORDBENCH_STATE_ROOT="$scratch/state"
-export RECORDBENCH_MODEL_ROOT="$scratch/models"
-export RECORDBENCH_TLS_CERT="$scratch/tls/tls.crt"
-export RECORDBENCH_TLS_KEY="$scratch/tls/tls.key"
-
-docker compose \
-  --env-file "$project_root/.env.example" \
-  -f "$project_root/compose.yaml" \
-  config --quiet
-
-RECORDBENCH_KERBEROS_PRINCIPAL=HTTP/recordbench.example.test@EXAMPLE.TEST \
-docker compose \
-  --env-file "$project_root/.env.example" \
-  -f "$project_root/compose.yaml" \
-  -f "$project_root/compose.kerberos.yaml" \
-  config --quiet
-
-printf 'Standard and Kerberos Compose graphs are valid.\n'
-
-RECORDBENCH_LOCAL_ACCOUNT_ROOT="$scratch/accounts" \
-docker compose \
-  --profile tools \
-  --env-file "$project_root/.env.example" \
-  -f "$project_root/compose.yaml" \
-  -f "$project_root/compose.local-accounts.yaml" \
-  config --format json > "$scratch/local-accounts.json"
-
-python3 - "$scratch/local-accounts.json" <<'PY'
+# Resolve every graph in isolated environments: no inherited setting can hide a
+# missing alias, introduce a new requirement, or mask precedence differences.
+python3 - "$project_root" "$scratch" <<'PYTHON'
 import json
+import os
+from pathlib import Path
+import subprocess
 import sys
 
-with open(sys.argv[1], encoding="utf-8") as stream:
-    services = json.load(stream)["services"]
-for name in ("app", "account-admin"):
-    mounts = {mount["target"]: mount for mount in services[name]["volumes"]}
-    assert mounts["/run/recordbench-secrets"].get("read_only") is True, name
-    assert not mounts["/var/lib/recordbench-accounts"].get("read_only", False), name
-PY
-
-printf 'Dedicated local-account Compose graph is valid.\n'
+root, scratch = map(Path, sys.argv[1:])
+values = {}
+for line in (root / ".env.example").read_text().splitlines():
+    if line.startswith("EXCULPATA_"):
+        key, value = line.split("=", 1)
+        values[key.removeprefix("EXCULPATA_")] = value
+for name, directory in {
+    "CONFIG": "config", "SECRETS": "secrets", "RUNTIME": "runtime",
+    "STORAGE": "matter-storage", "TRANSCRIPTION": "transcription", "STATE": "state",
+    "MODEL": "models", "LOCAL_ACCOUNT": "accounts",
+}.items():
+    values[f"{name}_ROOT"] = str(scratch / directory)
+values.update(TLS_CERT=str(scratch / "tls/tls.crt"), TLS_KEY=str(scratch / "tls/tls.key"),
+              KERBEROS_PRINCIPAL="HTTP/recordbench.example.test@EXAMPLE.TEST")
+clean = {key: value for key, value in os.environ.items()
+         if not key.startswith(("RECORDBENCH_", "EXCULPATA_", "COMPOSE_"))}
+reference = {}
+for mode in ("old-only", "new-only", "both-equal", "both-different"):
+    settings = {}
+    for key, value in values.items():
+        if mode != "new-only":
+            settings[f"RECORDBENCH_{key}"] = "ignored" if mode == "both-different" else value
+        if mode != "old-only":
+            settings[f"EXCULPATA_{key}"] = value
+    env_file = scratch / f"{mode}.env"
+    env_file.write_text("".join(f"{key}={json.dumps(value)}\n" for key, value in settings.items()))
+    for profile, overlay in (("standard", None), ("kerberos", "compose.kerberos.yaml"),
+                             ("local-accounts", "compose.local-accounts.yaml")):
+        command = ["docker", "compose", "--profile", "tools", "--env-file", str(env_file),
+                   "-f", str(root / "compose.yaml")]
+        if overlay:
+            command += ["-f", str(root / overlay)]
+        subprocess.run(command + "config --quiet".split(), env=clean, check=True)
+        result = subprocess.run(command + ["config", "--format", "json"], env=clean,
+                                check=True, stdout=subprocess.PIPE, text=True)
+        graph = json.loads(result.stdout)
+        if mode == "old-only":
+            reference[profile] = graph
+        else:
+            assert graph == reference[profile], (mode, profile, "alias graph changed")
+        if profile == "local-accounts":
+            for name in ("app", "account-admin"):
+                mounts = {mount["target"]: mount for mount in graph["services"][name]["volumes"]}
+                assert mounts["/run/recordbench-secrets"].get("read_only") is True, name
+                assert not mounts["/var/lib/recordbench-accounts"].get("read_only", False), name
+    print(f"{mode}: standard, Kerberos and local-account Compose graphs valid and equivalent.")
+PYTHON

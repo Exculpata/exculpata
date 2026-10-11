@@ -1,6 +1,6 @@
 # Preview and acquire reference models
 
-RecordBench supplies adapters and a pinned reference configuration. Operators
+Exculpata supplies adapters and a pinned reference configuration. Operators
 choose and obtain compatible models under their upstream terms. The application
 license does not grant rights to separately acquired models or tokenizer data.
 A different model architecture may need a different adapter; see
@@ -45,7 +45,7 @@ direct-file origins appear in the plan. Review those sources for your use.
 The `punkt_tab` catalog entry deliberately says
 `UPSTREAM-TERMS-REVIEW-REQUIRED`: the NLTK code license does not establish this
 data archive's terms. Choosing to acquire it is an operator decision, not a
-RecordBench certification that its terms are suitable. If unsuitable, do not
+Exculpata certification that its terms are suitable. If unsuitable, do not
 acquire it or claim the reference alignment path is qualified; a compatible
 replacement requires separate implementation and validation.
 

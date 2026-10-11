@@ -14,6 +14,7 @@
   ["answer_cancellation_requested", "(self, job_id: 'str') -> 'bool'"],
   ["answer_counts", "(self) -> 'dict[str, int]'"],
   ["answer_events", "(self, matter_id: 'str', actor_id: 'str', job_id: 'str') -> 'tuple[AnswerEventRecord, ...]'"],
+  ["answer_investigation_basis", "(self, matter_id: 'str', actor_id: 'str', conversation_id: 'str', message_id: 'str') -> 'AnswerInvestigationBasis | None'"],
   ["answer_jobs", "(self, matter_id: 'str', actor_id: 'str', *, limit: 'int' = 25) -> 'tuple[AnswerJobRecord, ...]'"],
   ["answer_jobs_for_actor", "(self, actor_id: 'str', *, limit: 'int' = 150) -> 'tuple[AnswerJobRecord, ...]'"],
   ["answer_notebook_context", "(self, matter_id: 'str', job_id: 'str') -> 'tuple[str | None, tuple[AnswerNotebookContextRecord, ...]]'"],

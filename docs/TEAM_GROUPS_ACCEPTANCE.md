@@ -3,7 +3,7 @@
 Date: 2026-09-10. Baseline: `9b6fa6c855011953c91dce9d4fd554cae1636dd1` (current main at start).
 Scope: reusable application team groups and explicit matter grants only.
 Slice **06** landed on `main` as
-[#65](https://github.com/neilofneils404/recordbench-oss/pull/65)
+[#65](https://github.com/Exculpata/exculpata/pull/65)
 (`e44e485ab3eca94b7e5588765df58f7f4b2b4786`).
 
 ## Checks performed
@@ -38,9 +38,8 @@ of disabled direct grants were added and passed after that broad run.
 The host lacks Linux-specific absolute-path media/document tools expected by
 those tests (for example `/usr/bin/ffmpeg`). No usable local Docker daemon was
 available for Linux validation. These matching baseline failures are comparison
-evidence, **not a passing full suite or a merge waiver**. Hosted Quality gates,
-code/security reviews and maintainer acceptance remain required on the submitted
-commit. No model-quality or installed-node acceptance is claimed.
+evidence, **not a passing full suite or a merge waiver**. Follow the
+[review policy](QUALITY_GATES.md#review-policy) for the submitted commit. No model-quality or installed-node acceptance is claimed.
 
 The backup test uses SQLite's backup API, restores into a newly created target,
 checks integrity and foreign keys, and verifies group/direct reasons and audit

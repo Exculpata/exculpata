@@ -1,0 +1,40 @@
+{% if briefing_enabled %}
+{% set briefing_view = home_briefing(request, matter) %}
+{% if briefing_view %}
+<div data-briefing-region data-briefing-state="{{ briefing_view.state }}" data-briefing-url="{{ briefing_view.refresh_url }}" data-briefing-sources-url="{{ briefing_view.sources_url }}"{% if briefing_view.state == 'processing' %} hidden{% endif %}>
+  {% if briefing_view.briefing %}
+  <section class="discovery-briefing" data-discovery-briefing aria-labelledby="briefing-heading">
+    <header><p class="eyebrow">Discovery briefing</p><h2 id="briefing-heading">A first look at this matter</h2><p>Recorded counts and suggested starting points. Open the sources to check them.</p></header>
+    <div class="briefing-sections">
+      {% for section in briefing_view.briefing.sections %}
+      <section data-briefing-section="{{ section.key }}" aria-labelledby="briefing-{{ section.key }}-heading">
+        <h3 id="briefing-{{ section.key }}-heading">{{ section.title }}</h3>
+        <ul>{% for line in section.lines %}
+          <li data-briefing-line><span>{{ line.text }}</span><span class="briefing-links">{% for link in line.links %}<a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</span></li>
+        {% endfor %}</ul>
+      </section>
+      {% endfor %}
+    </div>
+    {% if briefing_view.briefing.questions %}
+    <section class="briefing-questions" aria-labelledby="briefing-questions-heading">
+      <h3 id="briefing-questions-heading">Suggested questions</h3>
+      <p id="briefing-question-hint">Choose a question to fill {% if one_box_enabled %}the box below{% else %}the Ask composer{% endif %}. Nothing is sent until you submit it.</p>
+      <ul>{% for question in briefing_view.briefing.questions %}
+        <li data-briefing-line><button type="button" data-briefing-question value="{{ question.text }}" aria-describedby="briefing-question-hint"{% if administrator_view or not briefing_view.can_query %} disabled{% endif %}><span>{{ question.label }}</span> {{ question.text }}</button><span class="briefing-links">{% for link in question.links %}<a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</span></li>
+      {% endfor %}</ul>
+      <p class="briefing-question-status" data-briefing-question-status role="status"></p>
+    </section>
+    {% endif %}
+    <details class="briefing-coverage" data-briefing-coverage>
+      <summary>Coverage and limitations</summary>
+      <ul>{% for line in briefing_view.briefing.coverage %}
+        <li data-briefing-line><span>{{ line.text }}</span><span class="briefing-links">{% for link in line.links %}<a href="{{ link.href }}">{{ link.label }}</a>{% endfor %}</span></li>
+      {% endfor %}</ul>
+    </details>
+  </section>
+  {% elif briefing_view.message %}
+  <p class="briefing-unavailable" data-briefing-unavailable>{{ briefing_view.message }} <a href="{{ briefing_view.sources_url }}">Review sources</a> · <a href="{{ briefing_view.refresh_url }}">Refresh Home</a></p>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}

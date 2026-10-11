@@ -1,7 +1,7 @@
 # 14: Preserve review scope, gaps, and decisions in Reports
 
 Status: implemented on `main` as
-[#38](https://github.com/neilofneils404/recordbench-oss/pull/38). See
+[#38](https://github.com/Exculpata/exculpata/pull/38). See
 [report review basis](../REPORT_REVIEW_BASIS.md). No dependencies.
 Deeper hierarchical synthesis remains 13.
 

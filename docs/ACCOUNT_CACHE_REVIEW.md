@@ -1,7 +1,7 @@
 # Account cache review
 
 This records the bounded R6 investigation from
-[independent review issue #109](https://github.com/neilofneils404/recordbench-oss/issues/109).
+[independent review issue #109](https://github.com/Exculpata/exculpata/issues/109).
 The reported overlayfs timestamp-test failure remains unverified on that
 filesystem. It is not evidence that revocation passed or failed on a supported
 Linux installation.

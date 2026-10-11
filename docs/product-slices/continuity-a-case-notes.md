@@ -3,7 +3,7 @@
 Status: **Done** — landed September 21, 2026 at
 `dd367cc3a65fa733d44b612026a9d3912523fed6` through PR #100.
 Implementation baseline: `622cf7a03b67c6d850f06799c98b2333b2efd52d`.
-The [cruise](../EXIT_ALPHA_CRUISE.md) is the binding queue.
+GitHub issues and milestones are the work queue; the [cruise](../EXIT_ALPHA_CRUISE.md) is historical.
 
 ## Landing receipt — September 21, 2026
 

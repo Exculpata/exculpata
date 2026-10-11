@@ -1,7 +1,7 @@
 # 11: Let investigation follow evidence within a budget
 
 Status: implemented on `main` as
-[#66](https://github.com/neilofneils404/recordbench-oss/pull/66); validation
+[#66](https://github.com/Exculpata/exculpata/pull/66); validation
 described in [the implementation guide](../EVIDENCE_DRIVEN_INVESTIGATION.md).
 Depends on 00 and 10.
 Configured-model quality evaluation remains separate from deterministic acceptance.

@@ -1,0 +1,20 @@
+name: Question or support
+description: Ask about setup, usage, or contributing
+body:
+  - type: markdown
+    attributes:
+      value: Use synthetic examples only; never share real case material, credentials, or private deployment details. Report vulnerabilities privately.
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Include the version and what you tried, using invented examples.
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: This question and any attachments contain synthetic, public-safe material only.
+          required: true

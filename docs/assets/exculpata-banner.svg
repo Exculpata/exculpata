@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 384" role="img" aria-labelledby="recordbench-banner-title recordbench-banner-description">
+  <title id="recordbench-banner-title">Exculpata</title>
+  <desc id="recordbench-banner-description">A white record page over an orange folio on navy. Review the record. Build the work.</desc>
+  <rect width="1280" height="384" rx="24" fill="#071a3c"/>
+  <path d="M0 348h1280v12H0Z" fill="#ed4b2f"/>
+  <g transform="translate(64 62) scale(3.5)">
+    <rect x="2" y="2" width="60" height="60" rx="13" fill="#071a3c"/>
+    <path d="M14 20h4v28h24v4H14Z" fill="#ed4b2f"/>
+    <path d="M22 12h18l10 10v22H22Z" fill="#fff"/>
+    <path d="M28 26h16v4H28Zm0 8h12v4H28Z" fill="#071a3c"/>
+  </g>
+  <g fill="#fff" font-family="Arial, Helvetica, sans-serif">
+    <text x="336" y="180" font-size="88" font-weight="700" letter-spacing="-3">Exculpata</text>
+    <text x="340" y="244" font-size="34">Review the record. Build the work.</text>
+  </g>
+</svg>

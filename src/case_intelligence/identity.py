@@ -26,13 +26,13 @@ from joserfc.errors import JoseError
 
 from .branding import PRODUCT_NAME
 from .local_accounts import LocalAccount, LocalAccountRepository
+from .compat_env import env
 from .workspace_store import PrincipalRecord, SessionRecord, WorkspaceProblem, WorkspaceStore
 
 SESSION_COOKIE = "case_intelligence_session"
 LOGIN_CHALLENGE_COOKIE = "case_intelligence_login_challenge"
 OIDC_STATE_COOKIE = "case_intelligence_oidc_state"
-KERBEROS_USER_HEADER = "X-RecordBench-Authenticated-User"
-KERBEROS_SECRET_HEADER = "X-RecordBench-Proxy-Secret"
+KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER = "X-RecordBench-Authenticated-User", "X-RecordBench-Proxy-Secret"
 
 
 def resolve_auth_mode(auth_mode: str | None = None) -> str:
@@ -44,7 +44,7 @@ def resolve_auth_mode(auth_mode: str | None = None) -> str:
             "An explicit supported identity provider is required "
             "(CASE_INTELLIGENCE_AUTH_MODE)."
         )
-    if os.getenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1" and selected in {"preview", "test"}:
+    if env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1" and selected in {"preview", "test"}:
         raise RuntimeError("An installed service requires local, OIDC or Kerberos authentication.")
     return selected
 

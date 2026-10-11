@@ -153,3 +153,21 @@ def test_remote_diagnostic_denies_even_valid_proof_and_forwarded_loopback(tmp_pa
         })
         assert response.status_code == 404
         assert response.content == b""
+
+
+@pytest.mark.parametrize("mode", ["new-only", "old-only", "both-equal", "both-different"])
+def test_diagnostic_aliases_keep_loopback_and_proof_boundary(tmp_path, mode):
+    runtime = tmp_path / "runtime"
+    app = workbench.create_workbench_app(runtime, auth_mode="preview", generator=UnavailableGenerator())
+    proof = hmac.new((runtime / "identity-session.key").read_bytes(),
+                     b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256).hexdigest()
+    headers = {}
+    if mode != "old-only":
+        headers["X-Exculpata-Auth-Diagnostic"] = proof
+    if mode != "new-only":
+        headers["X-RecordBench-Auth-Diagnostic"] = "synthetic-invalid-proof" if mode == "both-different" else proof
+    with TestClient(app, client=("127.0.0.1", 4567)) as client:
+        response = client.get("/internal/auth-mode", headers=headers)
+        assert response.status_code == (404 if mode == "both-different" else 200)
+    with TestClient(app, client=("192.0.2.44", 4567)) as client:
+        assert client.get("/internal/auth-mode", headers=headers).status_code == 404

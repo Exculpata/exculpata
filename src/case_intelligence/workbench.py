@@ -41,11 +41,10 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from markupsafe import Markup
 from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 
-from .derived_text import presentation_text
+from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
 from .static_assets import asset_url, static_cache_control
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
 from .answer_jobs import AnswerCoordinator, AnswerJobFailure, AnswerResult
@@ -297,12 +296,10 @@ ANSWER_STAGE_MESSAGES = {
     "verifying": "Checking citation references and text consistency; meaning still needs human review.",
 }
 
-
 RESEARCH_COVERAGE_NOTICE = (
     "This investigation is limited to selected search passages; it did not check every source. "
     "Use Check every source for a document-by-document task."
 )
-
 
 def _source_coverage(
     readiness: MatterReadinessRecord,
@@ -358,7 +355,6 @@ def _source_coverage(
         "excluded_count": excluded,
         "notice": notice,
     }
-
 
 def _focused_answer_scope(
     question: str,
@@ -434,7 +430,7 @@ def _focused_answer_scope(
 def _backup_status_projection() -> dict[str, object]:
     """Read one administrator-safe backup receipt, never repository content."""
 
-    configured = os.getenv(
+    configured = env(
         "RECORDBENCH_BACKUP_STATUS_FILE",
         "/srv/recordbench/.local/state/recordbench-backup/status.json",
     ).strip()
@@ -443,7 +439,7 @@ def _backup_status_projection() -> dict[str, object]:
         "state": "not_initialized",
         "tone": "attention",
         "headline": "Backup setup required",
-        "message": "No encrypted RecordBench disaster-recovery receipt is available.",
+        "message": "No encrypted Exculpata disaster-recovery receipt is available.",
         "completed_at": "",
         "duration_seconds": 0,
         "snapshot_id": "",
@@ -4797,7 +4793,6 @@ class CaseIntelligenceWorkbench:
                     if identifier in evidence
                 ],
             }
-
         # Keep the legacy combined limitation for conversation display, while
         # retaining provenance for saved-work consumers and later compilation.
         source_limitation = answer.source_limitation if answer.verification_notice else answer.limitation
@@ -4808,6 +4803,7 @@ class CaseIntelligenceWorkbench:
                 else "not-supported"
             ),
             "answerable": answer.answerable,
+            **({"generator_answerable": False} if answer.generator_answerable is False else {}),
             "introduction": answer.introduction,
             "claims": [claim_payload(claim) for claim in answer.claims],
             "limitation": claim_payload(answer.limitation) if answer.limitation else None,
@@ -6582,15 +6578,9 @@ def create_workbench_app(
         bench.close()
         raise
     app.state.identity = identity
+    from .app_context import AppContext, auth_context, present_value, requested_path
+
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
-
-    def present_value(value):
-        if not isinstance(value, str):
-            return value
-        projected = presentation_text(value)
-        # Preserve Jinja's escaping boundary for already-escaped markup.
-        return Markup(projected) if isinstance(value, Markup) else projected
-
     templates.env.finalize = present_value
     templates.env.globals.update(
         answer_introduction=answer_introduction,
@@ -6611,12 +6601,6 @@ def create_workbench_app(
         highlight_find=highlight_find,
     )
     app.mount("/static", StaticFiles(directory=str(PACKAGE_ROOT / "static")), name="static")
-
-    def auth_context(request: Request) -> AuthContext:
-        context = getattr(request.state, "auth", None)
-        if not isinstance(context, AuthContext):
-            raise HTTPException(401, "Sign in is required.")
-        return context
 
     def audit(
         request: Request,
@@ -6646,20 +6630,16 @@ def create_workbench_app(
             details=details,
         )
 
-    def requested_path(request: Request) -> str:
-        value = request.url.path
-        if request.url.query:
-            value += "?" + request.url.query
-        return IdentityService.safe_next(value)
-
     @app.middleware("http")
     async def identity_boundary(request: Request, call_next):
+        if any(header_conflicts(request.headers, name) for name in (KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER)):
+            return Response(status_code=401, headers={"Cache-Control": "no-store"})
         if request.url.path == "/internal/auth-mode":
             if (
                 request.method != "GET"
                 or request.client is None
                 or request.client.host not in {"127.0.0.1", "::1"}
-                or not identity.auth_diagnostic_authorized(request.headers.get("X-RecordBench-Auth-Diagnostic"))
+                or not identity.auth_diagnostic_authorized(header(request.headers, "X-RecordBench-Auth-Diagnostic"))
             ):
                 return Response(status_code=404, headers={"Cache-Control": "no-store"})
             return JSONResponse({"auth_mode": identity.auth_mode}, headers={"Cache-Control": "no-store"})
@@ -6682,8 +6662,7 @@ def create_workbench_app(
             if context is not None and identity.auth_mode == "kerberos":
                 bound_context = identity.bind_kerberos_request(
                     context,
-                    request.headers.get(KERBEROS_USER_HEADER),
-                    request.headers.get(KERBEROS_SECRET_HEADER),
+                    *kerberos_headers(request.headers),
                 )
                 if bound_context is None:
                     audit(
@@ -6701,8 +6680,7 @@ def create_workbench_app(
                     )
                     if identity.kerberos_session_identity_matches(
                         context,
-                        request.headers.get(KERBEROS_USER_HEADER),
-                        request.headers.get(KERBEROS_SECRET_HEADER),
+                        *kerberos_headers(request.headers),
                     ):
                         identity.logout(context)
                     context = None
@@ -6932,7 +6910,7 @@ def create_workbench_app(
         )
         if readiness.state == "empty":
             headline = "Add sources to begin"
-            summary = "Upload the records you want RecordBench to prepare for review."
+            summary = "Upload the records you want Exculpata to prepare for review."
             guidance = "Add sources before searching or asking questions."
             action_label = "Add sources"
             action_url = f"/matters/{matter.slug}/setup"
@@ -7634,7 +7612,7 @@ def create_workbench_app(
             "can_close_matter": is_matter_owner or context.is_administrator,
             "can_delete_conversations": is_matter_owner,
             "session_action_label": (
-                "Close RecordBench" if identity.auth_mode == "kerberos" else "Sign out"
+                "Close Exculpata" if identity.auth_mode == "kerberos" else "Sign out"
             ),
             "activity_url": _query_url(
                 "/activity", matter=active.slug if active is not None else ""
@@ -7649,7 +7627,7 @@ def create_workbench_app(
             media_type=artifact.media_type,
             headers={
                 "Content-Disposition": f'attachment; filename="{artifact.filename}"',
-                "X-RecordBench-Export": "work-product",
+                **response_headers("Export", "work-product"),
             },
         )
         return transfer_matter_response_lease(request, response)
@@ -8399,7 +8377,7 @@ def create_workbench_app(
                 if capabilities["answering"] == "ready" and storage["ready"]
                 else "degraded"
             ),
-            "product": PRODUCT_NAME,
+            "product": "RecordBench",
             "data": "private RecordBench node",
             "capabilities": capabilities,
             "ingest_jobs": bench.workspace.ingest_counts(),
@@ -8442,8 +8420,7 @@ def create_workbench_app(
                 identity.auth_mode != "kerberos"
                 or identity.kerberos_request_valid(
                     existing,
-                    request.headers.get(KERBEROS_USER_HEADER),
-                    request.headers.get(KERBEROS_SECRET_HEADER),
+                    *kerberos_headers(request.headers),
                 )
             )
         ):
@@ -8451,8 +8428,7 @@ def create_workbench_app(
         if identity.auth_mode == "kerberos":
             try:
                 context, raw_token = identity.login_kerberos(
-                    request.headers.get(KERBEROS_USER_HEADER),
-                    request.headers.get(KERBEROS_SECRET_HEADER),
+                    *kerberos_headers(request.headers),
                 )
             except KerberosAuthenticationError as exc:
                 audit(
@@ -8754,7 +8730,7 @@ def create_workbench_app(
         context = auth_context(request)
         # Cyberpunk and retro are schema-ready design directions. Only themes
         # with a complete, reviewed component treatment are exposed to staff.
-        if theme not in {"light", "dusk"}:
+        if theme not in {"dark", "light", "dusk"}:
             raise HTTPException(400, "Choose an available appearance theme.")
         try:
             preference = bench.workspace.set_principal_theme(
@@ -8773,12 +8749,12 @@ def create_workbench_app(
         return RedirectResponse(
             IdentityService.safe_next(next_path, default="/"),
             status_code=303,
-            headers={"X-RecordBench-Theme": preference.theme},
+            headers=response_headers("Theme", preference.theme),
         )
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:
-        return FileResponse(PACKAGE_ROOT / "static/favicon.svg", media_type="image/svg+xml")
+        return FileResponse(PACKAGE_ROOT / "static/favicon.ico", media_type="image/x-icon")
 
     register_local_account_routes(
         app, identity=identity, bench=bench, templates=templates,
@@ -13427,7 +13403,7 @@ def create_workbench_app(
                 media_type=artifact.media_type,
                 headers={
                     "Content-Disposition": f'attachment; filename="{filename}"',
-                    "X-RecordBench-Export": "work-product",
+                    **response_headers("Export", "work-product"),
                     "Cache-Control": "no-store",
                 },
             ),
@@ -13486,7 +13462,7 @@ def create_workbench_app(
                 media_type=artifact.media_type,
                 headers={
                     "Content-Disposition": f'attachment; filename="{filename}"',
-                    "X-RecordBench-Export": "work-product",
+                    **response_headers("Export", "work-product"),
                     "Cache-Control": "no-store",
                 },
             ),
@@ -13621,7 +13597,7 @@ def create_workbench_app(
             media_type="video/mp4" if document.has_video else "audio/wav",
             filename=f"media-clip-{clip.clip_id[-12:]}{suffix}",
             headers={
-                "X-RecordBench-Export": "work-product",
+                **response_headers("Export", "work-product"),
                 "Cache-Control": "no-store",
             },
         )
@@ -13917,9 +13893,7 @@ def create_workbench_app(
             "Cache-Control": "no-store",
             "X-Frame-Options": "SAMEORIGIN",
             "Content-Security-Policy": "default-src 'none'; frame-ancestors 'self'",
-            "X-RecordBench-Playback": (
-                "compatible-copy" if compatible_copy else "original"
-            ),
+            **response_headers("Playback", "compatible-copy" if compatible_copy else "original"),
         }
         if status_code == 206:
             headers["Content-Range"] = f"bytes {start}-{end}/{size}"
@@ -14303,14 +14277,12 @@ def create_workbench_app(
                           transfer_response_lease=transfer_matter_response_lease,
                           automatic_progress=bench.automatic_discovery_progress,
                           wake_automatic=bench.wake_automatic_discovery)
-
     from .assertion_routes import install_assertion_routes
     install_assertion_routes(app, service_for=bench.assertion_service, entities_for=bench.entity_service,
                              authorized_matter=authorized_matter, auth_context=auth_context,
                              require_csrf=require_csrf, templates=templates, base_context=base_context,
                              audit=audit, require_response_lease=require_matter_response_lease,
                              transfer_response_lease=transfer_matter_response_lease)
-
     from .evidence_graph_routes import install_evidence_graph_routes
     install_evidence_graph_routes(app, assertions_for=bench.assertion_service,
                                   authorized_matter=authorized_matter, auth_context=auth_context,
@@ -14320,7 +14292,7 @@ def create_workbench_app(
         current = identity.resolve(request.cookies.get(SESSION_COOKIE), read_only=True)
         if current is not None and identity.auth_mode == "kerberos":
             current = identity.bind_kerberos_request(current,
-                request.headers.get(KERBEROS_USER_HEADER), request.headers.get(KERBEROS_SECRET_HEADER))
+                *kerberos_headers(request.headers))
         try:
             if (current is None or current.principal_id != original.principal_id
                     or not current.principal.active
@@ -14331,7 +14303,6 @@ def create_workbench_app(
             if not bench.workspace.connection.in_transaction:
                 audit(request, "matter.access", "denied", context=original)
             raise HTTPException(404, "Matter is no longer available") from exc
-
     from .matter_context_routes import install_context_routes
     install_context_routes(app, assertions_for=bench.assertion_service, authorized_matter=authorized_matter,
                            auth_context=auth_context, refresh_authority=refresh_context_authority,
@@ -14476,8 +14447,7 @@ def create_workbench_app(
             if current is not None and identity.auth_mode == "kerberos":
                 current = identity.bind_kerberos_request(
                     current,
-                    request.headers.get(KERBEROS_USER_HEADER),
-                    request.headers.get(KERBEROS_SECRET_HEADER),
+                    *kerberos_headers(request.headers),
                 )
             if (
                 current is None
@@ -14813,44 +14783,44 @@ def create_workbench_app(
                             selected_from: str = Query("", alias="from", max_length=160),
                             job: str = Query("", max_length=100),
                             error: str = Query("", max_length=240)):
-        matter = authorized_matter(request, slug)
+        matter = app_context.authorized_matter(request, slug)
         if getattr(request.state, "administrator_matter_override", None) == matter.matter_id:
             raise HTTPException(403, "Report creation requires membership in this matter's review team.")
-        actor = auth_context(request).principal_id
+        actor = app_context.auth_context(request).principal_id
         try:
-            active = bench.report_compilation.jobs.get(matter.matter_id, actor, job) if job else None
+            active = app_context.bench.report_compilation.jobs.get(matter.matter_id, actor, job) if job else None
             if active and active.state == "succeeded" and active.report_id:
                 return RedirectResponse(_query_url(f"/matters/{slug}/reports", report=active.report_id, notice="Your draft is ready to read and refine."), status_code=303)
-            return render_report_compilation(request, matter, job=active, selected_from=selected_from, error=error)
+            return app_context.render_report_compilation(request, matter, job=active, selected_from=selected_from, error=error)
         except KeyError as exc:
             raise HTTPException(404, "Saved review work not found") from exc
         except WorkspaceProblem as exc:
-            return render_report_compilation(request, matter, error=str(exc), status_code=409)
+            return app_context.render_report_compilation(request, matter, error=str(exc), status_code=409)
 
     @app.post("/matters/{slug}/reports/compile", dependencies=[Depends(require_csrf)])
     def compile_matter_report(request: Request, slug: str,
                               kind: str = Form(..., max_length=24), topic: str = Form("", max_length=500),
                               selection: list[str] = Form([]), request_key: str = Form(..., max_length=120)):
-        matter = authorized_matter(request, slug)
-        actor = auth_context(request).principal_id
+        matter = app_context.authorized_matter(request, slug)
+        actor = app_context.auth_context(request).principal_id
         try:
             if not 1 <= len(selection) <= 20:
                 raise CompilationProblem("Choose between 1 and 20 items of saved work for this draft.")
-            job, created = bench.report_compilation.jobs.queue(matter.matter_id, actor, kind, topic, selection, request_key)
+            job, created = app_context.bench.report_compilation.jobs.queue(matter.matter_id, actor, kind, topic, selection, request_key)
         except (WorkspaceProblem, CompilationProblem) as exc:
-            return render_report_compilation(request, matter, kind=kind, topic=topic, selected=selection, error=str(exc), status_code=409)
+            return app_context.render_report_compilation(request, matter, kind=kind, topic=topic, selected=selection, error=str(exc), status_code=409)
         except KeyError as exc:
             raise HTTPException(404, "Matter not found") from exc
-        bench.report_compilation.notify()
-        audit(request, "report.compile", "success", context=auth_context(request), matter=matter,
+        app_context.bench.report_compilation.notify()
+        app_context.audit(request, "report.compile", "success", context=app_context.auth_context(request), matter=matter,
               object_type="report_compilation", object_id=job.job_id, details={"state": job.state, "count": len(selection)})
         return RedirectResponse(_query_url(f"/matters/{slug}/reports/new", job=job.job_id), status_code=303)
 
     @app.get("/matters/{slug}/reports/compile/{job_id}/status")
     def compiled_report_status(request: Request, slug: str, job_id: str):
-        matter = authorized_matter(request, slug)
+        matter = app_context.authorized_matter(request, slug)
         try:
-            job = bench.report_compilation.jobs.get(matter.matter_id, auth_context(request).principal_id, job_id)
+            job = app_context.bench.report_compilation.jobs.get(matter.matter_id, app_context.auth_context(request).principal_id, job_id)
         except KeyError as exc:
             raise HTTPException(404, "Report preparation not found") from exc
         target = _query_url(f"/matters/{slug}/reports", report=job.report_id) if job.state == "succeeded" and job.report_id else _query_url(f"/matters/{slug}/reports/new", job=job.job_id)
@@ -14860,27 +14830,27 @@ def create_workbench_app(
 
     @app.post("/matters/{slug}/reports/compile/{job_id}/cancel", dependencies=[Depends(require_csrf)])
     def cancel_compiled_report(request: Request, slug: str, job_id: str):
-        matter = authorized_matter(request, slug)
+        matter = app_context.authorized_matter(request, slug)
         try:
-            job = bench.report_compilation.jobs.cancel(matter.matter_id, auth_context(request).principal_id, job_id)
+            job = app_context.bench.report_compilation.jobs.cancel(matter.matter_id, app_context.auth_context(request).principal_id, job_id)
         except KeyError as exc:
             raise HTTPException(404, "Report preparation not found") from exc
-        audit(request, "report.cancel", "success", context=auth_context(request), matter=matter,
+        app_context.audit(request, "report.cancel", "success", context=app_context.auth_context(request), matter=matter,
               object_type="report_compilation", object_id=job.job_id, details={"state": job.state})
         return RedirectResponse(_query_url(f"/matters/{slug}/reports/new", job=job_id), status_code=303)
 
     @app.post("/matters/{slug}/reports/compile/{job_id}/retry", dependencies=[Depends(require_csrf)])
     def retry_compiled_report(request: Request, slug: str, job_id: str):
-        matter = authorized_matter(request, slug)
+        matter = app_context.authorized_matter(request, slug)
         try:
-            job = bench.report_compilation.jobs.retry(matter.matter_id, auth_context(request).principal_id, job_id)
+            job = app_context.bench.report_compilation.jobs.retry(matter.matter_id, app_context.auth_context(request).principal_id, job_id)
         except KeyError as exc:
             raise HTTPException(404, "Report preparation not found") from exc
         except CompilationProblem as exc:
-            return render_report_compilation(request, matter, error=str(exc), status_code=409)
-        audit(request, "report.retry", "success", context=auth_context(request), matter=matter,
+            return app_context.render_report_compilation(request, matter, error=str(exc), status_code=409)
+        app_context.audit(request, "report.retry", "success", context=app_context.auth_context(request), matter=matter,
               object_type="report_compilation", object_id=job.job_id, details={"state": job.state})
-        bench.report_compilation.notify()
+        app_context.bench.report_compilation.notify()
         return RedirectResponse(_query_url(f"/matters/{slug}/reports/new", job=job_id), status_code=303)
 
     @app.get("/matters/{slug}/reports", response_class=HTMLResponse)
@@ -14892,9 +14862,9 @@ def create_workbench_app(
         notice: str = Query("", max_length=240),
         error: str = Query("", max_length=240),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
+            matter = app_context.authorized_matter(request, slug)
             administrator_override = (
                 getattr(request.state, "administrator_matter_override", None)
                 == matter.matter_id
@@ -14902,32 +14872,32 @@ def create_workbench_app(
             read_actor_id = (
                 matter.owner_id if administrator_override else context.principal_id
             )
-            reports = bench.workspace.reports(matter.matter_id, read_actor_id)
+            reports = app_context.bench.workspace.reports(matter.matter_id, read_actor_id)
             active_report = (
-                bench.workspace.report(matter.matter_id, report)
+                app_context.bench.workspace.report(matter.matter_id, report)
                 if report
                 else (reports[0] if reports else None)
             )
             sections = (
-                bench.workspace.report_sections(
+                app_context.bench.workspace.report_sections(
                     matter.matter_id, active_report.report_id
                 )
                 if active_report is not None
                 else ()
             )
             citations = {
-                section.section_id: bench.workspace.report_citations(
+                section.section_id: app_context.bench.workspace.report_citations(
                     matter.matter_id,
                     active_report.report_id,
                     section.section_id,
                 )
                 for section in sections
             }
-            citation_hrefs = report_citation_hrefs(
+            citation_hrefs = app_context.report_citation_hrefs(
                 matter, (citation for values in citations.values() for citation in values)
             )
-            store = bench.source_store(matter)
-            notebook_items = bench.workspace.all_notebook_items(
+            store = app_context.bench.source_store(matter)
+            notebook_items = app_context.bench.workspace.all_notebook_items(
                 matter.matter_id,
                 read_actor_id,
                 include_dismissed=False,
@@ -14935,14 +14905,14 @@ def create_workbench_app(
             )
             findings = tuple(
                 item
-                for item in bench.workspace.review_findings(matter.matter_id)
+                for item in app_context.bench.workspace.review_findings(matter.matter_id)
                 if item.status != "dismissed"
             )
             clips: list[dict[str, object]] = []
             for document in store.documents.values():
                 if not is_media_type(document.media_type):
                     continue
-                for clip in bench.workspace.media_clips(
+                for clip in app_context.bench.workspace.media_clips(
                     matter.matter_id, document.document_id, document.version_id
                 ):
                     clips.append(
@@ -14964,13 +14934,13 @@ def create_workbench_app(
         except KeyError as exc:
             raise HTTPException(404, "Matter report not found") from exc
         if not administrator_override:
-            bench.workspace.record_matter_activity(
+            app_context.bench.workspace.record_matter_activity(
                 matter.matter_id,
                 context.principal_id,
                 "report",
                 active_report.report_id if active_report is not None else "reports",
             )
-        audit(
+        app_context.audit(
             request,
             "report.open",
             "success",
@@ -14980,11 +14950,11 @@ def create_workbench_app(
             object_id=active_report.report_id if active_report is not None else None,
             details={"count": len(reports)},
         )
-        return templates.TemplateResponse(
+        return app_context.templates.TemplateResponse(
             request=request,
             name="workbench_reports.html",
             context={
-                **base_context(request, matter),
+                **app_context.base_context(request, matter),
                 "matter": matter,
                 "reports": reports,
                 "report": active_report,
@@ -14999,8 +14969,8 @@ def create_workbench_app(
                 "report_edit": edit and not administrator_override,
                 "report_can_write": not administrator_override,
                 "show_assistant_dock": False,
-                "report_labels": report_labels,
-                "compilation_jobs": bench.report_compilation.jobs.list(matter.matter_id, context.principal_id, actionable_only=True) if not administrator_override else (),
+                "report_labels": app_context.report_labels,
+                "compilation_jobs": app_context.bench.report_compilation.jobs.list(matter.matter_id, context.principal_id, actionable_only=True) if not administrator_override else (),
             },
         )
 
@@ -15011,10 +14981,10 @@ def create_workbench_app(
         title: str = Form(..., max_length=200),
         purpose: str = Form("", max_length=2_000),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
-            created = bench.workspace.create_report(
+            matter = app_context.authorized_matter(request, slug)
+            created = app_context.bench.workspace.create_report(
                 matter.matter_id, context.principal_id, title, purpose
             )
         except KeyError as exc:
@@ -15024,7 +14994,7 @@ def create_workbench_app(
                 _query_url(f"/matters/{slug}/reports", error=str(exc)),
                 status_code=303,
             )
-        audit(
+        app_context.audit(
             request,
             "report.create",
             "success",
@@ -15055,11 +15025,11 @@ def create_workbench_app(
         status: str = Form("draft", max_length=16),
         expected_updated_at: str = Form("", max_length=64),
     ):
-        context = auth_context(request)
-        matter = authorized_matter(request, slug)
+        context = app_context.auth_context(request)
+        matter = app_context.authorized_matter(request, slug)
         draft = dict(title=title, purpose=purpose, status=status)
         try:
-            updated = bench.workspace.update_report(
+            updated = app_context.bench.workspace.update_report(
                 matter.matter_id,
                 report_id,
                 context.principal_id,
@@ -15069,11 +15039,11 @@ def create_workbench_app(
                 status=status,
             )
         except KeyError:
-            return report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="header", draft=draft)
+            return app_context.report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="header", draft=draft)
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc), mode="header", draft=draft,
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc), mode="header", draft=draft,
                                         status_code=409 if isinstance(exc, ReportEditConflict) else 400)
-        audit(
+        app_context.audit(
             request,
             "report.update",
             "success",
@@ -15104,11 +15074,11 @@ def create_workbench_app(
         body: str = Form("", max_length=50_000),
         expected_status: str = Form("", max_length=16),
     ):
-        context = auth_context(request)
-        matter = authorized_matter(request, slug)
+        context = app_context.auth_context(request)
+        matter = app_context.authorized_matter(request, slug)
         draft = dict(heading=heading, body=body)
         try:
-            section = bench.workspace.add_report_section(
+            section = app_context.bench.workspace.add_report_section(
                 matter.matter_id,
                 report_id,
                 context.principal_id,
@@ -15117,11 +15087,11 @@ def create_workbench_app(
                 body=body,
             )
         except KeyError:
-            return report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="append", draft=draft)
+            return app_context.report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="append", draft=draft)
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc), mode="append", draft=draft,
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc), mode="append", draft=draft,
                                         status_code=409 if isinstance(exc, ReportEditConflict) else 400)
-        audit(
+        app_context.audit(
             request,
             "report.section_add",
             "success",
@@ -15198,7 +15168,7 @@ def create_workbench_app(
         request: Request, slug: str, report_id: str, item_id: str,
         expected_status: str = Form("", max_length=16),
     ):
-        return add_report_material(request, slug, report_id, "notebook", item_id, expected_status)
+        return app_context.add_report_material(request, slug, report_id, "notebook", item_id, expected_status)
 
     @app.post(
         "/matters/{slug}/reports/{report_id}/from-finding/{finding_id}",
@@ -15208,7 +15178,7 @@ def create_workbench_app(
         request: Request, slug: str, report_id: str, finding_id: str,
         expected_status: str = Form("", max_length=16),
     ):
-        return add_report_material(request, slug, report_id, "finding", finding_id, expected_status)
+        return app_context.add_report_material(request, slug, report_id, "finding", finding_id, expected_status)
 
     @app.post(
         "/matters/{slug}/reports/{report_id}/from-clip/{clip_id}",
@@ -15218,7 +15188,7 @@ def create_workbench_app(
         request: Request, slug: str, report_id: str, clip_id: str,
         expected_status: str = Form("", max_length=16),
     ):
-        return add_report_material(request, slug, report_id, "media_clip", clip_id, expected_status)
+        return app_context.add_report_material(request, slug, report_id, "media_clip", clip_id, expected_status)
 
     @app.post(
         "/matters/{slug}/reports/{report_id}/from-answer/{conversation_id}/{message_id}",
@@ -15232,10 +15202,10 @@ def create_workbench_app(
         message_id: str,
         expected_status: str = Form("", max_length=16),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
-            section = bench.add_answer_to_report(
+            matter = app_context.authorized_matter(request, slug)
+            section = app_context.bench.add_answer_to_report(
                 matter,
                 context.principal_id,
                 report_id,
@@ -15246,9 +15216,9 @@ def create_workbench_app(
         except KeyError as exc:
             raise HTTPException(404, "Answer or report not found") from exc
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc),
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc),
                                         status_code=409 if isinstance(exc, ReportEditConflict) else 400)
-        audit(
+        app_context.audit(
             request,
             "report.answer_add",
             "success",
@@ -15281,11 +15251,11 @@ def create_workbench_app(
         expected_updated_at: str = Form("", max_length=64),
         expected_status: str = Form("", max_length=16),
     ):
-        context = auth_context(request)
-        matter = authorized_matter(request, slug)
+        context = app_context.auth_context(request)
+        matter = app_context.authorized_matter(request, slug)
         draft = dict(heading=heading, body=body)
         try:
-            section = bench.workspace.update_report_section(
+            section = app_context.bench.workspace.update_report_section(
                 matter.matter_id,
                 report_id,
                 section_id,
@@ -15296,11 +15266,11 @@ def create_workbench_app(
                 body=body,
             )
         except KeyError:
-            return report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="section", draft=draft, section_id=section_id)
+            return app_context.report_edit_recovery(request, slug, report_id, error="Report unavailable.", mode="section", draft=draft, section_id=section_id)
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc), mode="section", draft=draft, section_id=section_id,
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc), mode="section", draft=draft, section_id=section_id,
                                         status_code=409 if isinstance(exc, ReportEditConflict) else 400)
-        audit(
+        app_context.audit(
             request,
             "report.section_update",
             "success",
@@ -15329,10 +15299,10 @@ def create_workbench_app(
         direction: str = Form(..., max_length=8),
         expected_updated_at: str = Form("", max_length=64),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
-            bench.workspace.move_report_section(
+            matter = app_context.authorized_matter(request, slug)
+            app_context.bench.workspace.move_report_section(
                 matter.matter_id,
                 report_id,
                 section_id,
@@ -15343,7 +15313,7 @@ def create_workbench_app(
         except KeyError as exc:
             raise HTTPException(404, "Report section not found") from exc
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc),
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc),
                                         status_code=409 if isinstance(exc, ReportEditConflict) else 400)
 
         return RedirectResponse(
@@ -15361,10 +15331,10 @@ def create_workbench_app(
         expected_updated_at: str = Form("", max_length=64),
         expected_status: str = Form("", max_length=16),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
-            bench.workspace.delete_report_section(
+            matter = app_context.authorized_matter(request, slug)
+            app_context.bench.workspace.delete_report_section(
                 matter.matter_id,
                 report_id,
                 section_id,
@@ -15375,8 +15345,8 @@ def create_workbench_app(
         except KeyError as exc:
             raise HTTPException(404, "Report section not found") from exc
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc))
-        audit(
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc))
+        app_context.audit(
             request,
             "report.section_delete",
             "success",
@@ -15403,17 +15373,17 @@ def create_workbench_app(
         request: Request, slug: str, report_id: str,
         expected_updated_at: str = Form("", max_length=64),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = authorized_matter(request, slug)
-            deleted = bench.workspace.delete_report(
+            matter = app_context.authorized_matter(request, slug)
+            deleted = app_context.bench.workspace.delete_report(
                 matter.matter_id, report_id, context.principal_id, expected_updated_at=expected_updated_at
             )
         except KeyError as exc:
             raise HTTPException(404, "Report not found") from exc
         except WorkspaceProblem as exc:
-            return report_edit_recovery(request, slug, report_id, error=str(exc))
-        audit(
+            return app_context.report_edit_recovery(request, slug, report_id, error=str(exc))
+        app_context.audit(
             request,
             "report.delete",
             "success",
@@ -15438,28 +15408,28 @@ def create_workbench_app(
         report_id: str,
         format_name: str = Query("docx", alias="format", pattern="^(docx|markdown)$"),
     ):
-        context = auth_context(request)
+        context = app_context.auth_context(request)
         try:
-            matter = response_lease_matter(request, slug)
-            report = bench.workspace.report(matter.matter_id, report_id)
-            sections = bench.workspace.report_sections(matter.matter_id, report_id)
+            matter = app_context.response_lease_matter(request, slug)
+            report = app_context.bench.workspace.report(matter.matter_id, report_id)
+            sections = app_context.bench.workspace.report_sections(matter.matter_id, report_id)
             entries = tuple(
                 (
                     section,
-                    bench.workspace.report_citations(
+                    app_context.bench.workspace.report_citations(
                         matter.matter_id, report_id, section.section_id
                     ),
                 )
                 for section in sections
             )
-            artifact = bench.export_report_work_product(
+            artifact = app_context.bench.export_report_work_product(
                 matter, report, entries, format_name
             )
         except KeyError as exc:
             raise HTTPException(404, "Report not found") from exc
         except ExportProblem as exc:
             return PlainTextResponse(str(exc), status_code=400)
-        audit(
+        app_context.audit(
             request,
             "report.export",
             "success",
@@ -15469,7 +15439,7 @@ def create_workbench_app(
             object_id=report.report_id,
             details={"format": format_name, "count": len(entries)},
         )
-        return download_response(request, artifact)
+        return app_context.download_response(request, artifact)
 
     @app.post(
         "/matters/{slug}/notebook/items",
@@ -16839,7 +16809,6 @@ def create_workbench_app(
         if wants_json:
             return JSONResponse(projected)
         return RedirectResponse(projected["workspace_url"], status_code=303)
-
     @app.post(
         "/matters/{slug}/answer-jobs/{job_id}/retry",
         dependencies=[Depends(require_csrf)],
@@ -16888,6 +16857,32 @@ def create_workbench_app(
             return JSONResponse(projected)
         return RedirectResponse(projected["workspace_url"], status_code=303)
 
+    app_context = AppContext(
+        bench=bench, identity=identity, templates=templates,
+        auth_context=auth_context, authorized_matter=authorized_matter,
+        require_csrf=require_csrf, require_csrf_header=require_csrf_header,
+        audit=audit, requested_path=requested_path, base_context=base_context,
+        present_value=present_value, download_response=download_response,
+        require_matter_response_lease=require_matter_response_lease,
+        require_matter_bundle_response_lease=require_matter_bundle_response_lease,
+        response_lease_matter=response_lease_matter, transfer_matter_response_lease=transfer_matter_response_lease,
+        recording_decision_limit=recording_decision_limit, recording_decision_capacity=recording_decision_capacity,
+        recording_decisions_pending=recording_decisions_pending,
+        report_labels=report_labels, report_citation_hrefs=report_citation_hrefs,
+        report_edit_recovery=report_edit_recovery, report_work_choices=report_work_choices,
+        render_report_compilation=render_report_compilation, add_report_material=add_report_material,
+    )
+    app.state.app_context = app_context
+    from .one_box_routes import install_one_box_routes
+    install_one_box_routes(app, authorized_matter=authorized_matter, require_csrf=require_csrf,
+                           templates=templates, ask=ask_question, readiness_for=bench.workspace.matter_readiness, home=matter_home)
+    from .upload_review import install_upload_review
+    install_upload_review(app, bench=bench, authorized_matter=authorized_matter,
+                          auth_context=auth_context, templates=templates, base_context=base_context)
+    from .deeper_investigation import install_deeper_investigation
+    install_deeper_investigation(templates, bench=bench, auth_context=auth_context)
+    from .briefing_home import install_briefing_home
+    install_briefing_home(templates, bench=bench, auth_context=auth_context, readiness_for=matter_readiness_projection)
     return app
 
 
@@ -16899,7 +16894,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1" and not (
         args.host == "0.0.0.0"
-        and os.getenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
+        and env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
     ):
         parser.error(
             "non-loopback binding is allowed only in the isolated container profile"

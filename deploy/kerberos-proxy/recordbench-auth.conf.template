@@ -11,6 +11,10 @@ LimitRequestFieldSize 65536
     ProxyRequests Off
     ProxyPreserveHost On
 
+    RequestHeader unset X-Exculpata-Authenticated-User early
+    RequestHeader unset X-Exculpata-Proxy-Secret early
+    RequestHeader unset X-Exculpata-Auth-Diagnostic early
+    RequestHeader unset X-RecordBench-Auth-Diagnostic early
     RequestHeader unset X-RecordBench-Authenticated-User early
     RequestHeader unset X-RecordBench-Proxy-Secret early
 
@@ -27,6 +31,7 @@ LimitRequestFieldSize 65536
         Require valid-user
 
         RequestHeader unset Authorization
+        RequestHeader set X-Exculpata-Authenticated-User "expr=%{REMOTE_USER}"
         RequestHeader set X-RecordBench-Authenticated-User "expr=%{REMOTE_USER}"
         Include /run/recordbench-auth/proxy-secret.conf
     </Location>

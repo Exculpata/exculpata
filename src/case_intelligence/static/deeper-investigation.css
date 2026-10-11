@@ -1,0 +1,6 @@
+/* Optional explicit follow-up; ordinary answers retain their existing layout. */
+.deeper-investigation { display: grid; justify-items: start; gap: 6px; margin-block: 14px; }
+.deeper-investigation small { color: var(--ink-soft); font-size: 12px; line-height: 1.5; }
+.deeper-investigation button { max-width: 100%; min-height: 44px; scroll-margin-block: 100px; }
+.workspace-main .deeper-investigation button { scroll-margin-block-end: calc(var(--review-composer-height, 160px) + var(--review-composer-offset, 0px) + 48px); }
+.deeper-investigation button:focus-visible { outline: 2px solid var(--blue-action); outline-offset: 3px; }

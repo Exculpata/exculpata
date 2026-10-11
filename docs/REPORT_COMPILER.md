@@ -141,8 +141,8 @@ The pure compiler changes no storage format or model revision. The separate
 workflow adds the documented queue and provenance migrations. Deterministic synthetic generators test the
 allocation contract; they do not establish model quality or live-workload
 readiness. Full application and transcription suites, Compose validation,
-Python compilation, publication checks, and final-commit hosted review remain
-the contributor and acceptance gates.
+Python compilation and publication checks remain part of validation. Follow the
+[review policy](QUALITY_GATES.md#review-policy) before merge.
 
 
 Saved conversations and investigations preserve the source-backed qualification

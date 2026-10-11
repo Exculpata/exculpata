@@ -30,7 +30,7 @@ The earlier September 12 implementation-status note against the verified `main` 
 not a re-run of the September 8 inspection. Since that checkout, reusable team
 groups (**06**), evidence-driven investigation (**11**), and full-text review
 (**12**) exist; hierarchical synthesis (**13**) landed in
-[#73](https://github.com/neilofneils404/recordbench-oss/pull/73).
+[#73](https://github.com/Exculpata/exculpata/pull/73).
 That slice-13 snapshot and sequence are superseded by the
 [September 12 current-state addendum](../PRODUCT_DIRECTION_2026-09-12.md#current-state-addendum-after-slice-18)
 and [historical cruise receipt](../EXIT_ALPHA_CRUISE.md#historical-post-18-receipt-superseded-snapshot): **16**, **17**, and **18** are landed at the verified
@@ -205,7 +205,7 @@ Current upstream already includes saved Reports in complete matter bundles:
 older checkout's claim that saved Reports are omitted. Inclusion/export repair
 and analytical usefulness are separate work.
 
-At inspection, open [PR #32](https://github.com/neilofneils404/recordbench-oss/pull/32)
+At inspection, open [PR #32](https://github.com/Exculpata/exculpata/pull/32)
 covered final-export readiness and links to Reports needing repair. Recheck its
 state and avoid overlapping that work. Slices [14](14-report-review-basis.md)
 and [15](15-purposeful-report-outlines.md), together with hierarchical cited

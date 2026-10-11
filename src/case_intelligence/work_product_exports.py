@@ -1498,7 +1498,7 @@ def export_research(
                 } for node in hierarchy[level]]
         body = json.dumps(
             {
-                "product": PRODUCT_NAME,
+                "product": "RecordBench",
                 "exported_at": created,
                 "matter": {"name": matter.display_name},
                 **({"presentation_notice": presentation_notice} if presentation_notice else {}),
@@ -1695,7 +1695,7 @@ def export_full_review(
         body = json.dumps(
             {
                 "schema": "recordbench-source-check-v1",
-                "product": PRODUCT_NAME,
+                "product": "RecordBench",
                 "exported_at": created,
                 "matter": {"name": matter.display_name},
                 "criterion": {
@@ -1812,7 +1812,7 @@ def export_full_review(
             )
     blocks.append(
         ExportBlock(
-            "RecordBench labels do not replace attorney or reviewer judgment. Preserve the criterion version, validate a representative sample, and verify source support.",
+            "Exculpata labels do not replace attorney or reviewer judgment. Preserve the criterion version, validate a representative sample, and verify source support.",
             "footer",
         )
     )

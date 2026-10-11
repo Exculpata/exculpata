@@ -1,12 +1,12 @@
 # 18: Connect entities through reviewable events and assertions
 
 Status: **Done — narrow manual events/assertions workflow.**
-[PR #82](https://github.com/neilofneils404/recordbench-oss/pull/82) landed at
+[PR #82](https://github.com/Exculpata/exculpata/pull/82) landed at
 `19d57fbec29325ae9b5ab296e6a2adcb18a5e0ec` on September 12, 2026. The
 [post-18 receipt](../EXIT_ALPHA_CRUISE.md#historical-post-18-receipt-superseded-snapshot)
 records final-head acceptance and passed independent post-merge checks,
 including the verified security-quota exception. Depends on landed 13 and 17;
-contract [#80](https://github.com/neilofneils404/recordbench-oss/issues/80).
+contract [#80](https://github.com/Exculpata/exculpata/issues/80).
 Automatic relationship inference and a visual graph remain outside this scope.
 
 ## Finding and outcome
@@ -45,5 +45,5 @@ and rollback evidence before release.
 
 The manual workflow, source and revision boundaries, exports, limits and
 migration/restore/rollback instructions are recorded in
-[EVIDENCE_ASSERTIONS.md](../EVIDENCE_ASSERTIONS.md). Final-head hosted reviews,
-CI and maintainer acceptance remain distinct from local synthetic verification.
+[EVIDENCE_ASSERTIONS.md](../EVIDENCE_ASSERTIONS.md). The [review policy](../QUALITY_GATES.md#review-policy)
+applies separately from local synthetic verification.

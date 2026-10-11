@@ -7,6 +7,15 @@ review their upstream terms. A supported image release still requires a complete
 resolved software-composition and model-license review; source publication does
 not claim that review is complete.
 
+## Interface fonts
+
+The workbench bundles Geist and JetBrains Mono as variable WOFF2 files under
+`src/case_intelligence/static/fonts/`. Both are licensed under the SIL Open
+Font License 1.1. The license texts ship beside the font files
+(`OFL-Geist.txt` and `OFL-JetBrainsMono.txt`). Pages load them from relative
+URLs and do not call a font delivery network. See
+[dependency notes](docs/DEPENDENCIES.md#bundled-interface-fonts).
+
 ## Runtime foundations
 
 RecordBench builds on Python, FastAPI/Starlette, Uvicorn, PostgreSQL, pgvector,

@@ -1,9 +1,9 @@
 # 01: Make installation prerequisites actionable
 
 Status: implemented on `main` via
-[#59](https://github.com/neilofneils404/recordbench-oss/pull/59)
-([#39](https://github.com/neilofneils404/recordbench-oss/pull/39) /
-[#54](https://github.com/neilofneils404/recordbench-oss/pull/54)). See
+[#59](https://github.com/Exculpata/exculpata/pull/59)
+([#39](https://github.com/Exculpata/exculpata/pull/39) /
+[#54](https://github.com/Exculpata/exculpata/pull/54)). See
 [INSTALL.md](../INSTALL.md) preflight. No dependencies.
 
 ## Finding and outcome

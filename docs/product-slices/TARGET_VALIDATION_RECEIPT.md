@@ -37,8 +37,7 @@ is not a model-quality or GPU-readiness result. A skipped lane is not a pass.
 
 - Unresolved synthetic failures: _not assessed_
 - Target-machine acceptance: **not yet given**
-- Final code/security reviews and required CI: _read back for the final head_
-- Full-commit maintainer acceptance: **not yet given**
+- [Review policy](../QUALITY_GATES.md#review-policy): _check before merge_
 - Merge/deployment: **not performed by this receipt**
 
 See [the walkthrough](TARGET_VALIDATION.md) for the subsequent acceptance and

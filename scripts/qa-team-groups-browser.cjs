@@ -15,12 +15,12 @@ const password = 'synthetic-browser-password';
       await page.goto(origin + '/auth/login');
       await page.getByRole('textbox', {name: 'Username', exact: true}).fill(username);
       await page.getByLabel('Password', {exact: true}).fill(password);
-      await page.getByRole('button', {name: 'Open RecordBench'}).click();
+      await page.getByRole('button', {name: 'Open Exculpata'}).click();
       await page.waitForURL(url => !url.pathname.startsWith('/auth/'));
     }
     await login(admin, 'alice.admin');
     await admin.goto(origin + '/admin/people');
-    await admin.getByLabel('Name shown in RecordBench').fill('Synthetic Reviewer');
+    await admin.getByLabel('Name shown in Exculpata').fill('Synthetic Reviewer');
     await admin.getByLabel('Sign-in username', {exact: true}).fill('synthetic.reviewer');
     await admin.getByLabel('Password', {exact: true}).fill(password);
     await admin.getByLabel('Enter password again', {exact: true}).fill(password);

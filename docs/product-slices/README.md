@@ -1,4 +1,4 @@
-# Portable RecordBench product slices
+# Portable Exculpata product slices
 
 [Trusted matter continuity A](continuity-a-case-notes.md) is **Done** at
 `dd367cc`, with post-merge Quality **35610419040** passing. Case notes now connects
@@ -70,11 +70,11 @@ first-run team setup (03), reusable team groups (06), adaptive investigation
 on `main`; PostgreSQL search-job acceptance remains pending. Slice **08** has
 the exact-result service on `main`; real PostgreSQL indexed acceptance remains
 pending. Slice **09** has proximity on `main`; wildcards and field filters
-remain. Hierarchy (**13**) landed in [#73](https://github.com/neilofneils404/recordbench-oss/pull/73).
+remain. Hierarchy (**13**) landed in [#73](https://github.com/Exculpata/exculpata/pull/73).
 This dated snapshot predates entity delivery. On freshly verified `main` at
 `e9ab89c792b562c2abf27715d15b5f70d3216900`, **16** and **17** are also landed
-([#77](https://github.com/neilofneils404/recordbench-oss/pull/77),
-[#79](https://github.com/neilofneils404/recordbench-oss/pull/79)); see the
+([#77](https://github.com/Exculpata/exculpata/pull/77),
+[#79](https://github.com/Exculpata/exculpata/pull/79)); see the
 [cruise receipt](../EXIT_ALPHA_CRUISE.md#historical-post-17-receipt-superseded-snapshot) for acceptance
 status. The cruise selects active work and later 00/08 acceptance and 09
 operators. The report's People/Places/Things format remains separate from the
@@ -86,17 +86,17 @@ Implementation PR inventory recorded September 8 (historical status; see
 
 | PR | User outcome | Slices |
 | --- | --- | --- |
-| [#36](https://github.com/neilofneils404/recordbench-oss/pull/36) | Defined exact grammar and known-answer corpus | 00, 07 |
-| [#38](https://github.com/neilofneils404/recordbench-oss/pull/38) | Retain findings, gaps, and human decisions in Reports | 14 |
-| [#39](https://github.com/neilofneils404/recordbench-oss/pull/39) | Actionable, non-writing installer prerequisites | 01 |
-| [#40](https://github.com/neilofneils404/recordbench-oss/pull/40) | Visible investigation budgets and coverage accounting | 10 |
-| [#41](https://github.com/neilofneils404/recordbench-oss/pull/41) | Shared local account lifecycle and session revocation | 04 |
-| [#42](https://github.com/neilofneils404/recordbench-oss/pull/42) | Complete exact result browsing with guided search | 08 |
-| [#43](https://github.com/neilofneils404/recordbench-oss/pull/43) | Browser People administration and first-use entry | 05 |
-| [#44](https://github.com/neilofneils404/recordbench-oss/pull/44) | Automatically compile selected saved work into usable drafts | 15 |
-| [#45](https://github.com/neilofneils404/recordbench-oss/pull/45) | Nearby words/phrases with guided proximity controls | 09, proximity family |
+| [#36](https://github.com/Exculpata/exculpata/pull/36) | Defined exact grammar and known-answer corpus | 00, 07 |
+| [#38](https://github.com/Exculpata/exculpata/pull/38) | Retain findings, gaps, and human decisions in Reports | 14 |
+| [#39](https://github.com/Exculpata/exculpata/pull/39) | Actionable, non-writing installer prerequisites | 01 |
+| [#40](https://github.com/Exculpata/exculpata/pull/40) | Visible investigation budgets and coverage accounting | 10 |
+| [#41](https://github.com/Exculpata/exculpata/pull/41) | Shared local account lifecycle and session revocation | 04 |
+| [#42](https://github.com/Exculpata/exculpata/pull/42) | Complete exact result browsing with guided search | 08 |
+| [#43](https://github.com/Exculpata/exculpata/pull/43) | Browser People administration and first-use entry | 05 |
+| [#44](https://github.com/Exculpata/exculpata/pull/44) | Automatically compile selected saved work into usable drafts | 15 |
+| [#45](https://github.com/Exculpata/exculpata/pull/45) | Nearby words/phrases with guided proximity controls | 09, proximity family |
 
-[CI candidate isolation #37](https://github.com/neilofneils404/recordbench-oss/pull/37)
+[CI candidate isolation #37](https://github.com/Exculpata/exculpata/pull/37)
 is a validation dependency, not a product slice. It inspects intended ancestry
 and actual branch metadata independently of unrelated fetched branches.
 
@@ -158,7 +158,7 @@ observations, reproduction examples, and the limits of those checks.
 * Manual entities and supported mentions (16), incremental rule-based discovery
   and reviewer reconciliation (17) are landed. Recognized occurrences are retained;
   complete mention recall is not established. Manual relationships/events (18)
-  landed in [#82](https://github.com/neilofneils404/recordbench-oss/pull/82), with
+  landed in [#82](https://github.com/Exculpata/exculpata/pull/82), with
   original support, competing accounts and explicit human decisions.
 * One terminal full-text run can feed the shared hierarchy for its complete
   criterion, with a frozen input receipt, explicit omissions, durable recovery
@@ -170,7 +170,7 @@ observations, reproduction examples, and the limits of those checks.
 
 [19: full-text synthesis](19-full-text-synthesis.md) is **Done only for its
 first single-run adapter**, landed in
-[#85](https://github.com/neilofneils404/recordbench-oss/pull/85). The
+[#85](https://github.com/Exculpata/exculpata/pull/85). The
 [contract](../FULL_TEXT_SYNTHESIS.md),
 [dated receipt](../FULL_TEXT_SYNTHESIS_ACCEPTANCE_2026-09-12.md), and
 [cruise](../EXIT_ALPHA_CRUISE.md#current-upstream-receipt) distinguish current

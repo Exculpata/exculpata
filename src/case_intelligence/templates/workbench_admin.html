@@ -110,7 +110,7 @@
     <div class="administrator-storage-grid">
       <article><strong>{{ storage_capacity.available_label }}</strong><span>Available above reserve</span></article>
       <article><strong>{{ storage_capacity.reserve_label }}</strong><span>Protected reserve</span></article>
-      <article><strong>{{ storage_capacity.managed_label }}</strong><span>RecordBench data</span></article>
+      <article><strong>{{ storage_capacity.managed_label }}</strong><span>Exculpata data</span></article>
       <article><strong>{{ format_bytes(storage_policy.matter_quota_bytes) }}</strong><span>Per-matter allowance</span></article>
     </div>
     <p>Uploads use opaque matter identities. Large-file finalization is {{ 'copy-free on this tier' if storage_capacity.optimized_finalize else 'using the compatible copy fallback' }}.</p>
@@ -176,7 +176,7 @@
       <article><strong>{{ backup_status.retention }}</strong><span>Encrypted retention</span></article>
       <article><strong>{{ 'Recorded' if backup_status.snapshot_short else 'Pending' }}</strong><span>Snapshot receipt</span></article>
     </div>
-    <p>{{ backup_status.message }} Matter deletion is immediate in RecordBench; encrypted disaster-recovery residuals expire with the short retention window.</p>
+    <p>{{ backup_status.message }} Matter deletion is immediate in Exculpata; encrypted disaster-recovery residuals expire with the short retention window.</p>
   </section>
 
   <section class="administrator-panel" aria-labelledby="admin-matters-heading">

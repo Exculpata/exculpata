@@ -1,0 +1,131 @@
+@font-face {
+  font-family: Geist;
+  src: url("./assets/fonts/Geist-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+/* Match the app's dark tokens in src/case_intelligence/static/theme-tokens.css. */
+:root {
+  color-scheme: dark;
+  --bg: #0B0D10;
+  --panel: #14161A;
+  --text: #EDEAE2;
+  --muted: #82878E;
+  --border: #2A2E35;
+  --accent: #22D3EE;
+  --accent-hover: #67E8F9;
+  --selection: #0E4A57;
+  font-family: Geist, ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; text-underline-offset: .3em; }
+a:hover { color: var(--accent-hover); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+::selection { background: var(--selection); color: var(--text); }
+h1, h2, h3, p { margin: 0; }
+svg { flex: none; }
+.page { width: min(1280px, 90%); margin-inline: auto; }
+
+.skip-link {
+  position: absolute;
+  top: 16px;
+  left: 5%;
+  z-index: 1;
+  padding: 12px 18px;
+  background: var(--accent);
+  color: var(--bg);
+  transform: translateY(-200%);
+}
+.skip-link:focus { transform: translateY(0); color: var(--bg); }
+
+.site-header { display: flex; align-items: center; justify-content: space-between; padding-top: 48px; gap: 32px; }
+.brand { display: block; width: 280px; margin-left: -23px; flex: none; }
+.brand img { display: block; width: 100%; height: auto; }
+.github-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); font-size: 16px; text-decoration: none; }
+
+.hero { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; padding: 118px 0 82px; }
+h1 { font-size: clamp(60px, 9vw, 120px); font-weight: 640; line-height: 1.02; letter-spacing: -.055em; white-space: nowrap; }
+h1 span { color: var(--accent); }
+.hero-intro { margin-top: 142px; }
+.hero-intro > p:first-child { max-width: 380px; font-size: 25px; line-height: 1.45; letter-spacing: -.02em; }
+.button { display: inline-flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 30px; padding: 18px 28px; border: 1px solid transparent; border-radius: 6px; background: var(--accent); color: var(--bg); font-size: 20px; font-weight: 620; text-decoration: none; }
+.button:hover { background: var(--accent-hover); color: var(--bg); }
+.hero-intro .local-first { margin-top: 22px; color: var(--muted); font: 14px/1.6 "JetBrains Mono", ui-monospace, monospace; }
+
+.capabilities { padding: 84px 0 64px; border-top: 1px solid var(--border); }
+.capabilities h2 { font-size: clamp(32px, 4.4vw, 48px); font-weight: 610; letter-spacing: -.035em; line-height: 1.15; }
+.capability-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 44px; margin-top: 48px; }
+.capability-list > div { border-top: 1px solid var(--border); padding-top: 25px; }
+h3 { font-size: 22px; font-weight: 570; letter-spacing: -.025em; line-height: 1.35; }
+.capability-list p { margin-top: 18px; color: var(--muted); font-size: 20px; line-height: 1.5; letter-spacing: -.015em; }
+.review-note { margin-top: 44px; color: var(--muted); font-size: 16px; line-height: 1.6; }
+
+.audience { display: grid; grid-template-columns: 1fr 1fr; gap: 72px; border-top: 1px solid var(--border); padding: 88px 0 70px; }
+.audience h2 { font-size: clamp(48px, 7.4vw, 80px); font-weight: 620; line-height: 1.04; letter-spacing: -.045em; }
+.audience-copy > p:first-child { font-size: 22px; line-height: 1.5; letter-spacing: -.015em; }
+.audience-copy .status-note { margin-top: 22px; color: var(--muted); font-size: 16px; line-height: 1.55; }
+.resource-links { display: flex; flex-wrap: wrap; gap: 16px 40px; margin-top: 24px; }
+.resource-links a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); font-size: 18px; }
+.resource-links a:hover { color: var(--accent-hover); }
+
+footer { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 32px 0 calc(80px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; line-height: 1.6; }
+footer a { display: inline-flex; align-items: center; min-height: 44px; }
+footer > a { color: var(--accent); }
+
+@media (max-width: 1100px) {
+  .hero { padding-top: 100px; }
+  .hero-intro { margin-top: 126px; }
+  .hero-intro > p:first-child { font-size: 22px; }
+  .button { font-size: 18px; padding: 16px 22px; gap: 18px; }
+  .capability-list { gap: 32px; }
+  h3 { font-size: 20px; }
+  .capability-list p { font-size: 18px; }
+  .audience { gap: 48px; }
+  .audience-copy > p:first-child { font-size: 20px; }
+}
+
+@media (max-width: 800px) {
+  .page { width: calc(100% - 48px); }
+  .site-header { gap: 16px; padding-top: 20px; }
+  .brand { width: 235px; margin-left: -19px; }
+  .github-link { font-size: 14px; }
+  .hero { grid-template-columns: 1fr; gap: 32px; padding: 64px 0; }
+  h1 { font-size: clamp(48px, 10.8vw, 84px); letter-spacing: -.055em; }
+  .hero-intro { margin-top: 0; }
+  .hero-intro > p:first-child { max-width: 480px; font-size: 22px; }
+  .button { margin-top: 26px; }
+  .capabilities { padding: 56px 0; }
+  .capabilities h2 { max-width: 550px; }
+  .capability-list { grid-template-columns: 1fr; gap: 32px; margin-top: 32px; }
+  .capability-list > div { padding-top: 20px; }
+  h3 { font-size: 22px; }
+  .capability-list p { max-width: 520px; margin-top: 12px; }
+  .review-note { margin-top: 32px; font-size: 15px; }
+  .audience { grid-template-columns: 1fr; gap: 28px; padding: 56px 0; }
+  .audience h2 { font-size: 52px; }
+  .resource-links { gap: 12px 28px; }
+  footer { align-items: flex-start; flex-direction: column; gap: 4px; padding: 28px 0 calc(64px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (max-width: 360px) {
+  .page { width: calc(100% - 40px); }
+  .brand { width: 200px; margin-left: -16px; }
+  h1 { font-size: 40px; }
+  .audience h2 { font-size: 44px; }
+  .hero-intro > p:first-child { font-size: 20px; }
+}

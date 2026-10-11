@@ -1,13 +1,13 @@
-# RecordBench product north star
+# Exculpata product north star
 
-RecordBench is a free, local-first review workspace for case teams. Its purpose
+Exculpata is a free, local-first review workspace for case teams. Its purpose
 is to help attorneys, investigators, and support staff understand their records,
 find source-supported information, preserve what they learn, and make informed
 human decisions. Federal criminal defense and teams serving people who cannot
 afford counsel are central to that purpose.
 
 This is the product direction, not a claim that the alpha already delivers it.
-It guides choices without exhausting what RecordBench can become. The
+It guides choices without exhausting what Exculpata can become. The
 [assessment and delivery plan](PRODUCT_DIRECTION_2026-09-12.md) separates current
 behavior from gaps. The [exit-alpha cruise](EXIT_ALPHA_CRUISE.md) selects the
 active implementation step; [release readiness](RELEASE_READINESS.md) defines
@@ -20,7 +20,7 @@ document, filings, reports, or other background before discovery arrives.
 Background material stays distinguishable from discovery, with visible origins
 and explicit choices about which material a question may consider.
 
-The team brings in a discovery folder or production. RecordBench preserves its
+The team brings in a discovery folder or production. Exculpata preserves its
 hierarchy, production occurrences, native files, document relationships, and
 available metadata. Every selected item has an accountable outcome. Unsupported
 files, failed extraction, unreadable pages, and attachments needing work remain
@@ -53,7 +53,7 @@ until each extension is implemented and accepted.
 
 ## What thorough review means
 
-RecordBench must work toward accounting for the whole requested population.
+Exculpata must work toward accounting for the whole requested population.
 A ranked shortlist cannot stand in for a request to find every occurrence.
 
 | Reviewer intent | Required contract |

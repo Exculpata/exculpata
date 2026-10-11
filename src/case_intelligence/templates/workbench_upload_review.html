@@ -1,0 +1,16 @@
+{% extends "workbench_base.html" %}
+{% block title %}Upload review · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block content %}
+<main id="main-content" tabindex="-1" class="setup-main">
+  <section class="setup-workspace" aria-labelledby="upload-review-heading">
+    <h1 id="upload-review-heading">Upload review</h1>
+    {% with active='sources' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+    <h2>{{ upload_item.relative_path or upload_item.display_name }}</h2>
+    <p>Collection: {{ upload_item.collection_name }}</p>
+    <p>Status: {{ upload_item.state }}</p>
+    <p>{{ upload_item.message or 'No reason was recorded.' }}</p>
+    <p>{{ upload_item.received_size }} of {{ upload_item.expected_size }} bytes received.</p>
+    <p><a href="/matters/{{ matter.slug }}/setup">Return to source intake</a></p>
+  </section>
+</main>
+{% endblock %}

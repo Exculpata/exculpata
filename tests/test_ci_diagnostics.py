@@ -1,4 +1,4 @@
-"""Exercise the hosted command, including a process that cannot finish its report."""
+"""Exercise the hosted command, including an abruptly exiting xdist worker."""
 
 import os
 from pathlib import Path
@@ -31,7 +31,11 @@ def run_synthetic(tmp_path, source):
     env.pop('PYTEST_ADDOPTS', None)
     env.pop('PYTEST_PLUGINS', None)
     env['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
-    return subprocess.run(application_command(tmp_path), cwd=tmp_path, env=env,
+    # Load only the required distribution plugin. Bound this nested synthetic
+    # run independently of the outer suite's worker count to avoid oversubscription.
+    env['PYTEST_XDIST_AUTO_NUM_WORKERS'] = '2'
+    command = application_command(tmp_path) + ['-p', 'xdist.plugin']
+    return subprocess.run(command, cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=30)
 
 
@@ -49,8 +53,8 @@ def test_after_failure():
     pass
 ''')
     assert result.returncode == 1
-    assert 'test_failure FAILED' in result.stdout
-    assert 'test_after_failure PASSED' in result.stdout
+    assert re.search(r'FAILED .*test_failure\b', result.stdout)
+    assert re.search(r'PASSED .*test_after_failure\b', result.stdout)
     assert 'synthetic prerequisite absent' in result.stdout
     assert 'slowest 25 durations' in result.stdout
     assert 'SYNTHETIC_CAPTURE_MARKER' not in result.stdout
@@ -69,6 +73,8 @@ def test_failed_node_survives_abrupt_exit_without_session_summary(tmp_path, phas
     fixture = '''import os
 import pytest
 
+pytestmark = pytest.mark.xdist_group("synthetic-crash-sequence")
+
 @pytest.fixture
 def synthetic_fixture():
     SETUP
@@ -84,8 +90,19 @@ def test_abrupt_exit():
         'TEARDOWN', 'assert False' if phase == 'teardown' else 'pass').replace(
         'CALL', 'assert False' if phase == 'call' else 'pass')
     result = run_synthetic(tmp_path, fixture)
-    assert result.returncode == 7
+    # The controller survives worker exit 7 and fails the run with a crash
+    # diagnostic and a complete report, retaining the preceding failure too.
+    assert result.returncode == 1
     outcome = 'FAILED' if phase == 'call' else 'ERROR'
-    assert f'test_synthetic.py::test_failure {outcome}' in result.stdout
+    assert re.search(rf'{outcome} .*test_synthetic.py::test_failure\b', result.stdout)
     assert 'test_synthetic.py::test_abrupt_exit' in result.stdout
-    assert not (tmp_path / 'application-results.xml').exists()
+    assert 'crashed while running' in result.stdout
+    suite = ET.parse(tmp_path / 'application-results.xml').getroot().find('testsuite')
+    assert int(suite.attrib['failures']) + int(suite.attrib['errors']) == 2
+    assert suite.attrib['skipped'] == '0'
+    cases = suite.findall('testcase')
+    assert any(case.attrib['name'].startswith('test_failure') and
+               (case.find('failure') is not None or case.find('error') is not None)
+               for case in cases)
+    assert any('test_abrupt_exit' in case.attrib['name'] and
+               case.find('error') is not None for case in cases)

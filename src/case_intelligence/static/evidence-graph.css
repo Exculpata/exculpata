@@ -7,7 +7,7 @@
 .evidence-graph-page .graph-diagram-panel > summary { cursor: pointer; font-weight: 650; }
 .evidence-graph-page .graph-diagram-scroll { max-width: 100%; overflow-x: auto; border-radius: 8px; }
 .evidence-graph-page .evidence-graph { display: block; width: 1020px; height: auto; max-width: none; stroke: none; }
-.evidence-graph-page .evidence-graph text { fill: #243347; font: 14px system-ui, sans-serif; }
+.evidence-graph-page .evidence-graph text { fill: #243347; font-family: var(--x-font-sans, system-ui, sans-serif); font-size: 14px; }
 .evidence-graph-page .evidence-graph .graph-subtitle { fill: #536479; font-size: 12px; }
 .evidence-graph-page .graph-line { stroke: #879bb1; stroke-width: 1.6; fill: none; }
 .evidence-graph-page .graph-line-historical { stroke-dasharray: 5 5; stroke: #8a7364; }
@@ -39,6 +39,17 @@ html[data-theme="dusk"] .evidence-graph-page .graph-role-historical rect { fill:
 html[data-theme="dusk"] .evidence-graph-page .evidence-graph .graph-account-link { fill: #a8cff8; }
 html[data-theme="dusk"] .evidence-graph-page .graph-historical-label { color: #dfba91; }
 html[data-theme="dusk"] .evidence-graph-page .graph-account { background: #1d2c3b; }
+html[data-theme="dark"] .evidence-graph-page .graph-diagram-panel { background: var(--x-panel); border-color: var(--x-border); }
+html[data-theme="dark"] .evidence-graph-page .evidence-graph text { fill: var(--x-text); }
+html[data-theme="dark"] .evidence-graph-page .evidence-graph .graph-subtitle { fill: var(--x-text-muted); }
+html[data-theme="dark"] .evidence-graph-page .graph-line { stroke: var(--x-border-strong); }
+html[data-theme="dark"] .evidence-graph-page .graph-center rect { fill: var(--x-selection-bg); stroke: var(--x-accent); }
+html[data-theme="dark"] .evidence-graph-page .graph-record rect,
+html[data-theme="dark"] .evidence-graph-page .graph-role rect { fill: var(--x-panel-raised); stroke: var(--x-border-strong); }
+html[data-theme="dark"] .evidence-graph-page .graph-role-historical rect { fill: var(--x-panel); stroke: var(--x-warning); }
+html[data-theme="dark"] .evidence-graph-page .evidence-graph .graph-account-link { fill: var(--x-accent); }
+html[data-theme="dark"] .evidence-graph-page .graph-historical-label { color: var(--x-warning); }
+html[data-theme="dark"] .evidence-graph-page .graph-account { background: var(--x-panel); }
 @media (max-width: 700px) {
   .evidence-graph-page .graph-focus { display: block; }
   .evidence-graph-page .graph-diagram-panel { padding: 12px; }

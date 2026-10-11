@@ -83,12 +83,12 @@
     <div>
       <p class="eyebrow">Permanent action</p>
       <h2 id="matter-danger-heading">Close matter</h2>
-      <p>Closing permanently removes this workbench matter after an exact-name confirmation. Active work must finish first, and originals outside RecordBench remain untouched.</p>
+      <p>Closing permanently removes this workbench matter after an exact-name confirmation. Active work must finish first, and originals outside Exculpata remain untouched.</p>
     </div>
     {% if can_close_matter %}
     <a class="button button-danger" href="/matters/{{ matter.slug }}/close">Close matter</a>
     {% else %}
-    <p class="matter-danger-restriction">Only the matter owner or a RecordBench administrator can close this matter.</p>
+    <p class="matter-danger-restriction">Only the matter owner or an Exculpata administrator can close this matter.</p>
     {% endif %}
   </section>
 </main>

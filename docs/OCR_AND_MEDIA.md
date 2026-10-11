@@ -1,7 +1,7 @@
 # OCR and media
 
 Uploads are streamed into a private staging boundary and scanned before they
-become matter sources. RecordBench extracts PDF and DOCX structure, email and
+become matter sources. Exculpata extracts PDF and DOCX structure, email and
 spreadsheet text, and bounded image content. PDF native text is retained. When
 OCR is enabled, selected pages are rendered with Poppler and recognized with
 Tesseract. Selective mode processes empty-text pages; expanded mode also selects
@@ -36,7 +36,7 @@ submitted when transcription proceeds.
 
 The bundled transcription queue reports inspection, submission, queue, transcription,
 alignment, diarization, projection, summary, completion, degraded, and failed
-states. RecordBench indexes timestamped segments and automatically generates a
+states. Exculpata indexes timestamped segments and automatically generates a
 source summary after projection. Users can export transcripts, summaries,
 clips, citations, and reports.
 
@@ -62,7 +62,7 @@ own lifecycle; the standalone worker queue is deleted after delivery/expiry.
 
 ## Sampled video-frame text: bounded foundation, not yet searchable
 
-RecordBench does **not** currently search visual-only text in video. The portable
+Exculpata does **not** currently search visual-only text in video. The portable
 codebase now includes a disabled-by-design sampled-frame OCR coordinator and
 synthetic contract tests. It caps the number of frames, spreads a capped sample
 across the recording, bounds decoded bytes, pixels, OCR text, and per-step time,

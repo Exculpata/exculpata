@@ -126,7 +126,7 @@ def test_kerberos_login_binds_windows_identity_to_server_session(tmp_path):
         assert logout.headers["location"] == "/auth/signed-out"
         signed_out = client.get("/auth/signed-out", headers=_headers())
         assert signed_out.status_code == 200
-        assert "Signed out of RecordBench" in signed_out.text
+        assert "Signed out of Exculpata" in signed_out.text
 
         client.cookies.set(SESSION_COOKIE, session_token, path="/")
         replay = client.get("/matters/new", headers=_headers(), follow_redirects=False)
@@ -162,7 +162,7 @@ def test_kerberos_rejects_unapproved_principal_without_provisioning(tmp_path):
             headers=_headers("not.approved@EXAMPLE.TEST"),
         )
         assert denied.status_code == 401
-        assert "not approved for RecordBench" in denied.text
+        assert "not approved for Exculpata" in denied.text
         assert client.cookies.get(SESSION_COOKIE) is None
         count = app.state.workbench.workspace.connection.execute(
             "SELECT COUNT(*) FROM workbench_principal WHERE provider=?",
@@ -282,3 +282,49 @@ def test_kerberos_proxy_deployment_strips_spoofable_headers_and_has_no_host_port
     assert "KRB5RCACHETYPE=none" not in compose + entrypoint
     assert "EXPOSE 8080" in dockerfile
     assert PROXY_SECRET not in apache + compose + entrypoint + dockerfile
+
+
+@pytest.mark.parametrize("user_mode", ["new-only", "old-only", "both-equal", "both-different"])
+@pytest.mark.parametrize("secret_mode", ["new-only", "old-only", "both-equal", "both-different"])
+def test_kerberos_header_aliases_at_login_and_session_boundary(tmp_path, user_mode, secret_mode):
+    app = create_workbench_app(
+        tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="kerberos",
+        secure_cookie=True, kerberos_settings=_settings(), kerberos_profile_resolver=_profile,
+        answer_workers=1,
+    )
+    headers = {}
+    for suffix, mode, value in (("Authenticated-User", user_mode, REVIEWER_PRINCIPAL),
+                                ("Proxy-Secret", secret_mode, PROXY_SECRET)):
+        if mode != "old-only":
+            headers[f"X-Exculpata-{suffix}"] = value
+        if mode != "new-only":
+            headers[f"X-RecordBench-{suffix}"] = "synthetic-conflict" if mode == "both-different" else value
+    conflict = "both-different" in (user_mode, secret_mode)
+    with TestClient(app, base_url="https://recordbench.example.test") as client:
+        result = client.get("/auth/login", headers=headers, follow_redirects=False)
+        assert result.status_code == (401 if conflict else 303)
+        if conflict:
+            assert client.cookies.get(SESSION_COOKIE) is None
+            assert app.state.workbench.workspace.connection.execute(
+                "SELECT COUNT(*) FROM workbench_principal WHERE provider=?", (_settings().provider_key,)
+            ).fetchone()[0] == 0
+            assert client.get("/auth/login", headers=_headers(), follow_redirects=False).status_code == 303
+        result = client.get("/matters/new", headers=headers, follow_redirects=False)
+        assert result.status_code == (401 if conflict else 200)
+        # A rejected ambiguous request must not revoke an otherwise valid session.
+        assert client.get("/matters/new", headers=_headers()).status_code == 200
+
+
+@pytest.mark.parametrize("brand", ["Exculpata", "RecordBench"])
+@pytest.mark.parametrize("proof", [None, "synthetic-invalid-proof", ""])
+def test_each_identity_alias_still_requires_correct_proxy_proof(tmp_path, brand, proof):
+    app = create_workbench_app(
+        tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="kerberos",
+        secure_cookie=True, kerberos_settings=_settings(), kerberos_profile_resolver=_profile,
+    )
+    headers = {f"X-{brand}-Authenticated-User": REVIEWER_PRINCIPAL}
+    if proof is not None:
+        headers[f"X-{brand}-Proxy-Secret"] = proof
+    with TestClient(app, base_url="https://recordbench.example.test") as client:
+        assert client.get("/auth/login", headers=headers).status_code == 401
+        assert client.cookies.get(SESSION_COOKIE) is None

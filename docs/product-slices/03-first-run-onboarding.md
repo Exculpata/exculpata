@@ -1,8 +1,8 @@
 # 03: Guide the first administrator through team setup
 
 Status: implemented on `main` via
-[#59](https://github.com/neilofneils404/recordbench-oss/pull/59)
-([#57](https://github.com/neilofneils404/recordbench-oss/pull/57) team setup).
+[#59](https://github.com/Exculpata/exculpata/pull/59)
+([#57](https://github.com/Exculpata/exculpata/pull/57) team setup).
 See [installation handoff and team setup](../FIRST_RUN.md). Depends on 02.
 People (05) and team groups (06) have also landed.
 

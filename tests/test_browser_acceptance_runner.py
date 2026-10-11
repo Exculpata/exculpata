@@ -277,7 +277,7 @@ def test_existing_output_is_preserved_and_no_journey_runs(runner, tmp_path, monk
     assert marker.read_text() == 'Generated old result'
 
 
-@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])
 @pytest.mark.parametrize('failure', ['exit', 'timeout', 'missing', 'failed', 'truncated', 'none'])
 def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_path, monkeypatch, failure, failure_position):
     scratch, output = tmp_path / 'scratch', tmp_path / 'output'
@@ -294,7 +294,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
         if failure != 'missing' or not failing_journey:
             values = {'passed': failure != 'failed' or not failing_journey}
             if failure == 'truncated' and failing_journey:
-                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5}[failure_position]
+                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 11}[failure_position]
             receipt(raw / name, **values)
         if failing_journey:
             if failure == 'exit':
@@ -305,7 +305,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
 
     monkeypatch.setattr(runner, 'run_process', run)
     results = runner.run_journeys(Path('/generated/chrome'), Path('/generated/driver'), scratch, output, 1)
-    assert len(commands) == 12
+    assert len(commands) == 14
     assert '--verify-readiness' in commands[2]
     assert 'browser-accept-dusk.py' in commands[1][1]
     assert 'browser-accept-workspace-layout.py' in commands[3][1]
@@ -317,6 +317,8 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
     assert 'browser-accept-cited-context.py' in commands[9][1]
     assert 'browser-accept-assertions.py' in commands[10][1]
     assert 'browser-accept-assistant-dock.py' in commands[11][1]
+    assert 'browser-accept-one-box.py' in commands[12][1]
+    assert 'browser-accept-briefing.py' in commands[13][1]
     assert results[failure_position - 1]['passed'] is (failure == 'none')
     assert all(result['passed'] for index, result in enumerate(results) if index != failure_position - 1)
     assert json.loads((output / 'journeys.json').read_text()) == results
@@ -357,7 +359,7 @@ import importlib.util, os, pathlib, signal, sys
 spec=importlib.util.spec_from_file_location('runner', sys.argv[1]);r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
 signal.signal(signal.SIGTERM, r.interrupted)
 try:
-    r.run_process([sys.executable, '-c', 'import os,pathlib,sys,time;pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));time.sleep(60)', sys.argv[2]], pathlib.Path(sys.argv[3]), dict(os.environ), 30)
+    r.run_process([sys.executable, '-c', 'import os,pathlib,sys,time;p=pathlib.Path(sys.argv[1]);t=p.with_name(p.name+".partial");t.write_text(str(os.getpid()));t.replace(p);time.sleep(60)', sys.argv[2]], pathlib.Path(sys.argv[3]), dict(os.environ), 30)
 except InterruptedError:
     sys.exit(17)
 """
@@ -365,12 +367,17 @@ except InterruptedError:
         str(marker), str(tmp_path / 'log')])
     try:
         deadline = time.monotonic() + 5
-        while not marker.exists() and time.monotonic() < deadline:
+        pid = ""
+        while time.monotonic() < deadline:
+            if marker.is_file():
+                pid = marker.read_text().strip()
+                if pid.isdigit():
+                    break
             time.sleep(.02)
-        assert marker.exists()
+        assert pid.isdigit()
         parent.send_signal(signal.SIGTERM)
         assert parent.wait(timeout=5) == 17
-        assert not alive(int(marker.read_text()))
+        assert not alive(int(pid))
     finally:
         if parent.poll() is None:
             parent.kill()
@@ -405,8 +412,8 @@ def test_mismatched_driver_version_pin_is_rejected(runner, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize('outcomes,code', [
-    ([index != failing for index in range(12)], 1) for failing in range(12)
-] + [([True] * 12, 0), ([True] * 11, 1), ([], 1)])
+    ([index != failing for index in range(14)], 1) for failing in range(14)
+] + [([True] * 14, 0), ([True] * 13, 1), ([], 1)])
 def test_main_requires_all_journeys_to_pass(runner, tmp_path, monkeypatch, outcomes, code):
     monkeypatch.setattr(runner, 'install_browser', lambda *_: (Path('/generated/chrome'), Path('/generated/driver'), '1.2.3.4'))
     monkeypatch.setattr(runner, 'host_platform', lambda: 'linux64')

@@ -1,40 +1,10 @@
-## User problem
+## What changed?
 
-Describe the review or operator problem this change addresses.
+Describe the problem and resulting behavior.
 
-## Result
+## How was it tested?
 
-Describe the behavior after this change in plain language.
+List checks and synthetic evidence, including any limitations.
 
-## Synthetic evidence
-
-List the synthetic reproduction, automated tests, and any browser or clean-host
-acceptance performed. Do not include private deployment output.
-
-## Impact
-
-- Security, authorization, or matter isolation (for sensitive changes, include
-  the focused assessment, abuse cases, regression evidence and findings disposition):
-- Storage, deletion, backup, or migration:
-- Models, licensing, or offline operation:
-- Operator documentation or recovery:
-
-## Checklist
-
-- [ ] All examples, fixtures, screenshots, and logs are synthetic and
-      environment-neutral.
-- [ ] No private identity, hostname, address, path, credential, certificate,
-      data, transcript, runtime state, or deployment overlay is included.
-- [ ] Behavioral changes include a regression test and applicable
-      documentation.
-- [ ] `make check` passes, or the exact bounded exception is explained.
-- [ ] The publication sanitizer passes.
-- [ ] The complete outgoing history passed the local pre-push check; PR text
-      and attachments were separately inspected before upload.
-- [ ] Before merge: actual hosted Codex code review completed on the final
-      implemented head, findings were reconciled and a maintainer accepted the
-      full head under `docs/PUBLIC_ALPHA.md`, including native commit binding or explicit verified clean-review attestation and
-      explicit trusted revalidation immediately before manual merge. Hosted security review is optional;
-      labels and quotas cannot waive code review. All Quality, publication,
-      Gitleaks and native branch protections remain required.
-- [ ] No existing release tag was moved or rewritten.
+- [ ] Privacy: synthetic data only; no real case material or private deployment details.
+- [ ] Needs hosted review? See the [review policy](../docs/QUALITY_GATES.md#review-policy).

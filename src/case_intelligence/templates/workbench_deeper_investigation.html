@@ -1,0 +1,15 @@
+{% if deeper_investigation_enabled %}
+{% set deeper = deeper_investigation_offer(request, matter, message) %}
+{% if deeper %}
+<form class="deeper-investigation" data-deeper-investigation method="post" action="{{ entity_context_href('/matters/' ~ matter.slug ~ '/ask', source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="question" value="{{ deeper.question }}">
+  <input type="hidden" name="conversation" value="{{ deeper.conversation }}">
+  <input type="hidden" name="source_set" value="{{ deeper.source_set }}">
+  <input type="hidden" name="request_key" value="{{ deeper.request_key }}">
+  <input type="hidden" name="review_task" value="research">
+  <button class="button button-secondary" type="submit"{% if deeper.disabled %} disabled{% endif %}>Investigate this more deeply</button>
+  <small>Runs a broader investigation of the same question{% if deeper.source_set %} within the original source set{% endif %}.{% if deeper.has_context %} Saved context and case notes are not carried into this investigation.{% endif %}{% if deeper.reason %} {{ deeper.reason }}{% endif %}</small>
+</form>
+{% endif %}
+{% endif %}

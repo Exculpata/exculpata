@@ -135,8 +135,8 @@ def test_full_review_setup_uses_plain_language_examples_and_frozen_scope(tmp_pat
         for text in (
             "Start from an example",
             "Name this review",
-            "What should RecordBench mark for review?",
-            "What should RecordBench leave out?",
+            "What should Exculpata mark for review?",
+            "What should Exculpata leave out?",
             "Recommended: test on up to 50",
             "The source list is frozen when the run starts",
         ):

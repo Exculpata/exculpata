@@ -1,0 +1,17 @@
+{% if one_box_enabled %}
+{% set one_box_route = one_box_context(request, matter) %}
+{% if one_box_route %}
+<aside class="one-box-route" aria-label="Request routing">
+  <p class="one-box-route-reason">{{ one_box_route.reason }}</p>
+  <details data-one-box-switch>
+    <summary>Not what you meant?</summary>
+    <form method="post" action="/matters/{{ matter.slug }}/one-box" class="one-box-alternatives">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="request_key" value="{{ one_box_request_key() }}">
+      <input type="hidden" name="question" value="{{ one_box_route.text }}">
+      {% for alternative in one_box_route.alternatives %}<button type="submit" name="route" value="{{ alternative.kind }}" data-one-box-kind="{{ alternative.kind }}"{% if administrator_view %} disabled{% endif %}>{{ alternative.label }}</button>{% endfor %}
+    </form>
+  </details>
+</aside>
+{% endif %}
+{% endif %}

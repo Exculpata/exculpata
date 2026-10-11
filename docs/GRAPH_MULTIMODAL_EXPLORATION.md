@@ -70,6 +70,6 @@ resolution, reviewer effort, resources, restart and deletion on declared corpora
 - [LazyGraphRAG research](https://www.microsoft.com/en-us/research/blog/lazygraphrag-setting-a-new-standard-for-quality-and-cost/):
   research direction for deferred summarization and budgeted exploration.
 - [Qwen multimodal retrieval model card](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B):
-  one candidate family to qualify, not a supported RecordBench portfolio change.
+  one candidate family to qualify, not a supported Exculpata portfolio change.
 
-External benchmark claims do not establish RecordBench quality or capacity.
+External benchmark claims do not establish Exculpata quality or capacity.

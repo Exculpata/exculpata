@@ -1,7 +1,8 @@
 # Assistant actions — brief (increment 5, proposed)
 
 Status: **approved October 3, 2026** with the recommended answers below; each
-increment (A, B, C) lands in its own PR with hosted code review.
+increment (A, B, C) lands in its own PR under the
+[review policy](../QUALITY_GATES.md#review-policy).
 Scope: the matter assistant dock and the Ask page. No schema change in A or B;
 C adds one bounded generation mode and needs its own evaluation.
 
@@ -140,5 +141,5 @@ adjust after use:
 Synthetic regressions for every write path (proposal → save → audit; changed
 passage refused; dismissed proposal saves nothing), the dock journeys at phone and
 desktop widths with no overflow, keyboard-only operation, and for C a recorded
-evaluation receipt on the synthetic set. Hosted code review and maintainer
-acceptance as for every PR.
+evaluation receipt on the synthetic set. Follow the
+[review policy](../QUALITY_GATES.md#review-policy) before merge.

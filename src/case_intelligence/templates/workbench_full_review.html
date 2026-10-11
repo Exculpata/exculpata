@@ -1,4 +1,6 @@
 {% extends "workbench_base.html" %}
+{% set one_box_draft = one_box_context(request, matter) if one_box_enabled else none %}
+{% set one_box_prefill = one_box_draft.text if one_box_draft and one_box_draft.kind == 'every_source' else '' %}
 
 {% macro criterion_form() -%}
 <form method="post" action="/matters/{{ matter.slug }}/full-review/criteria" data-working-form data-working-label="Saving criterion…" data-criterion-form>
@@ -12,10 +14,10 @@
     </div>
     <small>Examples fill the form so you can edit the wording before anything runs.</small>
   </fieldset>
-  <label><span>Name this review</span><input name="title" maxlength="160" required placeholder="Example: Records mentioning vehicle ownership" data-criterion-title></label>
-  <label><span>What should RecordBench mark for review?</span><textarea name="instructions" maxlength="8000" rows="5" required placeholder="Describe the material you want a reviewer to see." data-criterion-instructions></textarea><small>Write one clear rule. RecordBench will apply this same wording to every source.</small></label>
+  <label><span>Name this review</span><input name="title" maxlength="160" required placeholder="Example: Records mentioning vehicle ownership" data-criterion-title{% if one_box_prefill %} value="{{ one_box_prefill[:160] }}"{% endif %}></label>
+  <label><span>What should Exculpata mark for review?</span><textarea name="instructions" maxlength="8000" rows="5" required placeholder="Describe the material you want a reviewer to see." data-criterion-instructions>{{ one_box_prefill }}</textarea><small>Write one clear rule. Exculpata will apply this same wording to every source.</small></label>
   <label><span>What definitely counts? <em>Optional</em></span><textarea name="include_guidance" maxlength="4000" rows="3" placeholder="Add examples, names, phrases, dates, or circumstances that should count." data-criterion-include></textarea></label>
-  <label><span>What should RecordBench leave out? <em>Optional</em></span><textarea name="exclude_guidance" maxlength="4000" rows="3" placeholder="Describe look-alikes or situations that should not count." data-criterion-exclude></textarea></label>
+  <label><span>What should Exculpata leave out? <em>Optional</em></span><textarea name="exclude_guidance" maxlength="4000" rows="3" placeholder="Describe look-alikes or situations that should not count." data-criterion-exclude></textarea></label>
   <button class="button button-primary" type="submit">Save review criterion</button>
 </form>
 {%- endmacro %}
@@ -27,6 +29,7 @@
 <main id="main-content" tabindex="-1" class="workflow-shell">
   <header class="matter-heading workflow-heading"><div><p class="eyebrow">Review workspace</p><h1>{{ matter.display_name }}</h1><p>{{ matter.descriptor or 'Active case review' }}</p></div><div class="matter-actions"><a class="button button-secondary" href="/matters/{{ matter.slug }}/setup?view=list#source-library">Sources</a><a class="button button-secondary" href="/matters/{{ matter.slug }}/work-product">Work product</a></div></header>
   {% with active='full_review' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  {% include "workbench_one_box_route.html" %}
   {% include "workbench_review_modes.html" %}
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
@@ -43,14 +46,14 @@
     <aside class="workflow-library criterion-library">
       <div class="workflow-library-heading"><div><p class="eyebrow">Saved logic</p><h2>Criteria</h2></div><span>{{ criteria|length }}</span></div>
       <nav>{% for item in criteria %}<a class="workflow-run-link {% if active_criterion and item.criterion_id == active_criterion.criterion_id %}selected{% endif %}" href="/matters/{{ matter.slug }}/full-review?criterion={{ item.criterion_id }}"><span class="criterion-version">v{{ item.current_version_number }}</span><span><strong>{{ item.title }}</strong><small>{{ item.version_count }} saved version{% if item.version_count != 1 %}s{% endif %}</small></span></a>{% else %}<p class="workflow-empty-small">Create the first criterion to begin.</p>{% endfor %}</nav>
-      {% if criteria %}<details class="criterion-editor">
+      {% if criteria and not one_box_prefill %}<details class="criterion-editor">
         <summary>New review criterion</summary>
         {{ criterion_form() }}
       </details>{% endif %}
     </aside>
 
     <section class="workflow-canvas {% if active_run %}has-active-run{% endif %} {% if selected_decision %}has-selected-decision{% endif %}">
-      {% if active_criterion %}
+      {% if active_criterion and not one_box_prefill %}
       <section class="criterion-card" id="review-controls">
         <header>
           <div><p class="eyebrow">Current criterion · v{{ active_version.version_number }}</p><h2>{{ active_criterion.title }}</h2></div>
@@ -59,9 +62,9 @@
             <form method="post" action="/matters/{{ matter.slug }}/full-review/criteria/{{ active_criterion.criterion_id }}/versions">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="title" value="{{ active_criterion.title }}">
-              <label><span>What should RecordBench mark for review?</span><textarea name="instructions" maxlength="8000" rows="5" required>{{ active_version.instructions }}</textarea></label>
+              <label><span>What should Exculpata mark for review?</span><textarea name="instructions" maxlength="8000" rows="5" required>{{ active_version.instructions }}</textarea></label>
               <label><span>What definitely counts?</span><textarea name="include_guidance" maxlength="4000" rows="3">{{ active_version.include_guidance }}</textarea></label>
-              <label><span>What should RecordBench leave out?</span><textarea name="exclude_guidance" maxlength="4000" rows="3">{{ active_version.exclude_guidance }}</textarea></label>
+              <label><span>What should Exculpata leave out?</span><textarea name="exclude_guidance" maxlength="4000" rows="3">{{ active_version.exclude_guidance }}</textarea></label>
               <button class="button button-primary" type="submit">Save new version</button>
             </form>
           </details>
@@ -117,12 +120,12 @@
         <div class="validation-metrics">
           {% for label,key in [('Precision','precision'),('Recall','recall'),('Elusion','elusion'),('Richness','richness'),('Error','error_rate')] %}<div><span>{{ label }}</span><strong>{% if validation[key] is none %}—{% else %}{{ (validation[key] * 100)|round(1) }}%{% endif %}</strong></div>{% endfor %}
         </div>
-        <p>Numbers appear after you validate enough sample decisions. Your decision never erases the original RecordBench label.</p>
+        <p>Numbers appear after you validate enough sample decisions. Your decision never erases the original Exculpata label.</p>
         <details class="validation-glossary">
           <summary>What these numbers mean</summary>
           <dl>
-            <div><dt>Precision</dt><dd>Of the sources RecordBench included, the share your validation also included.</dd></div>
-            <div><dt>Recall</dt><dd>Of all validated sources that should be included, the share RecordBench found.</dd></div>
+            <div><dt>Precision</dt><dd>Of the sources Exculpata included, the share your validation also included.</dd></div>
+            <div><dt>Recall</dt><dd>Of all validated sources that should be included, the share Exculpata found.</dd></div>
             <div><dt>Elusion</dt><dd>The share of sources labeled “Not identified” that your validation says should have been included.</dd></div>
             <div><dt>Richness</dt><dd>The share of the validated sample that actually meets the criterion.</dd></div>
             <div><dt>Error</dt><dd>The overall share of validated labels that disagree with your decision.</dd></div>
@@ -131,15 +134,15 @@
       </section>
 
       <section class="decision-ledger" id="decision-ledger"><header class="workflow-section-heading"><div><p class="eyebrow">Every-source ledger</p><h2>Review decisions</h2></div><span>{{ active_run.snapshot_count }} frozen sources</span></header>
-        <p class="decision-ledger-note">RecordBench labels help you prioritize review; they are not final determinations. Your validation remains separate and exportable.</p>
+        <p class="decision-ledger-note">Exculpata labels help you prioritize review; they are not final determinations. Your validation remains separate and exportable.</p>
         <form class="decision-filters" method="get" action="/matters/{{ matter.slug }}/full-review"><input type="hidden" name="criterion" value="{{ active_criterion.criterion_id }}"><input type="hidden" name="run" value="{{ active_run.run_id }}"><select name="decision"><option value="">All decisions</option>{% for state,label in [('included','Included'),('excluded','Not identified'),('needs_attention','Needs attention'),('pending','Pending')] %}<option value="{{ state }}" {% if decision_page.decision_filter == state %}selected{% endif %}>{{ label }} · {{ decision_page.counts[state] }}</option>{% endfor %}</select><label><input type="checkbox" name="validation" value="1" {% if decision_page.validation_only %}checked{% endif %}> Validation sample only</label><button type="submit">Apply</button></form>
-        <div class="decision-table"><div class="decision-table-head"><span>Source</span><span>RecordBench label</span><span>Team validation</span><span></span></div>{% for item in decision_page.items %}<article class="decision-row {% if selected_decision and selected_decision.document_id == item.document_id %}selected{% endif %}"><a class="decision-source" href="/matters/{{ matter.slug }}/full-review?criterion={{ active_criterion.criterion_id }}&run={{ active_run.run_id }}&decision={{ decision_page.decision_filter }}&validation={{ '1' if decision_page.validation_only else '0' }}&page={{ decision_page.page }}&source={{ item.document_id }}#decision-inspector"><span class="file-mark file-{{ item.source_kind|lower }}">{{ item.source_kind }}</span><span><strong>{{ item.source_name }}</strong><small>#{{ item.ordinal }} · {% if item.validation_sample %}validation sample{% else %}frozen source{% endif %}</small></span></a><span class="decision-chip state-{{ item.machine_decision }}">{{ 'Not identified' if item.machine_decision == 'excluded' else item.machine_decision|replace('_',' ')|title }}</span><span>{{ item.human_decision|replace('_',' ')|title if item.human_decision else 'Not reviewed' }}</span><a href="/matters/{{ matter.slug }}/sources/{{ item.action_token }}">Open</a></article>{% else %}<p class="workflow-empty-small">No decisions match this filter.</p>{% endfor %}</div>
+        <div class="decision-table"><div class="decision-table-head"><span>Source</span><span>Exculpata label</span><span>Team validation</span><span></span></div>{% for item in decision_page.items %}<article class="decision-row {% if selected_decision and selected_decision.document_id == item.document_id %}selected{% endif %}"><a class="decision-source" href="/matters/{{ matter.slug }}/full-review?criterion={{ active_criterion.criterion_id }}&run={{ active_run.run_id }}&decision={{ decision_page.decision_filter }}&validation={{ '1' if decision_page.validation_only else '0' }}&page={{ decision_page.page }}&source={{ item.document_id }}#decision-inspector"><span class="file-mark file-{{ item.source_kind|lower }}">{{ item.source_kind }}</span><span><strong>{{ item.source_name }}</strong><small>#{{ item.ordinal }} · {% if item.validation_sample %}validation sample{% else %}frozen source{% endif %}</small></span></a><span class="decision-chip state-{{ item.machine_decision }}">{{ 'Not identified' if item.machine_decision == 'excluded' else item.machine_decision|replace('_',' ')|title }}</span><span>{{ item.human_decision|replace('_',' ')|title if item.human_decision else 'Not reviewed' }}</span><a href="/matters/{{ matter.slug }}/sources/{{ item.action_token }}">Open</a></article>{% else %}<p class="workflow-empty-small">No decisions match this filter.</p>{% endfor %}</div>
         {% if decision_page.total_pages > 1 %}<nav class="workflow-pagination" aria-label="Decision pages">{% if decision_page.page > 1 %}<a href="/matters/{{ matter.slug }}/full-review?criterion={{ active_criterion.criterion_id }}&run={{ active_run.run_id }}&decision={{ decision_page.decision_filter }}&validation={{ '1' if decision_page.validation_only else '0' }}&page={{ decision_page.page - 1 }}">Previous</a>{% endif %}<span>Page {{ decision_page.page }} of {{ decision_page.total_pages }} · {{ decision_page.total }} rows</span>{% if decision_page.page < decision_page.total_pages %}<a href="/matters/{{ matter.slug }}/full-review?criterion={{ active_criterion.criterion_id }}&run={{ active_run.run_id }}&decision={{ decision_page.decision_filter }}&validation={{ '1' if decision_page.validation_only else '0' }}&page={{ decision_page.page + 1 }}">Next</a>{% endif %}</nav>{% endif %}
       </section>
 
-      {% if selected_decision %}<aside class="decision-inspector" id="decision-inspector"><header><div><p class="eyebrow">Source decision #{{ selected_decision.ordinal }}</p><h2>{{ selected_decision.source_name }}</h2></div><a href="/matters/{{ matter.slug }}/sources/{{ selected_decision.action_token }}">Open source</a></header><div class="decision-inspector-grid"><section><h3>RecordBench label</h3><span class="decision-chip state-{{ selected_decision.machine_decision }}">{{ 'Not identified' if selected_decision.machine_decision == 'excluded' else selected_decision.machine_decision|replace('_',' ')|title }}</span><p>{{ review_rejection_notice(selected_decision.rationale) or 'This source is still pending.' }}</p>{% if selected_decision.error_message %}<p class="workflow-caution">{{ review_rejection_notice(selected_decision.error_message) }}</p>{% endif %}{% if citation_error %}<p class="workflow-caution" role="status">{{ citation_error }}</p>{% endif %}<div class="decision-citations">{% for citation in selected_decision.citations %}<a href="{{ citation_href(citation, matter.slug) }}"><strong>{{ citation.source_name }}</strong><span>{{ citation.location }}</span><p>{{ citation.excerpt }}</p></a>{% endfor %}</div></section><section><h3>Team validation</h3>{% if selected_decision.human_decision %}<p>Saved by {{ reviewer_name }} · {{ selected_decision.reviewed_at[:10] }}</p>{% else %}<p>No team validation saved yet.</p>{% endif %}<p>Your changes stay separate from the RecordBench label.</p>{% if selected_decision.machine_decision == 'pending' %}<p>This source decision is still pending. Wait for it to finish before reviewing it.</p>{% else %}{% with draft=selected_decision, expected_updated_at=selected_decision.updated_at, can_save=true %}{% include "workbench_review_decision_form.html" %}{% endwith %}{% endif %}</section></div></aside>{% endif %}
+      {% if selected_decision %}<aside class="decision-inspector" id="decision-inspector"><header><div><p class="eyebrow">Source decision #{{ selected_decision.ordinal }}</p><h2>{{ selected_decision.source_name }}</h2></div><a href="/matters/{{ matter.slug }}/sources/{{ selected_decision.action_token }}">Open source</a></header><div class="decision-inspector-grid"><section><h3>Exculpata label</h3><span class="decision-chip state-{{ selected_decision.machine_decision }}">{{ 'Not identified' if selected_decision.machine_decision == 'excluded' else selected_decision.machine_decision|replace('_',' ')|title }}</span><p>{{ review_rejection_notice(selected_decision.rationale) or 'This source is still pending.' }}</p>{% if selected_decision.error_message %}<p class="workflow-caution">{{ review_rejection_notice(selected_decision.error_message) }}</p>{% endif %}{% if citation_error %}<p class="workflow-caution" role="status">{{ citation_error }}</p>{% endif %}<div class="decision-citations">{% for citation in selected_decision.citations %}<a href="{{ citation_href(citation, matter.slug) }}"><strong>{{ citation.source_name }}</strong><span>{{ citation.location }}</span><p>{{ citation.excerpt }}</p></a>{% endfor %}</div></section><section><h3>Team validation</h3>{% if selected_decision.human_decision %}<p>Saved by {{ reviewer_name }} · {{ selected_decision.reviewed_at[:10] }}</p>{% else %}<p>No team validation saved yet.</p>{% endif %}<p>Your changes stay separate from the Exculpata label.</p>{% if selected_decision.machine_decision == 'pending' %}<p>This source decision is still pending. Wait for it to finish before reviewing it.</p>{% else %}{% with draft=selected_decision, expected_updated_at=selected_decision.updated_at, can_save=true %}{% include "workbench_review_decision_form.html" %}{% endwith %}{% endif %}</section></div></aside>{% endif %}
       {% endif %}
-      {% else %}<section class="criterion-onboarding" id="review-controls"><header><span class="workflow-orbit" aria-hidden="true">✓</span><div><h2>Start with a precise, reviewable criterion.</h2><p>Use plain language. You can test and revise the rule before asking RecordBench to screen the full collection.</p></div></header>{{ criterion_form() }}</section>{% endif %}
+      {% else %}<section class="criterion-onboarding" id="review-controls"><header><span class="workflow-orbit" aria-hidden="true">✓</span><div><h2>Start with a precise, reviewable criterion.</h2><p>Use plain language. You can test and revise the rule before asking Exculpata to screen the full collection.</p></div></header>{{ criterion_form() }}</section>{% endif %}
     </section>
   </div>
 </main>

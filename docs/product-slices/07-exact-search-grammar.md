@@ -1,7 +1,7 @@
 # 07: Define and parse strict Boolean search
 
 Status: implemented on `main` as
-[#36](https://github.com/neilofneils404/recordbench-oss/pull/36). See
+[#36](https://github.com/Exculpata/exculpata/pull/36). See
 [exact search foundation](../EXACT_SEARCH.md). Depends on 00.
 
 ## Finding and outcome

@@ -17,7 +17,7 @@ def test_setup_progress_uses_sources_membership_and_latest_grant_access(tmp_path
     with TestClient(app, base_url=ORIGIN) as admin:
         assert login(admin).headers["location"] == "/admin/setup"
         page = admin.get("/admin/setup")
-        assert "Bring your team into RecordBench" in page.text
+        assert "Bring your team into Exculpata" in page.text
         assert "No active matter in your case team" in page.text
         assert "temporarily unavailable" in page.text
         assert create(admin, "first.reviewer").status_code == 303

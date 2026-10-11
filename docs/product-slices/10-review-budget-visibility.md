@@ -1,7 +1,7 @@
 # 10: Make review budgets and coverage visible
 
 Status: implemented on `main` as
-[#40](https://github.com/neilofneils404/recordbench-oss/pull/40). See
+[#40](https://github.com/Exculpata/exculpata/pull/40). See
 [investigation budgets](../INVESTIGATION_BUDGETS.md). No dependencies.
 
 ## Finding and outcome

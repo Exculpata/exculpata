@@ -8,10 +8,10 @@ their originals, and export the frozen input receipt with the result. This is a
 bounded synthesis of admitted findings, not a claim that the entire matter or
 every relevant fact was understood.
 
-Scope contract: [issue #83](https://github.com/neilofneils404/recordbench-oss/issues/83)
+Scope contract: [issue #83](https://github.com/Exculpata/exculpata/issues/83)
 and the [slice-19 brief](product-slices/19-full-text-synthesis.md). Scope
-[PR #84](https://github.com/neilofneils404/recordbench-oss/pull/84) preceded
-implementation [PR #85](https://github.com/neilofneils404/recordbench-oss/pull/85).
+[PR #84](https://github.com/Exculpata/exculpata/pull/84) preceded
+implementation [PR #85](https://github.com/Exculpata/exculpata/pull/85).
 The [cruise receipt](EXIT_ALPHA_CRUISE.md#current-upstream-receipt) records
 exact-head landing and acceptance. The
 [dated acceptance](FULL_TEXT_SYNTHESIS_ACCEPTANCE_2026-09-12.md) preserves

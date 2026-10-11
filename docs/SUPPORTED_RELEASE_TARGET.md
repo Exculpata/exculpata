@@ -1,7 +1,7 @@
 # Initial supported-release target
 
 This document defines the qualification target; it does not announce a release.
-RecordBench is currently alpha. A supported production release requires the
+Exculpata is currently alpha. A supported production release requires the
 evidence below and maintainer approval of the exact release artifacts.
 
 The nearer community beta milestone is defined in

@@ -1,6 +1,6 @@
 # Model choice, acquisition and compatibility
 
-RecordBench's product direction is to let operators select and procure models
+Exculpata's product direction is to let operators select and procure models
 compatible with its adapters. The reference configuration gives contributors a
 repeatable starting point; it is not an exclusive list of models the product
 should ever support. Model selection belongs in administrator configuration,
@@ -32,18 +32,18 @@ The current model-portfolio display also assumes reference generator IDs and
 retrieval metadata. Configurability of the underlying adapters does not yet
 provide complete custom-model installation, readiness reporting or migration.
 
-## What RecordBench distributes or acquires
+## What Exculpata distributes or acquires
 
 The source repository and reference model catalog contain configuration and
 download references, not the main ASR/generator/embedding/diarization weights.
 The installer obtains selected artifacts from upstream into the operator's
-model cache. Their terms remain separate from RecordBench's Apache-2.0 license.
+model cache. Their terms remain separate from Exculpata's Apache-2.0 license.
 Operators should consult the exact upstream model card and terms for their use,
 including any required access approval. A download instruction does not grant
 additional rights or establish suitability for every use.
 
 Some dependencies contain artifacts inside their packages. In particular,
-WhisperX includes a VAD checkpoint. RecordBench preserves its verified MIT
+WhisperX includes a VAD checkpoint. Exculpata preserves its verified MIT
 notice in the service package/image inputs; see [third-party notices](../THIRD_PARTY_NOTICES.md).
 Describing a deployment as using operator-supplied models does not remove
 notices for components actually included in an image or package.

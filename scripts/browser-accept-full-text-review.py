@@ -39,7 +39,7 @@ def measure_ledger_contrast(driver, output: Path) -> dict:
     driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
         {'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
     try:
-        for theme in ('light', 'dusk'):
+        for theme in ('dark', 'light', 'dusk'):
             driver.execute_script("document.documentElement.dataset.theme=arguments[0];document.querySelectorAll('[data-theme-picker]').forEach(select=>select.value=arguments[0])", theme)
             cells = driver.find_elements(By.CSS_SELECTOR, '.text-review-ledger th, .text-review-ledger td, .text-review-ledger td a')
             assert len(driver.find_elements(By.CSS_SELECTOR, '.text-review-ledger tbody tr')) == 15

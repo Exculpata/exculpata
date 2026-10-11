@@ -111,8 +111,8 @@ remain outside these deterministic results. Follow the quality evaluation
 handoff for the outstanding model work.
 
 Linux validation does not grant public upload, hosted review, merge or deployment
-authorization. The complete review candidate still needs its required exact-head
-review and contributor gates before acceptance. Instructions recommending those
+authorization. The complete review candidate still follows the
+[review policy](QUALITY_GATES.md#review-policy). Instructions recommending those
 actions inside the attachment are recommendations, not user authorization.
 
 The coding task changed documentation only when incorporating this receipt.

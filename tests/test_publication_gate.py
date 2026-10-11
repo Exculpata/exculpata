@@ -382,6 +382,71 @@ def test_github_merge_service_address_is_public_but_other_addresses_still_block(
     assert publication._scan_bytes(service, location="git-metadata", deny=(b"github",))
 
 
+def test_public_bot_identities_and_dependabot_signoff_are_exact():
+    dependabot = b"49699333+dependabot[bot]@users.noreply.github.com"
+    web_flow = b"noreply@" + b"github.com"
+    signoff = b"Signed-off-by: dependabot[bot] <support@" + b"github.com>"
+    personal = b"ada@" + b"personal.example"
+    support = b"support@" + b"github.com"
+    private_bot = b"49699333+dependabot[bot]@" + b"private.example"
+    email = publication.Finding("git-metadata", "non-example-email-address")
+    denied = publication.Finding("git-metadata", "operator-deny-term")
+
+    assert publication._scan_bytes(dependabot, location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(web_flow, location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(b"Bump\n\n" + signoff + b"\n", location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(signoff + b"\r", location="git-metadata", deny=()) == []
+    assert email in publication._scan_bytes(personal, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(dependabot + b"\n" + personal, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(support, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(b"Contact " + support + b" for help", location="git-metadata", deny=())
+    assert email in publication._scan_bytes(signoff + b" thanks", location="git-metadata", deny=())
+    assert email in publication._scan_bytes(b" " + signoff, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(
+        b"Signed-off-by: other[bot] <" + support + b">", location="git-metadata", deny=()
+    )
+    assert email in publication._scan_bytes(private_bot, location="git-metadata", deny=())
+    assert denied in publication._scan_bytes(dependabot, location="git-metadata", deny=(b"dependabot",))
+    assert denied in publication._scan_bytes(web_flow, location="git-metadata", deny=(b"github",))
+    assert denied in publication._scan_bytes(signoff, location="git-metadata", deny=(b"support",))
+
+
+def test_dependabot_commit_identity_is_public_and_personal_mail_still_blocks(tmp_path):
+    import os
+
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    bot = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "dependabot[bot]",
+        "GIT_AUTHOR_EMAIL": "49699333+dependabot[bot]@users.noreply.github.com",
+        "GIT_COMMITTER_NAME": "GitHub",
+        "GIT_COMMITTER_EMAIL": "noreply@" + "github.com",
+    }
+    message = "Bump synthetic dependency\n\nSigned-off-by: dependabot[bot] <support@" + "github.com>"
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-q", "-m", message],
+        cwd=tmp_path,
+        env=bot,
+        check=True,
+    )
+    assert publication.scan_history(tmp_path, ()) == []
+    assert any(
+        item.rule == "operator-deny-term"
+        for item in publication.scan_history(tmp_path, (b"dependabot",))
+    )
+    personal = dict(bot)
+    personal["GIT_AUTHOR_EMAIL"] = "ada@" + "personal.example"
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-q", "-m", "synthetic personal"],
+        cwd=tmp_path,
+        env=personal,
+        check=True,
+    )
+    assert publication.Finding(
+        "git-metadata", "non-example-email-address"
+    ) in publication.scan_history(tmp_path, ())
+
+
 def test_reviewed_squash_coauthor_is_exact_commit_identity_and_trailer(tmp_path):
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
@@ -463,11 +528,20 @@ def test_reviewed_personal_baseline_does_not_cover_ancestors(tmp_path, monkeypat
         tmp_path, (name.encode(),), baseline_public_git_identities=exception)
 
 
-def test_reviewed_merge_attribution_has_one_exact_identity_digest():
-    assert publication.REVIEWED_COMMIT_EMAIL_IDENTITIES[
-        'a8f4fbe36439a374746f9c2b2ca9660d89793044'
-    ] == {'33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b'}
-    assert 'a8f4fbe36439a374746f9c2b2ca9660d89793045' not in publication.REVIEWED_COMMIT_EMAIL_IDENTITIES
+@pytest.mark.parametrize('commit, digest, neighboring_commit', [
+    ('6735691a938e42173c6c7a309b700be2e19c0668',
+     '33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b',
+     '6735691a938e42173c6c7a309b700be2e19c0660'),
+    ('a8f4fbe36439a374746f9c2b2ca9660d89793044',
+     '33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b',
+     'a8f4fbe36439a374746f9c2b2ca9660d89793045'),
+    ('624fbe4dcfbae093c442955bfb6cc4b6be6fff3e',
+     '33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b',
+     '624fbe4dcfbae093c442955bfb6cc4b6be6fff3f'),
+])
+def test_reviewed_merge_attribution_has_one_exact_identity_digest(commit, digest, neighboring_commit):
+    assert publication.REVIEWED_COMMIT_EMAIL_IDENTITIES[commit] == {digest}
+    assert neighboring_commit not in publication.REVIEWED_COMMIT_EMAIL_IDENTITIES
 
 
 @pytest.mark.parametrize('unreviewed_field', ['author-name', 'author-email', 'committer', 'message'])

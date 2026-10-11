@@ -1,12 +1,18 @@
 <h1 align="center">
-  <img src="docs/assets/recordbench-banner.svg" width="1040" alt="RecordBench. Review the record. Build the work.">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/wordmark-cyan-transparent-lighttext.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/brand/wordmark-cyan-transparent-darktext.png">
+    <img src="docs/assets/brand/wordmark-cyan-dark.png" width="560" alt="Exculpata">
+  </picture>
 </h1>
+
+<p align="center">your discovery, cited.<br>local-first by default.</p>
 
 <p align="center"><strong>Local-first discovery and case review for defense teams.</strong></p>
 
 Discovery arrives in folders. Understanding a case takes more.
 
-RecordBench is a self-hosted workspace for legal discovery review.
+Exculpata is a self-hosted workspace for legal discovery review.
 It brings documents, images, email, spreadsheets, audio,
 and video into one place to search, review, ask questions, and develop work
 product with the source material close at hand.
@@ -15,7 +21,7 @@ The aim is practical: help attorneys, investigators, and support staff turn
 unorganized discovery into a clearer understanding of the case. The same
 tools can support other legal and investigation teams.
 
-RecordBench is designed to run on infrastructure you control. Its bundled AI
+Exculpata is designed to run on infrastructure you control. Its bundled AI
 workflows use local models for retrieval, answers, and media transcription.
 
 > **Community beta candidate:** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
@@ -23,7 +29,7 @@ workflows use local models for retrieval, answers, and media transcription.
 > acceptance and maintainer approval are pending. This is not production
 > certification for confidential casework. See the [candidate release notes](docs/BETA_RELEASE_NOTES.md).
 
-## See RecordBench in action
+## See Exculpata in action
 
 Follow a fictional Harbor Street matter from adding records to source-linked
 answers, media review, notes, timelines, reports, and export. These desktop and
@@ -44,10 +50,10 @@ https://github.com/user-attachments/assets/2506daba-2922-4f8a-b2a0-b5e518b10a27
 On-screen labels explain each step. The case is fictional; the app and its
 actions are real. These walkthroughs are previews, not production validation.
 
-Want to help shape it? [Help build RecordBench](#help-build-it)—workflow feedback,
+Want to help shape it? [Help build Exculpata](#help-build-it)—workflow feedback,
 synthetic test material, and clear bug reports are as useful as code.
 
-## Help build RecordBench
+## Help build Exculpata
 
 This is a maintainer-led community beta candidate. It does not publish any
 organization's private deployment, records, or endorsement. Contributions use
@@ -162,7 +168,7 @@ separate because it freezes a population and produces one decision per source.
 
 ## How it works
 
-1. **Intake:** RecordBench previews selected loose-file metadata without
+1. **Intake:** Exculpata previews selected loose-file metadata without
    copying bytes, records the complete selection on confirmation, then revalidates
    the included subset as it enters a private staging area and applies any required malware scan.
 2. **Processing:** It extracts usable text, applies bounded OCR where needed,
@@ -175,7 +181,7 @@ separate because it freezes a population and produces one decision per source.
    passages, combines keyword and semantic results, and reranks the candidates
    for the question being asked.
 5. **Answering:** A local generation model answers from the selected material.
-   RecordBench checks citation references and text consistency, shows citations
+   Exculpata checks citation references and text consistency, shows citations
    and collection coverage, and reports important limitations instead of hiding
    them. These checks do not establish that generated claims are correct;
    [review each claim against the originals](docs/GENERATED_ANSWER_REVIEW.md).
@@ -192,14 +198,14 @@ cited-excerpt comparison, and a frozen claim-evaluation harness. The
 [independent review correction plan](docs/REVIEW_CORRECTION_PLAN.md) links their
 implementation and review records and tracks the remaining installed, model,
 recovery, and policy acceptance work. These changes do not close
-[issue #109](https://github.com/neilofneils404/recordbench-oss/issues/109).
+[issue #109](https://github.com/Exculpata/exculpata/issues/109).
 
-## What RecordBench uses
+## What Exculpata uses
 
 These are the current bundled defaults. Exact model revisions and license
 information live in [`config/models.json`](config/models.json).
 
-| Component | What it does in RecordBench |
+| Component | What it does in Exculpata |
 | --- | --- |
 | **Python, FastAPI, Jinja, and JavaScript** | Run the multi-user web application, background work, and review interface. |
 | **PostgreSQL, pgvector, and SQLite** | Store matter control data, full-text indexes, semantic vectors, queues, sessions, and audit history. |
@@ -243,9 +249,9 @@ Free-space targets cover application images, models, temporary processing,
 and the configured safety reserve; matter contents require additional local
 or NAS capacity.
 
-## What RecordBench is not
+## What Exculpata is not
 
-RecordBench is not:
+Exculpata is not:
 
 - the authoritative evidence warehouse or a legal-hold system;
 - a case-management or filing system;
@@ -282,7 +288,7 @@ Read the full [installation playbook](docs/INSTALL.md) before staff access.
 The installer also provides commands for node diagnostics, optional encrypted
 backup, isolated restore testing, and versioned updates. Operators can use
 their existing backup system or the bundled restic method with a destination
-available through their host filesystem; RecordBench does not mount shares or
+available through their host filesystem; Exculpata does not mount shares or
 choose a storage provider. Follow the [consistency and recovery requirements](docs/STORAGE_AND_BACKUP.md)
 for either method.
 
@@ -297,7 +303,7 @@ for either method.
 
 ## Data and repository boundaries
 
-RecordBench uses temporary review workspaces. Matter bytes live under the
+Exculpata uses temporary review workspaces. Matter bytes live under the
 operator-selected managed storage path. Manual closure or scheduled expiry can
 permanently remove that workspace, so users should export and verify anything
 they need to retain. The complete matter bundle includes saved Reports, preserving their
@@ -311,7 +317,7 @@ validates again.
 [Export readiness](docs/EXPORT_READINESS.md) explains the check, and
 [Report export and recovery](docs/REPORT_EXPORTS.md)
 describes limits and interrupted-close recovery. Bundles are ordinary portable
-documents, not a package that can be imported back into RecordBench.
+documents, not a package that can be imported back into Exculpata.
 Manual **Close matter** refuses active work and requires the exact matter name
 plus a permanent-deletion acknowledgement. Scheduled retention follows a separate
 path: new matters default to 30 days of review plus seven days of export grace,
@@ -320,14 +326,14 @@ Maintenance defers deletion while work is active and runs its first pass at
 startup. Restoring a backup preserves the original deadlines, which may already
 be due; follow [expired-matter recovery](docs/EXPIRED_MATTER_RECOVERY.md) before
 starting the restored application. Both deletion paths preserve originals outside
-RecordBench and leave only content-minimized attributed audit and closure records.
+Exculpata and leave only content-minimized attributed audit and closure records.
 
 No case data, organization secrets, internal accounts, private deployment
 coordinates, certificates, or credentials belong in this repository.
 
 ## Where this is going
 
-RecordBench is building a free, local-first review workspace for case teams:
+Exculpata is building a free, local-first review workspace for case teams:
 excellent manual review, complete exact search, accountable collection-wide
 processing, sourced investigation, and a shared memory of what the team learns.
 Administrators should be able to choose storage and supported model combinations,
@@ -356,7 +362,7 @@ details out of issues, pull requests, and screenshots.
 
 ## Project status
 
-RecordBench is preparing its first community beta. The reviewed source is
+Exculpata is preparing its first community beta. The reviewed source is
 available for evaluation and contribution; the beta tag and final reference
 acceptance remain pending. Supported production-release requirements remain open. Sharing the source and supporting confidential casework each require the evidence described
 in [release readiness](docs/RELEASE_READINESS.md) and the
@@ -373,14 +379,19 @@ in [release readiness](docs/RELEASE_READINESS.md) and the
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
+- [Brand](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)
 
 ## License
 
-RecordBench is licensed under [Apache-2.0](LICENSE). Dependencies, containers,
+Exculpata is licensed under [Apache-2.0](LICENSE). Dependencies, containers,
 and models retain their respective licenses and terms. Their notice inventory
 remains part of the [publication review](docs/PUBLICATION_CHECKLIST.md).
 The new desktop and mobile walkthroughs, including their audio, are also
 licensed under Apache-2.0. Only the previous teaser's original soundtrack is
 excluded from the software license;
 see [media rights](docs/assets/MEDIA_RIGHTS.md).
+
+Outside contributors sign the [CLA](CLA.md) once, via the CLA Assistant
+GitHub app. The Exculpata name and logo are not licensed under Apache-2.0; see
+[TRADEMARKS.md](TRADEMARKS.md).

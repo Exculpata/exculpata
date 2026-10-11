@@ -48,7 +48,7 @@
       <p>Start with reviewer access. You will choose their matter team separately.</p>
       <form class="people-form" action="/admin/people/create" method="post" data-working-form data-working-label="Creating account…">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label for="new-display-name">Name shown in RecordBench</label><input id="new-display-name" name="display_name" autocomplete="name" maxlength="160" required value="{{ form_values.get('display_name', '') }}">
+        <label for="new-display-name">Name shown in Exculpata</label><input id="new-display-name" name="display_name" autocomplete="name" maxlength="160" required value="{{ form_values.get('display_name', '') }}">
         <label for="new-username">Sign-in username</label><input id="new-username" name="username" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="128" required aria-describedby="username-help" value="{{ form_values.get('username', '') }}">
         <small id="username-help">3–128 letters, numbers, dots, dashes, underscores or @. Usernames cannot be changed later.</small>
         <label for="new-password">Password</label><input id="new-password" type="password" name="password" autocomplete="new-password" minlength="14" maxlength="1024" required aria-describedby="new-password-help">
@@ -72,7 +72,7 @@
   <div class="people-columns">
     <section class="administrator-panel"><h2>Display name</h2><form class="people-form" method="post" action="{{ person.url }}/name" data-working-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="edit_token" value="{{ person.edit_token }}">
-      <label for="person-name">Name shown in RecordBench</label><input id="person-name" name="display_name" maxlength="160" required value="{{ person.display_name }}">
+      <label for="person-name">Name shown in Exculpata</label><input id="person-name" name="display_name" maxlength="160" required value="{{ person.display_name }}">
       <button class="button button-primary" type="submit">Save name</button>
     </form></section>
     <section class="administrator-panel"><h2>Set a new password</h2><p>Previous sessions will end. Share the new password privately.{% if person.username == current_username %} You will need to sign in again.{% endif %}</p>

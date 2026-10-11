@@ -1,6 +1,6 @@
 # What the installer manages
 
-RecordBench provides one guided setup process. It builds and starts the
+Exculpata provides one guided setup process. It builds and starts the
 application, PostgreSQL, the HTTPS gateway, ClamAV and its signature updater,
 and the selected review/transcription services as containers. Operators do not
 need a separate host ClamAV installation for this stack.

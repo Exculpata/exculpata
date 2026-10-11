@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import deque
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -138,6 +139,7 @@ def main():
     parser.add_argument('--chromedriver', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--baseline-js', help='Serve an earlier committed frontend only in this synthetic app.')
+    parser.add_argument('--briefing', action='store_true', help='Enable the optional Home briefing in this synthetic app.')
     args = parser.parse_args()
     output = args.output.resolve()
     # The shared CI runner creates an empty output directory before dispatch.
@@ -146,6 +148,8 @@ def main():
     if any(output.iterdir()):
         raise ValueError('Choose an empty output directory; existing results were preserved.')
     isolate_environment()
+    if args.briefing:
+        os.environ['CASE_INTELLIGENCE_BRIEFING'] = '1'
     checks = []
     driver = None
     def record(message):
@@ -213,6 +217,8 @@ def main():
                 })();
             """})['identifier']
             driver.get(base + path)
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'main')))
+            assert bool(driver.find_elements(By.CSS_SELECTOR, 'script[src*="/briefing.js"]')) == args.briefing
             wait.until(lambda current: current.execute_script('return !!window.__readinessFocusFixture.pending'))
             actions = '.matter-readiness-actions'
             def primary():
@@ -355,7 +361,7 @@ def main():
             assert 'Showing 8 of 10 identities' in body()
             record('Independent knowledge pagination survives reload, note-filter submission and status tiles with explicit omission counts')
 
-            for theme in ('light', 'dusk'):
+            for theme in ('dark', 'light', 'dusk'):
                 driver.get(base + path)
                 Select(driver.find_element(By.ID, 'appearance-theme')).select_by_value(theme)
                 wait.until(lambda current: current.find_element(By.TAG_NAME, 'html').get_attribute('data-theme') == theme)
@@ -364,7 +370,7 @@ def main():
                 section = driver.find_element(By.CSS_SELECTOR, '.knowledge-sections')
                 driver.execute_script("arguments[0].scrollIntoView({block:'start',behavior:'instant'})", section)
                 driver.save_screenshot(str(output / f'knowledge-{theme}-desktop.png'))
-            record('Light and Dusk render saved identities and both source stances without desktop overflow')
+            record('Dark, Light and Dusk render saved identities and both source stances without desktop overflow')
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(width=390, height=844, deviceScaleFactor=1, mobile=False))
             driver.get(base + path)
             open_support()
@@ -380,7 +386,8 @@ def main():
             no_overflow()
             record('390-pixel layout and real pointer source-return navigation work without horizontal page overflow')
             (output / 'receipt.json').write_text(json.dumps(dict(synthetic_only=True, passed=True,
-                checks=checks, javascript_baseline=args.baseline_js, browser=driver.capabilities.get('browserVersion'),
+                checks=checks, javascript_baseline=args.baseline_js, briefing_enabled=args.briefing,
+                browser=driver.capabilities.get('browserVersion'),
                 screenshots=sorted(file.name for file in output.glob('*.png'))), indent=2))
         except Exception as exc:
             if driver:

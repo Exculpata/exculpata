@@ -197,7 +197,7 @@ def _invalidate_local_sessions(path: Path) -> None:
                     required = {"session_id", "token_digest", "principal_id", "auth_method", "revoked_at"}
                     columns = {row[1] for row in db.execute("PRAGMA table_info(workbench_session)")}
                     if tables != {"workbench_session", "workbench_principal"} or not required.issubset(columns):
-                        raise RuntimeError("Rollback requires a compatible existing RecordBench workspace database")
+                        raise RuntimeError("Rollback requires a compatible existing Exculpata workspace database")
                     # Keep append-only audit references intact. Replace the cookie
                     # lookup digest as well as revoking the row so older readers
                     # cannot recover either generation of local credentials.

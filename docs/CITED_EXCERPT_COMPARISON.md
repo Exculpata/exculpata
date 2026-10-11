@@ -85,8 +85,8 @@ This packet covers focused generated-answer review, including historical answers
 and answers produced with recorded context. It does not add comparison controls
 to the separate investigation/full-text synthesis hierarchy or change portable
 export formats. Those broader R1a inspection surfaces, real-model evaluation
-(R1b), integrated installation/GPU acceptance and maintainer acceptance remain
-separate gates under issue #109 and its correction plan. Existing source links
+(R1b) and integrated installation/GPU acceptance remain separate gates under
+issue #109 and its correction plan. Follow the [review policy](QUALITY_GATES.md#review-policy) before merge. Existing source links
 and export validation retain their contracts.
 
 The overall R1a section stays open. To close the broader inspection work:

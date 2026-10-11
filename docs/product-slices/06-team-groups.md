@@ -1,7 +1,7 @@
 # 06: Add reusable team groups with explicit matter access
 
 Status: implemented on `main` as
-[#65](https://github.com/neilofneils404/recordbench-oss/pull/65). See
+[#65](https://github.com/Exculpata/exculpata/pull/65). See
 [reusable team groups](../TEAM_GROUPS.md) and
 [synthetic acceptance](../TEAM_GROUPS_ACCEPTANCE.md). Depends on 04 and 05.
 

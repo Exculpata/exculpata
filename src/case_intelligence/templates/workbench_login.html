@@ -1,11 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark light">
   <title>Sign in · {{ product_name }}</title>
-  <link rel="icon" href="{{ asset_url('favicon.svg') }}">
+  <link rel="icon" href="{{ asset_url('favicon.ico') }}" sizes="any">
+  <link rel="icon" href="{{ asset_url('favicon.svg') }}" type="image/svg+xml">
+  <link rel="icon" href="{{ asset_url('favicon-32.png') }}" type="image/png" sizes="32x32">
+  <link rel="icon" href="{{ asset_url('favicon-16.png') }}" type="image/png" sizes="16x16">
+  <link rel="apple-touch-icon" href="{{ asset_url('apple-touch-icon.png') }}" sizes="180x180">
+  <link rel="stylesheet" href="{{ asset_url('theme-tokens.css') }}">
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
 </head>
 <body class="login-page">
@@ -17,17 +22,17 @@
       {% if auth_mode == 'kerberos' %}
       {% if signed_out %}
       <h1 id="login-heading">Signed out of {{ product_name }}</h1>
-      <p class="login-introduction">Your RecordBench session is closed. Windows remains signed in on this computer, so RecordBench cannot require your password again.</p>
+      <p class="login-introduction">Your Exculpata session is closed. Windows remains signed in on this computer, so Exculpata cannot require your password again.</p>
 
       <div class="preview-boundary" role="note">
         <strong>No case workspace is open.</strong>
-        <span>Continue when you are ready to create a fresh, auditable RecordBench session as the current Windows user. To use another account, switch Windows users first.</span>
+        <span>Continue when you are ready to create a fresh, auditable Exculpata session as the current Windows user. To use another account, switch Windows users first.</span>
       </div>
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ kerberos_continue_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
-          <span><strong>Open a new RecordBench session</strong><small>Continue as the current Windows user</small></span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
+          <span><strong>Open a new Exculpata session</strong><small>Continue as the current Windows user</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>
       </div>
@@ -37,20 +42,20 @@
 
       <div class="preview-boundary" role="note">
         <strong>Your domain password is never entered here.</strong>
-        <span>The internal gateway validates a Kerberos ticket and RecordBench creates its own revocable, audited session.</span>
+        <span>The internal gateway validates a Kerberos ticket and Exculpata creates its own revocable, audited session.</span>
       </div>
 
       {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ kerberos_continue_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
           <span><strong>Try Windows sign-in again</strong><small>Organization domain single sign-on</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>
       </div>
 
-      <p class="login-footnote">If this continues, confirm that this browser is allowed to use Windows Integrated Authentication for your RecordBench hostname.</p>
+      <p class="login-footnote">If this continues, confirm that this browser is allowed to use Windows Integrated Authentication for your Exculpata hostname.</p>
       {% endif %}
       {% elif auth_mode == 'oidc' %}
       <h1 id="login-heading">Sign in with your organization account</h1>
@@ -65,7 +70,7 @@
 
       <div class="identity-choices">
         <a class="identity-choice" href="{{ oidc_start_url }}">
-          <span class="identity-avatar" aria-hidden="true">RB</span>
+          <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
           <span><strong>Continue to organization sign-in</strong><small>OIDC identity provider</small></span>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
         </a>
@@ -74,7 +79,7 @@
       <p class="login-footnote">Access to each matter still requires an explicit case-team membership.</p>
       {% elif auth_mode == 'local' %}
       <h1 id="login-heading">Sign in to {{ product_name }}</h1>
-      <p class="login-introduction">Use the account issued by your RecordBench administrator. Your password is verified locally with Argon2id and is never stored in readable form.</p>
+      <p class="login-introduction">Use the account issued by your Exculpata administrator. Your password is verified locally with Argon2id and is never stored in readable form.</p>
 
       <div class="preview-boundary" role="note">
         <strong>Private installation account.</strong>
@@ -90,7 +95,7 @@
         <input id="local-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required maxlength="128">
         <label for="local-password">Password</label>
         <input id="local-password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
-        <button class="button button-primary" type="submit">Open RecordBench</button>
+        <button class="button button-primary" type="submit">Open Exculpata</button>
       </form>
 
       <p class="login-footnote">Access to each matter still requires an explicit case-team membership.</p>

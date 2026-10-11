@@ -13,6 +13,11 @@ host prerequisites, managed service containers and operator-selected models.
 ## Start from the exact reviewed revision
 
 Use a new dedicated Linux x86-64 node, an empty state root, and synthetic data.
+The fresh-node examples use Exculpata names. Existing RecordBench nodes retain
+their original account, root, configuration, images, marker and backup units;
+follow the [naming compatibility guidance](INSTALL.md) rather than moving them
+to the paths below. `--names exculpata` refuses an existing legacy node because
+this release includes no naming migration.
 Start with the account, Docker and storage preparation in
 [the installation playbook](INSTALL.md#cpu-node-quick-start-ubuntu-2404).
 For GPU work, install a suitable NVIDIA driver and the
@@ -53,15 +58,15 @@ separately approved and staged.
 As the dedicated service account, in the exact checkout:
 
 ```sh
-./install preflight --root /srv/recordbench --models all --auth local \
+./install preflight --root /srv/exculpata --models all --auth local \
   --enable-account-management --gpu-layout shared --review-model-profile portable \
   --transcription-languages en,es --enable-diarization --diarization-backend nemotron \
   --server-name localhost --bind-address 127.0.0.1
-COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/recordbench --models all --auth local \
+COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models all --auth local \
   --enable-account-management --gpu-layout shared --review-model-profile portable \
   --transcription-languages en,es --enable-diarization --diarization-backend nemotron \
   --server-name localhost --bind-address 127.0.0.1
-./install doctor --root /srv/recordbench
+./install doctor --root /srv/exculpata
 ```
 
 Resolve blocking preflight results. Enter the initial administrator password
