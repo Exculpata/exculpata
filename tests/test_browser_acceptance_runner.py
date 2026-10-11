@@ -12,7 +12,7 @@ import subprocess
 import sys
 import time
 import zipfile
-from unittest.mock import Mock
+from unittest.mock import Mock, PropertyMock
 
 import pytest
 
@@ -142,6 +142,77 @@ def test_context_activation_fails_when_navigation_does_not_finish(context_script
     assert element.send_keys.call_count == 1
     if stalled_document == 'old':
         driver.execute_script.assert_not_called()
+
+
+@pytest.fixture
+def one_box_script(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    spec = importlib.util.spec_from_file_location('browser_one_box', ROOT / 'scripts/browser-accept-one-box.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize('phase', ['lookup', 'visibility', 'text'])
+def test_one_box_destination_refinds_reason_after_replacement(one_box_script, phase):
+    from selenium.common.exceptions import StaleElementReferenceException
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    driver, retiring, current = Mock(), Mock(), Mock(text='Synthetic route reason')
+    # The retiring page looks ready, then completion reloads it during the read.
+    driver.execute_script.side_effect = [True, False, True]
+    driver.find_element.side_effect = [retiring, current]
+    if phase == 'lookup':
+        driver.find_element.side_effect = [StaleElementReferenceException(), current]
+    elif phase == 'visibility':
+        retiring.is_displayed.side_effect = StaleElementReferenceException()
+    else:
+        type(retiring).text = PropertyMock(side_effect=StaleElementReferenceException())
+    one_box_script.wait_for_destination(WebDriverWait(driver, 1, poll_frequency=.001),
+        '/matters/synthetic', 'Synthetic route reason')
+    assert driver.execute_script.call_count == 3
+    assert driver.find_element.call_count == 2
+    assert all(call.args == (By.CSS_SELECTOR, '.one-box-route-reason')
+        for call in driver.find_element.call_args_list)
+    current.is_displayed.assert_called_once_with()
+
+
+@pytest.mark.parametrize('failure', ['hidden', 'wrong text', 'driver error'])
+def test_one_box_destination_preserves_failures(one_box_script, failure):
+    from selenium.common.exceptions import WebDriverException
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    driver = Mock()
+    driver.execute_script.return_value = True
+    element = driver.find_element.return_value
+    element.is_displayed.return_value = failure != 'hidden'
+    element.text = 'Synthetic route reason' if failure == 'hidden' else 'Wrong route reason'
+    error = AssertionError
+    if failure == 'driver error':
+        type(element).text = PropertyMock(side_effect=WebDriverException('invalid session id'))
+        error = WebDriverException
+    with pytest.raises(error):
+        one_box_script.wait_for_destination(WebDriverWait(driver, 1, poll_frequency=.001),
+            '/matters/synthetic', 'Synthetic route reason')
+    assert driver.find_element.call_count == 1
+
+
+@pytest.mark.parametrize('failure', ['not ready', 'always stale'])
+def test_one_box_destination_retains_wait_deadline(one_box_script, failure):
+    from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    driver = Mock()
+    driver.execute_script.return_value = failure == 'always stale'
+    type(driver.find_element.return_value).text = PropertyMock(side_effect=StaleElementReferenceException())
+    with pytest.raises(TimeoutException):
+        one_box_script.wait_for_destination(WebDriverWait(driver, .01, poll_frequency=.001),
+            '/matters/synthetic', 'Synthetic route reason')
+    if failure == 'not ready':
+        driver.find_element.assert_not_called()
+    else:
+        assert driver.find_element.call_count > 1
 
 
 def test_pins_match_browser_driver_version_and_official_archives(runner):

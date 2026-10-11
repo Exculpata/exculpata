@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import uvicorn
 from selenium import webdriver
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -62,6 +63,25 @@ def prepare_output(output: Path) -> None:
     if output.is_symlink() or (output.exists() and (not output.is_dir() or any(output.iterdir()))):
         raise ValueError("Choose a fresh or empty output directory; existing results were preserved.")
     output.mkdir(parents=True, exist_ok=True)
+
+
+def wait_for_destination(wait, path, reason):
+    """Re-find the route reason if answer completion replaces the document."""
+    def arrived(driver):
+        if not driver.execute_script("""return location.pathname === arguments[0]
+            && document.readyState === 'complete'
+            && document.querySelector('.one-box-route-reason')?.textContent.includes(arguments[1])""",
+            path, reason):
+            return False
+        try:
+            element = driver.find_element(By.CSS_SELECTOR, ".one-box-route-reason")
+            assert element.is_displayed() and reason in element.text
+        except StaleElementReferenceException:
+            # The next poll checks the destination again and gets a fresh handle.
+            return False
+        return True
+
+    wait.until(arrived)
 
 
 def main(argv=None):
@@ -183,12 +203,7 @@ def main(argv=None):
                     click(button)
 
             def destination(path, text):
-                wait.until(lambda _: js("""return location.pathname === arguments[0]
-                    && document.readyState === 'complete'
-                    && document.querySelector('.one-box-route-reason')?.textContent.includes(arguments[1])""",
-                    prefix + path, classify(text).reason))
-                reason = find(".one-box-route-reason")
-                assert reason.is_displayed() and classify(text).reason in reason.text
+                wait_for_destination(wait, prefix + path, classify(text).reason)
 
             def alternatives(current):
                 summary = find("[data-one-box-switch] > summary")
