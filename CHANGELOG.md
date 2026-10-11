@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add the Exculpata wordmark, icon, and favicon. The README uses the wordmark
+  and the tagline "your discovery, cited." Application colors and type are unchanged.
+
 - Renamed to Exculpata. Visible product branding changes only; existing package,
   deployment and data identifiers remain unchanged.
 

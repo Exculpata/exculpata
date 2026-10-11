@@ -1,6 +1,12 @@
 <h1 align="center">
-  <img src="docs/assets/exculpata-banner.svg" width="1040" alt="Exculpata. Review the record. Build the work.">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/wordmark-cyan-transparent-lighttext.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/brand/wordmark-cyan-transparent-darktext.png">
+    <img src="docs/assets/brand/wordmark-cyan-dark.png" width="560" alt="Exculpata">
+  </picture>
 </h1>
+
+<p align="center">your discovery, cited.<br>local-first by default.</p>
 
 <p align="center"><strong>Local-first discovery and case review for defense teams.</strong></p>
 
@@ -373,6 +379,7 @@ in [release readiness](docs/RELEASE_READINESS.md) and the
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
+- [Brand](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)
 
 ## License

@@ -8754,7 +8754,7 @@ def create_workbench_app(
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:
-        return FileResponse(PACKAGE_ROOT / "static/favicon.svg", media_type="image/svg+xml")
+        return FileResponse(PACKAGE_ROOT / "static/favicon.ico", media_type="image/x-icon")
 
     register_local_account_routes(
         app, identity=identity, bench=bench, templates=templates,

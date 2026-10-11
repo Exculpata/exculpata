@@ -1,7 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="recordbench-mark-title">
-  <title id="recordbench-mark-title">Exculpata</title>
-  <rect x="2" y="2" width="60" height="60" rx="13" fill="#071a3c"/>
-  <path d="M14 20h4v28h24v4H14Z" fill="#ed4b2f"/>
-  <path d="M22 12h18l10 10v22H22Z" fill="#fff"/>
-  <path d="M28 26h16v4H28Zm0 8h12v4H28Z" fill="#071a3c"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="exculpata-icon-title">
+  <title id="exculpata-icon-title">Exculpata</title>
+  <rect width="512" height="512" rx="96" fill="#0B0D10"/>
+  <path fill="#22D3EE" d="M92 171L129 130L246 233L257 251L257 261L246 279L129 382L92 341L188 256Z"/>
+  <rect x="270" y="150" width="133" height="213" fill="#22D3EE"/>
 </svg>

@@ -36,6 +36,8 @@ def test_exculpata_identity_preserves_health_contract_and_brands_login_and_mark(
         assert PRODUCT_TAGLINE in login.text
         assert 'class="login-brand-mark"' in login.text
         assert login.text.count(asset_url("favicon.svg")) == 2
+        for name in ("favicon.ico", "favicon-16.png", "favicon-32.png", "apple-touch-icon.png"):
+            assert asset_url(name) in login.text
         assert "Choose a preview identity" in login.text
         assert "Temporary evaluation access" in login.text
         assert "Choosing a synthetic identity is not authentication" in login.text
@@ -47,8 +49,19 @@ def test_exculpata_identity_preserves_health_contract_and_brands_login_and_mark(
         root = ElementTree.fromstring(mark.content)
         assert root.tag.endswith("svg")
         assert PRODUCT_NAME in mark.text
-        assert "#071a3c" in mark.text
-        assert "#ed4b2f" in mark.text
+        assert "#0B0D10" in mark.text
+        assert "#22D3EE" in mark.text
+        assert "#071a3c" not in mark.text.lower()
+        assert "#ed4b2f" not in mark.text.lower()
+
+        icon = client.get("/favicon.ico")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/")
+        assert icon.content.startswith(b"\x00\x00\x01\x00")
+        for name in ("favicon-16.png", "favicon-32.png", "apple-touch-icon.png"):
+            image = client.get(f"/static/{name}")
+            assert image.status_code == 200
+            assert image.headers["content-type"] == "image/png"
 
     for path in TEMPLATES.glob("workbench_*.html"):
         text = path.read_text(encoding="utf-8")
@@ -58,6 +71,30 @@ def test_exculpata_identity_preserves_health_contract_and_brands_login_and_mark(
 
     workbench_base = (TEMPLATES / "workbench_base.html").read_text(encoding="utf-8")
     assert workbench_base.count("{{ asset_url('favicon.svg') }}") == 2
+    for name in ("favicon.ico", "favicon-16.png", "favicon-32.png", "apple-touch-icon.png"):
+        assert workbench_base.count(f"{{{{ asset_url('{name}') }}}}") == 1
+
+
+def test_application_favicon_matches_brand_icon() -> None:
+    root = Path(__file__).parents[1]
+    brand = (root / "docs/assets/brand/exculpata-icon.svg").read_text(encoding="utf-8")
+    favicon = (root / "src/case_intelligence/static/favicon.svg").read_text(encoding="utf-8")
+    assert brand == favicon
+    assert 'fill="#22D3EE"' in brand
+    assert 'fill="#0B0D10"' in brand
+
+
+def test_readme_hero_uses_exculpata_wordmark() -> None:
+    readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
+    assert "<picture>" in readme
+    assert 'media="(prefers-color-scheme: dark)"' in readme
+    assert 'media="(prefers-color-scheme: light)"' in readme
+    assert "docs/assets/brand/wordmark-cyan-transparent-lighttext.png" in readme
+    assert "docs/assets/brand/wordmark-cyan-transparent-darktext.png" in readme
+    assert "docs/assets/brand/wordmark-cyan-dark.png" in readme
+    assert "your discovery, cited." in readme
+    assert "local-first by default." in readme
+    assert "docs/assets/exculpata-banner.svg" not in readme
 
 
 def test_export_branding_preserves_machine_readable_identifiers():
