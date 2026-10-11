@@ -327,6 +327,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
     assert shutil.which("restic") and shutil.which("docker")
     original_restic = backup._restic
     node = node_factory(wal=True, names=names)
+    purpose_matter_id, purpose_before = _seed_matter_purpose(node.control)
     monkeypatch.setattr(backup, "_restic", original_restic)
     config = backup._backup_config(node.node)
     password = node.node / "secrets/restic-password"
@@ -405,6 +406,8 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         databases = backup._sqlite_files(files)
         assert len(databases) == 2
         assert all(_version(path) == "frozen" for path in databases)
+        restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
+        _assert_matter_purpose_restore(restored_control, purpose_matter_id, purpose_before)
         dump, = [path for path in files if path.name == "review-index.dump"]
         sql("CREATE DATABASE restored_recordbench;")
         execute(
@@ -726,3 +729,43 @@ def test_backup_and_restore_preserve_generation_and_accept_both_tags(node_factor
     assert restore[restore.index("--tag"):restore.index("--tag") + 4] == ("--tag", "recordbench", "--tag", "exculpata")
     assert not list(node.node.glob(f".{names}-backup-snapshot-*"))
     assert not list(node.storage.parent.glob(f".{names}-storage-snapshot-*"))
+
+
+def _seed_matter_purpose(path):
+    from case_intelligence.workspace_store import WorkspaceStore
+    from tests.test_matter_purpose import seed, update, snapshot
+    store = WorkspaceStore(path)
+    try:
+        matter = seed(store)
+        update(store, matter)
+        update(store, matter, 1, objective='Synthetic edited objective — café')
+        return matter.matter_id, snapshot(store, matter.matter_id)
+    finally:
+        store.close()
+
+
+def _assert_matter_purpose_restore(path, matter_id, expected):
+    from case_intelligence.workspace_store import WorkspaceStore
+    from tests.test_matter_purpose import ACTOR, snapshot
+    # Two clean instances also prove durable reopen, field bytes and all audit
+    # metadata (including actor/time/IDs), not just snapshot database integrity.
+    for _ in range(2):
+        restored = WorkspaceStore(path)
+        try:
+            assert snapshot(restored, matter_id) == expected
+            assert restored.matter_purpose(matter_id, ACTOR)['revision'] == 2
+            assert restored.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+            assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
+        finally:
+            restored.close()
+
+
+@pytest.mark.parametrize('names', ['recordbench', 'exculpata'])
+def test_matter_purpose_round_trip_through_normal_backup_restore(node_factory, names):
+    node = node_factory(wal=True, names=names)
+    matter_id, expected = _seed_matter_purpose(node.control)
+    assert node.backup() == 0
+    assert node.restore() == 0
+    databases = backup._sqlite_files(backup._snapshot_files(node.root / 'restored'))
+    restored_control, = [path for path in databases if path.name == 'workbench.sqlite']
+    _assert_matter_purpose_restore(restored_control, matter_id, expected)

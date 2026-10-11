@@ -255,6 +255,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
         self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0037_automatic_entity_discovery.sql").read_text(encoding="utf-8")
         self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0038_matter_purpose.sql").read_text(encoding="utf-8")
+        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         from .full_text_review_budget import backfill_legacy_ledgers
         backfill_legacy_ledgers(self)
         session_columns = {
@@ -2295,6 +2297,24 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
             raise KeyError(purge_id)
         return self.matter_lifecycle(matter_id)
 
+    def _matter_purpose_service(self, *, administrator_override=False):
+        from .matter_purpose import MatterPurposeService
+        from .matter_purpose_repository import MatterPurposeRepository
+        unit = self.entity_repository(export_read=administrator_override,
+                                      administrator_override=administrator_override)
+        return MatterPurposeService(MatterPurposeRepository(unit, self._append_audit_event_locked))
+
+    def matter_purpose(self, matter_id, actor_id, *, administrator_override=False,
+                       check_authority=lambda: None):
+        return self._matter_purpose_service(administrator_override=administrator_override).read(
+            matter_id, actor_id, check_authority=check_authority)
+
+    def update_matter_purpose(self, matter_id, actor_id, *, expected_revision, objective,
+                              background, request_id, session_id=None, check_authority=lambda: None):
+        return self._matter_purpose_service().update(matter_id, actor_id,
+            expected_revision=expected_revision, objective=objective, background=background,
+            request_id=request_id, session_id=session_id, check_authority=check_authority)
+
     def entity_repository(self, *, export_read=False, administrator_override=False, automatic=False):
         from .entity_repository import EntityRepository
         authority = (lambda matter_id, actor_id: self._authorize_export_read(
@@ -2399,6 +2419,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
             for table in ('workbench_entity_discovery_seen', 'workbench_entity_discovery_unit',
                           'workbench_entity_auto_discovery_unit', 'workbench_entity_reconciliation'):
                 self.connection.execute(f"DELETE FROM {table} WHERE matter_id=?", (matter_id,))
+            self.connection.execute('DELETE FROM workbench_matter_purpose WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_context_selection WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_assertion WHERE matter_id=?', (matter_id,))
             self.connection.execute(

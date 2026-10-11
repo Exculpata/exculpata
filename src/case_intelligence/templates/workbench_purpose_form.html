@@ -1,0 +1,11 @@
+<form method="post" action="/matters/{{ matter.slug }}/purpose" class="matter-purpose-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="expected_revision" value="{{ draft.revision }}">
+  <label for="matter-objective">Objective <small>(optional)</small></label>
+  <textarea id="matter-objective" name="objective" rows="2" maxlength="500" aria-describedby="objective-limit" placeholder="What does your team need to understand?">{{ draft.objective }}</textarea>
+  <small id="objective-limit">Up to 500 characters and 1,024 UTF-8 bytes.</small>
+  <label for="matter-background">Background <small>(optional)</small></label>
+  <textarea id="matter-background" name="background" rows="5" maxlength="10000" aria-describedby="background-limit" placeholder="Add background that will help a reviewer returning to this matter.">{{ draft.background }}</textarea>
+  <small id="background-limit">Up to 10,000 characters and 24,000 UTF-8 bytes. Leave a field empty to clear it.</small>
+  <div><button class="button button-primary" type="submit">{{ 'Save this draft over current version' if conflict else 'Save objective and background' }}</button></div>
+</form>

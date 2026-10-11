@@ -13,8 +13,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--answer-context', action='store_true')
+parser.add_argument('--matter-purpose', action='store_true')
 args = parser.parse_args()
 BASELINE = 'd21c1d4849b46b8ae85db19b4d2ce80c8a9669a8' if args.answer_context else '0d59d5fe4f7be575a66039274415de945a6d5db5'
+if args.matter_purpose:
+    BASELINE = '7f37c72c2922c983762d621a4573f1aa32078bb2'
 ACTOR = 'synthetic-context-reviewer'
 with tempfile.TemporaryDirectory(prefix='recordbench-context-upgrade-') as temporary:
     root = Path(temporary)
@@ -52,6 +55,17 @@ s=WorkspaceStore(Path(sys.argv[1])); actor='synthetic-context-reviewer'; s.upser
     selection,candidate = context.inspect(matter_id,ACTOR,kind='notebook_item',object_id=note_id)
     context.change(matter_id,ACTOR,expected_revision=0,action='add',kind='notebook_item',object_id=note_id,approval=candidate['approval'])
     expected = context.repository.export(matter_id)
+    def purpose_bytes(instance):
+        record = dict(instance.connection.execute('SELECT * FROM workbench_matter_purpose WHERE matter_id=?', (matter_id,)).fetchone())
+        audit = [dict(row) for row in instance.connection.execute(
+            "SELECT * FROM workbench_audit_event WHERE matter_id=? AND action='matter.purpose_update' ORDER BY occurred_at,event_id", (matter_id,))]
+        return json.dumps(dict(record=record,audit=audit),sort_keys=True,ensure_ascii=False).encode('utf-8')
+    if args.matter_purpose:
+        assert store.matter_purpose(matter_id, ACTOR)['revision'] == 0
+        store.update_matter_purpose(matter_id, ACTOR, expected_revision=0,
+            objective='  Synthetic objective — café  ', background='Synthetic background\r\nKeep e\u0301 and 終.',
+            request_id='synthetic-purpose-restore')
+        expected_purpose = purpose_bytes(store)
     if args.answer_context:
         from case_intelligence.answer_context import AnswerContextRepository, freeze
         answer_job, _ = store.queue_answer_job(matter_id, None, ACTOR, 'Synthetic recorded context',
@@ -81,7 +95,13 @@ s=WorkspaceStore(Path(sys.argv[1])); actor='synthetic-context-reviewer'; s.upser
     assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
     if args.answer_context:
         assert AnswerContextRepository(restored).receipt(matter_id,answer_job.job_id) == expected_answer
+    if args.matter_purpose:
+        assert purpose_bytes(restored) == expected_purpose
     restored.close()
+    if args.matter_purpose:
+        restored = WorkspaceStore(restored_path)
+        assert purpose_bytes(restored) == expected_purpose
+        restored.close()
     verify = '''from pathlib import Path
 from case_intelligence.workspace_store import WorkspaceStore
 import sys
@@ -89,6 +109,9 @@ s=WorkspaceStore(Path(sys.argv[1])); assert s.answer_notebook_context(sys.argv[2
 '''
     if args.answer_context:
         verify = verify.replace("name='workbench_context_selection'", "name='workbench_answer_context'")
+    if args.matter_purpose:
+        verify = verify.replace("name='workbench_context_selection'", "name='workbench_matter_purpose'")
     subprocess.run([sys.executable,'-c',verify,str(preupgrade),matter_id,job_id],env=env,check=True)
     print(json.dumps(dict(synthetic_only=True,baseline=BASELINE,upgrade=True,clean_restore=True,
-                         historical_answer_scope=True,answer_context=args.answer_context,matching_preupgrade_rollback=True,mixed_version_writers=False)))
+                         historical_answer_scope=True,answer_context=args.answer_context,
+                         matter_purpose=args.matter_purpose,purpose_and_audit_byte_identical=args.matter_purpose,matching_preupgrade_rollback=True,mixed_version_writers=False)))

@@ -1,0 +1,14 @@
+{% set purpose = matter_purpose_panel(request, matter) %}
+<section id="matter-purpose" class="matter-purpose-panel" aria-labelledby="matter-purpose-heading">
+  <h2 id="matter-purpose-heading">Objective and background</h2>
+  <p>Optional orientation written by your team. Saved here for reviewers; answers and briefings do not use it yet.</p>
+  <dl>
+    <dt>Objective</dt><dd class="matter-purpose-text">{{ purpose.record.objective or 'What does your team need to understand? Add an objective.' }}</dd>
+    <dt>Background</dt><dd class="matter-purpose-text">{{ purpose.record.background or 'Help the next reviewer get oriented. Add background when you are ready.' }}</dd>
+  </dl>
+  {% if purpose.can_edit %}
+  <details><summary>Edit objective and background</summary>
+    {% with draft=purpose.record, conflict=false %}{% include "workbench_purpose_form.html" %}{% endwith %}
+  </details>
+  {% else %}<p>Join the matter's team to edit this orientation.</p>{% endif %}
+</section>

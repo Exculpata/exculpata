@@ -8339,3 +8339,16 @@ code, kbd, samp, pre,
 .media-summary-points > li::before {
   font-family: var(--font-mono);
 }
+
+/* Optional reviewer orientation on Matter Home. */
+.matter-purpose-panel { scroll-margin-top: calc(var(--topbar-height) + 16px); margin: 20px 0; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.matter-purpose-panel h2 { margin: 0 0 8px; font-size: 17px; }
+.matter-purpose-panel p, .matter-purpose-panel small { color: var(--ink-soft); }
+.matter-purpose-panel dt { font-weight: 600; margin-top: 12px; }
+.matter-purpose-text { margin: 4px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 14rem; overflow: auto; }
+.matter-purpose-form { display: grid; gap: 8px; margin: 16px 0; }
+.matter-purpose-form label { margin-top: 8px; font-weight: 600; }
+.matter-purpose-form textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--canvas); color: var(--ink); font: inherit; }
+.matter-purpose-form textarea::placeholder { color: var(--ink-soft); opacity: 1; }
+.matter-purpose-form button { white-space: normal; }
+.matter-purpose-panel summary { cursor: pointer; }

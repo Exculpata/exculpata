@@ -338,3 +338,51 @@ For the local-account reference profile, continue from verified files to an
 actual isolated PostgreSQL import and application boot using
 [isolated node recovery](ISOLATED_NODE_RECOVERY.md). The original node must stay
 outside every replacement mount and volume boundary.
+
+
+## Matter objective and background (C1)
+
+Migration `0038_matter_purpose.sql` (root and packaged SQLite copies) adds one
+optional record per matter on the existing control database. Old matters read
+as empty at revision zero. Objective is limited to 500 Unicode characters and
+1,024 UTF-8 bytes; background to 10,000 characters and 24,000 UTF-8 bytes. Both
+are plain text; UTF-8, whitespace and line endings are preserved exactly.
+Unsupported control characters are rejected. Empty strings clear the fields.
+No model, briefing, prompt, descriptor, source kind or source origin consumes
+or substitutes these fields.
+
+Active team reviewers read and edit shared matter orientation on Home. Existing
+administrator override permits reading only; joining the team is required to
+edit. Revoked/inactive accounts, outsiders and non-active matters cannot use the
+read/write API. `GET /matters/{slug}/purpose` returns `objective`, `background`,
+`revision`, `updated_by` and `updated_at`. A CSRF-protected JSON `PUT` to the same
+path supplies exactly `expected_revision`, `objective` and `background` together.
+The JSON body limit is 128 KiB (including escaping). HTML `POST` uses the same
+service. Stale revisions return 409; the form preserves the unsaved draft beside
+the current version for deliberate reconciliation. No-op saves retain revision
+and timestamp. Successful changes atomically append `matter.purpose_update` to
+the existing audit trail with actor/time and empty metadata: no field values,
+previous values, content hashes or text lengths are logged or audited.
+
+Complete work-product ZIP exports include `context/matter-purpose.json`, with
+the exact text, revision, last editor/time and content-free audit events. The
+complete history is bounded to 10,000 events; exceeding it fails the export
+explicitly. Note-only exports remain note-only, and bundles add no source bytes.
+The bundle remains an export, not a reopenable package importer. The control
+SQLite backup is the restoration boundary. Purge explicitly deletes the record
+before its post-purge content sweep; the scrubbed matter tombstone and
+content-free audit trail remain under the existing retention contract.
+
+Before upgrade, stop writers and take a consistent backup. Run
+`python scripts/context-storage-restore-drill.py --matter-purpose` for a synthetic
+main-schema upgrade, clean restore/reopen, byte-identical field and audit check,
+and matching pre-upgrade rollback proof. Rollback uses the pre-upgrade backup
+with its matching old application version; it discards later edits. Do not run
+mixed-version writers or remove the new table in a live upgraded database.
+
+The required `deployment-contract` encrypted restic/PostgreSQL restore test
+(`test_encrypted_split_snapshot_and_postgres_restore`) checks C1 fields and audit
+bytes on both `recordbench` and `exculpata` naming generations after opening clean
+application stores. The normal mocked-backup test covers the same assertions
+without external services; it does not replace the encrypted drill or installed
+node acceptance. Use synthetic fixtures only.
