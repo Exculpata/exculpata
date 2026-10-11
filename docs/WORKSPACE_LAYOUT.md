@@ -18,7 +18,9 @@ and reports) and **Settings**. The current destination carries
 per-page copies. A matter search box beside the destinations submits an ordinary
 exact search (`/exact-search?search=1&words=…`); the Search page itself uses its
 full form instead. When the bar is too narrow for direct links, the existing
-section navigator replaces them.
+section navigator replaces them. Opening that navigator can widen its row;
+the breakpoint keeps the closed-row measurement, so the menu stays instead
+of switching back to direct links.
 
 The readiness status keeps its polling, actions and focus behavior. A ready matter
 shows one line; its extraction caveat stays in the document and opens with
