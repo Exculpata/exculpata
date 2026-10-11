@@ -1,0 +1,1448 @@
+{
+  "schema_version": 1,
+  "suite_id": "ask-router-v1",
+  "synthetic": true,
+  "frozen": true,
+  "provenance": {
+    "source": "Assistant-authored synthetic defense-review queries; no case material, personal data, or runtime model output.",
+    "labeling": "Expected kinds and one-line rationales were authored before measuring the original router; labels do not encode observed outputs.",
+    "scope_limit": "A deterministic intent regression set, not a representative user study or a retrieval-quality evaluation."
+  },
+  "rubric": {
+    "exact": "Supported explicit phrase, uppercase Boolean, or NEAR/n or BEFORE/n syntax; exact syntax takes precedence over enumeration, while clear natural-language questions and non-exhaustive explanation requests remain questions.",
+    "question": "Natural-language questions, non-exhaustive imperatives, unsupported syntax, and ambiguous fragments; prefer question to exact and do not infer expensive enumeration.",
+    "every_source": "An explicit exhaustive retrieval request for a source population or an established bare exhaustive command; never infer enumeration merely from all, each, or every in prose.",
+    "ambiguity": "Rationales explicitly mark genuine ambiguity and choose question unless valid explicit exact syntax resolves the ambiguity.",
+    "freeze": "The test pins the SHA-256 of the complete UTF-8 JSON file, including its final newline; intentional fixture changes require review and a new digest."
+  },
+  "cases": [
+    {
+      "id": "exact-001",
+      "text": "Mira AND Sol",
+      "kind": "exact",
+      "rationale": "Uppercase AND explicitly requests both synthetic names."
+    },
+    {
+      "id": "exact-002",
+      "text": "harbor OR depot",
+      "kind": "exact",
+      "rationale": "Uppercase OR explicitly requests alternative places."
+    },
+    {
+      "id": "exact-003",
+      "text": "invoice NOT draft",
+      "kind": "exact",
+      "rationale": "Uppercase NOT excludes a term in supported syntax."
+    },
+    {
+      "id": "exact-004",
+      "text": "NOT unsigned",
+      "kind": "exact",
+      "rationale": "A leading uppercase NOT is a supported Boolean exclusion."
+    },
+    {
+      "id": "exact-005",
+      "text": "(van OR bicycle) AND garage",
+      "kind": "exact",
+      "rationale": "Parentheses and uppercase Boolean operators specify a search expression."
+    },
+    {
+      "id": "exact-006",
+      "text": "Mira AND (Sol OR Ivo)",
+      "kind": "exact",
+      "rationale": "A grouped alternative combines with an uppercase conjunction."
+    },
+    {
+      "id": "exact-007",
+      "text": "(receipt AND payment) OR refund",
+      "kind": "exact",
+      "rationale": "Explicit uppercase operators determine the exact query."
+    },
+    {
+      "id": "exact-008",
+      "text": "NOT (rumor OR speculation)",
+      "kind": "exact",
+      "rationale": "A parenthesized uppercase exclusion is valid exact syntax."
+    },
+    {
+      "id": "exact-009",
+      "text": "depot AND NOT harbor",
+      "kind": "exact",
+      "rationale": "Explicit conjunction and negation request exact Boolean matching."
+    },
+    {
+      "id": "exact-010",
+      "text": "van NOT (blue OR green)",
+      "kind": "exact",
+      "rationale": "An implicit conjunction with uppercase NOT remains explicit Boolean intent."
+    },
+    {
+      "id": "exact-011",
+      "text": "DEF-000123 AND invoice",
+      "kind": "exact",
+      "rationale": "A synthetic Bates-style identifier combines with explicit AND."
+    },
+    {
+      "id": "exact-012",
+      "text": "SYN000417 OR SYN000418",
+      "kind": "exact",
+      "rationale": "Two synthetic Bates identifiers are joined by explicit OR."
+    },
+    {
+      "id": "exact-013",
+      "text": "who AND called",
+      "kind": "exact",
+      "rationale": "The word who is a search operand because the query explicitly uses AND."
+    },
+    {
+      "id": "exact-014",
+      "text": "show OR hide",
+      "kind": "exact",
+      "rationale": "The word show is a search operand because the query explicitly uses OR."
+    },
+    {
+      "id": "exact-015",
+      "text": "where AND when",
+      "kind": "exact",
+      "rationale": "Question words are operands of an explicit Boolean expression."
+    },
+    {
+      "id": "exact-016",
+      "text": "find AND report",
+      "kind": "exact",
+      "rationale": "An imperative-looking word does not override explicit Boolean search syntax."
+    },
+    {
+      "id": "exact-017",
+      "text": "Mira OR Sol NOT Ivo",
+      "kind": "exact",
+      "rationale": "Multiple uppercase Boolean operators define a valid search expression."
+    },
+    {
+      "id": "exact-018",
+      "text": "Hearth AND Reed",
+      "kind": "exact",
+      "rationale": "Unquoted uppercase AND specifies Boolean intent even when its operands resemble a synthetic firm name."
+    },
+    {
+      "id": "exact-019",
+      "text": "depot AND depot",
+      "kind": "exact",
+      "rationale": "Repeated operands do not invalidate explicit Boolean intent."
+    },
+    {
+      "id": "exact-020",
+      "text": "  payment OR refund  ",
+      "kind": "exact",
+      "rationale": "Outer whitespace preserves the explicit uppercase OR request."
+    },
+    {
+      "id": "exact-021",
+      "text": "\"side entrance\"",
+      "kind": "exact",
+      "rationale": "A complete quoted phrase explicitly requests exact phrase matching."
+    },
+    {
+      "id": "exact-022",
+      "text": "\"Mira Vale\"",
+      "kind": "exact",
+      "rationale": "A quoted synthetic person name requests an exact phrase."
+    },
+    {
+      "id": "exact-023",
+      "text": "\"Cedar Harbor\"",
+      "kind": "exact",
+      "rationale": "A quoted synthetic place name requests an exact phrase."
+    },
+    {
+      "id": "exact-024",
+      "text": "\"2031-04-12\"",
+      "kind": "exact",
+      "rationale": "A quoted synthetic date is valid phrase syntax."
+    },
+    {
+      "id": "exact-025",
+      "text": "\"DEF-000123\"",
+      "kind": "exact",
+      "rationale": "A quoted synthetic Bates identifier explicitly requests exact matching."
+    },
+    {
+      "id": "exact-026",
+      "text": "\"Hearth and Reed\"",
+      "kind": "exact",
+      "rationale": "The conjunction belongs to a fully quoted synthetic firm name."
+    },
+    {
+      "id": "exact-027",
+      "text": "\"AND OR NOT\"",
+      "kind": "exact",
+      "rationale": "Operator words inside a complete quoted phrase are literal words."
+    },
+    {
+      "id": "exact-028",
+      "text": "\"all of the evidence\"",
+      "kind": "exact",
+      "rationale": "Quoted enumeration words are a literal phrase, not an exhaustive request."
+    },
+    {
+      "id": "exact-029",
+      "text": "\"find every report\"",
+      "kind": "exact",
+      "rationale": "A fully quoted retrieval command is literal phrase syntax."
+    },
+    {
+      "id": "exact-030",
+      "text": "\"show me each\"",
+      "kind": "exact",
+      "rationale": "A fully quoted imperative is a phrase rather than an enumeration instruction."
+    },
+    {
+      "id": "exact-031",
+      "text": "\"side entrance\" \"loading bay\"",
+      "kind": "exact",
+      "rationale": "Two complete quoted phrases provide explicit exact intent."
+    },
+    {
+      "id": "exact-032",
+      "text": "invoice \"service fee\"",
+      "kind": "exact",
+      "rationale": "A term plus a quoted phrase is a supported exact search."
+    },
+    {
+      "id": "exact-033",
+      "text": "\"late arrival\" AND log",
+      "kind": "exact",
+      "rationale": "A quoted phrase and uppercase conjunction specify exact syntax."
+    },
+    {
+      "id": "exact-034",
+      "text": "\"Mira Vale\" OR \"Sol Reed\"",
+      "kind": "exact",
+      "rationale": "Quoted names joined by uppercase OR form an exact search."
+    },
+    {
+      "id": "exact-035",
+      "text": "\"red van\" NOT \"blue van\"",
+      "kind": "exact",
+      "rationale": "Quoted phrases with an uppercase exclusion specify exact intent."
+    },
+    {
+      "id": "exact-036",
+      "text": "\"say \\\"wait\\\"\"",
+      "kind": "exact",
+      "rationale": "Escaped quotes inside a complete phrase are supported exact syntax."
+    },
+    {
+      "id": "exact-037",
+      "text": "\"red AND blue\" and amber",
+      "kind": "exact",
+      "rationale": "Lowercase conjunction does not erase an explicit quoted phrase."
+    },
+    {
+      "id": "exact-038",
+      "text": "\"signal\"",
+      "kind": "exact",
+      "rationale": "A one-word quoted phrase explicitly requests exact search."
+    },
+    {
+      "id": "exact-039",
+      "text": "(\"delivery receipt\")",
+      "kind": "exact",
+      "rationale": "Parentheses preserve a complete quoted phrase."
+    },
+    {
+      "id": "exact-040",
+      "text": "\"café meeting\"",
+      "kind": "exact",
+      "rationale": "A Unicode word within a complete quoted phrase is supported exact syntax."
+    },
+    {
+      "id": "exact-041",
+      "text": "Mira NEAR/5 Sol",
+      "kind": "exact",
+      "rationale": "Supported NEAR/5 explicitly constrains word proximity."
+    },
+    {
+      "id": "exact-042",
+      "text": "harbor near/0 gate",
+      "kind": "exact",
+      "rationale": "Lowercase supported proximity syntax still explicitly requests exact search."
+    },
+    {
+      "id": "exact-043",
+      "text": "van BEFORE/3 depot",
+      "kind": "exact",
+      "rationale": "Supported BEFORE/3 explicitly requires ordered proximity."
+    },
+    {
+      "id": "exact-044",
+      "text": "payment before/100 refund",
+      "kind": "exact",
+      "rationale": "The maximum supported ordered-proximity distance is valid exact syntax."
+    },
+    {
+      "id": "exact-045",
+      "text": "\"Mira Vale\" NEAR/5 \"Sol Reed\"",
+      "kind": "exact",
+      "rationale": "Supported proximity between two quoted names is exact syntax."
+    },
+    {
+      "id": "exact-046",
+      "text": "\"service door\" BEFORE/2 opened",
+      "kind": "exact",
+      "rationale": "A quoted left operand works with supported ordered proximity."
+    },
+    {
+      "id": "exact-047",
+      "text": "receipt NEAR/4 \"cash payment\"",
+      "kind": "exact",
+      "rationale": "A quoted right operand works with supported proximity."
+    },
+    {
+      "id": "exact-048",
+      "text": "Mira NEAR/5 Sol AND depot",
+      "kind": "exact",
+      "rationale": "Supported proximity and Boolean syntax combine into exact intent."
+    },
+    {
+      "id": "exact-049",
+      "text": "harbor NEAR/3 gate OR depot BEFORE/2 van",
+      "kind": "exact",
+      "rationale": "Two proximity pairs joined by OR form a supported exact query."
+    },
+    {
+      "id": "exact-050",
+      "text": "NOT (van NEAR/2 garage)",
+      "kind": "exact",
+      "rationale": "Negation of a parenthesized proximity pair is supported exact syntax."
+    },
+    {
+      "id": "exact-051",
+      "text": "\"red AND blue\" NEAR/1 amber",
+      "kind": "exact",
+      "rationale": "Boolean words within the quoted proximity operand stay literal."
+    },
+    {
+      "id": "exact-052",
+      "text": "Mira NeAr/7 Sol",
+      "kind": "exact",
+      "rationale": "Mixed-case proximity operators are supported by the exact parser."
+    },
+    {
+      "id": "exact-053",
+      "text": "report BEFORE/0 signed",
+      "kind": "exact",
+      "rationale": "Zero-gap ordered proximity is supported exact syntax."
+    },
+    {
+      "id": "exact-054",
+      "text": "who NEAR/5 called",
+      "kind": "exact",
+      "rationale": "A question word used as a proximity operand retains exact intent."
+    },
+    {
+      "id": "exact-055",
+      "text": "show BEFORE/1 hide",
+      "kind": "exact",
+      "rationale": "An imperative-looking word used as a proximity operand retains exact intent."
+    },
+    {
+      "id": "exact-056",
+      "text": "find every document containing \"side entrance\"",
+      "kind": "exact",
+      "rationale": "Valid phrase syntax takes precedence over an enumeration cue."
+    },
+    {
+      "id": "exact-057",
+      "text": "list all reports containing \"late arrival\"",
+      "kind": "exact",
+      "rationale": "A valid quoted search phrase takes precedence over an enumeration cue."
+    },
+    {
+      "id": "exact-058",
+      "text": "pull all records with Mira AND Sol",
+      "kind": "exact",
+      "rationale": "An explicit uppercase Boolean query takes precedence over enumeration."
+    },
+    {
+      "id": "exact-059",
+      "text": "show me each report with gate NEAR/5 harbor",
+      "kind": "exact",
+      "rationale": "Supported proximity takes precedence over an enumeration cue."
+    },
+    {
+      "id": "exact-060",
+      "text": "\"Whose van\" OR \"Where now\"",
+      "kind": "exact",
+      "rationale": "Quoted question-like phrases with OR remain an explicit search expression."
+    },
+    {
+      "id": "exact-061",
+      "text": "who OR what",
+      "kind": "exact",
+      "rationale": "Question words joined by uppercase OR explicitly request exact matching."
+    },
+    {
+      "id": "exact-062",
+      "text": "show AND texts",
+      "kind": "exact",
+      "rationale": "An imperative-looking first operand does not override uppercase AND."
+    },
+    {
+      "id": "exact-063",
+      "text": "did NEAR/3 witness",
+      "kind": "exact",
+      "rationale": "An auxiliary question word is a search operand when supported proximity is explicit."
+    },
+    {
+      "id": "question-001",
+      "text": "Who spoke to Mira at the depot?",
+      "kind": "question",
+      "rationale": "A direct question asks about a synthetic person and event."
+    },
+    {
+      "id": "question-002",
+      "text": "Who interviewed Sol Reed",
+      "kind": "question",
+      "rationale": "A person question remains natural language without a question mark."
+    },
+    {
+      "id": "question-003",
+      "text": "Which witness saw the green van?",
+      "kind": "question",
+      "rationale": "A witness-identification question requests a cited answer."
+    },
+    {
+      "id": "question-004",
+      "text": "Whose phone sent the message",
+      "kind": "question",
+      "rationale": "A possessive person question requests an answer rather than exact matching."
+    },
+    {
+      "id": "question-005",
+      "text": "What did Ivo tell the officer?",
+      "kind": "question",
+      "rationale": "A question about a synthetic statement requests cited understanding."
+    },
+    {
+      "id": "question-006",
+      "text": "Was Mira present during the inspection",
+      "kind": "question",
+      "rationale": "A yes-or-no person question does not request exhaustive review."
+    },
+    {
+      "id": "question-007",
+      "text": "Did Sol recognize the driver?",
+      "kind": "question",
+      "rationale": "A yes-or-no recognition question stays on the question route."
+    },
+    {
+      "id": "question-008",
+      "text": "How are Mira Vale and Sol Reed connected",
+      "kind": "question",
+      "rationale": "A relationship question uses and as ordinary language."
+    },
+    {
+      "id": "question-009",
+      "text": "Where was the van parked?",
+      "kind": "question",
+      "rationale": "A location question requests cited understanding."
+    },
+    {
+      "id": "question-010",
+      "text": "Which entrance did the courier use",
+      "kind": "question",
+      "rationale": "A place question remains natural language without final punctuation."
+    },
+    {
+      "id": "question-011",
+      "text": "Where did the meeting move after the alarm?",
+      "kind": "question",
+      "rationale": "A location-change question requests an answer about an event."
+    },
+    {
+      "id": "question-012",
+      "text": "Was the package left at Cedar Harbor",
+      "kind": "question",
+      "rationale": "A yes-or-no place question requests cited understanding."
+    },
+    {
+      "id": "question-013",
+      "text": "When did the depot close?",
+      "kind": "question",
+      "rationale": "A date or time question does not contain exact syntax."
+    },
+    {
+      "id": "question-014",
+      "text": "What date was the receipt signed",
+      "kind": "question",
+      "rationale": "A date question remains natural language without final punctuation."
+    },
+    {
+      "id": "question-015",
+      "text": "How long after the call did the van arrive?",
+      "kind": "question",
+      "rationale": "An elapsed-time question requests synthesis of events."
+    },
+    {
+      "id": "question-016",
+      "text": "Did the inspection happen before the delivery",
+      "kind": "question",
+      "rationale": "The ordinary word before is not a proximity operator."
+    },
+    {
+      "id": "question-017",
+      "text": "What happened during the warehouse alarm?",
+      "kind": "question",
+      "rationale": "An event question requests a cited account."
+    },
+    {
+      "id": "question-018",
+      "text": "Why was the delivery canceled",
+      "kind": "question",
+      "rationale": "An explanation question requests understanding."
+    },
+    {
+      "id": "question-019",
+      "text": "How did the gate become damaged?",
+      "kind": "question",
+      "rationale": "An event-causation question does not request exact matching."
+    },
+    {
+      "id": "question-020",
+      "text": "Do the witness accounts agree on the departure time",
+      "kind": "question",
+      "rationale": "A comparison question asks for an answer across accounts."
+    },
+    {
+      "id": "question-021",
+      "text": "Who said \"wait here\"",
+      "kind": "question",
+      "rationale": "A clear person question containing a quotation remains a question without final punctuation."
+    },
+    {
+      "id": "question-022",
+      "text": "Who said \"wait here\"?",
+      "kind": "question",
+      "rationale": "A clear person question can quote the words whose speaker is sought."
+    },
+    {
+      "id": "question-023",
+      "text": "What does \"side entrance\" mean",
+      "kind": "question",
+      "rationale": "A definition question should not require all its prose words to match exactly."
+    },
+    {
+      "id": "question-024",
+      "text": "What does \"side entrance\" mean?",
+      "kind": "question",
+      "rationale": "A quoted phrase inside a punctuated definition question does not request exact search."
+    },
+    {
+      "id": "question-025",
+      "text": "Where is \"Cedar Harbor\" mentioned in the timeline",
+      "kind": "question",
+      "rationale": "A clear location question contains a quoted synthetic place name."
+    },
+    {
+      "id": "question-026",
+      "text": "Where was \"the red van\" parked?",
+      "kind": "question",
+      "rationale": "A location question quotes the object being discussed."
+    },
+    {
+      "id": "question-027",
+      "text": "When did Mira say \"come tomorrow\"",
+      "kind": "question",
+      "rationale": "A time question remains a question when its evidence phrase is quoted."
+    },
+    {
+      "id": "question-028",
+      "text": "When was \"delivery complete\" first recorded?",
+      "kind": "question",
+      "rationale": "A time question quotes a status without requesting phrase-only search."
+    },
+    {
+      "id": "question-029",
+      "text": "Why did Sol write \"do not call\"",
+      "kind": "question",
+      "rationale": "A causal question uses a quoted statement as its subject."
+    },
+    {
+      "id": "question-030",
+      "text": "How did \"late arrival\" affect the schedule",
+      "kind": "question",
+      "rationale": "A causal question quotes a phrase without choosing exact search."
+    },
+    {
+      "id": "question-031",
+      "text": "Which report describes \"the loading bay\"",
+      "kind": "question",
+      "rationale": "A source-identification question does not request an exhaustive source review."
+    },
+    {
+      "id": "question-032",
+      "text": "Whose message said \"gate closed\"",
+      "kind": "question",
+      "rationale": "A possessive person question can contain a quotation."
+    },
+    {
+      "id": "question-033",
+      "text": "Did Mira mention \"the north stair\"",
+      "kind": "question",
+      "rationale": "An auxiliary-led yes-or-no question remains natural language with a quote."
+    },
+    {
+      "id": "question-034",
+      "text": "Does the log explain \"missing seal\"",
+      "kind": "question",
+      "rationale": "An auxiliary-led question quotes the issue to be explained."
+    },
+    {
+      "id": "question-035",
+      "text": "Is \"Cedar Harbor\" the same place as the dock",
+      "kind": "question",
+      "rationale": "An identity question contains a quoted synthetic place name."
+    },
+    {
+      "id": "question-036",
+      "text": "Are \"Mira Vale\" and \"M Vale\" the same person",
+      "kind": "question",
+      "rationale": "A comparison question contains two quoted synthetic names."
+    },
+    {
+      "id": "question-037",
+      "text": "Was \"delivery complete\" entered before noon",
+      "kind": "question",
+      "rationale": "A yes-or-no timing question can contain a quoted status."
+    },
+    {
+      "id": "question-038",
+      "text": "Were the words \"wait here\" attributed to Sol",
+      "kind": "question",
+      "rationale": "An auxiliary-led attribution question quotes its subject."
+    },
+    {
+      "id": "question-039",
+      "text": "Can you explain \"service fee\"",
+      "kind": "question",
+      "rationale": "A polite request for explanation remains a question despite a quotation."
+    },
+    {
+      "id": "question-040",
+      "text": "Could \"green van\" refer to two vehicles",
+      "kind": "question",
+      "rationale": "A possibility question quotes the description being interpreted."
+    },
+    {
+      "id": "question-041",
+      "text": "Show texts between Mira and Sol",
+      "kind": "question",
+      "rationale": "A non-exhaustive imperative asks for information without exact-search syntax."
+    },
+    {
+      "id": "question-042",
+      "text": "Show texts between \"Dana Vale\" and \"Lee North\"",
+      "kind": "question",
+      "rationale": "A non-exhaustive imperative quotes names and should preserve natural-language retrieval."
+    },
+    {
+      "id": "question-043",
+      "text": "Show me the messages about \"side entrance\"",
+      "kind": "question",
+      "rationale": "Ambiguous between retrieval and phrase search; choose question without an exhaustive cue."
+    },
+    {
+      "id": "question-044",
+      "text": "Tell me what \"wait here\" refers to",
+      "kind": "question",
+      "rationale": "An imperative explanation request contains a quoted phrase."
+    },
+    {
+      "id": "question-045",
+      "text": "Explain why Mira wrote \"do not call\"",
+      "kind": "question",
+      "rationale": "An imperative explanation request quotes a statement."
+    },
+    {
+      "id": "question-046",
+      "text": "Summarize the testimony about \"Cedar Harbor\"",
+      "kind": "question",
+      "rationale": "A summary request quotes its topic rather than specifying exact matching."
+    },
+    {
+      "id": "question-047",
+      "text": "Compare the accounts of \"late arrival\"",
+      "kind": "question",
+      "rationale": "A comparison request quotes its topic and needs a cited answer."
+    },
+    {
+      "id": "question-048",
+      "text": "Describe what happened at \"the loading bay\"",
+      "kind": "question",
+      "rationale": "A descriptive imperative uses a quoted location."
+    },
+    {
+      "id": "question-049",
+      "text": "Help me understand \"missing seal\"",
+      "kind": "question",
+      "rationale": "An explicit request for understanding can include a quoted phrase."
+    },
+    {
+      "id": "question-050",
+      "text": "Find out who wrote \"wait here\"",
+      "kind": "question",
+      "rationale": "The phrase find out introduces a question rather than exhaustive retrieval."
+    },
+    {
+      "id": "question-051",
+      "text": "Show the timeline of the harbor visit",
+      "kind": "question",
+      "rationale": "A timeline imperative requests synthesis without exhaustive record language."
+    },
+    {
+      "id": "question-052",
+      "text": "Tell me whether every report agrees",
+      "kind": "question",
+      "rationale": "A request about agreement is not a request to enumerate every report."
+    },
+    {
+      "id": "question-053",
+      "text": "Summarize all reports about the green van",
+      "kind": "question",
+      "rationale": "A summary of records does not explicitly ask to retrieve each matching source."
+    },
+    {
+      "id": "question-054",
+      "text": "Compare every witness account",
+      "kind": "question",
+      "rationale": "A comparison task does not explicitly request exhaustive source retrieval."
+    },
+    {
+      "id": "question-055",
+      "text": "Explain the gap between the two calls",
+      "kind": "question",
+      "rationale": "An explanation imperative defaults to question."
+    },
+    {
+      "id": "question-056",
+      "text": "Hearth and Reed",
+      "kind": "question",
+      "rationale": "Ambiguous as a synthetic firm-name fragment; lowercase and does not establish exact intent."
+    },
+    {
+      "id": "question-057",
+      "text": "Mira and Sol",
+      "kind": "question",
+      "rationale": "Ambiguous as a pair of names; lowercase and safely stays on the question route."
+    },
+    {
+      "id": "question-058",
+      "text": "Hearth AnD Reed",
+      "kind": "question",
+      "rationale": "Ambiguous as a name fragment; mixed-case conjunction is not an uppercase search cue."
+    },
+    {
+      "id": "question-059",
+      "text": "Who works at Hearth and Reed?",
+      "kind": "question",
+      "rationale": "The conjunction is part of a synthetic firm name in a natural question."
+    },
+    {
+      "id": "question-060",
+      "text": "Tell me about Hearth and Reed",
+      "kind": "question",
+      "rationale": "An imperative asks about a synthetic firm name containing and."
+    },
+    {
+      "id": "question-061",
+      "text": "Mira",
+      "kind": "question",
+      "rationale": "Ambiguous one-word synthetic name; prefer question without explicit search instructions."
+    },
+    {
+      "id": "question-062",
+      "text": "depot",
+      "kind": "question",
+      "rationale": "Ambiguous one-word place fragment; prefer question without explicit search instructions."
+    },
+    {
+      "id": "question-063",
+      "text": "2031",
+      "kind": "question",
+      "rationale": "Ambiguous one-word year fragment; prefer question without explicit search instructions."
+    },
+    {
+      "id": "question-064",
+      "text": "alibi",
+      "kind": "question",
+      "rationale": "Ambiguous one-word topic; prefer question without explicit search instructions."
+    },
+    {
+      "id": "question-065",
+      "text": "why",
+      "kind": "question",
+      "rationale": "A one-word question cue supplies no exact or exhaustive syntax."
+    },
+    {
+      "id": "question-066",
+      "text": "DEF-000123",
+      "kind": "question",
+      "rationale": "Ambiguous bare synthetic Bates identifier; prefer question without exact syntax."
+    },
+    {
+      "id": "question-067",
+      "text": "SYN000417",
+      "kind": "question",
+      "rationale": "Ambiguous compact synthetic Bates identifier; prefer question without exact syntax."
+    },
+    {
+      "id": "question-068",
+      "text": "SYN_000418",
+      "kind": "question",
+      "rationale": "An unsupported underscore in a bare synthetic identifier must not create exact intent."
+    },
+    {
+      "id": "question-069",
+      "text": "What is in DEF-000123?",
+      "kind": "question",
+      "rationale": "A question about a synthetic Bates identifier requests cited understanding."
+    },
+    {
+      "id": "question-070",
+      "text": "DEF-000123 DEF-000124",
+      "kind": "question",
+      "rationale": "Ambiguous pair of synthetic identifiers; plain terms do not establish exact intent."
+    },
+    {
+      "id": "question-071",
+      "text": "Whta time did Mira leave?",
+      "kind": "question",
+      "rationale": "A typo in an ordinary time question should safely remain a question."
+    },
+    {
+      "id": "question-072",
+      "text": "Who interveiwed Sol",
+      "kind": "question",
+      "rationale": "A misspelled verb does not create exact or exhaustive intent."
+    },
+    {
+      "id": "question-073",
+      "text": "wher was the van parkd",
+      "kind": "question",
+      "rationale": "A misspelled location question safely defaults to question."
+    },
+    {
+      "id": "question-074",
+      "text": "Shwo texts between Mira and Sol",
+      "kind": "question",
+      "rationale": "A typo in a non-exhaustive imperative safely defaults to question."
+    },
+    {
+      "id": "question-075",
+      "text": "fnd every report",
+      "kind": "question",
+      "rationale": "Ambiguous misspelled retrieval cue; avoid launching expensive exhaustive review by guesswork."
+    },
+    {
+      "id": "question-076",
+      "text": "pull al reports",
+      "kind": "question",
+      "rationale": "Ambiguous misspelled quantity; avoid inferring an exhaustive request."
+    },
+    {
+      "id": "question-077",
+      "text": "Mira w/5 Sol",
+      "kind": "question",
+      "rationale": "Legal-search w/5 syntax is unsupported by exact_search and must fall back to question."
+    },
+    {
+      "id": "question-078",
+      "text": "Mira W/5 Sol",
+      "kind": "question",
+      "rationale": "Uppercase W/5 is also unsupported and must not pretend to be exact search."
+    },
+    {
+      "id": "question-079",
+      "text": "van PRE/3 depot",
+      "kind": "question",
+      "rationale": "PRE/n legal-search proximity is unsupported and falls back to question."
+    },
+    {
+      "id": "question-080",
+      "text": "harbor ADJ gate",
+      "kind": "question",
+      "rationale": "ADJ legal-search proximity is unsupported and falls back to question."
+    },
+    {
+      "id": "question-081",
+      "text": "payment NEAR/101 refund",
+      "kind": "question",
+      "rationale": "A proximity distance above the supported maximum cannot establish exact intent."
+    },
+    {
+      "id": "question-082",
+      "text": "Mira NEAR/5",
+      "kind": "question",
+      "rationale": "An incomplete proximity expression must not route to exact search."
+    },
+    {
+      "id": "question-083",
+      "text": "van AND",
+      "kind": "question",
+      "rationale": "An incomplete Boolean expression must not route to exact search."
+    },
+    {
+      "id": "question-084",
+      "text": "OR depot",
+      "kind": "question",
+      "rationale": "A missing Boolean left operand prevents exact routing."
+    },
+    {
+      "id": "question-085",
+      "text": "\"side entrance",
+      "kind": "question",
+      "rationale": "An unclosed quoted phrase cannot establish exact intent."
+    },
+    {
+      "id": "question-086",
+      "text": "“side entrance”",
+      "kind": "question",
+      "rationale": "Ambiguous typographic quotation marks are unsupported exact syntax; safely choose question."
+    },
+    {
+      "id": "question-087",
+      "text": "van and depot",
+      "kind": "question",
+      "rationale": "Ambiguous lowercase conjunction may be ordinary prose; safely choose question."
+    },
+    {
+      "id": "question-088",
+      "text": "Mira or Sol",
+      "kind": "question",
+      "rationale": "Ambiguous lowercase alternatives may be a person question fragment; safely choose question."
+    },
+    {
+      "id": "question-089",
+      "text": "All reports about the van agree",
+      "kind": "question",
+      "rationale": "A statement about all reports does not request exhaustive review."
+    },
+    {
+      "id": "question-090",
+      "text": "Does every report mention the same time?",
+      "kind": "question",
+      "rationale": "A consistency question about a population is not exhaustive retrieval."
+    },
+    {
+      "id": "question-091",
+      "text": "Find every reason the gate failed",
+      "kind": "question",
+      "rationale": "Every modifies reasons rather than a source population."
+    },
+    {
+      "id": "question-092",
+      "text": "Pull all the facts together",
+      "kind": "question",
+      "rationale": "An idiomatic synthesis request does not enumerate source records."
+    },
+    {
+      "id": "question-093",
+      "text": "Show me each step in the timeline",
+      "kind": "question",
+      "rationale": "Each modifies timeline steps rather than a source population."
+    },
+    {
+      "id": "question-094",
+      "text": "Show all reports are consistent",
+      "kind": "question",
+      "rationale": "Ambiguous request to establish consistency; choose question instead of expensive exhaustive review."
+    },
+    {
+      "id": "question-095",
+      "text": "Can you show every report is reliable",
+      "kind": "question",
+      "rationale": "A request to establish reliability is not a request to retrieve each report."
+    },
+    {
+      "id": "question-096",
+      "text": "Do not list all reports",
+      "kind": "question",
+      "rationale": "A negated enumeration instruction must not launch exhaustive review."
+    },
+    {
+      "id": "question-097",
+      "text": "Did you pull all records already?",
+      "kind": "question",
+      "rationale": "A question about prior actions is not a new exhaustive retrieval request."
+    },
+    {
+      "id": "question-098",
+      "text": "Before you show me each report, explain the gaps",
+      "kind": "question",
+      "rationale": "A conditional preamble does not authorize exhaustive review now."
+    },
+    {
+      "id": "question-099",
+      "text": "all the records about the harbor",
+      "kind": "question",
+      "rationale": "Ambiguous filtered population fragment lacks a positive retrieval cue; prefer question."
+    },
+    {
+      "id": "question-100",
+      "text": "",
+      "kind": "question",
+      "rationale": "Empty input provides no exact or exhaustive search instruction."
+    },
+    {
+      "id": "every_source-001",
+      "text": "find every report about the harbor",
+      "kind": "every_source",
+      "rationale": "An explicit find-every request names a source population."
+    },
+    {
+      "id": "every_source-002",
+      "text": "Find every document mentioning Mira",
+      "kind": "every_source",
+      "rationale": "An explicit find-every request asks for matching documents."
+    },
+    {
+      "id": "every_source-003",
+      "text": "FIND EVERY RECORD ABOUT THE VAN",
+      "kind": "every_source",
+      "rationale": "Uppercase natural-language enumeration is case-insensitive."
+    },
+    {
+      "id": "every_source-004",
+      "text": "find every single transcript of the interview",
+      "kind": "every_source",
+      "rationale": "Every single emphasizes an explicit exhaustive transcript request."
+    },
+    {
+      "id": "every_source-005",
+      "text": "find every email sent after the inspection",
+      "kind": "every_source",
+      "rationale": "An explicit exhaustive email request can include a date filter."
+    },
+    {
+      "id": "every_source-006",
+      "text": "find every message between Mira and Sol",
+      "kind": "every_source",
+      "rationale": "Lowercase and joins names within an exhaustive message request."
+    },
+    {
+      "id": "every_source-007",
+      "text": "find every source discussing DEF-000123",
+      "kind": "every_source",
+      "rationale": "An explicit exhaustive source request includes a synthetic Bates identifier."
+    },
+    {
+      "id": "every_source-008",
+      "text": "find all matching records",
+      "kind": "every_source",
+      "rationale": "An explicit find-all request names matching records."
+    },
+    {
+      "id": "every_source-009",
+      "text": "find each statement about the gate",
+      "kind": "every_source",
+      "rationale": "An explicit find-each request names source statements."
+    },
+    {
+      "id": "every_source-010",
+      "text": "find every",
+      "kind": "every_source",
+      "rationale": "The established bare find-every command explicitly requests exhaustive review."
+    },
+    {
+      "id": "every_source-011",
+      "text": "pull all reports about the harbor",
+      "kind": "every_source",
+      "rationale": "Pull all is ordinary legal-review language for exhaustive source retrieval."
+    },
+    {
+      "id": "every_source-012",
+      "text": "Pull all texts between Mira and Sol",
+      "kind": "every_source",
+      "rationale": "Pull all explicitly requests every matching text message."
+    },
+    {
+      "id": "every_source-013",
+      "text": "PULL ALL DOCUMENTS ABOUT THE DEPOT",
+      "kind": "every_source",
+      "rationale": "An uppercase pull-all request is the same exhaustive retrieval intent."
+    },
+    {
+      "id": "every_source-014",
+      "text": "pull all of the evidence",
+      "kind": "every_source",
+      "rationale": "Pull all of the explicitly requests the complete evidence population."
+    },
+    {
+      "id": "every_source-015",
+      "text": "pull all the records mentioning the receipt",
+      "kind": "every_source",
+      "rationale": "Pull all the explicitly requests a filtered source population."
+    },
+    {
+      "id": "every_source-016",
+      "text": "pull every email about the canceled delivery",
+      "kind": "every_source",
+      "rationale": "Pull every explicitly requests exhaustive email retrieval."
+    },
+    {
+      "id": "every_source-017",
+      "text": "pull each report where the time is disputed",
+      "kind": "every_source",
+      "rationale": "Pull each explicitly requests exhaustive filtered report retrieval."
+    },
+    {
+      "id": "every_source-018",
+      "text": "please pull all statements from the interview",
+      "kind": "every_source",
+      "rationale": "A polite pull-all request still explicitly requests exhaustive review."
+    },
+    {
+      "id": "every_source-019",
+      "text": "Can you pull all reports about Mira?",
+      "kind": "every_source",
+      "rationale": "A polite auxiliary-led pull-all request explicitly requests exhaustive review."
+    },
+    {
+      "id": "every_source-020",
+      "text": "Could you please pull every document about the alarm",
+      "kind": "every_source",
+      "rationale": "A polite pull-every request can omit final punctuation."
+    },
+    {
+      "id": "every_source-021",
+      "text": "show me each report about the van",
+      "kind": "every_source",
+      "rationale": "Show me each explicitly requests exhaustive report retrieval."
+    },
+    {
+      "id": "every_source-022",
+      "text": "Show me each text between Mira and Sol",
+      "kind": "every_source",
+      "rationale": "Show me each explicitly requests every matching text message."
+    },
+    {
+      "id": "every_source-023",
+      "text": "SHOW ME EACH SOURCE ABOUT THE HARBOR",
+      "kind": "every_source",
+      "rationale": "An uppercase show-me-each request preserves exhaustive intent."
+    },
+    {
+      "id": "every_source-024",
+      "text": "show each recording of the inspection",
+      "kind": "every_source",
+      "rationale": "Show each explicitly requests an exhaustive recording population."
+    },
+    {
+      "id": "every_source-025",
+      "text": "show me all of the reports about the gate",
+      "kind": "every_source",
+      "rationale": "Show me all of the explicitly requests every filtered report."
+    },
+    {
+      "id": "every_source-026",
+      "text": "show all the files about the receipt",
+      "kind": "every_source",
+      "rationale": "Show all the explicitly requests a matching file population."
+    },
+    {
+      "id": "every_source-027",
+      "text": "please show me every interview mentioning Sol",
+      "kind": "every_source",
+      "rationale": "A polite show-every request names an interview population."
+    },
+    {
+      "id": "every_source-028",
+      "text": "Would you show me each exhibit about the depot?",
+      "kind": "every_source",
+      "rationale": "A polite auxiliary-led show-each request is exhaustive."
+    },
+    {
+      "id": "every_source-029",
+      "text": "show me each and every document",
+      "kind": "every_source",
+      "rationale": "The lowercase idiom each and every requests exhaustive review."
+    },
+    {
+      "id": "every_source-030",
+      "text": "show me every PDF file about the alarm",
+      "kind": "every_source",
+      "rationale": "An explicit exhaustive request can name a supported source format."
+    },
+    {
+      "id": "every_source-031",
+      "text": "list every report where the driver is mentioned",
+      "kind": "every_source",
+      "rationale": "List every report where explicitly requests an exhaustive filtered list."
+    },
+    {
+      "id": "every_source-032",
+      "text": "List every report where Mira disputes the time",
+      "kind": "every_source",
+      "rationale": "A capitalized list-every request names a report filter."
+    },
+    {
+      "id": "every_source-033",
+      "text": "LIST EVERY REPORT WHERE THE GATE WAS OPEN",
+      "kind": "every_source",
+      "rationale": "An uppercase list-every request remains ordinary exhaustive retrieval."
+    },
+    {
+      "id": "every_source-034",
+      "text": "list every report where the date is missing",
+      "kind": "every_source",
+      "rationale": "List every report where requests exhaustive records with a condition."
+    },
+    {
+      "id": "every_source-035",
+      "text": "list every report where Sol and Mira are named",
+      "kind": "every_source",
+      "rationale": "Lowercase and joins names within a filtered enumeration request."
+    },
+    {
+      "id": "every_source-036",
+      "text": "list all of the evidence",
+      "kind": "every_source",
+      "rationale": "List all of the evidence explicitly identifies an exhaustive source population."
+    },
+    {
+      "id": "every_source-037",
+      "text": "list all documents about the green van",
+      "kind": "every_source",
+      "rationale": "List all explicitly requests matching documents."
+    },
+    {
+      "id": "every_source-038",
+      "text": "list each and every source",
+      "kind": "every_source",
+      "rationale": "The lowercase each-and-every idiom explicitly requests exhaustive sources."
+    },
+    {
+      "id": "every_source-039",
+      "text": "Please list all records dated after the delivery",
+      "kind": "every_source",
+      "rationale": "A polite list-all request can include a date filter."
+    },
+    {
+      "id": "every_source-040",
+      "text": "Can you list every report where the receipt appears?",
+      "kind": "every_source",
+      "rationale": "A polite question-shaped command explicitly requests an exhaustive list."
+    },
+    {
+      "id": "every_source-041",
+      "text": "locate every single transcript about the call",
+      "kind": "every_source",
+      "rationale": "Locate every single explicitly requests exhaustive transcript retrieval."
+    },
+    {
+      "id": "every_source-042",
+      "text": "identify all statements about the loading bay",
+      "kind": "every_source",
+      "rationale": "Identify all explicitly requests a statement population."
+    },
+    {
+      "id": "every_source-043",
+      "text": "retrieve every recording mentioning the alarm",
+      "kind": "every_source",
+      "rationale": "Retrieve every explicitly requests a recording population."
+    },
+    {
+      "id": "every_source-044",
+      "text": "return all matching results",
+      "kind": "every_source",
+      "rationale": "Return all explicitly requests the complete matching result population."
+    },
+    {
+      "id": "every_source-045",
+      "text": "collect all exhibits about the receipt",
+      "kind": "every_source",
+      "rationale": "Collect all explicitly requests an exhibit population."
+    },
+    {
+      "id": "every_source-046",
+      "text": "get all occurrences of the vehicle number",
+      "kind": "every_source",
+      "rationale": "Get all explicitly requests every matching occurrence."
+    },
+    {
+      "id": "every_source-047",
+      "text": "search for all messages about the meeting",
+      "kind": "every_source",
+      "rationale": "Search for all explicitly requests exhaustive message retrieval."
+    },
+    {
+      "id": "every_source-048",
+      "text": "give me every reference to the harbor",
+      "kind": "every_source",
+      "rationale": "Give me every explicitly requests exhaustive source references."
+    },
+    {
+      "id": "every_source-049",
+      "text": "check every source about the inspection",
+      "kind": "every_source",
+      "rationale": "Check every explicitly requests review of the complete filtered source population."
+    },
+    {
+      "id": "every_source-050",
+      "text": "review all available reports about the delivery",
+      "kind": "every_source",
+      "rationale": "Review all available explicitly requests an exhaustive report population."
+    },
+    {
+      "id": "every_source-051",
+      "text": "enumerate every attachment to the messages",
+      "kind": "every_source",
+      "rationale": "Enumerate every explicitly requests exhaustive attachment retrieval."
+    },
+    {
+      "id": "every_source-052",
+      "text": "I need you to pull all records about the gate",
+      "kind": "every_source",
+      "rationale": "An explicit request to pull all names exhaustive retrieval."
+    },
+    {
+      "id": "every_source-053",
+      "text": "I want to list every report where the seal is missing",
+      "kind": "every_source",
+      "rationale": "An explicit request to list every names exhaustive report retrieval."
+    },
+    {
+      "id": "every_source-054",
+      "text": "I need all documents",
+      "kind": "every_source",
+      "rationale": "The established bare need-all-population request asks for every document."
+    },
+    {
+      "id": "every_source-055",
+      "text": "all reports",
+      "kind": "every_source",
+      "rationale": "A bare complete source population is an established exhaustive-review shorthand."
+    },
+    {
+      "id": "every_source-056",
+      "text": "List all CSV files",
+      "kind": "every_source",
+      "rationale": "A source-format population can be explicitly enumerated."
+    },
+    {
+      "id": "every_source-057",
+      "text": "find every video about the loading bay",
+      "kind": "every_source",
+      "rationale": "A video population can be explicitly enumerated."
+    },
+    {
+      "id": "every_source-058",
+      "text": "pull all audio files about the call",
+      "kind": "every_source",
+      "rationale": "Pull all explicitly requests an exhaustive audio-file population."
+    },
+    {
+      "id": "every_source-059",
+      "text": "show me each spreadsheet about the receipts",
+      "kind": "every_source",
+      "rationale": "Show me each explicitly requests a spreadsheet population."
+    },
+    {
+      "id": "every_source-060",
+      "text": "list every photograph where the van appears",
+      "kind": "every_source",
+      "rationale": "List every explicitly requests a filtered photograph population."
+    },
+    {
+      "id": "every_source-061",
+      "text": "Pull up all texts about the meeting",
+      "kind": "every_source",
+      "rationale": "Pull up all is an explicit exhaustive request in ordinary reviewer language."
+    },
+    {
+      "id": "every_source-062",
+      "text": "Could you pull up every report about the depot?",
+      "kind": "every_source",
+      "rationale": "A polite pull-up-every request explicitly asks for exhaustive report retrieval."
+    },
+    {
+      "id": "question-101",
+      "text": "pull all documents? No, just summarize.",
+      "kind": "question",
+      "rationale": "An explicit correction replaces exhaustive retrieval with a summary request."
+    },
+    {
+      "id": "question-102",
+      "text": "Pull every source only if I say so",
+      "kind": "question",
+      "rationale": "A condition withholds authorization for exhaustive review until a later instruction."
+    },
+    {
+      "id": "question-103",
+      "text": "Pull all reports but do not start yet",
+      "kind": "question",
+      "rationale": "An explicit instruction not to start withholds the exhaustive review request."
+    },
+    {
+      "id": "question-104",
+      "text": "I need to know who said \"wait here\"",
+      "kind": "question",
+      "rationale": "A request to know a quotation's speaker asks for understanding rather than exact matching."
+    },
+    {
+      "id": "question-105",
+      "text": "I want to understand \"late arrival\"",
+      "kind": "question",
+      "rationale": "An explicit request for understanding uses a quotation as its topic."
+    },
+    {
+      "id": "question-106",
+      "text": "Show all reports have the same date",
+      "kind": "question",
+      "rationale": "Ambiguous request to establish a shared date; choose question instead of expensive exhaustive review."
+    },
+    {
+      "id": "every_source-063",
+      "text": "Find every report where they said not to search all sources",
+      "kind": "every_source",
+      "rationale": "A source-content filter mentions a negative instruction without canceling the explicit enumeration request."
+    },
+    {
+      "id": "exact-064",
+      "text": "pull all reports containing \"only if approved\"",
+      "kind": "exact",
+      "rationale": "A condition inside a quoted search phrase is literal content and preserves exact-syntax precedence."
+    },
+    {
+      "id": "question-107",
+      "text": "Pull all texts only when I approve",
+      "kind": "question",
+      "rationale": "A future approval condition withholds the otherwise exhaustive retrieval request."
+    },
+    {
+      "id": "question-108",
+      "text": "Pull all reports only after I confirm",
+      "kind": "question",
+      "rationale": "A requirement for later confirmation withholds the exhaustive review request."
+    },
+    {
+      "id": "question-109",
+      "text": "Find every report but don't start yet",
+      "kind": "question",
+      "rationale": "A contracted instruction not to start withholds the exhaustive review request."
+    },
+    {
+      "id": "question-110",
+      "text": "I need an explanation of \"late arrival\"",
+      "kind": "question",
+      "rationale": "An explicit explanation request contains a quoted topic rather than exact-search instructions."
+    },
+    {
+      "id": "question-111",
+      "text": "I want a summary of \"the harbor meeting\"",
+      "kind": "question",
+      "rationale": "An explicit summary request contains a quoted topic rather than exact-search instructions."
+    }
+  ]
+}
