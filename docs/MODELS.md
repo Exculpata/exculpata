@@ -36,6 +36,16 @@ precise contemporaneous machine record from the already matter-scoped candidate
 set when a later narrative summary ranked above it. It does not add candidates,
 change scores, cross a matter boundary, or bypass citation validation.
 
+For an explicit `before` or `after` clock question, a stable coverage check also
+promotes existing document passages that contain all query subject terms and a
+clock on the requested side of the cutoff. It runs before primary-result and
+answer-anchor truncation, without increasing either budget. Attribution and
+uncertainty remain in the original passage. This limited clock comparison does
+not resolve dates, time zones, clock reliability, object identity or uninterrupted
+custody; transcript playback offsets are not treated as wall clocks. Ambiguous
+multi-clock questions retain the underlying ranking. Evaluate selected packet
+coverage separately from generation quality or whether a model answers.
+
 An explicit request for both written and spoken support reserves evidence space
 for each kind when matching passages are retrieved. The independent verifier
 requires a machine-transcript caution prefix on transcript-only claims and rejects

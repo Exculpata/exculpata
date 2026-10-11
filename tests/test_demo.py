@@ -174,6 +174,36 @@ def test_seed_demo_accounts_for_every_source_and_discovers_recurring_names_offli
     assert sentinel.read_text(encoding="utf-8") == "Synthetic existing deployment marker."
 
 
+def test_fresh_temporal_answer_packet_retains_dispatch_observation(demo_script, tmp_path):
+    """Measure the real answer packet, independently of generation or history."""
+    with demo_script.seed_demo(tmp_path / "temporal-demo") as demo:
+        bench, matter = demo.app.state.workbench, demo.matter
+        assert bench.generator.available is False
+        question = "Where was the teal case before 9:26?"
+        retrieval_query = bench._retrieval_question(question, ())
+        assert retrieval_query == question
+        paths = {source.document_id: source.relative_path for source in bench.sources(matter)}
+        candidates = bench._answer_search(matter, question, retrieval_query)
+        packet = bench._answer_evidence_citations(matter, candidates)
+        assert len(candidates) <= 20
+        assert len(packet) == 8
+        dispatch = next((row for row in packet
+                         if paths[row.document_id] == "reports/04-dispatch-observation.txt"), None)
+        assert dispatch is not None, [paths[row.document_id] for row in packet]
+        text = " ".join(dispatch.excerpt.split())
+        assert "Nerin Talvex recorded that Vela Quenrix left Brindlequay storehouse at 09:14" in text
+        assert "carrying a teal case with a paper band" in text
+        assert "Nerin Talvex did not read the band number" in text
+        assert "The wall clock above the loading table had not been checked that morning" in text
+        assert "This observation identifies a case, not its contents" in text
+        assert "reports/05-arrival-observation.txt" in {paths[row.document_id] for row in packet}
+        # A ranking rescue must not pull a source outside the selected population.
+        allowed = frozenset(paths) - {dispatch.document_id}
+        scoped = bench._answer_search(matter, question, retrieval_query, document_ids=allowed)
+        assert all(row.document_id in allowed for row in scoped)
+        assert dispatch.document_id not in {row.document_id for row in scoped}
+
+
 @pytest.mark.parametrize("destination", ["checkout", "symlink", "nonempty"])
 def test_seed_demo_refuses_unsafe_destinations(demo_script, tmp_path, destination):
     if destination == "checkout":

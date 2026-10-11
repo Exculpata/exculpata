@@ -19,7 +19,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
-from .review_quality import rank_exact_record_candidates
+from .review_quality import rank_exact_record_candidates, rank_temporal_candidates
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_RERANKER_MODEL = "Alibaba-NLP/gte-reranker-modernbert-base"
@@ -564,6 +564,7 @@ class HybridRetriever:
             reranked,
             matter_id=matter_id,
         )
+        reranked = rank_temporal_candidates(query, reranked, matter_id=matter_id)
         return tuple(reranked[:limit])
 
 
