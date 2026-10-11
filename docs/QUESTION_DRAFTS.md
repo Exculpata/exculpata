@@ -66,17 +66,24 @@ case notes**, which adds one Suggested note.
   to say (or ask about what a record says), and must not substitute an absent
   witness/interviewee identity. Transcript discovery requests include `if any`.
   These wording checks still do not establish correct speaker attribution.
-  If the first model draft retains fewer than three questions, the adapter makes
-  at most one repair request, with the original passages and feedback about the
-  required checks. When the eight-item limit has room, it asks for new angles
-  and retains all original raw items, including rejected ones, for the normal
-  verifier and raw-quotation scorer. Rejected candidates include feedback about
-  digit-bearing details absent from their cited excerpts. A malformed/full draft
-  returns to the verifier unchanged; replacing it would discard raw evidence.
-  The combined draft remains subject to the eight-item limit; an overlong reply
-  is rejected. The adapter never pads a draft or
-  samples repeatedly until the gate passes. The result is checked normally;
-  fewer than three supported questions still fails the unchanged evaluation gate.
+  A deterministic post-verification audit also rejects detectable unstated
+  identities/pronouns, presupposed possession/actions and uncertainty converted
+  into assertions. These conservative text patterns can miss paraphrases or
+  reject valid wording; they are not proof of entailment. Human review remains
+  necessary. Identical wording is deduplicated even across different citations.
+  If fewer than three questions survive, at most two top-up calls ask only for
+  additional distinct questions, using the original passages and retained list.
+  The cap is configurable per profile. Each attempt retains its eight-item schema
+  limit and the displayed list remains capped at eight. The internal receipt
+  exposes every raw candidate across attempts to the unchanged quotation scorer,
+  plus attempt boundaries, call timings, configured policy and every drop reason.
+  A malformed attempt is recorded, never silently replaced. This internal receipt
+  type cannot be supplied by model JSON; ordinary draft JSON keeps its original
+  strict shape and eight-item limit. No questions are fabricated to reach a minimum.
+  An optional model judge can only veto deterministic survivors. Invalid, missing
+  or unavailable judge decisions reject the affected candidates and are recorded.
+  The judge cannot change text/citations or resurrect a deterministic rejection.
+  Fewer than three supported questions still fails the unchanged evaluation gate.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
@@ -127,7 +134,9 @@ capacities are configurable defaults, not maximum supported hardware sizes:
 Override a selected policy with
 `CASE_INTELLIGENCE_GENERATOR_QUESTION_<PROFILE>_THINKING` (`0`, `1`, `false`,
 `true`), `_THINKING_TOKENS`, `_ANSWER_TOKENS`, `_CONTEXT_TOKENS`, and
-`_TIMEOUT_SECONDS`. `<PROFILE>` is the uppercase policy name, such as `QUALITY`.
+`_TIMEOUT_SECONDS`, `_TOP_UP_CALLS` (integer 0–2, default 2),
+`_JUDGE_GROUNDING` (boolean, default false), and `_JUDGE_TOKENS` (positive integer,
+default 1,200). `<PROFILE>` is the uppercase policy name, such as `QUALITY`.
 Additional lowercase identifier names inherit quality defaults and accept the
 same overrides. Token/context values must be positive integers and timeouts
 positive and finite; these settings are not clamped to the portable capacities.
@@ -143,9 +152,13 @@ request with thinking enabled, then a request with thinking disabled and its own
 final-answer allocation. A planning length stop cannot consume that allocation.
 Earlier model notes are labelled untrusted and are not evidence, not returned to
 the reviewer, and not saved to the matter. The final answer still passes the
-same citation/text checks. This costs two requests, plus at most one replacement
-request if too few questions pass, and does not promise that
-either model output is correct. Transport errors still fail explicitly.
+same citation/text checks. A draft uses at most one planning request, three
+question batches (initial plus two top-ups), and—only when enabled—one judge
+request per batch. Each call has its own timeout; total draft latency may be the
+sum of those bounded calls. Transport/parse failures are recorded in the receipt;
+the bounded top-up policy may recover, but no failed attempt is removed. Planning
+failure cannot consume the final answer allocation. This does not promise that
+model output or the optional judge is correct.
 
 This separate request is the answer reserve: neither adapter pretends that
 adding tokens to a shared thinking/completion limit reserves a final answer.

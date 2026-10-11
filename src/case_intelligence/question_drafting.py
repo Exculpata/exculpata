@@ -413,26 +413,17 @@ def _near_duplicate(left: DraftedQuestion, right: DraftedQuestion) -> bool:
 
 def verify_question_draft(raw: Mapping[str, object], evidence: Sequence[EvidenceItem]
                           ) -> tuple[tuple[DraftedQuestion, ...], int]:
+    from .question_grounding import QuestionDraftReceipt, audit_attempts
+    if isinstance(raw, QuestionDraftReceipt):
+        reviewed = raw.review(evidence)
+        return reviewed.questions, reviewed.omitted
     if not isinstance(raw, Mapping) or set(raw) != {"questions"} or not isinstance(raw.get("questions"), list):
         raise GenerationRejected("The drafted questions did not match the required structure.")
     values = raw["questions"]
     if len(values) > MAX_DRAFTED_QUESTIONS:
         raise GenerationRejected("The drafted questions did not match the required structure.")
-    evidence_map = {item.evidence_id: item for item in evidence}
-    accepted: list[DraftedQuestion] = []
-    seen: set[str] = set()
-    omitted = 0
-    for value in values:
-        question = None
-        if isinstance(value, Mapping) and set(value) == {"text", "evidence_ids"}:
-            question = verify_question(value.get("text"), value.get("evidence_ids"), evidence_map)
-        if question is None:
-            omitted += 1
-        elif (question_key(question.text) not in seen
-              and not any(_near_duplicate(question, earlier) for earlier in accepted)):
-            seen.add(question_key(question.text))
-            accepted.append(question)
-    return tuple(accepted), omitted
+    reviewed = audit_attempts((raw,), evidence)
+    return reviewed.questions, reviewed.omitted
 
 
 def passage_basis(evidence: Sequence[EvidenceItem]) -> str:

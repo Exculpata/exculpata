@@ -29,7 +29,7 @@ def test_portable_question_thinking_is_explicitly_off_without_changing_other_cal
 
     monkeypatch.setattr(generation, '_bounded_json_request', send)
     client = client_type('http://127.0.0.1:11434', 'synthetic-model')
-    assert client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE) == FINAL
+    assert client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE)['questions'] == FINAL['questions']
     draft = calls[-1][0]
     if backend == 'ollama':
         assert draft['think'] is False and draft['options']['num_predict'] == 1200
@@ -58,7 +58,7 @@ def test_thinking_exhaustion_cannot_spend_the_separate_answer_allocation(monkeyp
     monkeypatch.setattr(generation, '_bounded_json_request', send)
     profile = QuestionGenerationProfile(True, 16384, 4096, 131072, 900.0)
     client = client_type('http://127.0.0.1:11434', 'synthetic-large-model', question_profile=profile)
-    assert client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE) == FINAL
+    assert client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE)['questions'] == FINAL['questions']
     assert len(calls) == 2 and all(options['timeout'] == 900.0 for _, options in calls)
     first, final = [payload for payload, _ in calls]
     if backend == 'ollama':
@@ -96,7 +96,7 @@ def test_invalid_question_capacities_are_rejected(changes):
 
 
 @pytest.mark.parametrize('repair_succeeds', [True, False])
-def test_short_draft_gets_exactly_one_repair_without_inventing_questions(monkeypatch, repair_succeeds):
+def test_short_draft_gets_bounded_top_ups_without_inventing_questions(monkeypatch, repair_succeeds):
     calls = []
     short = {'questions': FINAL['questions'][:1]}
 
@@ -108,13 +108,15 @@ def test_short_draft_gets_exactly_one_repair_without_inventing_questions(monkeyp
     monkeypatch.setattr(generation, '_bounded_json_request', send)
     client = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model')
     result = client.draft_questions(purpose='witness', topic='Dispatch', evidence=EVIDENCE)
-    assert len(calls) == 2 and all(call['think'] is False for call in calls)
-    assert result == {'questions': [*short['questions'], *(FINAL if repair_succeeds else short)['questions']]}
+    assert len(calls) == (2 if repair_succeeds else 3) and all(call['think'] is False for call in calls)
+    assert result['questions'] == ([*short['questions'], *FINAL['questions']] if repair_succeeds else short['questions'] * 3)
+    assert len(result['drops']) == (1 if repair_succeeds else 2)
+    assert all(drop['reason'] == 'near_duplicate' for drop in result['drops'])
     assert calls[0]['messages'][1] == calls[1]['messages'][1]
-    assert 'Repair requirements:' in calls[1]['messages'][0]['content']
+    assert 'Top-up requirements:' in calls[1]['messages'][0]['content']
     feedback = json.loads(calls[1]['messages'][-1]['content'].split('\n', 1)[1])
     assert feedback['retained_questions'] == short['questions']
-    assert calls[1]['format']['properties']['questions']['maxItems'] == 7
+    assert calls[1]['format']['properties']['questions']['maxItems'] == 8
     shown, _ = verify_question_draft(result, EVIDENCE)
     assert len(shown) == (3 if repair_succeeds else 1)
 
@@ -137,7 +139,7 @@ def test_repair_never_promotes_previous_model_text_into_system_instructions(monk
 
 
 @pytest.mark.parametrize('label', ['', ' [S1]'])
-def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monkeypatch, label):
+def test_top_up_exposes_drop_reasons_without_changing_raw_evidence(monkeypatch, label):
     calls = []
     invalid = {'text': 'What happened at 12:40 near the depot?' + label, 'evidence_ids': ['S1']}
 
@@ -150,9 +152,8 @@ def test_repair_explains_missing_cited_digits_without_changing_raw_evidence(monk
     raw = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model').draft_questions(
         purpose='witness', topic='Dispatch', evidence=EVIDENCE)
     feedback = json.loads(calls[1]['messages'][-1]['content'].split('\n', 1)[1])
-    assert feedback['rejected_candidates'] == [
-        {'candidate': invalid, 'digit_tokens_missing_from_cited_excerpts': ['12:40', 's1'] if label else ['12:40'],
-         'citation_label_in_text': bool(label)}]
+    assert feedback['drops'] == [{'attempt': 1, 'candidate_id': 'a1q1',
+        'raw': invalid, 'reason': 'citation_label_in_text' if label else 'uncited_digit_bearing_detail'}]
     assert raw['questions'] == [invalid, *FINAL['questions']]
     assert invalid['text'] not in calls[1]['messages'][0]['content']
 
@@ -168,7 +169,9 @@ def test_full_rejected_draft_is_not_replaced_and_hidden_from_raw_quote_scoring(m
     monkeypatch.setattr(generation, '_bounded_json_request', send)
     result = OllamaGenerator('http://127.0.0.1:11434', 'synthetic-model').draft_questions(
         purpose='witness', topic='Dispatch', evidence=EVIDENCE)
-    assert result == raw and len(calls) == 1
+    assert result['questions'] == raw['questions'] * 3 and len(calls) == 3
+    assert len(result['drops']) == 24
+    assert all(row['reason'] == 'unsupported_quotation' for row in result['drops'])
 
 
 def test_absent_gendered_pronouns_are_rejected_but_direct_address_is_allowed():
@@ -195,16 +198,16 @@ def test_transcript_questions_preserve_uncertainty_and_do_not_identify_the_inter
 
 def test_minor_qualifier_duplicates_collapse_but_different_targets_and_negation_survive():
     texts = [
-        'What details did you observe about the green box that Rowan Example carried to the depot?',
-        'What details did you observe about the green box that Rowan Example carried to the depot at 09:10?',
-        'What details did you observe about the green box that Rowan Example carried to the depot at 09:12?',
-        'Where did you observe the green box that Rowan Example carried to the depot?',
+        'What details are listed about the green box that Rowan Example carried to the depot?',
+        'What details are listed about the green box that Rowan Example carried to the depot at 09:10?',
+        'What details are listed about the green box that Rowan Example carried to the depot at 09:12?',
+        'Where was the green box that Rowan Example carried to the depot?',
     ]
     shown, _ = verify_question_draft({'questions': [{'text': text, 'evidence_ids': ['S1']} for text in texts]}, EVIDENCE)
     assert [q.text for q in shown] == [texts[0], texts[3]]
     # Without the unqualified version, distinct times are distinct questions.
     shown, _ = verify_question_draft({'questions': [{'text': text, 'evidence_ids': ['S1']} for text in texts[1:3]]}, EVIDENCE)
     assert len(shown) == 2
-    opposite = [texts[0], texts[0].replace('did you observe', 'did you not observe')]
+    opposite = [texts[0], texts[0].replace('are listed', 'are not listed')]
     shown, _ = verify_question_draft({'questions': [{'text': text, 'evidence_ids': ['S1']} for text in opposite]}, EVIDENCE)
     assert len(shown) == 2
