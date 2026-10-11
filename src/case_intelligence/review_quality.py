@@ -309,6 +309,76 @@ def rank_exact_record_candidates(
     return tuple(item for _index, item in ranked)
 
 
+def rank_temporal_candidates(
+    query: str,
+    candidates: Sequence[CandidateT],
+    *,
+    matter_id: str,
+) -> tuple[CandidateT, ...]:
+    """Keep subject-matching clock observations in a bounded before/after packet.
+
+    Lexical overlap rewards question filler and the cutoff itself, which can bury
+    an observation at a different clock time. Stably promote matching passages
+    on the requested side before the primary/anchor limits are applied. This is
+    a coverage hint, not a finding about dates, clock accuracy or continuous
+    custody. Keep the entire candidate (including attribution and caveats).
+    """
+    bounded = tuple(candidates)
+    if any(item.matter_id != matter_id for item in bounded):
+        raise RuntimeError("matter boundary violation in temporal ranking")
+    clocks = tuple(_CLOCK.finditer(query))
+    if len(clocks) != 1:
+        return bounded
+    clock = clocks[0]
+    relation = re.search(r"\b(before|after)\s*$", query[:clock.start()], re.IGNORECASE)
+    if relation is None or re.search(
+        r"\b(?:not|never|no)\s*$", query[:relation.start()], re.IGNORECASE
+    ):
+        return bounded
+    # Requiring every subject term prevents a shared filler word or an unrelated
+    # timestamp from winning. Unrecognized wording conservatively keeps ranking.
+    subject = query[:relation.start()] + query[clock.end():]
+    filler = _EXACT_QUERY_STOP_TERMS | {
+        "where", "were", "been", "had", "has", "have", "with", "which", "who",
+        "can", "could", "you", "please", "tell", "me", "about", "and", "or",
+    }
+    terms = frozenset(_QUERY_TOKEN.findall(subject.casefold())) - filler
+    if not terms:
+        return bounded
+
+    def clock_seconds(value: str) -> float | None:
+        parts = re.fullmatch(
+            r"(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d{1,3})?))?"
+            r"\s*(a\.?m\.?|p\.?m\.?)?", value, re.IGNORECASE,
+        )
+        if parts is None:
+            return None
+        hour, minute, second, period = parts.groups()
+        hours = int(hour)
+        if period:
+            if not 1 <= hours <= 12:
+                return None
+            hours = hours % 12 + (12 if period.lower().startswith("p") else 0)
+        return hours * 3600 + int(minute) * 60 + float(second or 0)
+
+    cutoff = clock_seconds(clock.group())
+    if cutoff is None:
+        return bounded
+    before = relation.group(1).casefold() == "before"
+
+    def supports_period(item: CandidateT) -> bool:
+        # Transcript clocks are playback offsets, not wall-clock observations.
+        if getattr(item, "evidence_kind", DOCUMENT_EVIDENCE_KIND) == TRANSCRIPT_EVIDENCE_KIND:
+            return False
+        if not terms.issubset(_QUERY_TOKEN.findall(item.text.casefold())):
+            return False
+        times = (clock_seconds(match.group()) for match in _CLOCK.finditer(item.text))
+        return any(value is not None and (value < cutoff if before else value > cutoff)
+                   for value in times)
+
+    return tuple(sorted(bounded, key=lambda item: not supports_period(item)))
+
+
 def broad_summary_queries(question: str, *, maximum_chars: int = 512) -> tuple[str, ...]:
     """Return bounded, content-free facets for a broad orientation request."""
 
