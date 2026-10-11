@@ -27,6 +27,11 @@ case notes**, which adds one Suggested note.
   and speaker labels such as "Speaker 1" are not established events or identities,
   so questions about them should ask what the recording appears to say without
   leading.
+  The prompt asks for four to six distinct, relevant questions and at least three
+  when supported, with no padding from unrelated passages or invented records.
+  It preserves attribution, conditional statements and the difference between
+  an unestablished fact and an established opposite. Nearby objects do not prove
+  possession; unidentified transcript speakers do not become identified witnesses.
 - **Check (decision 3).** A question is shown only if it cites one to four of the
   supplied passages, shares at least one content word with them, and every quoted
   span (of any length, in double or single quotes, including angle, low-9, CJK
@@ -52,6 +57,11 @@ case notes**, which adds one Suggested note.
   Questions that fail are dropped and the draft says some were omitted; if none
   pass, nothing is shown and the reviewer can try again. Questions that differ only
   in case, spacing or punctuation (underscores included) count once.
+  A gendered pronoun absent from all cited excerpts is rejected. Repeated
+  questions with the same cited basis and only a small added qualifier are
+  collapsed; substitutions, distinct opening questions and negation remain
+  distinct. These are narrow text checks, not a semantic relevance or entailment
+  guarantee. Review the actual passages for unsupported assumptions and uncertainty.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
@@ -83,6 +93,48 @@ case notes**, which adds one Suggested note.
   passage selection, draft and save handlers, and those routes live in
   `src/case_intelligence/answer_question_drafts.py`. No schema or storage
   change is involved.
+
+## Question generation profiles
+
+Question drafting has its own generation policy in `question_generation.py`.
+It does not change ordinary answering or source-classification defaults, select
+a model, alter model pins, or impose a model-size limit.
+
+Set `CASE_INTELLIGENCE_GENERATOR_QUESTION_PROFILE` (default `portable`). Initial
+capacities are configurable defaults, not maximum supported hardware sizes:
+
+| Policy | Thinking | Planning tokens | Final answer tokens | Ollama context | Per-call timeout |
+| --- | --- | ---: | ---: | ---: | ---: |
+| portable | off | unused | 1,200 | 8,192 | existing generator timeout |
+| quality | on | 4,096 | 2,400 | 32,768 | 300 seconds |
+| large | on | 8,192 | 4,096 | 65,536 | 600 seconds |
+
+Override a selected policy with
+`CASE_INTELLIGENCE_GENERATOR_QUESTION_<PROFILE>_THINKING` (`0`, `1`, `false`,
+`true`), `_THINKING_TOKENS`, `_ANSWER_TOKENS`, `_CONTEXT_TOKENS`, and
+`_TIMEOUT_SECONDS`. `<PROFILE>` is the uppercase policy name, such as `QUALITY`.
+Additional lowercase identifier names inherit quality defaults and accept the
+same overrides. Token/context values must be positive integers and timeouts
+positive and finite; these settings are not clamped to the portable capacities.
+An OpenAI-compatible server controls its context window through its own model
+configuration; the context request override applies to Ollama.
+
+The existing explicit `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` opt-out
+also forces question thinking off. It retains its existing effect on other
+OpenAI-compatible generation calls; no new default is applied to other features.
+
+Thinking-enabled drafting uses two sequential local requests: a bounded planning
+request with thinking enabled, then a request with thinking disabled and its own
+final-answer allocation. A planning length stop cannot consume that allocation.
+Earlier model notes are labelled untrusted and are not evidence, not returned to
+the reviewer, and not saved to the matter. The final answer still passes the
+same citation/text checks. This costs two requests and does not promise that
+either model output is correct. Transport errors still fail explicitly.
+
+This separate request is the answer reserve: neither adapter pretends that
+adding tokens to a shared thinking/completion limit reserves a final answer.
+Runtime/model compatibility and quality must be evaluated on the chosen profile;
+unit transport tests are not real-model or larger-hardware acceptance.
 
 ## Evaluation and pass bar
 

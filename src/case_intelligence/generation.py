@@ -18,6 +18,9 @@ from .answer_presentation import (
     GENERATED_TRANSCRIPT_INTRODUCTION,
 )
 from .review_budget import DEFAULT_REVIEW_BUDGET
+from .question_generation import (
+    QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
+)
 from .review_quality import answer_advances_objective, classify_question
 from .service_endpoints import validate_service_endpoint
 
@@ -518,6 +521,7 @@ class OllamaGenerator:
     def __init__(
         self, endpoint: str, model: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
         opener: urllib.request.OpenerDirector | None = None,
+        question_profile: QuestionGenerationProfile | None = None,
     ) -> None:
         self.endpoint = _validate_endpoint(endpoint)
         self.model = model.strip()
@@ -525,6 +529,7 @@ class OllamaGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._opener = opener
+        self.question_profile = question_profile or QuestionGenerationProfile()
 
     @property
     def available(self) -> bool:
@@ -575,29 +580,7 @@ class OllamaGenerator:
         return _parse_model_content(message.get("content"))
 
     def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
-        from .question_drafting import QUESTION_SCHEMA, question_prompt
-
-        system, user = question_prompt(purpose, topic, evidence)
-        response = _bounded_json_request(
-            f"{self.endpoint}/api/chat",
-            {
-                "model": self.model,
-                "stream": False,
-                "format": QUESTION_SCHEMA,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": DEFAULT_REVIEW_BUDGET.output_tokens},
-                "keep_alive": "5m",
-            },
-            timeout=self.timeout,
-            **({"opener": self._opener} if self._opener is not None else {}),
-        )
-        message = response.get("message")
-        if not isinstance(message, dict):
-            raise GenerationUnavailable("The answer service returned an invalid response.")
-        return _parse_model_content(message.get("content"))
+        return generate_question_draft(self, "ollama", purpose=purpose, topic=topic, evidence=evidence)
 
     def classify_source(
         self,
@@ -643,6 +626,7 @@ class OpenAICompatibleGenerator:
         api_key: str = "",
         disable_thinking: bool = False,
         opener: urllib.request.OpenerDirector | None = None,
+        question_profile: QuestionGenerationProfile | None = None,
     ) -> None:
         self.endpoint = _validate_endpoint(endpoint)
         self.model = model.strip()
@@ -652,6 +636,7 @@ class OpenAICompatibleGenerator:
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self.disable_thinking = bool(disable_thinking)
         self._opener = opener
+        self.question_profile = question_profile or QuestionGenerationProfile()
 
     @property
     def available(self) -> bool:
@@ -765,36 +750,7 @@ class OpenAICompatibleGenerator:
 
 
     def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
-        from .question_drafting import QUESTION_SCHEMA, question_prompt
-
-        system, user = question_prompt(purpose, topic, evidence)
-        request: dict[str, object] = {
-            "model": self.model,
-            "temperature": 0.2,
-            "max_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "drafted_questions", "strict": True, "schema": QUESTION_SCHEMA},
-            },
-        }
-        if self.disable_thinking:
-            request["chat_template_kwargs"] = {"enable_thinking": False}
-        response = _bounded_json_request(
-            f"{self.endpoint}/v1/chat/completions", request,
-            timeout=self.timeout, headers=self._headers,
-            **({"opener": self._opener} if self._opener is not None else {}),
-        )
-        choices = response.get("choices")
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            raise GenerationUnavailable("The answer service returned an invalid response.")
-        message = choices[0].get("message")
-        if not isinstance(message, dict):
-            raise GenerationUnavailable("The answer service returned an invalid response.")
-        return _parse_model_content(message.get("content"))
+        return generate_question_draft(self, "openai", purpose=purpose, topic=topic, evidence=evidence)
 
 
 class UnavailableGenerator:
@@ -820,13 +776,15 @@ def generator_from_environment() -> GeneratorClient:
     model = os.getenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
     timeout = float(os.getenv("CASE_INTELLIGENCE_GENERATOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)))
     if backend == "ollama":
-        return OllamaGenerator(endpoint, model, timeout=timeout)
+        return OllamaGenerator(endpoint, model, timeout=timeout,
+                               question_profile=question_profile_from_environment())
     if backend == "openai":
         return OpenAICompatibleGenerator(
             endpoint,
             model,
             timeout=timeout,
             api_key=os.getenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", ""),
+            question_profile=question_profile_from_environment(),
             disable_thinking=(
                 os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "0") == "1"
             ),
