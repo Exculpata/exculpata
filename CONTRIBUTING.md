@@ -43,3 +43,12 @@ regression and relevant documentation. See the
 [review policy](docs/QUALITY_GATES.md#review-policy),
 [security model](docs/SECURITY_MODEL.md), [model rules](docs/MODELS.md), and
 [backup and restore rules](docs/STORAGE_AND_BACKUP.md) for deeper guidance.
+
+## License and CLA
+
+Exculpata is licensed under [Apache-2.0](LICENSE). Outside contributors must
+sign the [Contributor License Agreement](CLA.md) once before their first pull
+request is merged. The CLA Assistant GitHub app will prompt you on your pull
+request; signing takes a single click with your GitHub account. You keep your
+copyright. The Exculpata name and logo are not covered by Apache-2.0; see
+[TRADEMARKS.md](TRADEMARKS.md).
