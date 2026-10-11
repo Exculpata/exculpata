@@ -306,7 +306,7 @@
             </article>
             {% else %}
             <article class="conversation-turn assistant-turn" {% if message.payload.kind == 'generated' %}data-answer-mode="generated"{% endif %} {% if loop.last %}id="latest"{% endif %}>
-              <div class="turn-avatar assistant-avatar" aria-hidden="true">RB</div>
+              <div class="turn-avatar assistant-avatar" aria-hidden="true">{% include "exculpata_mark.html" %}</div>
               <div class="turn-content answer-content">
                 <strong>{{ product_name }}</strong>
                 {% if message.payload.workflow == 'research' %}
@@ -466,7 +466,7 @@
             {% endif %}
             {% else %}
             <div class="conversation-empty">
-              <div class="turn-avatar assistant-avatar" aria-hidden="true">RB</div>
+              <div class="turn-avatar assistant-avatar" aria-hidden="true">{% include "exculpata_mark.html" %}</div>
               <div>
                 <h3>Ask about this matter</h3>
                 <p>{{ product_name }} will search the sources, compose a direct answer, and keep each supported claim connected to the record.</p>

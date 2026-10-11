@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The assistant and answer badges use the Exculpata icon instead of the old initials.
+
 - Apply the Exculpata theme. Dark is the default appearance, and Light and Dusk
   remain selectable. Geist is the interface and heading face. JetBrains Mono is
   used for code, identifiers, and citations. Both faces are self-hosted.

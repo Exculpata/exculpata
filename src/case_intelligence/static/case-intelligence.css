@@ -6310,6 +6310,10 @@ body.assistant-available .next-steps { display: none; }
 .assistant-message { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; margin-bottom: 15px; }
 .assistant-message-avatar,
 .assistant-brand-mark { display: inline-grid; width: 26px; height: 26px; place-items: center; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: 8px; font-weight: 850; letter-spacing: .03em; }
+.assistant-brand-mark:has(.exculpata-mark),
+.turn-avatar.assistant-avatar:has(.exculpata-mark),
+.identity-avatar.product-mark { overflow: hidden; background: transparent; }
+.exculpata-mark { display: block; width: 100%; height: 100%; object-fit: cover; }
 .assistant-user-message .assistant-message-avatar { border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .assistant-message > div { min-width: 0; }
 .assistant-message strong { font-size: 10px; }
@@ -6402,7 +6406,7 @@ body.assistant-collapsed .assistant-collapsed-tab {
   cursor: pointer;
   writing-mode: vertical-rl;
 }
-body.assistant-collapsed .assistant-collapsed-tab .assistant-brand-mark { flex: 0 0 auto; background: var(--accent); color: var(--accent-ink); writing-mode: horizontal-tb; }
+body.assistant-collapsed .assistant-collapsed-tab .assistant-brand-mark { flex: 0 0 auto; background: transparent; writing-mode: horizontal-tb; }
 body.assistant-collapsed .assistant-collapsed-tab > span:last-child { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 
 .matter-form select {

@@ -3608,7 +3608,11 @@
     }
     const thread = assistantDock.querySelector("[data-assistant-thread]");
     if (thread) {
-      thread.innerHTML = '<div class="assistant-empty assistant-draft-empty"><span class="assistant-brand-mark" aria-hidden="true">RB</span><h2>New chat</h2><p>This draft is saved with the matter when you send its first question.</p></div>';
+      const existingMark = assistantDock.querySelector(".assistant-brand-mark");
+      const mark = existingMark
+        ? existingMark.outerHTML
+        : '<span class="assistant-brand-mark" aria-hidden="true">EX</span>';
+      thread.innerHTML = `<div class="assistant-empty assistant-draft-empty">${mark}<h2>New chat</h2><p>This draft is saved with the matter when you send its first question.</p></div>`;
       thread.dataset.hasMessages = "false";
       const suggestions = assistantDock.querySelector("[data-assistant-suggestions-template]");
       const empty = thread.querySelector(".assistant-draft-empty");

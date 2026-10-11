@@ -252,6 +252,9 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert setup.status_code == 200
         assert "data-assistant-dock" in setup.text
         assert "Ask Exculpata" in setup.text
+        assert ">RB<" not in setup.text
+        assert "exculpata-mark" in setup.text
+        assert "favicon.svg" in setup.text
         assert 'data-theme="dark"' in setup.text
         assert 'value="dark"' in setup.text
         assert 'value="light"' in setup.text
@@ -276,6 +279,8 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert "data-assistant-question-form" in assistant.text
         assert "Choose a saved chat" in assistant.text
         assert "New chat" in assistant.text
+        assert ">RB<" not in assistant.text
+        assert "exculpata-mark" in assistant.text
 
         new_chat = client.post(
             f"/matters/{slug}/conversations",
@@ -302,6 +307,8 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         full_review = client.get(f"/matters/{slug}")
         assert full_review.status_code == 200
         assert 'id="conversation-heading">Ask</h2>' in full_review.text
+        assert ">RB<" not in full_review.text
+        assert "exculpata-mark" in full_review.text
         assert "data-assistant-dock" not in full_review.text
 
         themed = client.post(

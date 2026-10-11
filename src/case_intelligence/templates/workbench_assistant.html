@@ -7,7 +7,7 @@
         </div>{% endmacro %}
 <aside class="matter-assistant" data-assistant-dock data-assistant-presentation="{{ assistant.presentation }}" data-fragment-url="{{ assistant.fragment_url }}" data-matter-id="{{ matter.matter_id }}" data-conversation-id="{{ assistant.conversation.conversation_id }}" data-matter-ready="{{ 'true' if assistant.matter_ready else 'false' }}" aria-label="Ask Exculpata">
   <button class="assistant-collapsed-tab" type="button" data-assistant-expand aria-label="Open Ask Exculpata">
-    <span class="assistant-brand-mark" aria-hidden="true">RB</span>
+    <span class="assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
     <span><strong>{{ assistant.display_label }}</strong><small data-assistant-readiness-copy>{{ assistant.searchable_source_count }} of {{ assistant.readiness.total_count }} searchable{% if assistant.readiness.excluded_count %} · {{ assistant.readiness.excluded_count }} excluded{% endif %}</small></span>
   </button>
   <div class="assistant-panel">
@@ -49,7 +49,7 @@
       </article>
       {% else %}
       <article class="assistant-message assistant-recordbench-message">
-        <span class="assistant-message-avatar assistant-brand-mark" aria-hidden="true">RB</span>
+        <span class="assistant-message-avatar assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
         <div>
           <strong>Saved answer · Exculpata</strong><small class="assistant-answer-provenance">Historical answer; the scope below applies only to your next question. Inspect this answer’s citations for its sources.</small>
           {% if message.payload.source_coverage and message.payload.source_coverage.mode == 'partial' %}
@@ -127,7 +127,7 @@
       {% endif %}
       {% else %}
       <div class="assistant-empty">
-        <span class="assistant-brand-mark" aria-hidden="true">RB</span>
+        <span class="assistant-brand-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>
         <h2>Ask while you review</h2>
         <p>I’ll answer from this matter’s searchable sources and keep citations attached.</p>
         {% if assistant.matter_ready %}{{ suggestion_group() }}{% endif %}
