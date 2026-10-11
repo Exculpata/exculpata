@@ -10,6 +10,14 @@ updates:
     groups:
       python-dependencies:
         patterns: ["*"]
+    ignore:
+      # 1.8.0 prints AuthlibDeprecationWarning on the httpx integration import,
+      # which fails installed-command help checks. 1.7 patch updates still apply.
+      - dependency-name: "authlib"
+        versions: [">= 1.8.0"]
+      # media_preflight requires webrtcvad.__version__ == "2.0.14". Later wheels,
+      # including 2.0.14.post1, report a different version and make the speech check unavailable.
+      - dependency-name: "webrtcvad-wheels"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

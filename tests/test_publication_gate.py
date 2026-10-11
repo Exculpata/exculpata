@@ -382,6 +382,71 @@ def test_github_merge_service_address_is_public_but_other_addresses_still_block(
     assert publication._scan_bytes(service, location="git-metadata", deny=(b"github",))
 
 
+def test_public_bot_identities_and_dependabot_signoff_are_exact():
+    dependabot = b"49699333+dependabot[bot]@users.noreply.github.com"
+    web_flow = b"noreply@" + b"github.com"
+    signoff = b"Signed-off-by: dependabot[bot] <support@" + b"github.com>"
+    personal = b"ada@" + b"personal.example"
+    support = b"support@" + b"github.com"
+    private_bot = b"49699333+dependabot[bot]@" + b"private.example"
+    email = publication.Finding("git-metadata", "non-example-email-address")
+    denied = publication.Finding("git-metadata", "operator-deny-term")
+
+    assert publication._scan_bytes(dependabot, location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(web_flow, location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(b"Bump\n\n" + signoff + b"\n", location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(signoff + b"\r", location="git-metadata", deny=()) == []
+    assert email in publication._scan_bytes(personal, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(dependabot + b"\n" + personal, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(support, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(b"Contact " + support + b" for help", location="git-metadata", deny=())
+    assert email in publication._scan_bytes(signoff + b" thanks", location="git-metadata", deny=())
+    assert email in publication._scan_bytes(b" " + signoff, location="git-metadata", deny=())
+    assert email in publication._scan_bytes(
+        b"Signed-off-by: other[bot] <" + support + b">", location="git-metadata", deny=()
+    )
+    assert email in publication._scan_bytes(private_bot, location="git-metadata", deny=())
+    assert denied in publication._scan_bytes(dependabot, location="git-metadata", deny=(b"dependabot",))
+    assert denied in publication._scan_bytes(web_flow, location="git-metadata", deny=(b"github",))
+    assert denied in publication._scan_bytes(signoff, location="git-metadata", deny=(b"support",))
+
+
+def test_dependabot_commit_identity_is_public_and_personal_mail_still_blocks(tmp_path):
+    import os
+
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    bot = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "dependabot[bot]",
+        "GIT_AUTHOR_EMAIL": "49699333+dependabot[bot]@users.noreply.github.com",
+        "GIT_COMMITTER_NAME": "GitHub",
+        "GIT_COMMITTER_EMAIL": "noreply@" + "github.com",
+    }
+    message = "Bump synthetic dependency\n\nSigned-off-by: dependabot[bot] <support@" + "github.com>"
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-q", "-m", message],
+        cwd=tmp_path,
+        env=bot,
+        check=True,
+    )
+    assert publication.scan_history(tmp_path, ()) == []
+    assert any(
+        item.rule == "operator-deny-term"
+        for item in publication.scan_history(tmp_path, (b"dependabot",))
+    )
+    personal = dict(bot)
+    personal["GIT_AUTHOR_EMAIL"] = "ada@" + "personal.example"
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-q", "-m", "synthetic personal"],
+        cwd=tmp_path,
+        env=personal,
+        check=True,
+    )
+    assert publication.Finding(
+        "git-metadata", "non-example-email-address"
+    ) in publication.scan_history(tmp_path, ())
+
+
 def test_reviewed_squash_coauthor_is_exact_commit_identity_and_trailer(tmp_path):
     def git(*args):
         return subprocess.check_output(["git", *args], cwd=tmp_path, text=True).strip()
