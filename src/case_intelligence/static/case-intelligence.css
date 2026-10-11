@@ -1324,6 +1324,10 @@ textarea::placeholder,
   font-size: clamp(34px, 3vw, 42px);
 }
 
+html[data-theme="dark"] .setup-page .setup-heading h1 {
+  color: var(--ink);
+}
+
 .setup-steps {
   display: flex;
   gap: 44px;
@@ -2118,6 +2122,10 @@ html[data-theme="dark"] .workspace-page .matter-heading h1 {
 .conversation-history-item.selected {
   border-left-color: var(--accent);
   background: #f5f7fa;
+}
+
+html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
+  background: var(--surface-strong);
 }
 
 .conversation-history-item > span {

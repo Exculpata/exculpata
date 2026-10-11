@@ -1,0 +1,489 @@
+{
+  "synthetic_only": true,
+  "passed": true,
+  "checks": [
+    "1440px: Home \u2192 Ask navigation",
+    "1440px light: heading visible without overflow",
+    "1440px dark: heading visible without overflow",
+    "1440px dusk: heading visible without overflow",
+    "1440px light: heading visible without overflow",
+    "1440px: Ask \u2192 Search \u2192 Ask navigation",
+    "390px: Home \u2192 Ask navigation",
+    "390px light: heading visible without overflow",
+    "390px dark: heading visible without overflow",
+    "390px dusk: heading visible without overflow",
+    "390px light: heading visible without overflow",
+    "390px: Ask \u2192 Search \u2192 Ask navigation",
+    "1920px light: Review / Add sources heading visible",
+    "1920px light: selected and unselected conversation labels visible",
+    "1920px dark: Review / Add sources heading visible",
+    "1920px dark: selected and unselected conversation labels visible",
+    "1920px light: Review / Add sources heading visible",
+    "1920px light: selected and unselected conversation labels visible",
+    "1920px: Light selected-card colors preserved through theme round trip",
+    "All measured heading colors meet 4.5:1 against the painted background"
+  ],
+  "measurements": [
+    {
+      "width": 1440,
+      "theme": "light",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1440,
+      "theme": "dark",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 16.18505991748998
+    },
+    {
+      "width": 1440,
+      "theme": "dusk",
+      "bg": [
+        11,
+        20,
+        37,
+        1
+      ],
+      "fg": [
+        237,
+        243,
+        251,
+        1
+      ],
+      "ratio": 16.48908640517322
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 16.18505991748998
+    },
+    {
+      "width": 390,
+      "theme": "dusk",
+      "bg": [
+        11,
+        20,
+        37,
+        1
+      ],
+      "fg": [
+        237,
+        243,
+        251,
+        1
+      ],
+      "ratio": 16.48908640517322
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "review-heading",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "ask-heading",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "selected-title",
+      "bg": [
+        245,
+        247,
+        250,
+        1
+      ],
+      "fg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "ratio": 18.129870077378513
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "selected-metadata",
+      "bg": [
+        245,
+        247,
+        250,
+        1
+      ],
+      "fg": [
+        90,
+        96,
+        105,
+        1
+      ],
+      "ratio": 5.908220842538325
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "unselected-title",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "ratio": 17.858228061480247
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "unselected-metadata",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        90,
+        96,
+        105,
+        1
+      ],
+      "ratio": 5.819697261663811
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "review-heading",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 16.18505991748998
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "ask-heading",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 16.18505991748998
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "selected-title",
+      "bg": [
+        28,
+        31,
+        36,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 13.745367791315653
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "selected-metadata",
+      "bg": [
+        28,
+        31,
+        36,
+        1
+      ],
+      "fg": [
+        130,
+        135,
+        142,
+        1
+      ],
+      "ratio": 4.568105449473178
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "unselected-title",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        237,
+        234,
+        226,
+        1
+      ],
+      "ratio": 16.18505991748998
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "target": "unselected-metadata",
+      "bg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "fg": [
+        130,
+        135,
+        142,
+        1
+      ],
+      "ratio": 5.3789073913211825
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "review-heading",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "ask-heading",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        10,
+        22,
+        48,
+        1
+      ],
+      "ratio": 16.468622279221826
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "selected-title",
+      "bg": [
+        245,
+        247,
+        250,
+        1
+      ],
+      "fg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "ratio": 18.129870077378513
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "selected-metadata",
+      "bg": [
+        245,
+        247,
+        250,
+        1
+      ],
+      "fg": [
+        90,
+        96,
+        105,
+        1
+      ],
+      "ratio": 5.908220842538325
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "unselected-title",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        11,
+        13,
+        16,
+        1
+      ],
+      "ratio": 17.858228061480247
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "target": "unselected-metadata",
+      "bg": [
+        247,
+        245,
+        240,
+        1
+      ],
+      "fg": [
+        90,
+        96,
+        105,
+        1
+      ],
+      "ratio": 5.819697261663811
+    }
+  ],
+  "browser_version": "153.0.8010.36"
+}
