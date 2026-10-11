@@ -386,3 +386,67 @@ bytes on both `recordbench` and `exculpata` naming generations after opening cle
 application stores. The normal mocked-backup test covers the same assertions
 without external services; it does not replace the encrypted drill or installed
 node acceptance. Use synthetic fixtures only.
+
+## Charging papers as background documents (C2)
+
+Migration `0039_source_roles.sql` (root and packaged SQLite copies) adds defaulted
+fields to `workbench_source_organization`: `source_role` is `unclassified` or
+`background`, `role_revision` starts at zero, and `role_updated_by` /
+`role_updated_at` start empty. Existing rows read as unclassified without a
+backfill or source-registry rewrite. Unclassified makes no assertion that a
+source is discovery. The role belongs to one `(matter_id, document_id)` occurrence;
+identical bytes or paths in a separate intake do not inherit it. Same-item retries,
+reopen, catalog reconciliation, collection moves and review-state changes retain it.
+File kind, upload/registered origin, source versions and query defaults are unchanged.
+
+After ordinary intake, open a document, expand **Source details & extraction**,
+and choose **Change source role**. Active team reviewers can mark a charging paper
+as **Background document** or clear it to **Unclassified**. The source library
+shows background designations. The editor remains usable without JavaScript.
+Administrator override is read-only unless the administrator joins the matter.
+Revoked/disabled accounts, other matters and non-active lifecycle states are denied.
+
+`GET /matters/{slug}/sources/{token}/role` renders the editor; with
+`Accept: application/json` it returns `document_id`, `version_id`, `source_role`,
+`revision`, `updated_by` and `updated_at`. CSRF-protected JSON `PUT` accepts exactly
+`expected_revision` and `source_role` in a body of at most 4 KiB. HTML `POST` uses
+the same service. The source/version action token and displayed revision fence
+stale writes. A 409 editor keeps the proposed choice beside the current role for
+deliberate reconciliation. No-op saves retain attribution and revision. Successful
+changes atomically append `source.role_update` with actor/time, opaque source ID
+and empty audit metadata; role values, filenames, text, hashes and lengths are
+not audit or log details. Authority is rechecked before committing both records.
+
+Complete work-product bundles include `context/source-roles.json`, containing
+exact occurrence/current-version identity, role, revision, editor/time and the
+content-free role audit. Each manifest is bounded to 10,000 source rows and 10,000
+audit events; excess or an organization without a catalog version blocks the
+export explicitly. Note-only exports stay note-only. Source removal deletes its
+organization/role; complete matter purge deletes all roles before the existing
+post-purge content sweep. The existing content-free audit/tombstone remains.
+Bundles contain metadata, not source bytes or a reopenable matter package.
+
+The control database's ordinary backup boundary includes all four columns and
+audit. Stop writers and take a verified complete backup before upgrading. Rollback
+uses that pre-upgrade snapshot and its matching old reader in a clean target;
+retain subsequent work separately. Additive read compatibility is not a promise
+that mixed-version writers are supported. The synthetic commands are:
+
+```console
+python -m pytest -q tests/test_source_roles.py tests/test_source_role_workflow.py tests/test_backup_consistency.py
+python scripts/source-role-storage-restore-drill.py
+```
+
+The first command includes a stopped-runtime restore with original paths unavailable,
+original navigation, complete export and actual closure/purge. The second exercises
+the pre-C2 schema, defaulted upgrade, clean reopen, byte-identical role/audit export,
+purge and matching-reader rollback. The ordinary backup suite and the required
+`deployment-contract` encrypted restic/PostgreSQL drill cover role metadata on both
+naming generations. The encrypted drill remains opt-in locally; a skipped run is
+not a pass. The pinned browser runner includes `browser-accept-source-roles.py` for
+keyboard mark/clear, conflict recovery, reload and exact desktop/390/320px checks.
+
+C2 is reviewer metadata only. It does not infer charging-paper status, change
+source processing, select/exclude sources, alter prompts or steer answers/briefings.
+C1 objective/background free text remains unused by answers, briefings, models and
+descriptors. C3/C4 remain separate increments.

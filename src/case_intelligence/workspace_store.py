@@ -248,16 +248,12 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         if 'extractor_version' not in {row[1] for row in self.connection.execute('PRAGMA table_info(workbench_entity)')}:
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0033_entity_discovery.sql").read_text(encoding="utf-8")
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
-        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0034_evidence_assertions.sql").read_text(encoding="utf-8")
-        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
-        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0035_matter_context_selection.sql").read_text(encoding="utf-8")
-        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
-        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0036_answer_context.sql").read_text(encoding="utf-8")
-        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
-        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0037_automatic_entity_discovery.sql").read_text(encoding="utf-8")
-        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
-        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0038_matter_purpose.sql").read_text(encoding="utf-8")
-        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+        for name in ('0034_evidence_assertions.sql', '0035_matter_context_selection.sql',
+                     '0036_answer_context.sql', '0037_automatic_entity_discovery.sql', '0038_matter_purpose.sql'):
+            migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
+            self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+        from .source_roles import migrate_source_roles
+        migrate_source_roles(self.connection)
         from .full_text_review_budget import backfill_legacy_ledgers
         backfill_legacy_ledgers(self)
         session_columns = {
@@ -1330,7 +1326,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             rows = self.connection.execute(
                 "SELECT c.*,COALESCE(o.collection_id,'') AS collection_id,"
                 "COALESCE(sc.name,'Unfiled') AS collection_name,"
-                "COALESCE(o.review_state,'unreviewed') AS review_state,"
+                "COALESCE(o.review_state,'unreviewed') AS review_state,COALESCE(o.source_role,'unclassified') AS source_role,"
                 "COALESCE(o.added_at,c.cataloged_at) AS added_at "
                 "FROM workbench_source_catalog c "
                 "LEFT JOIN workbench_source_organization o "
@@ -5262,7 +5258,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             rows = self.connection.execute(
                 "WITH selected_page AS MATERIALIZED (SELECT c.*,COALESCE(o.collection_id,'') AS collection_id,"
                 "COALESCE(sc.name,'Unfiled') AS collection_name,"
-                "COALESCE(o.review_state,'unreviewed') AS review_state,"
+                "COALESCE(o.review_state,'unreviewed') AS review_state,COALESCE(o.source_role,'unclassified') AS source_role,"
                 "COALESCE(o.added_at,c.cataloged_at) AS added_at"
                 + base_join
                 + predicate
@@ -5456,7 +5452,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             row = self.connection.execute(
                 "SELECT c.*,COALESCE(o.collection_id,'') AS collection_id,"
                 "COALESCE(sc.name,'Unfiled') AS collection_name,"
-                "COALESCE(o.review_state,'unreviewed') AS review_state,"
+                "COALESCE(o.review_state,'unreviewed') AS review_state,COALESCE(o.source_role,'unclassified') AS source_role,"
                 "COALESCE(o.added_at,c.cataloged_at) AS added_at "
                 "FROM workbench_source_catalog c "
                 "LEFT JOIN workbench_source_organization o "
@@ -5495,7 +5491,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             row = self.connection.execute(
                 "SELECT c.*,COALESCE(o.collection_id,'') AS collection_id,"
                 "COALESCE(sc.name,'Unfiled') AS collection_name,"
-                "COALESCE(o.review_state,'unreviewed') AS review_state,"
+                "COALESCE(o.review_state,'unreviewed') AS review_state,COALESCE(o.source_role,'unclassified') AS source_role,"
                 "COALESCE(o.added_at,c.cataloged_at) AS added_at "
                 "FROM workbench_source_catalog c "
                 "LEFT JOIN workbench_source_organization o "
@@ -5599,7 +5595,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         with self._lock:
             rows = self.connection.execute(
                 "SELECT matter_id,document_id,collection_id,relative_path,review_state,"
-                "added_by,added_at,updated_by,updated_at "
+                "added_by,added_at,updated_by,updated_at,source_role "
                 "FROM workbench_source_organization WHERE matter_id=?",
                 (matter_id,),
             ).fetchall()

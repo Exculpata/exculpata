@@ -13,6 +13,7 @@
       <h1 title="{{ source.row.name }}">{{ source.row.name }}</h1>
       <details class="review-source-details"><summary>Source details &amp; extraction</summary><p class="review-full-source-name">{{ source.row.name }}</p><p class="eyebrow">{{ source.row.collection_name }} · {{ source.row.kind }}</p>
 
+      <p data-source-role>Role: {{ 'Background document' if source.row.source_role == 'background' else 'Unclassified' }} · <a href="{{ request.url.path }}/role?{{ request.url.query }}">Change source role</a></p>
       <p>{{ source.position_label }} · {{ source.row.state }}</p>
       {% if source_coverage_notice %}<p>{{ source_coverage_notice }}</p>{% endif %}
       {% include "workbench_review_readiness.html" %}

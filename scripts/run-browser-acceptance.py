@@ -46,8 +46,10 @@ JOURNEYS = (
     ('briefing', 'browser-accept-briefing.py', 'receipt.json', 12, ()),
     ('matter-purpose', 'browser-accept-matter-purpose.py', 'receipt.json', 6, ()),
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
+    ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
 )
 ARTIFACT_NAMES = (
+    'source-role-1440.png', 'source-role-390.png', 'source-role-320.png', 'source-role-conflict-320.png',
     'receipt-browser-result.json', 'receipt.json', 'failure.png', 'failure.html',
     'purpose-empty-1440.png', 'purpose-edit-1440.png', 'purpose-edit-390.png',
     'purpose-edit-320.png', 'purpose-conflict-320.png',

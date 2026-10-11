@@ -1,0 +1,27 @@
+{% extends "workbench_base.html" %}
+{% block title %}Source role · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block content %}
+<main id="main-content" tabindex="-1" class="matter-home-main">
+  {% with active='sources' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  <section class="source-role-panel" aria-labelledby="source-role-heading">
+    <a href="{{ reader_href }}">← Return to source</a>
+    <h1 id="source-role-heading">Source role</h1>
+    <p class="review-full-source-name">{{ source_name }}</p>
+    <p id="saved-source-role">Current role: <strong>{{ 'Background document' if saved.source_role == 'background' else 'Unclassified' }}</strong></p>
+    <p>Mark charging papers as background documents. This designation does not change which sources questions or briefings use. Unclassified means no role has been chosen.</p>
+    {% if error %}<p class="notice notice-error" role="alert">{{ error }}</p><p>Your unsaved choice: {{ 'Background document' if proposed == 'background' else 'Unclassified' }}</p>{% endif %}
+    {% if can_edit %}
+    <form method="post" action="{{ request.url.path }}?{{ request.url.query }}" id="source-role-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="expected_revision" value="{{ saved.revision }}">
+      <label for="source-role">Role</label>
+      <select id="source-role" name="source_role">
+        <option value="unclassified" {% if (proposed or saved.source_role) == 'unclassified' %}selected{% endif %}>Unclassified</option>
+        <option value="background" {% if (proposed or saved.source_role) == 'background' %}selected{% endif %}>Background document</option>
+      </select>
+      <button class="button button-primary" type="submit">{{ 'Save this choice over current role' if error else 'Save role' }}</button>
+    </form>
+    {% else %}<p>Join the matter to change its source roles.</p>{% endif %}
+  </section>
+</main>
+{% endblock %}

@@ -662,3 +662,11 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .assistant-suggestions-heading { margin: 0; color: var(--ink-soft); font-size: 10px; font-weight: 700; }
 .assistant-suggestions-hint { margin: 2px 0 0; color: var(--ink-soft); font-size: 10px; }
 .assistant-suggestions button { overflow-wrap: anywhere; }
+
+/* C2 source-role editor uses the shared theme and native form controls. */
+.source-role-panel { max-width: 48rem; padding: 20px; border: 1px solid var(--line); background: var(--surface); }
+.source-role-panel h1 { font-size: 1.5rem; margin-block: 16px; }
+.source-role-panel p { overflow-wrap: anywhere; }
+#source-role-form { display: grid; gap: 10px; max-width: 24rem; }
+#source-role-form select { min-height: 44px; width: 100%; min-width: 0; padding: 8px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+#source-role-form button { justify-self: start; min-height: 44px; white-space: normal; }
