@@ -187,11 +187,43 @@ def page_image_evidence(page: object, reader: object) -> tuple[float, bool]:
         return min(1.0, area / page_area), False
 
 
+_ADDRESS_SPACE_CEILING = 512 * 1024 * 1024
+
+
+def _limit_address_space(ceiling: int = _ADDRESS_SPACE_CEILING) -> None:
+    """Apply an address-space ceiling when this platform accepts it.
+
+    Linux can lower ``RLIMIT_AS``. macOS often rejects that call with
+    ``ValueError`` ("current limit exceeds maximum limit") because the current
+    soft limit already exceeds the requested hard ceiling, or because the kernel
+    will not set the resource. A matching hard ceiling is tried first. If that
+    fails, only the soft limit is lowered and the current hard limit is kept.
+    If neither applies, extraction continues. Refusal is not document damage.
+    """
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    except (ValueError, OSError):
+        return
+    infinity = resource.RLIM_INFINITY
+    target_hard = ceiling if hard == infinity or ceiling <= hard else hard
+    target_soft = soft if soft != infinity and soft < target_hard else target_hard
+    if (soft, hard) == (target_soft, target_hard):
+        return
+    attempts = [(target_soft, target_hard)]
+    if hard != target_hard:
+        attempts.append((target_soft, hard))
+    for limits in attempts:
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, limits)
+        except (ValueError, OSError):
+            continue
+        return
+
+
 def _limit_process() -> None:
     # The web process also enforces a wall timeout and bounded JSON validation.
     resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
-    memory = 512 * 1024 * 1024
-    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    _limit_address_space()
     resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 1024 * 1024, 16 * 1024 * 1024))
     resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
 
