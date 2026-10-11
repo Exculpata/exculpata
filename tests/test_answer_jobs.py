@@ -60,6 +60,95 @@ def _wait_for(store, matter, job_id, states, timeout=4):
     return store.get_answer_job(matter.matter_id, matter.owner_id, job_id)
 
 
+# A fixed ceiling assumes an idle CPU and flakes when pytest-xdist shares the
+# machine. Scale each sample by a fixed in-process CPU loop, then require the
+# loaded sample to stay within a small multiple of an unloaded sample. A call
+# that waits on a held answer worker grows by that hold and fails the multiple.
+_RELATIVE_LOAD_LIMIT = 4
+_UNLOADED_SAMPLES = 3
+
+
+def _cpu_reference_seconds():
+    started = time.perf_counter()
+    checksum = 0
+    for value in range(400_000):
+        checksum = (checksum + value) % 997
+    elapsed = time.perf_counter() - started
+    if elapsed <= 0:
+        raise RuntimeError(f"CPU reference did not advance ({checksum})")
+    return elapsed
+
+
+def _load_ratio(elapsed_seconds, reference_seconds):
+    if reference_seconds <= 0:
+        raise AssertionError("CPU reference did not advance")
+    return elapsed_seconds / reference_seconds
+
+
+def _assert_loaded_matches_unloaded(loaded_ratio, unloaded_ratios, label):
+    assert unloaded_ratios, label
+    baseline = sorted(unloaded_ratios)[len(unloaded_ratios) // 2]
+    limit = baseline * _RELATIVE_LOAD_LIMIT
+    assert loaded_ratio <= limit, (
+        f"{label}: loaded/CPU {loaded_ratio:.2f} exceeded {limit:.2f} "
+        f"({_RELATIVE_LOAD_LIMIT}x unloaded median {baseline:.2f}; "
+        f"samples {[round(ratio, 2) for ratio in unloaded_ratios]})"
+    )
+
+
+def _wait_for_status(client, status_url, states, timeout=8):
+    deadline = time.monotonic() + timeout
+    status = None
+    while time.monotonic() < deadline:
+        status = client.get(status_url).json()
+        if status["state"] in states:
+            return status
+        time.sleep(0.01)
+    return status
+
+
+def _timed_ask(client, slug, conversation_id, request_key, question, reference=None):
+    if reference is None:
+        reference = _cpu_reference_seconds()
+    started = time.perf_counter()
+    response = client.post(
+        f"/matters/{slug}/ask",
+        data={
+            "conversation": conversation_id,
+            "question": question,
+            "request_key": request_key,
+        },
+        headers={"Accept": "application/json"},
+    )
+    return response, time.perf_counter() - started, reference
+
+
+def _timed_concurrent_search(client, sessions):
+    def one(session):
+        started = time.perf_counter()
+        response = client.get(
+            f"/matters/{session[0]}",
+            params={"mode": "search", "q": "cobalt notebook"},
+        )
+        return response.status_code, time.perf_counter() - started, response.text
+
+    reference = _cpu_reference_seconds()
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = tuple(pool.map(one, sessions))
+    assert all(
+        status == 200 and "Search this matter" in text
+        for status, _elapsed, text in results
+    )
+    return max(elapsed for _status, elapsed, _text in results), reference, results
+
+
+def test_relative_latency_limit_rejects_a_generation_scale_stall():
+    unloaded = [1.0, 1.1, 0.9]
+    _assert_loaded_matches_unloaded(1.2, unloaded, "near baseline")
+    with pytest.raises(AssertionError, match="generation stall"):
+        _assert_loaded_matches_unloaded(20.0, unloaded, "generation stall")
+
+
 def test_answer_migration_matches_operator_copy():
     root = Path(__file__).parents[1]
     assert (
@@ -433,10 +522,12 @@ def test_http_acknowledges_immediately_reconnects_cancels_retries_and_deduplicat
             self.calls = 0
             self.started = threading.Event()
             self.release = threading.Event()
+            self.block = False
 
         def generate(self, **kwargs):
             self.calls += 1
-            if self.calls == 1:
+            if self.block:
+                self.block = False
                 self.started.set()
                 self.release.wait(timeout=3)
             evidence = kwargs["evidence"][0]
@@ -518,20 +609,43 @@ def test_http_acknowledges_immediately_reconnects_cancels_retries_and_deduplicat
         )
         partial = bench.workspace.matter_readiness(matter.matter_id)
         assert partial.can_query and partial.partial_query
+        question = "When was the cobalt notebook logged?"
+        calibration = bench.workspace.create_conversation(matter.matter_id)
+        unloaded_ack_ratios = []
+        for sample in range(_UNLOADED_SAMPLES):
+            response, elapsed, reference = _timed_ask(
+                client,
+                slug,
+                calibration.conversation_id,
+                f"answer-request-c{sample:031x}",
+                question,
+            )
+            assert response.status_code == 202
+            unloaded_ack_ratios.append(_load_ratio(elapsed, reference))
+            finished = _wait_for_status(
+                client, response.json()["status_url"], {"succeeded"}
+            )
+            assert finished is not None and finished["state"] == "succeeded"
+        generator.block = True
         request_data = {
             "conversation": conversation.conversation_id,
-            "question": "When was the cobalt notebook logged?",
+            "question": question,
             "request_key": "answer-request-" + "d" * 32,
         }
-        started_at = time.monotonic()
+        reference = _cpu_reference_seconds()
+        started_at = time.perf_counter()
         acknowledged = client.post(
             f"/matters/{slug}/ask",
             data=request_data,
             headers={"Accept": "application/json"},
         )
-        acknowledgement_seconds = time.monotonic() - started_at
+        acknowledgement_seconds = time.perf_counter() - started_at
         assert acknowledged.status_code == 202
-        assert acknowledgement_seconds < 0.75
+        _assert_loaded_matches_unloaded(
+            _load_ratio(acknowledgement_seconds, reference),
+            unloaded_ack_ratios,
+            "ask acknowledgement",
+        )
         job = acknowledged.json()
         assert generator.started.wait(timeout=2)
 
@@ -682,19 +796,21 @@ def test_eight_session_control_plane_keeps_search_and_ingestion_responsive(tmp_p
             self.active = 0
             self.maximum_active = 0
             self.order = []
+            self.hold = False
 
         def generate(self, **kwargs):
             evidence = kwargs["evidence"][0]
-            with self.lock:
-                self.active += 1
-                self.maximum_active = max(self.maximum_active, self.active)
-                self.order.append(evidence.source_name)
-                if self.active == 2:
-                    self.two_started.set()
-            self.release.wait(timeout=4)
-            time.sleep(0.03)
-            with self.lock:
-                self.active -= 1
+            if self.hold:
+                with self.lock:
+                    self.active += 1
+                    self.maximum_active = max(self.maximum_active, self.active)
+                    self.order.append(evidence.source_name)
+                    if self.active == 2:
+                        self.two_started.set()
+                self.release.wait(timeout=4)
+                time.sleep(0.03)
+                with self.lock:
+                    self.active -= 1
             return {
                 "answerable": True,
                 "claims": [
@@ -751,26 +867,61 @@ def test_eight_session_control_plane_keeps_search_and_ingestion_responsive(tmp_p
             sessions.append((slug, matter, first))
             sessions.append((slug, matter, second))
 
+        question = "What does this matter record about the cobalt notebook?"
+        calibration = client.app.state.workbench.workspace.create_conversation(
+            sessions[0][1].matter_id
+        )
+        unloaded_ack_ratios = []
+        for sample in range(_UNLOADED_SAMPLES):
+            response, elapsed, reference = _timed_ask(
+                client,
+                sessions[0][0],
+                calibration.conversation_id,
+                f"answer-request-a{sample:031x}",
+                question,
+            )
+            assert response.status_code == 202
+            unloaded_ack_ratios.append(_load_ratio(elapsed, reference))
+            finished = _wait_for_status(
+                client, response.json()["status_url"], {"succeeded"}
+            )
+            assert finished is not None and finished["state"] == "succeeded"
+        _timed_concurrent_search(client, sessions[::2])
+        unloaded_search_ratios = []
+        for _sample in range(_UNLOADED_SAMPLES):
+            elapsed, reference, _results = _timed_concurrent_search(
+                client, sessions[::2]
+            )
+            unloaded_search_ratios.append(_load_ratio(elapsed, reference))
+
+        generator.hold = True
         jobs = []
         acknowledgement_times = []
+        acknowledgement_ratios = []
         acceptance_started = time.monotonic()
         ordered_sessions = sessions[::2] + sessions[1::2]
+        acknowledgement_reference = _cpu_reference_seconds()
         for ordinal, (slug, _matter, conversation) in enumerate(ordered_sessions):
-            began = time.monotonic()
-            response = client.post(
-                f"/matters/{slug}/ask",
-                data={
-                    "conversation": conversation.conversation_id,
-                    "question": "What does this matter record about the cobalt notebook?",
-                    "request_key": f"answer-request-{ordinal:032x}",
-                },
-                headers={"Accept": "application/json"},
+            response, elapsed, _reference = _timed_ask(
+                client,
+                slug,
+                conversation.conversation_id,
+                f"answer-request-{ordinal:032x}",
+                question,
+                reference=acknowledgement_reference,
             )
-            acknowledgement_times.append(time.monotonic() - began)
+            acknowledgement_times.append(elapsed)
+            acknowledgement_ratios.append(
+                _load_ratio(elapsed, acknowledgement_reference)
+            )
             assert response.status_code == 202
             jobs.append(response.json())
         assert generator.two_started.wait(timeout=2)
-        assert max(acknowledgement_times) < 0.75
+        _assert_loaded_matches_unloaded(
+            max(acknowledgement_ratios),
+            unloaded_ack_ratios,
+            "ask acknowledgement",
+        )
 
         active_slug, active_matter, _conversation = sessions[0]
         uploaded = client.post(
@@ -799,19 +950,14 @@ def test_eight_session_control_plane_keeps_search_and_ingestion_responsive(tmp_p
             for document in active_store.documents.values()
         )
 
-        def search(session):
-            slug, _matter, _conversation = session
-            began = time.monotonic()
-            response = client.get(
-                f"/matters/{slug}",
-                params={"mode": "search", "q": "cobalt notebook"},
-            )
-            return response.status_code, time.monotonic() - began, response.text
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            search_results = tuple(pool.map(search, sessions[::2]))
-        assert all(status == 200 and "Search this matter" in text for status, _elapsed, text in search_results)
-        assert max(elapsed for _status, elapsed, _text in search_results) < 1.5
+        loaded_elapsed, loaded_reference, search_results = _timed_concurrent_search(
+            client, sessions[::2]
+        )
+        _assert_loaded_matches_unloaded(
+            _load_ratio(loaded_elapsed, loaded_reference),
+            unloaded_search_ratios,
+            "concurrent search",
+        )
 
         generator.release.set()
         deadline = time.monotonic() + 8
@@ -827,7 +973,9 @@ def test_eight_session_control_plane_keeps_search_and_ingestion_responsive(tmp_p
         assert not remaining
         assert generator.maximum_active == 2
         assert len(set(generator.order[:4])) == 4
-        assert client.get("/health").json()["answer_jobs"]["succeeded"] == 8
+        assert client.get("/health").json()["answer_jobs"]["succeeded"] == (
+            8 + len(unloaded_ack_ratios)
+        )
         for _slug, matter, conversation in sessions:
             messages = client.app.state.workbench.workspace.messages(
                 matter.matter_id, conversation.conversation_id
@@ -843,9 +991,17 @@ def test_eight_session_control_plane_keeps_search_and_ingestion_responsive(tmp_p
                     "max_acknowledgement_ms": round(
                         max(acknowledgement_times) * 1000, 1
                     ),
-                    "max_concurrent_search_ms": round(
-                        max(elapsed for _status, elapsed, _text in search_results) * 1000,
-                        1,
+                    "max_acknowledgement_ratio": round(max(acknowledgement_ratios), 2),
+                    "unloaded_acknowledgement_ratio": round(
+                        sorted(unloaded_ack_ratios)[len(unloaded_ack_ratios) // 2], 2
+                    ),
+                    "max_concurrent_search_ms": round(loaded_elapsed * 1000, 1),
+                    "max_concurrent_search_ratio": round(
+                        _load_ratio(loaded_elapsed, loaded_reference), 2
+                    ),
+                    "unloaded_search_ratio": round(
+                        sorted(unloaded_search_ratios)[len(unloaded_search_ratios) // 2],
+                        2,
                     ),
                     "all_answers_completed_ms": round(
                         (time.monotonic() - acceptance_started) * 1000, 1
