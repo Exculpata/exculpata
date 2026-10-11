@@ -18,6 +18,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 from .contracts import validate_relative_path
 from .derived_text import presentation_text
 from .source_locations import SourcePreflight
+from .store.knowledge_services import KnowledgeServicesMixin
 from .store.answer_scope import AnswerScopeMixin
 from .store import (
     MAX_REPORT_CITATION_EXCERPT_CHARS as MAX_REPORT_CITATION_EXCERPT_CHARS,
@@ -162,7 +163,7 @@ _ANALYSIS_RESTART_MESSAGE = (
 )
 
 
-class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
+class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, KnowledgeServicesMixin):
     """Small SQLite control store; source bytes remain in per-matter stores."""
 
     def __init__(
@@ -254,6 +255,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
         migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0036_answer_context.sql").read_text(encoding="utf-8")
         self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0037_automatic_entity_discovery.sql").read_text(encoding="utf-8")
+        self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+        migration = resources.files("case_intelligence").joinpath("migrations/sqlite/0038_matter_purpose.sql").read_text(encoding="utf-8")
         self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         from .full_text_review_budget import backfill_legacy_ledgers
         backfill_legacy_ledgers(self)
@@ -2295,18 +2298,6 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
             raise KeyError(purge_id)
         return self.matter_lifecycle(matter_id)
 
-    def entity_repository(self, *, export_read=False, administrator_override=False, automatic=False):
-        from .entity_repository import EntityRepository
-        authority = (lambda matter_id, actor_id: self._authorize_export_read(
-            matter_id, actor_id, administrator_override=administrator_override)) if export_read else self.membership
-        read_authority = None
-        if automatic:
-            authority = self._authorize_automatic_discovery
-            read_authority = lambda matter_id, actor_id: self._authorize_automatic_discovery(
-                matter_id, actor_id, create=False)
-        return EntityRepository(connection=self.connection, lock=self._lock,
-                                authorize=authority, now=self._now, read_authorize=read_authority)
-
     def _authorize_automatic_discovery(self, matter_id: str, actor_id: str, *, create: bool = True) -> None:
         """Allow only the inactive system principal, and only on an active matter.
 
@@ -2348,11 +2339,6 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
         ).fetchone()
         if principal is None or tuple(principal) != ("system", "automatic-discovery", 0) or member:
             raise KeyError(matter_id)
-
-    def assertion_repository(self, *, export_read=False, administrator_override=False):
-        from .assertion_repository import AssertionRepository
-        return AssertionRepository(self.entity_repository(
-            export_read=export_read, administrator_override=administrator_override))
 
     def complete_matter_purge(
         self, matter_id: str, purge_id: str
@@ -2399,6 +2385,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin):
             for table in ('workbench_entity_discovery_seen', 'workbench_entity_discovery_unit',
                           'workbench_entity_auto_discovery_unit', 'workbench_entity_reconciliation'):
                 self.connection.execute(f"DELETE FROM {table} WHERE matter_id=?", (matter_id,))
+            self.connection.execute('DELETE FROM workbench_matter_purpose WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_context_selection WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_assertion WHERE matter_id=?', (matter_id,))
             self.connection.execute(

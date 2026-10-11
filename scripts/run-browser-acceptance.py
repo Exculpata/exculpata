@@ -44,9 +44,12 @@ JOURNEYS = (
     ('assistant-dock', 'browser-accept-assistant-dock.py', 'receipt.json', 10, ()),
     ('one-box', 'browser-accept-one-box.py', 'receipt.json', 15, ()),
     ('briefing', 'browser-accept-briefing.py', 'receipt.json', 12, ()),
+    ('matter-purpose', 'browser-accept-matter-purpose.py', 'receipt.json', 6, ()),
 )
 ARTIFACT_NAMES = (
     'receipt-browser-result.json', 'receipt.json', 'failure.png', 'failure.html',
+    'purpose-empty-1440.png', 'purpose-edit-1440.png', 'purpose-edit-390.png',
+    'purpose-edit-320.png', 'purpose-conflict-320.png',
     'dusk-status.png', 'dusk-filters.png', 'dusk-bulk.png', 'dusk-focus.png',
     'dusk-bulk-active.png', 'dusk-mobile.png',
     'browser-errors.json', 'reports-desktop.png', 'reports-mobile.png',

@@ -14303,6 +14303,10 @@ def create_workbench_app(
             if not bench.workspace.connection.in_transaction:
                 audit(request, "matter.access", "denied", context=original)
             raise HTTPException(404, "Matter is no longer available") from exc
+    from .matter_purpose_routes import install_matter_purpose
+    install_matter_purpose(app, workspace=bench.workspace, authorized_matter=authorized_matter,
+        auth_context=auth_context, refresh_authority=refresh_context_authority, require_csrf=require_csrf,
+        require_csrf_header=require_csrf_header, templates=templates, base_context=base_context)
     from .matter_context_routes import install_context_routes
     install_context_routes(app, assertions_for=bench.assertion_service, authorized_matter=authorized_matter,
                            auth_context=auth_context, refresh_authority=refresh_context_authority,
@@ -16401,30 +16405,9 @@ def create_workbench_app(
                     add_work_product(kind="assertion", path=f"assertions/{index:04d}-assertion.json",
                         artifact=ExportArtifact(body=json.dumps(record, indent=2).encode("utf-8"),
                             media_type="application/json", filename="assertion.json"))
-            from .matter_context_repository import MatterContextRepository
-            with repository.transaction(matter.matter_id, read_actor_id):
-                manifest = MatterContextRepository(repository).export(matter.matter_id)
-                add_work_product(kind="context_selection", path="context/selections.json",
-                    artifact=ExportArtifact(body=json.dumps(manifest, indent=2).encode("utf-8"),
-                        media_type="application/json", filename="selections.json"))
-            from .answer_context import AnswerContextRepository
-            with repository.transaction(matter.matter_id, read_actor_id):
-                context_jobs = bench.workspace.connection.execute(
-                    'SELECT job_id FROM workbench_answer_context WHERE matter_id=? ORDER BY job_id LIMIT 1001',
-                    (matter.matter_id,)).fetchall()
-                if len(context_jobs) > 1000:
-                    raise WorkspaceProblem('Too many context receipts for a complete export.')
-                context_bytes = bench.workspace.connection.execute(
-                    'SELECT coalesce(sum(length(CAST(c.snapshot_json AS BLOB)) + '
-                    '(SELECT coalesce(sum(length(CAST(a.manifest_json AS BLOB))),0) FROM workbench_answer_context_attempt a WHERE a.job_id=c.job_id)),0) '
-                    'FROM workbench_answer_context c WHERE c.matter_id=?', (matter.matter_id,)).fetchone()[0]
-                if context_bytes > 8 * 1024 * 1024:
-                    raise WorkspaceProblem('Context receipts exceed the complete export bound. Export individual receipts.')
-                for row in context_jobs:
-                    receipt = AnswerContextRepository(bench.workspace).receipt(matter.matter_id, row[0])
-                    add_work_product(kind='answer_context', path=f'context/{row[0]}.json',
-                        artifact=ExportArtifact(body=json.dumps(receipt, indent=2).encode('utf-8'),
-                            media_type='application/json', filename=row[0] + '.json'))
+            from .matter_context_exports import add_context_exports
+            add_context_exports(bench.workspace, matter.matter_id, read_actor_id,
+                                administrator_override, add_work_product)
             artifact = export_matter_bundle(
                 matter,
                 conversations,

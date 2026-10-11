@@ -46,6 +46,11 @@ It also holds actual Home responses across two controlled readiness cycles to
 verify that an obsolete response cannot replace the briefing, a fresh read is
 required, and the unsent draft and focus outside the briefing survive.
 
+The C1 matter-orientation journey checks the empty invitation, native keyboard
+editing, saved reload, 1440/390/320 pixel layouts, stale-tab draft recovery,
+clearing both fields and absence of generated answer/research jobs. Its
+`purpose-*.png` screenshots and content-free receipt join the bounded allowlist.
+
 All applications are generated for the run and listen on ephemeral loopback
 ports. They use the unavailable generator or a fixed synthetic generator and
 synthetic text fixtures. This is
