@@ -62,3 +62,23 @@ def test_theme_fonts_are_self_hosted_with_licenses():
     dependencies = (ROOT / "docs/DEPENDENCIES.md").read_text(encoding="utf-8")
     assert "Geist" in dependencies and "JetBrains Mono" in dependencies
     assert "SIL Open Font License" in dependencies
+
+
+def test_dusk_disabled_buttons_outside_the_source_library_keep_light_borders():
+    tokens = parse_theme_tokens(THEME_TOKENS.read_text(encoding="utf-8"))
+    styles = (STATIC / "case-intelligence.css").read_text(encoding="utf-8")
+    danger = (
+        'html[data-theme="dusk"] :is(.button-danger:disabled, .button-danger.disabled) {\n'
+        f"  border-color: {tokens['light']['error']};\n"
+        "}"
+    )
+    secondary = (
+        'html[data-theme="dusk"] :is(.button-secondary:disabled, .button-secondary.disabled) {\n'
+        f"  border-color: {tokens['light']['border-strong']};\n"
+        "}"
+    )
+    assert danger in styles
+    assert secondary in styles
+    library = 'html[data-theme="dusk"] .source-library :is(.button:disabled, .button.disabled)'
+    assert styles.index(danger) < styles.index(library)
+    assert styles.index(secondary) < styles.index(library)

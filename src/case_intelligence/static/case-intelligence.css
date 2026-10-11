@@ -8214,6 +8214,18 @@ html[data-theme="dusk"] :is(.source-library-filters, .source-bulk-toolbar) input
 html[data-theme="dusk"] :is(.source-library-filters, .source-results-heading) > a {
   color: var(--blue-action);
 }
+/* Disabled buttons outside the source library keep their Light borders under
+   Dusk. Dusk redefines --danger and --line-strong, which still paint the
+   border after .button:disabled freezes the fill and text. These Light token
+   values are --x-error (#C2281F) and --x-border-strong (#81868E). The
+   source-library rule below is more specific and still restyles disabled
+   controls inside the library. */
+html[data-theme="dusk"] :is(.button-danger:disabled, .button-danger.disabled) {
+  border-color: #C2281F;
+}
+html[data-theme="dusk"] :is(.button-secondary:disabled, .button-secondary.disabled) {
+  border-color: #81868E;
+}
 html[data-theme="dusk"] .source-library :is(.button:disabled, .button.disabled) {
   background: var(--surface-strong);
   border-color: var(--line-strong);

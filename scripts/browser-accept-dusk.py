@@ -168,7 +168,10 @@ def main():
             outside_light = outside_disabled_style()
             Select(one('[data-theme-picker]')).select_by_value('dusk')
             wait.until(lambda _: one('html').get_attribute('data-theme') == 'dusk')
-            assert outside_disabled_style() == outside_light
+            # Dusk must not restyle this control. Danger and secondary borders
+            # are pinned to the Light tokens in case-intelligence.css.
+            dusk_disabled = outside_disabled_style()
+            assert dusk_disabled == outside_light, (outside_light, dusk_disabled)
             report['checks'].append('Disabled buttons outside the source library retain their existing styles')
             one('.source-status-overview').screenshot(str(output / 'dusk-status.png'))
             one('.source-library-filters').screenshot(str(output / 'dusk-filters.png'))

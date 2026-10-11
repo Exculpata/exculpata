@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Disabled buttons outside the source library keep their Light borders when
+  Dusk is selected. Disabled controls inside the source library still use the
+  Dusk treatment.
+
 - The assistant and answer badges use the Exculpata icon instead of the old initials.
 
 - Apply the Exculpata theme. Dark is the default appearance, and Light and Dusk
