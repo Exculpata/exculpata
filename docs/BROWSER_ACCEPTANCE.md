@@ -25,6 +25,10 @@ The [one-box journey](WORKSPACE_LAYOUT.md#one-box-on-home) enables the optional
 Home entry point and checks exact search, cited answers and a prefilled
 every-source criterion, route switching, native keyboard use and a 430-pixel
 viewport. It confirms that opening the criterion creates no review run.
+Destination checks re-find the route reason within the existing 30-second wait
+if answer completion replaces the document during a visibility or text read.
+The same route, completed-load, visibility and classifier-text checks still apply;
+unexpected driver errors and assertion failures are not retried.
 With `CASE_INTELLIGENCE_DEEPER_INVESTIGATION` enabled, the same journey also
 checks that a supported answer shows no additional offer, while a deterministic
 `answerable=false` result offers **Investigate this more deeply** without
