@@ -1126,7 +1126,7 @@ svg {
 .matter-form input::placeholder,
 textarea::placeholder,
 .matter-search-form input::placeholder {
-  color: #8993a4;
+  color: var(--ink-faint);
 }
 
 .form-actions {

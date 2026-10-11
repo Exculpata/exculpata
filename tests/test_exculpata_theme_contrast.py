@@ -56,6 +56,9 @@ def test_theme_fonts_are_self_hosted_with_licenses():
     assert 'data-theme="dark"' in login
     assert 'value="dark"' in base and 'value="light"' in base and 'value="dusk"' in base
     assert "var(--x-font-sans)" in styles and "var(--font-mono)" in styles
+    # The previous gray fails 4.5:1 on the light canvas. Placeholders use muted text.
+    assert "#8993a4" not in styles
+    assert "textarea::placeholder,\n.matter-search-form input::placeholder {\n  color: var(--ink-faint);" in styles
     dependencies = (ROOT / "docs/DEPENDENCIES.md").read_text(encoding="utf-8")
     assert "Geist" in dependencies and "JetBrains Mono" in dependencies
     assert "SIL Open Font License" in dependencies
