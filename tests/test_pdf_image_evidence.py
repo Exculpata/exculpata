@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from types import SimpleNamespace
 
 import pytest
@@ -397,7 +396,6 @@ def test_old_pdf_page_constructors_explicitly_have_unknown_image_evidence():
     assert page.image_evidence_known is False
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Existing PDF helper RLIMIT_AS requires Linux")
 def test_resource_limited_child_transports_native_text_and_image_evidence(tmp_path):
     source = tmp_path / "synthetic-child.pdf"
     _pdf(source, b"q 80 0 0 80 10 10 cm /Scan Do Q", "LONG SYNTHETIC RECEIVED STAMP")
