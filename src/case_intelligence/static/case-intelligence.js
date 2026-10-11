@@ -3181,10 +3181,15 @@
     detail.textContent = description;
     link.append(detail);
   });
+  let closedWidth = tabs.clientWidth;
   const place = () => {
+    // Opening the navigator widens its row. Keep the closed measurement so the
+    // menu does not look wide enough for direct links and detach itself.
+    if (!(disclosure.isConnected && disclosure.open)) closedWidth = tabs.clientWidth;
+    const width = disclosure.isConnected && disclosure.open ? closedWidth : tabs.clientWidth;
     // A content breakpoint, scaled with the user's root font size. Direct links
     // also wrap as a fallback, so a long label can never become unreachable.
-    const narrow = tabs.clientWidth < 26 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const narrow = width < 26 * parseFloat(getComputedStyle(document.documentElement).fontSize);
     const focused = document.activeElement;
     if (narrow && !disclosure.isConnected) {
       tabs.classList.add("sections-compact");

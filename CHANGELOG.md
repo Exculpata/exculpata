@@ -6,6 +6,9 @@
   Dusk is selected. Disabled controls inside the source library still use the
   Dusk treatment.
 
+- Opening the compact section navigator no longer makes the matter bar look
+  wide enough to replace the navigator with direct links.
+
 - The assistant and answer badges use the Exculpata icon instead of the old initials.
 
 - Apply the Exculpata theme. Dark is the default appearance, and Light and Dusk
