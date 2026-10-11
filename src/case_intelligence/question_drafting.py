@@ -193,6 +193,14 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
             "records must say if any and describe the statement as something the recording "
             "appears to say, not as an established event."
         )
+        if purpose == "discovery":
+            system += (
+                " Use this wording pattern for each transcript-based request: Please provide "
+                "[material mentioned in the excerpt], if any, to clarify what the recording "
+                "appears to say about [an unresolved point]. Replace the bracketed placeholders "
+                "with source-supported wording. Do not reconstruct who sent or received "
+                "something from an anonymous speaker label."
+            )
     lines = [f"[{item.evidence_id}] {item.source_name} · {item.location}"
              f"{' (machine transcript)' if item.evidence_kind == TRANSCRIPT_EVIDENCE_KIND else ''}\n{item.excerpt}"
              for item in evidence]
