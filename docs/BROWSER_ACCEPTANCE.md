@@ -49,6 +49,12 @@ restart checks that disabling the briefing flag restores the existing Home.
 It also holds actual Home responses across two controlled readiness cycles to
 verify that an obsolete response cannot replace the briefing, a fresh read is
 required, and the unsent draft and focus outside the briefing survive.
+The C3 extension edits the short objective through the native Home form, checks
+stable promotion of existing questions after reload, and compares byte-identical
+briefing markup for unmatched, whitespace-only and cleared objectives. Sections,
+coverage, question text/labels/links and answer/research counts remain unchanged.
+The existing 430-pixel one-box and Ask-fallback checks then use steered questions.
+The aggregate runner requires all 15 briefing checks, including this extension.
 
 The C1 matter-orientation journey checks the empty invitation, native keyboard
 editing, saved reload, 1440/390/320 pixel layouts, stale-tab draft recovery,

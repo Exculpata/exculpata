@@ -42,7 +42,8 @@ def test_home_api_edit_conflict_clear_export_fidelity_and_no_consumption(client,
     assert client.get(path).headers['cache-control'] == 'no-store'
     page = client.get(home)
     assert '&lt;synthetic&gt;' in page.text and '<synthetic>' not in page.text
-    assert 'answers and briefings do not use it yet' in page.text
+    assert 'names and dates in your objective can move matching suggested questions first' in page.text
+    assert 'Background stays for reviewers; answers do not use either field' in page.text
     stale = client.put(path, json=values, headers=headers)
     assert stale.status_code == 409 and OBJECTIVE not in stale.text
     conflict = client.post(path, data=dict(values, csrf_token=token, objective='Unsaved synthetic draft'))

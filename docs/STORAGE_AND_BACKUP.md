@@ -348,8 +348,10 @@ as empty at revision zero. Objective is limited to 500 Unicode characters and
 1,024 UTF-8 bytes; background to 10,000 characters and 24,000 UTF-8 bytes. Both
 are plain text; UTF-8, whitespace and line endings are preserved exactly.
 Unsupported control characters are rejected. Empty strings clear the fields.
-No model, briefing, prompt, descriptor, source kind or source origin consumes
-or substitutes these fields.
+No model, answer, prompt, descriptor, source kind or source origin consumes
+or substitutes these fields. The separate [C3 briefing increment](DISCOVERY_BRIEFING.md#reviewer-objective-c3)
+reads only the short objective to reorder existing suggested questions; the
+longer background remains unused by the briefing.
 
 Active team reviewers read and edit shared matter orientation on Home. Existing
 administrator override permits reading only; joining the team is required to
@@ -448,5 +450,6 @@ keyboard mark/clear, conflict recovery, reload and exact desktop/390/320px check
 
 C2 is reviewer metadata only. It does not infer charging-paper status, change
 source processing, select/exclude sources, alter prompts or steer answers/briefings.
-C1 objective/background free text remains unused by answers, briefings, models and
-descriptors. C3/C4 remain separate increments.
+C1 objective/background free text remains unused by answers, models and
+descriptors. The separate C3 increment uses only the objective to reorder existing
+briefing questions; background and C2 source roles do not steer it. C4 remains separate.

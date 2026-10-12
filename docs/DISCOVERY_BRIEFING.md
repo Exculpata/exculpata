@@ -81,6 +81,42 @@ deduplicated before applying the five-question cap. A duplicate or ineligible ro
 slot. Sparse matters may therefore have fewer questions or none. Tests cover
 selection, deterministic ordering, deduplication, limits and unavailable support.
 
+## Reviewer objective (C3)
+
+After the existing eligibility, deduplication and five-question selection, the
+short C1 reviewer objective can change only the order of those selected questions.
+The assembler reads only `objective` from the current matter's purpose record
+under its existing membership, source-guard, workspace-lock and external-change
+checks. The stored C1 bound remains 500 Unicode characters / 1,024 UTF-8 bytes.
+The longer background field and C2 source roles are not read for steering.
+
+A question matches when its complete structured person/place name or literal
+stated date appears in the objective. Both strings collapse whitespace and use
+Unicode case folding; adjacent Unicode word characters (letters, numbers or
+underscore) disallow a match. Punctuation is literal within the label and can
+delimit it. For example, `Review JORDAN   SAMPLE.` matches `Jordan Sample`, but
+`Jordans Sample`, `Jordan Samples` and `Jordan` do not. Dates are not parsed or
+reformatted. There is no stemming, alias resolution, fuzzy/semantic matching or
+interpretation of the objective as instructions. The question template is never
+part of the matched subject.
+
+Matching questions move before nonmatching questions; both groups preserve their
+original order, regardless of subject order or repetition in the objective.
+Question membership, text, Suggested labels and links remain exact. A named
+subject outside today's selected five cannot add or replace a question. Sections,
+counts, omitted totals and coverage also remain exact. Absent, empty,
+whitespace-only, cleared or unmatched objectives produce the same unsteered
+output byte for byte on the same records. No objective text is copied into a
+question, answer, model prompt or descriptor. No model call or additional source
+byte/extracted-text read is introduced; every existing ceiling still refuses a
+partial briefing. C4 and answer/Ask behavior remain outside this increment.
+
+`tests/test_briefing_objective.py` exercises synthetic set/edit/clear fidelity,
+matching, stable groups, the unchanged five-question population, background/role
+independence, read boundaries, concurrent changes and ceiling failures. The Home
+browser journey saves objectives through the native form, compares complete
+unsteered markup after clearing, and selects steered questions without submitting.
+
 ## Document-date availability
 
 Current Exculpata source catalogs and inventories do **not** record semantic
