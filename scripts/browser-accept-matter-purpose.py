@@ -16,6 +16,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,6 +118,7 @@ def main():
             button = find('.matter-purpose-form button')
             focus(button)
             button.send_keys(Keys.ENTER)
+            wait.until(EC.staleness_of(button))
             wait.until(lambda _: 'Review your unsaved draft' in find('main').text)
             assert find('#matter-objective').get_attribute('value') == 'Unsaved synthetic draft'
             assert 'Synthetic competing tab edit' in find('main').text
