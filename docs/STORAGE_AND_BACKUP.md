@@ -452,4 +452,27 @@ C2 is reviewer metadata only. It does not infer charging-paper status, change
 source processing, select/exclude sources, alter prompts or steer answers/briefings.
 C1 objective/background free text remains unused by answers, models and
 descriptors. The separate C3 increment uses only the objective to reorder existing
-briefing questions; background and C2 source roles do not steer it. C4 remains separate.
+briefing questions; background and C2 source roles do not steer it.
+
+## Orientation and source roles: export versus restore (C4)
+
+The [C4 workflow](EXIT_ALPHA_CRUISE.md#c4-connect-the-existing-workflow) connects
+these existing boundaries. Home **background** is reviewer-written text; a
+**Background document** role is a designation on one source occurrence, set in
+the reader after ordinary intake. Neither steers briefings or answers. Only the
+short objective can reorder existing [C3 suggestions](DISCOVERY_BRIEFING.md#reviewer-objective-c3).
+
+| Operation | Objective/background and source roles | Recovery boundary |
+| --- | --- | --- |
+| Complete work-product ZIP | Includes `context/matter-purpose.json` with exact text/revision/editor/time and content-free audit, plus `context/source-roles.json` with occurrence/current-version identity, role/revision/editor/time and content-free audit. Existing completeness limits still fail explicitly. | Contains no original source files; it is not a backup or a reopenable matter package. |
+| Note-only export | Excludes both context files; exports notes only. | Does not restore matter orientation or source roles. |
+| Consistent backup and clean restore | The control SQLite database preserves C1 fields, C2 role columns and their audit under the existing complete backup procedure. | Restore a consistent backup with the matching application and required runtime components; a ZIP download is not a substitute. |
+
+Check export repeats the ZIP limitation alongside its existing original-file
+exclusion. C4 adds no importer and changes no export payload, schema, storage,
+retention or purge behavior. Existing backup and rollback rules still apply.
+The [C1 drill](#matter-objective-and-background-c1) uses
+`scripts/context-storage-restore-drill.py --matter-purpose`; the
+[C2 drill](#charging-papers-as-background-documents-c2) uses
+`scripts/source-role-storage-restore-drill.py`. These references describe how to
+verify restoration, not evidence that a new drill or deployed-node check ran.

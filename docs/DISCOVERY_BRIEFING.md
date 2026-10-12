@@ -111,6 +111,21 @@ question, answer, model prompt or descriptor. No model call or additional source
 byte/extracted-text read is introduced; every existing ceiling still refuses a
 partial briefing. C4 and answer/Ask behavior remain outside this increment.
 
+For a synthetic example, suppose today's five selected questions concern
+`Alex Example`, `Harbor Square`, `2024-05-06`, `Jordan Sample` and `2024-05-07`,
+in that order. An objective of `Review JORDAN   SAMPLE.` moves only Jordan's
+existing question to the front; the other four retain their order. Naming
+`Riley Placeholder`, who is outside those five, adds or replaces nothing.
+Clearing the objective or using only that unmatched name restores the exact
+unsteered output for the same records.
+
+The [C4 workflow explanation](EXIT_ALPHA_CRUISE.md#c4-connect-the-existing-workflow)
+connects this behavior to Home orientation and source roles without changing it.
+Home's longer background text is reviewer orientation; **Background document**
+is a separate source designation. Neither is used to steer the briefing.
+Home explains the existing five-question limit and retains the instruction that
+choosing a question fills the composer but sends nothing until submission.
+
 `tests/test_briefing_objective.py` exercises synthetic set/edit/clear fidelity,
 matching, stable groups, the unchanged five-question population, background/role
 independence, read boundaries, concurrent changes and ceiling failures. The Home

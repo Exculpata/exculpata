@@ -28,7 +28,34 @@ nonmatching groups. No new questions, source reads or model calls are added;
 sections, coverage, question text, Suggested labels and links stay unchanged.
 Empty, whitespace-only, cleared and unmatched objectives retain byte-identical
 unsteered output. C1 background and C2 roles remain unused by briefing, answers
-and models; C4 stays separate. See the [C3 contract](DISCOVERY_BRIEFING.md#reviewer-objective-c3).
+and models. See the [C3 contract](DISCOVERY_BRIEFING.md#reviewer-objective-c3).
+
+### C4: connect the existing workflow
+
+[C4 Option B](https://github.com/Exculpata/exculpata/issues/204#issuecomment-6126379542)
+connects the shipped C1–C3 contracts through documentation and explanatory copy
+on Home and Check export. The reviewer path remains:
+
+| Step | Existing surface | What it does |
+| --- | --- | --- |
+| Write team orientation (C1) | Home → Objective and background | Saves optional reviewer-authored text. Background is for reviewers; neither field supplies answers or model prompts. |
+| Designate charging papers (C2) | After intake, open the document → Source details & extraction → Change source role | Marks that source occurrence as Background document or Unclassified. This role is separate from Home background text and does not change processing or which sources questions or briefings use. |
+| Inspect suggested starting points (C3) | Home → Suggested questions, when the briefing is enabled | The short objective can reorder only the existing maximum five questions. It cannot add questions or change their text, Suggested labels, links or coverage. Choosing one only fills the existing composer. |
+| Preserve saved work | Case file → Check export | A complete work-product ZIP includes C1/C2 metadata and audit, but no original source files. It is not a backup or a reopenable matter package. |
+
+The [briefing example](DISCOVERY_BRIEFING.md#reviewer-objective-c3) explains
+whole-label matching and subjects outside the selected five. The
+[export/restore comparison](STORAGE_AND_BACKUP.md#orientation-and-source-roles-export-versus-restore-c4)
+distinguishes work-product downloads from consistent backup restoration.
+
+C4 changes only these explanations. Forms, controls, navigation targets,
+authorization, queries, source reads, models, persistence, exports and feature
+defaults retain their existing behavior. Background text and source roles remain
+unused by briefing steering, answers and models; no answer/Ask or matching
+expansion is selected. Synthetic rendering checks and the existing C1–C3
+regressions cover the boundaries; changed Home/export copy also requires desktop
+and narrow-viewport browser checks. Ordinary Quality and publication gates apply;
+unrun or skipped checks must be disclosed. Merge and deployment remain unselected.
 
 ## Current state — September 30, 2026
 
