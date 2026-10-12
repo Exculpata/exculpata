@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
+import re
 from typing import Callable, Iterable
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -81,12 +82,13 @@ class Briefing:
         return next(section for section in self.sections if section.key == key)
 
 
-def _questions(matter_slug: str, sections: tuple[BriefingSection, ...]) -> tuple[SuggestedQuestion, ...]:
+def _questions(matter_slug: str, sections: tuple[BriefingSection, ...], *, objective: str = "") -> tuple[SuggestedQuestion, ...]:
     """Round-robin current person/place/date inputs, without pairing subjects.
 
     Use only the displayed D1 ranks and their current source links. Original
     names and stated dates stay intact; unsuitable text is skipped, never
     shortened or rewritten. Canonical deduplication does not change the text.
+    The objective only reorders the selected questions after the five-item cap.
     """
     root = "/matters/" + matter_slug
     buckets = {kind: [] for kind in ("person", "place", "mentioned_date")}
@@ -125,14 +127,20 @@ def _questions(matter_slug: str, sections: tuple[BriefingSection, ...]) -> tuple
                 key = (("the mentioned date " if line.kind == "mentioned_date" else "")
                        + " ".join(line.value.split())).casefold()
                 if key not in seen:
-                    questions.append(SuggestedQuestion("Suggested", text, line.links))
+                    questions.append((SuggestedQuestion("Suggested", text, line.links), line.value))
                     seen.add(key)
                     break
             if len(questions) == MAX_QUESTIONS:
                 break
         if len(questions) == before:
             break
-    return tuple(questions)
+    normalized = " ".join(objective.split()).casefold()
+    if normalized:
+        # Match the complete structured label, never the question template or
+        # objective instructions. Stable sorting preserves both groups' order.
+        questions.sort(key=lambda item: re.search(
+            r"(?<!\w)" + re.escape(" ".join(item[1].split()).casefold()) + r"(?!\w)", normalized) is None)
+    return tuple(question for question, _subject in questions)
 
 
 def _link(base, label, path="/setup", **query):
@@ -418,6 +426,11 @@ def build_briefing(
         if workspace.get_matter_by_id(matter.matter_id).slug != matter.slug:
             raise KeyError(matter.slug)
         version = workspace.connection.execute("PRAGMA data_version").fetchone()[0]
+        # C3 consumes only the short C1 field, within this authorized snapshot.
+        # Do not load the longer background text or source-role metadata.
+        purpose = workspace.connection.execute(
+            "SELECT objective FROM workbench_matter_purpose WHERE matter_id=?", (matter.matter_id,)).fetchone()
+        objective = purpose["objective"] if purpose else ""
         sources = {}
         for row in _catalog(workspace, matter.matter_id):
             reason = row["state_label"]
@@ -446,4 +459,5 @@ def build_briefing(
             raise WorkspaceProblem("Matter records changed while the briefing was read. Try again.")
     coverage.append(BriefingLine("source_link_coverage", "", f"Each count covers its complete group; up to {SOURCE_LINK_LIMIT} example source links are shown alongside the existing review pages.", (_link(base, "Review all sources", view="list"),)))
     coverage.append(BriefingLine("extraction_coverage", "", "Readiness and recorded failures do not establish that every page, image, attachment or media segment was read. Review each source's extraction and coverage notices.", (_link(base, "Review source coverage", view="list"),)))
-    return Briefing(matter.matter_id, matter.slug, sections, tuple(coverage), _questions(matter.slug, sections))
+    return Briefing(matter.matter_id, matter.slug, sections, tuple(coverage),
+                    _questions(matter.slug, sections, objective=objective))

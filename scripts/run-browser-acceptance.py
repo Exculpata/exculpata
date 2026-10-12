@@ -43,7 +43,7 @@ JOURNEYS = (
     ('assertions', 'browser-accept-assertions.py', 'receipt.json', 14, ()),
     ('assistant-dock', 'browser-accept-assistant-dock.py', 'receipt.json', 10, ()),
     ('one-box', 'browser-accept-one-box.py', 'receipt.json', 15, ()),
-    ('briefing', 'browser-accept-briefing.py', 'receipt.json', 12, ()),
+    ('briefing', 'browser-accept-briefing.py', 'receipt.json', 15, ()),
     ('matter-purpose', 'browser-accept-matter-purpose.py', 'receipt.json', 6, ()),
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),

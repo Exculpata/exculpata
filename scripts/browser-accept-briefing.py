@@ -22,6 +22,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -277,6 +278,50 @@ def main(argv=None):
                 report["links_checked"] = len(links)
                 report["unique_destinations_opened"] = len(unique)
                 checks.append("Every rendered source and coverage link stays in this matter, returns HTML 200 and opens its existing browser destination")
+
+                def question_snapshot():
+                    return js("""return [...document.querySelectorAll('[data-briefing-question]')].map(e=>({
+                        text:e.textContent,value:e.value,links:[...e.parentElement.querySelectorAll('a')].map(a=>a.outerHTML)}))""")
+
+                def unchanged_sections():
+                    return js("""return [...document.querySelectorAll('[data-briefing-section], [data-briefing-coverage]')]
+                        .map(e=>e.outerHTML)""")
+
+                def edit_objective(value):
+                    driver.get(base + prefix + "/home")
+                    summary = find("#matter-purpose summary")
+                    keyboard_to(summary)
+                    summary.send_keys(Keys.ENTER)
+                    field = find("#matter-objective")
+                    keyboard_to(field)
+                    field.clear()
+                    field.send_keys(value)
+                    save = find("#matter-purpose button[type=submit]")
+                    keyboard_to(save)
+                    save.send_keys(Keys.ENTER)
+                    wait.until(EC.staleness_of(save))
+                    wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
+
+                driver.get(base + prefix + "/home")
+                original_questions, original_sections = question_snapshot(), unchanged_sections()
+                original_briefing = find("[data-discovery-briefing]").get_attribute("outerHTML")
+                edit_objective("Review JORDAN   SAMPLE and 2024-05-07.")
+                expected = [original_questions[i] for i in (3, 4, 0, 1, 2)]
+                assert question_snapshot() == expected
+                assert unchanged_sections() == original_sections
+                assert work_counts(bench, matter) == (0, 0, 0)
+                driver.refresh()
+                wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
+                assert question_snapshot() == expected
+                checks.append("Native Home objective editing and reload stably promote only existing matching questions with identical text, Suggested labels, links, sections and coverage")
+                for objective in ("Unmatched Synthetic", "   ", ""):
+                    edit_objective(objective)
+                    assert find("[data-discovery-briefing]").get_attribute("outerHTML") == original_briefing
+                    assert work_counts(bench, matter) == (0, 0, 0)
+                checks.append("Unmatched, whitespace-only and cleared objectives restore byte-identical unsteered briefing markup without creating work")
+                edit_objective("Jordan Sample")
+                assert question_snapshot() == [original_questions[i] for i in (3, 0, 1, 2, 4)]
+                checks.append("A second objective edit changes only question order before the existing narrow-viewport keyboard and Ask-fallback checks")
 
                 # Deliver two real Home responses out of order relative to
                 # controlled readiness events; no application helper is mocked.

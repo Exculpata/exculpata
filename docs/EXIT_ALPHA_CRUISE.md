@@ -20,6 +20,16 @@ bounded increments; C1 implements none of C2–C4. The historical charging-docum
 hold below is removed only for this sequence. The retired-history notice and
 all unrelated holds remain in force; merge and deployment are not selected here.
 
+C3 uses only the short objective to reorder the existing maximum five suggested
+briefing questions. A complete person/place name or stated date appearing in the
+objective moves its existing question first, using case-insensitive,
+whitespace-normalized whole-label matching and stable order within matching and
+nonmatching groups. No new questions, source reads or model calls are added;
+sections, coverage, question text, Suggested labels and links stay unchanged.
+Empty, whitespace-only, cleared and unmatched objectives retain byte-identical
+unsteered output. C1 background and C2 roles remain unused by briefing, answers
+and models; C4 stays separate. See the [C3 contract](DISCOVERY_BRIEFING.md#reviewer-objective-c3).
+
 ## Current state — September 30, 2026
 
 Reference upstream revision: `3c814e37adf18a84de9191bad84e0e8a2745e525`.
