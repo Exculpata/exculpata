@@ -97,16 +97,19 @@ def _asserted_action_supported(name, action, object_word, excerpts):
 
 def semantic_drop_reason(question, evidence):
     """Reject detectable assumptions without claiming a complete language proof."""
+    from .question_language import (transcript_drop_reason, unstated_plural_pronouns,
+                                    without_source_references)
     text = question.text
     cited = [evidence[identifier] for identifier in question.evidence_ids]
     excerpts = [item.excerpt for item in cited]
     source = " ".join(excerpts).casefold()
     words = set(re.findall(r"\b\w+\b", source))
-    if (set(re.findall(r"\b\w+\b", text.casefold())) & {"they", "them", "their", "theirs"}) - words:
+    if unstated_plural_pronouns(text, words):
         return "unstated_personal_pronoun"
-    # A capitalized detail absent from the cited excerpts is not supplied by a
-    # document title, source header, another uncited passage or a model guess.
-    for token in re.findall(r"\b[A-Z][A-Za-z'-]+\b", text):
+    # Exact cited names/locators may identify the requested source, but their
+    # words do not become facts elsewhere in the question. Citation verification
+    # has already checked quotations and numbers against excerpts only.
+    for token in re.findall(r"\b[A-Z][A-Za-z'-]+\b", without_source_references(text, cited)):
         if re.sub(r"['’]s$", "", token.casefold()) not in words | _SAFE_CAPITALS:
             return "unstated_identity_or_named_detail"
     for role in _ROLES:
@@ -116,7 +119,7 @@ def semantic_drop_reason(question, evidence):
             and not re.search(r"\b(?:if anything|if you|whether you)\b", text, re.I)):
         return "unestablished_interviewee_participation"
     for match in _ASSERTED_OBJECT.finditer(text):
-        if match["object"].casefold() in {"did", "does", "can", "could", "would", "if", "whether", "that",
+        if match["object"].casefold() in {"did", "does", "can", "could", "would", "if", "whether", "that", "when",
                                                    "showing", "proving", "establishing", "confirming", "said"}:
             continue
         for action in re.split(r"\s+(?:or|and)\s+", match["actions"]):
@@ -145,15 +148,28 @@ def semantic_drop_reason(question, evidence):
                 scope = set(re.findall(r"\b\w{4,}\b", match["scope"].casefold())) - {"that", "same", "this", "with", "from"}
                 if len(scope & question_terms) >= 2:
                     return "uncertainty_changed_to_assertion"
-    return None
+    return transcript_drop_reason(text, cited)
 
 
 def near_duplicate(left, right):
-    from .question_drafting import _near_duplicate, question_key
+    from .question_drafting import _near_duplicate, question_key, quoted_spans
     a, b = question_key(left.text).split(), question_key(right.text).split()
-    aliases = {"regarding": "about", "concerning": "about"}
+    def protected(text):
+        return {token for token in re.findall(r"\b[A-Z][A-Za-z'-]+\b", text)
+                if token.casefold() not in _SAFE_CAPITALS}
+    aliases = ({"regarding": "about", "concerning": "about", "verify": "check"}
+               if protected(left.text) == protected(right.text)
+               and quoted_spans(left.text) == quoted_spans(right.text) else {})
     a, b = [[aliases.get(word, word) for word in row] for row in (a, b)]
     if a == b:
+        return True
+    # "recording of the camera" and "camera recording" request the same
+    # material. Restrict the reorder to this noun phrase; do not sort tokens,
+    # which would conflate sender/recipient, negation and other role reversals.
+    def record_wording(text):
+        return re.sub(r"\brecording of (?:the )?(.+? camera)(?= assigned\b| for\b| from\b|$)",
+                      r"\1 recording", text)
+    if record_wording(" ".join(a)) == record_wording(" ".join(b)):
         return True
     if _near_duplicate(left, replace(right, evidence_ids=left.evidence_ids)):
         return True

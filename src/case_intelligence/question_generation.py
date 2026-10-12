@@ -169,8 +169,11 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
             batch_prefix = f"a{len(attempts)}q"
             candidates = [(identifier, question) for identifier, question in zip(audited.candidate_ids, audited.questions)
                           if identifier.startswith(batch_prefix)]
+            retained = [question for identifier, question in zip(audited.candidate_ids, audited.questions)
+                        if not identifier.startswith(batch_prefix)]
             judge_drops.update(judge_candidates(candidates, evidence, request=request,
-                                               tokens=profile.judge_tokens, stage=f"judge-{len(attempts)}"))
+                                               tokens=profile.judge_tokens, stage=f"judge-{len(attempts)}",
+                                               retained=retained))
         return audit_attempts(attempts, evidence, judge_drops)
 
     audited = collect(messages, "initial")

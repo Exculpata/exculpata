@@ -65,12 +65,26 @@ case notes**, which adds one Suggested note.
   Transcript items must explicitly frame what the recording/transcript appears
   to say (or ask about what a record says), and must not substitute an absent
   witness/interviewee identity. Transcript discovery requests include `if any`.
-  These wording checks still do not establish correct speaker attribution.
+  For passages with multiple labelled speakers, a question about their accounts
+  must keep a specific label. A further audit rejects quotations borrowed from a
+  different speaker, detectable cross-speaker details, and overlapping claims
+  that lose their negation or condition. Generic references to another cited
+  document do not become transcript claims solely because both are cited.
+  These wording checks are not a complete speaker-attribution proof.
   A deterministic post-verification audit also rejects detectable unstated
   identities/pronouns, presupposed possession/actions and uncertainty converted
   into assertions. These conservative text patterns can miss paraphrases or
   reject valid wording; they are not proof of entailment. Human review remains
   necessary. Identical wording is deduplicated even across different citations.
+  Exact cited source names and locations are allowed in explicit references
+  such as `from [source name]` or `listed at [location]`. Their words do not
+  support an identity elsewhere in the question; metadata still cannot supply
+  a number or quotation absent from the excerpt. Local references to records
+  and what `they contain` or `their entries` do not invent a person's pronoun.
+  The audit distinguishes a temporal `when [name] left` clause from an assertion
+  that someone possessed an object. Narrow paraphrase patterns (such as
+  `verify`/`check` and camera-recording noun order) are deduplicated while keeping
+  different people, roles, literal quotations, numbers and negation distinct.
   If fewer than three questions survive, at most two top-up calls ask only for
   additional distinct questions, using the original passages and retained list.
   The cap is configurable per profile. Each attempt retains its eight-item schema
@@ -83,7 +97,12 @@ case notes**, which adds one Suggested note.
   An optional model judge can only veto deterministic survivors. Invalid, missing
   or unavailable judge decisions reject the affected candidates and are recorded.
   The judge cannot change text/citations or resurrect a deterministic rejection.
+  Each existing judge call also receives earlier retained questions, so it can
+  veto paraphrases across batches without another call or revising earlier decisions.
   Fewer than three supported questions still fails the unchanged evaluation gate.
+  Filtering cannot repair a run that produced fewer than three raw candidates;
+  deduplication can also reduce a short list. These changes require a fresh
+  real-model receipt and do not turn earlier failed receipts into passes.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
   and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
