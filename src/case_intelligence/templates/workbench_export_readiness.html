@@ -26,6 +26,7 @@
     {% endif %}
     {% endif %}
     <p>This check reflects saved work at the time of inspection. Work still running or later edits can change what is ready. Original source files are not included in the bundle.</p>
+    <p>This work-product bundle is not a backup or a reopenable matter package.</p>
     <div class="close-matter-actions">
       {% if check.ready %}<a class="button button-primary" href="{{ check.download_url }}" data-download>Download matter bundle</a>{% endif %}
       <a class="button button-secondary" href="/matters/{{ matter.slug }}/export-readiness">Check again</a>

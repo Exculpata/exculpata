@@ -21,6 +21,8 @@ def test_ready_preview_uses_current_bundle_checks_and_does_not_export(workspace)
     assert "Ready to download" in response.text
     assert "Checked at" in response.text
     assert "checks again" in response.text
+    assert "Original source files are not included in the bundle." in response.text
+    assert "This work-product bundle is not a backup or a reopenable matter package." in response.text
     assert "Content-Disposition" not in response.headers
     assert bench.workspace.report(matter.matter_id, report.report_id).title == report.title
     assert bench.source_store(matter).get(document.document_id).version_id == document.version_id
@@ -40,6 +42,7 @@ def test_blocked_preview_identifies_reports_and_does_not_claim_later_checks(work
     assert report.title in response.text
     assert f"/matters/{matter.slug}/reports?report={report.report_id}" in response.text
     assert "Remaining bundle checks did not finish" in response.text
+    assert "This work-product bundle is not a backup or a reopenable matter package." in response.text
     assert "Synthetic exact source passage." not in response.text
     assert client.get(f"/matters/{matter.slug}/export").status_code == 409
     assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
@@ -156,6 +159,7 @@ def test_failed_close_preview_never_reopens_quarantined_sources(workspace, monke
     response = client.get(f"/matters/{matter.slug}/export-readiness")
     assert response.status_code == 200
     assert ("Export needs attention" if cited else "Ready to download") in response.text
+    assert "This work-product bundle is not a backup or a reopenable matter package." in response.text
     assert f'href="/matters/{matter.slug}/close">Return to close matter</a>' in response.text
     report_links = re.findall(r'<a href="([^"]+)">Open ', response.text)
     for link in report_links:

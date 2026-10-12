@@ -31,6 +31,8 @@ def test_home_api_edit_conflict_clear_export_fidelity_and_no_consumption(client,
     page = client.get(home)
     assert page.status_code == 200
     assert 'Add an objective.' in page.text and 'Add background when you are ready.' in page.text
+    assert "Background text here is separate from a source's Background document role." in page.text
+    assert 'expand Source details &amp; extraction, and choose Change source role.' in page.text
     token = re.search(r'name="csrf_token" value="([^\"]+)"', page.text).group(1)
     headers = {'X-CSRF-Token': token}
     values = dict(expected_revision=0, objective=OBJECTIVE, background=BACKGROUND)
@@ -44,6 +46,8 @@ def test_home_api_edit_conflict_clear_export_fidelity_and_no_consumption(client,
     assert '&lt;synthetic&gt;' in page.text and '<synthetic>' not in page.text
     assert 'names and dates in your objective can move matching suggested questions first' in page.text
     assert 'Background stays for reviewers; answers do not use either field' in page.text
+    assert "Background text here is separate from a source's Background document role." in page.text
+    assert 'That designation does not change which sources questions or briefings use.' in page.text
     stale = client.put(path, json=values, headers=headers)
     assert stale.status_code == 409 and OBJECTIVE not in stale.text
     conflict = client.post(path, data=dict(values, csrf_token=token, objective='Unsaved synthetic draft'))
@@ -114,6 +118,7 @@ def test_administrator_read_only_nonmember_and_revoked_account(tmp_path, monkeyp
         page = admin.get(f'/matters/{slug}/home', headers=_headers(ADMIN))
         assert page.status_code == 200 and 'Join the matter' in page.text
         assert 'name="objective"' not in page.text
+        assert "Background text here is separate from a source's Background document role." in page.text
         assert admin.put(path, json=dict(values, expected_revision=1),
             headers={**_headers(ADMIN), 'X-CSRF-Token': admin_token}).status_code == 403
         assert admin.post(path, data=dict(values, csrf_token=admin_token), headers=_headers(ADMIN)).status_code == 403

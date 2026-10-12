@@ -169,6 +169,9 @@ def test_home_leads_with_linked_briefing_and_native_fill_buttons(tmp_path, monke
         assert parsed.sections == ['arrived', 'people_places', 'dates', 'unread']
         assert len(parsed.coverage) == 1 and 'open' not in parsed.coverage[0]
         assert len(parsed.questions) == 2 and all(item['type'] == 'button' for item in parsed.questions)
+        assert 'Your objective can change the order of these existing suggestions (up to five).' in page.text
+        assert 'It does not create new questions.' in page.text
+        assert 'Nothing is sent until you submit it.' in page.text
         assert all('value' in item and item['value'].startswith('What do the records say about ') for item in parsed.questions)
         assert all(parsed.lines)
         for href in {href for line in parsed.lines for href in line}:
@@ -191,6 +194,8 @@ def test_flag_off_preserves_home_and_adds_no_assets_markup_or_read(tmp_path, mon
         assert page.status_code == 200
         for marker in ('data-briefing-region', 'briefing.css', 'briefing.js', 'data-briefing-question'):
             assert marker not in page.text
+        assert 'Your objective can change the order of these existing suggestions' not in page.text
+        assert "Background text here is separate from a source's Background document role." in page.text
         tasks = page.text.split('<nav aria-label="Choose a review task">', 1)[1].split('</nav>', 1)[0]
         assert tasks.count('<a href=') == 4
 
