@@ -19,13 +19,14 @@ _JUDGE_SCHEMA = {
 def judge_candidates(candidates, evidence, *, request, tokens, stage, retained=()):
     """Require one decision per ID; failed judging cannot approve a candidate."""
     from .generation import GenerationUnavailable, _parse_model_content
+    from .question_context import typed_locator
     if not candidates:
         return {}
     identifiers = {identifier for identifier, _ in candidates}
     data = {
         "passages": [{"evidence_id": item.evidence_id, "excerpt": item.excerpt,
                       "source_name": item.source_name, "location": item.location,
-                      "evidence_kind": item.evidence_kind} for item in evidence],
+                      "evidence_kind": item.evidence_kind, "typed_locator": typed_locator(item)} for item in evidence],
         "retained_questions": [{"text": question.text, "evidence_ids": list(question.evidence_ids)}
                                for question in retained],
         "candidates": [{"candidate_id": identifier, "text": question.text,
@@ -37,8 +38,10 @@ def judge_candidates(candidates, evidence, *, request, tokens, stage, retained=(
          "for every candidate_id. Use grounded only if the question is supported and distinct. "
          "Reject presupposed possession, actions, identities or pronouns not established in those excerpts, "
          "and uncertainty or absence-of-claim converted into an assertion (including an opposite assertion). "
-         "Source names and locations may identify a cited record, but never support factual details, "
-         "numbers or quotations. Pronouns referring explicitly to records do not invent a person. "
+         "Source names and exact typed locators may identify their cited record, but never support "
+         "factual numbers or quotations. Reject dates/places borrowed to scope another passage's "
+         "record unless the original excerpts explicitly establish that relationship. "
+         "Pronouns referring explicitly to records do not invent a person. "
          "Keep transcript claims with their labelled speaker and preserve negation and conditions. "
          "Reject paraphrase duplicates of retained_questions or an earlier supported candidate, even "
          "when wording or citations differ. Decide only the new candidate IDs, not retained questions. "

@@ -54,9 +54,11 @@ def test_metadata_and_record_words_do_not_authorize_facts(text, reason):
     assert result.questions == () and result.drops[0]['reason'] == reason
 
 
-def test_exact_numeric_locator_still_cannot_supply_a_number():
+def test_exact_numeric_locator_identifies_source_but_cannot_supply_a_fact():
     evidence = (EvidenceItem('S1', 'Archive Intake Register', 'Page 9', RECORDS[0].excerpt),)
     result = audit('Please provide dispatch logs from Page 9.', evidence)
+    assert len(result.questions) == 1
+    result = audit('Please provide dispatch logs from Page 9 showing 9 cartons.', evidence)
     assert result.drops[0]['reason'] == 'uncited_digit_bearing_detail'
 
 

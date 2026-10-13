@@ -164,11 +164,16 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
         "not an invitation to ask about every supplied source. Every question must cite "
         "the evidence IDs of the one to four passages it is about. Preserve names, dates, "
         "times and quantities exactly as written in the cited passages; never add a detail, "
-        "number or quotation that is not in their excerpt text. Source names and location "
-        "headers (including transcript timestamps) are citation metadata, not facts to copy "
-        "into a question. An exact source name or location can identify the cited record "
-        "after in, from or according to, but any number or quotation still must occur in its excerpt. "
-        "A number from another passage needs that passage's citation too. "
+        "factual number or quotation that is not in their excerpt text. Source names and location "
+        "headers are citation metadata, not event facts. An exact Row/Page/Line locator may "
+        "identify its cited document (record for Row N); an exact transcript timestamp may "
+        "identify its cited recording (recording at HH:MM:SS). Omit the locator when unnecessary. "
+        "Never reuse locator digits as a time, quantity or identity in the account, or quote "
+        "metadata absent from the excerpt. Every factual detail must be supported by the "
+        "question's own cited excerpts. Do not scope one passage's record with dates or places "
+        "from another passage unless the original passages explicitly establish that link. "
+        "Remove an unsupported qualifier rather than borrowing context or appending a citation "
+        "merely because it contains that date or place. "
         "Do not assume facts the passages do not "
         "state, and do not answer the questions. An observation of an object near a person "
         "does not establish that person's possession, delivery or ownership. Ask what was "
@@ -196,6 +201,7 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
             "question, including discovery requests. Attribute statements to the recording's "
             "unidentified speaker labels, not to an identified witness. When multiple labelled "
             "speakers occur, name the specific Speaker label for the account being asked about; "
+            "asking which speaker said it does not supply that attribution. "
             "do not replace separate accounts with the speakers or a collective assertion. "
             "Keep never/not and if/whether with that speaker's statement. Requests for supporting "
             "records must say if any and describe the statement as something the recording "
@@ -204,8 +210,9 @@ def question_prompt(purpose: str, topic: str, evidence: Sequence[EvidenceItem]) 
         if purpose == "discovery":
             system += (
                 " Use this wording pattern for each transcript-based request: Please provide "
-                "[material mentioned in the excerpt], if any, to clarify what the recording "
-                "appears to say about [an unresolved point]. Replace the bracketed placeholders "
+                "[material mentioned in the excerpt], if any, to clarify what [Speaker label] "
+                "appears to say in the recording about [that speaker's unresolved point, "
+                "preserving never/not and if/whether]. Replace the bracketed placeholders "
                 "with source-supported wording. Do not reconstruct who sent or received "
                 "something from an anonymous speaker label."
             )
@@ -337,6 +344,7 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
 
 def verify_question(text: object, evidence_ids: object,
                     evidence: Mapping[str, EvidenceItem]) -> DraftedQuestion | None:
+    from .question_context import without_locator_references
     if not isinstance(text, str):
         return None
     try:
@@ -358,9 +366,10 @@ def verify_question(text: object, evidence_ids: object,
         return None
     source_text = "\n".join(item.excerpt for item in cited).casefold()
     source_numbers = set(_NUMBER.findall(source_text))
-    if any(number not in source_numbers for number in _NUMBER.findall(normalized.casefold())):
+    factual_text = without_locator_references(normalized, cited).casefold()
+    if any(number not in source_numbers for number in _NUMBER.findall(factual_text)):
         return None
-    if not _digit_tokens(normalized.casefold()) <= _digit_tokens(source_text):
+    if not _digit_tokens(factual_text) <= _digit_tokens(source_text):
         return None
     # A question must be about its passages: it shares at least one content word.
     source_terms = set(_tokens(source_text))

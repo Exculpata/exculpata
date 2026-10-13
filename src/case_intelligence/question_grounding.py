@@ -37,9 +37,11 @@ class QuestionDraftReceipt(dict):
                          profile=copy.deepcopy(profile), calls=copy.deepcopy(calls), drops=[])
 
     def review(self, evidence):
+        from .question_context import retention_summary
         result = audit_attempts(self.attempts, evidence, self.judge_drops)
         self["drops"] = copy.deepcopy(result.drops)
         self["retained_candidate_ids"] = list(result.candidate_ids)
+        self["retention"] = retention_summary(self.attempts, result)
         return result
 
 
@@ -99,8 +101,12 @@ def semantic_drop_reason(question, evidence):
     """Reject detectable assumptions without claiming a complete language proof."""
     from .question_language import (transcript_drop_reason, unstated_plural_pronouns,
                                     without_source_references)
+    from .question_context import cross_locator_drop_reason
     text = question.text
     cited = [evidence[identifier] for identifier in question.evidence_ids]
+    locator_reason = cross_locator_drop_reason(text, cited)
+    if locator_reason:
+        return locator_reason
     excerpts = [item.excerpt for item in cited]
     source = " ".join(excerpts).casefold()
     words = set(re.findall(r"\b\w+\b", source))
@@ -183,6 +189,7 @@ def near_duplicate(left, right):
 
 def citation_drop_reason(value, evidence):
     from .question_drafting import (_digit_tokens, _EVIDENCE_MARKER, _NUMBER, unsupported_quotes)
+    from .question_context import without_locator_references
     if not isinstance(value, dict) or set(value) != {"text", "evidence_ids"}:
         return "invalid_question_shape"
     text, identifiers = value["text"], value["evidence_ids"]
@@ -196,8 +203,9 @@ def citation_drop_reason(value, evidence):
     if _EVIDENCE_MARKER.search(text):
         return "citation_label_in_text"
     source = " ".join(item.excerpt for item in cited).casefold()
-    if (_digit_tokens(text.casefold()) - _digit_tokens(source)
-            or set(_NUMBER.findall(text.casefold())) - set(_NUMBER.findall(source))):
+    factual_text = without_locator_references(text, cited).casefold()
+    if (_digit_tokens(factual_text) - _digit_tokens(source)
+            or set(_NUMBER.findall(factual_text)) - set(_NUMBER.findall(source))):
         return "uncited_digit_bearing_detail"
     if set(re.findall(r"\b(?:he|him|his|she|her|hers)\b", text.casefold())) - set(source.split()):
         return "unstated_gendered_pronoun"

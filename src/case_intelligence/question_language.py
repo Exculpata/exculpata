@@ -1,7 +1,7 @@
 """Narrow wording checks for record references and attributed transcript questions.
 
 These checks supplement citation verification, not a general entailment model.
-Metadata can identify a cited source; it never supplies a quotation or number.
+Metadata can identify a cited source; it never supplies a factual detail or quotation.
 """
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ import re
 
 def without_source_references(text, cited):
     """Set aside exact metadata only in an explicit source-reference position."""
+    from .question_context import without_locator_references
+    text = without_locator_references(text, cited)
     for item in cited:
         for value in (item.source_name, item.location):
-            # Longest exact names are not decomposed into an allow-list of words.
+            # Exact names are not decomposed into an allow-list of words.
             # A name in an asserted event (rather than after a locator) stays checked.
             pattern = r"\b(?:in|from|of|according to|listed at|located at)\s+(?:the\s+)?" + re.escape(value) + r"(?!\w)"
             text = re.sub(pattern, " in the cited source ", text, flags=re.I)

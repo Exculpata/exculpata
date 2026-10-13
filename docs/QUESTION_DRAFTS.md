@@ -39,8 +39,8 @@ case notes**, which adds one Suggested note.
   unpaired quotation punctuation, such as an ornament, treated as unclosed; quotations
   are paired with a stack, so an outer quotation is checked whole, including any
   quotation nested inside it, whatever marks each uses) appears as whole words within
-  one cited passage (not assembled across two), as does every number. Every word
-  containing a digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or
+  one cited passage (not assembled across two), as does every factual number. Every word
+  containing a factual digit (a date, a time, an identifier such as `K7`, `K-7`, `K_7` or
   `5A`, an ordinal such as `4th`) must also appear
   as a whole word in a cited passage, so an altered identifier is dropped, and so
   is an internal passage label such as `S1` written without brackets, unless the
@@ -78,8 +78,17 @@ case notes**, which adds one Suggested note.
   necessary. Identical wording is deduplicated even across different citations.
   Exact cited source names and locations are allowed in explicit references
   such as `from [source name]` or `listed at [location]`. Their words do not
-  support an identity elsewhere in the question; metadata still cannot supply
-  a number or quotation absent from the excerpt. Local references to records
+  support an identity elsewhere in the question. A narrow typed-locator rule
+  recognizes exact `Row N`, `Page N` and `Line N` document locations and exact
+  `HH:MM:SS` transcript positions from cited evidence. They may identify the
+  cited source in a reference such as `record for Row 18` or `recording at 00:03:12`.
+  A named source cannot borrow another source's location. An altered locator,
+  arbitrary metadata format, uncited source location, or a second occurrence of
+  those digits as a count/event time remains subject to excerpt verification.
+  Explicitly located references also cannot borrow a quotation, digit or detected
+  content detail from another cited passage outside those locations.
+  Metadata quotations remain unsupported unless present in the excerpt.
+  Local references to records
   and what `they contain` or `their entries` do not invent a person's pronoun.
   The audit distinguishes a temporal `when [name] left` clause from an assertion
   that someone possessed an object. Narrow paraphrase patterns (such as
@@ -87,10 +96,21 @@ case notes**, which adds one Suggested note.
   different people, roles, literal quotations, numbers and negation distinct.
   If fewer than three questions survive, at most two top-up calls ask only for
   additional distinct questions, using the original passages and retained list.
+  Repair feedback identifies the unsupported digits/named details, applicable
+  drop reason, typed locators and original labelled transcript turns for the
+  rejected candidates' citations. It asks the model to remove unsupported
+  qualifiers, preserve each speaker's negation/condition, and choose a distinct
+  supported angle. It does not rewrite candidates, transplant citations, or
+  treat dates/places from another passage as proof of a record relationship.
+  Asking `which speaker` is not a replacement for preserving the actual label.
+  Feedback, source text and prior model attempts remain untrusted user data.
   The cap is configurable per profile. Each attempt retains its eight-item schema
   limit and the displayed list remains capped at eight. The internal receipt
   exposes every raw candidate across attempts to the unchanged quotation scorer,
   plus attempt boundaries, call timings, configured policy and every drop reason.
+  Retention diagnostics report each attempt's raw/retained counts (including
+  empty batches), drop reasons, and any final shortfall against the unchanged
+  three-question minimum. An unmet count is reported, never filled automatically.
   A malformed attempt is recorded, never silently replaced. This internal receipt
   type cannot be supplied by model JSON; ordinary draft JSON keeps its original
   strict shape and eight-item limit. No questions are fabricated to reach a minimum.
@@ -99,6 +119,8 @@ case notes**, which adds one Suggested note.
   The judge cannot change text/citations or resurrect a deterministic rejection.
   Each existing judge call also receives earlier retained questions, so it can
   veto paraphrases across batches without another call or revising earlier decisions.
+  Deterministic batch exclusions stay excluded after judging; a veto cannot
+  resurrect a duplicate or display-limit item that the judge never evaluated.
   Fewer than three supported questions still fails the unchanged evaluation gate.
   Filtering cannot repair a run that produced fewer than three raw candidates;
   deduplication can also reduce a short list. These changes require a fresh
