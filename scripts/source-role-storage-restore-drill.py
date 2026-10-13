@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic pre-C2 upgrade, clean restore/export/purge and matching-reader rollback."""
+from datetime import datetime, timedelta
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,7 +39,7 @@ print(m.matter_id); s.close()
     with sqlite3.connect(database) as source, sqlite3.connect(preupgrade) as target:
         source.backup(target)
     sys.path.insert(0, str(ROOT / 'src'))
-    from case_intelligence.workspace_store import WorkspaceStore
+    from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
     from case_intelligence.source_roles import SourceRoleService, add_source_role_export
     store = WorkspaceStore(database)
     service = SourceRoleService(store)
@@ -61,8 +63,32 @@ print(m.matter_id); s.close()
         assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
         restored.close()
     restored = WorkspaceStore(restored_path)
-    _, lifecycle = restored.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=1)
+    # The verified copies above remain intact. Deliberately delete only this
+    # synthetic restored database through the current no-export exit policy.
+    def owner_session():
+        expires = restored._timestamp(restored.current_time() + timedelta(hours=1))
+        return restored.create_session(ACTOR, hashlib.sha256(os.urandom(32)).hexdigest(),
+            'test', expires, expires)
+    session = owner_session()
+    exit_record = restored.case_lifecycle.begin_exit(matter.slug, ACTOR,
+        mode='delete_without_export', session_id=session.session_id)
+    try:
+        restored.case_lifecycle.issue_confirmation(matter.slug, ACTOR, session.session_id,
+            mode='delete_without_export')
+    except WorkspaceProblem as exc:
+        assert 'seven-day' in str(exc)
+    else:
+        raise AssertionError('Synthetic deletion was admitted before the cancellation window ended')
+    after_window = datetime.fromisoformat(exit_record.eligible_after.replace('Z', '+00:00')) + timedelta(seconds=1)
+    restored._clock = lambda: after_window
+    session = owner_session()
+    confirmation = restored.case_lifecycle.issue_confirmation(matter.slug, ACTOR,
+        session.session_id, mode='delete_without_export')
+    _, lifecycle = restored.begin_matter_purge(matter.slug, ACTOR, matter.display_name,
+        source_count=1, mode='delete_without_export', session_id=session.session_id,
+        token=confirmation.token, no_backup_acknowledged=True)
     restored.complete_matter_purge(matter_id, lifecycle.purge_id)
+    assert restored.matter_lifecycle(matter_id).state == 'deleted'
     assert not restored.connection.execute('SELECT * FROM workbench_source_organization').fetchall()
     assert len([e for e in restored.audit_events(matter_id) if e.action == 'source.role_update']) == 1
     restored.close()
@@ -73,4 +99,5 @@ s=WorkspaceStore(Path(sys.argv[1])); assert 'source_role' not in {r[1] for r in 
 '''
     subprocess.run([sys.executable, '-c', verify, str(preupgrade), matter_id], env=env, check=True)
     print(json.dumps(dict(synthetic_only=True, baseline=BASELINE, defaulted_upgrade=True,
-        clean_restore_and_reopen=True, export_and_audit_byte_identical=True, purge=True, matching_preupgrade_rollback=True)))
+        clean_restore_and_reopen=True, export_and_audit_byte_identical=True, purge=True,
+        explicit_no_export_exit=True, seven_day_window_enforced=True, matching_preupgrade_rollback=True)))

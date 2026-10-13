@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import io
 import json
 import re
@@ -13,6 +15,8 @@ from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.pilot_uploads import PilotStore, securely_delete_owned_tree
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
+from tests.case_lifecycle_helpers import claim_synthetic_exit, prepare_purge_confirmation
+from tests.case_lifecycle_web_helpers import prepare_preview_exit, preview_login
 
 
 FIXED = datetime(2026, 8, 27, 17, 0, tzinfo=timezone.utc)
@@ -30,6 +34,8 @@ def _seed(store: WorkspaceStore) -> None:
 
 
 def _create_matter(client: TestClient, name: str) -> str:
+    if "X-CSRF-Token" not in client.headers:
+        preview_login(client)
     response = client.post(
         "/matters",
         data={"name": name, "descriptor": "Generated lifecycle fixture"},
@@ -63,23 +69,19 @@ def test_store_purge_refuses_active_work_then_scrubs_content_and_keeps_audit(tmp
     )
 
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        store.begin_matter_purge(
-            matter.slug,
-            "principal-owner",
-            matter.display_name,
-            source_count=2,
-        )
+        store.case_lifecycle.begin_exit(matter.slug, "principal-owner", session_id=lifecycle_session(store, "principal-owner", administrator_override=False).session_id)
     store.cancel_answer_job(matter.matter_id, "principal-owner", job.job_id)
+    confirmation = prepare_purge_confirmation(store, matter, "principal-owner")
     with pytest.raises(WorkspaceProblem, match="exactly"):
         store.begin_matter_purge(
-            matter.slug, "principal-owner", "wrong name", source_count=2
+            matter.slug, "principal-owner", "wrong name", source_count=2, **confirmation
         )
 
     prepared, lifecycle = store.begin_matter_purge(
         matter.slug,
         "principal-owner",
         matter.display_name,
-        source_count=2,
+        source_count=2, **confirmation,
     )
     assert prepared.matter_id == matter.matter_id
     assert lifecycle.state == "purging"
@@ -103,7 +105,12 @@ def test_store_purge_refuses_active_work_then_scrubs_content_and_keeps_audit(tmp
         (matter.matter_id,),
     ).fetchone()
     assert tuple(scrubbed) == ("Deleted matter", "")
-    assert len(store.audit_events(matter.matter_id)) == 1
+    events = store.audit_events(matter.matter_id)
+    assert [event.action for event in events].count("matter.open") == 1
+    assert {event.action for event in events} >= {
+        "matter.exit_begin", "matter.exit_export", "matter.exit_confirmation", "matter.purge_confirm"
+    }
+    assert matter.display_name not in repr(events)
     with pytest.raises(KeyError):
         store.membership(matter.matter_id, "principal-owner")
     store.close()
@@ -113,14 +120,10 @@ def test_interrupted_purge_becomes_retryable_and_owned_tree_deletion_rejects_sym
     store = WorkspaceStore(tmp_path / "workbench.sqlite", clock=lambda: FIXED)
     _seed(store)
     matter = store.create_matter("Interrupted purge", "", "principal-owner")
-    _, lifecycle = store.begin_matter_purge(
-        matter.slug, "principal-owner", matter.display_name, source_count=0
-    )
+    _, lifecycle = claim_synthetic_exit(store, matter, "principal-owner")
     assert store.recover_interrupted_matter_purges() == 1
     assert store.matter_lifecycle(matter.matter_id).state == "purge_failed"
-    _, retried = store.begin_matter_purge(
-        matter.slug, "principal-owner", matter.display_name, source_count=0
-    )
+    _, retried = claim_synthetic_exit(store, matter, "principal-owner")
     assert retried.purge_id == lifecycle.purge_id
     store.close()
 
@@ -141,7 +144,7 @@ def test_authenticated_exports_history_rename_and_owner_close_delete_end_to_end(
         create_workbench_app(
             runtime,
             generator=UnavailableGenerator(),
-            auth_mode="test",
+            auth_mode="preview",
             answer_workers=1,
         )
     ) as client:
@@ -251,16 +254,14 @@ def test_authenticated_exports_history_rename_and_owner_close_delete_end_to_end(
 
         close_page = client.get(f"/matters/{slug}/close")
         assert close_page.status_code == 200
-        assert "Download final bundle" in close_page.text
-        assert "cannot be undone" in close_page.text
-        assert "Original files outside this workbench are never deleted" in close_page.text
+        assert "Begin closure" in close_page.text
+        assert "separate, fresh confirmation" in close_page.text
+        assert "External registered originals are not deleted" in close_page.text
 
+        confirmation = prepare_preview_exit(client, matter)
         deleted = client.post(
             f"/matters/{slug}/close",
-            data={
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             follow_redirects=False,
         )
         assert deleted.status_code == 303
@@ -270,7 +271,7 @@ def test_authenticated_exports_history_rename_and_owner_close_delete_end_to_end(
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
         assert all(item.slug != slug for item in bench.matters(WEB_ACTOR))
         assert any(
-            event.action == "matter.purge" and event.outcome == "success"
+            event.action == "matter.purge_confirm" and event.outcome == "success"
             for event in bench.workspace.audit_events(matter.matter_id)
         )
 
@@ -294,15 +295,16 @@ def test_failed_storage_purge_is_hidden_from_review_and_owner_can_retry(tmp_path
         create_workbench_app(
             runtime,
             generator=UnavailableGenerator(),
-            auth_mode="test",
+            auth_mode="preview",
             answer_workers=1,
         )
     ) as client:
         slug = _create_matter(client, "Synthetic retryable purge")
         matter = client.app.state.workbench.matter(slug, WEB_ACTOR)
+        confirmation = prepare_preview_exit(client, matter)
         first = client.post(
             f"/matters/{slug}/close",
-            data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
+            data=confirmation,
             follow_redirects=False,
         )
         assert first.status_code == 303
@@ -313,12 +315,13 @@ def test_failed_storage_purge_is_hidden_from_review_and_owner_can_retry(tmp_path
         assert client.get(f"/matters/{slug}").status_code == 404
         recovery = client.get(f"/matters/{slug}/close")
         assert recovery.status_code == 200
-        assert "previous deletion did not finish" in recovery.text
-        assert "Try deletion again" in recovery.text
+        assert "confirmed deletion did not finish" in recovery.text
+        assert "Review final deletion confirmation" in recovery.text
 
+        confirmation = prepare_preview_exit(client, matter)
         retried = client.post(
             f"/matters/{slug}/close",
-            data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
+            data=confirmation,
             follow_redirects=False,
         )
         assert retried.status_code == 303
@@ -338,7 +341,7 @@ def test_clip_export_lease_blocks_purge_and_strict_cleanup_failure_is_retryable(
         create_workbench_app(
             runtime,
             generator=UnavailableGenerator(),
-            auth_mode="test",
+            auth_mode="preview",
             answer_workers=1,
         )
     ) as client:
@@ -352,9 +355,9 @@ def test_clip_export_lease_blocks_purge_and_strict_cleanup_failure_is_retryable(
 
         close_page = client.get(f"/matters/{slug}/close")
         assert close_page.status_code == 200
-        assert "1 work-product download" in close_page.text
+        assert "Wait for active processing and downloads" in close_page.text
         refused = client.post(
-            f"/matters/{slug}/close",
+            f"/matters/{slug}/close/begin",
             data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
             follow_redirects=False,
         )
@@ -380,9 +383,10 @@ def test_clip_export_lease_blocks_purge_and_strict_cleanup_failure_is_retryable(
         assert bench.finish_media_clip_export(matter.matter_id, lease) is False
         assert bench.matter_active_work_counts(matter.matter_id)["exports"] == 0
         assert lease.is_dir()
+        confirmation = prepare_preview_exit(client, matter)
         failed = client.post(
             f"/matters/{slug}/close",
-            data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
+            data=confirmation,
             follow_redirects=False,
         )
         assert failed.status_code == 303
@@ -393,10 +397,11 @@ def test_clip_export_lease_blocks_purge_and_strict_cleanup_failure_is_retryable(
 
         recovery = client.get(f"/matters/{slug}/close")
         assert recovery.status_code == 200
-        assert "previous deletion did not finish" in recovery.text
+        assert "confirmed deletion did not finish" in recovery.text
+        confirmation = prepare_preview_exit(client, matter)
         retried = client.post(
             f"/matters/{slug}/close",
-            data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
+            data=confirmation,
             follow_redirects=False,
         )
         assert retried.status_code == 303

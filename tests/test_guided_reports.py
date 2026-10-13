@@ -8,6 +8,8 @@ import zipfile
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 from fastapi.testclient import TestClient
 
 from case_intelligence.generation import GroundedGenerationService
@@ -290,7 +292,7 @@ def test_matter_purge_removes_terminal_compilation_jobs(workspace, state):
     with bench.workspace.connection:
         bench.workspace.connection.execute("UPDATE workbench_report_compilation_job SET state=?,report_id=? WHERE job_id=?",
             (state, report.report_id if state == "succeeded" else None, job_id))
-    _, lifecycle = bench.workspace.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=0)
+    _, lifecycle = claim_bench_exit(bench, matter, ACTOR)
     completed = bench.workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
     assert completed.state == "deleted"
     assert not bench.workspace.connection.execute("SELECT 1 FROM workbench_report_compilation_job WHERE matter_id=?", (matter.matter_id,)).fetchone()
@@ -342,11 +344,11 @@ def test_compilation_health_and_close_page_track_active_jobs(workspace):
     assert counts["queued"] == 1 and counts["running"] == 0
     page = client.get(f"/matters/{matter.slug}/close")
     assert "1 report compilation" in page.text
-    assert re.search(r'<button class="button button-danger"[^>]+type="submit"[^>]+disabled', page.text)
-    client.post(f"/matters/{matter.slug}/close", data={"confirmed_name": matter.display_name, "acknowledge": "yes"})
+    assert re.search(r'<button class="button button-primary"[^>]+type="submit"[^>]+disabled', page.text)
+    client.post(f"/matters/{matter.slug}/close/begin")
     assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
     bench.report_compilation.jobs.cancel(matter.matter_id, ACTOR, job_id)
     counts = client.get("/health").json()["report_compilation_jobs"]
     assert counts["queued"] == 0 and counts["cancelled"] == 1
     page = client.get(f"/matters/{matter.slug}/close")
-    assert not re.search(r'<button class="button button-danger"[^>]+type="submit"[^>]+disabled', page.text)
+    assert not re.search(r'<button class="button button-primary"[^>]+type="submit"[^>]+disabled', page.text)

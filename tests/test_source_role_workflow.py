@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """C2 through HTTP, actual intake retries and a stopped-runtime recovery drill."""
 import io
 import json
@@ -135,8 +136,8 @@ def test_stopped_runtime_restore_original_navigation_export_and_purge(tmp_path, 
         assert bundle.status_code == 200
         with zipfile.ZipFile(io.BytesIO(bundle.content)) as archive:
             assert json.loads(archive.read('context/source-roles.json'))['sources'] == [expected]
-        response = restored.post(f'/matters/{matter.slug}/close', data=dict(confirmed_name=matter.display_name, acknowledge='yes'))
-        assert response.status_code == 200
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
         assert not bench.workspace.connection.execute('SELECT * FROM workbench_source_organization WHERE matter_id=?', (matter.matter_id,)).fetchall()
         assert restored.get(path).status_code == 404

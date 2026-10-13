@@ -1,11 +1,20 @@
-# Temporary-matter retention and expired-backup recovery
+# Pre-0040 temporary-matter retention and expired-backup recovery
 
 R5/F3 of [independent review issue #109](https://github.com/Exculpata/exculpata/issues/109).
 This packet investigates recovery and concurrent lifecycle operations. It does
 not choose a new retention policy or enroll an installation in backup/export.
 See [storage and backup](STORAGE_AND_BACKUP.md) for the complete backup boundary.
 
-## Existing policy
+## Version boundary
+
+This is a historical recovery procedure for application versions before migration
+0040. The current [ongoing-matter policy](CASE_LIFECYCLE.md) disables automatic
+purge, preserves old dates for review, and requires a verified full export plus
+fresh explicit confirmation. Do not use the legacy rescheduling or purge paths
+below on an upgraded database. Stop all old workers before upgrading; never
+start older code on an upgraded store.
+
+## Previous policy
 
 Exculpata is a temporary review workspace. The creation form defaults to
 30 days, with 7/30/60/90-day choices. The review end is followed by seven days

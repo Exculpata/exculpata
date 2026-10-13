@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic manual identity, provenance, concurrency, lifecycle and web journeys."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
@@ -242,8 +243,8 @@ def test_actual_sources_survive_stopped_backup_clean_restore_and_bundle(tmp_path
         restored_document = next(iter(restored_store.documents.values()))
         original_content = client.get(f'/matters/{slug}/sources/{restored_store.action_token(restored_document)}/content')
         assert original_content.status_code == 200 and b'visited a synthetic depot' in original_content.content
-        prepared, lifecycle = bench.workspace.begin_matter_purge(slug, WEB_ACTOR, matter.display_name, source_count=1)
-        bench.workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         for table in ('entity', 'entity_mention', 'entity_history'):
             assert bench.workspace.connection.execute('SELECT COUNT(*) FROM workbench_' + table + ' WHERE matter_id=?', (matter.matter_id,)).fetchone()[0] == 0
 

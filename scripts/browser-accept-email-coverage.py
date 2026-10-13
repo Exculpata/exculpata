@@ -25,6 +25,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from browser_case_exit import BrowserCaseExit, completed_zip, preview_login  # noqa: E402
 from case_intelligence.extended_extract import EMAIL_COVERAGE_NOTICE  # noqa: E402
 from case_intelligence.malware_scan import MalwareScanResult  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
@@ -64,7 +65,7 @@ def main():
         print(message, flush=True)
 
     with tempfile.TemporaryDirectory(prefix="recordbench-email-browser-") as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         original = root / "generated.eml"
         message = EmailMessage()
         message["From"] = "sender@example.test"
@@ -79,7 +80,7 @@ def main():
         original_bytes = message.as_bytes()
         original.write_bytes(original_bytes)
         app = create_workbench_app(root / "runtime", generator=EvidenceEchoGenerator(),
-            auth_mode="test", background_ingestion=True, ingestion_workers=1,
+            auth_mode="preview", background_ingestion=True, ingestion_workers=1,
             malware_scanner=CleanScanner(), malware_scan_mode="extended")
         bench = app.state.workbench
         listener = socket.socket()
@@ -154,6 +155,7 @@ def main():
                     wait.until(lambda _: detached(element))
                     ready()
 
+            preview_login(driver, base)
             go("/matters/new")
             driver.find_element(By.ID, "matter-name").send_keys("Generated email attachment review")
             click(".matter-form button[type=submit]")
@@ -302,18 +304,19 @@ def main():
             assert (store.get(document.document_id).document_id, store.get(document.document_id).version_id) == identity
             checked("Foreign-matter source opening remains denied without changing the admitted source version")
 
-            go(prefix + "/close")
+            go(prefix + "/settings")
+            before_bundle = set(downloads.iterdir())
             click(f'a[href="{prefix}/export"]', False)
-            bundle = wait.until(lambda _: next(downloads.glob("*.zip"), None))
+            bundle = wait.until(lambda _: completed_zip(downloads, before_bundle))
             with zipfile.ZipFile(bundle) as archive:
                 conversations = [name for name in archive.namelist() if name.startswith("conversations/") and name.endswith(".md")]
                 assert conversations and any(EMAIL_COVERAGE_NOTICE in archive.read(name).decode() for name in conversations)
                 investigations = [name for name in archive.namelist() if name.startswith("investigations/")]
                 assert investigations and all(EMAIL_COVERAGE_NOTICE in archive.read(name).decode() for name in investigations)
                 assert not any(name.endswith(".eml") for name in archive.namelist())
-            driver.find_element(By.ID, "confirmed-name").send_keys(matter.display_name)
-            click("input[name=acknowledge]", False)
-            click(".close-matter-form button[type=submit]")
+            exit_flow = BrowserCaseExit(driver, base, app, matter, downloads, preview_subject="taylor-morgan")
+            exit_flow.prepare()
+            exit_flow.confirm_name(matter.display_name)
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted")
             assert original.read_bytes() == original_bytes
             checked("Final bundle includes saved coverage; owner closure removes temporary matter state and preserves the external email")

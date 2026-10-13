@@ -14,7 +14,9 @@
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
   <link rel="stylesheet" href="{{ asset_url('report-compilation.css') }}">
   <link rel="stylesheet" href="{{ asset_url('workspace-layout.css') }}">
+  <link rel="stylesheet" href="{{ asset_url('lifecycle-notices.css') }}">
   <script src="{{ asset_url('case-intelligence.js') }}" defer></script>
+  <script src="{{ asset_url('lifecycle-times.js') }}" defer></script>
   {% if one_box_enabled %}<link rel="stylesheet" href="{{ asset_url('one-box.css') }}"><script src="{{ asset_url('one-box.js') }}" defer></script>{% endif %}
   {% if deeper_investigation_enabled %}<link rel="stylesheet" href="{{ asset_url('deeper-investigation.css') }}">{% endif %}
   {% if briefing_enabled %}<link rel="stylesheet" href="{{ asset_url('briefing.css') }}"><script src="{{ asset_url('briefing.js') }}" defer></script>{% endif %}
@@ -94,7 +96,7 @@
     </div>
   </header>
 
-  <div class="app-frame">
+  <div class="app-frame{% if closure_notices %} has-closure-notices{% endif %}">
     <aside class="matter-rail" id="matter-rail" data-matter-rail>
       <div class="rail-content">
         <div class="rail-heading"><p class="rail-label">Matters</p><span>{{ matter_navigation|length }}</span></div>
@@ -138,6 +140,7 @@
     </aside>
     <button class="rail-scrim" type="button" aria-label="Close matters" data-rail-scrim></button>
 
+    {% include "workbench_closure_notices.html" %}
     {% block content %}{% endblock %}
     {% if show_assistant_dock %}{% include "workbench_assistant.html" %}{% endif %}
     <button class="activity-scrim" type="button" aria-label="Close activity" tabindex="-1" aria-hidden="true" data-activity-scrim></button>

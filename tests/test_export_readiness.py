@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Final-bundle preview reuses authoritative export checks and offers repair."""
 import html
 import io
@@ -150,7 +151,7 @@ def test_failed_close_preview_never_reopens_quarantined_sources(workspace, monke
     bench._postgres_projection_configured = True
     bench.postgres_connection = None
     bench.postgres_ready = False
-    prepared, lifecycle = bench.begin_matter_purge(matter.slug, ACTOR, matter.display_name)
+    prepared, lifecycle = claim_bench_exit(bench, matter, ACTOR)
     with pytest.raises(WorkspaceProblem, match="derived search data"):
         bench.execute_matter_purge(prepared, lifecycle)
     def forbidden(*_args, **_kwargs):

@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.generation import UnavailableGenerator
+from case_intelligence.matter_archive_verifier import verify_matter_archive
 from case_intelligence.media_evidence import (
     MediaProcessorError,
     MediaProcessorNotFound,
@@ -23,6 +24,7 @@ from case_intelligence.media_evidence import (
     transcript_summary_windows,
 )
 from case_intelligence.workbench import create_workbench_app
+from tests.case_lifecycle_web_helpers import prepare_preview_exit, preview_login
 from case_intelligence.workspace_store import (
     MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS,
     WorkspaceProblem,
@@ -829,11 +831,12 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
     app = create_workbench_app(
         tmp_path / "runtime",
         generator=EvidenceEchoGenerator(),
-        auth_mode="test",
+        auth_mode="preview",
         media_processor=processor,
         media_poll_seconds=0.01,
     )
     with TestClient(app) as client:
+        preview_login(client)
         slug = _matter(client)
         document, token = _upload_and_wait(client, slug)
         bench = client.app.state.workbench
@@ -1137,9 +1140,26 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
             "media.clip_export",
         }.issubset({item.action for item in events})
 
+        confirmation = prepare_preview_exit(client, matter)
+        current_exit = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+        preservation = client.get(f"/matters/{slug}/close/export")
+        assert preservation.status_code == 200
+        archive_path = tmp_path / "generated-media-preservation.zip"
+        archive_path.write_bytes(preservation.content)
+        full_manifest = verify_matter_archive(archive_path, expected_sha256=current_exit.archive_digest)
+        assert full_manifest["table_rows"]["workbench_media_clip"] == 1
+        with zipfile.ZipFile(archive_path) as archive:
+            assert archive.read("originals/" + document.document_id) == WAV.read_bytes()
+            assert b"The crimson bicycle" in archive.read("records/workbench_transcript_segment_revision.jsonl")
+            assert b"Witness Jordan" in archive.read("records/workbench_speaker_mapping_revision.jsonl")
+            archived_transcript, = [json.loads(line) for line in archive.read(
+                "records/workbench_media_transcript.jsonl").splitlines()]
+            assert archived_transcript["quality_json"]["review_recommended"] is True
+            assert archived_transcript["provenance_json"]["pipeline"] == "synthetic-test-whisperx"
+
         closed = client.post(
             f"/matters/{slug}/close",
-            data={"confirmed_name": matter.display_name, "acknowledge": "yes"},
+            data=confirmation,
             follow_redirects=False,
         )
         assert closed.status_code == 303

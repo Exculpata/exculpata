@@ -167,7 +167,7 @@ def test_closed_matter_or_revoked_membership_cannot_queue_claim_or_finish(tmp_pa
     with pytest.raises(KeyError):
         queue(jobs, matter, "b")
     assert jobs.claim("another-worker") is None
-    assert store.connection.execute("SELECT state FROM workbench_report_compilation_job WHERE job_id=?", (queued.job_id,)).fetchone()[0] == "failed"
+    assert store.connection.execute("SELECT state FROM workbench_report_compilation_job WHERE job_id=?", (queued.job_id,)).fetchone()[0] == ("failed" if change == "revoked" else "running")
     store.close()
 
 
@@ -181,6 +181,35 @@ def test_admission_limits_apply_atomically_and_retry_rechecks_capacity(tmp_path)
     queue(jobs, matter, "b")
     with pytest.raises(CompilationProblem, match="queue is full"):
         jobs.retry(matter.matter_id, ACTOR, first.job_id)
+    store.close()
+
+
+@pytest.mark.parametrize("lifecycle", ["closing", "purging", "purge_failed", "deleted"])
+@pytest.mark.parametrize("job_state", ["queued", "running"])
+def test_frozen_jobs_remain_unchanged_and_do_not_block_active_work(tmp_path, lifecycle, job_state):
+    store, frozen = setup_store(tmp_path / "control.sqlite")
+    now = [100.0]
+    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(
+        pending_limit=1, actor_active_limit=1, lease_seconds=10), clock=lambda: now[0])
+    queued = queue(jobs, frozen)
+    claimed = jobs.claim("synthetic-old-worker") if job_state == "running" else None
+    with store.connection:
+        store.connection.execute("UPDATE workbench_matter_lifecycle SET state=? WHERE matter_id=?",
+                                 (lifecycle, frozen.matter_id))
+    before = tuple(store.connection.execute(
+        "SELECT * FROM workbench_report_compilation_job WHERE job_id=?", (queued.job_id,)).fetchone())
+    events_before = store.audit_events(frozen.matter_id)
+    active = store.create_matter("Generated active matter", "Synthetic", ACTOR)
+    active_job = queue(jobs, active, "b")
+    now[0] = 111.0
+    jobs.recover_expired()
+    assert jobs.claim("synthetic-active-worker").job_id == active_job.job_id
+    assert jobs.claim("synthetic-later-worker") is None
+    if claimed is not None:
+        assert jobs.heartbeat(claimed) is False
+    assert tuple(store.connection.execute(
+        "SELECT * FROM workbench_report_compilation_job WHERE job_id=?", (queued.job_id,)).fetchone()) == before
+    assert store.audit_events(frozen.matter_id) == events_before
     store.close()
 
 
@@ -463,7 +492,7 @@ def test_independent_heartbeat_does_not_renew_cancelled_or_revoked_work(tmp_path
     store.close()
 
 
-@pytest.mark.parametrize("reason", ["attempt_limit", "cancelled", "revoked_running", "revoked_queued", "inactive_principal", "closed_matter", "cancelled_and_revoked"])
+@pytest.mark.parametrize("reason", ["attempt_limit", "cancelled", "revoked_running", "revoked_queued", "inactive_principal", "cancelled_and_revoked"])
 def test_recovery_terminal_transitions_append_one_attributed_content_free_audit(tmp_path, reason):
     store, matter = setup_store(tmp_path / "control.sqlite")
     now = [100.0]
@@ -478,8 +507,6 @@ def test_recovery_terminal_transitions_append_one_attributed_content_free_audit(
             store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=? AND principal_id=?", (matter.matter_id, ACTOR))
         elif reason == "inactive_principal":
             store.connection.execute("UPDATE workbench_principal SET active=0 WHERE principal_id=?", (ACTOR,))
-        elif reason == "closed_matter":
-            store.connection.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE matter_id=?", (matter.matter_id,))
     if reason in {"attempt_limit", "cancelled", "cancelled_and_revoked"}:
         now[0] = 111.0
     jobs.recover_expired()

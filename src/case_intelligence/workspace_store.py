@@ -196,11 +196,23 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             "recordbench_principal_enabled", 2,
             lambda provider, subject: int(self.principal_enabled(provider, subject)),
         )
+        self.connection.create_function("recordbench_case_lifecycle_writer", 0, lambda: 2)
+        self._case_cleanup_matter = None
+        self.connection.create_function("recordbench_case_content_cleanup", 1,
+            lambda matter_id: int(self._case_cleanup_matter == matter_id))
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = FULL")
         self.connection.execute("PRAGMA busy_timeout = 5000")
         self.connection.execute("PRAGMA foreign_keys = ON")
+        case_policy_exists = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workbench_case_policy'"
+        ).fetchone() is not None
+        if case_policy_exists:
+            # Upgrade writer fences before old idempotent backfills encounter
+            # the previous writer version. No workers or recovery have started.
+            from .case_lifecycle_migration import migrate_case_lifecycle
+            migrate_case_lifecycle(self.connection)
         for name in (
             "migrations/sqlite/0002_milestone_a_workbench.sql",
             "migrations/sqlite/0003_scalable_ingestion.sql",
@@ -234,6 +246,10 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             "migrations/sqlite/0031_team_groups.sql",
             "migrations/sqlite/0032_entity_workspace.sql",
         ):
+            # The original organization backfill uses INSERT OR IGNORE, which
+            # runs BEFORE INSERT fences even for an already existing row.
+            if case_policy_exists and name.endswith("0008_conversation_organization.sql"):
+                continue
             migration = resources.files("case_intelligence").joinpath(name).read_text(encoding="utf-8")
             self.connection.executescript(migration)
         with self.connection:
@@ -254,6 +270,10 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         from .source_roles import migrate_source_roles
         migrate_source_roles(self.connection)
+        from .case_lifecycle_migration import migrate_case_lifecycle
+        from .case_lifecycle import CaseLifecycleRepository
+        migrate_case_lifecycle(self.connection)
+        self.case_lifecycle = CaseLifecycleRepository(self)
         from .full_text_review_budget import backfill_legacy_ledgers
         backfill_legacy_ledgers(self)
         session_columns = {
@@ -319,7 +339,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "FROM workbench_review_run run WHERE run.state IN ('queued','running') "
                 "AND EXISTS (SELECT 1 FROM workbench_review_decision decision "
                 "WHERE decision.run_id=run.run_id "
-                "AND decision.source_basis_digest='')"
+                "AND decision.source_basis_digest='') AND run.matter_id IN ("
+                "SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')"
             ).fetchall()
             legacy_message = (
                 "This saved source check predates exact source-content tracking. "
@@ -942,6 +963,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         idle_expires_at: str,
         absolute_expires_at: str,
         application_roles: frozenset[str] = frozenset(),
+        *, binding_digest: str | None = None,
     ) -> SessionRecord:
         principal = self.get_principal(principal_id)
         if not principal.active:
@@ -949,6 +971,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         if not re.fullmatch(r"[0-9a-f]{64}", token_digest):
             raise ValueError("invalid session token digest")
         method = self._safe_text(auth_method, label="Authentication method", maximum=64)
+        if binding_digest is not None and (method != 'local' or not re.fullmatch(r'[0-9a-f]{64}', binding_digest)):
+            raise ValueError('invalid lifecycle session binding')
         if not _PRINCIPAL_PROVIDER.fullmatch(method):
             raise ValueError("invalid authentication method")
         if not isinstance(application_roles, frozenset) or not application_roles.issubset(
@@ -976,6 +1000,9 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                     absolute_expires_at,
                 ),
             )
+            if binding_digest is not None:
+                self.connection.execute('INSERT INTO workbench_case_session_binding VALUES (?,?)',
+                                        (session_id, binding_digest))
             row = self.connection.execute(
                 "SELECT session_id,token_digest,principal_id,auth_method,application_roles,created_at,last_seen_at,"
                 "idle_expires_at,absolute_expires_at,revoked_at FROM workbench_session "
@@ -1631,17 +1658,13 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "VALUES (?,'active',?)",
                 (matter_id, now),
             )
-            if retention_days is not None:
-                expires_at = self._timestamp(now_value + timedelta(days=retention_days))
-                purge_after = self._timestamp(
-                    now_value + timedelta(days=retention_days + 7)
-                )
-                self.connection.execute(
-                    "INSERT INTO workbench_matter_retention("
-                    "matter_id,expires_at,purge_after,scheduled_by,created_at,updated_at) "
-                    "VALUES (?,?,?,?,?,?)",
-                    (matter_id, expires_at, purge_after, owner, now, now),
-                )
+            # Legacy callers may supply their old review period; it is only a
+            # check-in reminder now and never establishes a deletion deadline.
+            next_check_in = self._timestamp(now_value + timedelta(days=retention_days or 90))
+            self.connection.execute(
+                "INSERT INTO workbench_case_policy(matter_id,mode,next_check_in_at,selected_by,created_at,updated_at) "
+                "VALUES (?,'ongoing',?,?,?,?)", (matter_id, next_check_in, owner, now, now),
+            )
             self._create_conversation_locked(
                 matter_id,
                 "Case review",
@@ -1862,63 +1885,11 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         *,
         administrator_override: bool = False,
     ) -> MatterRetentionRecord:
-        actor = self._safe_text(actor_id, label="Actor identity", maximum=100)
-        selected = expires_at.astimezone(timezone.utc) if expires_at.tzinfo else None
-        now_value = self.current_time()
-        if selected is None or selected <= now_value:
-            raise WorkspaceProblem("Choose a future review end date.")
-        if selected > now_value + timedelta(days=366):
-            raise WorkspaceProblem("Choose a review end date within the next year.")
-        now = self._timestamp(now_value)
-        expiry = self._timestamp(selected)
-        purge_after = self._timestamp(selected + timedelta(days=7))
-        with self._lock, self.connection:
-            # Serialize authority and lifecycle checks with both scheduled and
-            # manual purge claims, including writers on another connection.
-            self.connection.execute("BEGIN IMMEDIATE")
-            if administrator_override:
-                if not self.get_principal(actor).active:
-                    raise WorkspaceProblem("The administrator identity is not active.")
-            else:
-                membership = self.membership(matter_id, actor)
-                if membership.role != "owner":
-                    raise WorkspaceProblem("Only the matter owner can change its review end date.")
-            active = self.connection.execute(
-                "SELECT 1 FROM workbench_matter_lifecycle "
-                "WHERE matter_id=? AND state='active'",
-                (matter_id,),
-            ).fetchone()
-            if active is None:
-                raise WorkspaceProblem("This matter is no longer open for review.")
-            self.connection.execute(
-                "INSERT INTO workbench_matter_retention("
-                "matter_id,expires_at,purge_after,scheduled_by,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?) ON CONFLICT(matter_id) DO UPDATE SET "
-                "expires_at=excluded.expires_at,purge_after=excluded.purge_after,"
-                "scheduled_by=excluded.scheduled_by,updated_at=excluded.updated_at",
-                (matter_id, expiry, purge_after, actor, now, now),
-            )
-            row = self.connection.execute(
-                "SELECT matter_id,expires_at,purge_after,scheduled_by,created_at,updated_at "
-                "FROM workbench_matter_retention WHERE matter_id=?",
-                (matter_id,),
-            ).fetchone()
-        if row is None:
-            raise RuntimeError("matter retention schedule did not persist")
-        return self._retention(row)
+        raise WorkspaceProblem("End dates no longer schedule deletion. Use the matter check-in controls.")
 
     def due_matter_retentions(self) -> tuple[MatterRetentionRecord, ...]:
-        now = self._now()
-        with self._lock:
-            rows = self.connection.execute(
-                "SELECT r.matter_id,r.expires_at,r.purge_after,r.scheduled_by,"
-                "r.created_at,r.updated_at FROM workbench_matter_retention r "
-                "JOIN workbench_matter_lifecycle ml ON ml.matter_id=r.matter_id "
-                "WHERE ml.state='active' AND r.purge_after<=? "
-                "ORDER BY r.purge_after,r.matter_id",
-                (now,),
-            ).fetchall()
-        return tuple(self._retention(row) for row in rows)
+        """Compatibility inventory: no date is authorization for deletion."""
+        return ()
 
     def matter_activity_at(self, matter_id: str) -> str:
         if not _IDENTIFIER.fullmatch(matter_id):
@@ -1970,7 +1941,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "JOIN workbench_matter_lifecycle ml ON ml.matter_id=m.matter_id "
                 "WHERE m.slug=? "
                 + owner_clause
-                + "AND ml.state IN ('active','purging','purge_failed')",
+                + "AND ml.state IN ('active','closing','purging','purge_failed')",
                 parameters,
             ).fetchone()
         if row is None:
@@ -2093,182 +2064,30 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         with self._lock, self.connection:
             return self.connection.execute(
                 "UPDATE workbench_analysis_run SET state='failed',message=?,finished_at=? "
-                "WHERE state='running'",
+                "WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')",
                 (_ANALYSIS_RESTART_MESSAGE, now),
             ).rowcount
 
     def begin_matter_purge(
-        self,
-        slug: str,
-        actor_id: str,
-        confirmed_name: str,
-        *,
-        source_count: int,
-        administrator_override: bool = False,
+        self, slug: str, actor_id: str, confirmed_name: str, *, source_count: int,
+        administrator_override: bool = False, token: str | None = None,
+        session_id: str | None = None, export_id: str | None = None,
+        export_acknowledged: bool = False, current_snapshot_digest: str | None = None,
+        mode: str = 'export_exit', no_backup_acknowledged: bool = False,
     ) -> tuple[MatterRecord, MatterLifecycleRecord]:
-        if not _SLUG.fullmatch(slug):
-            raise KeyError(slug)
-        actor = self._safe_text(actor_id, label="Actor identity", maximum=100)
-        principal = self.get_principal(actor)
-        if not principal.active:
-            if administrator_override:
-                raise WorkspaceProblem("The administrator identity is not active.")
-            raise KeyError(slug)
-        confirmation = self._safe_text(
-            confirmed_name, label="Matter name confirmation", maximum=140
+        """Compatibility entry point; raw manual deletion cannot bypass exit gates."""
+        return self.case_lifecycle.claim_purge(
+            slug, actor_id, confirmed_name, source_count=source_count, token=token,
+            session_id=session_id, export_id=export_id, export_acknowledged=export_acknowledged,
+            mode=mode, no_backup_acknowledged=no_backup_acknowledged,
+            current_snapshot_digest=current_snapshot_digest, administrator_override=administrator_override,
         )
-        if isinstance(source_count, bool) or not isinstance(source_count, int) or source_count < 0:
-            raise ValueError("invalid purge source count")
-        owner_clause = "" if administrator_override else "AND m.owner_id=? "
-        parameters = (slug,) if administrator_override else (slug, actor)
-        now = self._now()
-        with self._lock, self.connection:
-            # Keep exact-name confirmation current through the deletion claim,
-            # including renames admitted by another workspace connection.
-            self.connection.execute("BEGIN IMMEDIATE")
-            row = self.connection.execute(
-                "SELECT m.matter_id,m.slug,m.display_name,m.descriptor,m.owner_id,"
-                "m.created_at,m.updated_at,ml.state,ml.purge_id "
-                "FROM workbench_matter m JOIN workbench_matter_lifecycle ml "
-                "ON ml.matter_id=m.matter_id WHERE m.slug=? "
-                + owner_clause
-                + "AND ml.state IN ('active','purge_failed','purging')",
-                parameters,
-            ).fetchone()
-            if row is None:
-                raise KeyError(slug)
-            if confirmation != row["display_name"]:
-                raise WorkspaceProblem("Enter the matter name exactly as shown to confirm deletion.")
-            if row["state"] == "purging":
-                raise WorkspaceProblem("This matter deletion is already in progress.")
-            active = self._active_matter_work_counts_locked(row["matter_id"])
-            if any(active.values()):
-                raise WorkspaceProblem(
-                    "Wait for current uploads, source and media processing, transcript overviews, analysis, answers, investigations, and every-source checks to finish before deleting this matter."
-                )
-            conversation_count = int(
-                self.connection.execute(
-                    "SELECT COUNT(*) FROM workbench_conversation WHERE matter_id=?",
-                    (row["matter_id"],),
-                ).fetchone()[0]
-            )
-            message_count = int(
-                self.connection.execute(
-                    "SELECT COUNT(*) FROM workbench_message msg "
-                    "JOIN workbench_conversation c ON c.conversation_id=msg.conversation_id "
-                    "WHERE c.matter_id=?",
-                    (row["matter_id"],),
-                ).fetchone()[0]
-            )
-            purge_id = row["purge_id"] or f"matter-purge-{uuid.uuid4().hex}"
-            changed = self.connection.execute(
-                "UPDATE workbench_matter_lifecycle SET state='purging',purge_id=?,"
-                "requested_by=?,requested_at=COALESCE(requested_at,?),finished_at=NULL,"
-                "error_code=NULL,source_count=?,conversation_count=?,message_count=?,"
-                "updated_at=? WHERE matter_id=? AND state IN ('active','purge_failed')",
-                (
-                    purge_id,
-                    actor,
-                    now,
-                    source_count,
-                    conversation_count,
-                    message_count,
-                    now,
-                    row["matter_id"],
-                ),
-            ).rowcount
-            if changed != 1:
-                raise WorkspaceProblem("This matter deletion could not be started. Refresh and try again.")
-        matter = MatterRecord(
-            row["matter_id"],
-            row["slug"],
-            row["display_name"],
-            row["descriptor"],
-            row["owner_id"],
-            row["created_at"],
-            row["updated_at"],
-        )
-        return matter, self.matter_lifecycle(matter.matter_id)
 
     def begin_due_matter_purge(
         self, matter_id: str, *, source_count: int
     ) -> tuple[MatterRecord, MatterLifecycleRecord] | None:
-        """Atomically claim an explicitly scheduled, due matter for deletion.
-
-        A due matter with active work is left open for the next maintenance run.
-        This path never assigns a schedule and therefore cannot affect a
-        grandfathered matter.
-        """
-
-        if not _IDENTIFIER.fullmatch(matter_id):
-            raise KeyError(matter_id)
-        if isinstance(source_count, bool) or not isinstance(source_count, int) or source_count < 0:
-            raise ValueError("invalid purge source count")
-        now = self._now()
-        with self._lock, self.connection:
-            # The work inventory and deletion claim must share the writer
-            # transaction with admissions/extensions on other connections.
-            self.connection.execute("BEGIN IMMEDIATE")
-            row = self.connection.execute(
-                "SELECT m.matter_id,m.slug,m.display_name,m.descriptor,m.owner_id,"
-                "m.created_at,m.updated_at,r.scheduled_by FROM workbench_matter m "
-                "JOIN workbench_matter_lifecycle ml ON ml.matter_id=m.matter_id "
-                "JOIN workbench_matter_retention r ON r.matter_id=m.matter_id "
-                "WHERE m.matter_id=? AND ml.state='active' AND r.purge_after<=?",
-                (matter_id, now),
-            ).fetchone()
-            if row is None:
-                return None
-            active = self._active_matter_work_counts_locked(matter_id)
-            if any(active.values()):
-                return None
-            conversation_count = int(
-                self.connection.execute(
-                    "SELECT COUNT(*) FROM workbench_conversation WHERE matter_id=?",
-                    (matter_id,),
-                ).fetchone()[0]
-            )
-            message_count = int(
-                self.connection.execute(
-                    "SELECT COUNT(*) FROM workbench_message msg "
-                    "JOIN workbench_conversation c ON c.conversation_id=msg.conversation_id "
-                    "WHERE c.matter_id=?",
-                    (matter_id,),
-                ).fetchone()[0]
-            )
-            purge_id = f"matter-purge-{uuid.uuid4().hex}"
-            changed = self.connection.execute(
-                "UPDATE workbench_matter_lifecycle SET state='purging',purge_id=?,"
-                "requested_by=?,requested_at=?,finished_at=NULL,error_code=NULL,"
-                "source_count=?,conversation_count=?,message_count=?,updated_at=? "
-                "WHERE matter_id=? AND state='active' AND EXISTS ("
-                "SELECT 1 FROM workbench_matter_retention r "
-                "WHERE r.matter_id=workbench_matter_lifecycle.matter_id "
-                "AND r.purge_after<=?)",
-                (
-                    purge_id,
-                    row["scheduled_by"],
-                    now,
-                    source_count,
-                    conversation_count,
-                    message_count,
-                    now,
-                    matter_id,
-                    now,
-                ),
-            ).rowcount
-            if changed != 1:
-                return None
-        matter = MatterRecord(
-            row["matter_id"],
-            row["slug"],
-            row["display_name"],
-            row["descriptor"],
-            row["owner_id"],
-            row["created_at"],
-            row["updated_at"],
-        )
-        return matter, self.matter_lifecycle(matter_id)
+        """Dates never claim deletion, including retained legacy schedules."""
+        return None
 
     def fail_matter_purge(
         self, matter_id: str, purge_id: str, error_code: str
@@ -2280,6 +2099,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             "media_playback",
             "media_processing",
             "clip_exports",
+            "authority",
             "unknown",
         }:
             raise ValueError("invalid purge failure code")
@@ -2340,7 +2160,9 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         self, matter_id: str, purge_id: str
     ) -> MatterLifecycleRecord:
         now = self._now()
-        with self._lock, self.connection:
+        with self._lock, self.connection, self.case_lifecycle.purge_cleanup(matter_id, purge_id):
+            self.connection.execute("BEGIN IMMEDIATE")
+            self.case_lifecycle.validate_purge(matter_id, purge_id)
             lifecycle = self.connection.execute(
                 "SELECT state FROM workbench_matter_lifecycle "
                 "WHERE matter_id=? AND purge_id=?",
@@ -2434,11 +2256,19 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "updated_at=? WHERE matter_id=?",
                 (now, matter_id),
             )
+            self.connection.execute(
+                "DELETE FROM workbench_case_confirmation WHERE exit_id IN ("
+                "SELECT exit_id FROM workbench_case_exit WHERE matter_id=?)", (matter_id,)
+            )
+            from .case_oidc import purge_records
+            purge_records(self, matter_id)
             preserved_tables = {
                 "workbench_audit_event",
                 "workbench_matter",
                 "workbench_matter_lifecycle",
                 "workbench_matter_retention",
+                "workbench_case_policy",
+                "workbench_case_exit",
             }
             tables = self.connection.execute(
                 "SELECT name FROM sqlite_master "
@@ -2470,6 +2300,10 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AND state='purging'",
                 (now, now, matter_id, purge_id),
             ).rowcount
+            self.connection.execute(
+                "UPDATE workbench_case_exit SET state='deleted',updated_at=? "
+                "WHERE matter_id=? AND purge_id=? AND state='confirmed'", (now, matter_id, purge_id)
+            )
             if changed != 1:
                 raise RuntimeError("matter purge state changed unexpectedly")
         return self.matter_lifecycle(matter_id)
@@ -3261,7 +3095,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         with self._lock, self.connection:
             return self.connection.execute(
                 "UPDATE workbench_ingest_job SET state='queued',stage='Queued after restart',"
-                "worker_id=NULL,started_at=NULL,updated_at=? WHERE state='running'",
+                "worker_id=NULL,started_at=NULL,updated_at=? WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')",
                 (now,),
             ).rowcount
 
@@ -3480,7 +3314,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             return self.connection.execute(
                 "UPDATE workbench_media_job SET state='queued',"
                 "stage='Resuming after restart',worker_id=NULL,updated_at=? "
-                "WHERE state='running'",
+                "WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')",
                 (now,),
             ).rowcount
 
@@ -4112,7 +3946,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "message=CASE WHEN attempts>=? "
                 "THEN 'The automatic overview recovery limit was reached.' "
                 "ELSE 'Resuming overview after restart.' END,updated_at=? "
-                "WHERE state='running'",
+                "WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')",
                 (
                     MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS,
                     MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS,
@@ -7218,9 +7052,10 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
 
         now = self._now()
         with self._lock, self.connection:
+            self.connection.execute("BEGIN IMMEDIATE")
             rows = self.connection.execute(
                 "SELECT job_id,cancellation_requested FROM workbench_answer_job "
-                "WHERE state='running' ORDER BY created_at,job_id"
+                "WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') ORDER BY created_at,job_id"
             ).fetchall()
             for row in rows:
                 if int(row["cancellation_requested"]):
@@ -7940,7 +7775,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute("BEGIN IMMEDIATE")
             rows = self.connection.execute(
                 "SELECT job_id,cancellation_requested,total_steps,completed_steps,result_json "
-                "FROM workbench_research_job WHERE state='running' ORDER BY created_at,job_id"
+                "FROM workbench_research_job WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') ORDER BY created_at,job_id"
             ).fetchall()
             for row in rows:
                 cancelled = bool(row["cancellation_requested"])
@@ -8957,7 +8792,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute("BEGIN IMMEDIATE")
             rows = self.connection.execute(
                 "SELECT run_id,cancellation_requested,reviewed_count,snapshot_count "
-                "FROM workbench_review_run WHERE state='running' ORDER BY created_at,run_id"
+                "FROM workbench_review_run WHERE state='running' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') ORDER BY created_at,run_id"
             ).fetchall()
             for row in rows:
                 cancelled = bool(row["cancellation_requested"])

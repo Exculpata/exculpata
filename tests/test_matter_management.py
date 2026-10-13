@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import io
 import json
 import os
 import re
+import sqlite3
 import threading
 import zipfile
 
@@ -22,6 +25,9 @@ from case_intelligence.pilot_uploads import UploadProblem
 from case_intelligence.workbench import CaseIntelligenceWorkbench
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
+from tests.case_lifecycle_helpers import prepare_purge_confirmation
+from tests.case_lifecycle_bench_helpers import prepare_kerberos_exit
+from tests.case_lifecycle_web_helpers import prepare_bench_exit
 
 
 PROXY_SECRET = "synthetic_recordbench_proxy_secret_0000000000000000"
@@ -386,19 +392,11 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
     with pytest.raises(KeyError):
         store.matter_for_closure(target.slug, "principal-member")
     with pytest.raises(KeyError):
-        store.begin_matter_purge(
-            target.slug,
-            "principal-admin",
-            target.display_name,
-            source_count=0,
-        )
-
+        store.case_lifecycle.begin_exit(target.slug, "principal-admin", session_id=lifecycle_session(store, "principal-admin", administrator_override=False).session_id)
+    confirmation = prepare_purge_confirmation(store, target, "principal-admin", administrator_override=True)
     prepared, lifecycle = store.begin_matter_purge(
-        target.slug,
-        "principal-admin",
-        target.display_name,
-        source_count=0,
-        administrator_override=True,
+        target.slug, "principal-admin", target.display_name, source_count=0,
+        administrator_override=True, **confirmation,
     )
     assert prepared.matter_id == target.matter_id
     assert lifecycle.requested_by == "principal-admin"
@@ -408,6 +406,8 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
         "workbench_matter",
         "workbench_matter_lifecycle",
         "workbench_matter_retention",
+        "workbench_case_policy",
+        "workbench_case_exit",
     }
     remaining: dict[str, int] = {}
     table_rows = store.connection.execute(
@@ -493,9 +493,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     )
     assert store.active_matter_work_counts(matter.matter_id)["media"] == 1
     with pytest.raises(WorkspaceProblem, match="media processing"):
-        store.begin_matter_purge(
-            matter.slug, owner.principal_id, matter.display_name, source_count=1
-        )
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
 
     claimed = store.claim_media_job("generated-media-worker")
     assert claimed is not None and claimed.media_job_id == media_job.media_job_id
@@ -524,9 +522,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     assert summary is not None
     assert store.active_matter_work_counts(matter.matter_id)["overviews"] == 1
     with pytest.raises(WorkspaceProblem, match="transcript overviews"):
-        store.begin_matter_purge(
-            matter.slug, owner.principal_id, matter.display_name, source_count=1
-        )
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
     with store.connection:
         store.connection.execute(
             "UPDATE workbench_media_summary SET state='stale' WHERE transcript_id=?",
@@ -542,9 +538,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     analysis = store.start_analysis_run(matter.matter_id, owner.principal_id)
     assert store.active_matter_work_counts(matter.matter_id)["analysis"] == 1
     with pytest.raises(WorkspaceProblem, match="analysis"):
-        store.begin_matter_purge(
-            matter.slug, owner.principal_id, matter.display_name, source_count=1
-        )
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
     store.fail_analysis_run(
         analysis.analysis_id, matter.matter_id, "Generated analysis stopped safely."
     )
@@ -633,11 +627,9 @@ def test_restart_recovers_abandoned_analysis_and_unblocks_matter_purge(tmp_path)
         assert recovered.message in page.text
         assert "Refresh review map" in page.text
 
-        prepared, lifecycle = bench.workspace.begin_matter_purge(
-            matter.slug,
-            owner.principal_id,
-            matter.display_name,
-            source_count=0,
+        confirmation = prepare_bench_exit(bench, matter, owner.principal_id)
+        prepared, lifecycle = bench.begin_matter_purge(
+            matter.slug, owner.principal_id, matter.display_name, **confirmation,
         )
         assert prepared.matter_id == matter.matter_id
         assert lifecycle.state == "purging"
@@ -663,7 +655,8 @@ def test_playback_admission_cannot_cross_the_transactional_purge_claim(
     entered_claim = threading.Event()
     release_claim = threading.Event()
     playback_finished = threading.Event()
-    real_begin = bench.workspace.begin_matter_purge
+    confirmation = prepare_bench_exit(bench, matter, owner.principal_id)
+    real_begin = bench.workspace.case_lifecycle.claim_purge
     outcomes: dict[str, object] = {}
 
     def paused_begin(*args, **kwargs):
@@ -671,11 +664,11 @@ def test_playback_admission_cannot_cross_the_transactional_purge_claim(
         assert release_claim.wait(timeout=3)
         return real_begin(*args, **kwargs)
 
-    monkeypatch.setattr(bench.workspace, "begin_matter_purge", paused_begin)
+    monkeypatch.setattr(bench.workspace.case_lifecycle, "claim_purge", paused_begin)
 
     def purge():
         outcomes["purge"] = bench.begin_matter_purge(
-            matter.slug, owner.principal_id, matter.display_name
+            matter.slug, owner.principal_id, matter.display_name, **confirmation,
         )
 
     def start_playback():
@@ -698,7 +691,7 @@ def test_playback_admission_cannot_cross_the_transactional_purge_claim(
 
     assert "purge" in outcomes
     assert isinstance(outcomes.get("playback"), UploadProblem)
-    assert "closing" in str(outcomes["playback"])
+    assert "cannot open its source storage" in str(outcomes["playback"])
     assert bench.workspace.matter_lifecycle(matter.matter_id).state == "purging"
     assert not bench.playback.has_matter_work(matter.matter_id)
     bench.close()
@@ -731,7 +724,8 @@ def test_owner_can_find_manage_matters_and_matter_settings(tmp_path):
         settings = client.get(f"/matters/{slug}/settings", headers=_headers(OWNER))
         assert settings.status_code == 200
         assert "Matter settings" in settings.text
-        assert "Download final bundle" in settings.text
+        assert "Download work-product bundle" in settings.text
+        assert "excludes original source files" in settings.text
         assert f'href="/matters/{slug}/close"' in settings.text
         assert "Close matter" in settings.text
 
@@ -817,11 +811,11 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
             f"/matters/{target_slug}/close", headers=_headers(ADMIN)
         )
         assert close_page.status_code == 200
-        assert "Administrator deletion" in close_page.text
+        assert "Administrator action" in close_page.text
         assert "Matter Owner" in close_page.text
-        assert "using administrator authority" in close_page.text
-        assert "Download final bundle" in close_page.text
-        assert "Original files outside this workbench are never deleted" in close_page.text
+        assert "attributed to your account" in close_page.text
+        assert "Export and exit." in close_page.text
+        assert "External registered originals are not deleted" in close_page.text
         assert re.search(r'<button[^>]+type="submit"[^>]+disabled', close_page.text)
 
         refused = client.post(
@@ -851,7 +845,8 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
         playback_page = client.get(
             f"/matters/{target_slug}/close", headers=_headers(ADMIN)
         )
-        assert "1 playback preparation" in playback_page.text
+        assert bench.matter_active_work_counts(target.matter_id)["playback"] == 1
+        assert "Wait for active processing and downloads" in playback_page.text
         assert re.search(r'<button[^>]+type="submit"[^>]+disabled', playback_page.text)
         playback_refused = client.post(
             f"/matters/{target_slug}/close",
@@ -897,13 +892,9 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
         )
         assert exported.status_code == 200
 
+        confirmation = prepare_kerberos_exit(client, target, ADMIN, _headers)
         deleted = client.post(
-            f"/matters/{target_slug}/close",
-            data={
-                "csrf_token": admin_csrf,
-                "confirmed_name": target.display_name,
-                "acknowledge": "yes",
-            },
+            f"/matters/{target_slug}/close", data=confirmation,
             headers=_headers(ADMIN),
             follow_redirects=False,
         )
@@ -925,7 +916,7 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
         purge_events = [
             event
             for event in bench.workspace.audit_events(target.matter_id)
-            if event.action in {"matter.purge_request", "matter.purge"}
+            if event.action in {"matter.purge_confirm", "matter.purge"}
         ]
         assert purge_events
         assert all(
@@ -967,13 +958,10 @@ def test_administrator_exports_closed_matter_after_owner_deactivation_with_attri
             raise RuntimeError("synthetic pre-purge cleanup failure")
 
         monkeypatch.setattr(bench, "_cleanup_matter_clip_exports", fail_clip_cleanup)
+        confirmation = prepare_kerberos_exit(client, matter, OWNER, _headers)
         interrupted = client.post(
             f"/matters/{slug}/close",
-            data={
-                "csrf_token": owner_csrf,
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             headers=_headers(OWNER),
             follow_redirects=False,
         )
@@ -1046,13 +1034,10 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
             raise RuntimeError("synthetic deletion recovery failure")
 
         monkeypatch.setattr(bench, "_cleanup_matter_clip_exports", fail_clip_cleanup)
+        confirmation = prepare_kerberos_exit(client, matter, OWNER, _headers)
         failed = client.post(
             f"/matters/{slug}/close",
-            data={
-                "csrf_token": owner_csrf,
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             headers=_headers(OWNER),
             follow_redirects=False,
         )
@@ -1061,12 +1046,12 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
 
         owner_manage = client.get("/matters/manage", headers=_headers(OWNER))
         assert owner_manage.status_code == 200
-        assert "Deletion needs attention" in owner_manage.text
-        assert f'/matters/{slug}/export' in owner_manage.text
+        assert "Previous deletion did not finish" in owner_manage.text
+        assert f'/matters/{slug}/close' in owner_manage.text
         owner_close = client.get(f"/matters/{slug}/close", headers=_headers(OWNER))
         assert owner_close.status_code == 200
-        assert "Download final bundle" in owner_close.text
-        assert "work product that remains" in owner_close.text
+        assert "Download full export" in owner_close.text
+        assert "confirmed deletion did not finish" in owner_close.text
         assert client.get(
             f"/matters/{slug}/export", headers=_headers(OWNER)
         ).status_code == 200
@@ -1077,7 +1062,7 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
         ).status_code == 303
         owner_manage = client.get("/matters/manage", headers=_headers(OWNER))
         assert "Synthetic deletion recovery matter" in owner_manage.text
-        assert "Review and retry deletion" in owner_manage.text
+        assert "Review closure" in owner_manage.text
         owner_bundle = client.get(f"/matters/{slug}/export", headers=_headers(OWNER))
         assert owner_bundle.status_code == 200
         with zipfile.ZipFile(io.BytesIO(owner_bundle.content)) as archive:
@@ -1092,16 +1077,16 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
         ).status_code == 303
         admin_manage = client.get("/matters/manage", headers=_headers(ADMIN))
         assert admin_manage.status_code == 200
-        assert "Administrator recovery" in admin_manage.text
-        assert f'/matters/{slug}/export' in admin_manage.text
+        assert "Previous deletion did not finish" in admin_manage.text
+        assert f'/matters/{slug}/close' in admin_manage.text
         admin_console = client.get("/admin", headers=_headers(ADMIN))
         assert admin_console.status_code == 200
         assert "Failed deletions" in admin_console.text
         assert "Synthetic deletion recovery matter" in admin_console.text
         admin_close = client.get(f"/matters/{slug}/close", headers=_headers(ADMIN))
         assert admin_close.status_code == 200
-        assert "Administrator deletion" in admin_close.text
-        assert "Download final bundle" in admin_close.text
+        assert "Administrator action" in admin_close.text
+        assert "Download full export" in admin_close.text
         assert client.get(
             f"/matters/{slug}/export", headers=_headers(ADMIN)
         ).status_code == 200
@@ -1257,8 +1242,9 @@ def test_oversized_final_bundle_returns_409_and_releases_response_lease(
             for event in bench.workspace.audit_events(matter.matter_id)
         )
 
+        confirmation = prepare_bench_exit(bench, matter, owner_id)
         prepared, lifecycle = bench.begin_matter_purge(
-            slug, owner_id, matter.display_name
+            slug, owner_id, matter.display_name, **confirmation,
         )
         completed = bench.execute_matter_purge(prepared, lifecycle)
         assert completed.state == "deleted"
@@ -1288,13 +1274,10 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
         bench._postgres_projection_configured = True
         bench.postgres_connection = None
         bench.postgres_ready = False
+        confirmation = prepare_kerberos_exit(client, matter, OWNER, _headers)
         failed = client.post(
             f"/matters/{slug}/close",
-            data={
-                "csrf_token": csrf_token,
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             headers=_headers(OWNER),
             follow_redirects=False,
         )
@@ -1334,27 +1317,21 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
         original_result = json.loads(json.dumps(research.result))
         corrupt_result = json.loads(json.dumps(original_result))
         corrupt_result["evidence"][0]["matter_id"] = "ci-matter-" + "f" * 32
-        with bench.workspace.connection:
-            bench.workspace.connection.execute(
-                "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
-                (json.dumps(corrupt_result), research.job_id),
-            )
-        refused_corruption = client.get(
-            f"/matters/{slug}/export", headers=_headers(OWNER)
-        )
-        assert refused_corruption.status_code == 409
-        assert "noon" not in refused_corruption.text
+        with pytest.raises(sqlite3.IntegrityError, match="frozen"):
+            with bench.workspace._lock, bench.workspace.connection:
+                bench.workspace.connection.execute(
+                    "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
+                    (json.dumps(corrupt_result), research.job_id),
+                )
+        assert bench.workspace.connection.execute(
+            "SELECT result_json FROM workbench_research_job WHERE job_id=?", (research.job_id,)
+        ).fetchone()[0] == json.dumps(original_result, ensure_ascii=False, separators=(",", ":"))
         assert not source_root.exists()
         assert matter.matter_id not in bench._stores
         assert successful_exports == sum(
             event.action == "work_product.export" and event.outcome == "success"
             for event in bench.workspace.audit_events(matter.matter_id)
         )
-        with bench.workspace.connection:
-            bench.workspace.connection.execute(
-                "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
-                (json.dumps(original_result), research.job_id),
-            )
 
         source_root.mkdir(parents=True)
         refused_conflict = client.get(
@@ -1368,13 +1345,10 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
         source_root.rmdir()
 
         bench._postgres_projection_configured = False
+        confirmation = prepare_kerberos_exit(client, matter, OWNER, _headers)
         retried = client.post(
             f"/matters/{slug}/close",
-            data={
-                "csrf_token": csrf_token,
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             headers=_headers(OWNER),
             follow_redirects=False,
         )
@@ -1530,7 +1504,7 @@ def test_source_stream_and_bundle_hold_deletion_lease_until_response_finishes(
         source_thread = threading.Thread(target=get_source)
         source_thread.start()
         assert entered_read.wait(timeout=5)
-        with pytest.raises(WorkspaceProblem, match="work-product downloads"):
+        with pytest.raises(WorkspaceProblem, match="downloads"):
             bench.begin_matter_purge(slug, owner_id, matter.display_name)
         assert source_path.exists()
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
@@ -1559,7 +1533,7 @@ def test_source_stream_and_bundle_hold_deletion_lease_until_response_finishes(
         bundle_thread = threading.Thread(target=get_bundle)
         bundle_thread.start()
         assert entered_bundle.wait(timeout=5)
-        with pytest.raises(WorkspaceProblem, match="work-product downloads"):
+        with pytest.raises(WorkspaceProblem, match="downloads"):
             bench.begin_matter_purge(slug, owner_id, matter.display_name)
         assert source_path.exists()
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
@@ -1570,8 +1544,9 @@ def test_source_stream_and_bundle_hold_deletion_lease_until_response_finishes(
         with zipfile.ZipFile(io.BytesIO(responses["bundle"].content)) as archive:
             assert archive.testzip() is None
 
+        confirmation = prepare_bench_exit(bench, matter, owner_id)
         prepared, lifecycle = bench.begin_matter_purge(
-            slug, owner_id, matter.display_name
+            slug, owner_id, matter.display_name, **confirmation,
         )
         with pytest.raises(WorkspaceProblem, match="closing"):
             bench.begin_matter_response(matter)
@@ -1607,17 +1582,10 @@ def test_administrator_final_bundle_uses_durable_catalog_after_restart(tmp_path)
         bench._cleanup_matter_clip_exports = lambda _matter_id: (_ for _ in ()).throw(
             RuntimeError("synthetic pre-storage purge failure")
         )
+        confirmation = prepare_kerberos_exit(client, matter, OWNER, _headers)
         failed = client.post(
             f"/matters/{slug}/close",
-            data={
-                "csrf_token": _csrf(
-                    client.get(
-                        f"/matters/{slug}/close", headers=_headers(OWNER)
-                    ).text
-                ),
-                "confirmed_name": matter.display_name,
-                "acknowledge": "yes",
-            },
+            data=confirmation,
             headers=_headers(OWNER),
             follow_redirects=False,
         )

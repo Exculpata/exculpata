@@ -1,28 +1,13 @@
-{% if retention and (retention.show_warning or retention.status == 'unscheduled') and (retention_prominent or retention.tone == 'danger') %}
-<section class="retention-notice tone-{{ retention.tone }}" id="matter-retention" aria-label="Temporary matter lifecycle">
-  <div class="retention-notice-copy">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 2M5.6 5.6a9 9 0 1 1-1.9 9.7M3 4v5h5"/></svg>
-    <span><strong>{{ retention.label }}</strong><small>{{ retention.detail }}</small></span>
-  </div>
+{% if retention and retention.show_warning and retention_prominent %}
+<section class="retention-notice tone-attention" id="matter-retention" aria-label="Matter check-in">
+  <div class="retention-notice-copy"><span><strong>{{ retention.label }}</strong><small>{{ retention.detail }}</small><small>{% include "workbench_check_in_time.html" %}</small></span></div>
   <div class="retention-notice-actions">
-    <a href="/matters/{{ matter.slug }}/export" data-download>Export matter</a>
-    {% if membership and membership.role == 'owner' %}
-    <details class="retention-editor">
-      <summary>{{ 'Set date' if retention.status == 'unscheduled' else 'Extend' }}</summary>
-      <form method="post" action="/matters/{{ matter.slug }}/retention" data-working-form data-working-label="Saving…">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="next" value="{{ current_path }}">
-        <label for="matter-retention-date">Review end date</label>
-        <input id="matter-retention-date" name="expires_on" type="date" min="{{ retention.minimum_date }}" max="{{ retention.maximum_date }}" value="{{ retention.expires_on }}" required>
-        <small>Deletion begins seven days after this date. Export first.</small>
-        <button class="button button-primary" type="submit">Save date</button>
-      </form>
-    </details>
-    {% elif is_administrator %}
-    <a href="/admin#lifecycle-attention">Manage lifecycle</a>
-    {% else %}
-    <span>Ask the matter owner to extend it.</span>
-    {% endif %}
+    {% if is_matter_owner or is_administrator %}
+    <form method="post" action="/matters/{{ matter.slug }}/check-in" data-working-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="button button-secondary" type="submit">Keep ongoing · check in after 90 days</button>
+    </form>
+    {% else %}<span>Ask the matter owner to review this check-in.</span>{% endif %}
   </div>
 </section>
 {% endif %}

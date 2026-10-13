@@ -10,7 +10,6 @@
     {% if report %}<div class="report-export-actions"><a class="button button-secondary" href="/matters/{{ matter.slug }}/reports/{{ report.report_id }}/export?format=docx" data-download>Export Word</a><a class="button button-secondary" href="/matters/{{ matter.slug }}/reports/{{ report.report_id }}/export?format=markdown" data-download>Export Markdown</a></div>{% endif %}
   </header>
   {% with active='reports', hide_processing_status=true %}{% include "workbench_matter_tabs.html" %}{% endwith %}
-  {% if report and retention and retention.status == 'unscheduled' %}<details class="report-retention-detail"><summary>Matter retention: set a review end date</summary>{% with retention_prominent=true %}{% include "workbench_retention_notice.html" %}{% endwith %}</details>{% endif %}
 
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}

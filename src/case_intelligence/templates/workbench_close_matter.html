@@ -1,86 +1,90 @@
 {% extends "workbench_base.html" %}
-
 {% block title %}Close {{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block body_class %}close-matter-page{% endblock %}
-
 {% block content %}
 <main id="main-content" tabindex="-1" class="single-page-main close-matter-main">
   {% with active='settings' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
   <section class="close-matter-card" aria-labelledby="close-matter-heading">
-    <p class="eyebrow">Temporary matter lifecycle</p>
-    <h1 id="close-matter-heading">Close and delete this matter</h1>
+    <p class="eyebrow">Matter lifecycle</p>
+    <h1 id="close-matter-heading">{{ 'Close this matter' if lifecycle.state == 'active' else 'Delete without export' if exit_record and exit_record.mode == 'delete_without_export' else 'Export and exit' }}</h1>
     <p class="close-matter-name">{{ matter.display_name }}</p>
-
     {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
-    {% if administrator_override %}
-    <div class="notice notice-error administrator-deletion-notice" role="alert">
-      <strong>Administrator deletion</strong>
-      <span>{{ owner_name }} owns this matter. You are closing it using administrator authority. The permanent action will be attributed to your account.</span>
-    </div>
-    {% endif %}
-    {% if lifecycle.state == 'purge_failed' %}
-    <div class="notice notice-error" role="alert">
-      The previous deletion did not finish. This matter is closed to ordinary review. Retry below to finish removing its remaining workbench data.
-    </div>
+    {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
+    {% if administrator_override %}<div class="notice notice-error" role="alert"><strong>Administrator action</strong><span>{{ owner_name }} owns this matter. Actions here will be attributed to your account.</span></div>{% endif %}
+    {% if oidc_administrator %}<p>Starting closure and confirming deletion require a fresh organization sign-in for this specific action. Authorization lasts at most ten minutes. Return here after signing in to continue; sign-in alone never deletes anything.</p>{% endif %}
+    <p>Matters stay open until explicitly closed. Check-in dates never authorize deletion.</p>
+    {% if lifecycle.state == 'active' %}
+    <section class="close-explanation">
+      <h2>Start a reversible closure</h2>
+      <p>Starting closure freezes changes and starts a minimum seven-day cancellation window. You can reopen before final confirmation. Only the matter owner or an administrator can begin or confirm deletion. Choose how to close this matter; both choices require a separate, fresh confirmation after the window ends.</p>
+      <form method="post" action="/matters/{{ matter.slug }}/close/begin" data-working-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <fieldset><legend>Choose a closure path</legend>
+          <label class="delete-acknowledgement"><input type="radio" name="mode" value="export_exit" {% if selected_mode == "export_exit" %}checked{% endif %} required><span><strong>Export and exit.</strong> Prepare and download the complete archive, then acknowledge that you checked and kept a copy.</span></label>
+          <label class="delete-acknowledgement"><input type="radio" name="mode" value="delete_without_export" {% if selected_mode == "delete_without_export" %}checked{% endif %} required><span><strong>Delete without export.</strong> Intentionally delete without creating a preservation archive. You will explicitly acknowledge that no backup is provided and deletion is irreversible.</span></label>
+        </fieldset>
+        <button class="button button-primary" type="submit" {% if busy %}disabled{% endif %}>Begin closure</button>
+        <a class="button button-secondary" href="/matters/{{ matter.slug }}/settings">Keep matter open</a>
+      </form>
+    </section>
     {% elif lifecycle.state == 'purging' %}
-    <div class="notice notice-neutral" role="status">Deletion is already in progress. Refresh this page in a moment.</div>
+    <div class="notice notice-neutral" role="status">Deletion is in progress. Refresh to check its status.</div>
+    {% elif lifecycle.state == 'purge_failed' and not exit_record %}
+    <div class="notice notice-error" role="alert">A deletion started under the previous policy did not finish. Further deletion is blocked pending operator recovery. No full export is certified because some originals may already be unavailable.</div>
+    {% else %}
+      {% if lifecycle.state == 'purge_failed' %}<div class="notice notice-error" role="alert">The confirmed deletion did not finish. Ordinary access remains closed. A fresh confirmation is required to retry the same deletion.</div>{% endif %}
+      {% from "workbench_lifecycle_time.html" import lifecycle_time %}
+      <p>Closure requested: <strong>{{ lifecycle_time(exit_record.requested_at) }}</strong>. Earliest final confirmation: <strong>{{ lifecycle_time(exit_record.eligible_after) }}</strong>.</p>
+      {% if lifecycle.state == 'closing' %}
+      <form method="post" action="/matters/{{ matter.slug }}/close/cancel" data-working-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="exit_id" value="{{ exit_record.exit_id }}">
+        <button class="button button-secondary" type="submit" {% if busy %}disabled{% endif %}>Cancel closure and reopen</button>
+      </form>
+      {% if exit_record.mode == 'export_exit' %}
+      <section class="final-export-callout" aria-labelledby="full-export-heading">
+        <div><h2 id="full-export-heading">Preserve the full matter</h2>
+        <p>The preservation archive includes retained original files and media, extracted text, saved work, histories and failed or incomplete results. It includes a manifest and checksums. Previously removed originals cannot be recreated; their historical references remain.</p>
+        <p>This archive is readable outside the workbench. It is not an automated restore format or a legal retention guarantee.</p></div>
+        <form method="post" action="/matters/{{ matter.slug }}/close/export" data-working-form data-working-label="Preparing full export…">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="button button-secondary" type="submit" {% if busy %}disabled{% endif %}>{{ 'Prepare a replacement full export' if exit_record.export_id else 'Prepare full export' }}</button>
+        </form>
+      </section>
+      {% else %}<div class="notice notice-error" role="alert"><strong>Deletion without an export:</strong> <span>No preservation archive or backup will be provided. Final deletion permanently removes this matter's workbench content. Cancel closure and reopen if you want to choose export and exit.</span></div>{% endif %}
+      {% endif %}
+      {% if exit_record.export_id %}
+      <section class="close-explanation">
+        <h2>Verified export</h2>
+        <a class="button button-primary" href="/matters/{{ matter.slug }}/close/export" data-download>Download full export</a>
+        <p>SHA-256: <code style="overflow-wrap:anywhere">{{ exit_record.archive_digest }}</code></p>
+        <p>Keep the downloaded archive outside this workbench. Compare its SHA-256 with this value using a trusted local tool before running the included verifier. Inspect its manifest and verify all file checksums before confirming deletion. Downloads can be retried while closure is pending.</p>
+        <p role="status">{{ 'The server observed delivery of the complete archive to your account. This does not prove that your device saved or retained a backup.' if download_complete else 'A completed download to your account is required before export-and-exit confirmation.' }}</p>
+        <a class="button button-secondary" href="/matters/{{ matter.slug }}/close">Refresh download status</a>
+      </section>
+      {% endif %}
+      {% if confirmation %}
+      <form class="close-matter-form" method="post" action="/matters/{{ matter.slug }}/close" data-working-form data-working-label="Deleting matter…">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="token" value="{{ confirmation.token }}"><input type="hidden" name="export_id" value="{{ exit_record.export_id or '' }}"><input type="hidden" name="mode" value="{{ exit_record.mode }}">
+        <h2>Final confirmation</h2><p>This confirmation expires within ten minutes and can be used once.{% if oidc_administrator %} A shorter administrator authorization deadline still applies.{% endif %}</p>
+        <label for="confirmed-name">Type <strong>{{ matter.display_name }}</strong> exactly</label><input id="confirmed-name" name="confirmed_name" maxlength="140" required autocomplete="off">
+        {% if exit_record.mode == 'export_exit' %}<label class="delete-acknowledgement"><input type="checkbox" name="export_acknowledged" value="yes" required><span>{% if lifecycle.state == 'purge_failed' %}I reviewed the recorded export authorization and understand this retries the same deletion; originals and the server archive may already be unavailable.{% else %}I downloaded this full export, checked it, and retained a copy outside the workbench.{% endif %}</span></label>
+        {% else %}<div class="notice notice-error" role="alert"><strong>No export or backup will be provided.</strong> <span>Permanent deletion cannot be undone.</span></div>
+        <label class="delete-acknowledgement"><input type="checkbox" name="no_backup_acknowledged" value="yes" required><span>I intentionally choose permanent deletion without an export. I understand this workbench will provide no backup and my matter content may be lost permanently.</span></label>{% endif %}
+        <label class="delete-acknowledgement"><input type="checkbox" name="acknowledge" value="yes" required><span>I understand permanent deletion cannot be undone.</span></label>
+        <button class="button button-danger" type="submit">{{ 'Retry confirmed deletion' if lifecycle.state == 'purge_failed' else 'Permanently delete matter' }}</button>
+      </form>
+      {% elif eligible and (exit_record.mode == 'delete_without_export' or (exit_record.export_id and (download_complete or lifecycle.state == 'purge_failed'))) %}
+      <form method="post" action="/matters/{{ matter.slug }}/close/confirm" data-working-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="export_id" value="{{ exit_record.export_id or '' }}"><input type="hidden" name="mode" value="{{ exit_record.mode }}">
+        <button class="button button-danger" type="submit" {% if busy %}disabled{% endif %}>Review final deletion confirmation</button>
+      </form>
+      {% else %}<p role="status">Final confirmation is unavailable until the seven-day cancellation window has ended{% if exit_record.mode == 'export_exit' %} and your account has completed the full archive download{% endif %}. Waiting longer never deletes the matter automatically.</p>{% endif %}
     {% endif %}
-
-    <div class="close-summary" aria-label="Matter content scheduled for deletion">
-      <div><strong>{{ source_count }}</strong><span>processing source{% if source_count != 1 %}s{% endif %}</span></div>
-      <div><strong>{{ conversation_count }}</strong><span>conversation{% if conversation_count != 1 %}s{% endif %}</span></div>
-      <div><strong>{{ message_count }}</strong><span>saved message{% if message_count != 1 %}s{% endif %}</span></div>
-      <div><strong>{{ notebook_count }}</strong><span>notebook item{% if notebook_count != 1 %}s{% endif %}</span></div>
-    </div>
-
-    <section class="close-explanation" aria-labelledby="delete-heading">
-      <h2 id="delete-heading">What deletion removes</h2>
-      <ul>
-        <li>uploaded processing copies and extracted/OCR text;</li>
-        <li>searchable copies and derived search data;</li>
-        <li>saved conversations, answers, investigations, every-source decisions, matter notebook items, entities and their mentions/correction history, processing records, source inventory, and case-team access.</li>
-      </ul>
-      <p>Original files outside this workbench are never deleted. A content-free closure receipt and the append-only security audit remain.</p>
-    </section>
-
-    {% if lifecycle.state in ('active', 'purge_failed') %}
-    <section class="final-export-callout" aria-labelledby="final-export-heading">
-      <div>
-        <h2 id="final-export-heading">Take your work product with you</h2>
-        {% if lifecycle.state == 'purge_failed' %}
-        <p>Download the work product that remains after the interrupted cleanup before trying deletion again. Original source files are not included.</p>
-        {% else %}
-        <p>Download the matter report, every saved conversation, the matter notebook, entities with mention/correction history, and portable JSON before closing. Original source files are not included.</p>
-        {% endif %}
-      </div>
-      <div class="report-export-actions"><a class="button button-secondary" href="/matters/{{ matter.slug }}/export-readiness">Check export</a><a class="button button-secondary" href="/matters/{{ matter.slug }}/export" data-download>Download final bundle</a></div>
-    </section>
-    <div class="notice notice-neutral download-status" data-download-status role="status" aria-live="polite" hidden></div>
-    {% endif %}
-
-    {% if active_work.uploads or active_work.ingestion or active_work.media or active_work.overviews or active_work.analysis or active_work.playback or active_work.exports or active_work.answers or active_work.research or active_work.reviews or active_work.reports %}
-    <div class="notice notice-neutral" role="status">
-      Wait for active work to finish before deleting: {{ active_work.uploads }} upload{% if active_work.uploads != 1 %}s{% endif %}, {{ active_work.ingestion }} source task{% if active_work.ingestion != 1 %}s{% endif %}, {{ active_work.media }} media task{% if active_work.media != 1 %}s{% endif %}, {{ active_work.overviews }} transcript overview{% if active_work.overviews != 1 %}s{% endif %}, {{ active_work.analysis }} analysis run{% if active_work.analysis != 1 %}s{% endif %}, {{ active_work.playback }} playback preparation{% if active_work.playback != 1 %}s{% endif %}, {{ active_work.exports }} work-product download{% if active_work.exports != 1 %}s{% endif %}, {{ active_work.answers }} answer{% if active_work.answers != 1 %}s{% endif %}, {{ active_work.research }} investigation{% if active_work.research != 1 %}s{% endif %}, {{ active_work.reviews }} every-source check{% if active_work.reviews != 1 %}s{% endif %}, and {{ active_work.reports }} report compilation{% if active_work.reports != 1 %}s{% endif %}.
-    </div>
-    {% endif %}
-
-    {% if lifecycle.state != 'purging' %}
-    <form class="close-matter-form" method="post" action="/matters/{{ matter.slug }}/close" data-working-form data-working-label="Deleting matter…">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label for="confirmed-name">Type <strong>{{ matter.display_name }}</strong> to confirm</label>
-      <input id="confirmed-name" name="confirmed_name" type="text" maxlength="140" required autocomplete="off" spellcheck="false">
-      <label class="delete-acknowledgement">
-        <input type="checkbox" name="acknowledge" value="yes" required>
-        <span>I understand this permanently deletes the workbench matter and cannot be undone.</span>
-      </label>
-      <div class="close-matter-actions">
-        <button class="button button-danger" type="submit" {% if active_work.uploads or active_work.ingestion or active_work.media or active_work.overviews or active_work.analysis or active_work.playback or active_work.exports or active_work.answers or active_work.research or active_work.reviews or active_work.reports %}disabled{% endif %}>
-          {{ 'Try deletion again' if lifecycle.state == 'purge_failed' else 'Delete matter' }}
-        </button>
-        {% if lifecycle.state == 'active' %}<a class="button button-secondary" href="/matters/{{ matter.slug }}/settings">Keep matter open</a>{% else %}<a class="button button-secondary" href="/matters/manage">Return to matters</a>{% endif %}
-      </div>
-    </form>
-    {% endif %}
+    {% if busy %}<div class="notice notice-neutral" role="status">Wait for active processing and downloads to finish before changing lifecycle state.
+      {% if active_work.reports %}<span>{{ active_work.reports }} report compilation{{ 's' if active_work.reports != 1 else '' }} in progress.</span>{% endif %}
+    </div>{% endif %}
+    <section class="close-explanation"><h2>What final deletion removes</h2><p>Uploaded processing copies, derived search data, saved matter content and workbench access are removed. External registered originals are not deleted. A minimal closure receipt and security audit remain. Copies already downloaded and separately managed backups follow their own storage policies.</p></section>
+    <a class="button button-secondary" href="/matters/manage">Return to matters</a>
   </section>
 </main>
 {% endblock %}

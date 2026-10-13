@@ -1,0 +1,4 @@
+{# Persisted lifecycle instants are UTC. Keep the fallback visible without JS. #}
+{% macro lifecycle_time(value) -%}
+<span class="lifecycle-time"><time datetime="{{ value }}">{{ value[:19]|replace('T', ' ') }} UTC</time><span data-lifecycle-local-time="{{ value }}" hidden></span></span>
+{%- endmacro %}

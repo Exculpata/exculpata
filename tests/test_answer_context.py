@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic C workflow and dispatch invariants; mock output is not model quality."""
 import hashlib
 import io
@@ -488,9 +489,10 @@ def test_full_runtime_stopped_backup_clean_restore_original_exports_and_purge(ca
         token = before['snapshot']['records'][0]['references'][0]['support_token']
         assert client.get(f'/matters/{matter.slug}?support={token}').status_code == 200
         assert client.get(f'/matters/{matter.slug}/export').status_code == 200
-        closed = client.post(f'/matters/{matter.slug}/close', data=dict(confirmed_name=matter.display_name, acknowledge='yes'))
-        assert closed.status_code == 200, closed.text
-        store = client.app.state.workbench.workspace
+        restored_bench = client.app.state.workbench
+        prepared, lifecycle = claim_bench_exit(restored_bench, matter)
+        restored_bench.execute_matter_purge(prepared, lifecycle)
+        store = restored_bench.workspace
         assert store.matter_lifecycle(matter.matter_id).state == 'deleted'
         for table in ('workbench_answer_context','workbench_answer_context_attempt','workbench_context_selection'):
             assert not store.connection.execute('SELECT 1 FROM '+table).fetchone()

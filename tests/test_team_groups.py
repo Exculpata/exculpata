@@ -4,6 +4,8 @@ import sqlite3
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 
 
@@ -266,7 +268,7 @@ def test_local_eligibility_installed_before_recovery_workers(tmp_path, monkeypat
 def test_matter_purge_removes_only_its_group_grants(tmp_path):
     store, a, b, first, _ = seed(tmp_path / 'control.sqlite')
     store.set_matter_group_grant(b.matter_id, first, 'principal-owner', present=True)
-    _, lifecycle = store.begin_matter_purge(a.slug, 'principal-owner', a.display_name, source_count=0)
+    _, lifecycle = claim_synthetic_exit(store, a, 'principal-owner')
     assert store.complete_matter_purge(a.matter_id, lifecycle.purge_id).state == 'deleted'
     assert store.matter_group_grants(a.matter_id) == ()
     assert len(store.team_groups()) == 2

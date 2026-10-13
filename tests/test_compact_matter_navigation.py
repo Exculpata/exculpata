@@ -1,7 +1,7 @@
 """Synthetic regression: one slim, consistent matter bar on every matter page."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 import re
 
@@ -131,10 +131,11 @@ def test_ready_readiness_offers_extraction_limits_without_losing_guidance(cedar)
     assert 'id="matter-readiness-guidance" data-readiness-guidance>' in page
 
 
-def test_retention_warning_is_full_on_home_and_a_chip_elsewhere(cedar):  # noqa: F811
+def test_check_in_warning_is_full_on_home_and_a_chip_elsewhere(cedar, monkeypatch):  # noqa: F811
     client, bench, matter, _documents = cedar
-    bench.workspace.set_matter_retention(
-        matter.matter_id, ACTOR, datetime.now(timezone.utc) + timedelta(days=10))
+    policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
+    due = datetime.fromisoformat(policy.next_check_in_at.replace('Z', '+00:00'))
+    monkeypatch.setattr(bench.workspace, '_clock', lambda: due - timedelta(days=10))
     prefix = f"/matters/{matter.slug}"
     home = client.get(f"{prefix}/home").text
     assert 'class="retention-notice tone-attention"' in home
@@ -143,23 +144,32 @@ def test_retention_warning_is_full_on_home_and_a_chip_elsewhere(cedar):  # noqa:
         page = client.get(prefix + path).text
         assert 'class="retention-notice' not in page, path
         assert f'href="{prefix}/home#matter-retention"' in page, path
-        assert "Scheduled to close in" in page, path
+        assert "Check-in due within 14 days" in page, path
 
 
-def test_imminent_deletion_stays_prominent_everywhere(cedar, monkeypatch):  # noqa: F811
+def test_overdue_ownership_review_stays_visible_without_scheduling_deletion(cedar, monkeypatch):  # noqa: F811
     client, bench, matter, _documents = cedar
-    now = datetime.now(timezone.utc)
-    bench.workspace.set_matter_retention(matter.matter_id, ACTOR, now + timedelta(days=2))
-    # The review period has ended; the matter is in its deletion grace period.
-    monkeypatch.setattr(bench.workspace, "current_time", lambda: now + timedelta(days=3))
+    policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
+    due = datetime.fromisoformat(policy.next_check_in_at.replace('Z', '+00:00'))
+    monkeypatch.setattr(bench.workspace, '_clock', lambda: due + timedelta(days=30))
     prefix = f"/matters/{matter.slug}"
-    # Every page with the matter bar, including pages that never embedded the
-    # notice themselves, shows the imminent-deletion notice exactly once.
+    # Every page retains ownership-review attention and ordinary access. An
+    # overdue check-in never becomes an imminent-deletion warning or purge.
     for path in ("/home", "/notebook", "/exact-search", "/settings", "/setup?view=list", "/export-readiness", ""):
         page = client.get(prefix + path)
         assert page.status_code == 200, path
-        assert page.text.count('class="retention-notice tone-danger"') == 1, path
-        assert 'class="matter-bar-retention' not in page.text, path
+        assert 'Ownership review needed · check-in 30 days overdue' in page.text, path
+        assert 'class="retention-notice tone-danger"' not in page.text, path
+        if path == '/home':
+            assert page.text.count('class="retention-notice tone-attention"') == 1, path
+            assert 'class="matter-bar-retention' not in page.text, path
+        else:
+            assert 'class="retention-notice' not in page.text, path
+            assert page.text.count('class="matter-bar-retention') == 1, path
+            assert f'href="{prefix}/home#matter-retention"' in page.text, path
+    assert bench.run_maintenance_once()['matters_purged'] == 0
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'active'
+    assert bench.workspace.case_lifecycle.policy(matter.matter_id).next_check_in_at == policy.next_check_in_at
 
 
 @pytest.mark.parametrize("long_answer", ["document"], indirect=True)

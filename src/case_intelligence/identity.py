@@ -556,6 +556,7 @@ class OidcProviderClient(Protocol):
         state: str,
         nonce: str,
         code_verifier: str,
+        max_age: int | None = None,
     ) -> str: ...
 
     async def authenticate(
@@ -646,6 +647,7 @@ class AuthlibOidcClient:
         state: str,
         nonce: str,
         code_verifier: str,
+        max_age: int | None = None,
     ) -> str:
         await self._validated_metadata()
         try:
@@ -654,6 +656,7 @@ class AuthlibOidcClient:
                 state=state,
                 nonce=nonce,
                 code_verifier=code_verifier,
+                **({"max_age": max_age} if max_age is not None else {}),
             )
             url = result.get("url")
             returned_state = result.get("state")
@@ -668,6 +671,7 @@ class AuthlibOidcClient:
                 or query.get("nonce") != [nonce]
                 or query.get("code_challenge_method") != ["S256"]
                 or query.get("code_challenge") != [challenge]
+                or (max_age is not None and query.get("max_age") != [str(max_age)])
                 or query.get("response_type") != ["code"]
                 or query.get("client_id") != [self.settings.client_id]
                 or query.get("redirect_uri") != [self.settings.callback_url]
@@ -995,10 +999,13 @@ class IdentityService:
         if not principal.active:
             raise WorkspaceProblem("This identity is not active.")
         raw_token = secrets.token_urlsafe(32)
+        binding_digest = None
         if auth_method == "local":
             if local_account is None:
                 raise LocalAuthenticationError("Local account sign-in is unavailable.")
-            raw_token = f"local.{self._local_session_binding(local_account)}.{raw_token}"
+            binding = self._local_session_binding(local_account)
+            raw_token = f"local.{binding}.{raw_token}"
+            binding_digest = hashlib.sha256(binding.encode("ascii")).hexdigest()
         now = self._now()
         session = self.store.create_session(
             principal.principal_id,
@@ -1007,15 +1014,10 @@ class IdentityService:
             self._iso(now + self.idle_timeout),
             self._iso(now + self.absolute_timeout),
             application_roles,
+            **({"binding_digest": binding_digest} if binding_digest is not None else {}),
         )
         return (
-            AuthContext(
-                principal,
-                session,
-                self._csrf(raw_token),
-                auth_method,
-                application_roles,
-            ),
+            AuthContext(principal, session, self._csrf(raw_token), auth_method, application_roles),
             raw_token,
         )
 
@@ -1348,90 +1350,9 @@ class IdentityService:
         code: str | None,
         provider_error: str | None = None,
     ) -> tuple[AuthContext, str, str]:
-        if (
-            self.auth_mode != "oidc"
-            or self.oidc_client is None
-            or self.oidc_settings is None
-        ):
-            raise OidcAuthenticationError("Organization sign-in is unavailable.")
-        if (
-            not cookie_state
-            or not returned_state
-            or len(returned_state) > 256
-            or not hmac.compare_digest(cookie_state, returned_state)
-        ):
-            raise OidcAuthenticationError("Organization sign-in expired. Please try again.")
-        now = self._now()
-        destination = self.store.consume_oidc_transaction(
-            self.token_digest(returned_state),
-            now=self._iso(now),
-        )
-        if destination is None:
-            raise OidcAuthenticationError("Organization sign-in expired. Please try again.")
-        if provider_error or not code or len(code) > 4_096:
-            raise OidcAuthenticationError("Organization sign-in was not completed.")
-        verifier = self._derive_oidc_value(b"pkce:", returned_state)
-        nonce = self._derive_oidc_value(b"nonce:", returned_state)
-        claims = await self.oidc_client.authenticate(
-            code=code,
-            nonce=nonce,
-            code_verifier=verifier,
-        )
-        subject = self._claim_text(claims.get("sub"), maximum=512)
-        if not subject:
-            raise OidcAuthenticationError("Organization sign-in did not include a stable identity.")
-        if claims.get("iss") != self.oidc_settings.issuer:
-            raise OidcAuthenticationError("Organization sign-in issuer did not match.")
-        oidc_groups: frozenset[str] = frozenset()
-        if self.oidc_settings.allowed_groups or self.oidc_settings.administrator_groups:
-            raw_groups = claims.get(self.oidc_settings.groups_claim)
-            if not isinstance(raw_groups, list) or any(
-                not isinstance(value, str) for value in raw_groups
-            ):
-                raise OidcAuthenticationError(f"This account is not approved for {PRODUCT_NAME}.")
-            if len(raw_groups) > 2_048 or any(
-                not value
-                or len(value) > 256
-                or any(ord(character) < 32 for character in value)
-                for value in raw_groups
-            ):
-                raise OidcAuthenticationError(f"This account is not approved for {PRODUCT_NAME}.")
-            oidc_groups = frozenset(raw_groups)
-            administrator = not self.oidc_settings.administrator_groups.isdisjoint(
-                oidc_groups
-            )
-            admitted = (
-                administrator
-                or not self.oidc_settings.allowed_groups
-                or not self.oidc_settings.allowed_groups.isdisjoint(oidc_groups)
-            )
-            if not admitted:
-                raise OidcAuthenticationError(f"This account is not approved for {PRODUCT_NAME}.")
-        display_name = self._claim_text(
-            claims.get(self.oidc_settings.display_name_claim),
-            maximum=160,
-        )
-        login_name = self._claim_text(
-            claims.get(self.oidc_settings.login_name_claim),
-            maximum=255,
-        )
-        display_name = display_name or login_name
-        login_name = login_name or display_name
-        if not display_name or not login_name:
-            raise OidcAuthenticationError("Organization sign-in did not include profile claims.")
-        principal = self.store.upsert_principal(
-            self.oidc_settings.provider_key,
-            subject,
-            display_name,
-            login_name,
-        )
-        roles = (
-            frozenset({"administrator"})
-            if not self.oidc_settings.administrator_groups.isdisjoint(oidc_groups)
-            else frozenset()
-        )
-        context, raw_token = self._issue_session(principal, "oidc", roles)
-        return context, raw_token, destination
+        from .identity_oidc_login import finish_oidc_login
+        return await finish_oidc_login(self, cookie_state=cookie_state,
+            returned_state=returned_state, code=code, provider_error=provider_error)
 
     def resolve(self, raw_token: str | None, *, read_only: bool = False) -> AuthContext | None:
         if self.auth_mode == "test":

@@ -1,0 +1,2 @@
+{% from "workbench_lifecycle_time.html" import lifecycle_time %}
+{% if retention.next_check_in_at %}<span class="check-in-time">Next check-in: {{ lifecycle_time(retention.next_check_in_at) }}.</span>{% endif %}

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.matter_purpose import MatterPurposeConflict
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 
@@ -119,7 +121,7 @@ def test_cross_matter_members_revoked_users_and_lifecycle(case):
     store.revoke_member(matter.matter_id, reviewer, ACTOR)
     with pytest.raises(KeyError):
         store.matter_purpose(matter.matter_id, reviewer)
-    _, lifecycle = store.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=0)
+    _, lifecycle = claim_synthetic_exit(store, matter, ACTOR)
     for admin in (False, True):
         with pytest.raises(KeyError):
             store.matter_purpose(matter.matter_id, ACTOR, administrator_override=admin)

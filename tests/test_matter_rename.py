@@ -1,7 +1,11 @@
 """Synthetic owner/admin rename, stale forms, and stable matter identity."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 import io
 
 import pytest
+
+from tests.case_lifecycle_helpers import prepare_purge_confirmation
 from fastapi.testclient import TestClient
 
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
@@ -169,15 +173,20 @@ def test_close_confirmation_serializes_with_rename(tmp_path, monkeypatch):
     def pause_after_confirmation(matter_id):
         writer.start()
         assert started.wait(2)
-        # A second connection must not rename after the name confirmation was read.
+        # A second connection must not rename across the atomic closure freeze.
         writer.join(timeout=0.1)
         return counts(matter_id)
     monkeypatch.setattr(store, '_active_matter_work_counts_locked', pause_after_confirmation)
     try:
-        store.begin_matter_purge(matter.slug, 'principal-owner', matter.display_name, source_count=0)
+        store.case_lifecycle.begin_exit(matter.slug, 'principal-owner', session_id=lifecycle_session(store, 'principal-owner', administrator_override=False).session_id)
         writer.join(timeout=5)
         assert not writer.is_alive()
         assert outcomes == ['closed']
+        monkeypatch.setattr(store, '_active_matter_work_counts_locked', counts)
+        confirmation = prepare_purge_confirmation(store, matter, 'principal-owner')
+        _, lifecycle = store.begin_matter_purge(matter.slug, 'principal-owner', matter.display_name,
+            source_count=0, **confirmation)
+        assert lifecycle.state == 'purging'
     finally:
         writer.join(timeout=5)
         second.close()

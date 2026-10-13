@@ -37,13 +37,14 @@ The name change and the content-free `matter.rename` audit commit atomically.
 The event records actor, session/request, matter and owner/administrator role,
 without recording old or new names. Audit failure rolls back the rename.
 The operation uses existing schema; no source registry or search-index rewrite
-is needed. Failed/inactive/deleted matters cannot be renamed.
+is needed. Frozen, failed, inactive and deleted matters cannot be renamed.
 
-Close matter still offers final export and requires deliberate exact-name
-confirmation and no active work. Its name check and deletion claim now hold one
-immediate transaction shared with rename, so another connection cannot change
-the name between confirmation and the claim. An old-name confirmation after a
-rename is rejected. Existing owner/administrator closure policy is unchanged.
+[Export and exit](CASE_LIFECYCLE.md) requires a frozen closure, a verified full
+preservation archive, a minimum seven-day cancellation window and fresh final
+confirmation. Beginning closure and renaming share the immediate transaction
+boundary. An old-name confirmation after a rename is rejected, and a closing
+matter must be reopened before it can be renamed. Check-ins never authorize
+deletion.
 
 ## Verification and recovery
 
@@ -75,8 +76,7 @@ PYTHONPATH=src python scripts/browser-accept-matter-rename.py \
   --output /path/to/synthetic-results
 ```
 
-No dependency, persistent-schema, or deployment configuration changes are
-required. An older application can read the renamed matter and all existing
-work using the same IDs. Rollback removes the rename interface but does not
-restore an old name; an owner/admin can correct the name through this interface
-before rolling back. No automatic deployment is part of this change.
+The original rename change required no persistent-schema change. Subsequent
+lifecycle migration 0040 has a separate [backup and rollback contract](CASE_LIFECYCLE.md#migration-0040-and-recovery);
+older code must not open an upgraded store. No automatic deployment is part of
+these changes.

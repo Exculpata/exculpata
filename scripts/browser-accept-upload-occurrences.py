@@ -24,6 +24,7 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+from browser_case_exit import BrowserCaseExit, completed_zip, preview_login  # noqa: E402
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
 
@@ -47,7 +48,7 @@ def main():
         print(message, flush=True)
 
     with tempfile.TemporaryDirectory(prefix='recordbench-occurrence-browser-') as temp:
-        root = Path(temp)
+        root = Path(temp).resolve()
         bodies = [b'Synthetic copper journal: the first vehicle arrived at noon.\n',
                   b'Synthetic copper journal: the first vehicle arrived at noon.\n',
                   b'Synthetic silver journal: the later vehicle arrived at dusk.\n']
@@ -58,7 +59,7 @@ def main():
             path.write_bytes(body)
             originals.append(path)
         app = create_workbench_app(root / 'runtime', generator=UnavailableGenerator(),
-            auth_mode='test', background_ingestion=True, ingestion_workers=1)
+            auth_mode='preview', background_ingestion=True, ingestion_workers=1)
         bench = app.state.workbench
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))
@@ -119,6 +120,7 @@ def main():
             def rows():
                 return driver.find_elements(By.CSS_SELECTOR, '.source-table-row')
 
+            preview_login(driver, base)
             go('/matters/new')
             driver.find_element(By.ID, 'matter-name').send_keys('Synthetic production occurrences')
             click('.matter-form button[type=submit]')
@@ -264,9 +266,10 @@ def main():
                 checked('A foreign-matter comparison token cannot disclose sources or broaden the list')
 
 
-            go(prefix + '/close')
+            go(prefix + '/settings')
+            before_bundle = set(downloads.iterdir())
             click(f'a[href="{prefix}/export"]', False)
-            bundle = wait.until(lambda _: next(downloads.glob('*.zip'), None))
+            bundle = wait.until(lambda _: completed_zip(downloads, before_bundle))
             with zipfile.ZipFile(bundle) as archive:
                 selected = [json.loads(archive.read(name)) for name in archive.namelist()
                             if name.startswith('intake/') and name.endswith('.json')]
@@ -277,9 +280,9 @@ def main():
                 assert 'the first vehicle arrived at noon' in archive.read('notebook/matter-notebook.md').decode()
                 assert not any(name.startswith('originals/') for name in archive.namelist())
                 assert all(archive.read(name) not in bodies for name in archive.namelist() if not name.endswith('/'))
-            driver.find_element(By.ID, 'confirmed-name').send_keys(matter.display_name)
-            click('input[name=acknowledge]', False)
-            click('.close-matter-form button[type=submit]')
+            exit_flow = BrowserCaseExit(driver, base, app, matter, downloads, preview_subject="taylor-morgan")
+            exit_flow.prepare()
+            exit_flow.confirm_name(matter.display_name)
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted')
             assert all(path.read_bytes() == body for path, body in zip(originals, bodies))
             checked('Final bundle retains all three production receipts and exact notes; owner closure preserves every external original')

@@ -389,6 +389,7 @@ def test_external_change_and_short_receipt_page_refuse_partial_briefing(workbenc
     def changed(*args, **kwargs):
         result = date_draft(*args, **kwargs)
         with sqlite3.connect(bench.workspace.path) as other:
+            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
             other.execute("UPDATE workbench_matter SET descriptor='Synthetic concurrent edit' WHERE matter_id=?", (matter.matter_id,))
         return result
     monkeypatch.setattr(service, 'date_draft', changed)

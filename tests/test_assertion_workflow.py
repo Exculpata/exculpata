@@ -1,4 +1,6 @@
 """Synthetic source-to-entity-to-assertion journeys, authority and complete recovery."""
+from tests.case_lifecycle_web_helpers import claim_bench_exit
+from case_intelligence.workspace_store import WorkspaceProblem
 import html
 import io
 import json
@@ -199,8 +201,8 @@ def test_originals_to_entity_disputed_event_clean_restore_export_and_actual_purg
         assert not bench.workspace.connection.execute('PRAGMA foreign_key_check').fetchall()
         source_root = bench.storage.matters / matter.matter_id
         assert source_root.exists()
-        response = client.post(prefix + '/close', data=dict(confirmed_name=matter.display_name, acknowledge='yes'))
-        assert response.status_code == 200
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
         assert not source_root.exists()
         assert client.get(prefix + '/assertions/' + assertion_id).status_code == 404
@@ -345,8 +347,9 @@ def test_interrupted_purge_keeps_assertions_for_export_then_retries_cleanup(tmp_
         def interrupted(_matter_id):
             raise RuntimeError('Synthetic interruption before source removal')
         monkeypatch.setattr(bench, '_cleanup_matter_clip_exports', interrupted)
-        response = client.post(f'/matters/{slug}/close', data=dict(confirmed_name=matter.display_name, acknowledge='yes'))
-        assert response.status_code == 200
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        with pytest.raises(WorkspaceProblem):
+            bench.execute_matter_purge(prepared, lifecycle)
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'purge_failed'
         exported = client.get(f'/matters/{slug}/export')
         assert exported.status_code == 200
@@ -355,8 +358,8 @@ def test_interrupted_purge_keeps_assertions_for_export_then_retries_cleanup(tmp_
                 if name.startswith('assertions/') and name.endswith('.json'))
             assert assertion_id in contents and 'Morgan Sample' in contents
         monkeypatch.setattr(bench, '_cleanup_matter_clip_exports', cleanup)
-        retried = client.post(f'/matters/{slug}/close', data=dict(confirmed_name=matter.display_name, acknowledge='yes'))
-        assert retried.status_code == 200
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
         assert not (bench.storage.matters / matter.matter_id).exists()
 

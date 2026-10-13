@@ -347,15 +347,16 @@ validates again.
 [Report export and recovery](docs/REPORT_EXPORTS.md)
 describes limits and interrupted-close recovery. Bundles are ordinary portable
 documents, not a package that can be imported back into Exculpata.
-Manual **Close matter** refuses active work and requires the exact matter name
-plus a permanent-deletion acknowledgement. Scheduled retention follows a separate
-path: new matters default to 30 days of review plus seven days of export grace,
-after which enabled maintenance can delete them without another confirmation.
-Maintenance defers deletion while work is active and runs its first pass at
-startup. Restoring a backup preserves the original deadlines, which may already
-be due; follow [expired-matter recovery](docs/EXPIRED_MATTER_RECOVERY.md) before
-starting the restored application. Both deletion paths preserve originals outside
-Exculpata and leave only content-minimized attributed audit and closure records.
+Matters remain ongoing until explicitly closed, with a 90-day in-app check-in.
+Owner/admin **Close matter** freezes changes, creates a verified full preservation
+archive including retained originals, and requires a separate fresh confirmation
+after a minimum seven-day cancellation window. Dates never authorize deletion.
+Existing stored dates are preserved for review and automatic purge is disabled.
+See [matter lifecycle and recovery](docs/CASE_LIFECYCLE.md) for the export boundary,
+legacy migration, cancellation, interrupted deletion and backup/restore steps.
+Final deletion preserves external originals and content-minimized audit and
+closure records. The full archive is not an automated importer or legal
+retention guarantee.
 
 No case data, organization secrets, internal accounts, private deployment
 coordinates, certificates, or credentials belong in this repository.

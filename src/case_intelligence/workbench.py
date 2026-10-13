@@ -973,6 +973,7 @@ class CaseIntelligenceWorkbench:
                 require_marker=True,
             )
         self.workspace = WorkspaceStore(self.runtime_dir / "workbench.sqlite", principal_enabled=principal_enabled)
+        self.workspace.case_lifecycle.discard_confirmations_on_startup()
         from .entity_unit_reader import EntityUnitReader
         self.entity_unit_reader = EntityUnitReader()
         self.workspace.recover_interrupted_matter_purges()
@@ -982,6 +983,7 @@ class CaseIntelligenceWorkbench:
         self._matter_source_locks: dict[str, threading.RLock] = {}
         self._storage_reservation_lock = threading.RLock()
         self._playback_reservations: dict[tuple[str, str], int] = {}
+        self._preservation_reservations: dict[str, int] = {}
         self._clip_export_lock = threading.RLock()
         self._clip_exports: dict[str, set[Path]] = {}
         self._response_lease_lock = threading.RLock()
@@ -1294,129 +1296,19 @@ class CaseIntelligenceWorkbench:
         )
 
     def retention_projection(self, matter: MatterRecord) -> dict[str, object]:
-        retention = self.workspace.matter_retention(matter.matter_id)
-        now = self.workspace.current_time()
-        office_zone = ZoneInfo("America/New_York")
-        local_today = now.astimezone(office_zone).date()
-        minimum_date = (local_today + timedelta(days=1)).isoformat()
-        maximum_date = (local_today + timedelta(days=365)).isoformat()
-        if retention is None:
-            return {
-                "record": None,
-                "status": "unscheduled",
-                "tone": "attention",
-                "label": "Set a review end date",
-                "short_label": "Set date",
-                "detail": (
-                    "This existing matter has no automatic deletion schedule. "
-                    "Set one before expanding the pilot."
-                ),
-                "show_warning": True,
-                "expires_on": "",
-                "purge_on": "",
-                "days_remaining": None,
-                "minimum_date": minimum_date,
-                "maximum_date": maximum_date,
-            }
-        expires = self._parse_utc(retention.expires_at)
-        purge_after = self._parse_utc(retention.purge_after)
-        seconds_to_expiry = (expires - now).total_seconds()
-        seconds_to_purge = (purge_after - now).total_seconds()
-        expiry_date = expires.astimezone(office_zone).date().isoformat()
-        purge_date = purge_after.astimezone(office_zone).date().isoformat()
-        if seconds_to_purge <= 0:
-            status = "due"
-            tone = "danger"
-            label = "Automatic deletion is due"
-            short_label = "Due"
-            detail = "Finish active work or extend the review end date now."
-            days_remaining: int | None = 0
-        elif seconds_to_expiry <= 0:
-            days_to_purge = max(math.ceil(seconds_to_purge / 86_400), 1)
-            status = "grace"
-            tone = "danger"
-            label = f"Review period ended · deletion in {days_to_purge} day{'s' if days_to_purge != 1 else ''}"
-            short_label = f"{days_to_purge}d grace"
-            detail = "Export the work product or extend this temporary matter before deletion."
-            days_remaining = 0
-        else:
-            days_remaining = max(math.ceil(seconds_to_expiry / 86_400), 1)
-            status = "warning" if days_remaining <= 14 else "scheduled"
-            tone = "attention" if status == "warning" else "quiet"
-            label = f"Scheduled to close in {days_remaining} day{'s' if days_remaining != 1 else ''}"
-            short_label = f"{days_remaining}d"
-            detail = f"Automatic deletion begins after the seven-day grace period on {purge_date}."
-        return {
-            "record": retention,
-            "status": status,
-            "tone": tone,
-            "label": label,
-            "short_label": short_label,
-            "detail": detail,
-            "show_warning": status in {"warning", "grace", "due"},
-            "expires_on": expiry_date,
-            "purge_on": purge_date,
-            "days_remaining": days_remaining,
-            "minimum_date": minimum_date,
-            "maximum_date": maximum_date,
-        }
+        from .case_lifecycle_support import retention_projection
+        return retention_projection(self, matter)
 
-    def retention_for_date(
-        self,
-        matter: MatterRecord,
-        actor_id: str,
-        expires_on: str,
-        *,
-        administrator_override: bool = False,
-    ) -> MatterRetentionRecord:
-        try:
-            selected_date = date.fromisoformat((expires_on or "").strip())
-        except ValueError as exc:
-            raise WorkspaceProblem("Choose a valid review end date.") from exc
-        office_zone = ZoneInfo("America/New_York")
-        selected = datetime.combine(selected_date, time(23, 59, 59), office_zone)
-        return self.workspace.set_matter_retention(
-            matter.matter_id,
-            actor_id,
-            selected,
-            administrator_override=administrator_override,
-        )
+    def retention_for_date(self, *args, **kwargs):
+        raise WorkspaceProblem("Review dates no longer authorize deletion. Use the check-in controls.")
 
     def source_store(self, matter: MatterRecord) -> PilotStore:
-        with self._store_lock:
-            existing = self._stores.get(matter.matter_id)
-            if existing is not None:
-                return existing
-            if not re.fullmatch(r"ci-matter-[0-9a-f]{32}", matter.matter_id):
-                raise RuntimeError("stored matter identity is invalid")
-            root = self.storage.matters / matter.matter_id / "sources"
-            store = PilotStore(
-                root,
-                document_file_limit=self.storage_policy.document_file_bytes,
-                media_file_limit=self.storage_policy.media_file_bytes,
-                upload_session_limit=self.storage_policy.upload_session_bytes,
-                on_change=lambda change: self._apply_source_store_change(matter, change),
-                mutation_lock=self._matter_source_locks.setdefault(
-                    matter.matter_id, threading.RLock()
-                ),
-                malware_scanner=self.malware_scanner,
-                malware_scan_mode=self.malware_scan_mode,
-            )
-            self._stores[matter.matter_id] = store
-            if store.documents:
-                self.workspace.reconcile_source_organizations(
-                    matter.matter_id,
-                    tuple(
-                        (
-                            document.document_id,
-                            document.origin,
-                            document.relative_path or document.display_name,
-                        )
-                        for document in store.documents.values()
-                    ),
-                )
-            self._sync_source_catalog(matter, tuple(store.documents.values()))
-            return store
+        from .case_lifecycle_support import source_store
+        return source_store(self, matter)
+
+    def archive_source_store(self, matter: MatterRecord) -> PilotStore:
+        from .case_lifecycle_support import source_store
+        return source_store(self, matter, archive=True)
 
     def matter_storage_projection(self, matter: MatterRecord) -> dict[str, object]:
         used = self.storage.matter_payload_usage_bytes(matter.matter_id)
@@ -1646,7 +1538,7 @@ class CaseIntelligenceWorkbench:
                     "This matter does not have enough temporary capacity for a browser-compatible video copy.",
                     507,
                 )
-            all_reserved = sum(self._playback_reservations.values())
+            all_reserved = self._playback_reserved_bytes()
             try:
                 self.storage.ensure_capacity(
                     self.workspace.pending_upload_bytes() + all_reserved + amount
@@ -1660,7 +1552,7 @@ class CaseIntelligenceWorkbench:
 
     def _playback_reserved_bytes(self, matter_id: str | None = None) -> int:
         with self._storage_reservation_lock:
-            return sum(
+            return (sum(self._preservation_reservations.values()) if matter_id is None else 0) + sum(
                 value
                 for (reserved_matter, _), value in self._playback_reservations.items()
                 if matter_id is None or reserved_matter == matter_id
@@ -1759,7 +1651,7 @@ class CaseIntelligenceWorkbench:
         """Lease a matter-bearing response before deletion can be claimed."""
 
         matter_id = self._validate_clip_export_matter_id(matter.matter_id)
-        if not allowed_states or not allowed_states.issubset({"active", "purge_failed"}):
+        if not allowed_states or not allowed_states.issubset({"active", "closing", "purge_failed"}):
             raise ValueError("matter response states are invalid")
         lock = self._matter_source_locks.setdefault(matter_id, threading.RLock())
         with lock:
@@ -1829,51 +1721,31 @@ class CaseIntelligenceWorkbench:
             ),
         }
 
-    def _matter_source_count_for_purge(
-        self, matter: MatterRecord, lifecycle: MatterLifecycleRecord
-    ) -> int:
-        if lifecycle.state != "active":
-            return lifecycle.source_count
-        source_root = self.storage.matters / matter.matter_id / "sources"
-        if source_root.exists():
-            return self.source_store(matter).document_count()
-        return lifecycle.source_count
+    def _matter_source_count_for_purge(self, matter, lifecycle) -> int:
+        from .case_lifecycle_support import source_count
+        return source_count(self, matter, lifecycle)
 
-    def begin_matter_purge(
-        self,
-        slug: str,
-        actor_id: str,
-        confirmed_name: str,
-        *,
-        administrator_override: bool = False,
-    ) -> tuple[MatterRecord, MatterLifecycleRecord]:
-        matter, lifecycle = self.matter_for_closure(
-            slug,
-            actor_id,
-            administrator_override=administrator_override,
-        )
-        lock = self._matter_source_locks.setdefault(
-            matter.matter_id, threading.RLock()
-        )
-        with lock:
-            if any(self.matter_active_work_counts(matter.matter_id).values()):
-                raise WorkspaceProblem(
-                    "Wait for current uploads, source and media processing, transcript overviews, analysis, browser playback preparation, work-product downloads, answers, investigations, and every-source checks to finish before deleting this matter."
-                )
-            return self.workspace.begin_matter_purge(
-                slug,
-                actor_id,
-                confirmed_name,
-                source_count=self._matter_source_count_for_purge(matter, lifecycle),
-                administrator_override=administrator_override,
-            )
+    def begin_matter_purge(self, slug, actor_id, confirmed_name, *,
+                          administrator_override=False, **confirmation):
+        from .case_lifecycle_support import begin_purge
+        return begin_purge(self, slug, actor_id, confirmed_name,
+                           administrator_override=administrator_override, **confirmation)
 
     def execute_matter_purge(
-        self, matter: MatterRecord, lifecycle: MatterLifecycleRecord
+        self, matter: MatterRecord, lifecycle: MatterLifecycleRecord, *, refresh_authority=None
     ) -> MatterLifecycleRecord:
         purge_id = lifecycle.purge_id or ""
         if not _MATTER_PURGE_ID.fullmatch(purge_id):
             raise RuntimeError("matter purge identity is invalid")
+        def current_authority():
+            if refresh_authority is not None:
+                refresh_authority()
+            self.workspace.case_lifecycle.validate_purge(matter.matter_id, purge_id)
+        try:
+            current_authority()
+        except Exception:
+            self.workspace.fail_matter_purge(matter.matter_id, purge_id, 'authority')
+            raise
         matters_root = self.storage.matters
         matter_root = matters_root / matter.matter_id
         source_root = matter_root / "sources"
@@ -1899,6 +1771,7 @@ class CaseIntelligenceWorkbench:
             )
 
         try:
+            current_authority()
             self._cleanup_matter_clip_exports(matter.matter_id)
         except Exception as exc:
             self.workspace.fail_matter_purge(
@@ -1909,15 +1782,14 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             if source_root.is_symlink() or matter_root.is_symlink():
                 raise RuntimeError("matter storage is unsafe")
             if source_root.exists() and quarantine.exists():
                 raise RuntimeError("matter purge storage has conflicting copies")
             if source_root.exists():
-                store = self.source_store(matter)
-                store.quarantine(quarantine)
-                with self._store_lock:
-                    self._stores.pop(matter.matter_id, None)
+                from .case_lifecycle_support import quarantine_sources
+                quarantine_sources(self, matter, purge_id, quarantine)
         except Exception as exc:
             self.workspace.fail_matter_purge(
                 matter.matter_id, purge_id, "storage"
@@ -1927,6 +1799,7 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             if self._postgres_projection_configured:
                 if self.postgres_connection is None or not self.postgres_ready:
                     raise RuntimeError("derived search projection is unavailable")
@@ -1943,6 +1816,7 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             securely_delete_owned_tree(quarantine, allowed_parent=quarantine_root)
             if matter_root.exists():
                 if matter_root.is_symlink() or matter_root.parent != matters_root:
@@ -1961,6 +1835,10 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            from .case_lifecycle_support import cleanup_archives
+            current_authority()
+            cleanup_archives(self, matter.matter_id)
+            current_authority()
             return self.workspace.complete_matter_purge(matter.matter_id, purge_id)
         except Exception as exc:
             self.workspace.fail_matter_purge(
@@ -2017,57 +1895,8 @@ class CaseIntelligenceWorkbench:
         return cleaned
 
     def purge_due_matters(self) -> dict[str, int]:
-        purged = 0
-        deferred = 0
-        for retention in self.workspace.due_matter_retentions():
-            try:
-                matter = self.workspace.get_matter_by_id(retention.matter_id)
-                lifecycle = self.workspace.matter_lifecycle(matter.matter_id)
-                lock = self._matter_source_locks.setdefault(
-                    matter.matter_id, threading.RLock()
-                )
-                with lock:
-                    if any(self.matter_active_work_counts(matter.matter_id).values()):
-                        deferred += 1
-                        continue
-                    source_count = self._matter_source_count_for_purge(matter, lifecycle)
-                    claimed = self.workspace.begin_due_matter_purge(
-                        matter.matter_id,
-                        source_count=source_count,
-                    )
-                if claimed is None:
-                    deferred += 1
-                    continue
-                claimed_matter, claimed_lifecycle = claimed
-                self.workspace.append_audit_event(
-                    actor_principal_id=None,
-                    session_id=None,
-                    matter_id=claimed_matter.matter_id,
-                    request_id=f"maintenance-{uuid.uuid4().hex}",
-                    action="matter.purge_scheduled",
-                    outcome="success",
-                    object_type="matter_purge",
-                    object_id=claimed_lifecycle.purge_id,
-                    details={"state": "purging", "source_count": source_count},
-                )
-                completed = self.execute_matter_purge(
-                    claimed_matter, claimed_lifecycle
-                )
-                self.workspace.append_audit_event(
-                    actor_principal_id=None,
-                    session_id=None,
-                    matter_id=claimed_matter.matter_id,
-                    request_id=f"maintenance-{uuid.uuid4().hex}",
-                    action="matter.purge_scheduled",
-                    outcome="success",
-                    object_type="matter_purge",
-                    object_id=completed.purge_id,
-                    details={"state": "deleted", "source_count": source_count},
-                )
-                purged += 1
-            except Exception:
-                deferred += 1
-        return {"matters_purged": purged, "matters_deferred": deferred}
+        """Dates are reminders. Maintenance never claims or retries deletion."""
+        return {"matters_purged": 0, "matters_deferred": 0}
 
     def run_maintenance_once(self) -> dict[str, int]:
         uploads_cleaned = self.cleanup_abandoned_uploads(maximum_age_hours=24)
@@ -2085,7 +1914,8 @@ class CaseIntelligenceWorkbench:
             try:
                 retain_postgres_workbench_matters(
                     self.postgres_connection,
-                    matter_ids=tuple(matter.matter_id for matter in matters),
+                    matter_ids=tuple(row[0] for row in self.workspace.connection.execute(
+                        "SELECT matter_id FROM workbench_matter_lifecycle WHERE state<>'deleted'")),
                 )
             except Exception:
                 try:
@@ -6430,22 +6260,55 @@ class _MatterResponseSendLeaseMiddleware:
         self.release_clip = release_clip
 
     async def __call__(self, scope, receive, send):
+        from .case_archive_delivery import ArchiveDelivery
+
+        returned = disconnected = False
+
+        def delivery():
+            observer = scope.get("state", {}).get("case_archive_delivery")
+            return observer if isinstance(observer, ArchiveDelivery) else None
+
+        async def outer_receive():
+            nonlocal disconnected
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                disconnected = True
+                if (observer := delivery()) is not None:
+                    observer.disconnect()
+            return message
+
+        async def outer_send(message):
+            observer = delivery()
+            if observer is None:
+                await send(message)
+            else:
+                if disconnected:
+                    observer.disconnect()
+                if scope.get("method") != "GET":
+                    observer.failed = True
+                await observer.send(message, send)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, outer_receive, outer_send)
+            returned = True
         finally:
             try:
-                state = scope.get("state", {}).get("matter_response_lease")
-                if isinstance(state, dict) and state.get("send_owned"):
-                    # BaseHTTPMiddleware buffers an inner Response. Its background
-                    # task may run before the outer body's send completes, and may
-                    # be skipped on failure. This boundary also covers disconnects.
-                    self.release(state["matter"].matter_id, state["lease_id"])
+                observer = delivery()
+                if observer is not None:
+                    if disconnected:
+                        observer.disconnect()
+                    await observer.finish(app_returned=returned)
             finally:
-                clip = scope.get("state", {}).get("media_clip_response_lease")
-                if clip is not None:
-                    # Ownership begins at render admission, so construction,
-                    # authorization, rendering and send failures all clean up.
-                    self.release_clip(*clip)
+                try:
+                    state = scope.get("state", {}).get("matter_response_lease")
+                    if isinstance(state, dict) and state.get("send_owned"):
+                        # BaseHTTPMiddleware can complete its inner response before
+                        # the outer send. Release only after delivery bookkeeping.
+                        self.release(state["matter"].matter_id, state["lease_id"])
+                finally:
+                    clip = scope.get("state", {}).get("media_clip_response_lease")
+                    if clip is not None:
+                        self.release_clip(*clip)
 
 
 def create_workbench_app(
@@ -6541,6 +6404,8 @@ def create_workbench_app(
         bench.close()
         raise
     app.state.identity = identity
+    from .case_lifecycle_authority import install_current_session_authority
+    install_current_session_authority(identity)
     from .app_context import AppContext, auth_context, present_value, requested_path
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -6806,7 +6671,7 @@ def create_workbench_app(
             except KeyError as exc:
                 audit(request, "matter.access", "denied", context=context)
                 raise HTTPException(404, "Matter not found") from exc
-            if lifecycle.state not in {"active", "purge_failed"}:
+            if lifecycle.state not in {"active", "closing", "purge_failed"}:
                 audit(request, "matter.access", "denied", context=context)
                 raise HTTPException(404, "Matter not found")
             administrator_override = bool(
@@ -6826,7 +6691,7 @@ def create_workbench_app(
         yield from _matter_response_dependency(
             request,
             matter,
-            allowed_states=frozenset({"active", "purge_failed"}),
+            allowed_states=frozenset({"active", "closing", "purge_failed"}),
         )
 
     def response_lease_matter(request: Request, slug: str) -> MatterRecord:
@@ -7482,6 +7347,7 @@ def create_workbench_app(
         readiness: dict[str, object] | None = None,
         include_assistant: bool = True,
     ) -> dict[str, object]:
+        from .case_lifecycle_notices import closing_notices
         context = auth_context(request)
         membership = None
         if active is not None:
@@ -7545,6 +7411,7 @@ def create_workbench_app(
             initial_activity_count += 1
         return {
             "matters": matters,
+            "closure_notices": closing_notices(bench.workspace, context, request.state.request_id),
             "matter_navigation": matter_navigation,
             "active_matter": active,
             "retention": active_retention,
@@ -8757,7 +8624,7 @@ def create_workbench_app(
             stale_reasons: list[str] = []
             if inactive_days >= 30:
                 stale_reasons.append(f"No recorded activity for {inactive_days} days")
-            if retention["status"] in {"unscheduled", "warning", "grace", "due"}:
+            if retention["show_warning"]:
                 stale_reasons.append(str(retention["label"]))
             matter_rows.append(
                 {
@@ -8978,6 +8845,7 @@ def create_workbench_app(
 
     @app.get("/matters/manage", response_class=HTMLResponse)
     def manage_matters(request: Request):
+        from .case_lifecycle_notices import can_manage_closure
         context = auth_context(request)
         matters = bench.matters(
             context.principal_id,
@@ -9009,15 +8877,23 @@ def create_workbench_app(
                 }
             )
         closure_recoveries: list[dict[str, object]] = []
-        for matter in bench.workspace.closure_recovery_matters(
-            context.principal_id,
-            administrator_override=context.is_administrator,
+        for matter in (
+            *bench.workspace.closure_recovery_matters(context.principal_id,
+                administrator_override=context.is_administrator),
+            *bench.workspace.case_lifecycle.closing_matters(context.principal_id,
+                administrator_override=context.is_administrator),
         ):
             owner = bench.workspace.get_principal(matter.owner_id)
+            can_close = can_manage_closure(bench.workspace, matter.matter_id, context)
             closure_recoveries.append(
                 {
                     "matter": matter,
                     "owner_name": owner.display_name,
+                    "state": bench.workspace.matter_lifecycle(matter.matter_id).state,
+                    "can_close": can_close,
+                    "authority_label": ("Administrator oversight" if context.is_administrator
+                        and matter.owner_id != context.principal_id else "You own this matter"
+                        if can_close and matter.owner_id == context.principal_id else "Case team access"),
                     "administrator_override": bool(
                         context.is_administrator
                         and matter.owner_id != context.principal_id
@@ -9047,13 +8923,13 @@ def create_workbench_app(
         request: Request,
         name: str = Form(..., max_length=140),
         descriptor: str = Form("", max_length=240),
-        retention_days: int = Form(30),
+        retention_days: int | None = Form(None),
     ):
         context = auth_context(request)
-        if retention_days not in {7, 30, 60, 90}:
+        if retention_days not in {None, 7, 30, 60, 90}:
             return RedirectResponse(
                 "/matters/new?error="
-                + quote_plus("Choose a supported temporary review period."),
+                + quote_plus("Choose a supported initial check-in interval."),
                 status_code=303,
             )
         try:
@@ -9075,7 +8951,7 @@ def create_workbench_app(
             matter=matter,
             object_type="matter",
             object_id=matter.matter_id,
-            details={"role": "owner", "state": "scheduled"},
+            details={"role": "owner", "state": "active"},
         )
         return RedirectResponse(f"/matters/{matter.slug}/setup", status_code=303)
 
@@ -9639,183 +9515,13 @@ def create_workbench_app(
                             # retry stale bytes against a newer ledger state.
             return bench.workspace.upload_session(matter.matter_id, actor_id, session_id)
 
-    @app.get("/matters/{slug}/close", response_class=HTMLResponse)
-    def close_matter_page(
-        request: Request,
-        slug: str,
-        error: str = Query("", max_length=240),
-    ):
-        context = auth_context(request)
-        try:
-            matter, lifecycle = bench.matter_for_closure(
-                slug,
-                context.principal_id,
-                administrator_override=context.is_administrator,
-            )
-            administrator_override = bool(
-                context.is_administrator and matter.owner_id != context.principal_id
-            )
-            owner = bench.workspace.get_principal(matter.owner_id)
-            counts = bench.workspace.matter_content_counts(matter.matter_id)
-            source_count = (
-                bench._matter_source_count_for_purge(matter, lifecycle)
-                if lifecycle.state == "active"
-                else lifecycle.source_count
-            )
-            active_work = bench.matter_active_work_counts(matter.matter_id)
-        except KeyError as exc:
-            raise HTTPException(404, "Matter not found") from exc
-        except RuntimeError as exc:
-            raise HTTPException(
-                503,
-                "Matter storage could not be checked safely. Ask an administrator to review it.",
-            ) from exc
-        return templates.TemplateResponse(
-            request=request,
-            name="workbench_close_matter.html",
-            context={
-                **base_context(request, matter),
-                "matter": matter,
-                "lifecycle": lifecycle,
-                "source_count": max(source_count, lifecycle.source_count),
-                "conversation_count": max(
-                    counts["conversations"], lifecycle.conversation_count
-                ),
-                "message_count": max(counts["messages"], lifecycle.message_count),
-                "notebook_count": counts["notebook_items"],
-                "active_work": active_work,
-                "administrator_override": administrator_override,
-                "owner_name": owner.display_name,
-                "error": error,
-            },
-        )
-
-    @app.post(
-        "/matters/{slug}/close",
-        dependencies=[Depends(require_csrf)],
+    from .case_lifecycle_routes import register_case_lifecycle_routes
+    register_case_lifecycle_routes(
+        app, bench=bench, identity=identity, templates=templates, auth_context=auth_context,
+        base_context=base_context, require_csrf=require_csrf,
+        require_response_lease=require_matter_bundle_response_lease,
+        transfer_response_lease=transfer_matter_response_lease,
     )
-    def close_matter(
-        request: Request,
-        slug: str,
-        confirmed_name: str = Form("", max_length=140),
-        acknowledge: str = Form("", max_length=8),
-    ):
-        context = auth_context(request)
-        try:
-            matter, lifecycle = bench.matter_for_closure(
-                slug,
-                context.principal_id,
-                administrator_override=context.is_administrator,
-            )
-            administrator_override = bool(
-                context.is_administrator and matter.owner_id != context.principal_id
-            )
-        except KeyError as exc:
-            raise HTTPException(404, "Matter not found") from exc
-        audit_role = {"role": "administrator"} if administrator_override else {}
-        if acknowledge != "yes":
-            audit(
-                request,
-                "matter.purge",
-                "failure",
-                context=context,
-                matter=matter,
-                details={"state": lifecycle.state, **audit_role},
-            )
-            return RedirectResponse(
-                _query_url(
-                    f"/matters/{slug}/close",
-                    error="Confirm that you understand this deletion cannot be undone.",
-                ),
-                status_code=303,
-            )
-        try:
-            matter, lifecycle = bench.begin_matter_purge(
-                slug,
-                context.principal_id,
-                confirmed_name,
-                administrator_override=administrator_override,
-            )
-        except RuntimeError:
-            audit(
-                request,
-                "matter.purge",
-                "failure",
-                context=context,
-                matter=matter,
-                details={"state": lifecycle.state, **audit_role},
-            )
-            return RedirectResponse(
-                _query_url(
-                    f"/matters/{slug}/close",
-                    error="Matter storage could not be checked safely. Ask an administrator to review it.",
-                ),
-                status_code=303,
-            )
-        except KeyError as exc:
-            raise HTTPException(404, "Matter not found") from exc
-        except WorkspaceProblem as exc:
-            audit(
-                request,
-                "matter.purge",
-                "failure",
-                context=context,
-                matter=matter,
-                details={"state": lifecycle.state, **audit_role},
-            )
-            return RedirectResponse(
-                _query_url(f"/matters/{slug}/close", error=str(exc)),
-                status_code=303,
-            )
-        audit(
-            request,
-            "matter.purge_request",
-            "success",
-            context=context,
-            matter=matter,
-            object_type="matter_purge",
-            object_id=lifecycle.purge_id,
-            details={"state": "purging", **audit_role},
-        )
-        try:
-            completed = bench.execute_matter_purge(matter, lifecycle)
-        except WorkspaceProblem as exc:
-            failed = bench.workspace.matter_lifecycle(matter.matter_id)
-            audit(
-                request,
-                "matter.purge",
-                "failure",
-                context=context,
-                matter=matter,
-                object_type="matter_purge",
-                object_id=lifecycle.purge_id,
-                details={"state": failed.state, **audit_role},
-            )
-            return RedirectResponse(
-                _query_url(f"/matters/{slug}/close", error=str(exc)),
-                status_code=303,
-            )
-        audit(
-            request,
-            "matter.purge",
-            "success",
-            context=context,
-            matter=matter,
-            object_type="matter_purge",
-            object_id=completed.purge_id,
-            details={
-                "state": "deleted",
-                "count": completed.message_count,
-                **audit_role,
-            },
-        )
-        return RedirectResponse(
-            _query_url(
-                "/matters/new",
-                notice="Matter deleted. Its processing files, conversations, and derived search data were removed.",
-            ),
-            status_code=303,
-        )
 
     @app.post(
         "/matters/{slug}/members",

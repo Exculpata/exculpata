@@ -1,0 +1,12 @@
+.app-frame.has-closure-notices { grid-template-rows: auto 1fr; }
+.has-closure-notices > .closure-notices { grid-column: 2; grid-row: 1; }
+.has-closure-notices > main { grid-row: 2; }
+.closure-notices { min-width: 0; margin: 16px var(--workspace-gutter); padding: 16px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
+.closure-notices h2 { margin: 0 0 12px; font-size: 1rem; }
+.closure-notice + .closure-notice { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.closure-notice p { margin: 6px 0; }
+.lifecycle-time { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .has-closure-notices > .closure-notices { grid-column: 1; }
+  .closure-notices { margin-inline: 16px; padding: 14px; }
+}

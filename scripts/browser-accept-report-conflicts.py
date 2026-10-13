@@ -23,6 +23,7 @@ from selenium.webdriver.support.ui import Select, WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+from browser_case_exit import BrowserCaseExit, completed_zip  # noqa: E402
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
 from case_intelligence.identity import KerberosSettings, KERBEROS_SECRET_HEADER, KERBEROS_USER_HEADER  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
@@ -42,7 +43,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
     with tempfile.TemporaryDirectory(prefix='recordbench-report-conflicts-browser-') as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()
         original = root / 'generated-source.txt'
@@ -287,9 +288,10 @@ def main():
             assert not admin.find_elements(By.CSS_SELECTOR, recovery + 'button[type=submit]')
             checks.append('Deleted-section recovery retains the unsaved text without recreating the section')
 
-            go(owner, prefix + '/close')
+            go(owner, prefix + '/settings')
+            before_bundle = set(downloads.iterdir())
             click(owner, f'a[href="{prefix}/export"]')
-            bundle = wait.until(lambda _: next(downloads.glob('*.zip'), None))
+            bundle = wait.until(lambda _: completed_zip(downloads, before_bundle))
             with zipfile.ZipFile(bundle) as archive:
                 texts = [archive.read(name).decode('utf-8') for name in archive.namelist() if name.endswith(('.md', '.json'))]
                 assert any('Combined reviewed Report section for export.' in text for text in texts)
@@ -300,9 +302,9 @@ def main():
                 assert entry['markdown'] in archive.namelist() and entry['docx'] in archive.namelist()
                 assert any('the blue vehicle arrived at noon' in text for text in texts)
                 assert not any(name.endswith('generated-source.txt') for name in archive.namelist())
-            fill(owner, '#confirmed-name', matter.display_name)
-            click(owner, 'input[name=acknowledge]')
-            submit(owner, '.close-matter-form button[type=submit]')
+            exit_flow = BrowserCaseExit(owner, base, app, matter, downloads)
+            exit_flow.prepare()
+            exit_flow.confirm_name(matter.display_name)
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted')
             assert original.read_bytes() == original_bytes
             checks.append('Export contains the reviewed Final Report in both formats and exact source support; normal closure preserves external original')

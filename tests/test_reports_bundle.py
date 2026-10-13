@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic regressions for preserving saved Reports in complete exports."""
 import io
 import json
@@ -181,6 +182,7 @@ def test_snapshot_does_not_mix_concurrent_report_edits(workspace, monkeypatch):
     original_sections = bench.workspace.report_sections
     def edit_between_reads(matter_id, report_id):
         with sqlite3.connect(bench.workspace.path) as other:
+            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
             other.execute("UPDATE workbench_report SET title='Concurrent title' WHERE report_id=?",
                           (report_id,))
             other.execute("UPDATE workbench_report_section SET body='Concurrent body' WHERE report_id=?",
@@ -202,7 +204,7 @@ def test_failed_close_recovery_never_reopens_quarantined_sources(workspace, monk
     bench._postgres_projection_configured = True
     bench.postgres_connection = None
     bench.postgres_ready = False
-    prepared, lifecycle = bench.begin_matter_purge(matter.slug, ACTOR, matter.display_name)
+    prepared, lifecycle = claim_bench_exit(bench, matter, ACTOR)
     with pytest.raises(WorkspaceProblem, match="derived search data"):
         bench.execute_matter_purge(prepared, lifecycle)
     assert bench.workspace.matter_lifecycle(matter.matter_id).state == "purge_failed"

@@ -18,6 +18,7 @@ from case_intelligence.pilot_uploads import PilotUnit
 from tests.test_full_text_review import frozen
 from tests.test_full_text_reports_integration import completed_text_run
 from tests.test_report_review_basis import ACTOR, workspace
+from tests.test_case_lifecycle_web import case
 from tests.test_matter_management import ADMIN, OWNER, OTHER, _app, _headers, _csrf, _principal_id
 
 
@@ -70,7 +71,7 @@ def assert_closed(connections):
             connection.execute("SELECT 1")
 
 
-async def asgi_download(app, path, *, send_hook=None, disconnect=False):
+async def asgi_download(app, path, *, send_hook=None, disconnect=False, headers=()):
     sent = []
     body_started = asyncio.Event()
     received = False
@@ -93,14 +94,14 @@ async def asgi_download(app, path, *, send_hook=None, disconnect=False):
     scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.3" if disconnect else "2.4"},
              "http_version": "1.1", "method": "GET", "scheme": "http", "path": path,
              "raw_path": path.encode(), "query_string": query.encode(), "root_path": "",
-             "headers": [(b"host", b"testserver")], "client": ("127.0.0.1", 41000),
+             "headers": [(b"host", b"testserver"), *headers], "client": ("127.0.0.1", 41000),
              "server": ("testserver", 80)}
     await app(scope, receive, send)
     return sent
 
 
-def test_active_ledger_download_blocks_closure_until_final_body(workspace, monkeypatch):
-    client, bench, matter = workspace
+def test_active_ledger_download_blocks_closure_until_final_body(case, monkeypatch):
+    client, bench, matter, _, _, _, csrf = case
     run, _ = completed_text_run(bench, matter, ["The amber bicycle arrived."])
     connections = track_readonly_connections(monkeypatch)
     attempted = []
@@ -109,20 +110,21 @@ def test_active_ledger_download_blocks_closure_until_final_body(workspace, monke
             return
         attempted.append(True)
         assert bench._active_matter_response_count(matter.matter_id) == 1
-        response = await anyio.to_thread.run_sync(lambda: client.post(f"/matters/{matter.slug}/close", data={
-            "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False))
+        response = await anyio.to_thread.run_sync(lambda: client.post(f"/matters/{matter.slug}/close/begin", data={
+            "csrf_token": csrf, "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False))
         assert response.status_code == 303
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
     messages = asyncio.run(asgi_download(client.app,
-        f"/matters/{matter.slug}/full-review/{run.run_id}/text/export", send_hook=send))
+        f"/matters/{matter.slug}/full-review/{run.run_id}/text/export", send_hook=send,
+        headers=((b"cookie", "; ".join(f"{key}={value}" for key, value in client.cookies.items()).encode()),)))
     assert attempted
     body = b"".join(item.get("body", b"") for item in messages)
     assert any(row["record_type"] == "range" for row in json.loads(body)["records"])
     assert bench._active_matter_response_count(matter.matter_id) == 0
     assert_closed(connections)
-    assert client.post(f"/matters/{matter.slug}/close", data={
-        "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False).status_code == 303
-    assert bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
+    assert client.post(f"/matters/{matter.slug}/close/begin", data={
+        "csrf_token": csrf, "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False).status_code == 303
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == "closing"
 
 
 @pytest.mark.parametrize("failure", ["start", "send", "generator", "disconnect"])
