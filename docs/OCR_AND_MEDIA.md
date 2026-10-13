@@ -43,11 +43,27 @@ clips, citations, and reports.
 Speaker diarization produces anonymous clusters, not identities. Reviewers can
 open **Review speakers** beside the synchronized transcript or select a speaker
 label on any passage. A deliberately confirmed correction applies to every
-passage in that transcript with the same cluster and refreshes retrieval; merely
+passage in that transcript with the same cluster and attempts to refresh search; merely
 opening the review never confirms a label. The in-page save keeps playback,
 scroll, and keyboard focus in place, while the non-JavaScript form carries the
 current timestamp, transcript filters, page, and focused passage through its
 redirect.
+
+Transcript text and speaker corrections are saved before search updates. If an
+update fails or configured search is unavailable, the response confirms the save
+and the recording page keeps a **Search update pending** notice with **Retry
+search update**. Retrying does not add another correction. If service recovery
+requires a restart, startup reconciles the saved revisions automatically, even
+when the original recording version is unchanged. Native source versions,
+passage IDs, timestamps and citation validation remain unchanged; stale search
+candidates are still rejected.
+
+The per-source registry stores an optional digest receipt only after the matching
+search transaction succeeds. Older registries without this receipt are accepted
+and their transcripts are reconciled once when search is available. Backup the
+workspace and matter registries together while writers are stopped, as described
+in [storage and backup](STORAGE_AND_BACKUP.md); the receipt is derived state, not
+an authority over saved human revisions.
 
 The transcript overview is optional and independent from playback, transcript
 review, search, and export. If it fails, the media page shows a staff-readable

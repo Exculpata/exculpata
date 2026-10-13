@@ -114,6 +114,7 @@ from .intake_receipts import IntakeReceipts, IntakeUploadResumeMismatch
 from .intake_receipt_exports import export_intake_receipt, LABELS as INTAKE_LABELS
 from .matter_analysis import MAX_ANALYSIS_UNITS, analyze_candidates
 from .media_playback import BrowserPlaybackCoordinator
+from . import transcript_search
 from .model_portfolio import model_portfolio_projection
 from .pilot_uploads import (
     AUDIO_MEDIA_TYPES,
@@ -2096,6 +2097,7 @@ class CaseIntelligenceWorkbench:
                 postgres_reconciliation_ready = False
         for matter in matters:
             store = self.source_store(matter)
+            transcript_search.reconcile_transcripts(self, matter, store)
             if postgres_reconciliation_ready:
                 try:
                     with self.postgres_connection.cursor() as cursor:
@@ -4513,16 +4515,7 @@ class CaseIntelligenceWorkbench:
         segments: Sequence[TranscriptSegmentRecord],
         degraded: bool,
     ) -> None:
-        store = self.source_store(matter)
-        current = store.get(document.document_id)
-        if current.version_id != document.version_id:
-            raise RuntimeError("media source version changed during projection")
-        projected = store.install_media_transcript(
-            document.document_id,
-            transcript_units(segments),
-            degraded=degraded,
-        )
-        self._index_document(matter, projected)
+        transcript_search.project_transcript(self, matter, document, degraded)
 
     def _summarize_media_transcript(
         self,
@@ -4592,20 +4585,8 @@ class CaseIntelligenceWorkbench:
             total_segment_count=total,
         )
 
-    def refresh_media_projection(
-        self, matter: MatterRecord, document: PilotDocument
-    ) -> None:
-        segments = self.workspace.transcript_segments(
-            matter.matter_id, document.document_id, document.version_id
-        )
-        job = self.workspace.media_job(
-            matter.matter_id, document.document_id, document.version_id
-        )
-        if not segments or job is None:
-            raise KeyError(document.document_id)
-        self._project_media_transcript(
-            matter, document, segments, bool(job.degraded)
-        )
+    def refresh_media_projection(self, matter: MatterRecord, document: PilotDocument) -> bool:
+        return transcript_search.refresh_projection(self, matter, document)
 
     def index_document(self, matter: MatterRecord, document_id: str) -> None:
         store = self.source_store(matter)
@@ -12892,6 +12873,8 @@ def create_workbench_app(
                         "transcript_flag": flag,
                         "summary_failure": _media_summary_failure_view(media.summary),
                         "transcript_notices": transcript_processing_notices(media.transcript),
+                        "search_pending": transcript_search.search_pending(bench, media.document, media.segments),
+                        "search_pending_notice": transcript_search.PENDING_NOTICE,
                         "source_sequence": source_sequence,
                         "source_note_request_key": getattr(request.state, "source_note_request_key", uuid.uuid4().hex),
                         "source_note_draft": getattr(request.state, "source_note_draft", ""),
@@ -13168,6 +13151,23 @@ def create_workbench_app(
             status_code=303,
         )
 
+    @app.post("/matters/{slug}/sources/{token}/search-refresh", dependencies=[Depends(require_csrf)])
+    def refresh_transcript_search(request: Request, slug: str, token: str):
+        try:
+            matter = authorized_matter(request, slug)
+            store = bench.source_store(matter)
+            with store.mutation_guard():
+                document = store.get_by_action_token(token)
+                if not is_media_type(document.media_type):
+                    raise KeyError(token)
+                refreshed = bench.refresh_media_projection(matter, document)
+        except KeyError as exc:
+            raise HTTPException(404, "Media transcript not found") from exc
+        audit(request, "transcript.search_refresh", "success" if refreshed else "failure",
+              matter=matter, object_type="source", object_id=document.document_id)
+        return RedirectResponse(_query_url(f"/matters/{slug}/sources/{token}",
+            notice="Transcript search refreshed" if refreshed else transcript_search.PENDING_NOTICE), status_code=303)
+
     @app.post(
         "/matters/{slug}/sources/{token}/segments/{segment_id}",
         dependencies=[Depends(require_csrf)],
@@ -13197,7 +13197,7 @@ def create_workbench_app(
                     text=text,
                     actor_id=context.principal_id,
                 )
-                bench.refresh_media_projection(matter, document)
+                search_refreshed = bench.refresh_media_projection(matter, document)
             if bench.media is not None:
                 bench.media.notify()
         except KeyError as exc:
@@ -13225,7 +13225,7 @@ def create_workbench_app(
                 f"/matters/{slug}/sources/{token}",
                 start_ms=str(segment.start_ms),
                 segment=segment.segment_id,
-                notice="Transcript correction saved and search refreshed",
+                notice=transcript_search.saved_notice("Transcript correction", search_refreshed),
             )
             + f"#segment-{segment.ordinal}",
             status_code=303,
@@ -13269,7 +13269,7 @@ def create_workbench_app(
                     identity_state=identity_state,
                     actor_id=context.principal_id,
                 )
-                bench.refresh_media_projection(matter, document)
+                search_refreshed = bench.refresh_media_projection(matter, document)
                 speaker_summary = bench.workspace.media_summary(
                     matter.matter_id, document.document_id, document.version_id
                 )
@@ -13313,7 +13313,8 @@ def create_workbench_app(
                     "identity_state": mapping.identity_state,
                     "revision": mapping.revision,
                     "segment_count": mapping.segment_count,
-                    "message": "Speaker label saved across this transcript.",
+                    "message": transcript_search.saved_notice("Speaker label", search_refreshed),
+                    "search_refreshed": search_refreshed,
                     "overview_refreshing": bool(
                         speaker_summary is not None
                         and speaker_summary.state in {"queued", "running", "stale"}
@@ -13330,7 +13331,7 @@ def create_workbench_app(
                 speaker_review=mapping.speaker_cluster,
                 flag=return_flag,
                 segment=return_segment,
-                notice="Speaker label saved and search refreshed",
+                notice=transcript_search.saved_notice("Speaker label", search_refreshed),
             )
             + "#speaker-review",
             status_code=303,
