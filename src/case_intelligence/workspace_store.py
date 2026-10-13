@@ -196,7 +196,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             "recordbench_principal_enabled", 2,
             lambda provider, subject: int(self.principal_enabled(provider, subject)),
         )
-        self.connection.create_function("recordbench_case_lifecycle_writer", 0, lambda: 1)
+        self.connection.create_function("recordbench_case_lifecycle_writer", 0, lambda: 2)
         self._case_cleanup_matter = None
         self.connection.create_function("recordbench_case_content_cleanup", 1,
             lambda matter_id: int(self._case_cleanup_matter == matter_id))
@@ -208,6 +208,11 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         case_policy_exists = self.connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workbench_case_policy'"
         ).fetchone() is not None
+        if case_policy_exists:
+            # Upgrade writer fences before old idempotent backfills encounter
+            # the previous writer version. No workers or recovery have started.
+            from .case_lifecycle_migration import migrate_case_lifecycle
+            migrate_case_lifecycle(self.connection)
         for name in (
             "migrations/sqlite/0002_milestone_a_workbench.sql",
             "migrations/sqlite/0003_scalable_ingestion.sql",
@@ -958,6 +963,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         idle_expires_at: str,
         absolute_expires_at: str,
         application_roles: frozenset[str] = frozenset(),
+        *, binding_digest: str | None = None,
     ) -> SessionRecord:
         principal = self.get_principal(principal_id)
         if not principal.active:
@@ -965,6 +971,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         if not re.fullmatch(r"[0-9a-f]{64}", token_digest):
             raise ValueError("invalid session token digest")
         method = self._safe_text(auth_method, label="Authentication method", maximum=64)
+        if binding_digest is not None and (method != 'local' or not re.fullmatch(r'[0-9a-f]{64}', binding_digest)):
+            raise ValueError('invalid lifecycle session binding')
         if not _PRINCIPAL_PROVIDER.fullmatch(method):
             raise ValueError("invalid authentication method")
         if not isinstance(application_roles, frozenset) or not application_roles.issubset(
@@ -992,6 +1000,9 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                     absolute_expires_at,
                 ),
             )
+            if binding_digest is not None:
+                self.connection.execute('INSERT INTO workbench_case_session_binding VALUES (?,?)',
+                                        (session_id, binding_digest))
             row = self.connection.execute(
                 "SELECT session_id,token_digest,principal_id,auth_method,application_roles,created_at,last_seen_at,"
                 "idle_expires_at,absolute_expires_at,revoked_at FROM workbench_session "
@@ -2062,11 +2073,13 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         administrator_override: bool = False, token: str | None = None,
         session_id: str | None = None, export_id: str | None = None,
         export_acknowledged: bool = False, current_snapshot_digest: str | None = None,
+        mode: str = 'export_exit', no_backup_acknowledged: bool = False,
     ) -> tuple[MatterRecord, MatterLifecycleRecord]:
         """Compatibility entry point; raw manual deletion cannot bypass exit gates."""
         return self.case_lifecycle.claim_purge(
             slug, actor_id, confirmed_name, source_count=source_count, token=token,
             session_id=session_id, export_id=export_id, export_acknowledged=export_acknowledged,
+            mode=mode, no_backup_acknowledged=no_backup_acknowledged,
             current_snapshot_digest=current_snapshot_digest, administrator_override=administrator_override,
         )
 
@@ -2086,6 +2099,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             "media_playback",
             "media_processing",
             "clip_exports",
+            "authority",
             "unknown",
         }:
             raise ValueError("invalid purge failure code")

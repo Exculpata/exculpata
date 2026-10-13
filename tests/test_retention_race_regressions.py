@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -107,7 +109,7 @@ def test_check_in_cannot_report_success_after_other_connection_claims_purge(due_
     primary.connection.set_trace_callback(claim_before_writer_lock)
     try:
         with pytest.raises((KeyError, WorkspaceProblem)):
-            primary.case_lifecycle.check_in(matter.matter_id, ACTOR)
+            primary.case_lifecycle.check_in(matter.matter_id, ACTOR, session_id=lifecycle_session(primary, ACTOR, administrator_override=False).session_id)
     finally:
         primary.connection.set_trace_callback(None)
 
@@ -120,7 +122,7 @@ def test_check_in_cannot_report_success_after_other_connection_claims_purge(due_
 def test_check_in_keeps_matter_active_without_date_driven_deletion(due_matter):
     primary, competing, matter, now = due_matter
     assert primary.due_matter_retentions() == ()
-    checked = competing.case_lifecycle.check_in(matter.matter_id, ACTOR)
+    checked = competing.case_lifecycle.check_in(matter.matter_id, ACTOR, session_id=lifecycle_session(competing, ACTOR, administrator_override=False).session_id)
     assert primary.begin_due_matter_purge(matter.matter_id, source_count=0) is None
     assert primary.matter_lifecycle(matter.matter_id).state == "active"
     assert primary.case_lifecycle.policy(matter.matter_id) == checked
@@ -204,7 +206,7 @@ def test_explicit_exit_waits_for_worker_and_late_completion_cannot_recreate_cont
     running = competing.claim_answer_job("synthetic-worker")
     assert running is not None and running.job_id == queued.job_id
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        primary.case_lifecycle.begin_exit(matter.slug, ACTOR)
+        primary.case_lifecycle.begin_exit(matter.slug, ACTOR, session_id=lifecycle_session(primary, ACTOR, administrator_override=False).session_id)
 
     competing.fail_answer_job(running.job_id, "Synthetic worker stopped.")
     claimed = claim_synthetic_exit(primary, matter, ACTOR)
@@ -298,6 +300,6 @@ def test_retry_winning_before_purge_claim_keeps_work_active(due_matter, work_kin
 
     assert retry().state == "queued"
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        competing.case_lifecycle.begin_exit(matter.slug, ACTOR)
+        competing.case_lifecycle.begin_exit(matter.slug, ACTOR, session_id=lifecycle_session(competing, ACTOR, administrator_override=False).session_id)
     assert primary.matter_lifecycle(matter.matter_id).state == "active"
     assert sum(primary.active_matter_work_counts(matter.matter_id).values()) == 1

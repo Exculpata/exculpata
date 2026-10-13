@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
-from case_intelligence.identity import PREVIEW_IDENTITIES  # noqa: E402
+from case_intelligence.identity import PREVIEW_IDENTITIES, SESSION_COOKIE  # noqa: E402
 from case_intelligence.matter_archive_verifier import verify_matter_archive  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
 
@@ -96,6 +96,7 @@ def main():
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             driver.set_page_load_timeout(30)
             driver.set_script_timeout(30)
+            driver.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"})
             driver.implicitly_wait(3)
             wait = WebDriverWait(driver, 20)
             wait.until(lambda _: server.started)
@@ -135,10 +136,10 @@ def main():
                 click(selector)
                 return wait.until(lambda _: completed_download(downloads, before, suffix))
 
-            def login():
+            def login(subject=PREVIEW.subject):
                 driver.delete_all_cookies()
                 go("/auth/login?next=/matters/manage")
-                click(f'button[name="identity_subject"][value="{PREVIEW.subject}"]')
+                click(f'button[name="identity_subject"][value="{subject}"]')
                 wait.until(lambda d: "/auth/login" not in d.current_url)
 
             def capture_closure(name, focus=None):
@@ -182,6 +183,23 @@ def main():
                 wait.until(EC.visibility_of_element_located((By.ID, "confirmed-name")))
                 return current
 
+            def capture_notice(name):
+                for width in (1440, 430):
+                    driver.set_window_size(width, 1000)
+                    if width < 901 and driver.find_element(By.CSS_SELECTOR, "[data-rail-toggle]").get_attribute("aria-expanded") == "true":
+                        click("[data-rail-toggle]")
+                    if width < 901:
+                        wait.until(lambda d: d.execute_script(
+                            "return document.querySelector('[data-matter-rail]').getBoundingClientRect().right <= 0 "
+                            "&& getComputedStyle(document.querySelector('[data-rail-scrim]')).visibility === 'hidden'"))
+                    wait.until(lambda d: d.execute_script(
+                        "const box = document.querySelector('[data-closure-notices]').getBoundingClientRect(); "
+                        "return box.left >= 0 && box.right <= innerWidth + 1 "
+                        "&& document.documentElement.scrollWidth <= innerWidth + 1"))
+                    driver.execute_script("window.scrollTo({top:0,left:0,behavior:'instant'});")
+                    driver.save_screenshot(str(args.output / f"{name}-{width}.png"))
+                driver.set_window_size(1440, 1000)
+
             def prepare_exit(target):
                 target_prefix = f"/matters/{target.slug}"
                 go(target_prefix + "/close")
@@ -195,6 +213,8 @@ def main():
                 manifest = verify_matter_archive(archive, expected_sha256=current.archive_digest)
                 assert manifest["exit_id"] == current.exit_id and manifest["export_id"] == current.export_id
                 assert manifest["original_source_files_included"] is True
+                click(f'.close-explanation a[href="{target_prefix}/close"]')
+                assert "observed delivery of the complete archive to your account" in driver.find_element(By.TAG_NAME, "body").text
                 fresh_confirmation(target)
                 return archive, manifest, current
 
@@ -438,15 +458,37 @@ def main():
             policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
             assert policy.mode == "ongoing" and policy.selected_by == ACTOR
             assert datetime.fromisoformat(policy.next_check_in_at.replace("Z", "+00:00")) >= bench.workspace.current_time() + timedelta(days=89)
+            check_in_time = driver.find_element(By.CSS_SELECTOR, ".check-in-time")
+            assert "UTC" in check_in_time.text and "Your time:" in check_in_time.text
+            assert "America/New_York" in check_in_time.text
+            assert check_in_time.find_element(By.TAG_NAME, "time").get_attribute("datetime") == policy.next_check_in_at
+            member = next(identity for identity in PREVIEW_IDENTITIES if identity.subject == "jordan-lee")
+            bench.workspace.add_member(matter.matter_id, member.preferred_principal_id, ACTOR)
             go(prefix + "/close")
             click(f'form[action="{prefix}/close/begin"] button')
             cancelled_exit = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
             assert bench.workspace.matter_lifecycle(matter.matter_id).state == "closing"
+            notice = driver.find_element(By.CSS_SELECTOR, "[data-closure-notices]")
+            assert matter.display_name in notice.text and "cancellation window is open" in notice.text
+            assert "America/New_York" in notice.text and "UTC" in notice.text
             capture_closure("closure-cancellation-window")
+            login(member.subject)
+            go("/matters/new")
+            notice = driver.find_element(By.CSS_SELECTOR, "[data-closure-notices]")
+            assert matter.display_name in notice.text and "Contact the matter owner" in notice.text
+            assert not notice.find_elements(By.TAG_NAME, "a")
+            capture_notice("closure-member-notice")
+            events = [event for event in bench.workspace.audit_events(matter.matter_id)
+                      if event.action == "matter.exit_notice" and event.actor_principal_id == member.preferred_principal_id]
+            assert len(events) == 1 and events[0].details == {"role": "member"}
+            login()
+            go(prefix + "/close")
             click(f'form[action="{prefix}/close/cancel"] button')
             assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
             assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) is None
             assert bench.workspace.reports(matter.matter_id, ACTOR)[0].status == "final"
+            assert not driver.find_elements(By.CSS_SELECTOR, "[data-closure-notices]")
+            record_check("Owners and members see the cancellation banner across pages, with role-only presentation audit, UTC and viewer time, and no narrow-screen overflow; member receives no closure controls")
             record_check("Owner check-in selects 90 days; cancellation reopens with saved final Report intact")
 
             final_archive, final_manifest, final_exit = prepare_exit(matter)
@@ -470,6 +512,79 @@ def main():
             with zipfile.ZipFile(io.BytesIO(individual_docx)) as word:
                 assert "Edited conclusion retained" in word.read("word/document.xml").decode()
             record_check("Full preservation archive passes offline SHA verification; fresh session, elapsed window, exact name and both acknowledgements precede deletion; retained downloads and external original survive")
+
+            def browser_post(path, values):
+                # Same-origin requests exercise server rejection even when
+                # ordinary UI controls are absent or native validation blocks.
+                return driver.execute_async_script(
+                    "const done = arguments[2]; const body = new URLSearchParams(arguments[1]); "
+                    "body.set('csrf_token', document.body.dataset.csrfToken); "
+                    "fetch(arguments[0], {method:'POST', body}).then(async response => "
+                    "done({status:response.status, url:response.url, body:await response.text()}))"
+                    ".catch(error => done({error:String(error)}));", path, values)
+
+            no_export = bench.create_matter("Synthetic intentional deletion", "", ACTOR)
+            no_export_prefix = f"/matters/{no_export.slug}"
+            removed_document, _ = bench.source_store(no_export).store_stream(
+                "synthetic-delete.txt", "text/plain", io.BytesIO(b"Synthetic content intentionally discarded.\n"))
+            no_export_original = bench.source_store(no_export).files / removed_document.stored_name
+            bench.workspace.create_report(no_export.matter_id, ACTOR, "Synthetic discarded report")
+            bench.workspace.add_member(no_export.matter_id, member.preferred_principal_id, ACTOR)
+            wait.until(lambda _: not any(bench.matter_active_work_counts(no_export.matter_id).values()))
+            login(member.subject)
+            go("/matters/new")
+            denied = browser_post(no_export_prefix + "/close/begin", {"mode": "delete_without_export"})
+            assert denied["status"] == 404
+            assert bench.workspace.matter_lifecycle(no_export.matter_id).state == "active"
+            login()
+            go(no_export_prefix + "/close")
+            click('input[name="mode"][value="delete_without_export"]')
+            click(f'form[action="{no_export_prefix}/close/begin"] button')
+            no_export_exit = bench.workspace.case_lifecycle.current_exit(no_export.matter_id)
+            assert no_export_exit.mode == "delete_without_export" and no_export_exit.export_id is None
+            assert "No preservation archive or backup will be provided" in driver.find_element(By.TAG_NAME, "body").text
+            assert not driver.find_elements(By.CSS_SELECTOR, f'a[href="{no_export_prefix}/close/export"]')
+            assert not driver.find_elements(By.CSS_SELECTOR, f'form[action="{no_export_prefix}/close/confirm"]')
+            early = browser_post(no_export_prefix + "/close/confirm", {"mode": "delete_without_export"})
+            assert "seven-day" in early["body"]
+            assert bench.workspace.matter_lifecycle(no_export.matter_id).state == "closing"
+            capture_closure("delete-without-export-window")
+            previous_session = app.state.identity.resolve(driver.get_cookie(SESSION_COOKIE)["value"]).session.session_id
+            fresh_confirmation(no_export)
+            current_session = app.state.identity.resolve(driver.get_cookie(SESSION_COOKIE)["value"]).session.session_id
+            assert previous_session != current_session
+            assert "No export or backup will be provided." in driver.find_element(By.TAG_NAME, "body").text
+            assert not driver.find_elements(By.NAME, "export_acknowledged")
+            fill("#confirmed-name", no_export.display_name)
+            click("input[name=acknowledge]")
+            # Native required-checkbox validation must keep the form in place.
+            driver.find_element(By.CSS_SELECTOR, ".close-matter-form button[type=submit]").click()
+            assert not driver.execute_script("return document.querySelector('[name=no_backup_acknowledged]').checkValidity()")
+            assert bench.workspace.matter_lifecycle(no_export.matter_id).state == "closing"
+            no_backup_values = driver.execute_script(
+                "return Object.fromEntries(new FormData(document.querySelector('.close-matter-form')))")
+            denied = browser_post(no_export_prefix + "/close", no_backup_values)
+            assert "Explicitly acknowledge permanent deletion without an export or backup" in denied["body"]
+            assert bench.workspace.matter_lifecycle(no_export.matter_id).state == "closing"
+            assert no_export_original.read_bytes() == b"Synthetic content intentionally discarded.\n"
+            login(member.subject)
+            go("/matters/new")
+            no_backup_values["no_backup_acknowledged"] = "yes"
+            denied = browser_post(no_export_prefix + "/close", no_backup_values)
+            assert denied["status"] == 404
+            assert bench.workspace.matter_lifecycle(no_export.matter_id).state == "closing"
+            fresh_confirmation(no_export)
+            fill("#confirmed-name", no_export.display_name)
+            click("input[name=no_backup_acknowledged]")
+            click("input[name=acknowledge]")
+            capture_closure("delete-without-export-final", focus=".close-matter-form")
+            click(".close-matter-form button[type=submit]")
+            wait.until(lambda _: bench.workspace.matter_lifecycle(no_export.matter_id).state == "deleted")
+            assert not (bench.storage.matters / no_export.matter_id).exists()
+            assert not (bench.storage.root / "preservation-exports" / no_export.matter_id).exists()
+            assert bench.workspace.connection.execute("SELECT count(*) FROM workbench_report WHERE matter_id=?", (no_export.matter_id,)).fetchone()[0] == 0
+            assert original.read_bytes() == original_bytes
+            record_check("Delete without export requires owner authority, seven days, a fresh session, exact name and both irreversible/no-backup acknowledgements; missing acknowledgement and member requests are refused, then intentional deletion removes saved content without creating an archive")
             (args.output / "receipt.json").write_text(json.dumps({
                 "synthetic_only": True, "passed": True, "checks": checks,
             }, indent=2) + "\n")

@@ -12,30 +12,59 @@ reminder, and remains visible when overdue. At 30 overdue days it explicitly
 asks the owner or administrator to review ownership and arrange a check-in or
 exit. Opening or using the matter does not silently renew it, and a restart
 shows the current stage without depending on reminder delivery while offline.
+Lifecycle dates retain a UTC timestamp and show the viewer's local date, time
+and zone alongside it when browser formatting is available. Eligibility still
+uses the original aware UTC instant.
 
-## Owner workflow
+During a pending closure, every authorized owner, direct member and group member
+sees a banner on full workbench pages, including when working on another matter.
+It identifies an administrator-initiated closure, shows the earliest deletion
+time and explains how to request cancellation. Owners and administrators get a
+link to the closure controls; ordinary members receive no new write authority.
+The banner remains visible after seven days until cancellation or final
+confirmation. `matter.exit_notice` records the first presentation per exit and
+viewer, with opaque identifiers and role only. It does not assert that the
+person read or acknowledged it, and does not send an external notification.
+
+## Owner or administrator workflow
 
 1. Open **Manage matters → Close matter**. Finish pending uploads, processing,
-   reports, answers, investigations and downloads. **Begin closure** freezes
-   source and content changes and starts a minimum seven-day cancellation window.
-2. **Prepare full export** creates a private, disk-backed preservation ZIP. Its
-   manifest records every included file, byte length and SHA-256 digest, source
-   inventory, table coverage, explicit exclusions and unavailable historical
-   originals. The service reads and verifies every member before registering the
-   export for that exact closure.
-3. Download the archive and retain it outside the workbench. Compare its SHA-256
-   using a trusted local tool with the digest shown here before executing its
-   included verifier, then inspect the manifest and verify all members.
-   Downloads can be resumed with HTTP byte ranges
-   and retried. Preparing or downloading does not count as an acknowledgement.
-4. After seven days, request **Review final deletion confirmation**. The form
-   requires the exact current matter name, a separate acknowledgement that the
-   export was downloaded and checked, and a permanent-deletion acknowledgement.
-   Its single-use confirmation expires after ten minutes and is bound to the
-   current actor, live session, matter name, closure, export and content digest.
-   The application rechecks content and the stored archive before the first
-   destructive claim. A date, old form, work-product ZIP or restored receipt alone
-   cannot authorize deletion.
+   reports, answers, investigations and downloads. Choose **Export and exit** or
+   **Delete without export**. **Begin closure** freezes changes and starts a
+   minimum seven-day cancellation window. The choice is durable; changing paths
+   requires cancellation and a new closure/window.
+2. For **Export and exit**, prepare the preservation ZIP. The service verifies
+   every member before registering the archive for this exact closure. Download
+   it and retain a copy outside the workbench. Compare the shown SHA-256 using a
+   trusted local tool before running the included verifier, inspect the manifest
+   and verify all members.
+3. The export path requires server-observed delivery of every archive byte to
+   the account that will confirm deletion. Successful whole downloads and the
+   union of completed HTTP byte ranges qualify. Aborted responses, overlapping
+   repeats, gaps, another actor's download and replacement archives do not.
+   Observation occurs after the outer ASGI response accepts the final byte;
+   it cannot prove the client saved or retained a durable backup. A separate
+   saved-copy acknowledgement remains mandatory.
+4. **Delete without export** creates no preservation archive and requires a
+   separate acknowledgement that the user intentionally accepts irreversible
+   deletion with no export or backup provided by this workbench. A missing or
+   incomplete export never silently selects this path.
+5. After seven days, request **Review final deletion confirmation**. Both paths
+   require the exact matter name and a permanent-deletion acknowledgement.
+   The single-use form expires after ten minutes and binds the actor, live
+   session, matter name, closure mode and applicable archive/content identity.
+   Current owner/admin authority is rechecked when starting closure, confirming,
+   claiming and executing destructive phases. Ordinary membership is insufficient.
+   The export path additionally rechecks the archive and content snapshot before
+   the first claim. Dates, old forms and work-product ZIPs cannot authorize deletion.
+
+Local account authority is tied to its revision at fresh sign-in; disablement,
+role/password changes and session revocation invalidate old deletion authority,
+even after a disable/re-enable cycle. Kerberos rechecks current group policy.
+OIDC currently has no live organization-group lookup: non-owner administrator
+overrides therefore fail closed for this workflow. An authenticated OIDC owner
+can use their active owner grant. Supporting OIDC administrator deletion needs
+an approved live authority source or an explicit policy decision.
 
 **Cancel closure and reopen** is available until final deletion is claimed. It
 invalidates the closure's export and confirmation, removes its server-side
@@ -62,7 +91,7 @@ request/worker leases, host storage paths and operational diagnostics are
 excluded. Attribution is matter-local. The export projects explicit fields;
 it does not copy the control database or recursively ZIP storage directories.
 The existing **work-product bundle** remains useful for presentation documents,
-but excludes originals and is not the preservation archive required for exit.
+but excludes originals and is not the preservation archive used by export and exit.
 Rendered clip downloads are temporary; retained originals and clip definitions
 preserve their source and boundaries.
 
@@ -82,7 +111,7 @@ The archive is a portable preservation format, not an automated importer or an
 application backup. It does not establish a legal retention period or guarantee
 physical erasure from storage devices, downloaded copies or independent backups.
 
-## Migration 0040 and recovery
+## Migrations 0040–0041 and recovery
 
 Before upgrading, stop every old application and worker, take a complete,
 consistent backup of the control database, source registries and payloads,
@@ -107,13 +136,20 @@ matching pre-upgrade application and its untouched backup restored into a clean
 target. Never run old code against the upgraded store. Preserve post-upgrade work
 separately before deciding to roll back.
 
+Migration 0041 adds explicit closure modes, delivery coverage and durable purge
+admission records. It preserves existing exits as export-and-exit and never
+invents evidence of download or acknowledgement. Existing local sessions need a
+fresh sign-in for closure. A previously confirmed 0040 purge without the new
+authority record stays blocked for operator recovery, even when an earlier phase
+removed its archive. The writer version and policy version prevent old binaries
+from resuming these operations against the upgraded database.
+
 A restored pending closure keeps its original cancellation date, frozen content,
-export identity and digest. Application startup discards unused deletion forms,
+export identity and digest. Completed delivery observations survive restart/restore; they still do not prove a backup exists. Application startup discards in-flight download attempts and unused deletion forms,
 so a restart or restore requires fresh confirmation even if the old form and
 sign-in session have not expired. Starting another application process can also
 invalidate an outstanding form; request a fresh form on the running instance.
-Missing or damaged server-side archive bytes block
-a first purge claim. Restore accepted originals and the archive, or cancel,
+For export and exit, missing or damaged server-side archive bytes block a first purge claim. Restore accepted originals and the archive, or cancel,
 repair while active, and begin a new closure/export. A restored check-in or
 legacy date never authorizes a maintenance purge.
 

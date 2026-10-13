@@ -1,4 +1,6 @@
 """Controlled-clock checks of ongoing matters and non-destructive check-ins."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 from datetime import timedelta
 
 import pytest
@@ -46,7 +48,7 @@ def test_check_in_horizon_rolls_forward_beyond_original_creation(tmp_path, monke
         matter = bench.create_matter('Synthetic continuing review', '', 'principal-owner')
         for elapsed_days in (0, 300, 600):
             now[0] = FIXED + timedelta(days=elapsed_days)
-            policy = bench.workspace.case_lifecycle.check_in(matter.matter_id, 'principal-owner')
+            policy = bench.workspace.case_lifecycle.check_in(matter.matter_id, 'principal-owner', session_id=lifecycle_session(bench.workspace, 'principal-owner', administrator_override=False).session_id)
             assert bench._parse_utc(policy.next_check_in_at) == now[0] + timedelta(days=90)
             assert bench.retention_projection(matter)['show_warning'] is False
             assert bench.workspace.matter_retention(matter.matter_id) is None

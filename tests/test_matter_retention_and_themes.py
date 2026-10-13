@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -63,12 +65,12 @@ def test_owner_or_administrator_can_reschedule_but_member_cannot(tmp_path):
     store.add_member(matter.matter_id, "principal-member", "principal-owner")
 
     with pytest.raises(KeyError):
-        store.case_lifecycle.check_in(matter.matter_id, "principal-member")
-    owner_policy = store.case_lifecycle.check_in(matter.matter_id, "principal-owner")
+        store.case_lifecycle.check_in(matter.matter_id, "principal-member", session_id=lifecycle_session(store, "principal-member", administrator_override=False).session_id)
+    owner_policy = store.case_lifecycle.check_in(matter.matter_id, "principal-owner", session_id=lifecycle_session(store, "principal-owner", administrator_override=False).session_id)
     assert owner_policy.selected_by == "principal-owner"
     admin_policy = store.case_lifecycle.check_in(
         matter.matter_id, "principal-admin", administrator_override=True,
-    )
+     session_id=lifecycle_session(store, "principal-admin", administrator_override=True).session_id)
     assert admin_policy.selected_by == "principal-admin"
     assert admin_policy.next_check_in_at == "2026-11-26T16:00:00Z"
     assert store.matter_retention(matter.matter_id) is None
@@ -99,7 +101,7 @@ def test_due_claim_rechecks_schedule_and_waits_for_active_upload(tmp_path):
     assert store.due_matter_retentions() == ()
     assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        store.case_lifecycle.begin_exit(matter.slug, "principal-owner")
+        store.case_lifecycle.begin_exit(matter.slug, "principal-owner", session_id=lifecycle_session(store, "principal-owner", administrator_override=False).session_id)
 
     store.cancel_upload_session(
         matter.matter_id, "principal-owner", session.upload_session_id
@@ -363,6 +365,6 @@ def test_reminder_stages_and_overdue_owner_review_catch_up_without_renewal(tmp_p
             assert store.get_active_matter(matter.slug).matter_id == matter.matter_id
             assert store.due_matter_retentions() == ()
             assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
-        renewed = store.case_lifecycle.check_in(matter.matter_id, 'principal-owner')
+        renewed = store.case_lifecycle.check_in(matter.matter_id, 'principal-owner', session_id=lifecycle_session(store, 'principal-owner', administrator_override=False).session_id)
         assert bench._parse_utc(renewed.next_check_in_at) == now[0] + timedelta(days=90)
         assert retention_projection(bench, matter)['status'] == 'ongoing'

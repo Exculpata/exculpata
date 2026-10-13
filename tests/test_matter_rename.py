@@ -1,4 +1,6 @@
 """Synthetic owner/admin rename, stale forms, and stable matter identity."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 import io
 
 import pytest
@@ -176,7 +178,7 @@ def test_close_confirmation_serializes_with_rename(tmp_path, monkeypatch):
         return counts(matter_id)
     monkeypatch.setattr(store, '_active_matter_work_counts_locked', pause_after_confirmation)
     try:
-        store.case_lifecycle.begin_exit(matter.slug, 'principal-owner')
+        store.case_lifecycle.begin_exit(matter.slug, 'principal-owner', session_id=lifecycle_session(store, 'principal-owner', administrator_override=False).session_id)
         writer.join(timeout=5)
         assert not writer.is_alive()
         assert outcomes == ['closed']

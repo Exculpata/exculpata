@@ -6,6 +6,7 @@ The stopped fixture runtime contains its control store, session state, managed
 originals and source registries; every file is hashed before the clean copy.
 """
 import argparse
+from datetime import datetime, timedelta
 import hashlib
 import json
 import os
@@ -102,6 +103,7 @@ def main():
         os.environ['CASE_INTELLIGENCE_STORAGE_RESERVE_GIB'] = '0'
         from fastapi.testclient import TestClient
         from case_intelligence.workbench import create_workbench_app
+        from case_intelligence.workspace_store import WorkspaceProblem
         from case_intelligence.assertion_repository import TABLES
         with TestClient(create_workbench_app(runtime, auth_mode='test')) as client:
             bench = client.app.state.workbench
@@ -144,8 +146,32 @@ def main():
                 assert response.status_code == 200 and b'synthetic parcel' in response.content
             assert bench.workspace.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
             assert not bench.workspace.connection.execute('PRAGMA foreign_key_check').fetchall()
-            _, lifecycle = bench.workspace.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=2)
+            # Verified stopped backups remain separate. Explicitly delete only
+            # this synthetic restored runtime without creating another export.
+            def owner_session():
+                expires = bench.workspace._timestamp(bench.workspace.current_time() + timedelta(hours=1))
+                return bench.workspace.create_session(ACTOR, hashlib.sha256(os.urandom(32)).hexdigest(),
+                    'test', expires, expires)
+            session = owner_session()
+            exit_record = bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR,
+                mode='delete_without_export', session_id=session.session_id)
+            try:
+                bench.workspace.case_lifecycle.issue_confirmation(matter.slug, ACTOR,
+                    session.session_id, mode='delete_without_export')
+            except WorkspaceProblem as exc:
+                assert 'seven-day' in str(exc)
+            else:
+                raise AssertionError('Synthetic deletion was admitted before the cancellation window ended')
+            after_window = datetime.fromisoformat(exit_record.eligible_after.replace('Z', '+00:00')) + timedelta(seconds=1)
+            bench.workspace._clock = lambda: after_window
+            session = owner_session()
+            confirmation = bench.workspace.case_lifecycle.issue_confirmation(matter.slug, ACTOR,
+                session.session_id, mode='delete_without_export')
+            _, lifecycle = bench.begin_matter_purge(matter.slug, ACTOR, matter.display_name,
+                mode='delete_without_export', session_id=session.session_id,
+                token=confirmation.token, no_backup_acknowledged=True)
             bench.execute_matter_purge(matter, lifecycle)
+            assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
             assert all(bench.workspace.connection.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0 for table in TABLES)
         rollback = root / 'clean-preupgrade-rollback'
         stopped_copy(preupgrade, rollback)
@@ -155,7 +181,8 @@ def main():
             stopped_preupgrade_backup_files=len(preupgrade_manifest), stopped_upgraded_backup_files=len(upgraded_manifest),
             complete_runtime_hashes_verified=True, original_files_and_source_passages_restored=True,
             entities_notes_assertions_accounts_roles_history_preserved=True,
-            restored_assertion_purge_verified=True, matching_baseline_reader_verified_clean_rollback=True,
+            restored_assertion_purge_verified=True, explicit_no_export_exit=True,
+            seven_day_window_enforced=True, matching_baseline_reader_verified_clean_rollback=True,
             integrity='ok', scope='Synthetic application runtime and managed originals; no installed-node or PostgreSQL projection qualification.')))
 
 

@@ -4,6 +4,7 @@
 {% block body_class %}matter-settings-page{% endblock %}
 
 {% block content %}
+{% from "workbench_lifecycle_time.html" import lifecycle_time %}
 <main id="main-content" tabindex="-1" class="matter-settings-main">
   <header class="matter-settings-heading">
     <div>
@@ -42,7 +43,8 @@
       <p class="eyebrow">Matter lifecycle</p>
       <h2 id="lifecycle-settings-heading">Ongoing workspace</h2>
       <strong>{{ retention.label }}</strong><p>{{ retention.detail }}</p>
-      {% if retention.legacy_expires_at %}<p>Previous review date: {{ retention.legacy_expires_at[:10] }}. Previous deletion date: {{ retention.legacy_purge_after[:10] }}. These dates are preserved for reference and do not authorize deletion.</p>{% endif %}
+      <p>{% include "workbench_check_in_time.html" %}</p>
+      {% if retention.legacy_expires_at %}<p>Previous review date: {{ lifecycle_time(retention.legacy_expires_at) }}. Previous deletion date: {{ lifecycle_time(retention.legacy_purge_after) }}. These dates are preserved for reference and do not authorize deletion.</p>{% endif %}
       {% if (membership and membership.role == 'owner') or is_administrator %}
       <form method="post" action="/matters/{{ matter.slug }}/check-in" data-working-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

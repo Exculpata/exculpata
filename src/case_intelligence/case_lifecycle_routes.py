@@ -70,6 +70,8 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 'policy': bench.workspace.case_lifecycle.policy(matter.matter_id),
                 'eligible': bool(exit_record and bench._parse_utc(now) >= bench._parse_utc(exit_record.eligible_after)),
                 'confirmation': confirmation,
+                'download_complete': bool(exit_record and bench.workspace.case_lifecycle.downloads.receipt(
+                    exit_record, context.principal_id)),
                 'active_work': bench.matter_active_work_counts(matter.matter_id),
                 'busy': any(bench.matter_active_work_counts(matter.matter_id).values()),
                 'conversation_count': max(counts['conversations'], lifecycle.conversation_count),
@@ -84,7 +86,7 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
         context, matter, _ = owner(request, slug)
         try:
             bench.workspace.case_lifecycle.check_in(matter.matter_id, context.principal_id,
-                administrator_override=context.is_administrator)
+                session_id=context.session.session_id if context.session else None, administrator_override=(context.is_administrator and matter.owner_id != context.principal_id))
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
         return RedirectResponse(f'/matters/{slug}/settings', status_code=303)
@@ -95,13 +97,14 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
         return page(request, slug, error=error, notice=notice)
 
     @app.post('/matters/{slug}/close/begin', dependencies=[Depends(require_csrf)])
-    def begin_exit(request: Request, slug: str):
+    def begin_exit(request: Request, slug: str, mode: str = Form('export_exit', max_length=32)):
         context, matter, _ = owner(request, slug)
         try:
             with source_lock(bench, matter.matter_id):
                 idle(bench, matter.matter_id)
-                bench.workspace.case_lifecycle.begin_exit(slug, context.principal_id,
-                    administrator_override=context.is_administrator)
+                current_authority = refresh_owner(request, slug, context)
+                bench.workspace.case_lifecycle.begin_exit(slug, context.principal_id, mode=mode,
+                    session_id=session_id(current_authority), administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
         return redirect(slug, notice='Closure started. The matter is frozen and can be reopened before final deletion.')
@@ -114,8 +117,9 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 idle(bench, matter.matter_id)
                 # Clean only after repository verifies the submitted exit. A
                 # failed cleanup leaves a harmless stale archive, not a new gate.
+                current_authority = refresh_owner(request, slug, context)
                 bench.workspace.case_lifecycle.cancel_exit(slug, context.principal_id, exit_id,
-                    administrator_override=context.is_administrator)
+                    session_id=session_id(current_authority), administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
                 cleanup_archives(bench, matter.matter_id)
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
@@ -137,7 +141,7 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 installed = True
                 bench.workspace.case_lifecycle.register_export(matter.matter_id, context.principal_id,
                     artifact.exit_id, artifact.export_id, artifact.sha256, artifact.snapshot_digest,
-                    administrator_override=current_authority.is_administrator)
+                    session_id=session_id(current_authority), administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
                 registered = True
                 cleanup_archives(bench, matter.matter_id, keep=artifact.export_id)
         except (WorkspaceProblem, OSError, RuntimeError) as exc:
@@ -164,8 +168,19 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
         descriptor = None
         try:
             descriptor, size = open_verified_archive(bench, matter, current)
-            refresh_owner(request, slug, context)
+            current_authority = refresh_owner(request, slug, context)
             response = archive_response(request, matter, current, descriptor, size)
+            from .case_archive_delivery import ArchiveDelivery
+            downloads = bench.workspace.case_lifecycle.downloads
+            attempt = downloads.begin(matter.matter_id, context.principal_id,
+                session_id(current_authority), current.export_id, current.archive_digest,
+                size, response.start, response.start + response.length,
+                administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
+            def completed():
+                refresh_owner(request, slug, context)
+                return downloads.complete(attempt)
+            request.scope['state']['case_archive_delivery'] = ArchiveDelivery(
+                response.delivery_proof, complete=completed, discard=lambda: downloads.discard(attempt))
             transferred = transfer_response_lease(request, response, through_send=True)
             descriptor = None
             return transferred
@@ -176,7 +191,8 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 os.close(descriptor)
 
     @app.post('/matters/{slug}/close/confirm', dependencies=[Depends(require_csrf)])
-    def confirm_page(request: Request, slug: str, export_id: str = Form(..., max_length=100)):
+    def confirm_page(request: Request, slug: str, export_id: str = Form('', max_length=100),
+                     mode: str = Form('export_exit', max_length=32)):
         context, matter, lifecycle = owner(request, slug)
         try:
             with source_lock(bench, matter.matter_id):
@@ -184,11 +200,11 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
                 if current is None:
                     raise WorkspaceProblem('Start an explicit exit first.')
-                if lifecycle.state != 'purge_failed':
+                if lifecycle.state != 'purge_failed' and current.mode == 'export_exit':
                     verified_archive(bench, matter, current)
                 current_authority = refresh_owner(request, slug, context)
                 confirmation = bench.workspace.case_lifecycle.issue_confirmation(slug, context.principal_id,
-                    session_id(current_authority), export_id, administrator_override=current_authority.is_administrator)
+                    session_id(current_authority), export_id, mode=mode, administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
         return page(request, slug, confirmation=confirmation)
@@ -196,16 +212,20 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
     @app.post('/matters/{slug}/close', dependencies=[Depends(require_csrf)])
     def purge(request: Request, slug: str, confirmed_name: str = Form('', max_length=140),
               acknowledge: str = Form('', max_length=8), export_acknowledged: str = Form('', max_length=8),
-              token: str = Form('', max_length=128), export_id: str = Form('', max_length=100)):
+              token: str = Form('', max_length=128), export_id: str = Form('', max_length=100),
+              mode: str = Form('export_exit', max_length=32),
+              no_backup_acknowledged: str = Form('', max_length=8)):
         context, matter, _ = owner(request, slug)
         try:
             if acknowledge != 'yes':
                 raise WorkspaceProblem('Confirm that you understand deletion cannot be undone.')
             matter, lifecycle = bench.begin_matter_purge(slug, context.principal_id, confirmed_name,
-                administrator_override=context.is_administrator, token=token, session_id=session_id(context),
+                administrator_override=(context.is_administrator and matter.owner_id != context.principal_id), token=token, session_id=session_id(context),
                 export_id=export_id, export_acknowledged=export_acknowledged == 'yes',
+                mode=mode, no_backup_acknowledged=no_backup_acknowledged == 'yes',
                 refresh_authority=lambda: refresh_owner(request, slug, context))
-            bench.execute_matter_purge(matter, lifecycle)
+            bench.execute_matter_purge(matter, lifecycle,
+                refresh_authority=lambda: refresh_owner(request, slug, context))
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
         except (OSError, RuntimeError):

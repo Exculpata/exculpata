@@ -89,11 +89,22 @@ workbench_transcript_segment_revision:revision_id,segment_id,matter_id,revision,
 workbench_upload_item:upload_item_id,upload_session_id,matter_id,ordinal,display_name,relative_path,media_type,expected_size,received_size,state,document_id,message,updated_at
 workbench_upload_session:upload_session_id,matter_id,collection_id,actor_id,state,item_count,total_bytes,created_at,updated_at
 workbench_case_policy:matter_id,policy_version,mode,next_check_in_at,last_checked_at,selected_by,created_at,updated_at
-workbench_case_exit:exit_id,matter_id,state,requested_by,requested_at,eligible_after,export_id,archive_digest,snapshot_digest,exported_by,exported_at,confirmed_by,confirmed_at,purge_id,updated_at
-workbench_case_confirmation:token_digest,exit_id,actor_id,session_id,name_digest,export_id,archive_digest,snapshot_digest,created_at,expires_at
+workbench_case_exit:exit_id,matter_id,state,requested_by,requested_at,eligible_after,export_id,archive_digest,snapshot_digest,exported_by,exported_at,confirmed_by,confirmed_at,purge_id,updated_at,mode
+workbench_case_confirmation:token_digest,exit_id,actor_id,session_id,name_digest,export_id,archive_digest,snapshot_digest,created_at,expires_at,mode
+workbench_case_download_attempt:attempt_id,exit_id,export_id,archive_digest,total_size,actor_id,session_id,administrator,range_start,range_end,created_at
+workbench_case_download_coverage:exit_id,export_id,archive_digest,total_size,actor_id,intervals_json,completed_at
+workbench_case_purge_authority:purge_id,exit_id,mode,export_id,archive_digest,snapshot_digest,proof_actor_id,delivery_completed_at,acknowledged_at,actor_id,session_id,administrator
+workbench_case_session_binding:session_id,binding_digest
 """
 SCHEMA = {name: tuple(columns.split(',')) for name, columns in
           (line.split(':') for line in _SCHEMA.strip().splitlines())}
+
+CASE_AUTHORIZATION_TABLES = frozenset({
+    'workbench_case_download_attempt',
+    'workbench_case_download_coverage',
+    'workbench_case_purge_authority',
+    'workbench_case_session_binding',
+})
 
 EXCLUDED_TABLES = {
     'workbench_principal': 'Global identities and login information',
@@ -104,6 +115,10 @@ EXCLUDED_TABLES = {
     'workbench_team_group_member': 'Global team memberships',
     'workbench_matter_group_grant': 'Global authorization grants',
     'workbench_case_confirmation': 'One-use purge credentials and session bindings',
+    'workbench_case_download_attempt': 'Operational download attempts, actor/session bindings and transfer generations; excluded from archive and content snapshot',
+    'workbench_case_download_coverage': 'Operational byte-delivery receipts and actor bindings; excluded from archive and content snapshot',
+    'workbench_case_purge_authority': 'Live purge authority, actor/session bindings and export or no-export acknowledgments; excluded from archive and content snapshot',
+    'workbench_case_session_binding': 'Private authentication-session revision bindings; excluded from archive and content snapshot',
     'workbench_job_matter_schedule': 'Operational scheduler position',
     'workbench_matter_activity': 'Ephemeral UI activity locators',
 }
@@ -184,14 +199,36 @@ def scope_query(table):
     return f'SELECT {selected} FROM "{table}" WHERE {where} ORDER BY {order}'
 
 
+AUDIT_EXPORT_NOTICE = (
+    'Matter-scoped audit chronology only, not complete audit contents. All details_json '
+    'payloads and object_id targets are omitted, together with session_id and request_id. '
+    'Event and actor identifiers use matter-local pseudonyms; global and unscoped events '
+    'and events after the archive snapshot are not included.'
+)
+AUDIT_FIELD_EXCLUSIONS = {
+    'details_json': 'excluded: all audit event details, including otherwise safe contextual fields; complete event contents cannot be reconstructed',
+    'object_id': 'excluded: raw audit target identifier; the exact event target cannot be reconstructed from this record',
+    'session_id': 'excluded: authentication session identifier; session correlation is unavailable',
+    'request_id': 'excluded: operational request identifier; request correlation is unavailable',
+}
+
+
 def coverage_manifest():
-    return {table: {'disposition': EXCLUDED_TABLES.get(table, 'included'),
+    coverage = {table: {'disposition': EXCLUDED_TABLES.get(table, 'included'),
         'columns': {c: ('excluded: operational metadata' if c in OPERATIONAL_COLUMNS or
                        c in OMITTED_COLUMNS.get(table, ()) else
                        'matter-local attribution' if c in ACTOR_COLUMNS else
                        'matter-local reference' if c in REFERENCE_COLUMNS else 'preserved')
                     for c in columns}}
         for table, columns in SCHEMA.items()}
+    for table in CASE_AUTHORIZATION_TABLES.intersection(coverage):
+        coverage[table]['snapshot_disposition'] = 'excluded: operational table is not exported'
+        coverage[table]['columns'] = {column: 'excluded: operational authorization state' for column in SCHEMA[table]}
+    audit = coverage['workbench_audit_event']
+    audit.update(content_scope='matter_scoped_chronology', complete_audit_contents=False,
+                 notice=AUDIT_EXPORT_NOTICE)
+    audit['columns'].update(AUDIT_FIELD_EXCLUSIONS)
+    return coverage
 
 SOURCE_FIELDS = tuple('''document_id display_name stored_name media_type size state message units digest
 version_id name_key page_count units_file origin source_location_id relative_path stable_device

@@ -1,4 +1,6 @@
 """A generated legacy database, atomic upgrade, and an isolated restore drill."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -66,13 +68,13 @@ def test_upgrade_keeps_legacy_dates_states_and_requires_explicit_selection(tmp_p
     assert unscheduled.mode == 'unscheduled' and unscheduled.next_check_in_at is None
     assert store.due_matter_retentions() == ()
     assert store.begin_due_matter_purge(scheduled.matter_id, source_count=0) is None
-    selected = store.case_lifecycle.check_in(scheduled.matter_id, OWNER)
+    selected = store.case_lifecycle.check_in(scheduled.matter_id, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert selected.mode == 'ongoing' and selected.next_check_in_at == '2026-12-30T00:00:00Z'
     assert snapshot(store.connection, 'workbench_matter_retention') == retained
     for suffix in ('failed', 'purging'):
         with pytest.raises(WorkspaceProblem, match='recovery'):
             slug = 'm-' + ('c' if suffix == 'failed' else 'd') * 12
-            store.case_lifecycle.begin_exit(slug, OWNER)
+            store.case_lifecycle.begin_exit(slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
         with pytest.raises(WorkspaceProblem, match='confirmed current exit'):
             store.case_lifecycle.validate_purge('ci-matter-synthetic-' + suffix, 'matter-purge-' + suffix)
     policies = snapshot(store.connection, 'workbench_case_policy')
@@ -144,3 +146,48 @@ def test_packaged_migration_matches_repository_source():
     root = Path(__file__).resolve().parents[1]
     assert (root / 'migrations/sqlite/0040_case_lifecycle.sql').read_bytes() == (
         root / 'src/case_intelligence/migrations/sqlite/0040_case_lifecycle.sql').read_bytes()
+
+
+def test_v40_backup_upgrade_fences_old_writer_and_never_invents_authority(tmp_path):
+    """Exercise the actual 0040 schema, including its version-one writer fences."""
+    path = tmp_path / 'generated-v40.sqlite'
+    old = legacy_database(path)
+    old.create_function('recordbench_case_lifecycle_writer', 0, lambda: 1)
+    old.create_function('recordbench_case_content_cleanup', 1, lambda matter_id: 0)
+    old.executescript(resources.files('case_intelligence').joinpath(
+        'migrations/sqlite/0040_case_lifecycle.sql').read_text())
+    before = snapshot(old, 'workbench_matter_lifecycle')
+    retained = snapshot(old, 'workbench_matter_retention')
+    backup_path = tmp_path / 'generated-v40-backup.sqlite'
+    with sqlite3.connect(backup_path) as backup:
+        old.backup(backup)
+    upgraded = WorkspaceStore(path, clock=lambda: NOW)
+    assert snapshot(upgraded.connection, 'workbench_matter_lifecycle') == before
+    assert snapshot(upgraded.connection, 'workbench_matter_retention') == retained
+    assert {row[0] for row in upgraded.connection.execute(
+        'SELECT policy_version FROM workbench_case_policy')} == {2}
+    for table in ('workbench_case_download_attempt', 'workbench_case_download_coverage',
+                  'workbench_case_purge_authority', 'workbench_case_session_binding'):
+        assert snapshot(upgraded.connection, table) == ()
+    with pytest.raises(sqlite3.IntegrityError, match='writer version'):
+        old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
+    old.rollback()
+    assert upgraded.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+    assert upgraded.connection.execute('PRAGMA foreign_key_check').fetchall() == []
+    upgraded.close()
+    old.close()
+    # A stopped backup remains unchanged and upgrades independently after restore.
+    restored_path = tmp_path / 'generated-v40-clean-restore.sqlite'
+    with sqlite3.connect(backup_path) as source, sqlite3.connect(restored_path) as restored:
+        assert {row[0] for row in source.execute('SELECT policy_version FROM workbench_case_policy')} == {1}
+        source.backup(restored)
+    restored = WorkspaceStore(restored_path, clock=lambda: NOW)
+    assert snapshot(restored.connection, 'workbench_matter_lifecycle') == before
+    assert snapshot(restored.connection, 'workbench_matter_retention') == retained
+    restored.close()
+
+
+def test_packaged_authority_migration_matches_repository_source():
+    root = Path(__file__).resolve().parents[1]
+    assert (root / 'migrations/sqlite/0041_case_exit_authority.sql').read_bytes() == (
+        root / 'src/case_intelligence/migrations/sqlite/0041_case_exit_authority.sql').read_bytes()

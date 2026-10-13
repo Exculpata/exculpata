@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import io
 import json
 import os
@@ -390,7 +392,7 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
     with pytest.raises(KeyError):
         store.matter_for_closure(target.slug, "principal-member")
     with pytest.raises(KeyError):
-        store.case_lifecycle.begin_exit(target.slug, "principal-admin")
+        store.case_lifecycle.begin_exit(target.slug, "principal-admin", session_id=lifecycle_session(store, "principal-admin", administrator_override=False).session_id)
     confirmation = prepare_purge_confirmation(store, target, "principal-admin", administrator_override=True)
     prepared, lifecycle = store.begin_matter_purge(
         target.slug, "principal-admin", target.display_name, source_count=0,
@@ -491,7 +493,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     )
     assert store.active_matter_work_counts(matter.matter_id)["media"] == 1
     with pytest.raises(WorkspaceProblem, match="media processing"):
-        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id)
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
 
     claimed = store.claim_media_job("generated-media-worker")
     assert claimed is not None and claimed.media_job_id == media_job.media_job_id
@@ -520,7 +522,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     assert summary is not None
     assert store.active_matter_work_counts(matter.matter_id)["overviews"] == 1
     with pytest.raises(WorkspaceProblem, match="transcript overviews"):
-        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id)
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
     with store.connection:
         store.connection.execute(
             "UPDATE workbench_media_summary SET state='stale' WHERE transcript_id=?",
@@ -536,7 +538,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     analysis = store.start_analysis_run(matter.matter_id, owner.principal_id)
     assert store.active_matter_work_counts(matter.matter_id)["analysis"] == 1
     with pytest.raises(WorkspaceProblem, match="analysis"):
-        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id)
+        store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
     store.fail_analysis_run(
         analysis.analysis_id, matter.matter_id, "Generated analysis stopped safely."
     )
@@ -812,7 +814,7 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
         assert "Administrator action" in close_page.text
         assert "Matter Owner" in close_page.text
         assert "attributed to your account" in close_page.text
-        assert "verified full export" in close_page.text
+        assert "Export and exit." in close_page.text
         assert "External registered originals are not deleted" in close_page.text
         assert re.search(r'<button[^>]+type="submit"[^>]+disabled', close_page.text)
 
@@ -1075,7 +1077,7 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
         ).status_code == 303
         admin_manage = client.get("/matters/manage", headers=_headers(ADMIN))
         assert admin_manage.status_code == 200
-        assert "Administrator recovery" in admin_manage.text
+        assert "Previous deletion did not finish" in admin_manage.text
         assert f'/matters/{slug}/close' in admin_manage.text
         admin_console = client.get("/admin", headers=_headers(ADMIN))
         assert admin_console.status_code == 200

@@ -66,8 +66,8 @@ def prepare(client, bench, matter, csrf):
     return current
 
 
-def confirm(client, matter, csrf, export_id):
-    response = post(client, matter, 'close/confirm', csrf, export_id=export_id)
+def confirm(client, matter, csrf, export_id='', *, mode='export_exit'):
+    response = post(client, matter, 'close/confirm', csrf, export_id=export_id or '', mode=mode)
     assert response.status_code == 200, response.headers.get('location')
     return re.search(r'name="token" value="([^"]+)"', response.text).group(1)
 
@@ -125,6 +125,8 @@ def test_cancel_reopens_and_invalidates_export_with_a_new_seven_day_window(case)
     client, bench, matter, source, document, clock, csrf = case
     post(client, matter, 'close/begin', csrf)
     first = prepare(client, bench, matter, csrf)
+    assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
+    assert bench.workspace.case_lifecycle.downloads.receipt(first, matter.owner_id) is not None
     first_path = archive_path(bench, matter, first)
     lease = bench.begin_matter_response(matter, allowed_states=frozenset({'closing'}))
     refused = post(client, matter, 'close/cancel', csrf, exit_id=first.exit_id)
@@ -135,6 +137,7 @@ def test_cancel_reopens_and_invalidates_export_with_a_new_seven_day_window(case)
     assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'active'
     assert not first_path.exists()
     assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) is None
+    assert bench.workspace.case_lifecycle.downloads.receipt(first, matter.owner_id) is None
     source = bench.source_store(matter)
     source.store_stream('more.txt', 'text/plain', io.BytesIO(b'Generated continued work.\n'))
     clock[0] += timedelta(days=1)
@@ -151,6 +154,7 @@ def test_missing_restored_archive_or_changed_original_cannot_authorize_first_del
     post(client, matter, 'close/begin', csrf)
     current = prepare(client, bench, matter, csrf)
     path = archive_path(bench, matter, current)
+    assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
     clock[0] += timedelta(days=7, seconds=1)
     csrf = login(client)
     token = confirm(client, matter, csrf, current.export_id)
@@ -197,7 +201,8 @@ def test_closure_routes_enforce_csrf_membership_and_source_readonly_open(case):
     assert client.get(f'/matters/{matter.slug}/close').status_code == 404
 
 
-def test_stopped_backup_clean_restore_keeps_archive_but_requires_fresh_confirmation(tmp_path):
+@pytest.mark.parametrize('mode', ['export_exit', 'delete_without_export'])
+def test_stopped_backup_clean_restore_keeps_mode_but_requires_fresh_confirmation(tmp_path, mode):
     runtime = tmp_path / 'generated-runtime'
     app = create_workbench_app(runtime, generator=UnavailableGenerator(), auth_mode='preview',
         answer_workers=1, storage_policy=StoragePolicy(reserve_bytes=0))
@@ -213,13 +218,18 @@ def test_stopped_backup_clean_restore_keeps_archive_but_requires_fresh_confirmat
         matter = bench.workspace.get_active_matter(slug)
         original = b'Generated original preserved across stopped backup and clean restore.\n'
         doc, _ = bench.source_store(matter).store_stream('generated-restore.txt', 'text/plain', io.BytesIO(original))
-        post(client, matter, 'close/begin', csrf)
-        before = prepare(client, bench, matter, csrf)
+        post(client, matter, 'close/begin', csrf, mode=mode)
+        if mode == 'export_exit':
+            before = prepare(client, bench, matter, csrf)
+            assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
+        else:
+            before = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+            assert before.export_id is None
         archive_digest = before.archive_digest
         source_relative = ('matters', matter.matter_id, 'sources', 'files', doc.stored_name)
         clock[0] += timedelta(days=7, seconds=1)
         csrf = login(client)
-        token = confirm(client, matter, csrf, before.export_id)
+        token = confirm(client, matter, csrf, before.export_id, mode=mode)
         cookies = dict(client.cookies)
         session_id = app.state.identity.resolve(cookies[SESSION_COOKIE], read_only=True).session.session_id
         nonce_expiry = bench.workspace.connection.execute(
@@ -243,23 +253,27 @@ def test_stopped_backup_clean_restore_keeps_archive_but_requires_fresh_confirmat
         bench = recovered.state.workbench
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
         after = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+        assert after.mode == mode
         assert (after.exit_id, after.eligible_after, after.archive_digest, after.snapshot_digest) == (
             before.exit_id, before.eligible_after, before.archive_digest, before.snapshot_digest)
         assert restored.joinpath(*source_relative).read_bytes() == original
         assert backup.joinpath(*source_relative).read_bytes() == original
-        verified = verify_matter_archive(archive_path(bench, matter, after), expected_sha256=archive_digest)
-        assert verified['export_id'] == before.export_id
-        assert client.get(f'/matters/{slug}/close/export').status_code == 200
+        if mode == 'export_exit':
+            verified = verify_matter_archive(archive_path(bench, matter, after), expected_sha256=archive_digest)
+            assert verified['export_id'] == before.export_id
+            assert client.get(f'/matters/{slug}/close/export').status_code == 200
+        else:
+            assert client.get(f'/matters/{slug}/close/export').status_code == 409
         assert bench.run_maintenance_once()['matters_purged'] == 0
-        denied = post(client, matter, 'close', csrf, token=token, export_id=after.export_id,
-            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes')
+        denied = post(client, matter, 'close', csrf, token=token, export_id=after.export_id or '', mode=mode,
+            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes', no_backup_acknowledged='yes')
         assert denied.status_code == 303 and 'fresh+deletion+confirmation' in denied.headers['location']
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
         assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) == after
         assert restored.joinpath(*source_relative).read_bytes() == original
-        fresh_token = confirm(client, matter, csrf, after.export_id)
-        finished = post(client, matter, 'close', csrf, token=fresh_token, export_id=after.export_id,
-            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes')
+        fresh_token = confirm(client, matter, csrf, after.export_id, mode=mode)
+        finished = post(client, matter, 'close', csrf, token=fresh_token, export_id=after.export_id or '', mode=mode,
+            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes', no_backup_acknowledged='yes')
         assert finished.status_code == 303 and finished.headers['location'].startswith('/matters/new?')
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
         assert not restored.joinpath(*source_relative).exists()
@@ -306,6 +320,7 @@ def test_long_archive_operations_recheck_revoked_session_before_release_or_delet
             with pytest.raises(OSError):
                 os.fstat(opened[0])
         else:
+            assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
             clock[0] += timedelta(days=7, seconds=1)
             csrf = login(client)
             token = confirm(client, matter, csrf, current.export_id)
@@ -368,3 +383,237 @@ def test_archive_descriptor_closes_if_client_disconnects(tmp_path):
     anyio.run(disconnected)
     with pytest.raises(OSError):
         os.fstat(descriptor)
+
+
+def login_administrator(client, bench):
+    """Use a synthetic persisted administrator session; no authentication bypass."""
+    csrf = login(client, 'jordan-lee')
+    session = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).session
+    with bench.workspace._lock, bench.workspace.connection:
+        bench.workspace.connection.execute('UPDATE workbench_session SET application_roles=? WHERE session_id=?',
+            ('["administrator"]', session.session_id))
+    return csrf
+
+
+@pytest.mark.parametrize('mode', ['export_exit', 'delete_without_export'])
+@pytest.mark.parametrize('role', ['owner', 'administrator'])
+def test_two_modes_require_wait_name_matching_mode_and_specific_acknowledgement(case, mode, role):
+    client, bench, matter, source, document, clock, csrf = case
+    if role == 'administrator':
+        csrf = login_administrator(client, bench)
+    actor = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).principal_id
+    page = client.get(f'/matters/{matter.slug}/close')
+    assert 'value="export_exit"' in page.text and 'value="delete_without_export"' in page.text
+    begin = post(client, matter, 'close/begin', csrf, mode=mode)
+    assert begin.status_code == 303 and 'error=' not in begin.headers['location']
+    current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+    assert current.mode == mode
+    if mode == 'export_exit':
+        current = prepare(client, bench, matter, csrf)
+        assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
+    else:
+        assert 'No preservation archive or backup will be provided' in client.get(f'/matters/{matter.slug}/close').text
+        assert 'error=' in post(client, matter, 'close/export', csrf).headers['location']
+        assert current.export_id is None
+    early = post(client, matter, 'close/confirm', csrf, mode=mode, export_id=current.export_id or '')
+    assert early.status_code == 303 and 'seven-day' in early.headers['location']
+    clock[0] += timedelta(days=7, seconds=1)
+    csrf = login_administrator(client, bench) if role == 'administrator' else login(client)
+    token = confirm(client, matter, csrf, current.export_id, mode=mode)
+    values = dict(mode=mode, token=token, export_id=current.export_id or '',
+                  confirmed_name=matter.display_name, acknowledge='yes')
+    missing = post(client, matter, 'close', csrf, **values)
+    assert missing.status_code == 303 and 'error=' in missing.headers['location']
+    wrong_mode = 'delete_without_export' if mode == 'export_exit' else 'export_exit'
+    wrong = post(client, matter, 'close', csrf, **{**values, 'mode': wrong_mode,
+        'export_acknowledged': 'yes', 'no_backup_acknowledged': 'yes'})
+    assert wrong.status_code == 303 and 'error=' in wrong.headers['location']
+    wrong_name = post(client, matter, 'close', csrf, **{**values, 'confirmed_name': 'Generated wrong matter',
+        'export_acknowledged': 'yes', 'no_backup_acknowledged': 'yes'})
+    assert wrong_name.status_code == 303 and 'error=' in wrong_name.headers['location']
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+    assert (source.files / document.stored_name).exists()
+    finished = post(client, matter, 'close', csrf, **{**values,
+        ('export_acknowledged' if mode == 'export_exit' else 'no_backup_acknowledged'): 'yes'})
+    assert finished.status_code == 303 and finished.headers['location'].startswith('/matters/new?')
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
+    assert not (bench.storage.matters / matter.matter_id).exists()
+    action = 'matter.purge_confirm' if mode == 'export_exit' else 'matter.purge_without_export_confirm'
+    events = [event for event in bench.workspace.audit_events(matter.matter_id) if event.action == action]
+    assert len(events) == 1 and events[0].actor_principal_id == actor
+
+
+@pytest.mark.parametrize('mode', ['export_exit', 'delete_without_export'])
+def test_ordinary_member_cannot_begin_confirm_or_purge_either_mode(case, mode):
+    client, bench, matter, source, document, clock, csrf = case
+    member_csrf = login(client, 'jordan-lee')
+    member = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).principal_id
+    bench.workspace.add_member(matter.matter_id, member, matter.owner_id)
+    assert bench.workspace.membership(matter.matter_id, member).role == 'member'
+    assert post(client, matter, 'close/begin', member_csrf, mode=mode).status_code == 404
+    owner_csrf = login(client)
+    post(client, matter, 'close/begin', owner_csrf, mode=mode)
+    clock[0] += timedelta(days=8)
+    member_csrf = login(client, 'jordan-lee')
+    for action in ('close/confirm', 'close'):
+        response = post(client, matter, action, member_csrf, mode=mode,
+            token='generated-forged-' + 'a' * 40, confirmed_name=matter.display_name,
+            acknowledge='yes', export_acknowledged='yes', no_backup_acknowledged='yes')
+        assert response.status_code == 404
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+    assert (source.files / document.stored_name).exists()
+
+
+@pytest.mark.parametrize('mode', ['export_exit', 'delete_without_export'])
+def test_changing_modes_requires_cancel_reopen_and_a_new_window(case, mode):
+    client, bench, matter, source, document, clock, csrf = case
+    invalid = post(client, matter, 'close/begin', csrf, mode='generated-unknown-mode')
+    assert invalid.status_code == 303 and 'error=' in invalid.headers['location']
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'active'
+    post(client, matter, 'close/begin', csrf, mode=mode)
+    before = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+    other = 'delete_without_export' if mode == 'export_exit' else 'export_exit'
+    denied = post(client, matter, 'close/begin', csrf, mode=other)
+    assert denied.status_code == 303 and 'Cancel+closure' in denied.headers['location']
+    assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) == before
+    post(client, matter, 'close/cancel', csrf, exit_id=before.exit_id)
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'active'
+    clock[0] += timedelta(days=1)
+    csrf = login(client)
+    post(client, matter, 'close/begin', csrf, mode=other)
+    after = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+    assert after.mode == other and after.exit_id != before.exit_id
+    assert after.eligible_after > before.eligible_after
+
+
+def test_partial_repeated_and_gapped_ranges_require_complete_coverage_for_the_same_actor(case):
+    client, bench, matter, source, document, clock, csrf = case
+    post(client, matter, 'close/begin', csrf)
+    current = prepare(client, bench, matter, csrf)
+    size = archive_path(bench, matter, current).stat().st_size
+    middle = size // 2
+    url = f'/matters/{matter.slug}/close/export'
+    for header in (f'bytes=0-{middle - 1}', f'bytes=0-{middle - 1}', f'bytes={middle + 1}-'):
+        assert client.get(url, headers={'Range': header}).status_code == 206
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is None
+    clock[0] += timedelta(days=7, seconds=1)
+    csrf = login(client)
+    denied = post(client, matter, 'close/confirm', csrf, export_id=current.export_id)
+    assert denied.status_code == 303 and 'Download+the+complete' in denied.headers['location']
+    admin_csrf = login_administrator(client, bench)
+    admin = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).principal_id
+    assert client.get(url, headers={'Range': f'bytes={middle}-{middle}'}).status_code == 206
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is None
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, admin) is None
+    csrf = login(client)
+    assert client.get(url, headers={'Range': f'bytes={middle}-{middle}'}).status_code == 206
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is not None
+    confirm(client, matter, csrf, current.export_id)
+    admin_csrf = login_administrator(client, bench)
+    denied = post(client, matter, 'close/confirm', admin_csrf, export_id=current.export_id)
+    assert denied.status_code == 303 and 'Download+the+complete' in denied.headers['location']
+    assert client.get(url).status_code == 200
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, admin) is not None
+    confirm(client, matter, admin_csrf, current.export_id)
+
+
+def test_replacement_export_invalidates_delivery_and_old_confirmation(case):
+    client, bench, matter, source, document, clock, csrf = case
+    post(client, matter, 'close/begin', csrf)
+    before = prepare(client, bench, matter, csrf)
+    assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
+    clock[0] += timedelta(days=7, seconds=1)
+    csrf = login(client)
+    token = confirm(client, matter, csrf, before.export_id)
+    after = prepare(client, bench, matter, csrf)
+    assert after.export_id != before.export_id
+    assert bench.workspace.case_lifecycle.downloads.receipt(after, matter.owner_id) is None
+    blocked = post(client, matter, 'close/confirm', csrf, export_id=after.export_id)
+    assert blocked.status_code == 303 and 'Download+the+complete' in blocked.headers['location']
+    old = post(client, matter, 'close', csrf, token=token, export_id=before.export_id,
+        confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes')
+    assert old.status_code == 303 and 'error=' in old.headers['location']
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+
+
+@pytest.mark.parametrize('failure', ['session', 'database'])
+def test_outer_completed_send_cannot_record_delivery_after_authority_or_database_failure(case, monkeypatch, failure):
+    from case_intelligence.case_archive_delivery import ArchiveDelivery
+    from fastapi import HTTPException
+    import sqlite3
+    client, bench, matter, source, document, clock, csrf = case
+    post(client, matter, 'close/begin', csrf)
+    current = prepare(client, bench, matter, csrf)
+    session = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).session
+    observed = []
+    original = ArchiveDelivery.finish
+    async def fail_after_send(self, *, app_returned):
+        assert app_returned and self.final_sent and self.proof.inner_verified
+        observed.append(self.bytes_sent)
+        if failure == 'session':
+            bench.workspace.revoke_session(session.session_id)
+        else:
+            def failed_completion(_attempt):
+                raise sqlite3.OperationalError('Generated completion transaction failure')
+            monkeypatch.setattr(bench.workspace.case_lifecycle.downloads, 'complete', failed_completion)
+        await original(self, app_returned=app_returned)
+    monkeypatch.setattr(ArchiveDelivery, 'finish', fail_after_send)
+    expected_error = sqlite3.OperationalError if failure == 'database' else (HTTPException, RuntimeError)
+    with pytest.raises(expected_error):
+        client.get(f'/matters/{matter.slug}/close/export')
+    assert observed == [archive_path(bench, matter, current).stat().st_size]
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is None
+    assert bench.matter_active_work_counts(matter.matter_id)['exports'] == 0
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+
+
+@pytest.mark.parametrize('interruption', ['final_send_failure', 'asgi23_disconnect'])
+def test_interrupted_http_download_discards_attempt_and_retry_can_complete(case, interruption):
+    import anyio
+    client, bench, matter, source, document, clock, csrf = case
+    post(client, matter, 'close/begin', csrf)
+    current = prepare(client, bench, matter, csrf)
+    path = f'/matters/{matter.slug}/close/export'
+    cookie = '; '.join(f'{key}={value}' for key, value in client.cookies.items()).encode()
+    async def interrupted_request():
+        body_started = anyio.Event()
+        received = False
+        statuses, attempts = [], []
+        async def receive():
+            nonlocal received
+            if not received:
+                received = True
+                return {'type': 'http.request', 'body': b'', 'more_body': False}
+            if interruption == 'asgi23_disconnect':
+                await body_started.wait()
+                return {'type': 'http.disconnect'}
+            await anyio.sleep_forever()
+        async def send(message):
+            if message['type'] == 'http.response.start':
+                statuses.append(message['status'])
+            elif message['type'] == 'http.response.body':
+                if message.get('body'):
+                    attempts.append(bench.workspace.connection.execute(
+                        'SELECT COUNT(*) FROM workbench_case_download_attempt').fetchone()[0])
+                    body_started.set()
+                    if interruption == 'asgi23_disconnect':
+                        await anyio.sleep(0.01)
+                if interruption == 'final_send_failure' and not message.get('more_body', False):
+                    raise OSError('Generated interrupted outer final send')
+        scope = {'type': 'http', 'asgi': {'version': '3.0',
+                 'spec_version': '2.3' if interruption == 'asgi23_disconnect' else '2.4'},
+                 'http_version': '1.1', 'method': 'GET', 'scheme': 'http', 'path': path,
+                 'raw_path': path.encode(), 'query_string': b'', 'root_path': '',
+                 'headers': [(b'host', b'testserver'), (b'cookie', cookie)],
+                 'client': ('127.0.0.1', 41000), 'server': ('testserver', 80)}
+        try:
+            await client.app(scope, receive, send)
+        except OSError:
+            assert interruption == 'final_send_failure'
+        assert statuses == [200] and attempts and all(value == 1 for value in attempts)
+    anyio.run(interrupted_request)
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is None
+    assert bench.workspace.connection.execute('SELECT COUNT(*) FROM workbench_case_download_attempt').fetchone()[0] == 0
+    assert bench.matter_active_work_counts(matter.matter_id)['exports'] == 0
+    assert client.get(path).status_code == 200
+    assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is not None

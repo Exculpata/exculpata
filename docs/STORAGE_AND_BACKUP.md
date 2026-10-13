@@ -155,7 +155,49 @@ workers before upgrading; rollback uses a clean restore with matching old code.
 [Expired-matter recovery](EXPIRED_MATTER_RECOVERY.md) describes the previous
 pre-0040 policy and remains relevant only when inspecting those older versions.
 Include the private `preservation-exports` tree in complete managed-storage
-backups; a receipt without the archive cannot authorize a first deletion.
+backups. Restoring a receipt without its matching archive cannot satisfy the
+export-and-exit path.
+
+Migration 0041 requires existing local-account sessions to sign in again before
+changing matter closure. The fresh sign-in binds the session to the current
+account revision; migration cannot invent that binding or delivery evidence.
+Completed archive-delivery coverage survives restart, while pending download
+attempts and unused confirmation forms are cleared. An interrupted purge already
+confirmed under migration 0040 without the new purge-authority record remains
+blocked for operator recovery; upgrading does not authorize it to resume.
+
+Owners and administrators have two explicit exit paths:
+
+- **Export and exit:** create the full preservation archive, complete delivery of
+  the entire current archive to the actor confirming exit, and acknowledge the saved copy.
+  The server must observe complete delivery before accepting this path. A delivery
+  receipt records HTTP delivery; it does not prove that the browser retained the
+  file, that storage is durable, or that a usable backup exists. Verify the archive
+  and preserve it in appropriate storage separately.
+- **Delete without export:** deliberately choose this path and acknowledge both
+  irreversible deletion and proceeding without a preserved backup from this
+  workflow. This path is available to an authorized owner or administrator and
+  does not require an export or a download receipt.
+
+Both paths retain the seven-day minimum closure window and require a fresh final
+confirmation from the currently authorized actor. Reaching the end of the window
+never deletes a matter automatically. Download attempts, delivery coverage, purge
+authorization and local-session revision bindings are operational state.
+Preservation archives exclude these tables entirely, and they do not contribute
+to the archived content snapshot.
+
+A preservation archive contains a **matter-scoped audit chronology, not complete
+audit contents**. It includes events assigned to the matter at the archive
+snapshot, preserving their timestamp, matter ID, action, outcome and object type.
+Event and actor IDs become stable matter-local pseudonyms. All `details_json`
+payloads are omitted, including otherwise safe contextual fields such as counts;
+`object_id`, `session_id` and `request_id` are also omitted. The archive therefore
+cannot reconstruct full event details, exact audit targets or session/request
+correlation. Global or unscoped events and events after the snapshot are not
+included. The manifest states `complete_audit_contents: false` and explains each
+excluded audit field. Row counts and hash verification establish the integrity
+of the exported chronology, not completeness of audit contents. Use the complete
+consistent-backup procedure above when the original control database is required.
 
 ## Synthetic consistency verification
 

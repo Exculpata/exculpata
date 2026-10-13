@@ -47,6 +47,8 @@ def archive_case(tmp_path):
     policy = StoragePolicy(reserve_bytes=0)
     bench = SimpleNamespace(workspace=workspace, storage=SimpleNamespace(root=tmp_path), storage_policy=policy,
                             source_registry=None, archive_source_store=lambda matter: store)
+    bench.archive_test_session_id = workspace.create_session(OWNER, 'd'*64, 'test',
+        '2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z').session_id
     bench._storage_reservation_lock = threading.RLock()
     bench._preservation_reservations = {}
     bench._playback_reserved_bytes = lambda matter_id=None: sum(bench._preservation_reservations.values()) if matter_id is None else 0
@@ -60,7 +62,8 @@ def archive_case(tmp_path):
 
 
 def close(bench, matter):
-    return bench.workspace.case_lifecycle.begin_exit(matter.slug, OWNER)
+    return bench.workspace.case_lifecycle.begin_exit(matter.slug, OWNER,
+        session_id=bench.archive_test_session_id)
 
 
 def records(artifact, table):
@@ -136,13 +139,18 @@ def test_cross_matter_and_operational_canaries_are_absent_but_failed_work_remain
         cleanup_archive(artifact)
 
 
-@pytest.mark.parametrize('change', ['table', 'column'])
+@pytest.mark.parametrize('change', ['table', 'column', 'authorization_column', 'binding_column'])
 def test_unknown_schema_blocks_instead_of_omitting_or_exporting(archive_case, change):
     bench, matter, store = archive_case
     close(bench, matter)
     with bench.workspace.connection:
-        bench.workspace.connection.execute('CREATE TABLE future_records(matter_id,text)' if change == 'table' else
-            'ALTER TABLE workbench_report ADD COLUMN future_secret TEXT')
+        statements = {
+            'table': 'CREATE TABLE future_records(matter_id,text)',
+            'column': 'ALTER TABLE workbench_report ADD COLUMN future_secret TEXT',
+            'authorization_column': 'ALTER TABLE workbench_case_purge_authority ADD COLUMN future_secret TEXT',
+            'binding_column': 'ALTER TABLE workbench_case_session_binding ADD COLUMN future_secret TEXT',
+        }
+        bench.workspace.connection.execute(statements[change])
     with pytest.raises(ArchiveProblem):
         build_matter_archive(bench, matter, OWNER, source_store=store)
     assert not list((bench.storage.root / 'preservation-exports').iterdir())
@@ -219,7 +227,8 @@ def test_snapshot_ignores_new_audit_events_but_detects_authored_edit(archive_cas
             with bench.workspace.connection:
                 bench.workspace.connection.execute('UPDATE workbench_report SET title=? WHERE report_id=?',
                                                     ('Disallowed edit', report.report_id))
-        bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id)
+        bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id,
+            session_id=bench.archive_test_session_id)
         with bench.workspace.connection:
             bench.workspace.connection.execute('UPDATE workbench_report SET title=? WHERE report_id=?',
                                                 ('Changed generated title', report.report_id))
@@ -259,7 +268,8 @@ def test_nested_operational_fields_are_removed_and_unknown_fields_block(archive_
         assert unavailable[0]['availability'] == 'previously_removed'
     finally:
         cleanup_archive(artifact)
-    bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id)
+    bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id,
+        session_id=bench.archive_test_session_id)
     with bench.workspace.connection:
         bench.workspace.connection.execute('UPDATE workbench_message SET payload_json=? WHERE message_id=?',
             (json.dumps(dict(future_unreviewed_field='UNKNOWN-CANARY')), message.message_id))
@@ -534,6 +544,8 @@ def test_nested_private_metadata_excluded_and_model_paths_blocked():
             portable({key: '/generated/private/model'}, 'generated-matter')
     with pytest.raises(ValueError, match='unreviewed'):
         portable({'preflight': {'unexpected': 'PRIVATE-GENERATED-CANARY'}}, 'generated-matter')
+    with pytest.raises(ValueError, match='unreviewed'):
+        portable({'binding_digest': 'e7'*32}, 'generated-matter')
 
 
 def test_notebook_and_report_origin_links_are_navigable(archive_case):
@@ -612,3 +624,96 @@ def test_legacy_media_metadata_rejects_nonportable_or_untyped_values(payload):
     from case_intelligence.matter_archive_projection import portable
     with pytest.raises(ValueError, match='boolean|portable identifier'):
         portable(payload, 'generated-matter')
+
+
+def test_audit_manifest_discloses_omissions_without_exporting_details(archive_case):
+    from case_intelligence.matter_archive_schema import AUDIT_EXPORT_NOTICE
+    from case_intelligence.matter_archive_projection import reference
+    bench, matter, store = archive_case
+    workspace = bench.workspace
+    with workspace._lock, workspace.connection:
+        event = workspace._append_audit_event_locked(actor_principal_id=OWNER, session_id=None,
+            matter_id=matter.matter_id, request_id='GENERATED-PRIVATE-REQUEST',
+            action='generated.audit_disclosure', outcome='success', object_type='generated_material',
+            object_id='GENERATED-PRIVATE-TARGET', details={'count': 7, 'principal_id': OTHER})
+    close(bench, matter)
+    artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
+    try:
+        manifest = verify_matter_archive(artifact.path, expected_sha256=artifact.sha256)
+        disclosure = manifest['coverage']['workbench_audit_event']
+        assert disclosure['disposition'] == 'included'
+        assert disclosure['content_scope'] == 'matter_scoped_chronology'
+        assert disclosure['complete_audit_contents'] is False
+        assert disclosure['notice'] == AUDIT_EXPORT_NOTICE
+        assert AUDIT_EXPORT_NOTICE in manifest['notices']
+        omissions = {'details_json', 'object_id', 'session_id', 'request_id'}
+        assert {name for name, treatment in disclosure['columns'].items()
+                if treatment.startswith('excluded:')} == omissions
+        assert 'all audit event details' in disclosure['columns']['details_json']
+        assert 'exact event target cannot be reconstructed' in disclosure['columns']['object_id']
+        exported = next(row for row in records(artifact, 'workbench_audit_event')
+                        if row['action'] == 'generated.audit_disclosure')
+        assert not omissions.intersection(exported)
+        assert exported == dict(event_id=reference(matter.matter_id, event.event_id),
+            occurred_at=event.occurred_at, actor_principal_id=reference(matter.matter_id, OWNER, actor=True),
+            matter_id=matter.matter_id, action=event.action, outcome='success', object_type='generated_material')
+        with zipfile.ZipFile(artifact.path) as archive:
+            readme = archive.read('README.txt').decode()
+            assert 'not complete audit contents' in readme
+            for field in omissions:
+                assert field in readme
+            audit_bytes = archive.read('records/workbench_audit_event.jsonl')
+            for canary in ('GENERATED-PRIVATE-TARGET', 'GENERATED-PRIVATE-REQUEST', OWNER, OTHER):
+                assert canary.encode() not in audit_bytes
+    finally:
+        cleanup_archive(artifact)
+
+
+def test_download_purge_and_session_authority_are_not_exported_or_snapshot_inputs(archive_case):
+    from case_intelligence.matter_archive_schema import CASE_AUTHORIZATION_TABLES
+    bench, matter, store = archive_case
+    workspace = bench.workspace
+    session = workspace.create_session(OWNER, 'c'*64, 'test', '2099-01-01T00:00:00Z', '2099-01-02T00:00:00Z')
+    current = close(bench, matter)
+    before = build_matter_archive(bench, matter, OWNER, source_store=store)
+    expected = before.snapshot_digest
+    cleanup_archive(before)
+    now = workspace._now()
+    export = 'GENERATED-PRIVATE-DELIVERY-EXPORT'
+    archive_digest = 'a1'*32
+    snapshot_digest = 'b2'*32
+    attempt = 'GENERATED-PRIVATE-DOWNLOAD-ATTEMPT'
+    purge = 'GENERATED-PRIVATE-PURGE-AUTHORITY'
+    binding_digest = 'e7'*32
+    # Seed valid-shaped operational rows solely to exercise the export boundary;
+    # this does not claim that direct database writes establish purge authority.
+    with workspace._lock, workspace.connection:
+        workspace.connection.execute('INSERT INTO workbench_case_download_attempt VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+            (attempt, current.exit_id, export, archive_digest, 100, OWNER, session.session_id, 0, 0, 100, now))
+        workspace.connection.execute('INSERT INTO workbench_case_download_coverage VALUES (?,?,?,?,?,?,?)',
+            (current.exit_id, export, archive_digest, 100, OWNER, '[[0,100]]', now))
+        workspace.connection.execute('INSERT INTO workbench_case_purge_authority VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+            (purge, current.exit_id, 'export_exit', export, archive_digest, snapshot_digest, OWNER,
+             now, now, OWNER, session.session_id, 0))
+        workspace.connection.execute('INSERT INTO workbench_case_session_binding VALUES (?,?)',
+            (session.session_id, binding_digest))
+    assert matter_snapshot_digest(bench, matter, store) == expected
+    artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
+    try:
+        assert artifact.snapshot_digest == expected
+        manifest = verify_matter_archive(artifact.path, expected_sha256=artifact.sha256)
+        with zipfile.ZipFile(artifact.path) as archive:
+            for table in CASE_AUTHORIZATION_TABLES:
+                assert table not in manifest['table_rows']
+                assert 'records/' + table + '.jsonl' not in archive.namelist()
+                disclosure = manifest['coverage'][table]
+                assert disclosure['disposition'] != 'included'
+                assert disclosure['snapshot_disposition'] == 'excluded: operational table is not exported'
+                assert set(disclosure['columns']) == set(SCHEMA[table])
+                assert set(disclosure['columns'].values()) == {'excluded: operational authorization state'}
+            material = b'\n'.join(archive.read(name) for name in archive.namelist())
+            for canary in (session.session_id, 'c'*64, export, archive_digest, snapshot_digest,
+                           attempt, purge, binding_digest):
+                assert canary.encode() not in material
+    finally:
+        cleanup_archive(artifact)

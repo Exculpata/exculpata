@@ -24,7 +24,7 @@
     {% for row in closure_recoveries %}
     <article class="managed-matter-row">
       <div class="managed-matter-copy">
-        <span class="managed-matter-authority{% if row.administrator_override %} administrator{% endif %}">{{ 'Administrator recovery' if row.administrator_override else 'You own this matter' }}</span>
+        <span class="managed-matter-authority{% if row.administrator_override %} administrator{% endif %}">{{ row.authority_label }}</span>
         <h3>{{ row.matter.display_name }}</h3>
         <small>Owner: {{ row.owner_name }}</small>
       </div>
@@ -53,6 +53,7 @@
       <div class="managed-matter-lifecycle">
         <strong>{{ row.retention.label }}</strong>
         <span>{{ row.retention.detail }}</span>
+        {% with retention=row.retention %}{% include "workbench_check_in_time.html" %}{% endwith %}
       </div>
       <div class="managed-matter-actions">
         <a class="button button-secondary" href="/matters/{{ row.matter.slug }}/home">Open matter</a>

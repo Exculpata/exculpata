@@ -1,0 +1,14 @@
+{% from "workbench_lifecycle_time.html" import lifecycle_time %}
+{% if closure_notices %}
+<section class="closure-notices" aria-labelledby="closure-notices-heading" data-closure-notices>
+  <h2 id="closure-notices-heading">Pending matter closure</h2>
+  {% for row in closure_notices %}
+  <article class="closure-notice">
+    <strong>{{ row.matter.display_name }}</strong>
+    <p>{{ 'An administrator' if row.administrator_requested else 'The matter owner' }} requested closure. This matter is frozen. Earliest permanent deletion: {{ lifecycle_time(row.eligible_after) }}.</p>
+    <p>{% if row.window_elapsed %}The seven-day cancellation window has elapsed. {% else %}The seven-day cancellation window is open. {% endif %}Deletion is never automatic. The owner or an administrator can still cancel until final deletion is confirmed.</p>
+    {% if row.can_manage %}<a href="/matters/{{ row.matter.slug }}/close">Review or cancel closure</a>{% else %}<p>Contact the matter owner or an administrator to request cancellation.</p>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endif %}

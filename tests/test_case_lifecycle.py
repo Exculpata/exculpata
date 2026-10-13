@@ -1,8 +1,11 @@
 """Synthetic lifecycle transitions, authorization and recoverable exit gates."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 from datetime import datetime, timedelta, timezone
 import hashlib
 import sqlite3
 import threading
+import uuid
 
 import pytest
 
@@ -42,15 +45,18 @@ def setup(tmp_path):
 
 def session(store, actor=OWNER, *, administrator=False):
     end = store._timestamp(store.current_time() + timedelta(days=30))
-    return store.create_session(actor, hashlib.sha256(str(threading.get_ident()).encode() + actor.encode()
-                                + store._now().encode()).hexdigest(), 'test', end, end,
+    return store.create_session(actor, hashlib.sha256(uuid.uuid4().bytes).hexdigest(), 'test', end, end,
                                 frozenset({'administrator'}) if administrator else frozenset())
 
 
 def exported_exit(store, matter):
-    case = store.case_lifecycle.begin_exit(matter.slug, OWNER)
-    return store.case_lifecycle.register_export(matter.matter_id, OWNER, case.exit_id,
-                                               EXPORT, ARCHIVE, DIGEST)
+    case = store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
+    current = store.case_lifecycle.register_export(matter.matter_id, OWNER, case.exit_id,
+                                               EXPORT, ARCHIVE, DIGEST, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
+
+    from tests.case_lifecycle_helpers import record_synthetic_delivery
+    record_synthetic_delivery(store, current, OWNER, session(store).session_id)
+    return current
 
 
 def claim(store, matter, sess, nonce, **overrides):
@@ -71,7 +77,7 @@ def test_new_ongoing_checkins_never_create_delete_schedule(setup):
     assert store.due_matter_retentions() == ()
     assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
-    policy = store.case_lifecycle.check_in(matter.matter_id, OWNER)
+    policy = store.case_lifecycle.check_in(matter.matter_id, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert policy.next_check_in_at == store._timestamp(clock.now + timedelta(days=90))
     with pytest.raises(WorkspaceProblem, match='check-in'):
         store.set_matter_retention(matter.matter_id, OWNER, clock.now + timedelta(days=30))
@@ -105,10 +111,10 @@ def test_export_failure_closing_and_active_work_fail_closed(setup):
     job, _ = store.queue_answer_job(matter.matter_id, conversation.conversation_id, OWNER,
                                     'Generated question', 'answer-request-' + 'd' * 32)
     with pytest.raises(WorkspaceProblem, match='Wait for current'):
-        store.case_lifecycle.begin_exit(matter.slug, OWNER)
+        store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
     store.cancel_answer_job(matter.matter_id, OWNER, job.job_id)
-    store.case_lifecycle.begin_exit(matter.slug, OWNER)
+    store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     with pytest.raises(KeyError):
         store.membership(matter.matter_id, OWNER)
     with pytest.raises((KeyError, WorkspaceProblem)):
@@ -124,19 +130,19 @@ def test_export_failure_closing_and_active_work_fail_closed(setup):
 def test_cancel_invalidates_export_nonce_and_stale_generation(setup):
     store, matter, clock = setup
     case = exported_exit(store, matter)
-    assert store.case_lifecycle.begin_exit(matter.slug, OWNER).exit_id == case.exit_id
+    assert store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id).exit_id == case.exit_id
     clock.advance(days=7)
     sess = session(store)
     nonce = store.case_lifecycle.issue_confirmation(matter.slug, OWNER, sess.session_id, EXPORT)
-    store.case_lifecycle.cancel_exit(matter.slug, OWNER, case.exit_id)
+    store.case_lifecycle.cancel_exit(matter.slug, OWNER, case.exit_id, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
     assert store.case_lifecycle.current_exit(matter.matter_id) is None
-    new = store.case_lifecycle.begin_exit(matter.slug, OWNER)
+    new = store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert new.exit_id != case.exit_id
     assert new.eligible_after == '2026-01-15T00:00:00Z'
     with pytest.raises(WorkspaceProblem, match='exit changed'):
         store.case_lifecycle.register_export(matter.matter_id, OWNER, case.exit_id,
-                                             EXPORT, ARCHIVE, DIGEST)
+                                             EXPORT, ARCHIVE, DIGEST, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     with pytest.raises(WorkspaceProblem):
         claim(store, matter, sess, nonce)
     assert store.connection.execute('SELECT COUNT(*) FROM workbench_case_confirmation').fetchone()[0] == 0
@@ -174,7 +180,7 @@ def test_fresh_claim_rechecks_each_authorization_boundary(setup, invalid):
 def test_member_cannot_exit_and_admin_requires_current_session_role(setup):
     store, matter, clock = setup
     with pytest.raises(KeyError):
-        store.case_lifecycle.begin_exit(matter.slug, MEMBER)
+        store.case_lifecycle.begin_exit(matter.slug, MEMBER, session_id=lifecycle_session(store, MEMBER, administrator_override=False).session_id)
     exported_exit(store, matter)
     clock.advance(days=7)
     sess = session(store, ADMIN)
@@ -184,6 +190,9 @@ def test_member_cannot_exit_and_admin_requires_current_session_role(setup):
     with store._lock, store.connection:
         store.connection.execute("UPDATE workbench_session SET application_roles='[\"administrator\"]' WHERE session_id=?",
                                  (sess.session_id,))
+    from tests.case_lifecycle_helpers import record_synthetic_delivery
+    record_synthetic_delivery(store, store.case_lifecycle.current_exit(matter.matter_id), ADMIN,
+                              sess.session_id, administrator_override=True)
     nonce = store.case_lifecycle.issue_confirmation(matter.slug, ADMIN, sess.session_id, EXPORT,
                                                    administrator_override=True)
     _, lifecycle = store.case_lifecycle.claim_purge(matter.slug, ADMIN, NAME, token=nonce.token,
@@ -201,7 +210,7 @@ def test_confirmed_interrupted_purge_retries_but_legacy_failed_never_does(setup)
     _, started = claim(store, matter, sess, nonce)
     assert store.recover_interrupted_matter_purges() == 1
     with pytest.raises(WorkspaceProblem):
-        store.case_lifecycle.cancel_exit(matter.slug, OWNER, store.case_lifecycle.current_exit(matter.matter_id).exit_id)
+        store.case_lifecycle.cancel_exit(matter.slug, OWNER, store.case_lifecycle.current_exit(matter.matter_id).exit_id, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     retry = store.case_lifecycle.issue_confirmation(matter.slug, OWNER, sess.session_id, EXPORT)
     _, resumed = claim(store, matter, sess, retry)
     assert resumed.purge_id == started.purge_id
@@ -289,8 +298,8 @@ def test_nonce_binds_displayed_name_and_repeated_cancel_is_harmless(setup):
         store.case_lifecycle.claim_purge(matter.slug, OWNER, 'Synthetic renamed matter',
             token=nonce.token, session_id=sess.session_id, export_id=EXPORT, export_acknowledged=True,
             source_count=0, current_snapshot_digest=DIGEST)
-    first = store.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id)
-    assert store.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id) == first
+    first = store.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
+    assert store.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id) == first
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
 
 
@@ -303,7 +312,7 @@ def test_audit_failure_rolls_back_exit_and_confirmation_claim(setup, monkeypatch
 
     monkeypatch.setattr(store, '_append_audit_event_locked', fail_audit)
     with pytest.raises(sqlite3.OperationalError, match='Synthetic audit failure'):
-        store.case_lifecycle.begin_exit(matter.slug, OWNER)
+        store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
     assert store.case_lifecycle.current_exit(matter.matter_id) is None
     monkeypatch.setattr(store, '_append_audit_event_locked', append)
@@ -337,7 +346,7 @@ def test_cancellation_and_confirmation_have_one_serialized_winner(setup):
     def cancel():
         barrier.wait(timeout=5)
         try:
-            other.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id)
+            other.case_lifecycle.cancel_exit(matter.slug, OWNER, current.exit_id, session_id=lifecycle_session(other, OWNER, administrator_override=False).session_id)
             outcomes.append('cancelled')
         except WorkspaceProblem:
             outcomes.append('cancel_refused')

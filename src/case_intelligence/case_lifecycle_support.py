@@ -97,7 +97,7 @@ def retention_projection(bench, matter):
     detail = ('Previous review and deletion dates are paused. Review this policy to keep the matter ongoing.'
               if review else 'The owner or administrator must review ownership and arrange a check-in or explicit exit. Access continues; deletion is never automatic.'
               if ownership_review else 'Check in to confirm continued use; an overdue check-in never deletes a matter.'
-              if due else f'Next check-in: {next_at.date().isoformat()} (UTC).'
+              if due else 'Check in to confirm continued use; deletion is never automatic.'
               if next_at else 'No automatic deletion is scheduled.')
     attention = review or due or soon
     if lifecycle.state != 'active':
@@ -106,6 +106,7 @@ def retention_projection(bench, matter):
                 label=label, short_label='Review policy' if review else 'Check in' if due or soon else 'Ongoing',
                 detail=detail, show_warning=attention,
                 next_check_in_on=next_at.date().isoformat() if next_at else '',
+                next_check_in_at=policy.next_check_in_at,
                 legacy_expires_at=policy.legacy_expires_at, legacy_purge_after=policy.legacy_purge_after,
                 expires_on='', purge_on='', days_remaining=None,
                 minimum_date=(now + timedelta(days=1)).date().isoformat(),
@@ -133,17 +134,18 @@ def begin_purge(bench, slug, actor_id, confirmed_name, *, administrator_override
     with source_lock(bench, matter.matter_id):
         idle(bench, matter.matter_id)
         current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
-        if current is None or not current.export_id:
-            raise WorkspaceProblem('Start an explicit exit and create a verified full export before deletion.')
+        if current is None:
+            raise WorkspaceProblem('Start an explicit exit and choose its closure path before deletion.')
         if lifecycle.state == 'purge_failed' and current.state == 'confirmed':
             digest = current.snapshot_digest
             count = lifecycle.source_count
         else:
             # Restored receipts alone never authorize a first destructive claim.
-            verified_archive(bench, matter, current)
+            if current.mode == 'export_exit':
+                verified_archive(bench, matter, current)
             store = bench.archive_source_store(matter)
             try:
-                digest = matter_snapshot_digest(bench, matter, store)
+                digest = matter_snapshot_digest(bench, matter, store) if current.mode == 'export_exit' else None
                 count = store.document_count()
             finally:
                 store.close()

@@ -1,11 +1,21 @@
 """Preserve real synthetic workflow payloads, including unfinished research."""
+import hashlib
 import json
+import uuid
 import zipfile
+from datetime import timedelta
 
 from case_intelligence.matter_archive import build_matter_archive, cleanup_archive
 from case_intelligence.matter_archive_projection import _SAFE_KEYS, _DROP_KEYS, _DYNAMIC_REFERENCE
 from tests.test_full_text_synthesis import (workspace, ACTOR, seed_terminal_review,
                                            queue, finish)  # noqa: F401
+
+
+def _close(bench, matter, actor):
+    expires = bench.workspace._timestamp(bench.workspace.current_time() + timedelta(hours=1))
+    session = bench.workspace.create_session(actor, hashlib.sha256(uuid.uuid4().bytes).hexdigest(),
+        'test', expires, expires)
+    return bench.workspace.case_lifecycle.begin_exit(matter.slug, actor, session_id=session.session_id)
 
 
 def _unknown(value):
@@ -39,7 +49,7 @@ def test_preserves_full_text_ledger_and_synthesis_checkpoint(workspace):
                 if column.endswith('_json') and row[column] is not None:
                     unknown.extend((table, column, key) for key in _unknown(json.loads(row[column])))
     assert sorted(set(unknown)) == []
-    bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR)
+    _close(bench, matter, ACTOR)
     store = bench.archive_source_store(matter)
     try:
         artifact = build_matter_archive(bench, matter, ACTOR, source_store=store)
@@ -76,7 +86,7 @@ def test_preserves_natural_saved_answer_payload(long_answer):
     _, bench, matter, _, _, _, message = long_answer
     unknown = sorted(set(_unknown(message.payload)))
     assert not unknown, repr(unknown)
-    bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR)
+    _close(bench, matter, ACTOR)
     store = bench.archive_source_store(matter)
     try:
         artifact = build_matter_archive(bench, matter, ACTOR, source_store=store)
@@ -96,7 +106,7 @@ def test_preserves_natural_saved_context_and_removes_account_metadata(case):
     assert submit(case).status_code == 202
     job, _, message = execute(case)
     assert message is not None
-    bench.workspace.case_lifecycle.begin_exit(matter.slug, WEB_ACTOR)
+    _close(bench, matter, WEB_ACTOR)
     store = bench.archive_source_store(matter)
     try:
         artifact = build_matter_archive(bench, matter, WEB_ACTOR, source_store=store)
@@ -134,7 +144,7 @@ def test_natural_compiled_report_preserves_basis_and_origin_links(workspace):
     claimed = flow.jobs.claim('generated-archive-test-worker')
     draft = flow.process(claimed, lambda: False)
     flow.finish(claimed, draft)
-    bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR)
+    _close(bench, matter, ACTOR)
     store = bench.archive_source_store(matter)
     try:
         artifact = build_matter_archive(bench, matter, ACTOR, source_store=store)

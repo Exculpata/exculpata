@@ -1,4 +1,6 @@
 """Synthetic complete-selection accounting, resumable metadata and receipt boundaries."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 from concurrent.futures import ThreadPoolExecutor
 import json
 import sqlite3
@@ -145,7 +147,7 @@ def test_receipt_authority_is_rechecked_for_reads_and_mutations(tmp_path, kind):
             with w.connection:
                 w.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (OWNER,))
         elif kind == 'closing':
-            w.case_lifecycle.begin_exit(m.slug, OWNER)
+            w.case_lifecycle.begin_exit(m.slug, OWNER, session_id=lifecycle_session(w, OWNER, administrator_override=False).session_id)
         with pytest.raises(KeyError):
             receipts.append(target, actor, receipt['receipt_id'], start=0, files=[descriptor('one.txt')],
                 reviewed_states=['valid'], document_limit=1024, media_limit=2048, malware_scan_mode='off', scanner_ready=True)

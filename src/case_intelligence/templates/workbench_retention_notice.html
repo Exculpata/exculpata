@@ -1,6 +1,6 @@
 {% if retention and retention.show_warning and retention_prominent %}
 <section class="retention-notice tone-attention" id="matter-retention" aria-label="Matter check-in">
-  <div class="retention-notice-copy"><span><strong>{{ retention.label }}</strong><small>{{ retention.detail }}</small></span></div>
+  <div class="retention-notice-copy"><span><strong>{{ retention.label }}</strong><small>{{ retention.detail }}</small><small>{% include "workbench_check_in_time.html" %}</small></span></div>
   <div class="retention-notice-actions">
     {% if is_matter_owner or is_administrator %}
     <form method="post" action="/matters/{{ matter.slug }}/check-in" data-working-form>

@@ -1,4 +1,6 @@
 """Frozen content is protected even when a stale writer skips route checks."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 import sqlite3
 
 import pytest
@@ -12,7 +14,7 @@ def test_content_fence_blocks_direct_and_indirect_mutations_and_survives_restart
     conversation = store.get_conversation(matter.matter_id)
     message = store.append_message(matter.matter_id, conversation.conversation_id, 'user',
                                    'Generated pre-exit message')
-    store.case_lifecycle.begin_exit(matter.slug, OWNER)
+    store.case_lifecycle.begin_exit(matter.slug, OWNER, session_id=lifecycle_session(store, OWNER, administrator_override=False).session_id)
     original = store.get_conversation_any(matter.matter_id, conversation.conversation_id)
     with pytest.raises(sqlite3.IntegrityError, match='frozen'):
         store.rename_conversation(matter.matter_id, conversation.conversation_id, 'Generated stale rename')

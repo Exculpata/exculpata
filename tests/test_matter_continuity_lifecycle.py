@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.case_lifecycle_helpers import lifecycle_session
+
 import io
 import json
 import re
@@ -67,7 +69,7 @@ def test_store_purge_refuses_active_work_then_scrubs_content_and_keeps_audit(tmp
     )
 
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        store.case_lifecycle.begin_exit(matter.slug, "principal-owner")
+        store.case_lifecycle.begin_exit(matter.slug, "principal-owner", session_id=lifecycle_session(store, "principal-owner", administrator_override=False).session_id)
     store.cancel_answer_job(matter.matter_id, "principal-owner", job.job_id)
     confirmation = prepare_purge_confirmation(store, matter, "principal-owner")
     with pytest.raises(WorkspaceProblem, match="exactly"):

@@ -1732,12 +1732,20 @@ class CaseIntelligenceWorkbench:
                            administrator_override=administrator_override, **confirmation)
 
     def execute_matter_purge(
-        self, matter: MatterRecord, lifecycle: MatterLifecycleRecord
+        self, matter: MatterRecord, lifecycle: MatterLifecycleRecord, *, refresh_authority=None
     ) -> MatterLifecycleRecord:
         purge_id = lifecycle.purge_id or ""
         if not _MATTER_PURGE_ID.fullmatch(purge_id):
             raise RuntimeError("matter purge identity is invalid")
-        self.workspace.case_lifecycle.validate_purge(matter.matter_id, purge_id)
+        def current_authority():
+            if refresh_authority is not None:
+                refresh_authority()
+            self.workspace.case_lifecycle.validate_purge(matter.matter_id, purge_id)
+        try:
+            current_authority()
+        except Exception:
+            self.workspace.fail_matter_purge(matter.matter_id, purge_id, 'authority')
+            raise
         matters_root = self.storage.matters
         matter_root = matters_root / matter.matter_id
         source_root = matter_root / "sources"
@@ -1763,6 +1771,7 @@ class CaseIntelligenceWorkbench:
             )
 
         try:
+            current_authority()
             self._cleanup_matter_clip_exports(matter.matter_id)
         except Exception as exc:
             self.workspace.fail_matter_purge(
@@ -1773,6 +1782,7 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             if source_root.is_symlink() or matter_root.is_symlink():
                 raise RuntimeError("matter storage is unsafe")
             if source_root.exists() and quarantine.exists():
@@ -1789,6 +1799,7 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             if self._postgres_projection_configured:
                 if self.postgres_connection is None or not self.postgres_ready:
                     raise RuntimeError("derived search projection is unavailable")
@@ -1805,6 +1816,7 @@ class CaseIntelligenceWorkbench:
             ) from exc
 
         try:
+            current_authority()
             securely_delete_owned_tree(quarantine, allowed_parent=quarantine_root)
             if matter_root.exists():
                 if matter_root.is_symlink() or matter_root.parent != matters_root:
@@ -1824,7 +1836,9 @@ class CaseIntelligenceWorkbench:
 
         try:
             from .case_lifecycle_support import cleanup_archives
+            current_authority()
             cleanup_archives(self, matter.matter_id)
+            current_authority()
             return self.workspace.complete_matter_purge(matter.matter_id, purge_id)
         except Exception as exc:
             self.workspace.fail_matter_purge(
@@ -6246,22 +6260,55 @@ class _MatterResponseSendLeaseMiddleware:
         self.release_clip = release_clip
 
     async def __call__(self, scope, receive, send):
+        from .case_archive_delivery import ArchiveDelivery
+
+        returned = disconnected = False
+
+        def delivery():
+            observer = scope.get("state", {}).get("case_archive_delivery")
+            return observer if isinstance(observer, ArchiveDelivery) else None
+
+        async def outer_receive():
+            nonlocal disconnected
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                disconnected = True
+                if (observer := delivery()) is not None:
+                    observer.disconnect()
+            return message
+
+        async def outer_send(message):
+            observer = delivery()
+            if observer is None:
+                await send(message)
+            else:
+                if disconnected:
+                    observer.disconnect()
+                if scope.get("method") != "GET":
+                    observer.failed = True
+                await observer.send(message, send)
+
         try:
-            await self.app(scope, receive, send)
+            await self.app(scope, outer_receive, outer_send)
+            returned = True
         finally:
             try:
-                state = scope.get("state", {}).get("matter_response_lease")
-                if isinstance(state, dict) and state.get("send_owned"):
-                    # BaseHTTPMiddleware buffers an inner Response. Its background
-                    # task may run before the outer body's send completes, and may
-                    # be skipped on failure. This boundary also covers disconnects.
-                    self.release(state["matter"].matter_id, state["lease_id"])
+                observer = delivery()
+                if observer is not None:
+                    if disconnected:
+                        observer.disconnect()
+                    await observer.finish(app_returned=returned)
             finally:
-                clip = scope.get("state", {}).get("media_clip_response_lease")
-                if clip is not None:
-                    # Ownership begins at render admission, so construction,
-                    # authorization, rendering and send failures all clean up.
-                    self.release_clip(*clip)
+                try:
+                    state = scope.get("state", {}).get("matter_response_lease")
+                    if isinstance(state, dict) and state.get("send_owned"):
+                        # BaseHTTPMiddleware can complete its inner response before
+                        # the outer send. Release only after delivery bookkeeping.
+                        self.release(state["matter"].matter_id, state["lease_id"])
+                finally:
+                    clip = scope.get("state", {}).get("media_clip_response_lease")
+                    if clip is not None:
+                        self.release_clip(*clip)
 
 
 def create_workbench_app(
@@ -6357,6 +6404,8 @@ def create_workbench_app(
         bench.close()
         raise
     app.state.identity = identity
+    from .case_lifecycle_authority import install_current_session_authority
+    install_current_session_authority(identity)
     from .app_context import AppContext, auth_context, present_value, requested_path
 
     templates = Jinja2Templates(directory=str(PACKAGE_ROOT / "templates"))
@@ -7298,6 +7347,7 @@ def create_workbench_app(
         readiness: dict[str, object] | None = None,
         include_assistant: bool = True,
     ) -> dict[str, object]:
+        from .case_lifecycle_notices import closing_notices
         context = auth_context(request)
         membership = None
         if active is not None:
@@ -7361,6 +7411,7 @@ def create_workbench_app(
             initial_activity_count += 1
         return {
             "matters": matters,
+            "closure_notices": closing_notices(bench.workspace, context, request.state.request_id),
             "matter_navigation": matter_navigation,
             "active_matter": active,
             "retention": active_retention,
@@ -8794,6 +8845,7 @@ def create_workbench_app(
 
     @app.get("/matters/manage", response_class=HTMLResponse)
     def manage_matters(request: Request):
+        from .case_lifecycle_notices import can_manage_closure
         context = auth_context(request)
         matters = bench.matters(
             context.principal_id,
@@ -8832,12 +8884,16 @@ def create_workbench_app(
                 administrator_override=context.is_administrator),
         ):
             owner = bench.workspace.get_principal(matter.owner_id)
+            can_close = can_manage_closure(bench.workspace, matter.matter_id, context)
             closure_recoveries.append(
                 {
                     "matter": matter,
                     "owner_name": owner.display_name,
                     "state": bench.workspace.matter_lifecycle(matter.matter_id).state,
-                    "can_close": matter.owner_id == context.principal_id or context.is_administrator,
+                    "can_close": can_close,
+                    "authority_label": ("Administrator oversight" if context.is_administrator
+                        and matter.owner_id != context.principal_id else "You own this matter"
+                        if can_close and matter.owner_id == context.principal_id else "Case team access"),
                     "administrator_override": bool(
                         context.is_administrator
                         and matter.owner_id != context.principal_id

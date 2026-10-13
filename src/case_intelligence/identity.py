@@ -995,10 +995,13 @@ class IdentityService:
         if not principal.active:
             raise WorkspaceProblem("This identity is not active.")
         raw_token = secrets.token_urlsafe(32)
+        binding_digest = None
         if auth_method == "local":
             if local_account is None:
                 raise LocalAuthenticationError("Local account sign-in is unavailable.")
-            raw_token = f"local.{self._local_session_binding(local_account)}.{raw_token}"
+            binding = self._local_session_binding(local_account)
+            raw_token = f"local.{binding}.{raw_token}"
+            binding_digest = hashlib.sha256(binding.encode("ascii")).hexdigest()
         now = self._now()
         session = self.store.create_session(
             principal.principal_id,
@@ -1007,15 +1010,10 @@ class IdentityService:
             self._iso(now + self.idle_timeout),
             self._iso(now + self.absolute_timeout),
             application_roles,
+            **({"binding_digest": binding_digest} if binding_digest is not None else {}),
         )
         return (
-            AuthContext(
-                principal,
-                session,
-                self._csrf(raw_token),
-                auth_method,
-                application_roles,
-            ),
+            AuthContext(principal, session, self._csrf(raw_token), auth_method, application_roles),
             raw_token,
         )
 

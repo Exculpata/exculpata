@@ -22,7 +22,8 @@ from pathlib import Path
 
 from .matter_archive_projection import project_row, payload_coverage_manifest
 from .matter_archive_schema import (EXCLUDED_TABLES, SCHEMA, VOLATILE_TABLES,
-    coverage_manifest, exported_columns, scope_query, validate_schema, SOURCE_FIELDS, source_coverage_manifest)
+    coverage_manifest, exported_columns, scope_query, validate_schema, SOURCE_FIELDS, source_coverage_manifest,
+    AUDIT_EXPORT_NOTICE)
 from .source_locations import SourceScanItem
 from .workspace_store import WorkspaceProblem
 
@@ -479,6 +480,7 @@ def build_matter_archive(bench, matter, actor_id, *, administrator_override=Fals
                     'Clip definitions and original media are retained; ephemeral rendered clip downloads are not retained by the application.',
                     'Global identities, credentials, authorization grants, runtime requests, host paths and operational diagnostics are excluded; attribution is matter-local.',
                     'Record payloads preserve known authored content; unknown schema or payload fields block creation.',
+                    AUDIT_EXPORT_NOTICE,
                 ])
             encoded = _json(manifest)
             if len(encoded) > MAX_MANIFEST_BYTES:
@@ -552,6 +554,18 @@ retained text/speaker revision, exact media clip recipes, closure/retention hist
 and a scoped audit chronology. Empty retained tables have empty files and zero
 row counts. Failed work keeps its state and retained results; it is not marked as
 completed by this export.
+
+Audit scope is limited to a matter-scoped chronology, not complete audit contents.
+The audit record file includes only events assigned to this matter at the archive
+snapshot. It preserves occurred_at, matter_id, action, outcome and object_type;
+event_id and actor_principal_id are replaced with stable matter-local pseudonyms.
+All details_json payloads are omitted, including otherwise safe contextual fields
+such as counts. The object_id target, session_id and request_id are also omitted.
+The exact event target, full event details and session/request correlation cannot
+be reconstructed from these records. Global or unscoped events and events after
+the snapshot are not included. The manifest discloses each field's disposition;
+a matching row count or successful verification does not establish complete audit
+contents.
 
 Clip downloads are generated temporarily by the application. Their permanent
 records preserve original media, time ranges and titles; this archive does not

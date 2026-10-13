@@ -1,4 +1,6 @@
 """Security regressions at public retry/export and durable-job boundaries."""
+
+from tests.case_lifecycle_helpers import lifecycle_session
 from copy import deepcopy
 from dataclasses import replace
 import json
@@ -270,7 +272,7 @@ def test_active_synthesis_blocks_matter_purge_and_late_worker_cannot_recreate_pu
     run, _, _ = seed_terminal_review(bench, matter, count=1)
     job = queue(bench, matter, run)
     with pytest.raises(WorkspaceProblem, match="Wait for current"):
-        bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR)
+        bench.workspace.case_lifecycle.begin_exit(matter.slug, ACTOR, session_id=lifecycle_session(bench.workspace, ACTOR, administrator_override=False).session_id)
     bench.workspace.fail_research_job(job.job_id, "Synthetic stopped worker", expected_job=job)
     _, lifecycle = claim_bench_exit(bench, matter, ACTOR)
     bench.workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
