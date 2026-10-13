@@ -112,6 +112,12 @@ tests that exercise automatic processing. A passing rerun alone does not fix a
 fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
 entering the connection transaction; stopping one coordinator does not stop the
 other workers that share that connection.
+The same lock must cover direct reads, backups and transaction-state assertions.
+For a rollback check, hold it across the rejected operation and the assertion so
+an idle report worker's claim transaction cannot be mistaken for a leaked one.
+The event-controlled regressions in `tests/test_full_text_synthesis_transactions.py`
+overlap those fixture boundaries with a real report claim without stopping the
+remaining workers or relying on wall-clock scheduling.
 
 Resolve a matter's source store before entering entity/assertion source guards
 and workspace transactions. Capture that store in validation and support
