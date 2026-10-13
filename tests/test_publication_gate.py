@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import zipfile
@@ -594,3 +595,91 @@ def test_cuda_dependency_version_disposition_is_exact_and_context_bound(location
 def test_cuda_version_from_another_runtime_is_not_adjudicated():
     data = b"nvidia-curand-cu12==" + b".".join((b"10", b"3", b"9", b"90")) + b"\n"
     assert publication._scan_bytes(data, location="requirements/retrieval.lock", deny=())
+
+
+def _contributor_repo(tmp_path, name, email, message, committer=None):
+    import os
+    def git(*args, env=None):
+        return subprocess.check_output(['git', *args], cwd=tmp_path, text=True, env=env).strip()
+    git('init', '-q')
+    env = {
+        **os.environ,
+        'GIT_AUTHOR_NAME': name,
+        'GIT_AUTHOR_EMAIL': email,
+        'GIT_COMMITTER_NAME': committer[0] if committer else 'GitHub',
+        'GIT_COMMITTER_EMAIL': committer[1] if committer else 'noreply@' + 'github.com',
+    }
+    git('commit', '--allow-empty', '-qm', message, env=env)
+    return git
+
+
+def test_seeded_contributor_identities_are_digests_only():
+    assert publication.REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES
+    for digest in publication.REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES:
+        assert re.fullmatch(r'[0-9a-f]{64}', digest)
+
+
+def test_reviewed_contributor_squash_commit_passes_on_any_commit(tmp_path, monkeypatch):
+    import hashlib
+    name = 'Synthetic Contributor'
+    email = 'contributor@' + 'synthetic.invalid'
+    digest = hashlib.sha256((name + '\0' + email).encode()).hexdigest()
+    trailer = 'Co-authored-by: ' + name + ' <' + email + '>'
+    message = 'docs: synthetic squash (#1)\n\n* synthetic change\n\n' + trailer
+    git = _contributor_repo(tmp_path, name, email, message)
+    email_rule = publication.Finding('git-metadata', 'non-example-email-address')
+    assert email_rule in publication.scan_history(tmp_path, ())
+    monkeypatch.setattr(publication, 'REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES', frozenset({digest}))
+    assert publication.scan_history(tmp_path, ()) == []
+    # Any later commit with the same identity also passes (squash SHAs are new).
+    git('-c', 'user.name=' + name, '-c', 'user.email=' + email,
+        'commit', '--allow-empty', '-qm', 'second (#2)\n\n' + trailer + '\r')
+    assert publication.scan_history(tmp_path, ()) == []
+    # Deny terms still apply to the listed identity and message.
+    assert publication.Finding('git-metadata', 'operator-deny-term') in publication.scan_history(
+        tmp_path, (b'Synthetic Contributor',))
+
+
+def test_reviewed_contributor_identity_is_exact_and_email_rule_only(tmp_path, monkeypatch):
+    import hashlib
+    name = 'Synthetic Contributor'
+    email = 'contributor@' + 'synthetic.invalid'
+    digest = hashlib.sha256((name + '\0' + email).encode()).hexdigest()
+    monkeypatch.setattr(publication, 'REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES', frozenset({digest}))
+    email_rule = publication.Finding('git-metadata', 'non-example-email-address')
+    cases = [
+        (name, 'Contributor@' + 'synthetic.invalid', 'case variant'),
+        ('Spoofed Name', email, 'name spoof'),
+        ('Synthetic  Contributor', email, 'internal whitespace'),
+        (name, ' ' + email + 'x', 'email suffix'),
+        ('Unlisted Person', 'person@' + 'synthetic.invalid', 'unlisted'),
+    ]
+    for index, (author, address, label) in enumerate(cases):
+        repo = tmp_path / str(index)
+        repo.mkdir()
+        _contributor_repo(repo, author, address, label)
+        assert email_rule in publication.scan_history(repo, ()), label
+    trailer = 'Co-authored-by: ' + name + ' <' + email + '>'
+    extra = 'other@' + 'synthetic.invalid'
+    bad_messages = [
+        'x\n\n' + trailer + ' ' + extra,
+        'x\n\n' + trailer + '\nCo-authored-by: Unlisted <' + extra + '>',
+        'x\n\nCo-authored-by: Spoofed <' + email + '>',
+        'x\n\n ' + trailer,
+        'x\n\nsee ' + extra + '\n' + trailer,
+    ]
+    for index, message in enumerate(bad_messages):
+        repo = tmp_path / f'm{index}'
+        repo.mkdir()
+        _contributor_repo(repo, name, email, message)
+        assert email_rule in publication.scan_history(repo, ()), message
+    secret = 'api_key = "' + 'A' * 32 + '"'
+    repo = tmp_path / 'secret'
+    repo.mkdir()
+    _contributor_repo(repo, name, email, 'x\n\n' + secret + '\n' + trailer)
+    rules = {item.rule for item in publication.scan_history(repo, ())}
+    assert rules and 'non-example-email-address' not in rules
+    repo = tmp_path / 'committer'
+    repo.mkdir()
+    _contributor_repo(repo, name, email, 'x', committer=('Maintainer', 'maint@' + 'synthetic.invalid'))
+    assert email_rule in publication.scan_history(repo, ())

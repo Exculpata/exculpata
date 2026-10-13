@@ -43,6 +43,37 @@ REVIEWED_COMMIT_EMAIL_IDENTITIES = {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
     },
 }
+# Owner-reviewed outside contributors who chose to publish their own commit
+# address. Exact SHA-256 of name + NUL + email bytes, on any commit, because
+# squash merges mint a new SHA. Suppresses only the email rule for that exact
+# author/committer identity or an exact Co-authored-by trailer line; deny terms,
+# secrets and every other rule still apply. No case or whitespace folding.
+# Maintainer identities must stay no-reply and never belong here.
+REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES = frozenset(
+    {
+        # Fire162: owner review Oct 13 2026, outside contributor PR #234.
+        "4fda816440a2b260c0f98662327e8ad67c3e2351a39e0300deb8d8e778ecccb5",
+    }
+)
+COAUTHOR_TRAILER = re.compile(
+    rb"(?m)^Co-authored-by: ([^<>\r\n\0]+) <([^<>\s\0]+)>\r?$"
+)
+
+
+def _identity_digest(name: bytes, email: bytes) -> str:
+    return hashlib.sha256(name + b"\0" + email).hexdigest()
+
+
+def _mask_reviewed_contributor_trailers(message: bytes) -> bytes:
+    """Replace only exact listed Co-authored-by addresses, for the email rule."""
+    def replace(match: re.Match[bytes]) -> bytes:
+        if _identity_digest(match.group(1), match.group(2)) not in REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES:
+            return match.group(0)
+        start, end = match.span(2)
+        base = match.start()
+        whole = match.group(0)
+        return whole[: start - base] + b"reviewed@example.invalid" + whole[end - base :]
+    return COAUTHOR_TRAILER.sub(replace, message)
 IGNORED_DIRECTORIES = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
 FORBIDDEN_SUFFIXES = {
     ".db",
@@ -714,7 +745,8 @@ def scan_history(
                 ),
             )
             identity_digest = hashlib.sha256(name + b"\0" + email).hexdigest()
-            if identity_digest in REVIEWED_COMMIT_EMAIL_IDENTITIES.get(commit, ()):
+            if (identity_digest in REVIEWED_COMMIT_EMAIL_IDENTITIES.get(commit, ())
+                    or identity_digest in REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES):
                 identity_findings = [
                     item for item in identity_findings
                     if item.rule != "non-example-email-address"
@@ -735,7 +767,18 @@ def scan_history(
                 allowed_spans.extend(match.span(1) for match in re.finditer(trailer, message))
         # Scan generic rules against the original bytes. Only deny matches wholly
         # inside the exact reviewed attribution username may be adjudicated.
-        findings.extend(_scan_bytes(message, location="git-metadata", deny=()))
+        message_findings = _scan_bytes(message, location="git-metadata", deny=())
+        masked = _mask_reviewed_contributor_trailers(message)
+        if masked != message:
+            # Every other rule keeps the original bytes; only the email rule
+            # is re-judged with exact reviewed contributor trailers masked.
+            message_findings = [
+                item for item in message_findings if item.rule != "non-example-email-address"
+            ] + [
+                item for item in _scan_bytes(masked, location="git-metadata", deny=())
+                if item.rule == "non-example-email-address"
+            ]
+        findings.extend(message_findings)
         lowered = message.lower()
         for term in deny:
             offset = 0
