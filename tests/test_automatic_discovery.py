@@ -7,6 +7,8 @@ import sqlite3
 import time
 
 import pytest
+
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 from fastapi.testclient import TestClient
 
 from case_intelligence.workbench import AutomaticDiscoveryCoordinator, create_workbench_app
@@ -168,7 +170,7 @@ def test_restore_export_purge_and_idempotent_migration(workbench, tmp_path):
         assert names(bench, matter) == before
         # Already discovered; a restored node does not duplicate suggestions.
         assert bench.run_automatic_discovery_once() == 0
-        _, lifecycle = bench.workspace.begin_matter_purge(matter.slug, WEB_ACTOR, matter.display_name, source_count=1)
+        _, lifecycle = claim_bench_exit(bench, matter, WEB_ACTOR)
         bench.workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
         count = bench.workspace.connection.execute(
             "SELECT COUNT(*) FROM workbench_entity_auto_discovery_unit WHERE matter_id=?",

@@ -114,3 +114,11 @@ digests were refreshed together. The schema, pack identifier, case definitions,
 case fingerprint, and fixture bytes are unchanged; the content fingerprint
 distinguishes these test bytes from earlier receipts. The integrity checks still
 reject undeclared test or fixture changes.
+
+October 13, 2026 lifecycle integration: the matter-management acceptance fixture
+now uses a real verified preservation archive, elapsed cancellation window and
+fresh authenticated confirmation before testing deletion and interrupted
+cleanup. Existing authority, retained-work and cleanup assertions remain. The
+management test-node/file and aggregate content digests were refreshed after
+reviewing those changes. Case definitions, case fingerprint and fixture bytes
+are unchanged; older receipts remain distinct by content fingerprint.

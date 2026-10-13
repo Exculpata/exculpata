@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Real HTTP context flows, source returns, authority and portable exports."""
 import html
 import io
@@ -203,9 +204,9 @@ def test_real_runtime_stopped_copy_restore_export_and_close(tmp_path,monkeypatch
             with zipfile.ZipFile(io.BytesIO(client.get(f'/matters/{slug}/export').content)) as archive:
                 assert identifier in archive.read('context/selections.json').decode()
     with TestClient(_app(restored)) as client:
-        response = client.post(f'/matters/{slug}/close',data=dict(confirmed_name=matter.display_name,acknowledge='yes'))
-        assert response.status_code == 200
         bench = client.app.state.workbench
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
         assert not (bench.storage.matters/matter.matter_id).exists()
         for table in ('workbench_context_selection','workbench_context_entry'):

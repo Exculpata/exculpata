@@ -8,6 +8,8 @@ import threading
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.assertion_repository import AssertionEditConflict, AssertionRepository, TABLES
 from case_intelligence.assertion_service import AssertionService
 from case_intelligence.entity_repository import EntityEditConflict
@@ -368,7 +370,7 @@ def test_migration_mirror_backup_clean_restore_export_and_purge(tmp_path):
     assert retained['history'] == expected['history'] and 'available' not in retained['accounts'][0]
     assert restored.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
-    _, lifecycle = restored.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=0)
+    _, lifecycle = claim_synthetic_exit(restored, matter, ACTOR)
     with pytest.raises(KeyError):
         restored_assertions.list(matter.matter_id, ACTOR)
     restored.complete_matter_purge(matter.matter_id, lifecycle.purge_id)

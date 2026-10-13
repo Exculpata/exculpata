@@ -109,7 +109,7 @@ def test_active_ledger_download_blocks_closure_until_final_body(workspace, monke
             return
         attempted.append(True)
         assert bench._active_matter_response_count(matter.matter_id) == 1
-        response = await anyio.to_thread.run_sync(lambda: client.post(f"/matters/{matter.slug}/close", data={
+        response = await anyio.to_thread.run_sync(lambda: client.post(f"/matters/{matter.slug}/close/begin", data={
             "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False))
         assert response.status_code == 303
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
@@ -120,9 +120,9 @@ def test_active_ledger_download_blocks_closure_until_final_body(workspace, monke
     assert any(row["record_type"] == "range" for row in json.loads(body)["records"])
     assert bench._active_matter_response_count(matter.matter_id) == 0
     assert_closed(connections)
-    assert client.post(f"/matters/{matter.slug}/close", data={
+    assert client.post(f"/matters/{matter.slug}/close/begin", data={
         "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False).status_code == 303
-    assert bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
+    assert bench.workspace.matter_lifecycle(matter.matter_id).state == "closing"
 
 
 @pytest.mark.parametrize("failure", ["start", "send", "generator", "disconnect"])

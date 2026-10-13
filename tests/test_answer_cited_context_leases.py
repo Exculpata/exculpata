@@ -7,6 +7,7 @@ import anyio
 import pytest
 from starlette.templating import Jinja2Templates
 
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 from case_intelligence import answer_cited_context
 from case_intelligence.workspace_store import WorkspaceProblem
 from tests.test_answer_cited_context import context_path
@@ -44,7 +45,7 @@ def test_cited_context_holds_closure_until_last_body_send(long_answer, format_na
     assert any(body for kind, body, _ in observed if kind == "http.response.body")
     assert observed[-1][0] == "http.response.body" and observed[-1][2] is False
     assert bench._active_matter_response_count(matter.matter_id) == 0
-    claimed, lifecycle = bench.begin_matter_purge(matter.slug, ACTOR, matter.display_name)
+    claimed, lifecycle = claim_bench_exit(bench, matter, ACTOR)
     assert bench.execute_matter_purge(claimed, lifecycle).state == "deleted"
     assert not source_path.exists()
 
@@ -72,7 +73,7 @@ def test_failed_cited_context_send_releases_lease(long_answer, format_name, fail
             context_path(long_answer) + "?format=" + format_name, send_hook=send))
     assert attempted
     assert bench._active_matter_response_count(matter.matter_id) == 0
-    assert bench.begin_matter_purge(matter.slug, ACTOR, matter.display_name)[1].state == "purging"
+    assert claim_bench_exit(bench, matter, ACTOR)[1].state == "purging"
 
 
 @pytest.mark.parametrize("format_name", ["html", "json"])

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.source_roles import SourceRoleConflict, SourceRoleService, add_source_role_export
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 
@@ -154,7 +156,7 @@ def test_sqlite_backup_restore_export_remove_and_purge(case, tmp_path):
     with pytest.raises(KeyError):
         SourceRoleService(store).read(matter.matter_id, ACTOR, TOKEN)
     restored = WorkspaceStore(path)
-    _, lifecycle = restored.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=1)
+    _, lifecycle = claim_synthetic_exit(restored, matter, ACTOR, source_count=1)
     restored.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
     assert not restored.connection.execute('SELECT * FROM workbench_source_organization').fetchall()
     assert len([e for e in restored.audit_events(matter.matter_id) if e.action == 'source.role_update']) == 1

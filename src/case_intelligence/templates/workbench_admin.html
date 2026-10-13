@@ -35,7 +35,7 @@
 
   <section class="administrator-panel lifecycle-attention" id="lifecycle-attention" aria-labelledby="lifecycle-heading">
     <div class="administrator-panel-heading">
-      <div><p class="eyebrow">Temporary workspace lifecycle</p><h2 id="lifecycle-heading">{{ 'Attention needed' if stale_matters or abandoned_uploads else 'Lifecycle is clear' }}</h2></div>
+      <div><p class="eyebrow">Workspace lifecycle</p><h2 id="lifecycle-heading">{{ 'Attention needed' if stale_matters or abandoned_uploads else 'Lifecycle is clear' }}</h2></div>
       <span class="maintenance-health {{ 'attention' if maintenance_status.last_error else 'ready' }}">{{ 'Automatic maintenance on' if maintenance_status.enabled else 'Automatic maintenance off' }}</span>
     </div>
     {% if maintenance_status.last_error %}<div class="notice notice-error" role="alert">{{ maintenance_status.last_error }}</div>{% endif %}
@@ -49,17 +49,15 @@
           <small>{{ row.owner.display_name }} · last activity {{ row.activity_at[:10] }}</small>
           <ul>{% for reason in row.stale_reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
         </div>
-        <form method="post" action="/admin/matters/{{ row.matter.slug }}/retention" data-working-form data-working-label="Saving…">
+        <form method="post" action="/matters/{{ row.matter.slug }}/check-in" data-working-form>
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <label for="admin-retention-{{ loop.index }}">Review end date</label>
-          <input id="admin-retention-{{ loop.index }}" type="date" name="expires_on" min="{{ row.retention.minimum_date }}" max="{{ row.retention.maximum_date }}" value="{{ row.retention.expires_on }}" required>
-          <button class="button button-secondary" type="submit">Save date</button>
+          <button class="button button-secondary" type="submit">Keep ongoing · check in after 90 days</button>
         </form>
       </article>
       {% endfor %}
     </div>
     {% else %}
-    <p class="administrator-empty">No inactive, unscheduled, or near-expiry matters need attention.</p>
+    <p class="administrator-empty">No inactive matters or check-ins need attention.</p>
     {% endif %}
 
     {% if abandoned_uploads %}
@@ -87,14 +85,13 @@
       <div><p class="eyebrow">Deletion recovery</p><h2 id="closure-recovery-heading">Failed deletions</h2></div>
       <small>{{ closure_recoveries|length }} closed {{ 'matter' if closure_recoveries|length == 1 else 'matters' }} need attention</small>
     </div>
-    <p>Ordinary review remains closed. Download any remaining work product before retrying permanent deletion.</p>
+    <p>Ordinary review remains closed. Review the confirmed exit or operator recovery requirements.</p>
     <div class="lifecycle-list">
       {% for row in closure_recoveries %}
       <article class="lifecycle-row">
         <div><strong>{{ row.matter.display_name }}</strong><small>Owner: {{ row.owner.display_name }}</small></div>
         <div class="managed-matter-actions">
-          <a class="button button-secondary" href="/matters/{{ row.matter.slug }}/export" data-download>Download final bundle</a>
-          <a class="button button-danger" href="/matters/{{ row.matter.slug }}/close">Review and retry deletion</a>
+          <a class="button button-secondary" href="/matters/{{ row.matter.slug }}/close">Review closure and recovery</a>
         </div>
       </article>
       {% endfor %}
@@ -176,7 +173,7 @@
       <article><strong>{{ backup_status.retention }}</strong><span>Encrypted retention</span></article>
       <article><strong>{{ 'Recorded' if backup_status.snapshot_short else 'Pending' }}</strong><span>Snapshot receipt</span></article>
     </div>
-    <p>{{ backup_status.message }} Matter deletion is immediate in Exculpata; encrypted disaster-recovery residuals expire with the short retention window.</p>
+    <p>{{ backup_status.message }} Matter deletion requires an explicit export and exit. Separately managed backup copies follow their own configured retention policy.</p>
   </section>
 
   <section class="administrator-panel" aria-labelledby="admin-matters-heading">
@@ -193,7 +190,7 @@
       <div class="administrator-table-row" role="row">
         <span role="cell"><strong>{{ row.matter.display_name }}</strong><small>{{ row.matter.descriptor or 'Active review' }}</small><small>{{ row.member_count }} {{ 'member' if row.member_count == 1 else 'members' }}</small></span>
         <span role="cell"><strong>{{ row.owner.display_name }}</strong><small>{{ row.inactive_days }} {{ 'day' if row.inactive_days == 1 else 'days' }} since activity</small></span>
-        <span role="cell"><strong class="lifecycle-label tone-{{ row.retention.tone }}">{{ row.retention.label }}</strong><small>{% if row.retention.record %}Deletion {{ row.retention.purge_on }}{% else %}No automatic deletion{% endif %}</small></span>
+        <span role="cell"><strong class="lifecycle-label tone-{{ row.retention.tone }}">{{ row.retention.label }}</strong><small>No automatic deletion</small></span>
         <span role="cell"><strong>{{ row.storage.used_label }}</strong><small>{{ row.storage.remaining_label }} remaining</small></span>
         <span role="cell"><a class="button button-secondary" href="/matters/{{ row.matter.slug }}">{{ 'Open' if row.current_is_member else 'Review' }}</a></span>
       </div>

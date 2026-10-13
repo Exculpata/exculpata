@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.workbench import CaseIntelligenceWorkbench, create_workbench_app
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
+from tests.case_lifecycle_helpers import claim_synthetic_exit
 
 
 FIXED = datetime(2026, 8, 28, 16, 0, tzinfo=timezone.utc)
@@ -46,10 +47,11 @@ def test_retention_migration_is_mirrored_and_existing_matters_are_grandfathered(
     )
 
     assert store.matter_retention(grandfathered.matter_id) is None
-    retention = store.matter_retention(scheduled.matter_id)
-    assert retention is not None
-    assert retention.expires_at == "2026-09-27T16:00:00Z"
-    assert retention.purge_after == "2026-10-04T16:00:00Z"
+    assert store.matter_retention(scheduled.matter_id) is None
+    policy = store.case_lifecycle.policy(scheduled.matter_id)
+    assert policy.mode == "ongoing"
+    assert policy.next_check_in_at == "2026-09-27T16:00:00Z"
+    assert policy.legacy_purge_after is None
     assert store.due_matter_retentions() == ()
     store.close()
 
@@ -60,27 +62,16 @@ def test_owner_or_administrator_can_reschedule_but_member_cannot(tmp_path):
     matter = store.create_matter("Synthetic retention roles", "", "principal-owner")
     store.add_member(matter.matter_id, "principal-member", "principal-owner")
 
-    with pytest.raises(WorkspaceProblem, match="Only the matter owner"):
-        store.set_matter_retention(
-            matter.matter_id,
-            "principal-member",
-            FIXED + timedelta(days=20),
-        )
-
-    owner_schedule = store.set_matter_retention(
-        matter.matter_id,
-        "principal-owner",
-        FIXED + timedelta(days=20),
+    with pytest.raises(KeyError):
+        store.case_lifecycle.check_in(matter.matter_id, "principal-member")
+    owner_policy = store.case_lifecycle.check_in(matter.matter_id, "principal-owner")
+    assert owner_policy.selected_by == "principal-owner"
+    admin_policy = store.case_lifecycle.check_in(
+        matter.matter_id, "principal-admin", administrator_override=True,
     )
-    assert owner_schedule.scheduled_by == "principal-owner"
-    admin_schedule = store.set_matter_retention(
-        matter.matter_id,
-        "principal-admin",
-        FIXED + timedelta(days=40),
-        administrator_override=True,
-    )
-    assert admin_schedule.scheduled_by == "principal-admin"
-    assert admin_schedule.purge_after == "2026-10-14T16:00:00Z"
+    assert admin_policy.selected_by == "principal-admin"
+    assert admin_policy.next_check_in_at == "2026-11-26T16:00:00Z"
+    assert store.matter_retention(matter.matter_id) is None
     store.close()
 
 
@@ -105,13 +96,16 @@ def test_due_claim_rechecks_schedule_and_waits_for_active_upload(tmp_path):
         ),
     )
     now[0] = FIXED + timedelta(days=9)
-    assert len(store.due_matter_retentions()) == 1
+    assert store.due_matter_retentions() == ()
     assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
+    with pytest.raises(WorkspaceProblem, match="Wait for current"):
+        store.case_lifecycle.begin_exit(matter.slug, "principal-owner")
 
     store.cancel_upload_session(
         matter.matter_id, "principal-owner", session.upload_session_id
     )
-    claimed = store.begin_due_matter_purge(matter.matter_id, source_count=0)
+    assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
+    claimed = claim_synthetic_exit(store, matter, "principal-owner")
     assert claimed is not None
     assert claimed[1].state == "purging"
     assert claimed[1].requested_by == "principal-owner"
@@ -149,7 +143,7 @@ def test_abandoned_upload_detection_and_theme_preference(tmp_path):
     store.close()
 
 
-def test_supported_maintenance_cleans_staging_and_purges_only_scheduled_due_matter(
+def test_supported_maintenance_cleans_staging_without_date_driven_deletion(
     tmp_path,
 ):
     bench = CaseIntelligenceWorkbench(
@@ -208,15 +202,14 @@ def test_supported_maintenance_cleans_staging_and_purges_only_scheduled_due_matt
         result = bench.run_maintenance_once()
         assert result == {
             "uploads_cleaned": 1,
-            "matters_purged": 1,
+            "matters_purged": 0,
             "matters_deferred": 0,
         }
         incoming = store.incoming / store._resumable_name(items[0].upload_item_id)
         assert not incoming.exists()
         assert bench.workspace.get_matter_by_id(grandfathered.matter_id) == grandfathered
-        with pytest.raises(KeyError):
-            bench.workspace.get_matter_by_id(due.matter_id)
-        assert bench.workspace.matter_lifecycle(due.matter_id).state == "deleted"
+        assert bench.workspace.get_matter_by_id(due.matter_id) == due
+        assert bench.workspace.matter_lifecycle(due.matter_id).state == "active"
     finally:
         bench.close()
 
@@ -231,8 +224,9 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
     with TestClient(app) as client:
         new_page = client.get("/matters/new")
         assert new_page.status_code == 200
-        assert 'name="retention_days"' in new_page.text
-        assert "seven-day export grace period" in new_page.text
+        assert 'name="retention_days"' not in new_page.text
+        assert "Ongoing until explicitly closed" in new_page.text
+        assert "check-in after 90 days" in new_page.text
 
         created = client.post(
             "/matters",
@@ -246,7 +240,8 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert created.status_code == 303
         slug = created.headers["location"].split("/")[2]
         matter = app.state.workbench.workspace.get_active_matter(slug)
-        assert app.state.workbench.workspace.matter_retention(matter.matter_id) is not None
+        assert app.state.workbench.workspace.matter_retention(matter.matter_id) is None
+        assert app.state.workbench.workspace.case_lifecycle.policy(matter.matter_id).mode == "ongoing"
 
         setup = client.get(f"/matters/{slug}/setup")
         assert setup.status_code == 200
@@ -335,14 +330,39 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert dark.status_code == 303
         assert 'data-theme="dark"' in client.get(f"/matters/{slug}/setup").text
 
-        new_expiry = (datetime.now(timezone.utc) + timedelta(days=45)).date().isoformat()
         extended = client.post(
-            f"/matters/{slug}/retention",
-            data={"expires_on": new_expiry, "next": f"/matters/{slug}/setup"},
+            f"/matters/{slug}/check-in",
             follow_redirects=False,
         )
         assert extended.status_code == 303
-        assert extended.headers["location"] == f"/matters/{slug}/setup"
+        assert extended.headers["location"] == f"/matters/{slug}/settings"
 
         health = client.get("/health").json()
         assert health["maintenance"]["enabled"] is False
+
+
+def test_reminder_stages_and_overdue_owner_review_catch_up_without_renewal(tmp_path):
+    from contextlib import closing
+    from types import SimpleNamespace
+    from case_intelligence.case_lifecycle_support import retention_projection
+    now = [datetime(2028, 2, 29, 10, 0, tzinfo=timezone.utc)]
+    with closing(WorkspaceStore(tmp_path / 'generated-checkins.sqlite', clock=lambda: now[0])) as store:
+        _principals(store)
+        matter = store.create_matter('Generated multi-year reminder', '', 'principal-owner')
+        initial = store.case_lifecycle.policy(matter.matter_id)
+        bench = SimpleNamespace(workspace=store, _parse_utc=lambda value: datetime.fromisoformat(value.replace('Z', '+00:00')))
+        due = bench._parse_utc(initial.next_check_in_at)
+        for offset, status, warning in [(-15, 'ongoing', False), (-14, 'check_in_soon', True),
+                (-7, 'check_in_next_week', True), (0, 'check_in_due', True),
+                (29, 'check_in_due', True), (30, 'ownership_review', True),
+                (730, 'ownership_review', True)]:
+            now[0] = due + timedelta(days=offset)
+            projection = retention_projection(bench, matter)
+            assert projection['status'] == status and projection['show_warning'] is warning
+            assert store.case_lifecycle.policy(matter.matter_id) == initial
+            assert store.get_active_matter(matter.slug).matter_id == matter.matter_id
+            assert store.due_matter_retentions() == ()
+            assert store.begin_due_matter_purge(matter.matter_id, source_count=0) is None
+        renewed = store.case_lifecycle.check_in(matter.matter_id, 'principal-owner')
+        assert bench._parse_utc(renewed.next_check_in_at) == now[0] + timedelta(days=90)
+        assert retention_projection(bench, matter)['status'] == 'ongoing'

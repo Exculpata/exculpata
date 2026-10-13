@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 import io
 import json
 import socket
@@ -27,9 +28,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
+from case_intelligence.identity import PREVIEW_IDENTITIES  # noqa: E402
+from case_intelligence.matter_archive_verifier import verify_matter_archive  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
 
-ACTOR = "development-taylor-morgan"
+PREVIEW = next(identity for identity in PREVIEW_IDENTITIES if identity.subject == "taylor-morgan")
+ACTOR = PREVIEW.preferred_principal_id
 
 
 def completed_download(directory: Path, before: set[Path], suffix: str) -> Path | None:
@@ -64,14 +68,14 @@ def main():
         print(message, flush=True)
 
     with tempfile.TemporaryDirectory(prefix="recordbench-reports-browser-") as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         downloads = root / "downloads"
         downloads.mkdir()
         original = root / "generated-note.txt"
         original.write_bytes(b"Synthetic source: the blue vehicle arrived at noon.\n")
         original_bytes = original.read_bytes()
         app = create_workbench_app(
-            root / "runtime", generator=UnavailableGenerator(), auth_mode="test",
+            root / "runtime", generator=UnavailableGenerator(), auth_mode="preview",
             background_ingestion=True,
         )
         listener = socket.socket()
@@ -131,6 +135,65 @@ def main():
                 click(selector)
                 return wait.until(lambda _: completed_download(downloads, before, suffix))
 
+            def login():
+                driver.delete_all_cookies()
+                go("/auth/login?next=/matters/manage")
+                click(f'button[name="identity_subject"][value="{PREVIEW.subject}"]')
+                wait.until(lambda d: "/auth/login" not in d.current_url)
+
+            def capture_closure(name):
+                for width in (1440, 430):
+                    driver.set_window_size(width, 1000)
+                    if width < 901:
+                        rail = driver.find_elements(By.CSS_SELECTOR, "[data-rail-toggle]")
+                        if rail and rail[0].get_attribute("aria-expanded") == "true":
+                            click("[data-rail-toggle]")
+                    wait.until(lambda d: d.execute_script(
+                        "const box = document.querySelector('.close-matter-card').getBoundingClientRect(); "
+                        "return box.left >= 0 && box.right <= innerWidth + 1 "
+                        "&& document.documentElement.scrollWidth <= innerWidth + 1"))
+                    driver.execute_script("window.scrollTo({top:0,left:0,behavior:'instant'});")
+                    driver.save_screenshot(str(args.output / f"{name}-{width}.png"))
+                driver.set_window_size(1440, 1000)
+
+            def fresh_confirmation(target):
+                current = bench.workspace.case_lifecycle.current_exit(target.matter_id)
+                eligible = datetime.fromisoformat(current.eligible_after.replace("Z", "+00:00"))
+                # Only this temporary synthetic harness advances time. A new
+                # real browser sign-in after the jump supplies a fresh session.
+                now = max(bench.workspace.current_time(), eligible + timedelta(seconds=1))
+                bench.workspace._clock = lambda: now
+                app.state.identity._clock = lambda: now
+                login()
+                target_prefix = f"/matters/{target.slug}"
+                go(target_prefix + "/close")
+                click(f'form[action="{target_prefix}/close/confirm"] button')
+                wait.until(EC.visibility_of_element_located((By.ID, "confirmed-name")))
+                return current
+
+            def prepare_exit(target):
+                target_prefix = f"/matters/{target.slug}"
+                go(target_prefix + "/close")
+                click(f'form[action="{target_prefix}/close/begin"] button')
+                assert bench.workspace.matter_lifecycle(target.matter_id).state == "closing"
+                assert not driver.find_elements(By.ID, "confirmed-name")
+                click(f'form[action="{target_prefix}/close/export"] button')
+                current = bench.workspace.case_lifecycle.current_exit(target.matter_id)
+                assert current.export_id, driver.find_element(By.TAG_NAME, "body").text
+                archive = download(f'a[href="{target_prefix}/close/export"]', ".zip")
+                manifest = verify_matter_archive(archive, expected_sha256=current.archive_digest)
+                assert manifest["exit_id"] == current.exit_id and manifest["export_id"] == current.export_id
+                assert manifest["original_source_files_included"] is True
+                fresh_confirmation(target)
+                return archive, manifest, current
+
+            def confirm_deletion(target):
+                fill("#confirmed-name", target.display_name)
+                click("input[name=export_acknowledged]")
+                click("input[name=acknowledge]")
+                click(".close-matter-form button[type=submit]")
+
+            login()
             go("/matters/new")
             fill("#matter-name", "Synthetic report acceptance")
             click(".matter-form button[type=submit]")
@@ -325,13 +388,14 @@ def main():
                         "source_version_id": recovery_document.version_id, "source_name": recovery_document.display_name,
                         "location": recovery_candidate.citation, "support_token": bench._support_token(recovery_candidate),
                         "excerpt": recovery_unit.text},))
-                go(recovery_prefix + "/close")
+                recovery_archive, recovery_manifest, recovery_exit = prepare_exit(recovery)
+                assert recovery_manifest["table_rows"]["workbench_report"] == 1
+                with zipfile.ZipFile(recovery_archive) as archive:
+                    assert archive.read("originals/" + recovery_document.document_id) == b"Generated recovery source passage."
                 prior_projection = bench._postgres_projection_configured, bench.postgres_connection, bench.postgres_ready
                 try:
                     bench._postgres_projection_configured, bench.postgres_connection, bench.postgres_ready = True, None, False
-                    fill("#confirmed-name", recovery.display_name)
-                    click("input[name=acknowledge]")
-                    click(".close-matter-form button[type=submit]")
+                    confirm_deletion(recovery)
                     wait.until(lambda _: bench.workspace.matter_lifecycle(recovery.matter_id).state == "purge_failed")
                 finally:
                     bench._postgres_projection_configured, bench.postgres_connection, bench.postgres_ready = prior_projection
@@ -349,25 +413,52 @@ def main():
                     driver.save_screenshot(str(args.output / f"readiness-failed-close-{width}.png"))
                 click(f'a[href="{recovery_prefix}/close"]')
                 assert driver.find_element(By.ID, "close-matter-heading").is_displayed()
-                assert "Try deletion again" in driver.find_element(By.TAG_NAME, "body").text
-                fill("#confirmed-name", recovery.display_name)
-                click("input[name=acknowledge]")
-                click(".close-matter-form button[type=submit]")
+                assert "fresh confirmation is required" in driver.find_element(By.TAG_NAME, "body").text
+                retried = fresh_confirmation(recovery)
+                assert retried.export_id == recovery_exit.export_id
+                assert retried.archive_digest == recovery_exit.archive_digest
+                assert not driver.find_elements(By.CSS_SELECTOR, f'form[action="{recovery_prefix}/close/export"]')
+                confirm_deletion(recovery)
                 wait.until(lambda _: bench.workspace.matter_lifecycle(recovery.matter_id).state == "deleted")
                 record_check("Failed-close readiness retains Report details without unavailable edit links; Close matter recovery opens and deliberate retry completes")
 
+            go(prefix + "/settings")
+            click(f'form[action="{prefix}/check-in"] button')
+            policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
+            assert policy.mode == "ongoing" and policy.selected_by == ACTOR
+            assert datetime.fromisoformat(policy.next_check_in_at.replace("Z", "+00:00")) >= bench.workspace.current_time() + timedelta(days=89)
             go(prefix + "/close")
-            final_bundle = download(f"a[href='{prefix}/export']", ".zip")
-            check_bundle(final_bundle)
-            fill("#confirmed-name", matter.display_name)
-            click("input[name=acknowledge]")
-            click(".close-matter-form button[type=submit]")
+            click(f'form[action="{prefix}/close/begin"] button')
+            cancelled_exit = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+            assert bench.workspace.matter_lifecycle(matter.matter_id).state == "closing"
+            capture_closure("closure-cancellation-window")
+            click(f'form[action="{prefix}/close/cancel"] button')
+            assert bench.workspace.matter_lifecycle(matter.matter_id).state == "active"
+            assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) is None
+            assert bench.workspace.reports(matter.matter_id, ACTOR)[0].status == "final"
+            record_check("Owner check-in selects 90 days; cancellation reopens with saved final Report intact")
+
+            final_archive, final_manifest, final_exit = prepare_exit(matter)
+            assert final_exit.exit_id != cancelled_exit.exit_id
+            assert final_exit.eligible_after >= cancelled_exit.eligible_after
+            assert final_manifest["table_rows"]["workbench_report"] == 1
+            assert final_manifest["table_rows"]["workbench_report_section"] == (2 if source_support_expected else 1)
+            with zipfile.ZipFile(final_archive) as archive:
+                sections = archive.read("records/workbench_report_section.jsonl").decode()
+                assert "Edited conclusion retained in both exports." in sections
+                if source_support_expected:
+                    assert archive.read("originals/" + document.document_id) == original_bytes
+                else:
+                    assert document.document_id in archive.read("unavailable-references.jsonl").decode()
+            capture_closure("closure-final-confirmation")
+            confirm_deletion(matter)
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted")
-            check_bundle(final_bundle)
+            verify_matter_archive(final_archive, expected_sha256=final_exit.archive_digest)
+            check_bundle(checked_bundle if args.verify_readiness else bundle)
             assert original.read_bytes() == original_bytes
             with zipfile.ZipFile(io.BytesIO(individual_docx)) as word:
                 assert "Edited conclusion retained" in word.read("word/document.xml").decode()
-            record_check("Close-offer final bundle, deliberate deletion, retained downloads, unchanged external original")
+            record_check("Full preservation archive passes offline SHA verification; fresh session, elapsed window, exact name and both acknowledgements precede deletion; retained downloads and external original survive")
             (args.output / "receipt.json").write_text(json.dumps({
                 "synthetic_only": True, "passed": True, "checks": checks,
             }, indent=2) + "\n")

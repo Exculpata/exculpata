@@ -894,9 +894,13 @@ class PilotStore:
         mutation_lock: threading.RLock | None = None,
         malware_scanner: MalwareScanner | None = None,
         malware_scan_mode: str = "extended",
+        read_only: bool = False,
+        write_check: Callable[[], None] | None = None,
     ) -> None:
         self._lock = mutation_lock or threading.RLock()
         self._retired = False
+        self._read_only = read_only
+        self._write_check = write_check
         self._registry: sqlite3.Connection | None = None
         self.document_file_limit = int(document_file_limit)
         self.media_file_limit = int(media_file_limit)
@@ -925,6 +929,14 @@ class PilotStore:
         self.incoming = self.root / "incoming"
         self.derived = self.root / "derived"
         self.quarantine_root = self.root / "quarantine"
+        self.manifest_path = self.root / "manifest.json"
+        self.registry_path = self.root / "source-registry.sqlite3"
+        self.documents: dict[str, PilotDocument] = {}
+        if read_only:
+            from .pilot_source_access import load_readonly_registry
+            load_readonly_registry(self)
+            return
+        self._ensure_writable()
         self.root.mkdir(parents=True, exist_ok=True)
         self.files.mkdir(exist_ok=True)
         self.staging.mkdir(exist_ok=True)
@@ -941,9 +953,6 @@ class PilotStore:
             if directory.is_symlink() or not directory.is_dir():
                 raise RuntimeError("pilot storage directory is unsafe")
         self._reconcile_staging()
-        self.manifest_path = self.root / "manifest.json"
-        self.registry_path = self.root / "source-registry.sqlite3"
-        self.documents: dict[str, PilotDocument] = {}
         self._load()
 
     @contextmanager
@@ -959,6 +968,13 @@ class PilotStore:
                 "This matter is being deleted and no longer accepts source changes.",
                 409,
             )
+
+    def _ensure_writable(self) -> None:
+        self._ensure_active()
+        if self._read_only:
+            raise UploadProblem("This source snapshot is read-only.", 409)
+        if self._write_check is not None:
+            self._write_check()
 
     def maximum_file_bytes(self, suffix: str) -> int:
         return maximum_file_bytes(
@@ -1267,108 +1283,8 @@ class PilotStore:
             raise RuntimeError("pilot source registry could not be saved") from exc
 
     def _load(self) -> None:
-        legacy = False
-        loaded: list[PilotDocument]
-        manifest_payload: object | None = None
-        if self.manifest_path.exists() or self.manifest_path.is_symlink():
-            if self.manifest_path.is_symlink() or not self.manifest_path.is_file():
-                raise RuntimeError("pilot manifest is not a regular file")
-            try:
-                manifest_payload = json.loads(
-                    self.manifest_path.read_text(encoding="utf-8")
-                )
-            except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-                raise RuntimeError("pilot manifest could not be loaded") from exc
-
-        if self.registry_path.exists() or self.registry_path.is_symlink():
-            self._registry = self._open_registry(self.registry_path)
-            loaded = self._registry_documents()
-            if manifest_payload is not None:
-                if not isinstance(manifest_payload, dict) or manifest_payload.get(
-                    "version"
-                ) not in {2, 3, 4, 5}:
-                    raise RuntimeError("pilot manifest could not be loaded")
-                if manifest_payload.get("version") == 5 and (
-                    manifest_payload != _SOURCE_REGISTRY_MARKER
-                ):
-                    raise RuntimeError("pilot manifest could not be loaded")
-        elif manifest_payload is not None:
-            if not isinstance(manifest_payload, dict):
-                raise RuntimeError("pilot manifest could not be loaded")
-            if manifest_payload.get("version") == 5:
-                raise RuntimeError("pilot source registry is unavailable")
-            if manifest_payload.get("version") not in {2, 3, 4} or not isinstance(
-                manifest_payload.get("documents"), list
-            ):
-                raise RuntimeError("pilot manifest could not be loaded")
-            try:
-                loaded = [
-                    self._decode_document(item)
-                    for item in manifest_payload["documents"]
-                ]
-            except (TypeError, ValueError) as exc:
-                raise RuntimeError("pilot manifest could not be loaded") from exc
-            legacy = True
-        else:
-            loaded = []
-
-        changed: list[PilotDocument] = []
-        for document in loaded:
-            before = self._document_payload(document)
-            document._units_loader = self._load_units
-            document._units_iterator = self._iter_units
-            if document.origin == "upload":
-                path = self.files / document.stored_name
-                if path.parent != self.files or path.is_symlink() or not path.is_file():
-                    document.state = "missing"
-                    document.message = "Stored file is unavailable. Ask the administrator to restore it, then restart the workbench."
-                    document.units = []
-                    document.units_file = ""
-                elif not self._stored_file_matches(path, document):
-                    document.state = "changed"
-                    document.message = "Stored file changed after processing. Remove it and upload the intended file again."
-                    document.units = []
-                    document.units_file = ""
-            elif document.origin != "registered":
-                raise RuntimeError("pilot source registry contains an invalid source origin")
-            if document.units_file and not self._units_file_is_safe(document.units_file):
-                document.state = "failed"
-                document.message = "Derived searchable text is unavailable. Choose Try again."
-                document.units_file = ""
-            if not document.has_video:
-                document.playback_name = ""
-                document.playback_media_type = document.media_type
-                document.playback_size = document.size
-                document.playback_state = "original"
-                document.playback_message = "The original recording is ready to play."
-            elif document.playback_state == "processing":
-                document.playback_state = "queued"
-                document.playback_message = "Browser playback preparation will resume."
-            elif document.playback_state == "ready" and not self._playback_file_is_safe(
-                document
-            ):
-                document.playback_name = ""
-                document.playback_media_type = ""
-                document.playback_size = 0
-                document.playback_state = "queued"
-                document.playback_message = "Browser playback preparation will resume."
-            if document.document_id in self.documents:
-                raise RuntimeError("pilot source registry contains duplicate source identities")
-            self.documents[document.document_id] = document
-            if before != self._document_payload(document):
-                changed.append(document)
-        self._reconcile_files()
-        self._reconcile_derived()
-
-        if legacy:
-            for document in loaded:
-                self._write_units(document)
-            self._create_registry_atomic(tuple(loaded))
-        elif self._registry is None:
-            self._create_registry_atomic(())
-        elif changed:
-            self._persist_registry_delta(tuple(changed))
-        self._write_manifest_marker()
+        from .pilot_source_access import load_source_registry
+        load_source_registry(self)
 
     @staticmethod
     def _stored_file_matches(path: Path, document: PilotDocument) -> bool:
@@ -1525,7 +1441,7 @@ class PilotStore:
         *,
         removed_document_ids: Sequence[str] = (),
     ) -> None:
-        self._ensure_active()
+        self._ensure_writable()
         selected_ids = (
             tuple(self.documents)
             if document_ids is None
@@ -1635,7 +1551,7 @@ class PilotStore:
         request_limit: int = MAX_REQUEST_BYTES,
     ) -> tuple[PilotDocument, int]:
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             return self._store_stream_locked(
                 display_name,
                 content_type,
@@ -1866,7 +1782,7 @@ class PilotStore:
         name = self._resumable_name(item_id)
         path = self.incoming / name
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             flags = os.O_WRONLY | os.O_CREAT | os.O_CLOEXEC | os.O_NOFOLLOW
             try:
                 descriptor = os.open(path, flags, 0o600)
@@ -1904,7 +1820,7 @@ class PilotStore:
         name = self._resumable_name(item_id)
         path = self.incoming / name
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             if self.resumable_size(item_id, expected_size=expected_size) != expected_size:
                 raise UploadProblem("Finish uploading this source before it is queued.", 409)
             display_name, suffix, _ = self.validate_name(display_name)
@@ -2093,6 +2009,7 @@ class PilotStore:
         name = self._resumable_name(item_id)
         path = self.incoming / name
         with self._lock:
+            self._ensure_writable()
             if path.is_symlink():
                 raise RuntimeError("resumable upload staging is unsafe")
             path.unlink(missing_ok=True)
@@ -2434,7 +2351,7 @@ class PilotStore:
         """Register a reviewed collection with one atomic manifest replacement."""
 
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             reviewed = tuple(sources)
             existing_keys = {item.name_key for item in self.documents.values()}
             created: list[PilotDocument] = []
@@ -2528,6 +2445,7 @@ class PilotStore:
         """Persist a video compatibility check without changing transcript state."""
 
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if not is_media_type(document.media_type) or not document.has_video:
                 return document
@@ -2584,6 +2502,7 @@ class PilotStore:
 
     def fail_browser_playback(self, document_id: str, message: str) -> PilotDocument:
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if not document.has_video:
                 return document
@@ -2604,6 +2523,7 @@ class PilotStore:
         """Prepare atomic browser playback while retaining the uploaded original."""
 
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if document.version_id != source_version_id or not document.has_video:
                 return document
@@ -2634,6 +2554,7 @@ class PilotStore:
                 raise UploadProblem("The stored video track is unavailable.")
             if probe.browser_compatible and not force_full:
                 with self._lock:
+                    self._ensure_writable()
                     document = self.get(document_id)
                     if document.version_id != source_version_id:
                         return document
@@ -2665,6 +2586,7 @@ class PilotStore:
                     raise InterruptedError
                 temporary.unlink(missing_ok=True)
                 with self._lock:
+                    self._ensure_writable()
                     document = self.get(document_id)
                     if document.version_id != source_version_id:
                         return document
@@ -2739,14 +2661,13 @@ class PilotStore:
                 os.fsync(descriptor)
             finally:
                 os.close(descriptor)
-            os.replace(temporary, final)
-            self._fsync_directory(self.derived)
             with self._lock:
+                self._ensure_writable()
                 document = self.get(document_id)
                 if document.version_id != source_version_id:
-                    final.unlink(missing_ok=True)
-                    self._fsync_directory(self.derived)
                     return document
+                os.replace(temporary, final)
+                self._fsync_directory(self.derived)
                 document.playback_name = final_name
                 document.playback_media_type = "video/mp4"
                 document.playback_size = int(metadata.st_size)
@@ -2756,6 +2677,7 @@ class PilotStore:
                 return document
         except InterruptedError:
             with self._lock:
+                self._ensure_writable()
                 try:
                     document = self.get(document_id)
                 except (KeyError, UploadProblem):
@@ -2782,6 +2704,7 @@ class PilotStore:
         self, document_id: str, *, stage: str, progress: float = 0
     ) -> PilotDocument:
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if not is_media_type(document.media_type):
                 raise UploadProblem("That source is not media.")
@@ -2802,6 +2725,7 @@ class PilotStore:
         if not prepared or len(prepared) > 100_000:
             raise UploadProblem("The transcript contains no searchable passages.")
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if not is_media_type(document.media_type):
                 raise UploadProblem("That source is not media.")
@@ -2843,7 +2767,7 @@ class PilotStore:
         progress: Callable[[str, int, int], None] | None = None,
     ) -> PilotDocument:
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             document = self.get(document_id)
             source = staged_source or (self.files / document.stored_name)
             if document.origin == "upload" and not self._stored_file_matches(source, document):
@@ -2866,6 +2790,7 @@ class PilotStore:
 
         def report(stage: str, completed: int, total: int) -> None:
             with self._lock:
+                self._ensure_writable()
                 document.processing_stage = stage
                 document.completed_units = completed
                 document.total_units = total
@@ -2880,6 +2805,7 @@ class PilotStore:
             self._extract(document, source, report)
         except UploadProblem as exc:
             with self._lock:
+                self._ensure_writable()
                 document.state = "failed"
                 document.message = str(exc)
                 document.processing_stage = "Needs attention"
@@ -2888,12 +2814,14 @@ class PilotStore:
                 self._save((document_id,))
             raise
         with self._lock:
+            self._ensure_writable()
             document.processing_stage = "Ready"
             self._save((document_id,))
         return document
 
     def retry(self, document_id: str) -> PilotDocument:
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if document.state not in {"failed", "needs_ocr"}:
                 raise UploadProblem(
@@ -2921,6 +2849,7 @@ class PilotStore:
 
     def mark_failed(self, document_id: str, message: str, *, stage: str = "Needs attention") -> PilotDocument:
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             document.state = "failed"
             document.message = message[:240]
@@ -2954,6 +2883,7 @@ class PilotStore:
 
     def remove(self, document_id: str) -> None:
         with self._lock:
+            self._ensure_writable()
             document = self.get(document_id)
             if document.stored_name:
                 target = self.files / document.stored_name
@@ -2991,7 +2921,7 @@ class PilotStore:
 
         target = Path(destination)
         with self._lock:
-            self._ensure_active()
+            self._ensure_writable()
             if self.root.is_symlink() or not self.root.is_dir():
                 raise RuntimeError("matter source storage is unsafe")
             if target.exists() or target.is_symlink():

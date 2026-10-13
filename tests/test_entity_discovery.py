@@ -1,3 +1,4 @@
+from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic occurrence recall, explicit identity decisions and durable recovery."""
 from contextlib import nullcontext
 import hashlib
@@ -242,8 +243,8 @@ def test_web_discovery_full_source_restore_export_and_purge(tmp_path, monkeypatc
         operation = expected['reconciliations'][0]['operation_id']
         svc.undo(matter.matter_id, WEB_ACTOR, operation)
         assert len(svc.detail(matter.matter_id, WEB_ACTOR, first['entity_id'])[1]) == 1
-        _, lifecycle = bench.workspace.begin_matter_purge(slug, WEB_ACTOR, matter.display_name, source_count=1)
-        bench.workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
+        prepared, lifecycle = claim_bench_exit(bench, matter)
+        bench.execute_matter_purge(prepared, lifecycle)
         for table in ('entity', 'entity_mention', 'entity_history', 'entity_discovery_unit', 'entity_discovery_seen', 'entity_reconciliation'):
             assert bench.workspace.connection.execute('SELECT COUNT(*) FROM workbench_' + table + ' WHERE matter_id=?', (matter.matter_id,)).fetchone()[0] == 0
 

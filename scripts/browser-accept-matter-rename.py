@@ -22,6 +22,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+from browser_case_exit import BrowserCaseExit, completed_zip  # noqa: E402
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
 from case_intelligence.identity import KerberosSettings, KERBEROS_SECRET_HEADER, KERBEROS_USER_HEADER  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
@@ -41,7 +42,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
     with tempfile.TemporaryDirectory(prefix='recordbench-rename-browser-') as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()
         original = root / 'generated-source.txt'
@@ -165,21 +166,22 @@ def main():
             checks.append('Ordinary member reads updated name; owner form fits mobile viewport')
 
             owner.set_window_size(1440, 1000)
-            go(owner, prefix + '/close')
+            go(owner, prefix + '/settings')
+            before_bundle = set(downloads.iterdir())
             click(owner, f'a[href="{prefix}/export"]')
-            bundle = wait.until(lambda _: next(downloads.glob('*.zip'), None))
+            bundle = wait.until(lambda _: completed_zip(downloads, before_bundle))
             with zipfile.ZipFile(bundle) as archive:
                 texts = [archive.read(name).decode('utf-8') for name in archive.namelist() if name.endswith(('.md', '.json'))]
                 assert any('Administrator revised name' in text for text in texts)
                 assert any('the blue vehicle arrived at noon' in text for text in texts)
                 assert not any(name.endswith('generated-source.txt') for name in archive.namelist())
-            fill(owner, '#confirmed-name', 'Generated original')
-            click(owner, 'input[name=acknowledge]')
-            submit(owner, '.close-matter-form button[type=submit]')
+            exit_flow = BrowserCaseExit(owner, base, app, matter, downloads)
+            exit_flow.prepare()
+            exit_flow.confirm_name('Generated original')
             assert 'exactly as shown' in body(owner)
-            fill(owner, '#confirmed-name', 'Administrator revised name')
-            click(owner, 'input[name=acknowledge]')
-            submit(owner, '.close-matter-form button[type=submit]')
+            assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+            exit_flow.fresh_confirmation()
+            exit_flow.confirm_name('Administrator revised name')
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted')
             assert original.read_bytes() == original_bytes
             checks.append('Downloaded renamed bundle with citations, old-name closure rejection, current-name deletion')

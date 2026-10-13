@@ -1,4 +1,6 @@
 """Synthetic full-text runs copied and compiled into bounded, source-checked Reports."""
+from tests.case_lifecycle_web_helpers import claim_bench_exit
+from case_intelligence.workspace_store import WorkspaceProblem
 from dataclasses import asdict
 import hashlib
 import io
@@ -430,9 +432,18 @@ def test_failed_close_full_text_bundle_never_reopens_quarantined_sources(workspa
     bench._postgres_projection_configured = True
     bench.postgres_connection = None
     bench.postgres_ready = False
-    closed = client.post(f"/matters/{matter.slug}/close", data={
-        "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False)
-    assert closed.status_code == 303
+    if corruption == 'matter_id':
+        from case_intelligence.matter_archive import ArchiveProblem
+        with pytest.raises(ArchiveProblem, match='No archive was certified'):
+            claim_bench_exit(bench, matter, ACTOR)
+        assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+        assert bench.workspace.case_lifecycle.current_exit(matter.matter_id).export_id is None
+        assert (bench.storage.matters / matter.matter_id / 'sources').is_dir()
+        assert not list(bench.storage.purging.iterdir())
+        return
+    prepared, lifecycle = claim_bench_exit(bench, matter, ACTOR)
+    with pytest.raises(WorkspaceProblem, match="derived search data"):
+        bench.execute_matter_purge(prepared, lifecycle)
     lifecycle = bench.workspace.matter_lifecycle(matter.matter_id)
     assert lifecycle.state == "purge_failed" and lifecycle.error_code == "projection"
     source_root = bench.storage.matters / matter.matter_id / "sources"

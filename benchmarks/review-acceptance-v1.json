@@ -157,7 +157,7 @@
     "algorithm": "sha256",
     "test_node_sha256": {
       "tests/test_generation.py::test_empty_evidence_abstains_without_calling_model": "532352d1610eaa0b4c8772f04102a1f4a0c5b5654447dc60ed15db51ebeb6d3e",
-      "tests/test_matter_management.py": "865bd6179727c4d275ac8e89458cf93610926474712ad059a97d3b0fef4ed085",
+      "tests/test_matter_management.py": "2fdbb6fe7d347af3d56f247934d983cc3d2c56d87887801702930444250f99d9",
       "tests/test_matter_media_workflow.py::test_dual_modal_answer_resolves_page_and_timestamp_support": "858424dd2c99d0517ba830ad09ffb52289072446fb7cd1d78c4e575783d530d8",
       "tests/test_matter_media_workflow.py::test_failed_optional_overview_explains_cause_retries_and_independence": "e2739a13d5bdf9319fc76c424958f366961bff6949fe213fbc5aede088fe2503",
       "tests/test_matter_media_workflow.py::test_media_upload_transcript_review_range_citations_exports_and_clips": "141dc1cca74285ae991a9f23bf333cef83451fb049d5d781fe02aa7550458dba",
@@ -187,7 +187,7 @@
     },
     "test_file_sha256": {
       "tests/test_generation.py": "17d7434cd3e1c41b03792a82a146f0fee4fc0c25bad7158d21fe0d00bcbcd2f9",
-      "tests/test_matter_management.py": "865bd6179727c4d275ac8e89458cf93610926474712ad059a97d3b0fef4ed085",
+      "tests/test_matter_management.py": "2fdbb6fe7d347af3d56f247934d983cc3d2c56d87887801702930444250f99d9",
       "tests/test_matter_media_workflow.py": "8cbeee29226e93fd1f9d946aed98b797a23f0eba4458b674018ba02992f80da4",
       "tests/test_research_and_full_review.py": "8bf029818a62e9fe1c4aed3ec1726cd8ee3cd0d2695195dee5b95c70fd43af7c",
       "tests/test_review_acceptance_pack.py": "b30d2e361499432e4a6593bca6014fa603fd2b16f3b0985cc77344d436d47cc8",
@@ -202,6 +202,6 @@
       "src/case_intelligence/demo_data/synthetic_case_report.pdf": "1ff22292da788d1fe8512b897e7e9db98d642767ccd6f1ed30e271b041fc840a",
       "src/case_intelligence/static/demo-audio.wav": "4d24de1f7f3d8417b80dc7d92b9f0a919a0bc304719cfaa7a330588d2cb0f2fd"
     },
-    "content_fingerprint": "d1988451a3aba6929634638b3d3c09acee3d46b46727fad4f2949a44c1c2a746"
+    "content_fingerprint": "e7b75ab94e4d655b68d83ea1b120cae7bc37726c1ccd1d222c7fdd88cabc35e9"
   }
 }

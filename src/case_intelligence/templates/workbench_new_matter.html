@@ -26,14 +26,7 @@
       <label for="matter-descriptor">Description <span>(optional)</span></label>
       <input id="matter-descriptor" name="descriptor" type="text" maxlength="240" placeholder="Training dataset · Review exercise">
 
-      <label for="matter-retention">Temporary review period</label>
-      <select id="matter-retention" name="retention_days" required>
-        <option value="7">7 days</option>
-        <option value="30" selected>30 days</option>
-        <option value="60">60 days</option>
-        <option value="90">90 days</option>
-      </select>
-      <p class="field-help">The owner can extend this later. Automatic deletion begins after a seven-day export grace period.</p>
+      <p class="field-help"><strong>Ongoing until explicitly closed.</strong> The owner will see a check-in after 90 days. An overdue check-in never deletes the matter.</p>
 
       <div class="form-actions">
         <button class="button button-primary" type="submit">Create matter</button>

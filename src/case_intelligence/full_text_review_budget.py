@@ -143,7 +143,7 @@ def backfill_legacy_ledgers(workspace):
     db = workspace.connection
     with db:
         db.execute("BEGIN IMMEDIATE")
-        rows = db.execute("SELECT t.run_id FROM workbench_text_review t LEFT JOIN workbench_text_review_budget b USING(run_id) WHERE b.run_id IS NULL").fetchall()
+        rows = db.execute("SELECT t.run_id FROM workbench_text_review t LEFT JOIN workbench_text_review_budget b USING(run_id) WHERE b.run_id IS NULL AND t.run_id IN (SELECT run_id FROM workbench_review_run WHERE matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active'))").fetchall()
         for row in rows:
             run_id = row[0]
             # Strip only duplicated source text. Preserve each stored locator,

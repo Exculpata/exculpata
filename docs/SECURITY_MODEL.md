@@ -30,23 +30,31 @@ passages** evaluates retrieved passages within each frozen source. **Review all
 extracted text** records every available text range and preserves extraction and
 analysis gaps; neither establishes recognition of every relevant fact.
 
-Manual **Close matter** is a deliberate application action: either the matter
-owner or an authenticated Exculpata administrator may request permanent
-deletion. Cross-owner administrator action is labelled explicitly and is
-attributed to that administrator. The close workflow keeps a final export
-available, refuses active work, requires exact-name and permanent-deletion
-confirmation, preserves originals outside managed matter storage, removes the
-complete workbench projection, and retains only content-minimized audit and
-closure records.
+[Matter closure](CASE_LIFECYCLE.md) is an explicit owner or authenticated
+administrator action. New matters remain ongoing with a 90-day in-app check-in;
+legacy dates are preserved for review but never authorize deletion. Ordinary
+members cannot close, cancel, certify an archive or confirm deletion.
 
-Scheduled retention can delete a matter without another confirmation. New
-matters default to 30 days of review followed by seven days of export grace;
-enabled maintenance can then claim deletion when no work is active. Its first
-pass runs at application startup. Restored backups retain their original
-deadlines and may already be due, so hold maintenance in the isolated target
-before starting it and follow [expired-matter recovery](EXPIRED_MATTER_RECOVERY.md).
-Owners and administrators can extend active matters. Matters without a stored
-schedule remain unscheduled.
+Beginning closure freezes source/content writes and starts a minimum seven-day
+cancellation window. The full archive must include retained originals and saved
+work, pass inventory and byte-integrity verification, and be acknowledged as
+downloaded and checked. Final confirmation is single-use, expires after ten
+minutes, and binds the current actor, live session, exact matter name, closure,
+archive and snapshot digest. Authority, active work and actual content are
+rechecked before destructive admission. Cancellation invalidates these bindings.
+Fresh persisted authorization is checked before filesystem cleanup. A restored
+receipt without its archive cannot authorize a first purge. Explicit retries
+continue only an already-confirmed purge identity. Legacy interrupted purges
+without a full-export receipt require operator recovery.
+
+Cross-owner administrator action is labelled and attributed. Export privacy
+projections omit authentication, global identities, runtime requests and host
+paths, with matter-local attribution. Source opening during closure does not
+repair, reconcile or delete stored files. Database guards reject late content
+writes and old writers. Final purge leaves minimal audit/closure records and
+preserves originals outside managed storage. Maintenance never initiates or
+retries deletion. See the migration and stopped-backup requirements before
+upgrading or restoring; no legal retention or physical-erasure guarantee is made.
 
 Report vulnerabilities privately under [SECURITY.md](../SECURITY.md). Do not
 attach case files, transcripts, credentials, or internal topology to a report.

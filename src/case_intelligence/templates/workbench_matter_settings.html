@@ -39,27 +39,16 @@
     </section>
     {% endif %}
     <section class="matter-settings-card" aria-labelledby="lifecycle-settings-heading">
-      <p class="eyebrow">Temporary lifecycle</p>
-      <h2 id="lifecycle-settings-heading">Review period</h2>
-      <strong>{{ retention.label }}</strong>
-      <p>{{ retention.detail }}</p>
-      {% if membership and membership.role == 'owner' %}
-      <details class="retention-editor settings-retention-editor">
-        <summary>{{ 'Set review end date' if retention.status == 'unscheduled' else 'Change review end date' }}</summary>
-        <form method="post" action="/matters/{{ matter.slug }}/retention" data-working-form data-working-label="Saving…">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="next" value="{{ current_path }}">
-          <label for="settings-retention-date">Review end date</label>
-          <input id="settings-retention-date" name="expires_on" type="date" min="{{ retention.minimum_date }}" max="{{ retention.maximum_date }}" value="{{ retention.expires_on }}" required>
-          <small>Automatic deletion begins after the seven-day export grace period.</small>
-          <button class="button button-primary" type="submit">Save review end date</button>
-        </form>
-      </details>
-      {% elif is_administrator %}
-      <a href="/admin#lifecycle-attention">Manage review dates in Administration</a>
-      {% else %}
-      <p>Ask the matter owner to change the review period.</p>
-      {% endif %}
+      <p class="eyebrow">Matter lifecycle</p>
+      <h2 id="lifecycle-settings-heading">Ongoing workspace</h2>
+      <strong>{{ retention.label }}</strong><p>{{ retention.detail }}</p>
+      {% if retention.legacy_expires_at %}<p>Previous review date: {{ retention.legacy_expires_at[:10] }}. Previous deletion date: {{ retention.legacy_purge_after[:10] }}. These dates are preserved for reference and do not authorize deletion.</p>{% endif %}
+      {% if (membership and membership.role == 'owner') or is_administrator %}
+      <form method="post" action="/matters/{{ matter.slug }}/check-in" data-working-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="button button-secondary" type="submit">Keep ongoing · check in after 90 days</button>
+      </form>
+      {% else %}<p>Ask the matter owner to review this check-in.</p>{% endif %}
     </section>
 
     <section class="matter-settings-card" aria-labelledby="access-settings-heading">
@@ -71,10 +60,10 @@
     </section>
 
     <section class="matter-settings-card" aria-labelledby="export-settings-heading">
-      <p class="eyebrow">Before closing</p>
+      <p class="eyebrow">Work product</p>
       <h2 id="export-settings-heading">Keep the work product you need</h2>
-      <p>The portable bundle includes saved review work and citations. Original source files are not included.</p>
-      <a class="button button-secondary" href="/matters/{{ matter.slug }}/export" data-download>Download final bundle</a>
+      <p>The work-product bundle includes saved review work and citations. It excludes original source files and does not satisfy the full export requirement for deletion. Begin closure to prepare the full preservation archive.</p>
+      <a class="button button-secondary" href="/matters/{{ matter.slug }}/export" data-download>Download work-product bundle</a>
     </section>
   </div>
   <div class="notice notice-neutral download-status" data-download-status role="status" aria-live="polite" hidden></div>
@@ -83,7 +72,7 @@
     <div>
       <p class="eyebrow">Permanent action</p>
       <h2 id="matter-danger-heading">Close matter</h2>
-      <p>Closing permanently removes this workbench matter after an exact-name confirmation. Active work must finish first, and originals outside Exculpata remain untouched.</p>
+      <p>Begin closure after active work finishes. Permanent deletion requires a verified full export, a seven-day cancellation window and fresh exact-name confirmation. Originals outside Exculpata remain untouched.</p>
     </div>
     {% if can_close_matter %}
     <a class="button button-danger" href="/matters/{{ matter.slug }}/close">Close matter</a>

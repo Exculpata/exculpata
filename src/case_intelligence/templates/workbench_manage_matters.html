@@ -9,7 +9,7 @@
     <div>
       <p class="eyebrow">Workspace lifecycle</p>
       <h1>Manage matters</h1>
-      <p>Open a matter, review its temporary retention period, export work product, or reach its settings.</p>
+      <p>Open a matter, review its check-in, export work product, or reach its settings.</p>
     </div>
     <a class="button button-primary" href="/matters/new">Create matter</a>
   </header>
@@ -17,9 +17,9 @@
   {% if closure_recoveries %}
   <section class="managed-matter-list" aria-labelledby="closure-recovery-heading">
     <div class="managed-matter-copy">
-      <p class="eyebrow">Deletion recovery</p>
-      <h2 id="closure-recovery-heading">Deletion needs attention</h2>
-      <p>These matters remain closed to ordinary review. Preserve any remaining work product, then retry permanent deletion.</p>
+      <p class="eyebrow">Closure status</p>
+      <h2 id="closure-recovery-heading">Closing matters</h2>
+      <p>These matters remain closed to ordinary review. Owners and administrators can review the export, cancel a pending closure, or inspect recovery status.</p>
     </div>
     {% for row in closure_recoveries %}
     <article class="managed-matter-row">
@@ -29,12 +29,11 @@
         <small>Owner: {{ row.owner_name }}</small>
       </div>
       <div class="managed-matter-lifecycle">
-        <strong>Previous deletion did not finish</strong>
+        <strong>{{ 'Closure pending' if row.state == 'closing' else 'Previous deletion did not finish' }}</strong>
         <span>Ordinary review remains closed.</span>
       </div>
       <div class="managed-matter-actions">
-        <a class="button button-secondary" href="/matters/{{ row.matter.slug }}/export" data-download>Download final bundle</a>
-        <a class="managed-close-link" href="/matters/{{ row.matter.slug }}/close">Review and retry deletion</a>
+        {% if row.can_close %}<a class="button button-secondary" href="/matters/{{ row.matter.slug }}/close">Review closure</a>{% else %}<span>Ask the matter owner to review closure.</span>{% endif %}
       </div>
     </article>
     {% endfor %}
@@ -48,7 +47,7 @@
       <div class="managed-matter-copy">
         <span class="managed-matter-authority{% if row.authority_label == 'Administrator oversight' %} administrator{% endif %}">{{ row.authority_label }}</span>
         <h2><a href="/matters/{{ row.matter.slug }}/home">{{ row.matter.display_name }}</a></h2>
-        <p>{{ row.matter.descriptor or 'Temporary review workspace' }}</p>
+        <p>{{ row.matter.descriptor or 'Ongoing review workspace' }}</p>
         <small>Owner: {{ row.owner_name }}</small>
       </div>
       <div class="managed-matter-lifecycle">
@@ -66,7 +65,7 @@
   {% else %}
   <section class="managed-matter-empty">
     <h2>No active matters</h2>
-    <p>Create a temporary review workspace when you are ready to add sources.</p>
+    <p>Create an ongoing review workspace when you are ready to add sources.</p>
     <a class="button button-primary" href="/matters/new">Create your first matter</a>
   </section>
   {% endif %}

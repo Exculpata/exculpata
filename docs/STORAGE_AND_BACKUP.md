@@ -148,11 +148,14 @@ an additional recovery acceptance step. Inspect the receipt, then remove the
 exact drill directory yourself; it contains decrypted confidential state.
 Never declare backup ready from a successful upload alone.
 
-Restored matter deadlines keep their original dates. Before starting a restored
-application, follow [expired-matter recovery](EXPIRED_MATTER_RECOVERY.md): hold
-maintenance in the isolated target's effective environment, inspect while held,
-and decide each due matter's disposition before activation. Enabled maintenance
-runs immediately on startup; its interval is not an inspection grace period.
+Restored legacy dates retain their original values. With migration 0040 they are
+review metadata and cannot trigger purge. Follow [current lifecycle recovery](CASE_LIFECYCLE.md)
+for frozen exits, retained archive bytes and explicit confirmation. Stop old
+workers before upgrading; rollback uses a clean restore with matching old code.
+[Expired-matter recovery](EXPIRED_MATTER_RECOVERY.md) describes the previous
+pre-0040 policy and remains relevant only when inspecting those older versions.
+Include the private `preservation-exports` tree in complete managed-storage
+backups; a receipt without the archive cannot authorize a first deletion.
 
 ## Synthetic consistency verification
 

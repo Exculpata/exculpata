@@ -9,6 +9,7 @@ import sqlite3
 import threading
 import zipfile
 from datetime import timedelta
+from importlib import resources
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,7 +26,7 @@ from tests.test_matter_notebook import WEB_ACTOR
 
 @pytest.fixture(autouse=True)
 def held_maintenance(monkeypatch):
-    # A recovered due schedule must be inspected before the first maintenance run.
+    # Tests activate maintenance separately to verify that no old deadline deletes.
     monkeypatch.setenv("CASE_INTELLIGENCE_MAINTENANCE_ENABLED", "0")
 
 
@@ -58,13 +59,43 @@ def _assert_sqlite_integrity(runtime, *, source_registry_present=True):
             assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
+def _make_pre_lifecycle_fixture(path):
+    """Construct a synthetic pre-0040 snapshot, never a production downgrade."""
+    legacy = resources.files('case_intelligence').joinpath(
+        'migrations/sqlite/0007_matter_lifecycle.sql').read_text()
+    schema = legacy[legacy.index('CREATE TABLE'):legacy.index(';', legacy.index('CREATE TABLE')) + 1]
+    schema = schema.replace('workbench_matter_lifecycle', 'generated_legacy_lifecycle')
+    with sqlite3.connect(path) as connection:
+        assert not connection.execute('SELECT 1 FROM workbench_case_exit').fetchone()
+        assert not connection.execute("SELECT 1 FROM workbench_matter_lifecycle WHERE state<>'active'").fetchone()
+        connection.execute('BEGIN IMMEDIATE')
+        cleanup = connection.execute("SELECT sql FROM sqlite_master WHERE name='workbench_deleted_matter_media_cleanup'").fetchone()[0]
+        for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'case_fence_*'").fetchall():
+            connection.execute(f'DROP TRIGGER "{name}"')
+        for table in ('workbench_case_confirmation', 'workbench_case_exit', 'workbench_case_policy'):
+            connection.execute(f'DROP TABLE {table}')
+        connection.execute(schema)
+        connection.execute('INSERT INTO generated_legacy_lifecycle SELECT * FROM workbench_matter_lifecycle')
+        connection.execute('DROP TABLE workbench_matter_lifecycle')
+        connection.execute('PRAGMA legacy_alter_table=ON')
+        connection.execute('ALTER TABLE generated_legacy_lifecycle RENAME TO workbench_matter_lifecycle')
+        connection.execute('PRAGMA legacy_alter_table=OFF')
+        connection.execute('CREATE INDEX workbench_matter_lifecycle_state_idx ON workbench_matter_lifecycle(state,updated_at DESC)')
+        connection.execute(cleanup)
+
+
 @pytest.fixture
 def stopped_recovery_snapshot(case, tmp_path):
     bench, matter = case["bench"], case["matter"]
     created = bench.workspace.current_time()
-    original_retention = bench.workspace.set_matter_retention(
-        matter.matter_id, WEB_ACTOR, created + timedelta(days=30)
-    )
+    # Synthetic old-policy metadata, retained verbatim through the upgrade.
+    with bench.workspace.connection:
+        bench.workspace.connection.execute(
+            'INSERT INTO workbench_matter_retention VALUES (?,?,?,?,?,?)',
+            (matter.matter_id, bench.workspace._timestamp(created + timedelta(days=30)),
+             bench.workspace._timestamp(created + timedelta(days=37)), WEB_ACTOR,
+             bench.workspace._timestamp(created), bench.workspace._timestamp(created)))
+    original_retention = bench.workspace.matter_retention(matter.matter_id)
     assert submit(case).status_code == 202
     job, result, _ = execute(case)
     assert result.verified_answer.answerable
@@ -86,6 +117,7 @@ def stopped_recovery_snapshot(case, tmp_path):
     external_bytes = source_store.source_path(next(iter(sources))).read_bytes()
     external_original.write_bytes(external_bytes)
     bench.close()
+    _make_pre_lifecycle_fixture(runtime / "workbench.sqlite")
     backup, restored = tmp_path / "stopped-backup", tmp_path / "isolated-restore"
     original_files = _tree_digests(runtime)
     shutil.copytree(runtime, backup)
@@ -121,9 +153,9 @@ def _assert_snapshot_and_external_original_unchanged(snapshot):
     assert snapshot["external_original"].read_bytes() == snapshot["external_bytes"]
 
 
-@pytest.mark.parametrize("extend_before_activation", [False, True], ids=["due-is-purged", "renewed-is-preserved"])
+@pytest.mark.parametrize("extend_before_activation", [False, True], ids=["legacy-paused", "explicit-check-in"])
 def test_expired_complete_restore_is_inspected_before_maintenance(stopped_recovery_snapshot, monkeypatch, extend_before_activation):
-    """Restore does not reset expiry; renewal is a separate owner decision."""
+    """Restore pauses old deadlines; an explicit check-in selects ongoing use."""
     snapshot = stopped_recovery_snapshot
     matter, job = snapshot["matter"], snapshot["job"]
     receipt, selection, sources = snapshot["receipt"], snapshot["selection"], snapshot["sources"]
@@ -136,7 +168,8 @@ def test_expired_complete_restore_is_inspected_before_maintenance(stopped_recove
         assert client.get("/health").json()["maintenance"]["enabled"] is False
         assert recovered.maintenance is None
         assert recovered.workspace.matter_retention(matter.matter_id) == snapshot["original_retention"]
-        assert recovered.retention_projection(matter)["status"] == "due"
+        assert recovered.retention_projection(matter)["status"] == "review_required"
+        assert recovered.workspace.case_lifecycle.policy(matter.matter_id).mode == "legacy_review"
         assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "active"
         assert _sources(recovered, matter) == sources
 
@@ -160,16 +193,12 @@ def test_expired_complete_restore_is_inspected_before_maintenance(stopped_recove
             assert exported_receipt["attempts"] == receipt["attempts"]
 
         if extend_before_activation:
-            expires_on = (recovery_now + timedelta(days=30)).date().isoformat()
-            response = client.post(
-                f"/matters/{matter.slug}/retention",
-                data={"expires_on": expires_on}, follow_redirects=False,
-            )
+            response = client.post(f"/matters/{matter.slug}/check-in", follow_redirects=False)
             assert response.status_code == 303 and "error=" not in response.headers["location"]
-            renewed = recovered.workspace.matter_retention(matter.matter_id)
-            assert renewed.scheduled_by == WEB_ACTOR
-            assert renewed != snapshot["original_retention"]
-            assert recovered.retention_projection(matter)["expires_on"] == expires_on
+            ongoing = recovered.workspace.case_lifecycle.policy(matter.matter_id)
+            assert ongoing.mode == "ongoing" and ongoing.selected_by == WEB_ACTOR
+            assert ongoing.next_check_in_at == recovered.workspace._timestamp(recovery_now + timedelta(days=90))
+        assert recovered.workspace.matter_retention(matter.matter_id) == snapshot["original_retention"]
 
         # Activate the production coordinator explicitly only after inspection.
         # Its first pass runs immediately, even with a fifteen-minute interval.
@@ -188,32 +217,23 @@ def test_expired_complete_restore_is_inspected_before_maintenance(stopped_recove
         recovered.maintenance.close()
         assert outcome == {
             "uploads_cleaned": 0,
-            "matters_purged": 0 if extend_before_activation else 1,
+            "matters_purged": 0,
             "matters_deferred": 0,
         }
-        if extend_before_activation:
-            assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "active"
-            assert _sources(recovered, matter) == sources
-            assert recovered_selection.repository.export(matter.matter_id) == selection
-            assert AnswerContextRepository(recovered.workspace).receipt(matter.matter_id, job.job_id) == receipt
-            assert client.get(f"/matters/{matter.slug}/export").status_code == 200
-        else:
-            assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
-            assert not (restored / snapshot["source_root"]).exists()
-            for table in (
-                "workbench_context_selection", "workbench_context_entry",
-                "workbench_answer_context", "workbench_answer_context_attempt",
-            ):
-                assert recovered.workspace.connection.execute("SELECT count(*) FROM " + table).fetchone()[0] == 0
-            assert client.get(f"/matters/{matter.slug}/answer-jobs/{job.job_id}/context?format=json").status_code == 404
-        _assert_sqlite_integrity(restored, source_registry_present=extend_before_activation)
+        assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "active"
+        assert _sources(recovered, matter) == sources
+        assert recovered_selection.repository.export(matter.matter_id) == selection
+        assert AnswerContextRepository(recovered.workspace).receipt(matter.matter_id, job.job_id) == receipt
+        assert client.get(f"/matters/{matter.slug}/export").status_code == 200
+        assert recovered.workspace.matter_retention(matter.matter_id) == snapshot["original_retention"]
+        _assert_sqlite_integrity(restored)
 
     # Maintenance and the separate owner decision never modify the held backup.
     _assert_snapshot_and_external_original_unchanged(snapshot)
 
 
-def test_enabled_startup_immediately_purges_expired_complete_restore(stopped_recovery_snapshot, monkeypatch):
-    """The configured interval is not an inspection window after app startup."""
+def test_enabled_startup_preserves_expired_complete_restore(stopped_recovery_snapshot, monkeypatch):
+    """Upgrade precedes immediate startup maintenance, so old dates cannot delete."""
     snapshot = stopped_recovery_snapshot
     matter, job = snapshot["matter"], snapshot["job"]
     _set_clock_before_startup(monkeypatch, snapshot["recovery_now"])
@@ -237,18 +257,18 @@ def test_enabled_startup_immediately_purges_expired_complete_restore(stopped_rec
         assert recovered.maintenance is not None
         assert completed.wait(10), "Enabled startup did not run maintenance immediately."
         recovered.maintenance.close()
-        assert observed["due_at_startup"] == (snapshot["original_retention"],)
+        assert observed["due_at_startup"] == ()
         assert observed["result"] == {
-            "uploads_cleaned": 0, "matters_purged": 1, "matters_deferred": 0,
+            "uploads_cleaned": 0, "matters_purged": 0, "matters_deferred": 0,
         }
         assert client.get("/health").json()["maintenance"]["enabled"] is True
-        assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
-        assert not (snapshot["restored"] / snapshot["source_root"]).exists()
-        for table in (
-            "workbench_context_selection", "workbench_context_entry",
-            "workbench_answer_context", "workbench_answer_context_attempt",
-        ):
-            assert recovered.workspace.connection.execute("SELECT count(*) FROM " + table).fetchone()[0] == 0
-        assert client.get(f"/matters/{matter.slug}/answer-jobs/{job.job_id}/context?format=json").status_code == 404
-        _assert_sqlite_integrity(snapshot["restored"], source_registry_present=False)
+        assert recovered.workspace.matter_lifecycle(matter.matter_id).state == "active"
+        assert recovered.workspace.case_lifecycle.policy(matter.matter_id).mode == "legacy_review"
+        assert recovered.workspace.matter_retention(matter.matter_id) == snapshot["original_retention"]
+        assert _sources(recovered, matter) == snapshot["sources"]
+        assert AnswerContextRepository(recovered.workspace).receipt(matter.matter_id, job.job_id) == snapshot["receipt"]
+        assert MatterContextService(recovered.assertion_service(matter)).repository.export(matter.matter_id) == snapshot["selection"]
+        assert client.get(f"/matters/{matter.slug}/answer-jobs/{job.job_id}/context?format=json").status_code == 200
+        assert client.get(f"/matters/{matter.slug}/export").status_code == 200
+        _assert_sqlite_integrity(snapshot["restored"])
     _assert_snapshot_and_external_original_unchanged(snapshot)

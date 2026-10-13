@@ -26,7 +26,7 @@
   ["assertion_repository", "(self, *, export_read=False, administrator_override=False)"],
   ["audit_events", "(self, matter_id: 'str | None' = None) -> 'tuple[AuditEventRecord, ...]'"],
   ["begin_due_matter_purge", "(self, matter_id: 'str', *, source_count: 'int') -> 'tuple[MatterRecord, MatterLifecycleRecord] | None'"],
-  ["begin_matter_purge", "(self, slug: 'str', actor_id: 'str', confirmed_name: 'str', *, source_count: 'int', administrator_override: 'bool' = False) -> 'tuple[MatterRecord, MatterLifecycleRecord]'"],
+  ["begin_matter_purge", "(self, slug: 'str', actor_id: 'str', confirmed_name: 'str', *, source_count: 'int', administrator_override: 'bool' = False, token: 'str | None' = None, session_id: 'str | None' = None, export_id: 'str | None' = None, export_acknowledged: 'bool' = False, current_snapshot_digest: 'str | None' = None) -> 'tuple[MatterRecord, MatterLifecycleRecord]'"],
   ["cancel_answer_job", "(self, matter_id: 'str', actor_id: 'str', job_id: 'str') -> 'AnswerJobRecord'"],
   ["cancel_document_ingest_job", "(self, matter_id: 'str', document_id: 'str') -> 'None'"],
   ["cancel_ingest_plan", "(self, matter_id: 'str', plan_id: 'str') -> 'None'"],

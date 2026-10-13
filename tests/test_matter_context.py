@@ -5,6 +5,8 @@ import sqlite3
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.matter_context import ContextConflict, MatterContextService
 from case_intelligence.matter_context_repository import ContextLimit
 from case_intelligence.workspace_store import WorkspaceStore
@@ -175,7 +177,7 @@ def test_migration_backup_clean_restore_restart_export_and_purge(case, tmp_path)
         assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
         restored.close()
     restored = WorkspaceStore(restore)
-    _, lifecycle = restored.begin_matter_purge(matter.slug, ACTOR, matter.display_name, source_count=0)
+    _, lifecycle = claim_synthetic_exit(restored, matter, ACTOR)
     restored.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
     for table in ('workbench_context_selection','workbench_context_entry'):
         assert restored.connection.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0] == 0

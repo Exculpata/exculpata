@@ -6,6 +6,8 @@ import threading
 
 import pytest
 
+from tests.case_lifecycle_helpers import claim_synthetic_exit
+
 from case_intelligence.intake_receipts import IntakeReceipts
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 
@@ -143,7 +145,7 @@ def test_receipt_authority_is_rechecked_for_reads_and_mutations(tmp_path, kind):
             with w.connection:
                 w.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (OWNER,))
         elif kind == 'closing':
-            w.begin_matter_purge(m.slug, OWNER, m.display_name, source_count=0)
+            w.case_lifecycle.begin_exit(m.slug, OWNER)
         with pytest.raises(KeyError):
             receipts.append(target, actor, receipt['receipt_id'], start=0, files=[descriptor('one.txt')],
                 reviewed_states=['valid'], document_limit=1024, media_limit=2048, malware_scan_mode='off', scanner_ready=True)
@@ -209,7 +211,7 @@ def test_incomplete_receipt_export_is_truthful_and_owner_purge_removes_inventory
         assert exported[0]['selected_count'] == 3 and exported[0]['recorded_count'] == 1
         assert exported[0]['state'] == 'recording' and exported[0]['counts']['unrecorded'] == 2
         assert 'Generated/opaque.bin' in json.dumps(exported)
-        _, purge = w.begin_matter_purge(m.slug, OWNER, m.display_name, source_count=0)
+        _, purge = claim_synthetic_exit(w, m, OWNER)
         w.complete_matter_purge(m.matter_id, purge.purge_id)
         for table in ['workbench_intake_receipt', 'workbench_intake_item', 'workbench_intake_transfer']:
             assert w.connection.execute(f'SELECT count(*) FROM {table} WHERE matter_id=?', (m.matter_id,)).fetchone()[0] == 0

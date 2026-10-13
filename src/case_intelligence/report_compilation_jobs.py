@@ -159,14 +159,16 @@ class ReportCompilationJobs:
             return _record(connection.execute("SELECT * FROM workbench_report_compilation_job WHERE job_id=?", (identifier,)).fetchone()), True
 
     def _admit(self, connection, actor_id):
-        count = connection.execute("SELECT COUNT(*),SUM(CASE WHEN actor_id=? THEN 1 ELSE 0 END) FROM workbench_report_compilation_job WHERE state IN ('queued','running')", (actor_id,)).fetchone()
+        # Frozen legacy jobs are preserved for recovery/export, not runnable load.
+        count = connection.execute("SELECT COUNT(*),SUM(CASE WHEN actor_id=? THEN 1 ELSE 0 END) FROM workbench_report_compilation_job WHERE state IN ('queued','running') AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active')", (actor_id,)).fetchone()
         if count[0] >= self.policy.pending_limit or (count[1] or 0) >= self.policy.actor_active_limit:
             raise CompilationProblem("The compilation queue is full. Wait for an active report to finish.")
 
     def _recover(self, connection, now):
-        expired = connection.execute("UPDATE workbench_report_compilation_job SET state=CASE WHEN cancellation_requested=1 THEN 'cancelled' WHEN attempts>=? THEN 'failed' ELSE 'queued' END, message=CASE WHEN cancellation_requested=1 THEN 'Compilation cancelled.' WHEN attempts>=? THEN 'Compilation stopped after repeated worker interruptions. Retry when the service is ready.' ELSE 'Interrupted compilation queued for retry.' END,worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,input_fingerprint='',updated_at=?,finished_at=CASE WHEN cancellation_requested=1 OR attempts>=? THEN ? ELSE NULL END WHERE state='running' AND lease_expires_at<=? RETURNING job_id,matter_id,actor_id,state",
+        # Recovery must not mutate frozen snapshots or let one block active work.
+        expired = connection.execute("UPDATE workbench_report_compilation_job SET state=CASE WHEN cancellation_requested=1 THEN 'cancelled' WHEN attempts>=? THEN 'failed' ELSE 'queued' END, message=CASE WHEN cancellation_requested=1 THEN 'Compilation cancelled.' WHEN attempts>=? THEN 'Compilation stopped after repeated worker interruptions. Retry when the service is ready.' ELSE 'Interrupted compilation queued for retry.' END,worker_id=NULL,lease_token=NULL,lease_expires_at=NULL,input_fingerprint='',updated_at=?,finished_at=CASE WHEN cancellation_requested=1 OR attempts>=? THEN ? ELSE NULL END WHERE state='running' AND lease_expires_at<=? AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') RETURNING job_id,matter_id,actor_id,state",
                            (self.policy.maximum_attempts, self.policy.maximum_attempts, now, self.policy.maximum_attempts, now, now)).fetchall()
-        revoked = connection.execute("UPDATE workbench_report_compilation_job SET state='failed',message='Matter access is no longer active.',lease_token=NULL,worker_id=NULL,lease_expires_at=NULL,updated_at=?,finished_at=? WHERE state IN ('queued','running') AND NOT EXISTS (SELECT 1 FROM workbench_effective_membership m JOIN workbench_principal p ON p.principal_id=m.principal_id JOIN workbench_matter_lifecycle l ON l.matter_id=m.matter_id WHERE m.matter_id=workbench_report_compilation_job.matter_id AND m.principal_id=workbench_report_compilation_job.actor_id AND m.state='active' AND p.active=1 AND l.state='active') RETURNING job_id,matter_id,actor_id,state", (now, now)).fetchall()
+        revoked = connection.execute("UPDATE workbench_report_compilation_job SET state='failed',message='Matter access is no longer active.',lease_token=NULL,worker_id=NULL,lease_expires_at=NULL,updated_at=?,finished_at=? WHERE state IN ('queued','running') AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') AND NOT EXISTS (SELECT 1 FROM workbench_effective_membership m JOIN workbench_principal p ON p.principal_id=m.principal_id JOIN workbench_matter_lifecycle l ON l.matter_id=m.matter_id WHERE m.matter_id=workbench_report_compilation_job.matter_id AND m.principal_id=workbench_report_compilation_job.actor_id AND m.state='active' AND p.active=1 AND l.state='active') RETURNING job_id,matter_id,actor_id,state", (now, now)).fetchall()
         # RETURNING captures only transitions made by this recovery transaction.
         # Terminal rows cannot be selected again on a later scan. A job that was
         # requeued and then lost access contributes only its terminal transition.
@@ -187,7 +189,7 @@ class ReportCompilationJobs:
         now = self.clock()
         with self._transaction() as connection:
             self._recover(connection, now)
-            row = connection.execute("SELECT * FROM workbench_report_compilation_job WHERE state='queued' ORDER BY created_at,job_id LIMIT 1").fetchone()
+            row = connection.execute("SELECT * FROM workbench_report_compilation_job WHERE state='queued' AND matter_id IN (SELECT matter_id FROM workbench_matter_lifecycle WHERE state='active') ORDER BY created_at,job_id LIMIT 1").fetchone()
             if row is None:
                 return None
             token = uuid.uuid4().hex
@@ -212,6 +214,7 @@ class ReportCompilationJobs:
                                      timeout=min(5.0, self.policy.lease_seconds / 3))) as connection, connection:
             connection.create_function("recordbench_principal_enabled", 2,
                                        lambda provider, subject: int(self.workspace.principal_enabled(provider, subject)))
+            connection.create_function("recordbench_case_content_cleanup", 1, lambda matter_id: 0)
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             try:

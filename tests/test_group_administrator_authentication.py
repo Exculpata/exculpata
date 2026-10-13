@@ -202,7 +202,7 @@ def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
         assert "Synthetic administrator boundary" in console.text
         assert "Case Owner" in console.text
         admin_csrf = _csrf(console.text)
-        assert "Temporary workspace lifecycle" in console.text
+        assert "Workspace lifecycle" in console.text
         assert "Disaster recovery" in console.text
         assert "Local AI portfolio" in console.text
         assert "Focused answer" in console.text
@@ -218,10 +218,9 @@ def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
         assert "suite fingerprint" not in console.text
         assert "/generated/not-rendered" not in console.text
 
-        expiry = (datetime.now(timezone.utc) + timedelta(days=45)).date().isoformat()
         rescheduled = client.post(
-            f"/admin/matters/{slug}/retention",
-            data={"csrf_token": admin_csrf, "expires_on": expiry},
+            f"/matters/{slug}/check-in",
+            data={"csrf_token": admin_csrf},
             headers=_headers(ADMIN),
             follow_redirects=False,
         )
@@ -279,9 +278,10 @@ def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
             headers=_headers(ADMIN),
         )
         assert close_page.status_code == 200
-        assert "Administrator deletion" in close_page.text
-        assert "using administrator authority" in close_page.text
-        assert "Download final bundle" in close_page.text
+        assert "Administrator action" in close_page.text
+        assert "Actions here will be attributed to your account" in close_page.text
+        assert "Begin closure" in close_page.text
+        assert "minimum seven-day cancellation window" in close_page.text
 
         audit = app.state.workbench.workspace.connection.execute(
             "SELECT action,outcome,details_json FROM workbench_audit_event "
