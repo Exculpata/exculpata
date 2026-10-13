@@ -106,9 +106,8 @@ def require_current_session_authority(workspace, actor_id, session_id, administr
         if (settings is None or principal.provider != settings.provider_key
                 or session.auth_method != 'oidc'):
             raise WorkspaceProblem('Sign in again with the current identity provider.')
-        if administrator_override:
-            raise WorkspaceProblem(
-                'Current organization administrator authority cannot be verified for matter closure.')
+        # Deletion additionally requires case_oidc's fresh operation grant.
+        # Non-destructive checks retain the documented provider-session contract.
         return
 
     raise WorkspaceProblem('Current identity-provider authority is unavailable.')

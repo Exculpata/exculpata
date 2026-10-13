@@ -145,3 +145,42 @@ def test_lifecycle_times_keep_utc_fallback_and_expose_full_instant_for_viewer_zo
     response = client.get(f'/matters/{matter.slug}/reports')
     assert response.status_code == 200
     assert 'Matter retention: set a review end date' not in response.text
+
+
+@pytest.mark.parametrize('actor', ['owner', 'administrator', 'member'])
+def test_unscheduled_invitation_changes_nothing_until_owner_or_admin_opts_in(notice_case, actor):
+    client, bench, matter, _, clock = notice_case
+    workspace = bench.workspace
+    with workspace._lock, workspace.connection:
+        workspace.connection.execute("UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL WHERE matter_id=?", (matter.matter_id,))
+    before = workspace.case_lifecycle.policy(matter.matter_id)
+    if actor == 'administrator':
+        identity = client.app.state.identity
+        ctx, token = identity._issue_session(workspace.get_principal(ADMIN), 'preview', frozenset({'administrator'}))
+        client.cookies.clear()
+        client.cookies.set(SESSION_COOKIE, token)
+        csrf = ctx.csrf_token
+    elif actor == 'member':
+        workspace.add_member(matter.matter_id, MEMBER, OWNER)
+        csrf = login(client, 'jordan-lee')
+    else:
+        csrf = login(client)
+    for path in ('/matters/manage', f'/matters/{matter.slug}/settings'):
+        page = client.get(path)
+        assert page.status_code == 200
+        assert ('data-check-in-invitation' in page.text) == (actor != 'member')
+        assert workspace.case_lifecycle.policy(matter.matter_id) == before
+    assert workspace.due_matter_retentions() == ()
+    denied = client.post(f'/matters/{matter.slug}/check-in', data={}, follow_redirects=False)
+    assert denied.status_code == 403
+    assert workspace.case_lifecycle.policy(matter.matter_id) == before
+    response = post(client, matter, 'check-in', csrf)
+    if actor == 'member':
+        assert response.status_code == 404
+        assert workspace.case_lifecycle.policy(matter.matter_id) == before
+    else:
+        assert response.status_code == 303
+        after = workspace.case_lifecycle.policy(matter.matter_id)
+        assert after.mode == 'ongoing' and after.next_check_in_at == workspace._timestamp(clock[0]+timedelta(days=90))
+        assert 'data-check-in-invitation' not in client.get(f'/matters/{matter.slug}/settings').text
+        assert workspace.matter_lifecycle(matter.matter_id).state == 'active'

@@ -401,7 +401,7 @@ def test_preview_synthetic_admin_is_explicitly_scoped_to_preview_provider(tmp_pa
         store.close()
 
 
-def test_oidc_owner_is_allowed_but_admin_needs_current_provider_authority(tmp_path):
+def test_oidc_session_role_allows_nondestructive_actions_but_deletion_needs_operation_grant(tmp_path):
     runtime = tmp_path / 'runtime'
     runtime.mkdir()
     store = WorkspaceStore(runtime / 'synthetic.sqlite')
@@ -414,7 +414,11 @@ def test_oidc_owner_is_allowed_but_admin_needs_current_provider_authority(tmp_pa
         principal = store.upsert_principal(settings.provider_key, 'synthetic-owner', 'Synthetic Owner', 'owner')
         context, _ = identity._issue_session(principal, 'oidc', frozenset({'administrator'}))
         require_current_session_authority(store, principal.principal_id, context.session.session_id, False)
-        with pytest.raises(WorkspaceProblem, match='cannot be verified'):
-            require_current_session_authority(store, principal.principal_id, context.session.session_id, True)
+        require_current_session_authority(store, principal.principal_id, context.session.session_id, True)
+        owner = store.upsert_principal(settings.provider_key, 'synthetic-other', 'Synthetic Other', 'other')
+        matter = store.create_matter('Synthetic OIDC target', '', owner.principal_id)
+        with pytest.raises(WorkspaceProblem, match='specific closure action'):
+            store.case_lifecycle.begin_exit(matter.slug, principal.principal_id,
+                session_id=context.session.session_id, administrator_override=True)
     finally:
         store.close()

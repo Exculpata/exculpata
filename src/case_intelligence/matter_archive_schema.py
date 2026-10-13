@@ -95,6 +95,8 @@ workbench_case_download_attempt:attempt_id,exit_id,export_id,archive_digest,tota
 workbench_case_download_coverage:exit_id,export_id,archive_digest,total_size,actor_id,intervals_json,completed_at
 workbench_case_purge_authority:purge_id,exit_id,mode,export_id,archive_digest,snapshot_digest,proof_actor_id,delivery_completed_at,acknowledged_at,actor_id,session_id,administrator
 workbench_case_session_binding:session_id,binding_digest
+workbench_case_oidc_request:state_digest,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,created_at
+workbench_case_oidc_authorization:authorization_id,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,authenticated_at,expires_at,state,purge_id
 """
 SCHEMA = {name: tuple(columns.split(',')) for name, columns in
           (line.split(':') for line in _SCHEMA.strip().splitlines())}
@@ -104,6 +106,7 @@ CASE_AUTHORIZATION_TABLES = frozenset({
     'workbench_case_download_coverage',
     'workbench_case_purge_authority',
     'workbench_case_session_binding',
+    'workbench_case_oidc_request', 'workbench_case_oidc_authorization',
 })
 
 EXCLUDED_TABLES = {
@@ -119,6 +122,8 @@ EXCLUDED_TABLES = {
     'workbench_case_download_coverage': 'Operational byte-delivery receipts and actor bindings; excluded from archive and content snapshot',
     'workbench_case_purge_authority': 'Live purge authority, actor/session bindings and export or no-export acknowledgments; excluded from archive and content snapshot',
     'workbench_case_session_binding': 'Private authentication-session revision bindings; excluded from archive and content snapshot',
+    'workbench_case_oidc_request': 'Private one-use SSO reauthentication transactions; excluded from archive and content snapshot',
+    'workbench_case_oidc_authorization': 'Ephemeral SSO deletion authority and session bindings; excluded from archive and content snapshot',
     'workbench_job_matter_schedule': 'Operational scheduler position',
     'workbench_matter_activity': 'Ephemeral UI activity locators',
 }

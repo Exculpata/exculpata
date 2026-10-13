@@ -67,7 +67,11 @@ OIDC uses authorization code flow, PKCE, nonce/state, exact HTTPS issuer and
 callback validation, signed ID tokens, a file-backed client secret, optional
 group admission, and a separate administrator-group mapping. Administrator
 roles are sealed into the short-lived server session; provider group changes
-take effect at the next sign-in or session expiry. Register the final external origin plus
+take effect at the next sign-in or session expiry. Cross-owner matter deletion
+has the stricter [operation authorization](CASE_LIFECYCLE.md#owner-or-administrator-workflow):
+forced fresh sign-in and validated `auth_time`, at most ten minutes for one matter,
+exit and action, with another authorization on retry. No live directory lookup
+or new credential/scope is introduced. Register the final external origin plus
 `/auth/oidc/callback`. Keep provider CA material and client secrets outside Git.
 
 Automation can supply `--oidc-issuer`, `--oidc-client-id`,

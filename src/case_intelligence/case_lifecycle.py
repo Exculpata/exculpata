@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from .store_records import WorkspaceProblem
+from . import case_oidc
 
 _DIGEST = re.compile(r'^[0-9a-f]{64}$')
 _EXPORT_ID = re.compile(r'^[a-z][a-z0-9-]{7,99}$')
@@ -85,6 +86,8 @@ class CaseLifecycleRepository:
         with self._transaction():
             self.connection.execute('DELETE FROM workbench_case_confirmation')
             self.connection.execute('DELETE FROM workbench_case_download_attempt')
+            self.connection.execute('DELETE FROM workbench_case_oidc_request')
+            self.connection.execute('DELETE FROM workbench_case_oidc_authorization')
 
     @contextmanager
     def _transaction(self):
@@ -248,7 +251,9 @@ class CaseLifecycleRepository:
             now = self.workspace._now()
             eligible = self.workspace._timestamp(
                 self.workspace.current_time() + timedelta(days=CANCELLATION_DAYS))
-            exit_id = 'case-exit-' + uuid.uuid4().hex
+            authorization = case_oidc.authorize(self.workspace, actor_id, session_id,
+                administrator_override, matter.matter_id, action='begin', mode=mode)
+            exit_id = authorization['exit_id'] if authorization else 'case-exit-' + uuid.uuid4().hex
             self.connection.execute(
                 "INSERT INTO workbench_case_exit(exit_id,matter_id,state,requested_by,requested_at,"
                 "eligible_after,updated_at,mode) VALUES (?,?,'closing',?,?,?,?,?)",
@@ -256,6 +261,7 @@ class CaseLifecycleRepository:
             self.connection.execute(
                 "UPDATE workbench_matter_lifecycle SET state='closing',updated_at=? "
                 "WHERE matter_id=? AND state='active'", (now, matter.matter_id))
+            case_oidc.claim(self.workspace, authorization)
             self._audit('matter.exit_begin', matter.matter_id, actor_id, exit_id, administrator_override=administrator_override)
             return self.current_exit(matter.matter_id)
 
@@ -348,11 +354,15 @@ class CaseLifecycleRepository:
             matter = self._by_slug(slug, actor_id, administrator_override)
             self._session(actor_id, session_id, administrator_override)
             current, _ = self._ready(matter.matter_id, export_id, actor_id, mode)
+            authorization = case_oidc.authorize(self.workspace, actor_id, session_id,
+                administrator_override, matter.matter_id, action='purge', mode=mode, exit_id=current.exit_id)
             self._idle(matter.matter_id)
             token = secrets.token_urlsafe(32)
             now = self.workspace._now()
             expires = self.workspace._timestamp(
                 self.workspace.current_time() + timedelta(minutes=CONFIRMATION_MINUTES))
+            if authorization:
+                expires = min(expires, authorization['expires_at'])
             self.connection.execute('DELETE FROM workbench_case_confirmation WHERE exit_id=?', (current.exit_id,))
             self.connection.execute(
                 'INSERT INTO workbench_case_confirmation VALUES (?,?,?,?,?,?,?,?,?,?,?)',
@@ -381,6 +391,8 @@ class CaseLifecycleRepository:
             if confirmed_name != matter.display_name:
                 raise WorkspaceProblem('Enter the matter name exactly as shown to confirm deletion.')
             current, retry = self._ready(matter.matter_id, export_id, actor_id, mode)
+            authorization = case_oidc.authorize(self.workspace, actor_id, session_id,
+                administrator_override, matter.matter_id, action='purge', mode=mode, exit_id=current.exit_id)
             now = self.workspace._now()
             nonce = self.connection.execute(
                 'SELECT * FROM workbench_case_confirmation WHERE token_digest=?',
@@ -398,6 +410,7 @@ class CaseLifecycleRepository:
             purge_id = current.purge_id if retry else 'matter-purge-' + uuid.uuid4().hex
             if not purge_id:
                 raise WorkspaceProblem('This interrupted deletion requires operator recovery.')
+            case_oidc.claim(self.workspace, authorization, purge_id=purge_id)
             counts = self.workspace.matter_content_counts(matter.matter_id)
             if retry:
                 previous = self.workspace.matter_lifecycle(matter.matter_id)
@@ -458,6 +471,9 @@ class CaseLifecycleRepository:
                 raise WorkspaceProblem('Deletion requires a confirmed current exit and current owner or administrator authority.')
             self._owner(matter_id, authority['actor_id'], bool(authority['administrator']))
             self._session(authority['actor_id'], authority['session_id'], bool(authority['administrator']))
+            case_oidc.authorize(self.workspace, authority['actor_id'], authority['session_id'],
+                bool(authority['administrator']), matter_id, action='purge', mode=current.mode,
+                exit_id=current.exit_id, purge_id=purge_id)
             if current.mode == 'export_exit':
                 if (authority['export_id'] != current.export_id
                         or authority['archive_digest'] != current.archive_digest

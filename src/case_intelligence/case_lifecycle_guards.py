@@ -8,6 +8,7 @@ _UNFENCED = frozenset({
     'workbench_case_confirmation', 'workbench_audit_event',
     'workbench_case_download_attempt', 'workbench_case_download_coverage',
     'workbench_case_purge_authority', 'workbench_case_session_binding',
+    'workbench_case_oidc_request', 'workbench_case_oidc_authorization',
     'workbench_matter_membership', 'workbench_matter_group_grant',
     'workbench_matter_activity', 'workbench_job_matter_schedule',
 })

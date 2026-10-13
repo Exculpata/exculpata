@@ -11,6 +11,7 @@
     {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
     {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
     {% if administrator_override %}<div class="notice notice-error" role="alert"><strong>Administrator action</strong><span>{{ owner_name }} owns this matter. Actions here will be attributed to your account.</span></div>{% endif %}
+    {% if oidc_administrator %}<p>Starting closure and confirming deletion require a fresh organization sign-in for this specific action. Authorization lasts at most ten minutes. Return here after signing in to continue; sign-in alone never deletes anything.</p>{% endif %}
     <p>Matters stay open until explicitly closed. Check-in dates never authorize deletion.</p>
     {% if lifecycle.state == 'active' %}
     <section class="close-explanation">
@@ -19,8 +20,8 @@
       <form method="post" action="/matters/{{ matter.slug }}/close/begin" data-working-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <fieldset><legend>Choose a closure path</legend>
-          <label class="delete-acknowledgement"><input type="radio" name="mode" value="export_exit" checked required><span><strong>Export and exit.</strong> Prepare and download the complete archive, then acknowledge that you checked and kept a copy.</span></label>
-          <label class="delete-acknowledgement"><input type="radio" name="mode" value="delete_without_export" required><span><strong>Delete without export.</strong> Intentionally delete without creating a preservation archive. You will explicitly acknowledge that no backup is provided and deletion is irreversible.</span></label>
+          <label class="delete-acknowledgement"><input type="radio" name="mode" value="export_exit" {% if selected_mode == "export_exit" %}checked{% endif %} required><span><strong>Export and exit.</strong> Prepare and download the complete archive, then acknowledge that you checked and kept a copy.</span></label>
+          <label class="delete-acknowledgement"><input type="radio" name="mode" value="delete_without_export" {% if selected_mode == "delete_without_export" %}checked{% endif %} required><span><strong>Delete without export.</strong> Intentionally delete without creating a preservation archive. You will explicitly acknowledge that no backup is provided and deletion is irreversible.</span></label>
         </fieldset>
         <button class="button button-primary" type="submit" {% if busy %}disabled{% endif %}>Begin closure</button>
         <a class="button button-secondary" href="/matters/{{ matter.slug }}/settings">Keep matter open</a>
@@ -64,7 +65,7 @@
       {% if confirmation %}
       <form class="close-matter-form" method="post" action="/matters/{{ matter.slug }}/close" data-working-form data-working-label="Deleting matter…">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="token" value="{{ confirmation.token }}"><input type="hidden" name="export_id" value="{{ exit_record.export_id or '' }}"><input type="hidden" name="mode" value="{{ exit_record.mode }}">
-        <h2>Final confirmation</h2><p>This confirmation expires in ten minutes and can be used once.</p>
+        <h2>Final confirmation</h2><p>This confirmation expires within ten minutes and can be used once.{% if oidc_administrator %} A shorter administrator authorization deadline still applies.{% endif %}</p>
         <label for="confirmed-name">Type <strong>{{ matter.display_name }}</strong> exactly</label><input id="confirmed-name" name="confirmed_name" maxlength="140" required autocomplete="off">
         {% if exit_record.mode == 'export_exit' %}<label class="delete-acknowledgement"><input type="checkbox" name="export_acknowledged" value="yes" required><span>{% if lifecycle.state == 'purge_failed' %}I reviewed the recorded export authorization and understand this retries the same deletion; originals and the server archive may already be unavailable.{% else %}I downloaded this full export, checked it, and retained a copy outside the workbench.{% endif %}</span></label>
         {% else %}<div class="notice notice-error" role="alert"><strong>No export or backup will be provided.</strong><span>Permanent deletion cannot be undone.</span></div>

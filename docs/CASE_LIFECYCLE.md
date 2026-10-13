@@ -51,7 +51,7 @@ person read or acknowledged it, and does not send an external notification.
    incomplete export never silently selects this path.
 5. After seven days, request **Review final deletion confirmation**. Both paths
    require the exact matter name and a permanent-deletion acknowledgement.
-   The single-use form expires after ten minutes and binds the actor, live
+   The single-use form expires within ten minutes and binds the actor, live
    session, matter name, closure mode and applicable archive/content identity.
    Current owner/admin authority is rechecked when starting closure, confirming,
    claiming and executing destructive phases. Ordinary membership is insufficient.
@@ -61,10 +61,24 @@ person read or acknowledged it, and does not send an external notification.
 Local account authority is tied to its revision at fresh sign-in; disablement,
 role/password changes and session revocation invalidate old deletion authority,
 even after a disable/re-enable cycle. Kerberos rechecks current group policy.
-OIDC currently has no live organization-group lookup: non-owner administrator
-overrides therefore fail closed for this workflow. An authenticated OIDC owner
-can use their active owner grant. Supporting OIDC administrator deletion needs
-an approved live authority source or an explicit policy decision.
+OIDC administrators closing another owner's matter must sign in again for each
+closure initiation and each final deletion attempt. The existing OIDC client
+requests `max_age=0`; verified `auth_time`, fresh group claims and the same subject
+are required. This uses the configured scopes and credentials without requesting
+new grants. The authorization binds the subject, newly issued session, matter,
+exit, closure mode and action, and expires no later than ten minutes after the
+provider authentication (earlier token/session expiry also applies). A callback
+only returns to the action page; the administrator must deliberately continue.
+The central service checks this grant before claim and every destructive phase,
+including direct service calls. A retry needs another fresh authorization.
+
+A new verified sign-in invalidates that actor's older closure authorizations;
+local session revocation, account disablement, configuration changes, expiry and
+restart also block them. Provider directory-group changes are not queried during
+the accepted ten-minute window: this is the approved bounded session-authority
+policy, not instant directory revocation. Missing, stale or unsupported fresh
+claims fail closed. OIDC owners retain their active owner-grant path. Check-ins,
+exports and cancellation use ordinary current owner/admin session authority.
 
 **Cancel closure and reopen** is available until final deletion is claimed. It
 invalidates the closure's export and confirmation, removes its server-side
@@ -111,7 +125,7 @@ The archive is a portable preservation format, not an automated importer or an
 application backup. It does not establish a legal retention period or guarantee
 physical erasure from storage devices, downloaded copies or independent backups.
 
-## Migrations 0040–0041 and recovery
+## Migrations 0040–0042 and recovery
 
 Before upgrading, stop every old application and worker, take a complete,
 consistent backup of the control database, source registries and payloads,
@@ -125,6 +139,10 @@ lifecycle states. Existing 30-day or other dated active matters enter
 `legacy_review`: their dates remain visible for reference but cannot trigger
 purge. The owner or administrator explicitly selects ongoing operation with a
 check-in. Previously unscheduled matters remain unscheduled until that choice.
+Their owner/admin sees a prompt-only invitation in Manage matters and Matter
+settings. **Enroll in 90-day check-ins** is a CSRF-protected, explicit choice;
+viewing, ignoring or restarting never enrolls the matter. Ordinary members cannot
+enroll it. Enrollment preserves matter content and creates no deletion schedule.
 New matters are ongoing with a 90-day check-in. Already purging, failed or deleted
 matters are not silently reopened or assigned a fictitious export.
 
@@ -143,6 +161,13 @@ fresh sign-in for closure. A previously confirmed 0040 purge without the new
 authority record stays blocked for operator recovery, even when an earlier phase
 removed its archive. The writer version and policy version prevent old binaries
 from resuming these operations against the upgraded database.
+
+Migration 0042 adds private, ephemeral OIDC request and authorization tables.
+It creates no grants, enrollments or deletion authority. These records are
+excluded from both the preservation archive and its content snapshot, and are
+cleared at application startup/restore. Final cleanup removes them. An interrupted
+OIDC administrator purge therefore requires fresh sign-in and confirmation after
+restore, even when a saved authorization had time remaining.
 
 A restored pending closure keeps its original cancellation date, frozen content,
 export identity and digest. Completed delivery observations survive restart/restore; they still do not prove a backup exists. Application startup discards in-flight download attempts and unused deletion forms,

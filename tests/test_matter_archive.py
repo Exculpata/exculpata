@@ -685,6 +685,9 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
     attempt = 'GENERATED-PRIVATE-DOWNLOAD-ATTEMPT'
     purge = 'GENERATED-PRIVATE-PURGE-AUTHORITY'
     binding_digest = 'e7'*32
+    oidc_subject = 'f8'*32
+    oidc_configuration = 'b6'*32
+    oidc_authorization = 'SYNTHETIC-PRIVATE-OIDC-AUTHORIZATION'
     # Seed valid-shaped operational rows solely to exercise the export boundary;
     # this does not claim that direct database writes establish purge authority.
     with workspace._lock, workspace.connection:
@@ -697,6 +700,14 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
              now, now, OWNER, session.session_id, 0))
         workspace.connection.execute('INSERT INTO workbench_case_session_binding VALUES (?,?)',
             (session.session_id, binding_digest))
+        workspace.connection.execute('INSERT INTO workbench_oidc_transaction VALUES (?,?,?,?,NULL)',
+            ('d9'*32, '/synthetic', now, '2099-01-01T00:00:00Z'))
+        workspace.connection.execute('INSERT INTO workbench_case_oidc_request VALUES (?,?,?,?,?,?,?,?,?,?)',
+            ('d9'*32, OWNER, session.session_id, oidc_subject, oidc_configuration,
+             matter.matter_id, current.exit_id, 'export_exit', 'purge', now))
+        workspace.connection.execute('INSERT INTO workbench_case_oidc_authorization VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (oidc_authorization, OWNER, session.session_id, oidc_subject, oidc_configuration,
+             matter.matter_id, current.exit_id, 'export_exit', 'purge', now, '2099-01-01T00:00:00Z', 'ready', None))
     assert matter_snapshot_digest(bench, matter, store) == expected
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
@@ -713,7 +724,7 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
                 assert set(disclosure['columns'].values()) == {'excluded: operational authorization state'}
             material = b'\n'.join(archive.read(name) for name in archive.namelist())
             for canary in (session.session_id, 'c'*64, export, archive_digest, snapshot_digest,
-                           attempt, purge, binding_digest):
+                           attempt, purge, binding_digest, oidc_subject, oidc_configuration, oidc_authorization):
                 assert canary.encode() not in material
     finally:
         cleanup_archive(artifact)

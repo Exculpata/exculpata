@@ -53,6 +53,7 @@
       <div class="managed-matter-lifecycle">
         <strong>{{ row.retention.label }}</strong>
         <span>{{ row.retention.detail }}</span>
+        {% if row.can_close and row.retention.record.mode == "unscheduled" %}<a data-check-in-invitation href="/matters/{{ row.matter.slug }}/settings#lifecycle-settings-heading">Choose whether to enroll in 90-day check-ins</a>{% endif %}
         {% with retention=row.retention %}{% include "workbench_check_in_time.html" %}{% endwith %}
       </div>
       <div class="managed-matter-actions">

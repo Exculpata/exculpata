@@ -12,7 +12,8 @@ from .case_lifecycle_support import (archive_path, cleanup_archives, idle,
     install_archive, source_lock, verified_archive)
 from .matter_archive import build_matter_archive
 from .workspace_store import WorkspaceProblem
-from .identity import SESSION_COOKIE
+from .identity import SESSION_COOKIE, OIDC_STATE_COOKIE
+from . import case_oidc
 from .compat_env import kerberos_headers
 
 
@@ -52,6 +53,15 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
             raise HTTPException(404, 'Matter is no longer available') from exc
         return current
 
+    async def reauthorize(context, matter, *, action, mode):
+        if case_oidc.available(identity, context, matter, action=action, mode=mode):
+            return None
+        start = await case_oidc.start(identity, context, matter, action=action, mode=mode)
+        response = RedirectResponse(start.authorization_url, status_code=302,
+                                    headers={'Cache-Control': 'no-store'})
+        response.set_cookie(OIDC_STATE_COOKIE, start.state, **identity.oidc_state_cookie_options)
+        return response
+
     def session_id(context):
         if context.session is None:
             raise WorkspaceProblem('Sign in again before confirming deletion.')
@@ -78,6 +88,8 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 'message_count': max(counts['messages'], lifecycle.message_count),
                 'notebook_count': counts['notebook_items'],
                 'administrator_override': context.is_administrator and matter.owner_id != context.principal_id,
+                'oidc_administrator': case_oidc.required(identity, context, matter),
+                'selected_mode': case_oidc.selected_mode(identity, context, matter),
                 'owner_name': bench.workspace.get_principal(matter.owner_id).display_name,
                 'error': error, 'notice': notice}, headers={'Cache-Control': 'no-store'})
 
@@ -97,9 +109,13 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
         return page(request, slug, error=error, notice=notice)
 
     @app.post('/matters/{slug}/close/begin', dependencies=[Depends(require_csrf)])
-    def begin_exit(request: Request, slug: str, mode: str = Form('export_exit', max_length=32)):
-        context, matter, _ = owner(request, slug)
+    async def begin_exit(request: Request, slug: str, mode: str = Form('export_exit', max_length=32)):
+        context, matter, lifecycle = owner(request, slug)
         try:
+            if lifecycle.state == 'active':
+                challenge = await reauthorize(context, matter, action='begin', mode=mode)
+                if challenge is not None:
+                    return challenge
             with source_lock(bench, matter.matter_id):
                 idle(bench, matter.matter_id)
                 current_authority = refresh_owner(request, slug, context)
@@ -191,10 +207,15 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 os.close(descriptor)
 
     @app.post('/matters/{slug}/close/confirm', dependencies=[Depends(require_csrf)])
-    def confirm_page(request: Request, slug: str, export_id: str = Form('', max_length=100),
+    async def confirm_page(request: Request, slug: str, export_id: str = Form('', max_length=100),
                      mode: str = Form('export_exit', max_length=32)):
         context, matter, lifecycle = owner(request, slug)
         try:
+            with bench.workspace._lock:
+                bench.workspace.case_lifecycle._ready(matter.matter_id, export_id or None, context.principal_id, mode)
+            challenge = await reauthorize(context, matter, action='purge', mode=mode)
+            if challenge is not None:
+                return challenge
             with source_lock(bench, matter.matter_id):
                 idle(bench, matter.matter_id)
                 current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)

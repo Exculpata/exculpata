@@ -46,9 +46,10 @@
       <p>{% include "workbench_check_in_time.html" %}</p>
       {% if retention.legacy_expires_at %}<p>Previous review date: {{ lifecycle_time(retention.legacy_expires_at) }}. Previous deletion date: {{ lifecycle_time(retention.legacy_purge_after) }}. These dates are preserved for reference and do not authorize deletion.</p>{% endif %}
       {% if (membership and membership.role == 'owner') or is_administrator %}
+      {% if retention.record.mode == 'unscheduled' %}<p data-check-in-invitation>This older matter has no check-in schedule. You can opt in to a reminder every 90 days. Nothing changes until the owner or an administrator chooses to enroll; reminders never authorize deletion.</p>{% endif %}
       <form method="post" action="/matters/{{ matter.slug }}/check-in" data-working-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button class="button button-secondary" type="submit">Keep ongoing · check in after 90 days</button>
+        <button class="button button-secondary" type="submit">{{ 'Enroll in 90-day check-ins' if retention.record.mode == 'unscheduled' else 'Keep ongoing · check in after 90 days' }}</button>
       </form>
       {% else %}<p>Ask the matter owner to review this check-in.</p>{% endif %}
     </section>

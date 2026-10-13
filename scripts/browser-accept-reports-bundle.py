@@ -145,6 +145,7 @@ def main():
             def capture_closure(name, focus=None):
                 for width in (1440, 430):
                     driver.set_window_size(width, 1000)
+                    settle_layout()
                     if width < 901:
                         rail = driver.find_elements(By.CSS_SELECTOR, "[data-rail-toggle]")
                         if rail and rail[0].get_attribute("aria-expanded") == "true":
@@ -186,6 +187,7 @@ def main():
             def capture_notice(name):
                 for width in (1440, 430):
                     driver.set_window_size(width, 1000)
+                    settle_layout()
                     if width < 901 and driver.find_element(By.CSS_SELECTOR, "[data-rail-toggle]").get_attribute("aria-expanded") == "true":
                         click("[data-rail-toggle]")
                     if width < 901:
@@ -199,6 +201,13 @@ def main():
                     driver.execute_script("window.scrollTo({top:0,left:0,behavior:'instant'});")
                     driver.save_screenshot(str(args.output / f"{name}-{width}.png"))
                 driver.set_window_size(1440, 1000)
+
+            def settle_layout():
+                wait.until(lambda d: d.execute_script(
+                    "const elements = [...document.querySelectorAll('[data-matter-rail],.app-frame')]; "
+                    "elements.forEach(element => element.getBoundingClientRect()); "
+                    "return elements.every(element => element.getAnimations().every(animation => animation.playState !== 'running')) "
+                    "&& document.documentElement.scrollWidth <= innerWidth + 1"))
 
             def prepare_exit(target):
                 target_prefix = f"/matters/{target.slug}"
@@ -453,8 +462,29 @@ def main():
                 wait.until(lambda _: bench.workspace.matter_lifecycle(recovery.matter_id).state == "deleted")
                 record_check("Failed-close readiness retains Report details without unavailable edit links; Close matter recovery opens and deliberate retry completes")
 
+            # Synthetic legacy matter: viewing the invitation must not enroll it.
+            with bench.workspace._lock, bench.workspace.connection:
+                bench.workspace.connection.execute(
+                    "UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL WHERE matter_id=?",
+                    (matter.matter_id,))
+            legacy_policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
+            go('/matters/manage')
+            assert driver.find_element(By.CSS_SELECTOR, '[data-check-in-invitation]').is_displayed()
             go(prefix + "/settings")
+            invitation = driver.find_element(By.CSS_SELECTOR, '[data-check-in-invitation]')
+            assert 'Nothing changes until' in invitation.text
+            assert bench.workspace.case_lifecycle.policy(matter.matter_id) == legacy_policy
+            for width in (1440, 430):
+                driver.set_window_size(width, 1000)
+                settle_layout()
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", invitation)
+                wait.until(lambda d: d.execute_script(
+                    "return document.documentElement.scrollWidth <= innerWidth + 1"))
+                driver.save_screenshot(str(args.output / f"legacy-check-in-invitation-{width}.png"))
+            driver.set_window_size(1440, 1000)
             click(f'form[action="{prefix}/check-in"] button')
+            assert not driver.find_elements(By.CSS_SELECTOR, '[data-check-in-invitation]')
+            record_check("An unscheduled legacy matter stays unchanged while its invitation is viewed; explicit owner enrollment alone starts 90-day check-ins")
             policy = bench.workspace.case_lifecycle.policy(matter.matter_id)
             assert policy.mode == "ongoing" and policy.selected_by == ACTOR
             assert datetime.fromisoformat(policy.next_check_in_at.replace("Z", "+00:00")) >= bench.workspace.current_time() + timedelta(days=89)

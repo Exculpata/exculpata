@@ -191,3 +191,49 @@ def test_packaged_authority_migration_matches_repository_source():
     root = Path(__file__).resolve().parents[1]
     assert (root / 'migrations/sqlite/0041_case_exit_authority.sql').read_bytes() == (
         root / 'src/case_intelligence/migrations/sqlite/0041_case_exit_authority.sql').read_bytes()
+
+
+def test_v41_backup_clean_restore_and_atomic_oidc_upgrade(tmp_path):
+    path = tmp_path / 'synthetic-v41.sqlite'
+    store = WorkspaceStore(path, clock=lambda: NOW)
+    owner = store.upsert_principal('test', 'synthetic-owner', 'Synthetic Owner', 'owner')
+    matter = store.create_matter('Synthetic preserved case', '', owner.principal_id)
+    with store.connection:
+        store.connection.execute('DROP TABLE workbench_case_oidc_request')
+        store.connection.execute('DROP TABLE workbench_case_oidc_authorization')
+        store.connection.execute("UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL")
+    before = snapshot(store.connection, 'workbench_case_policy')
+    store.close()
+    backup = tmp_path / 'synthetic-v41-backup.sqlite'
+    restored = tmp_path / 'synthetic-restored.sqlite'
+    with sqlite3.connect(path) as source, sqlite3.connect(backup) as destination:
+        source.backup(destination)
+    failing = sqlite3.connect(path)
+    failing.row_factory = sqlite3.Row
+    failing.create_function('recordbench_case_lifecycle_writer', 0, lambda: 2)
+    failing.create_function('recordbench_case_content_cleanup', 1, lambda _: 0)
+    failing.set_authorizer(lambda action, name, *_: sqlite3.SQLITE_DENY
+        if action == sqlite3.SQLITE_CREATE_TABLE and name == 'workbench_case_oidc_authorization'
+        else sqlite3.SQLITE_OK)
+    with pytest.raises(sqlite3.DatabaseError):
+        migrate_case_lifecycle(failing)
+    failing.set_authorizer(None)
+    assert failing.execute("SELECT name FROM sqlite_master WHERE name LIKE 'workbench_case_oidc_%'").fetchall() == []
+    assert snapshot(failing, 'workbench_case_policy') == before
+    failing.close()
+    with sqlite3.connect(backup) as source, sqlite3.connect(restored) as destination:
+        source.backup(destination)
+    upgraded = WorkspaceStore(restored, clock=lambda: NOW)
+    assert snapshot(upgraded.connection, 'workbench_case_policy') == before
+    assert upgraded.get_matter_by_id(matter.matter_id).display_name == 'Synthetic preserved case'
+    for table in ('workbench_case_oidc_request', 'workbench_case_oidc_authorization'):
+        assert snapshot(upgraded.connection, table) == ()
+    assert upgraded.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+    assert upgraded.connection.execute('PRAGMA foreign_key_check').fetchall() == []
+    upgraded.close()
+    with sqlite3.connect(backup) as source:
+        assert source.execute("SELECT name FROM sqlite_master WHERE name LIKE 'workbench_case_oidc_%'").fetchall() == []
+        assert snapshot(source, 'workbench_case_policy') == before
+    root = Path(__file__).resolve().parents[1]
+    assert (root / 'migrations/sqlite/0042_case_oidc_authorization.sql').read_bytes() == (
+        root / 'src/case_intelligence/migrations/sqlite/0042_case_oidc_authorization.sql').read_bytes()

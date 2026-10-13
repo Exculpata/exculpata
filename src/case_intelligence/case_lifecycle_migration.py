@@ -24,6 +24,7 @@ def migrate_case_lifecycle(connection: sqlite3.Connection) -> None:
             ).fetchone():
                 raise RuntimeError('Unsupported case lifecycle policy version.')
             migrate_exit_authority(connection)
+            migrate_oidc_authorization(connection)
             install_content_guards(connection)
             return
         source = resources.files('case_intelligence').joinpath(
@@ -39,6 +40,7 @@ def migrate_case_lifecycle(connection: sqlite3.Connection) -> None:
             if statement.strip():
                 raise RuntimeError('Incomplete case lifecycle migration.')
             migrate_exit_authority(connection)
+            migrate_oidc_authorization(connection)
             install_content_guards(connection)
         finally:
             connection.execute(f'PRAGMA legacy_alter_table = {int(original_rename_mode)}')
@@ -58,3 +60,16 @@ def migrate_exit_authority(connection):
             statement = ''
     if statement.strip():
         raise RuntimeError('Incomplete exit authority migration.')
+
+
+def migrate_oidc_authorization(connection):
+    source = resources.files('case_intelligence').joinpath(
+        'migrations/sqlite/0042_case_oidc_authorization.sql').read_text(encoding='utf-8')
+    statement = ''
+    for line in source.splitlines(keepends=True):
+        statement += line
+        if sqlite3.complete_statement(statement):
+            connection.execute(statement)
+            statement = ''
+    if statement.strip():
+        raise RuntimeError('Incomplete case OIDC authorization migration.')

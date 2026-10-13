@@ -312,7 +312,8 @@ def test_oidc_environment_requires_secure_owner_only_secret_file(tmp_path, monke
     "failure",
     [None, "audience", "signature", "issuer", "subject", "nonce", "expired"],
 )
-def test_authlib_adapter_validates_signed_id_token_and_rejects_tampering(failure):
+@pytest.mark.parametrize("max_age", [None, 0])
+def test_authlib_adapter_validates_signed_id_token_and_rejects_tampering(failure, max_age):
     settings = _settings()
     approved_key = RSAKey.generate_key(2048, parameters={"kid": "approved-key"})
     unapproved_key = RSAKey.generate_key(2048, parameters={"kid": "approved-key"})
@@ -381,11 +382,13 @@ def test_authlib_adapter_validates_signed_id_token_and_rejects_tampering(failure
         url = await client.authorization_url(
             state="synthetic-state",
             nonce=expected_nonce,
-            code_verifier=expected_verifier,
+            code_verifier=expected_verifier, max_age=max_age,
         )
         query = parse_qs(urlsplit(url).query)
         assert query["code_challenge_method"] == ["S256"]
         assert query["state"] == ["synthetic-state"]
+        assert query.get("max_age") == (["0"] if max_age == 0 else None)
+        assert query["scope"] == [" ".join(settings.scopes)]
         if failure is None:
             claims = await client.authenticate(
                 code="synthetic-code",

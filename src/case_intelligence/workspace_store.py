@@ -2260,6 +2260,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "DELETE FROM workbench_case_confirmation WHERE exit_id IN ("
                 "SELECT exit_id FROM workbench_case_exit WHERE matter_id=?)", (matter_id,)
             )
+            from .case_oidc import purge_records
+            purge_records(self, matter_id)
             preserved_tables = {
                 "workbench_audit_event",
                 "workbench_matter",

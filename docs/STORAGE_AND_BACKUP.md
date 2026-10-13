@@ -166,6 +166,12 @@ attempts and unused confirmation forms are cleared. An interrupted purge already
 confirmed under migration 0040 without the new purge-authority record remains
 blocked for operator recovery; upgrading does not authorize it to resume.
 
+Migration 0042 adds ephemeral OIDC closure authorization. Startup and clean restore
+clear pending reauthentication and operation grants. Reauthenticate the same
+administrator account and obtain fresh confirmation before retrying an interrupted
+OIDC purge; saved session roles or a restored grant do not authorize continuation.
+These private records are excluded from matter archives and content snapshots.
+
 Owners and administrators have two explicit exit paths:
 
 - **Export and exit:** create the full preservation archive, complete delivery of
