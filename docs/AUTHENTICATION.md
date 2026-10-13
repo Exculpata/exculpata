@@ -83,7 +83,7 @@ the browser Authorization header, and adds the principal plus a shared secret.
 The app revalidates the trusted boundary and resolves allowed/administrator
 groups through the joined host’s SSSD NSS socket on every request.
 
-Create the SPN/keytab for `HTTP/<recordbench-host>@<REALM>`, verify there is only
+Create the SPN/keytab for `HTTP/<exculpata-host>@<REALM>`, verify there is only
 one SPN owner, use AES keys, protect the keytab at `0600`, and rotate it through
 a planned outage. Browser integrated-auth policy and DNS must use the same final
 hostname. Logging out closes Exculpata’s session; it cannot sign Windows out.
