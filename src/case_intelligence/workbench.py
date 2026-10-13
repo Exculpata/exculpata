@@ -3555,7 +3555,7 @@ class CaseIntelligenceWorkbench:
 
     def _saved_answer_references(
         self, matter: MatterRecord, citations: Sequence[Mapping[str, object]],
-        *, notebook_preview: bool = False, source_navigation: bool = False,
+        *, notebook_preview: bool = False, source_navigation: bool = False, source_windows=None,
     ) -> tuple[dict[str, object], ...]:
         from .report_materials import resolve_saved_answer_references
 
@@ -3566,7 +3566,7 @@ class CaseIntelligenceWorkbench:
                 raise WorkspaceProblem("The saved answer has conflicting source support. Ask the question again in a new conversation.")
             values.append({**citation, "support_token": token})
         return resolve_saved_answer_references(self, matter, values,
-            notebook_preview=notebook_preview, source_navigation=source_navigation)
+            notebook_preview=notebook_preview, source_navigation=source_navigation, source_windows=source_windows)
 
     def _save_answer_to_notebook(
         self,

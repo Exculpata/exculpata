@@ -49,7 +49,7 @@ _SCAN_LIMIT = "The selected saved work exceeds the report source-validation limi
 
 
 def resolve_saved_answer_references(bench, matter, references, *, notebook_preview=False,
-                                   source_navigation=False):
+                                   source_navigation=False, source_windows=None):
     """Verify saved answer support before capture, under caller-owned guards.
 
     Reuse Report compilation's exact-text and legacy-token rules so a note or
@@ -59,7 +59,7 @@ def resolve_saved_answer_references(bench, matter, references, *, notebook_previ
     Read-only comparisons may request transient, validated source navigation.
     """
     resolver = _References(bench, matter, notebook_preview=notebook_preview,
-                           source_navigation=source_navigation)
+                           source_navigation=source_navigation, source_windows=source_windows)
     resolver.prepare(references)
     return tuple(resolver.resolve(value) for value in references)
 
@@ -92,10 +92,11 @@ def _decision_review_status(machine, human):
 
 
 class _References:
-    def __init__(self, bench, matter, *, notebook_preview=False, source_navigation=False):
+    def __init__(self, bench, matter, *, notebook_preview=False, source_navigation=False, source_windows=None):
         self.bench, self.matter = bench, matter
         self.notebook_preview = notebook_preview
         self.source_navigation = source_navigation
+        self.source_windows = source_windows or {}
         self.store = bench.source_store(matter)
         self.documents = {}
         self.resolved = {}
@@ -287,7 +288,11 @@ class _References:
         if self.notebook_preview:
             # The digest and locator above still bind the complete unit, including
             # text after this display prefix. Report callers never use this mode.
-            canonical["excerpt"] = unit.text[:MAX_NOTEBOOK_PREVIEW_CHARS]
+            if value["support_token"] in self.source_windows:
+                from .answer_evidence import validated_window_text
+                canonical["excerpt"] = validated_window_text(unit.text, self.source_windows[value["support_token"]])
+            else:
+                canonical["excerpt"] = unit.text[:MAX_NOTEBOOK_PREVIEW_CHARS]
         elif len(unit.text) > MAX_CITATION_CHARS:
             raise WorkspaceProblem("A selected source passage exceeds the 6,000-character report limit. Choose a smaller supported passage.")
         return canonical

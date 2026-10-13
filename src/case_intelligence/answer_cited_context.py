@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from urllib.parse import urlencode
 
 from .answer_presentation import answer_limitation
+from .answer_evidence import saved_evidence_window
 from .workspace_store import WorkspaceProblem
 
 
@@ -73,8 +74,10 @@ def saved_cited_context(bench, matter, conversation_id, message_id, passage, cit
     try:
         # Notebook preview mode verifies the COMPLETE unit before shortening it.
         # Its source scan/record/time budgets remain in force for this one source.
+        window = saved_evidence_window(payload, citation)
         reference, = bench._saved_answer_references(matter, [citation],
-            notebook_preview=True, source_navigation=True)
+            notebook_preview=True, source_navigation=True,
+            **({"source_windows": {citation["support_token"]: window}} if window is not None else {}))
     except (KeyError, TypeError, ValueError, WorkspaceProblem) as exc:
         if "source-validation limit" in str(exc):
             result["notice"] = (
@@ -93,6 +96,10 @@ def saved_cited_context(bench, matter, conversation_id, message_id, passage, cit
         source_parameters["start_ms"] = navigation["start_ms"]
         source_fragment = f"#segment-{navigation['ordinal']}"
     source_query = urlencode(source_parameters)
-    result.update(state="available", excerpt=reference["excerpt"], notice=CONTEXT_NOTICE,
+    notice = CONTEXT_NOTICE if window is None else (
+        "Cited context is for comparison, not proof that the generated passage is supported. "
+        f"Showing the saved source window, characters {window['start'] + 1:,}–{window['end']:,} "
+        f"of {window['original_chars']:,}; open the full source to review omitted context.")
+    result.update(state="available", excerpt=reference["excerpt"], notice=notice,
         source_href=f"/matters/{matter.slug}/sources/{store.action_token(document)}?{source_query}{source_fragment}")
     return result

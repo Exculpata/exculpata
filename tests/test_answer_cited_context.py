@@ -32,8 +32,10 @@ def context_path(fixture, *, message=None, passage="claim-0", index=0):
 
 def append_answer(fixture, **payload):
     _, bench, matter, _, _, conversation, original = fixture
+    # These reconstructed historical citations predate saved source-window metadata.
+    legacy = {key: value for key, value in original.payload.items() if key != "evidence_windows"}
     return bench.workspace.append_message(matter.matter_id, conversation.conversation_id,
-        "assistant", original.content, {**original.payload, **payload})
+        "assistant", original.content, {**legacy, **payload})
 
 
 def saved_reference(bench, citation):

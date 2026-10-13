@@ -5,7 +5,7 @@ import re
 from .generation import EvidenceItem, MAX_EVIDENCE_CHARS, MAX_EVIDENCE_ITEM_CHARS, MAX_EVIDENCE_ITEMS
 
 _WORD = re.compile(r"[^\W_]+", re.UNICODE)
-_FILLER = frozenset("a an and are as at be by did do does for from had has have how i in is it its me of on or please say says source sources tell that the their there these they this to was were what when where which who why with would".split())
+_FILLER = frozenset("a an and are as at be by did do does for from had has have he her his how i in is it its me of on or our please say says she source sources tell that the their them there these they this those to was we were what when where which who why with would you".split())
 
 
 def _terms(value):
@@ -53,6 +53,8 @@ def evidence_window(text, question, context, limit):
             if score > best:
                 best, start = score, candidate
     end = min(len(text), start + limit)
+    if not start:
+        return start, end  # Preserve the historical exact prefix when it is selected.
     # Avoid fabricating partial words at a clipped edge when a boundary is near.
     if start and text[start - 1].isalnum() and text[start].isalnum():
         boundary = re.search(r"\s", text[start:min(end, start + 160)])
@@ -84,6 +86,7 @@ def answer_evidence_packet(question, evidence, *, context=""):
                                    citation.excerpt[start:end], citation.evidence_kind,
                                    document_id=citation.document_id))
         passages.append(dict(evidence_id=identifier, start=start, end=end,
+                             support_token=citation.support_token, excerpt_digest=citation.excerpt_digest,
                              original_chars=len(citation.excerpt),
                              omitted_chars=len(citation.excerpt) - (end - start)))
     omitted = sum(row["omitted_chars"] for row in passages)
@@ -98,3 +101,35 @@ def disclose_evidence_windows(payload, windows):
     payload["evidence_windows"] = windows
     if windows["notice"]:
         payload["review_scope"]["notice"] += " " + windows["notice"]
+
+
+def saved_evidence_window(payload, citation):
+    """Select a new answer's window without guessing a legacy answer's basis."""
+    from .workspace_store import WorkspaceProblem
+    if "evidence_windows" not in payload:
+        return None
+    windows = payload["evidence_windows"]
+    if (not isinstance(windows, dict) or windows.get("version") != 1
+            or not isinstance(windows.get("passages"), list)
+            or len(windows["passages"]) > MAX_EVIDENCE_ITEMS):
+        raise WorkspaceProblem("Saved source window is unavailable.")
+    matches = [row for row in windows["passages"] if isinstance(row, dict)
+               and row.get("support_token") == citation.get("support_token")
+               and row.get("excerpt_digest") == citation.get("excerpt_digest")]
+    if len(matches) != 1:
+        raise WorkspaceProblem("Saved source window is unavailable.")
+    return matches[0]
+
+
+def validated_window_text(text, window):
+    """Only called after the ordinary full-unit saved-citation checks succeed."""
+    from .workspace_store import WorkspaceProblem
+    fields = ("start", "end", "original_chars", "omitted_chars")
+    if not isinstance(window, dict) or any(type(window.get(key)) is not int for key in fields):
+        raise WorkspaceProblem("Saved source window is unavailable.")
+    start, end = window["start"], window["end"]
+    if (not 0 <= start < end <= len(text) or end - start > MAX_EVIDENCE_ITEM_CHARS
+            or window["original_chars"] != len(text)
+            or window["omitted_chars"] != len(text) - (end - start)):
+        raise WorkspaceProblem("Saved source window is unavailable.")
+    return text[start:end]

@@ -1,5 +1,6 @@
 """Synthetic retrieval-to-generation regressions; no model-quality claim."""
 import io
+import copy
 from dataclasses import asdict, replace
 import hashlib
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceStore
+from tests.test_saved_answer_note_preview import long_answer  # noqa: F401
 
 ACTOR = "development-taylor-morgan"
 QUESTION = "Where is aquamarine?"
@@ -67,6 +69,11 @@ def test_retrieved_late_answer_survives_generation_and_saved_citations(tmp_path,
         assert generator.packets[0][0].excerpt == text[window["start"]:window["end"]]
         assert window["omitted_chars"] == len(text) - len(generator.packets[0][0].excerpt)
         assert len(generator.packets[0][0].excerpt) <= 6_000
+        comparison = client.get(
+            f"/matters/{matter.slug}/conversations/{conversation.conversation_id}"
+            f"/messages/{message.message_id}/cited-context/claim-0/0?format=json")
+        assert comparison.status_code == 200 and comparison.headers["cache-control"] == "no-store"
+        assert comparison.json()["excerpt"] == generator.packets[0][0].excerpt
         notice = message.payload["evidence_windows"]["notice"]
         assert "omitted" in notice
         for suffix in ("", "/assistant"):
@@ -84,7 +91,8 @@ def test_retrieved_late_answer_survives_generation_and_saved_citations(tmp_path,
 def packet_for(texts, question=QUESTION, context=""):
     from case_intelligence.answer_evidence import answer_evidence_packet
     citations = {f"S{i}": SimpleNamespace(source_name=f"Synthetic {i}.txt", location="Line 1",
-        excerpt=text, evidence_kind="document", document_id=f"synthetic-{i}")
+        excerpt=text, evidence_kind="document", document_id=f"synthetic-{i}",
+        support_token=f"{i:040x}", excerpt_digest=hashlib.sha256(text.encode()).hexdigest())
         for i, text in enumerate(texts, 1)}
     return answer_evidence_packet(question, citations, context=context)
 
@@ -130,6 +138,57 @@ def test_unmatched_passage_uses_disclosed_contiguous_prefix():
     assert text.startswith(packet[0].excerpt)
     assert metadata["passages"][0]["start"] == 0
     assert "without literal matches" in metadata["notice"]
+
+
+@pytest.mark.parametrize("change", ["missing", "duplicate", "wrong_source", "wrong_digest",
+    "negative_start", "oversized", "out_of_bounds", "bool_start", "wrong_length", "wrong_omission", "version"])
+def test_malformed_saved_window_never_substitutes_other_context(long_answer, change):
+    client, bench, matter, _, citation, conversation, original = long_answer
+    payload = copy.deepcopy(original.payload)
+    metadata = payload["evidence_windows"]
+    window = metadata["passages"][0]
+    if change == "missing":
+        metadata["passages"] = []
+    elif change == "duplicate":
+        metadata["passages"].append(dict(window))
+    elif change == "wrong_source":
+        window["support_token"] = "f" * 40
+    elif change == "wrong_digest":
+        window["excerpt_digest"] = "f" * 64
+    elif change == "negative_start":
+        window["start"] = -1
+    elif change == "oversized":
+        window["end"] = window["start"] + 6001
+    elif change == "out_of_bounds":
+        window["end"] = len(citation.excerpt) + 1
+    elif change == "bool_start":
+        window["start"] = False
+    elif change == "wrong_length":
+        window["original_chars"] += 1
+    elif change == "wrong_omission":
+        window["omitted_chars"] += 1
+    else:
+        metadata["version"] = 99
+    saved = bench.workspace.append_message(matter.matter_id, conversation.conversation_id,
+        "assistant", original.content, payload)
+    response = client.get(f"/matters/{matter.slug}/conversations/{conversation.conversation_id}"
+        f"/messages/{saved.message_id}/cited-context/claim-0/0?format=json")
+    assert response.status_code == 200
+    assert response.json()["state"] == "unavailable"
+    assert response.json()["excerpt"] == response.json()["source_href"] == ""
+    assert bench.workspace.messages(matter.matter_id, conversation.conversation_id)[-1] == saved
+
+
+def test_legacy_answer_without_window_metadata_still_compares_exact_prefix(long_answer):
+    client, bench, matter, _, citation, conversation, original = long_answer
+    payload = {key: value for key, value in original.payload.items() if key != "evidence_windows"}
+    saved = bench.workspace.append_message(matter.matter_id, conversation.conversation_id,
+        "assistant", original.content, payload)
+    response = client.get(f"/matters/{matter.slug}/conversations/{conversation.conversation_id}"
+        f"/messages/{saved.message_id}/cited-context/claim-0/0?format=json")
+    assert response.status_code == 200 and response.json()["state"] == "available"
+    assert response.json()["excerpt"] == citation.excerpt[:6000]
+    assert "first 6,000" in response.json()["notice"]
 
 
 def test_omitted_text_cannot_ground_an_answer():

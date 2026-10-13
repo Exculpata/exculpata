@@ -96,6 +96,9 @@ not imply that all relevant context was supplied: a visible omission notice in
 both answer views and the saved answer basis records excluded character counts.
 Readable exports and Report inputs retain that basis. Saved window offsets are
 zero-based, end-exclusive character positions in the original cited unit.
+**Compare cited context** shows that saved window after validating the complete
+original, with a notice identifying the displayed character range. Older answers
+without window metadata keep their existing prefix comparison.
 
 Generation and text checks use the same exact contiguous window, without joining
 distant text. Citation links, full-unit digests, source-change checks and saved
