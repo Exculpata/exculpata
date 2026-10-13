@@ -113,6 +113,16 @@ fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
 entering the connection transaction; stopping one coordinator does not stop the
 other workers that share that connection.
 
+Resolve a matter's source store before entering entity/assertion source guards
+and workspace transactions. Capture that store in validation and support
+callbacks, including nested citation lookup. Opening a different matter takes
+the shared store-cache lock before synchronizing the workspace catalog; a
+callback that looks up the cache while holding the workspace lock reverses that
+order and can freeze both requests. Capturing the store does not cache validation
+results: current source versions, passages, and membership remain checked under
+the existing source guard and authorized transaction. The overlapping-action
+regressions in `tests/test_workspace_lock_order.py` exercise this boundary.
+
 The frozen Review acceptance pack pins test nodes and their complete files,
 including helpers. Changes to those files require reviewed node/file digests
 and an updated aggregate content fingerprint, even when case selection and
