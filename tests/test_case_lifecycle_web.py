@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.case_lifecycle_support import archive_path
 from case_intelligence.generation import UnavailableGenerator
-from case_intelligence.identity import LOGIN_CHALLENGE_COOKIE
+from case_intelligence.identity import LOGIN_CHALLENGE_COOKIE, SESSION_COOKIE
 from case_intelligence.managed_storage import StoragePolicy
 from case_intelligence.matter_archive_verifier import verify_matter_archive
 from case_intelligence.pilot_uploads import UploadProblem
@@ -197,10 +197,13 @@ def test_closure_routes_enforce_csrf_membership_and_source_readonly_open(case):
     assert client.get(f'/matters/{matter.slug}/close').status_code == 404
 
 
-def test_stopped_backup_clean_restore_keeps_frozen_originals_and_verified_archive(tmp_path):
+def test_stopped_backup_clean_restore_keeps_archive_but_requires_fresh_confirmation(tmp_path):
     runtime = tmp_path / 'generated-runtime'
     app = create_workbench_app(runtime, generator=UnavailableGenerator(), auth_mode='preview',
         answer_workers=1, storage_policy=StoragePolicy(reserve_bytes=0))
+    clock = [datetime.now(timezone.utc)]
+    app.state.workbench.workspace._clock = lambda: clock[0]
+    app.state.identity._clock = lambda: clock[0]
     with TestClient(app) as client:
         csrf = login(client)
         result = client.post('/matters', data={'name': 'Generated restore matter', 'csrf_token': csrf},
@@ -214,6 +217,14 @@ def test_stopped_backup_clean_restore_keeps_frozen_originals_and_verified_archiv
         before = prepare(client, bench, matter, csrf)
         archive_digest = before.archive_digest
         source_relative = ('matters', matter.matter_id, 'sources', 'files', doc.stored_name)
+        clock[0] += timedelta(days=7, seconds=1)
+        csrf = login(client)
+        token = confirm(client, matter, csrf, before.export_id)
+        cookies = dict(client.cookies)
+        session_id = app.state.identity.resolve(cookies[SESSION_COOKIE], read_only=True).session.session_id
+        nonce_expiry = bench.workspace.connection.execute(
+            'SELECT expires_at FROM workbench_case_confirmation').fetchone()[0]
+        assert datetime.fromisoformat(nonce_expiry.replace('Z', '+00:00')) > clock[0]
     # All source connections and workers have stopped before copying the entire
     # synthetic runtime; restore into an absent target, leaving the backup intact.
     backup = tmp_path / 'generated-stopped-backup'
@@ -223,8 +234,12 @@ def test_stopped_backup_clean_restore_keeps_frozen_originals_and_verified_archiv
     original_database = hashlib.sha256((backup / 'workbench.sqlite').read_bytes()).hexdigest()
     recovered = create_workbench_app(restored, generator=UnavailableGenerator(), auth_mode='preview',
         answer_workers=1, storage_policy=StoragePolicy(reserve_bytes=0))
+    recovered.state.workbench.workspace._clock = lambda: clock[0]
+    recovered.state.identity._clock = lambda: clock[0]
     with TestClient(recovered) as client:
-        login(client)
+        client.cookies.update(cookies)
+        restored_session = recovered.state.identity.resolve(cookies[SESSION_COOKIE], read_only=True)
+        assert restored_session is not None and restored_session.session.session_id == session_id
         bench = recovered.state.workbench
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
         after = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
@@ -236,8 +251,22 @@ def test_stopped_backup_clean_restore_keeps_frozen_originals_and_verified_archiv
         assert verified['export_id'] == before.export_id
         assert client.get(f'/matters/{slug}/close/export').status_code == 200
         assert bench.run_maintenance_once()['matters_purged'] == 0
+        denied = post(client, matter, 'close', csrf, token=token, export_id=after.export_id,
+            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes')
+        assert denied.status_code == 303 and 'fresh+deletion+confirmation' in denied.headers['location']
+        assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+        assert bench.workspace.case_lifecycle.current_exit(matter.matter_id) == after
+        assert restored.joinpath(*source_relative).read_bytes() == original
+        fresh_token = confirm(client, matter, csrf, after.export_id)
+        finished = post(client, matter, 'close', csrf, token=fresh_token, export_id=after.export_id,
+            confirmed_name=matter.display_name, acknowledge='yes', export_acknowledged='yes')
+        assert finished.status_code == 303 and finished.headers['location'].startswith('/matters/new?')
+        assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'deleted'
+        assert not restored.joinpath(*source_relative).exists()
         assert bench.workspace.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert hashlib.sha256((backup / 'workbench.sqlite').read_bytes()).hexdigest() == original_database
+    assert hashlib.sha256((runtime / 'workbench.sqlite').read_bytes()).hexdigest() == original_database
+    assert runtime.joinpath(*source_relative).read_bytes() == backup.joinpath(*source_relative).read_bytes() == original
 
 
 @pytest.mark.parametrize('stage', ['build', 'download', 'purge'])

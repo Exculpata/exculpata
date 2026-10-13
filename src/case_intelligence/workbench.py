@@ -973,6 +973,7 @@ class CaseIntelligenceWorkbench:
                 require_marker=True,
             )
         self.workspace = WorkspaceStore(self.runtime_dir / "workbench.sqlite", principal_enabled=principal_enabled)
+        self.workspace.case_lifecycle.discard_confirmations_on_startup()
         from .entity_unit_reader import EntityUnitReader
         self.entity_unit_reader = EntityUnitReader()
         self.workspace.recover_interrupted_matter_purges()

@@ -108,7 +108,11 @@ target. Never run old code against the upgraded store. Preserve post-upgrade wor
 separately before deciding to roll back.
 
 A restored pending closure keeps its original cancellation date, frozen content,
-export identity and digest. Missing or damaged server-side archive bytes block
+export identity and digest. Application startup discards unused deletion forms,
+so a restart or restore requires fresh confirmation even if the old form and
+sign-in session have not expired. Starting another application process can also
+invalidate an outstanding form; request a fresh form on the running instance.
+Missing or damaged server-side archive bytes block
 a first purge claim. Restore accepted originals and the archive, or cancel,
 repair while active, and begin a new closure/export. A restored check-in or
 legacy date never authorizes a maintenance purge.

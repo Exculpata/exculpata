@@ -73,6 +73,15 @@ class CaseLifecycleRepository:
         self.workspace = workspace
         self.connection = workspace.connection
 
+    def discard_confirmations_on_startup(self):
+        """A restarted or restored application requires a newly displayed form.
+
+        Keep durable exits, export receipts and confirmed purge identities. Only
+        unclaimed form capabilities belong to the previous application lifetime.
+        """
+        with self._transaction():
+            self.connection.execute('DELETE FROM workbench_case_confirmation')
+
     @contextmanager
     def _transaction(self):
         with self.workspace._lock, self.connection:
