@@ -9,6 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import re
 import time
 from typing import Callable, Mapping
 
@@ -17,11 +18,13 @@ from .generation import (
     verify_original_claim,
 )
 
-VERSION = 1
+VERSION = 2
 POLICY = {"version": VERSION, "max_groups": 12, "sources_per_call": 12,
           "characters_per_call": 48_000, "characters_per_source": 6_000,
           "generation_requests": 32, "wall_seconds": 900,
           "output_tokens_per_call": 1_200}
+LEGACY_POLICY = {**POLICY, "version": 1}
+LEGACY_FINDING_NOTICE = "Historical checkpoint: finding-level retention was not measured."
 
 
 def digest(value) -> str:
@@ -91,7 +94,33 @@ def node_spec(level, ordinal, claims):
             "input_digest": digest(claims)}
 
 
-def validate_node(node, spec, ledger):
+def retained_parents(claim, inputs):
+    """Confirm literal finding survival, separately from original grounding.
+
+    A shared source or overlapping words cannot prove a whole finding survived.
+    Match complete contiguous sentences, allowing only whitespace/case changes,
+    and require all of that finding's original support. Paraphrases remain valid
+    grounded output but their input retention is conservatively unconfirmed.
+    """
+    def sentences(text):
+        return re.split(r"(?<=[.!?])\s+", " ".join(text.split()).casefold())
+    output = sentences(claim["text"])
+    retained = []
+    for parent in inputs:
+        expected = sentences(parent["text"])
+        if (set(parent["support_tokens"]) <= set(claim["support_tokens"])
+                and any(output[index:index + len(expected)] == expected
+                        for index in range(len(output) - len(expected) + 1))):
+            retained.append(parent["id"])
+    return retained
+
+
+def omitted_parents(claims, inputs):
+    retained = {parent for claim in claims for parent in retained_parents(claim, inputs)}
+    return [parent["id"] for parent in inputs if parent["id"] not in retained]
+
+
+def validate_node(node, spec, ledger, inputs, *, legacy=False):
     if not isinstance(node, dict) or any(node.get(key) != value for key, value in spec.items()):
         raise ValueError("Synthesis node no longer matches its original findings.")
     if node.get("state") not in {"complete", "gap"} or not isinstance(node.get("claims"), list):
@@ -99,13 +128,16 @@ def validate_node(node, spec, ledger):
     if len(node["claims"]) > 9:
         raise ValueError("Oversized synthesis node.")
     for claim in node["claims"]:
-        if (not valid_claim(claim, ledger) or claim["parents"] != spec["parents"]
+        if (not valid_claim(claim, ledger)
+                or claim["parents"] != (spec["parents"] if legacy else retained_parents(claim, inputs))
                 or not set(claim["support_tokens"]) <= set(spec["support_tokens"])):
             raise ValueError("An intermediate synthesis claim lacks original source support.")
     if (node["state"] == "complete") != bool(node["claims"]):
         raise ValueError("Invalid synthesis node outcome.")
     if type(node.get("omitted_claims")) is not int or node["omitted_claims"] < 0:
         raise ValueError("Invalid synthesis omission count.")
+    if not legacy and node.get("omitted_parents") != omitted_parents(node["claims"], inputs):
+        raise ValueError("Invalid synthesis parent omission receipt.")
 
 
 def level_claims(nodes):
@@ -124,7 +156,8 @@ def matter_inputs(nodes):
 def validate_state(state, passes, evidence, *, final=False):
     ledger = {item["support_token"]: item for item in evidence}
     findings, rejected = findings_from_passes(passes, ledger)
-    if state.get("version") != VERSION or state.get("policy") != POLICY:
+    legacy = state.get("version") == 1
+    if state.get("version") not in {1, VERSION} or state.get("policy") != (LEGACY_POLICY if legacy else POLICY):
         raise ValueError("Unknown hierarchical synthesis version or policy.")
     if state.get("basis") != digest({"passes": passes, "evidence": evidence}):
         raise ValueError("Synthesis checkpoint no longer matches saved findings and sources.")
@@ -141,7 +174,8 @@ def validate_state(state, passes, evidence, *, final=False):
         if not isinstance(nodes, list) or len(nodes) > len(groups):
             raise ValueError("Invalid synthesis group checkpoint.")
         for ordinal, node in enumerate(nodes):
-            validate_node(node, node_spec(level, ordinal, groups[ordinal]), ledger)
+            validate_node(node, node_spec(level, ordinal, groups[ordinal]), ledger,
+                          groups[ordinal], legacy=legacy)
     if state["requests_spent"] < len(state["issue"]) + len(state["matter"]):
         raise ValueError("Synthesis calls were not charged.")
     if state.get("matter") and len(state["issue"]) != min(len(groups_for(findings)), POLICY["max_groups"]):
@@ -175,16 +209,37 @@ def completion_receipt(state, findings, ledger):
     used = {token for claim in level_claims(state["matter"]) for token in claim["support_tokens"]}
     uncited = [token for token in ledger if token not in used]
     truncated = sum(max(0, len(source["excerpt"]) - POLICY["characters_per_source"]) for source in ledger.values())
+    accounting = {}
+    if state["version"] == VERSION:
+        missing = omitted_parents(level_claims(state["matter"]), findings)
+        accounting = {"retained_findings": [item["id"] for item in findings if item["id"] not in missing],
+                      "omitted_findings": missing}
     partial = bool(omitted or state["rejected_findings"] or not findings or uncited or truncated
+                   or accounting.get("omitted_findings")
+                   or any(node.get("omitted_parents") for level in ("issue", "matter") for node in state[level])
                    or any(node["state"] == "gap" or node["omitted_claims"]
                           for level in ("issue", "matter") for node in state[level]))
     return {"omitted_groups": omitted, "partial": partial,
-            "uncited_evidence": uncited, "truncated_characters": truncated}
+            "uncited_evidence": uncited, "truncated_characters": truncated, **accounting}
+
+
+def upgrade_checkpoint(state, findings, ledger):
+    """Reaccount validated v1 output without regenerating or refunding work."""
+    state.update(version=VERSION, policy=dict(POLICY))
+    for level in ("issue", "matter"):
+        inputs = findings if level == "issue" else matter_inputs(state["issue"])
+        for ordinal, (node, group) in enumerate(zip(state[level], groups_for(inputs))):
+            node.update(node_spec(level, ordinal, group))
+            for claim in node["claims"]:
+                claim["parents"] = retained_parents(claim, group)
+            node["omitted_parents"] = omitted_parents(node["claims"], group)
+    state.update(completion_receipt(state, findings, ledger))
 
 
 def run_synthesis(question, passes, evidence, generator, checkpoint: Callable,
                   boundary: Callable, saved=None, *, now=time.time):
-    if saved and (saved.get("version") != VERSION or saved.get("policy") != POLICY):
+    if saved and (saved.get("version") not in {1, VERSION}
+                  or saved.get("policy") != (LEGACY_POLICY if saved.get("version") == 1 else POLICY)):
         raise ValueError("Unknown hierarchical synthesis version or policy.")
     basis = digest({"passes": passes, "evidence": evidence})
     ledger = {item["support_token"]: item for item in evidence}
@@ -199,6 +254,9 @@ def run_synthesis(question, passes, evidence, generator, checkpoint: Callable,
                  "started_at": (saved or {}).get("started_at", now()),
                  "issue": [], "matter": [], "rejected_findings": rejected}
     validate_state(state, passes, evidence)
+    if state["version"] == 1:
+        upgrade_checkpoint(state, findings, ledger)
+        validate_state(state, passes, evidence)
     state.update(stop_reason="running", partial=True, omitted_groups=[])
     checkpoint(state)
 
@@ -251,14 +309,16 @@ def run_synthesis(question, passes, evidence, generator, checkpoint: Callable,
                     value = {"text": claim.text,
                              "support_tokens": [spec["support_tokens"][int(identifier[1:]) - 1]
                                                 for identifier in claim.evidence_ids],
-                             "parents": spec["parents"]}
+                             "parents": []}
                     if valid_claim(value, ledger):
+                        value["parents"] = retained_parents(value, claims)
                         node["claims"].append(value)
                     else:
                         node["omitted_claims"] += 1
                 if node["claims"]:
                     node["state"] = "complete"
-            validate_node(node, spec, ledger)
+            node["omitted_parents"] = omitted_parents(node["claims"], claims)
+            validate_node(node, spec, ledger, claims)
             state[level].append(node)
             checkpoint(state)
         state["omitted_groups"].extend(f"{level}{i + 1}" for i in range(len(state[level]), len(groups)))
@@ -303,14 +363,42 @@ def synthesis_answer(state, evidence):
 
 
 def synthesis_notice(state):
+    finding_notice = (f"saved findings retained: {len(state['retained_findings'])}; "
+                      f"saved findings omitted or not confirmed retained: {len(state['omitted_findings'])} "
+                      f"({', '.join(state['omitted_findings']) or 'none'}); "
+                      if state["version"] == VERSION else "")
     return (f"Hierarchical synthesis {'partial' if state['partial'] else 'complete within its saved finding scope'}: "
             f"{len(state['issue'])} issue groups; {len(state['matter'])} matter sections; "
             f"{state['requests_spent']}/{POLICY['generation_requests']} generation requests spent. "
             f"Stop reason: {state['stop_reason']}. Omitted groups: {len(state['omitted_groups'])}; "
             f"rejected saved findings: {len(state['rejected_findings'])} "
             f"({', '.join(state['rejected_findings']) or 'none'}); "
+            f"{finding_notice}"
             f"generated statements omitted: {sum(node['omitted_claims'] for level in ('issue', 'matter') for node in state[level])}; "
             f"uncited evidence units: {len(state.get('uncited_evidence', []))}; "
             f"original characters outside synthesis packets: {state.get('truncated_characters', 0)}. "
             "Unresolved questions: review competing accounts and saved search gaps; absence of a finding is not proof of absence. "
             "Intermediate summaries are not evidence sources. This does not measure whole-matter coverage.")
+
+
+def portable_hierarchy(state, evidence, safe_citation):
+    """Project validated accounting and original citations without private tokens."""
+    sources = {item["support_token"]: item for item in evidence}
+    result = {key: state[key] for key in (
+        "version", "policy", "requests_spent", "stop_reason", "partial",
+        "omitted_groups", "rejected_findings", "truncated_characters")}
+    if state["version"] == VERSION:
+        result.update({key: state[key] for key in ("retained_findings", "omitted_findings")})
+    else:
+        result["finding_retention_notice"] = LEGACY_FINDING_NOTICE
+    result["uncited_sources"] = [safe_citation(sources[token]) for token in state["uncited_evidence"]]
+    for level in ("issue", "matter"):
+        result[level] = [{
+            "id": node["id"], "parents": node["parents"], "state": node["state"],
+            "omitted_claims": node["omitted_claims"],
+            **({"omitted_parents": node["omitted_parents"]} if state["version"] == VERSION else {}),
+            "claims": [{"text": claim["text"], "parents": claim["parents"],
+                        "sources": [safe_citation(sources[token]) for token in claim["support_tokens"]]}
+                       for claim in node["claims"]],
+        } for node in state[level]]
+    return result
