@@ -66,7 +66,10 @@ def project_transcript(bench, matter, document, degraded):
 def refresh_projection(bench, matter, document):
     """The edit already committed: report projection failure without losing it."""
     job = bench.workspace.media_job(matter.matter_id, document.document_id, document.version_id)
-    if job is None:
+    segments = bench.workspace.transcript_segments(
+        matter.matter_id, document.document_id, document.version_id
+    )
+    if job is None or not segments or document.state in {"missing", "changed", "queued", "processing"}:
         raise KeyError(document.document_id)
     try:
         return project_transcript(bench, matter, document, bool(job.degraded))

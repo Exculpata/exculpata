@@ -71,7 +71,7 @@ def app(runtime, projection):
         postgres_connection=projection, learned_retrieval=False)
 
 
-def seed(client):
+def seed(client, *, with_transcript=True):
     bench = client.app.state.workbench
     bench.media.close()
     response = client.post("/matters", data={"name": "Synthetic search freshness"}, follow_redirects=False)
@@ -92,6 +92,11 @@ def seed(client):
         store._save((document.document_id,))
     job = bench.workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, ACTOR,
         source_sha256=document.digest, byte_size=document.size, media_type=document.media_type, duration_ms=1000)
+    if not with_transcript:
+        with store.mutation_guard():
+            document.state = "queued"
+            store._save((document.document_id,))
+        return bench, matter, document, f"/matters/{matter.slug}/sources/{store.action_token(document)}"
     assert bench.workspace.claim_media_job("synthetic-freshness-worker").media_job_id == job.media_job_id
     bench.workspace.import_media_transcript(job.media_job_id, segments=[{
         "external_segment_id": "synthetic-segment", "start_ms": 0, "end_ms": 1000,
@@ -253,3 +258,16 @@ def test_retry_requires_csrf_and_membership(tmp_path, projection):
         client.cookies.clear()
         _, csrf = _login(client, "alex-rivera")
         assert client.post(f"{url}/search-refresh", data={"csrf_token": csrf}, follow_redirects=False).status_code in (403, 404)
+
+
+def test_retry_without_transcript_does_not_fail_a_queued_recording(tmp_path, projection):
+    with TestClient(app(tmp_path / "runtime", projection)) as client:
+        bench, matter, document, url = seed(client, with_transcript=False)
+        keys = (matter.matter_id, document.document_id, document.version_id)
+        before = bench.workspace.media_job(*keys)
+        response = client.post(f"{url}/search-refresh", follow_redirects=False)
+        assert response.status_code == 404
+        assert document.state == "queued"
+        assert document.processing_stage != "Search update pending"
+        assert bench.workspace.media_job(*keys) == before
+        assert not bench.workspace.transcript_segments(*keys)
