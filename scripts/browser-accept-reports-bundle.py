@@ -477,9 +477,13 @@ def main():
             for width in (1440, 430):
                 driver.set_window_size(width, 1000)
                 settle_layout()
-                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", invitation)
+                driver.execute_script(
+                    "window.scrollTo({top:scrollY + arguments[0].closest('section').getBoundingClientRect().top - 80,"
+                    "left:0,behavior:'instant'});", invitation)
                 wait.until(lambda d: d.execute_script(
-                    "return document.documentElement.scrollWidth <= innerWidth + 1"))
+                    "const box = arguments[0].closest('section').getBoundingClientRect(); "
+                    "return box.top >= 64 && box.bottom <= innerHeight - 80 "
+                    "&& document.documentElement.scrollWidth <= innerWidth + 1;", invitation))
                 driver.save_screenshot(str(args.output / f"legacy-check-in-invitation-{width}.png"))
             driver.set_window_size(1440, 1000)
             click(f'form[action="{prefix}/check-in"] button')
