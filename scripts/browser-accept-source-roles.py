@@ -11,12 +11,14 @@ import threading
 
 import uvicorn
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
@@ -26,6 +28,20 @@ from case_intelligence.source_roles import SourceRoleService
 from case_intelligence.workbench import create_workbench_app
 
 ACTOR = 'development-taylor-morgan'
+
+
+def activate_role_action(driver, wait, element):
+    """Finish the native navigation before a subsequent reload or request."""
+    element.send_keys(Keys.ENTER)
+    def detached(current):
+        try:
+            return EC.staleness_of(element)(current)
+        except WebDriverException as exc:
+            if 'Node with given id does not belong to the document' not in exc.msg:
+                raise
+            return True
+    wait.until(detached)
+    wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
 
 
 def main():
@@ -80,7 +96,7 @@ def main():
             def submit():
                 button = find('#source-role-form button')
                 focus(button)
-                button.send_keys(Keys.ENTER)
+                activate_role_action(driver, wait, button)
             def check(message):
                 report['checks'].append(message)
                 print(message, flush=True)
@@ -91,7 +107,7 @@ def main():
             assert 'Role: Unclassified' in find('[data-source-role]').text
             link = find('[data-source-role] a')
             focus(link)
-            link.send_keys(Keys.ENTER)
+            activate_role_action(driver, wait, link)
             wait.until(lambda _: driver.current_url.split('?')[0].endswith('/role'))
             choice = find('#source-role')
             focus(choice)

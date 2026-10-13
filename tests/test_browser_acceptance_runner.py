@@ -83,12 +83,15 @@ def receipt(path, **values):
         'checks': ['Generated check'] * 20, **values}))
 
 
-@pytest.fixture
-def context_script(monkeypatch):
+@pytest.fixture(params=['context', 'source_roles'])
+def context_script(monkeypatch, request):
     monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
-    spec = importlib.util.spec_from_file_location('browser_context', ROOT / 'scripts/browser-accept-matter-context.py')
+    filename, action = ('browser-accept-matter-context.py', 'activate_context_action') if request.param == 'context' else (
+        'browser-accept-source-roles.py', 'activate_role_action')
+    spec = importlib.util.spec_from_file_location('browser_' + request.param, ROOT / 'scripts' / filename)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    module.activate = getattr(module, action)
     return module
 
 
@@ -103,7 +106,7 @@ def test_context_activation_waits_for_detachment_and_complete_load(context_scrip
         'unknown error: unhandled inspector error: {"code":-32000,"message":"Node with given id does not belong to the document"}'))
     element.is_enabled.side_effect = [True, error]
     driver.execute_script.side_effect = ['loading', 'complete']
-    context_script.activate_context_action(driver, WebDriverWait(driver, 1, poll_frequency=.001), element)
+    context_script.activate(driver, WebDriverWait(driver, 1, poll_frequency=.001), element)
     element.send_keys.assert_called_once_with(Keys.ENTER)
     assert element.is_enabled.call_count == 2
     assert driver.execute_script.call_count == 2
@@ -120,7 +123,7 @@ def test_context_activation_propagates_unexpected_driver_errors(context_script, 
               'readiness': driver.execute_script}[phase]
     target.side_effect = WebDriverException('Unexpected inspector failure')
     with pytest.raises(WebDriverException, match='Unexpected inspector failure'):
-        context_script.activate_context_action(driver, WebDriverWait(driver, 1, poll_frequency=.001), element)
+        context_script.activate(driver, WebDriverWait(driver, 1, poll_frequency=.001), element)
     assert element.send_keys.call_count == 1
     if phase == 'activation':
         element.is_enabled.assert_not_called()
@@ -138,7 +141,7 @@ def test_context_activation_fails_when_navigation_does_not_finish(context_script
         element.is_enabled.side_effect = StaleElementReferenceException()
     driver.execute_script.return_value = 'loading'
     with pytest.raises(TimeoutException):
-        context_script.activate_context_action(driver, WebDriverWait(driver, .01, poll_frequency=.001), element)
+        context_script.activate(driver, WebDriverWait(driver, .01, poll_frequency=.001), element)
     assert element.send_keys.call_count == 1
     if stalled_document == 'old':
         driver.execute_script.assert_not_called()
