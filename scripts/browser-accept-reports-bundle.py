@@ -141,18 +141,29 @@ def main():
                 click(f'button[name="identity_subject"][value="{PREVIEW.subject}"]')
                 wait.until(lambda d: "/auth/login" not in d.current_url)
 
-            def capture_closure(name):
+            def capture_closure(name, focus=None):
                 for width in (1440, 430):
                     driver.set_window_size(width, 1000)
                     if width < 901:
                         rail = driver.find_elements(By.CSS_SELECTOR, "[data-rail-toggle]")
                         if rail and rail[0].get_attribute("aria-expanded") == "true":
                             click("[data-rail-toggle]")
+                        wait.until(lambda d: d.execute_script(
+                            "return document.querySelector('[data-matter-rail]').getBoundingClientRect().right <= 0 "
+                            "&& getComputedStyle(document.querySelector('[data-rail-scrim]')).visibility === 'hidden'"))
                     wait.until(lambda d: d.execute_script(
                         "const box = document.querySelector('.close-matter-card').getBoundingClientRect(); "
                         "return box.left >= 0 && box.right <= innerWidth + 1 "
                         "&& document.documentElement.scrollWidth <= innerWidth + 1"))
-                    driver.execute_script("window.scrollTo({top:0,left:0,behavior:'instant'});")
+                    if focus:
+                        driver.execute_script(
+                            "window.scrollTo({top:scrollY + document.querySelector(arguments[0]).getBoundingClientRect().top - 80,"
+                            "left:0,behavior:'instant'});", focus)
+                        wait.until(lambda d: d.execute_script(
+                            "const box = document.querySelector(arguments[0]).getBoundingClientRect(); "
+                            "return box.top >= 64 && box.bottom <= innerHeight;", focus))
+                    else:
+                        driver.execute_script("window.scrollTo({top:0,left:0,behavior:'instant'});")
                     driver.save_screenshot(str(args.output / f"{name}-{width}.png"))
                 driver.set_window_size(1440, 1000)
 
@@ -450,7 +461,7 @@ def main():
                     assert archive.read("originals/" + document.document_id) == original_bytes
                 else:
                     assert document.document_id in archive.read("unavailable-references.jsonl").decode()
-            capture_closure("closure-final-confirmation")
+            capture_closure("closure-final-confirmation", focus=".close-matter-form")
             confirm_deletion(matter)
             wait.until(lambda _: bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted")
             verify_matter_archive(final_archive, expected_sha256=final_exit.archive_digest)

@@ -16,6 +16,7 @@ broad_summary_request omitted_chars original_chars passages searchable_count sea
 current_display_name current_entity_type current_origin current_revision current_status support_state
 history omissions retrieval routes selected_records preflight model_artifacts media
 language_confidence diarization_requested speaker_count low_confidence_segments overlap_segments
+review_recommended pipeline
 answerable generator_answerable missing_information model_called elapsed_ms evidence_notice source_matches
 modality_coverage review_scope recorded_context_job recorded_context_attempt notebook_context mode items
 source_fingerprint retrieval_source_fingerprint _retrieval_source_fingerprint boundary changed_since_start
@@ -172,6 +173,10 @@ def portable(value, matter_id, *, depth=0):
                 raise ValueError('Preservation payload contains an unreviewed field.')
             if key == 'matter_id' and child not in (None, matter_id):
                 raise ValueError('Preservation payload crosses a matter boundary.')
+            if key == 'review_recommended' and type(child) is not bool:
+                raise ValueError('Preservation review recommendation must be a boolean.')
+            if key == 'pipeline' and (not isinstance(child, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,119}', child)):
+                raise ValueError('Preservation pipeline must be a portable identifier.')
             if key in ACTOR_COLUMNS:
                 child = reference(matter_id, child, actor=True)
             elif key in _REF_KEYS:
@@ -227,6 +232,8 @@ def payload_coverage_manifest():
     return {
         'unknown_fields': 'Creation blocked pending explicit format review',
         'omitted_nested_fields': sorted(_DROP_KEYS | {'inspection_id'}),
+        'typed_metadata': {'review_recommended': 'boolean',
+                           'pipeline': 'Unqualified identifier: 1-120 ASCII letters, digits, dot, underscore or hyphen'},
         'actor_fields': sorted(ACTOR_COLUMNS),
         'pseudonymized_reference_fields': sorted(_REF_KEYS),
         'structured_metadata_fields': {key: sorted(value) for key, value in _STRUCTURED.items()},

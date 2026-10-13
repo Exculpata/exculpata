@@ -270,7 +270,7 @@ def main():
             receipt_file = until(lambda: next(downloads.glob('selected-file-receipt*.json'), None), 'Browser receipt download did not finish')
             data = json.loads(receipt_file.read_text())
             require(len(data['items']) == 7 and data['counts']['received'] == 4, 'Downloaded receipt is incomplete')
-            driver.get(base + f'/matters/{matter.slug}/close')
+            driver.get(base + f'/matters/{matter.slug}/work-product')
             export_link = driver.find_element(By.CSS_SELECTOR, f'a[href="/matters/{matter.slug}/export"]')
             export_link.click()
             bundle_file = until(lambda: next(downloads.glob('*.zip'), None), 'Browser bundle download did not finish')
@@ -279,7 +279,7 @@ def main():
                 require(len(names) == 3, 'Complete bundle omitted receipt formats')
                 exported = json.loads(archive.read(next(n for n in names if n.endswith('.json'))))
                 require(exported == data, 'Bundle and individual receipt differ')
-            record_check('Normal browser receipt and final-export downloads contain a coherent complete selection')
+            record_check('Normal browser receipt and work-product bundle downloads contain a coherent complete selection')
 
             driver.get(base + f'/matters/{matter.slug}/setup')
             driver.find_element(By.CSS_SELECTOR, '[data-file-input]').send_keys(str(folder/'Unsupported/opaque.bin'))

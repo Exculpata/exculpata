@@ -43,6 +43,6 @@
 </div>
 {% if active in case_file_sections %}{% include "workbench_work_product_tabs.html" %}{% endif %}
 {% if not hide_processing_status %}{% include "workbench_processing_status.html" %}{% endif %}
-{# The full notice belongs on Home; imminent deletion stays prominent on every matter page. #}
+{# The full check-in notice belongs on Home; other pages retain its attention chip. #}
 {% with retention_prominent=(active == 'home') %}{% include "workbench_retention_notice.html" %}{% endwith %}
 {% endif %}

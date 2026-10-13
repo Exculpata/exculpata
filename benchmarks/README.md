@@ -122,3 +122,11 @@ cleanup. Existing authority, retained-work and cleanup assertions remain. The
 management test-node/file and aggregate content digests were refreshed after
 reviewing those changes. Case definitions, case fingerprint and fixture bytes
 are unchanged; older receipts remain distinct by content fingerprint.
+
+The subsequent hosted lifecycle run exposed the media workflow's old direct
+deletion fixture. It now uses authenticated export and explicit confirmation,
+preserves every prior media/citation/clip/cleanup assertion, and also verifies
+original media bytes, transcript and speaker revisions, and retained metadata
+in the full archive. Only that media test-node/file and aggregate content digests
+were refreshed. Case definitions, fixture bytes and their fingerprints remain
+unchanged; the integrity checks still reject undeclared changes.

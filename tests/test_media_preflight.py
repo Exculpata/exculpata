@@ -1,6 +1,7 @@
 """Synthetic pre-transcription inspection contracts, separate from frozen packs."""
 import subprocess
 import hashlib
+import zipfile
 import os
 import shutil
 import sys
@@ -13,9 +14,11 @@ from pathlib import Path
 from case_intelligence.media_preflight import inspect_recording
 from case_intelligence.pilot_uploads import _probe_media
 from case_intelligence.generation import UnavailableGenerator
+from case_intelligence.matter_archive_verifier import verify_matter_archive
 from case_intelligence.workbench import create_workbench_app
 from fastapi.testclient import TestClient
 from tests.test_matter_media_workflow import ACTOR, ImmediateMediaProcessor, _matter
+from tests.case_lifecycle_web_helpers import prepare_preview_exit, preview_login
 
 SPEECH = Path(__file__).parent / "fixtures/media-preflight/generated-speech.wav"
 
@@ -134,8 +137,8 @@ class ObservedProcessor(ImmediateMediaProcessor):
         return super().submit(owner, source, media_type, source_sha256)
 
 
-def app_for(path, processor, *, background=False):
-    return create_workbench_app(path, generator=UnavailableGenerator(), auth_mode="test",
+def app_for(path, processor, *, background=False, auth_mode="test"):
+    return create_workbench_app(path, generator=UnavailableGenerator(), auth_mode=auth_mode,
                                 media_processor=processor, media_poll_seconds=0.01, background_ingestion=background)
 
 
@@ -231,7 +234,8 @@ def test_no_audio_video_plays_without_processor_and_is_not_searchable(tmp_path):
                     "color=c=blue:s=160x120:d=1", "-an", "-c:v", "mpeg4",
                     str(source)], check=True)
     processor = ObservedProcessor()
-    with TestClient(app_for(tmp_path / "runtime", processor)) as client:
+    with TestClient(app_for(tmp_path / "runtime", processor, auth_mode="preview")) as client:
+        preview_login(client)
         slug = _matter(client)
         bench, matter, document, token = upload(client, slug, source, "video/quicktime")
         job = wait_job(bench, matter, document)
@@ -259,9 +263,21 @@ def test_no_audio_video_plays_without_processor_and_is_not_searchable(tmp_path):
         assert readiness.playback_only_count == 1
         assert readiness.searchable_count == 0
         assert not readiness.can_query
-        closed = client.post(f"/matters/{slug}/close", data={
-            "confirmed_name": matter.display_name, "acknowledge": "yes"}, follow_redirects=False)
+        confirmation = prepare_preview_exit(client, matter)
+        current_exit = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+        preservation = client.get(f"/matters/{slug}/close/export")
+        assert preservation.status_code == 200
+        archive_path = tmp_path / "generated-playback-preservation.zip"
+        archive_path.write_bytes(preservation.content)
+        manifest = verify_matter_archive(archive_path, expected_sha256=current_exit.archive_digest)
+        assert manifest["table_rows"]["workbench_media_job"] == 1
+        with zipfile.ZipFile(archive_path) as archive:
+            assert archive.read("originals/" + document.document_id) == source.read_bytes()
+            assert "playback/" + document.document_id + ".mp4" in archive.namelist()
+        closed = client.post(f"/matters/{slug}/close", data=confirmation, follow_redirects=False)
         assert closed.status_code == 303
+        assert closed.headers["location"].startswith("/matters/new?")
+        assert bench.workspace.matter_lifecycle(matter.matter_id).state == "deleted"
         assert bench.workspace.connection.execute(
             "SELECT COUNT(*) FROM workbench_media_job WHERE matter_id=?", (matter.matter_id,)
         ).fetchone()[0] == 0
