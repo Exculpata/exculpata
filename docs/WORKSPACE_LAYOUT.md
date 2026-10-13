@@ -86,6 +86,32 @@ python scripts/browser-accept-one-box.py \
   --output /tmp/recordbench-one-box-acceptance
 ```
 
+## Follow-up question retrieval
+
+Focused answers reserve retrieval space for the complete current question.
+Short follow-ups may add the previous user turn within the remaining
+512-character search limit; older context is trimmed first. Selected notebook
+text can use only the space still available after that. The complete question,
+bounded conversation history and selected notebook context still reach generation
+through their separate inputs.
+
+Questions longer than 512 characters, up to the existing 2,000-character answer
+limit, are searched in ordered windows of at most 512 characters. Windows keep
+words together when possible; a word longer than a search window must be split.
+These questions use at most seven windows, without appended history, notebook
+text or broad-summary facets. Their existing 20 primary-candidate budget is
+divided across windows, and results are interleaved by rank. If a requested
+source kind is absent, its existing 12-candidate supplemental budget is divided
+across the same windows within the authorized source scope. Internal callers
+requesting fewer candidates than windows receive an explicit validation error
+before searching; no candidate budget is increased implicitly.
+
+This remains focused retrieval, not an exhaustive review. Search validation,
+source authorization, citation checks, generation grounding and the selected
+evidence limits still apply. The synthetic composition regressions in
+`tests/test_answer_retrieval_question.py` exercise synchronous and durable answers,
+saved original-source support, notebook context and the long-question boundaries.
+
 ## Offer to investigate a thin answer
 
 Set `CASE_INTELLIGENCE_DEEPER_INVESTIGATION=1` before starting the application

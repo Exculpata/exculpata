@@ -48,6 +48,7 @@ from .compat_env import env, header, header_conflicts, kerberos_headers, respons
 from .static_assets import asset_url, static_cache_control
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
 from .answer_jobs import AnswerCoordinator, AnswerJobFailure, AnswerResult
+from .answer_queries import MAX_SEARCH_CHARS, append_notebook_query, contextual_query, query_windows, search_windows
 from .answer_presentation import GENERATED_REVIEW_NOTICE, answer_content, answer_introduction, answer_limitation, answer_failure_notice, modality_coverage_notice, research_content, rejected_answer_content, rejected_answer_notice, review_rejection_notice, REJECTED_ANSWER_NOTICE
 from .branding import PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_TAGLINE
 from .pdf_coverage import PDF_SAVED_RESULT_NOTICE
@@ -232,7 +233,6 @@ from .work_product_exports import (
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 DEFAULT_RUNTIME = PROJECT_ROOT / ".tmp/milestone-a-workbench"
-MAX_SEARCH_CHARS = 512
 MAX_QUESTION_CHARS = 2_000
 MAX_FINAL_BUNDLE_LEDGER_ITEMS = 500
 MAX_FINAL_BUNDLE_REPORTS = 500
@@ -250,8 +250,6 @@ _SYNTHESIS_SCAN_LIMIT = (
     "The frozen review exceeds the synthesis source-validation limit. "
     "No synthesis result was admitted or released. Use the saved review and originals."
 )
-_WORD = re.compile(r"[a-z0-9]+")
-_FOLLOWUP_WORDS = {"it", "that", "those", "they", "them", "this", "these", "he", "she", "there"}
 _COLLECTION_WIDE_QUESTION = re.compile(
     r"\b(?:all|each|every|complete|comprehensive|entire|exhaustive)\b.{0,80}"
     r"\b(?:document|documents|record|records|source|sources|mention|mentions|"
@@ -2832,7 +2830,9 @@ class CaseIntelligenceWorkbench:
             retrieval_boundary["source_fingerprint"] = self.workspace.source_availability_fingerprint(
                 matter.matter_id, retrieval_boundary.get("source_set_id"))
         intent = classify_question(question)
-        queries = (
+        long_query = len(retrieval_query) > MAX_SEARCH_CHARS
+        windows = query_windows(retrieval_query)
+        queries = windows if long_query else (
             broad_summary_queries(retrieval_query, maximum_chars=MAX_SEARCH_CHARS)
             if intent.broad_summary and expand_broad_summary
             else (retrieval_query,)
@@ -2850,16 +2850,21 @@ class CaseIntelligenceWorkbench:
                     combined.append(row)
                     seen.add(row.support_token)
 
-        for index, query in enumerate(queries):
-            extend(
-                self.search(
-                    matter,
-                    query,
-                    limit=validate_primary_limit(primary_limit),
-                    stage_callback=stage_callback if index == 0 else None,
-                    document_ids=document_ids,
+        primary_limit = validate_primary_limit(primary_limit)
+        if long_query:
+            extend(search_windows(self.search, matter, windows, limit=primary_limit,
+                document_ids=document_ids, stage_callback=stage_callback))
+        else:
+            for index, query in enumerate(queries):
+                extend(
+                    self.search(
+                        matter,
+                        query,
+                        limit=primary_limit,
+                        stage_callback=stage_callback if index == 0 else None,
+                        document_ids=document_ids,
+                    )
                 )
-            )
 
         # An explicit source-kind request gets one bounded retrieval attempt
         # inside each requested kind when the ordinary top set omitted it.
@@ -2884,6 +2889,10 @@ class CaseIntelligenceWorkbench:
                 )
                 if scoped:
                     extend(
+                        search_windows(self.search, matter, windows,
+                            limit=DEFAULT_REVIEW_BUDGET.supplemental_candidates_per_kind,
+                            document_ids=scoped)
+                        if long_query else
                         self.search(
                             matter,
                             retrieval_query,
@@ -4739,14 +4748,7 @@ class CaseIntelligenceWorkbench:
     def _retrieval_question(
         question: str, messages: Sequence[MessageRecord]
     ) -> str:
-        terms = tuple(_WORD.findall(question.casefold()))
-        contextual = len(terms) < 6 or bool(_FOLLOWUP_WORDS.intersection(terms))
-        if not contextual:
-            return question
-        previous = next(
-            (message.content for message in reversed(messages) if message.role == "user"), ""
-        )
-        return f"{previous} {question}".strip()[:MAX_SEARCH_CHARS]
+        return contextual_query(question, messages)
 
     @staticmethod
     def _notebook_working_context(items: Sequence[object]) -> str:
@@ -5032,22 +5034,7 @@ class CaseIntelligenceWorkbench:
             )
             notebook_context = self._notebook_working_context(notebook_items)
             if notebook_context:
-                retrieval_query = (
-                    retrieval_query
-                    + " "
-                    + " ".join(
-                        " ".join(
-                            " ".join(
-                                (
-                                    item.title,
-                                    item.date_label,
-                                    item.body[:300],
-                                )
-                            ).split()
-                        )
-                        for item in notebook_items
-                    )
-                ).strip()[:MAX_SEARCH_CHARS]
+                retrieval_query = append_notebook_query(retrieval_query, notebook_items)
             source_set_id = self.workspace.answer_source_set_id(
                 matter.matter_id, job.job_id
             )
