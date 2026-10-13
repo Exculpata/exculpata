@@ -65,7 +65,7 @@
     <section class="matter-settings-card" aria-labelledby="export-settings-heading">
       <p class="eyebrow">Work product</p>
       <h2 id="export-settings-heading">Keep the work product you need</h2>
-      <p>The work-product bundle includes saved review work and citations. It excludes original source files and does not satisfy the full export requirement for deletion. Begin closure to prepare the full preservation archive.</p>
+      <p>The work-product bundle includes saved review work and citations. It excludes original source files. For export and exit, begin closure to prepare the full preservation archive.</p>
       <a class="button button-secondary" href="/matters/{{ matter.slug }}/export" data-download>Download work-product bundle</a>
     </section>
   </div>
@@ -75,7 +75,7 @@
     <div>
       <p class="eyebrow">Permanent action</p>
       <h2 id="matter-danger-heading">Close matter</h2>
-      <p>Begin closure after active work finishes. Permanent deletion requires a verified full export, a seven-day cancellation window and fresh exact-name confirmation. Originals outside Exculpata remain untouched.</p>
+      <p>Begin closure after active work finishes. Choose export and exit or deliberate deletion without an export. Both require a seven-day cancellation window and fresh exact-name confirmation. Originals outside Exculpata remain untouched.</p>
     </div>
     {% if can_close_matter %}
     <a class="button button-danger" href="/matters/{{ matter.slug }}/close">Close matter</a>

@@ -50,7 +50,7 @@
           <button class="button button-secondary" type="submit" {% if busy %}disabled{% endif %}>{{ 'Prepare a replacement full export' if exit_record.export_id else 'Prepare full export' }}</button>
         </form>
       </section>
-      {% else %}<div class="notice notice-error" role="alert"><strong>Deletion without an export</strong><span>No preservation archive or backup will be provided. Final deletion permanently removes this matter's workbench content. Cancel closure and reopen if you want to choose export and exit.</span></div>{% endif %}
+      {% else %}<div class="notice notice-error" role="alert"><strong>Deletion without an export:</strong> <span>No preservation archive or backup will be provided. Final deletion permanently removes this matter's workbench content. Cancel closure and reopen if you want to choose export and exit.</span></div>{% endif %}
       {% endif %}
       {% if exit_record.export_id %}
       <section class="close-explanation">
@@ -68,7 +68,7 @@
         <h2>Final confirmation</h2><p>This confirmation expires within ten minutes and can be used once.{% if oidc_administrator %} A shorter administrator authorization deadline still applies.{% endif %}</p>
         <label for="confirmed-name">Type <strong>{{ matter.display_name }}</strong> exactly</label><input id="confirmed-name" name="confirmed_name" maxlength="140" required autocomplete="off">
         {% if exit_record.mode == 'export_exit' %}<label class="delete-acknowledgement"><input type="checkbox" name="export_acknowledged" value="yes" required><span>{% if lifecycle.state == 'purge_failed' %}I reviewed the recorded export authorization and understand this retries the same deletion; originals and the server archive may already be unavailable.{% else %}I downloaded this full export, checked it, and retained a copy outside the workbench.{% endif %}</span></label>
-        {% else %}<div class="notice notice-error" role="alert"><strong>No export or backup will be provided.</strong><span>Permanent deletion cannot be undone.</span></div>
+        {% else %}<div class="notice notice-error" role="alert"><strong>No export or backup will be provided.</strong> <span>Permanent deletion cannot be undone.</span></div>
         <label class="delete-acknowledgement"><input type="checkbox" name="no_backup_acknowledged" value="yes" required><span>I intentionally choose permanent deletion without an export. I understand this workbench will provide no backup and my matter content may be lost permanently.</span></label>{% endif %}
         <label class="delete-acknowledgement"><input type="checkbox" name="acknowledge" value="yes" required><span>I understand permanent deletion cannot be undone.</span></label>
         <button class="button button-danger" type="submit">{{ 'Retry confirmed deletion' if lifecycle.state == 'purge_failed' else 'Permanently delete matter' }}</button>
