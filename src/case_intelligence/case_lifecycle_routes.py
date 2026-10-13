@@ -7,6 +7,7 @@ import os
 
 from fastapi import Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from .case_lifecycle_support import (archive_path, cleanup_archives, idle,
     install_archive, source_lock, verified_archive)
@@ -116,11 +117,13 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 challenge = await reauthorize(context, matter, action='begin', mode=mode)
                 if challenge is not None:
                     return challenge
-            with source_lock(bench, matter.matter_id):
-                idle(bench, matter.matter_id)
-                current_authority = refresh_owner(request, slug, context)
-                bench.workspace.case_lifecycle.begin_exit(slug, context.principal_id, mode=mode,
-                    session_id=session_id(current_authority), administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
+            def begin_current_exit():
+                with source_lock(bench, matter.matter_id):
+                    idle(bench, matter.matter_id)
+                    current_authority = refresh_owner(request, slug, context)
+                    bench.workspace.case_lifecycle.begin_exit(slug, context.principal_id, mode=mode,
+                        session_id=session_id(current_authority), administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
+            await run_in_threadpool(begin_current_exit)
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
         return redirect(slug, notice='Closure started. The matter is frozen and can be reopened before final deletion.')
@@ -216,19 +219,24 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
             challenge = await reauthorize(context, matter, action='purge', mode=mode)
             if challenge is not None:
                 return challenge
-            with source_lock(bench, matter.matter_id):
-                idle(bench, matter.matter_id)
-                current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
-                if current is None:
-                    raise WorkspaceProblem('Start an explicit exit first.')
-                if lifecycle.state != 'purge_failed' and current.mode == 'export_exit':
-                    verified_archive(bench, matter, current)
-                current_authority = refresh_owner(request, slug, context)
-                confirmation = bench.workspace.case_lifecycle.issue_confirmation(slug, context.principal_id,
-                    session_id(current_authority), export_id, mode=mode, administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
+            def prepare_confirmation():
+                # Reauthentication awaits the provider on the event loop; disk
+                # verification and source locks retain their worker-thread path.
+                with source_lock(bench, matter.matter_id):
+                    idle(bench, matter.matter_id)
+                    current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
+                    if current is None:
+                        raise WorkspaceProblem('Start an explicit exit first.')
+                    if lifecycle.state != 'purge_failed' and current.mode == 'export_exit':
+                        verified_archive(bench, matter, current)
+                    current_authority = refresh_owner(request, slug, context)
+                    confirmation = bench.workspace.case_lifecycle.issue_confirmation(slug, context.principal_id,
+                        session_id=session_id(current_authority), export_id=export_id, mode=mode,
+                        administrator_override=(current_authority.is_administrator and matter.owner_id != current_authority.principal_id))
+                return page(request, slug, confirmation=confirmation)
+            return await run_in_threadpool(prepare_confirmation)
         except WorkspaceProblem as exc:
             return redirect(slug, error=str(exc))
-        return page(request, slug, confirmation=confirmation)
 
     @app.post('/matters/{slug}/close', dependencies=[Depends(require_csrf)])
     def purge(request: Request, slug: str, confirmed_name: str = Form('', max_length=140),

@@ -617,3 +617,32 @@ def test_interrupted_http_download_discards_attempt_and_retry_can_complete(case,
     assert bench.matter_active_work_counts(matter.matter_id)['exports'] == 0
     assert client.get(path).status_code == 200
     assert bench.workspace.case_lifecycle.downloads.receipt(current, matter.owner_id) is not None
+
+
+def test_final_archive_verification_does_not_block_unrelated_requests(case, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from case_intelligence import case_lifecycle_routes
+    client, bench, matter, _, _, clock, csrf = case
+    assert post(client, matter, 'close/begin', csrf).status_code == 303
+    current = prepare(client, bench, matter, csrf)
+    assert client.get(f'/matters/{matter.slug}/close/export').status_code == 200
+    clock[0] += timedelta(days=7, seconds=1)
+    csrf = login(client)
+    started, release = Event(), Event()
+    verify = case_lifecycle_routes.verified_archive
+    def slow_verify(*args, **kwargs):
+        started.set()
+        assert release.wait(15), 'Archive verification was not released'
+        return verify(*args, **kwargs)
+    monkeypatch.setattr(case_lifecycle_routes, 'verified_archive', slow_verify)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        confirmation = workers.submit(confirm, client, matter, csrf, current.export_id)
+        try:
+            assert started.wait(5), 'Confirmation did not reach archive verification'
+            navigation = workers.submit(client.get, '/matters/manage')
+            assert navigation.result(timeout=5).status_code == 200
+            assert not confirmation.done()
+        finally:
+            release.set()
+        assert confirmation.result(timeout=5)
