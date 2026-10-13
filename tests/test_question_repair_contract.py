@@ -89,7 +89,7 @@ def test_retry_feedback_identifies_actual_defects_and_retains_empty_attempt(monk
             result = {'questions': [bad]}
         else:
             feedback = json.loads(payload['messages'][-1]['content'].split('\n', 1)[1])
-            assert feedback['remaining_supported_questions'] == 3
+            assert feedback['remaining_target_questions'] == 3
             assert feedback['repair_guidance'][0]['candidate_id'] == 'a1q1'
             assert feedback['repair_guidance'][0]['unsupported_digit_tokens'] == ['2026-06-03']
             assert feedback['repair_guidance'][0]['cited_evidence_ids'] == ['S2']
@@ -105,7 +105,7 @@ def test_retry_feedback_identifies_actual_defects_and_retains_empty_attempt(monk
     client = client_type('http://127.0.0.1:11434', 'synthetic', question_profile=QuestionGenerationProfile())
     raw = client.draft_questions(purpose='discovery', topic='Badge records', evidence=DOCUMENTS)
     assert len(calls) == 3 and raw['questions'] == [bad, repaired]
-    assert raw['retention']['shortfall'] == 2
+    assert raw['retention']['target_gap'] == 2
     assert raw['retention']['attempts'][1]['raw_candidates'] == 0
     assert raw['retained_candidate_ids'] == ['a3q1']
     assert raw['questions'][0]['evidence_ids'] == ['S2']  # No automatic citation repair.
@@ -159,4 +159,4 @@ def test_judge_veto_cannot_resurrect_unjudged_duplicates(monkeypatch, backend, c
         purpose='discovery', topic='Badge records', evidence=DOCUMENTS)
     assert len(calls) == 2 and raw['questions'] == [candidate] * 3
     assert raw['retained_candidate_ids'] == []
-    assert raw['retention']['shortfall'] == 3
+    assert raw['retention']['target_gap'] == 3

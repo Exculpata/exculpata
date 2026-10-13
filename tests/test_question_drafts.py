@@ -283,7 +283,8 @@ def test_drafting_proposes_checked_questions_and_saves_nothing(drafting):
     response = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'})
     assert response.status_code == 200 and response.headers['cache-control'] == 'no-store'
     draft = response.json()
-    assert draft['label'] == 'Questions for a witness' and draft['notice'] == QUESTION_OMISSION_NOTICE
+    assert draft['label'] == 'Questions for a witness' and QUESTION_OMISSION_NOTICE in draft['notice']
+    assert draft['outcome']['status'] == 'filtered_short_output'
     assert [q['text'] for q in draft['questions']] == [GOOD[0]['text'], GOOD[1]['text']]
     assert draft['questions'][0]['passages'] == [1]
     assert draft['questions'][0]['sources'] == ['Synthetic receiving log.txt · Line 1']
@@ -350,6 +351,49 @@ def test_without_javascript_the_draft_is_a_page_with_save_and_dismiss(drafting):
     location = urlsplit(saved.headers['location'])
     assert location.path == f'/matters/{matter.slug}/sources'
     assert parse_qs(location.query)['notice'] == ['Questions saved to case notes for review.']
+
+
+@pytest.mark.parametrize('count', [1, 2])
+def test_short_proposals_explain_quantity_in_json_and_html_without_saving(drafting, count):
+    client, generator, (matter, conversation, message, base) = drafting
+    generator.questions = GOOD[:count]
+    draft = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).json()
+    assert len(draft['questions']) == count and draft['outcome']['status'] == 'supported_short_output'
+    assert 'produced from these passages' in draft['notice'] and 'No filler' in draft['notice']
+    page = client.post(base, data={'purpose': 'witness'})
+    assert page.status_code == 200 and html.escape(draft['notice']) in page.text
+    assert 'Save to case notes' in page.text
+    assert not notes(client.app.state.workbench, matter)
+
+
+def test_genuinely_empty_passages_have_a_visible_empty_state_and_no_save(drafting, monkeypatch):
+    from dataclasses import replace
+    client, generator, (matter, conversation, message, base) = drafting
+    bench = client.app.state.workbench
+    original = bench._answer_passages
+
+    def empty_passages(*args):
+        topic, passages = original(*args)
+        return topic, [(replace(item, excerpt=' \n '), ref) for item, ref in passages]
+
+    monkeypatch.setattr(bench, '_answer_passages', empty_passages)
+    draft = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'}).json()
+    assert draft['questions'] == [] and draft['outcome']['status'] == 'no_usable_content'
+    assert 'no usable source text' in draft['notice']
+    page = client.post(base, data={'purpose': 'witness'})
+    assert page.status_code == 200 and 'no usable source text' in page.text
+    assert 'Save to case notes' not in page.text and '>Dismiss</a>' in page.text
+    assert generator.calls == [] and not notes(bench, matter)
+    refused = client.post(base + '/save', data=save_form(draft), headers={'Accept': 'application/json'})
+    assert refused.status_code == 409
+
+
+def test_empty_generation_on_usable_passages_is_an_error_not_an_empty_source(drafting):
+    client, generator, (matter, conversation, message, base) = drafting
+    generator.questions = []
+    response = client.post(base, data={'purpose': 'witness'}, headers={'Accept': 'application/json'})
+    assert response.status_code == 409 and 'returned no questions' in response.json()['message']
+    assert 'no usable source text' not in response.json()['message']
 
 
 def test_failures_say_what_happened_and_access_is_checked(tmp_path, monkeypatch):

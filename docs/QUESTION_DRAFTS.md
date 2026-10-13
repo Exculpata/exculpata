@@ -27,8 +27,9 @@ case notes**, which adds one Suggested note.
   and speaker labels such as "Speaker 1" are not established events or identities,
   so questions about them should ask what the recording appears to say without
   leading.
-  The prompt asks for four to six distinct, relevant questions and at least three
-  when supported, with no padding from unrelated passages or invented records.
+  The prompt targets three distinct, relevant questions, allows one or two when
+  no further supported angle is produced, and permits additional useful angles
+  up to the existing eight-item limit. No padding from unrelated passages or invented records.
   It preserves attribution, conditional statements and the difference between
   an unestablished fact and an established opposite. Nearby objects do not prove
   possession; unidentified transcript speakers do not become identified witnesses.
@@ -109,8 +110,8 @@ case notes**, which adds one Suggested note.
   exposes every raw candidate across attempts to the unchanged quotation scorer,
   plus attempt boundaries, call timings, configured policy and every drop reason.
   Retention diagnostics report each attempt's raw/retained counts (including
-  empty batches), drop reasons, and any final shortfall against the unchanged
-  three-question minimum. An unmet count is reported, never filled automatically.
+  empty batches), drop reasons, and the remaining gap against the three-question
+  target. An unmet target is reported, never filled automatically.
   A malformed attempt is recorded, never silently replaced. This internal receipt
   type cannot be supplied by model JSON; ordinary draft JSON keeps its original
   strict shape and eight-item limit. No questions are fabricated to reach a minimum.
@@ -121,13 +122,21 @@ case notes**, which adds one Suggested note.
   veto paraphrases across batches without another call or revising earlier decisions.
   Deterministic batch exclusions stay excluded after judging; a veto cannot
   resurrect a duplicate or display-limit item that the judge never evaluated.
-  Fewer than three supported questions still fails the unchanged evaluation gate.
-  Filtering cannot repair a run that produced fewer than three raw candidates;
-  deduplication can also reduce a short list. These changes require a fresh
-  real-model receipt and do not turn earlier failed receipts into passes.
+  Version 2 accepts one or two grounded questions from a usable case, with a
+  plain explanation. It distinguishes clean short output, removed duplicates,
+  filtering, failed/incomplete model responses, and no surviving questions.
+  A short draft does not prove the source intrinsically supports no more questions.
+  These changes require a fresh real-model receipt and do not turn earlier failed
+  receipts into passes.
 - **Proposal and save (decision 2).** The dock shows a proposal card that takes
   focus, lists each question with its sources, and offers **Save to case notes**
-  and **Dismiss**. While a save is pending, Dismiss and the draft buttons are
+  and **Dismiss**. Short drafts carry a plain quantity explanation in both the dock
+  and full-page proposal. Filtering and failed/incomplete generation have distinct
+  explanations even when some grounded questions remain reviewable. Only absent
+  or whitespace-only excerpt text receives a no-usable-source empty state, without
+  calling a model or offering Save. Numbers, punctuation, poor OCR and transcript
+  placeholders do not trigger that exception. Empty generation on usable passages
+  remains an error. While a save is pending, Dismiss and the draft buttons are
   held, so the card never says nothing was saved while the save may succeed. The
   conversation picker and New chat are held until every pending draft and save
   (from any open card) is known, so the dock is never replaced before a result
@@ -216,17 +225,52 @@ SHA-256 is pinned in `question_draft_evaluation.py`
 (`7674d1da108db0dffe5392a7ca841c483e09e9ec220838a1afac5b5f99a5ea95`); changing
 the set means a new file and a new recorded fingerprint.
 
-The maintainer's pass bar, applied to the questions a reviewer would see:
+The owner-approved **v2 quantity policy** replaces the v1 three-question minimum
+([decision](https://github.com/Exculpata/exculpata/pull/142#issuecomment-6154342607)).
+The pass bar, applied to the questions a reviewer would see:
 
-- at least 90% cite only relevant passages (a question that also cites the
-  distractor does not count);
-- none quotes text that is not in its cited passages; and
-- so that dropping questions cannot pass on its own, every case shows at least
-  three questions.
+- at least 90% cite only relevant passages (a question that also cites a distractor does not count);
+- none quotes text that is absent from its cited passages;
+- every usable case shows at least one grounded question, with three as a target;
+- failed, malformed or truncated drafting/judging responses fail the case, even
+  when some useful grounded output survives. Optional planning failures remain
+  diagnostic; planning cannot spend the final answer reserve.
 
-The receipt also counts quotations the raw model output invented before the check
-removed them. A raw reply whose citations are malformed is scored as shown
-nothing, rather than stopping the run.
+Short output is accepted because it remains useful and grounded, not because a
+model declares a source "thin." No model-declared sufficiency flag can bypass the
+schema or checks. Rejected candidates and empty batches remain in the receipt.
+Only absent or whitespace-only excerpt text qualifies as `no_usable_content`.
+This explicit empty state is not useful output; an entirely empty set cannot pass.
+Every case in the unchanged frozen set has usable text, so zero survivors in any
+frozen case still fails. Filtering does not establish lack of usable source content.
+
+New receipts use `recordbench-question-draft-evaluation-v2` and include
+`acceptance_policy` with the decision, rationale, failure rule and superseded
+format. `pass_bar.target_questions_per_case` is 3 and
+`minimum_questions_per_usable_case` is 1; the old
+`minimum_questions_per_case` field is removed. `cases_below_target` is diagnostic,
+while `failed_cases`, `cases_without_grounded_questions` and
+`cases_without_usable_content` distinguish failures and explicit empty sources.
+Every case has an `outcome` (status, useful-output flag, source usability,
+shown/target counts, generation completeness, problems and a plain explanation).
+Retention renames `minimum_questions` to `target_questions`, `shortfall` to
+`target_gap`, and top-up feedback `remaining_supported_questions` to
+`remaining_target_questions`. These names do not change budgets or the two-top-up
+maximum. Rich sources can still produce more than three questions.
+
+Earlier v1 receipts keep their original format, three-question pass bar and failed
+result. They are not rescored, overwritten, or represented as v2 runs. The latest
+v1 [receipt at `22117ff`](https://github.com/Exculpata/exculpata/pull/142#issuecomment-6154217188)
+remains failed (22 shown, 21 relevant, zero unsupported quotes; crate-records had
+zero survivors), with separately unavailable loaded-artifact binding. A fresh
+evaluation against the new commit and policy is required. Model pins, fixture
+bytes/fingerprint, relevance threshold, quote checks, grounding checks, profile
+capacities and maximum top-ups are unchanged.
+
+The raw unsupported-quotation count remains diagnostic; the zero-quotation pass
+bar still applies to shown questions. Malformed replies and transport failures
+are recorded per case and cannot be labelled source insufficiency. Surviving
+grounded output remains reviewable but does not make a failed case complete.
 
 Run it against the configured generator (the same `CASE_INTELLIGENCE_GENERATOR_*`
 settings the application uses; nothing is selected or downloaded):
@@ -248,7 +292,7 @@ Without a configured runtime the receipt records `model_gate: outstanding`.
 
 The receipt is bound to what ran. It records the Git commit, whether the checkout
 had uncommitted changes, and SHA-256 hashes of the drafting check, the model
-adapters and the scorer. It also records the model's content digest as Ollama
+adapters, quantity policy, question generation/audit/judge modules and the scorer. It also records the model's content digest as Ollama
 reports it, observed before and after the run; a model name alone is mutable. The
 `model_pin` records the selected profile's upstream model, revision and license,
 the model catalog's SHA-256, and the declared artifact; like the claim

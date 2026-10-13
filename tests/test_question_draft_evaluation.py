@@ -10,7 +10,7 @@ import pytest
 from case_intelligence.generation import GroundedGenerationService, UnavailableGenerator
 from case_intelligence import question_draft_evaluation
 from case_intelligence.question_draft_evaluation import (
-    DEFAULT_CASES, MIN_QUESTIONS_PER_CASE, QUESTION_SET_FINGERPRINT, evaluate, load_cases, receipt,
+    DEFAULT_CASES, TARGET_QUESTIONS, QUESTION_SET_FINGERPRINT, evaluate, load_cases, receipt,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,17 +104,17 @@ def test_the_set_is_synthetic_fixed_and_mixes_relevant_and_unrelated_passages():
 def test_relevant_grounded_drafts_pass_the_bar():
     result = run(Scripted(lambda evidence, index: evidence[index % 2]))
     assert result["passed"] is True
-    assert result["shown_questions"] == 10 * MIN_QUESTIONS_PER_CASE and result["relevant_rate"] == 1.0
+    assert result["shown_questions"] == 10 * TARGET_QUESTIONS and result["relevant_rate"] == 1.0
     assert result["shown_unsupported_quotes"] == result["raw_unsupported_quotes"] == 0
 
 
-def test_drafts_citing_unrelated_passages_quoting_absent_text_or_too_few_fail():
+def test_unrelated_malformed_and_ungrounded_output_still_fails_the_new_policy():
     unrelated = run(Scripted(lambda evidence, index: evidence[2]))
     assert unrelated["passed"] is False and unrelated["relevant_rate"] == 0.0
     # Invented quotations never reach the reviewer, so every case falls below the minimum.
     quoting = run(Scripted(lambda evidence, index: evidence[0], quote="it was already open"))
     assert quoting["passed"] is False and quoting["shown_unsupported_quotes"] == 0
-    assert quoting["raw_unsupported_quotes"] == 30 and len(quoting["cases_below_minimum"]) == 10
+    assert quoting["raw_unsupported_quotes"] == 30 and len(quoting["cases_without_grounded_questions"]) == 10
     # A one-word invented quotation is counted and kept from the reviewer too.
     short = run(Scripted(lambda evidence, index: evidence[0], quote="red"))
     assert short["passed"] is False and short["raw_unsupported_quotes"] == 30 and short["shown_unsupported_quotes"] == 0
@@ -124,15 +124,21 @@ def test_drafts_citing_unrelated_passages_quoting_absent_text_or_too_few_fail():
     # A malformed citation list is scored, not allowed to stop the run.
     malformed = run(Malformed())
     assert malformed["passed"] is False and malformed["shown_questions"] == 0
-    assert len(malformed["cases_below_minimum"]) == 10
-    # Repeating one question with different punctuation does not meet the minimum.
+    assert len(malformed["failed_cases"]) == 10
+
+
+def test_short_and_deduplicated_output_passes_without_becoming_three_questions():
+    # Repetition is removed; one supported question meets v2's useful-output floor.
     echo = run(Echo())
-    assert echo["passed"] is False and len(echo["cases_below_minimum"]) == 10
+    assert echo["passed"] is True and echo['shown_questions'] == 10 and len(echo["cases_below_target"]) == 10
+    assert all(c['outcome']['status'] == 'deduplicated_short_output' for c in echo['cases'])
     # So does repeating it with words joined by underscores.
     underscored = run(Underscored())
-    assert underscored["passed"] is False and len(underscored["cases_below_minimum"]) == 10
+    assert underscored["passed"] is True and underscored['shown_questions'] == 10
+    assert all(c['outcome']['status'] == 'deduplicated_short_output' for c in underscored['cases'])
     thin = run(Scripted(lambda evidence, index: evidence[0], count=2))
-    assert thin["passed"] is False and thin["relevant_rate"] == 1.0 and len(thin["cases_below_minimum"]) == 10
+    assert thin["passed"] is True and thin["relevant_rate"] == 1.0 and len(thin["cases_below_target"]) == 10
+    assert all(c['outcome']['status'] == 'supported_short_output' and c['outcome']['notice'] for c in thin['cases'])
 
 
 def test_without_a_runtime_the_model_gate_stays_outstanding():
@@ -250,7 +256,8 @@ def test_a_receipt_with_non_utf8_model_text_is_still_written(tmp_path, monkeypat
             reply["questions"][0]["text"] = reply["questions"][0]["text"][:-1] + " \ud800?"
             return reply
     result = run(Surrogate(lambda evidence, index: evidence[index % 2]))
-    assert result["shown_questions"] == 20 and result["passed"] is False
+    assert result["shown_questions"] == 20 and result["passed"] is True
+    assert all(c['outcome']['status'] == 'filtered_short_output' for c in result['cases'])
     text = json.dumps(result, ensure_ascii=True)
     assert "\\ud800" in text and text.encode("utf-8")
 

@@ -82,6 +82,7 @@ def speaker_turns(item):
 
 
 def retention_summary(attempts, audit):
+    from .question_output_policy import TARGET_QUESTIONS
     rows = []
     for number, raw in enumerate(attempts, 1):
         values = raw.get("questions") if isinstance(raw, dict) else None
@@ -91,8 +92,8 @@ def retention_summary(attempts, audit):
                                                    if drop["attempt"] == number)),
                      "valid_batch": (isinstance(raw, dict) and set(raw) == {"questions"}
                                      and isinstance(values, list) and len(values) <= 8)})
-    return {"minimum_questions": 3, "retained_questions": len(audit.questions),
-            "shortfall": max(0, 3 - len(audit.questions)), "attempts": rows}
+    return {"target_questions": TARGET_QUESTIONS, "retained_questions": len(audit.questions),
+            "target_gap": max(0, TARGET_QUESTIONS - len(audit.questions)), "attempts": rows}
 
 
 _REPAIR_GUIDANCE = {
@@ -136,7 +137,7 @@ def repair_feedback(attempts, audit, evidence):
                          "unsupported_named_details": sorted(set(names)),
                          "instruction": _REPAIR_GUIDANCE.get(drop["reason"], "Recheck this candidate against only its cited original passages.")})
     summary = retention_summary(attempts, audit)
-    return {"remaining_supported_questions": summary["shortfall"],
+    return {"remaining_target_questions": summary["target_gap"],
             "attempt_retention": summary["attempts"], "repair_guidance": guidance,
             "cited_support": [{"evidence_id": item.evidence_id, "locator": typed_locator(item),
                                "speaker_turns": speaker_turns(item)} for item in evidence if item.evidence_id in used]}

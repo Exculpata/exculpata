@@ -2,8 +2,9 @@
 
 Pass bar, recorded by the maintainer: at least 90% of the questions shown to a
 reviewer cite only relevant passages, and none quotes text that is not in its cited
-passages. So that dropping questions cannot pass on its own, every case must
-also show at least MIN_QUESTIONS_PER_CASE questions.
+passages. Version 2 targets three questions and requires at least one useful
+grounded question per usable case. Empty source text is explicit, not a pass
+obtained by dropping every candidate. Historical v1 receipts are unchanged.
 """
 from __future__ import annotations
 
@@ -21,6 +22,10 @@ from .generation import (
 )
 from .claim_evaluation import validate_runtime
 from .question_drafting import PURPOSES, draft_questions, unsupported_quotes
+from .question_output_policy import (
+    ACCEPTANCE_POLICY, EVALUATION_FORMAT, MIN_QUESTIONS_PER_USABLE_CASE, TARGET_QUESTIONS,
+    question_outcome,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASES = ROOT / "benchmarks" / "question-drafts-v1.json"
@@ -32,11 +37,16 @@ IMPLEMENTATION_PATHS = (
     "src/case_intelligence/question_draft_evaluation.py",
     "src/case_intelligence/generation.py",
     "scripts/evaluate-question-drafts.py",
+    "src/case_intelligence/question_output_policy.py",
+    "src/case_intelligence/question_generation.py",
+    "src/case_intelligence/question_grounding.py",
+    "src/case_intelligence/question_context.py",
+    "src/case_intelligence/question_language.py",
+    "src/case_intelligence/question_judging.py",
 )
 # The set is fixed: changing it needs a new file and a new recorded fingerprint.
 QUESTION_SET_FINGERPRINT = "7674d1da108db0dffe5392a7ca841c483e09e9ec220838a1afac5b5f99a5ea95"
 RELEVANT_RATE_BAR = 0.90
-MIN_QUESTIONS_PER_CASE = 3
 
 
 def json_safe(value):
@@ -115,7 +125,8 @@ def evaluate(service, data: dict) -> dict:
     recording = _Recording(service.client)
     original = service.client
     service.client = recording
-    cases, shown_total, relevant_total, shown_bad_quotes, raw_bad_quotes, thin = [], 0, 0, 0, 0, []
+    cases, shown_total, relevant_total, shown_bad_quotes, raw_bad_quotes = [], 0, 0, 0, 0
+    below_target, no_grounded, no_content, failed = [], [], [], []
     try:
         for case in data["cases"]:
             evidence = tuple(EvidenceItem(p["id"], p["source_name"], p["location"], p["excerpt"],
@@ -124,13 +135,19 @@ def evaluate(service, data: dict) -> dict:
             by_id = {item.evidence_id: item for item in evidence}
             recording.raw = None
             result = dict(id=case["id"], purpose=case["purpose"])
+            failure = None
             try:
                 draft = draft_questions(service, case["purpose"], case["topic"], evidence)
                 shown = draft.questions
-                result.update(omitted=draft.omitted, elapsed_ms=draft.elapsed_ms)
+                result.update(omitted=draft.omitted, elapsed_ms=draft.elapsed_ms, notice=draft.notice)
             except GenerationRejected as exc:
                 shown = ()
                 result.update(rejected=str(exc))
+            except GenerationUnavailable:
+                shown = ()
+                failure = "generation_unavailable"
+                result.update(generation_error="The configured runtime could not complete drafting.")
+            outcome = question_outcome(recording.raw, evidence, failure=failure)
             raw_questions = recording.raw.get("questions") if isinstance(recording.raw, dict) else None
             for value in raw_questions if isinstance(raw_questions, list) else ():
                 if isinstance(value, dict) and isinstance(value.get("text"), str):
@@ -150,9 +167,16 @@ def evaluate(service, data: dict) -> dict:
                 questions.append(dict(text=question.text, evidence_ids=list(question.evidence_ids),
                                       relevant=relevant, unsupported_quotes=list(bad)))
             shown_total += len(questions)
-            if len(questions) < MIN_QUESTIONS_PER_CASE:
-                thin.append(case["id"])
-            result.update(questions=questions, raw=recording.raw)
+            if not outcome["usable_source"]:
+                no_content.append(case["id"])
+            else:
+                if len(questions) < TARGET_QUESTIONS:
+                    below_target.append(case["id"])
+                if not questions:
+                    no_grounded.append(case["id"])
+                if len(questions) < MIN_QUESTIONS_PER_USABLE_CASE or not outcome["generation_complete"]:
+                    failed.append(case["id"])
+            result.update(questions=questions, raw=recording.raw, outcome=outcome)
             cases.append(result)
     finally:
         service.client = original
@@ -160,8 +184,9 @@ def evaluate(service, data: dict) -> dict:
     return dict(
         shown_questions=shown_total, relevant_questions=relevant_total, relevant_rate=round(rate, 4),
         shown_unsupported_quotes=shown_bad_quotes, raw_unsupported_quotes=raw_bad_quotes,
-        cases_below_minimum=thin,
-        passed=rate >= RELEVANT_RATE_BAR and shown_bad_quotes == 0 and not thin,
+        cases_below_target=below_target, cases_without_grounded_questions=no_grounded,
+        cases_without_usable_content=no_content, failed_cases=failed,
+        passed=shown_total > 0 and rate >= RELEVANT_RATE_BAR and shown_bad_quotes == 0 and not failed,
         cases=cases,
     )
 
@@ -265,11 +290,13 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
     pin = model_pin(profile, runtime) if runtime is not None else None
     data, fingerprint = load_cases(path)
     client = service.client
-    result = dict(format="recordbench-question-draft-evaluation-v1", synthetic_only=True,
+    result = dict(format=EVALUATION_FORMAT, synthetic_only=True,
+                  acceptance_policy=dict(ACCEPTANCE_POLICY),
                   set_fingerprint=fingerprint, pinned_set=fingerprint == QUESTION_SET_FINGERPRINT,
                   case_count=len(data["cases"]),
                   pass_bar=dict(relevant_rate=RELEVANT_RATE_BAR, unsupported_quotes=0,
-                                minimum_questions_per_case=MIN_QUESTIONS_PER_CASE),
+                                target_questions_per_case=TARGET_QUESTIONS,
+                                minimum_questions_per_usable_case=MIN_QUESTIONS_PER_USABLE_CASE),
                   adapter=type(client).__name__, model=getattr(client, "model", None),
                   execution=execution_metadata(), model_pin=pin, runtime=runtime,
                   model_gate="outstanding")

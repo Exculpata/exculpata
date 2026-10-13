@@ -15,7 +15,7 @@ import re
 class QuestionDraftReceipt(dict):
     """An internal envelope that JSON returned by a model cannot instantiate.
 
-    ``questions`` exposes every original candidate to the unchanged scorer.
+    ``questions`` exposes every original candidate for raw quotation scoring.
     Each attempt still has the eight-question schema limit; the display limit
     remains eight. Extra audit fields never come from model-declared authority.
     """

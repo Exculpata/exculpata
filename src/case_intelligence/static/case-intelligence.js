@@ -4180,6 +4180,22 @@
         heading.tabIndex = -1;
         card.append(heading, element("p", "Nothing is saved yet. Check each question against its sources.", "question-draft-hint"));
         if (draft.notice) card.append(element("p", draft.notice, "question-draft-notice"));
+        if (!draft.questions.length) {
+          const dismiss = element("button", "Dismiss");
+          dismiss.type = "button";
+          card.append(dismiss);
+          card.hidden = false;
+          if (focus) heading.focus();
+          dismiss.addEventListener("click", () => {
+            if (draftForm.getAttribute("aria-busy") === "true") return;
+            card.replaceChildren();
+            card.hidden = true;
+            card.questionDraft = null;
+            feedback.textContent = "Empty draft dismissed; nothing was saved.";
+            opener?.focus();
+          });
+          return;
+        }
         const saveForm = element("form");
         saveForm.method = "post";
         saveForm.action = draft.save_url;
@@ -4289,11 +4305,14 @@
             headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
           });
           const draft = await assistantJson(response);
-          if (!Array.isArray(draft.questions) || !draft.questions.length || !draft.save_url || !draft.basis) {
+          if (!Array.isArray(draft.questions) || !draft.save_url || !draft.basis
+              || (!draft.questions.length && draft.outcome?.status !== "no_usable_content")) {
             throw new Error("The draft could not be confirmed.");
           }
           if (!draftForm.isConnected) return;
-          feedback.textContent = `Drafted ${draft.questions.length} question${draft.questions.length === 1 ? "" : "s"} for review.`;
+          feedback.textContent = draft.questions.length
+            ? `Drafted ${draft.questions.length} question${draft.questions.length === 1 ? "" : "s"} for review.`
+            : draft.notice;
           showDraft(draft, opener);
         } catch (error) {
           if (draftForm.isConnected) feedback.textContent = `${error.message} You can safely try again.`;

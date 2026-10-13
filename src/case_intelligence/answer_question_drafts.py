@@ -106,6 +106,7 @@ class AnswerQuestionDrafts:
         labels = {item.evidence_id: f"{item.source_name} · {item.location}" for item in evidence}
         return {
             "purpose": purpose, "label": PURPOSES[purpose][0], "notice": draft.notice,
+            "outcome": draft.outcome,
             "basis": passage_basis(evidence),
             "questions": [{"text": question.text,
                            "passages": [int(identifier[1:]) for identifier in question.evidence_ids],
@@ -203,8 +204,8 @@ def register_answer_question_routes(
             return refuse(str(exc), 409)
         except GenerationUnavailable as exc:
             return refuse(str(exc), 503)
-        except GenerationRejected:
-            return refuse("No drafted question passed the citation and text checks. Try again.", 409)
+        except GenerationRejected as exc:
+            return refuse(str(exc), 409)
         audit(request, "answer.draft_questions", "success", context=context, matter=matter,
               object_type="message", object_id=message_id,
               details={"count": len(draft["questions"]), "type": "answer"})
