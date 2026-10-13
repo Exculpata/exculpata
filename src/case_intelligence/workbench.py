@@ -3004,11 +3004,11 @@ class CaseIntelligenceWorkbench:
         return tuple(selected)
 
     def _find_support(
-        self, matter: MatterRecord, token: str
+        self, matter: MatterRecord, token: str, *, store: PilotStore | None = None
     ) -> tuple[PilotDocument, tuple[PilotUnit, ...], int]:
         if not re.fullmatch(r"[0-9a-f]{40}", token):
             raise KeyError(token)
-        store = self.source_store(matter)
+        store = store if store is not None else self.source_store(matter)
         for document in store.ready_documents():
             try:
                 units = document.parsed_units()
@@ -3158,19 +3158,23 @@ class CaseIntelligenceWorkbench:
 
     def entity_service(self, matter, *, automatic=False):
         from .entity_service import EntityService, current_reference_indexes, current_source_indexes
+        # Resolve the cache before taking a source guard/workspace transaction.
+        # Opening another matter holds the cache lock while syncing its catalog;
+        # callbacks under the workspace lock must never re-enter that cache.
+        store = self.source_store(matter)
         return EntityService(
             self.workspace.entity_repository(automatic=automatic),
-            source_guard=self.source_store(matter).mutation_guard,
-            resolve_support=lambda token: self.notebook_reference_from_support(matter, token),
+            source_guard=store.mutation_guard,
+            resolve_support=lambda token: self.notebook_reference_from_support(matter, token, store=store),
             load_note=self.workspace.notebook_item,
             load_references=self.workspace.notebook_references,
             validate_references=lambda references: current_reference_indexes(references,
-                load_document=self.source_store(matter).get,
+                load_document=store.get,
                 candidate_for=lambda document, unit, ordinal: self._candidate(matter, document, unit, ordinal),
                 support_tokens=self._support_tokens,
                 read_units=lambda document, ordinals: self.entity_unit_reader.iter_selected(
-                    self.source_store(matter), document, ordinals)),
-            current_sources=lambda references: current_source_indexes(references, self.source_store(matter).get),
+                    store, document, ordinals)),
+            current_sources=lambda references: current_source_indexes(references, store.get),
         )
 
     def assertion_service(self, matter):
@@ -3335,12 +3339,12 @@ class CaseIntelligenceWorkbench:
         return AutomaticDiscoveryPass(units=units, progress=progress, failed_matters=tuple(failed))
 
     def notebook_reference_from_support(
-        self, matter: MatterRecord, token: str
+        self, matter: MatterRecord, token: str, *, store: PilotStore | None = None
     ) -> dict[str, object]:
-        document, units, index = self._find_support(matter, token)
+        document, units, index = self._find_support(matter, token, store=store)
         unit = units[index]
         candidate = self._candidate(matter, document, unit, index + 1)
-        citation = self._citation(matter, candidate)
+        citation = self._citation(matter, candidate, store=store)
         if token not in self._support_tokens(candidate):
             raise KeyError(token)
         return {
