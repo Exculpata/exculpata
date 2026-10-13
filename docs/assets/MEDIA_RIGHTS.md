@@ -4,7 +4,7 @@
 
 `recordbench-desktop-walkthrough.mp4` and
 `recordbench-mobile-walkthrough.mp4` were supplied by the maintainer for
-publication as RecordBench's desktop and mobile GitHub demos. Both show the
+publication as Exculpata's desktop and mobile GitHub demos. Both show the
 fictional Harbor Street demonstration matter. The supplied files are preserved
 without re-encoding.
 

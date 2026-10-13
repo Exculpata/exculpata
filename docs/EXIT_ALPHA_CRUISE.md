@@ -172,7 +172,7 @@ this increment does not qualify or change any model/runtime profile.
 
 ## Governing product direction
 
-The [product north star](PRODUCT_NORTH_STAR.md) governs what RecordBench is
+The [product north star](PRODUCT_NORTH_STAR.md) governs what Exculpata is
 building: a free, local-first review workspace for case teams, with excellent
 manual review, complete exact search, accountable collection processing,
 source-supported investigation, and inspectable matter knowledge. GitHub issues and milestones
