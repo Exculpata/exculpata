@@ -12,7 +12,9 @@ from tests.test_matter_retention_and_themes import FIXED, _principals
 @pytest.mark.parametrize(
     ('age', 'status', 'warning'),
     [(15, 'ongoing', False), (30, 'ongoing', False), (37, 'ongoing', False),
-     (89, 'ongoing', False), (90, 'check_in_due', True), (365, 'check_in_due', True)],
+     (76, 'check_in_soon', True), (83, 'check_in_next_week', True),
+     (89, 'check_in_next_week', True), (90, 'check_in_due', True),
+     (120, 'ownership_review', True), (365, 'ownership_review', True)],
 )
 def test_check_in_boundaries_never_become_deletion_authority(tmp_path, monkeypatch, age, status, warning):
     monkeypatch.setenv('CASE_INTELLIGENCE_MAINTENANCE_ENABLED', '0')
