@@ -63,6 +63,8 @@ ARTIFACT_NAMES = (
     'browser-errors.json', 'reports-desktop.png', 'reports-mobile.png',
     'export-ready-1440.png', 'export-ready-430.png', 'export-needs-attention.png',
     'readiness-failed-close-1440.png', 'readiness-failed-close-430.png',
+    'closure-cancellation-window-1440.png', 'closure-cancellation-window-430.png',
+    'closure-final-confirmation-1440.png', 'closure-final-confirmation-430.png',
     'notes-constrained-with-assistant.png', 'sources-mobile-actions-390.png',
     'one-box-home-430.png', 'one-box-answer-430.png',
     'deeper-investigation-offer-430.png',
