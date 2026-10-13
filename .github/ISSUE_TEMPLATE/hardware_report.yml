@@ -1,0 +1,151 @@
+name: Beta hardware report
+description: Share how Exculpata runs on your hardware using synthetic data
+labels: [hardware-report]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Synthetic data only — never paste confidential material
+
+        This is a public report. Never include confidential case material, client
+        data, credentials, hostnames or internal settings in any field or attachment.
+        Reproduce failures with synthetic inputs; never paste production logs or
+        environment/configuration dumps. Inspect both content and metadata before sharing.
+
+        Big-GPU and multi-GPU reports are welcome: the reference profile is a
+        starting point, not a cap. CPU-only reports are welcome too; use the
+        no-GPU answers below instead of inventing GPU details. A report does not
+        establish support or production readiness for a hardware/model combination.
+  - type: input
+    id: gpu-model
+    attributes:
+      label: GPU model(s)
+      description: List each GPU model used. For CPU-only runs, enter "None (CPU-only)".
+      placeholder: e.g. NVIDIA RTX 4090, or None (CPU-only)
+    validations:
+      required: true
+  - type: input
+    id: gpu-count
+    attributes:
+      label: GPU count
+      description: Give the count for each model listed above. For CPU-only runs, enter 0.
+      placeholder: e.g. 2 NVIDIA RTX 4090 GPUs, or 0
+    validations:
+      required: true
+  - type: input
+    id: gpu-vram
+    attributes:
+      label: VRAM per GPU
+      description: Include units for each GPU model, not just total VRAM. For CPU-only runs, enter "N/A (CPU-only)".
+      placeholder: e.g. 24 GiB per GPU, or N/A (CPU-only)
+    validations:
+      required: true
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU (optional)
+      description: CPU model and core count, if known.
+  - type: input
+    id: ram
+    attributes:
+      label: System RAM (optional)
+      description: Include units, such as GiB.
+  - type: textarea
+    id: models
+    attributes:
+      label: Model, revision and quantization
+      description: List the models exercised, their exact revisions and quantization or precision. Say if unknown or if no model was used.
+      placeholder: |
+        Model (e.g. Qwen3.5-9B):
+        Revision:
+        Quantization/precision (e.g. BF16):
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options:
+        - vLLM
+        - Ollama
+        - CPU-only
+        - other
+    validations:
+      required: true
+  - type: input
+    id: backend-version
+    attributes:
+      label: Backend name and version
+      description: Give the runtime and version, including for CPU-only or other. Say if unknown or not applicable.
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options:
+        - portable
+        - quality
+        - other
+    validations:
+      required: true
+  - type: input
+    id: other-profile
+    attributes:
+      label: Other profile
+      description: If you selected other, name the profile or say none. Do not paste internal settings.
+  - type: input
+    id: os
+    attributes:
+      label: OS and distribution version
+      description: Give the OS/distribution and release only; omit hostnames and other identifying details.
+    validations:
+      required: true
+  - type: input
+    id: driver-cuda
+    attributes:
+      label: GPU driver and CUDA versions
+      description: Give both versions if applicable. For CPU-only runs, enter "N/A (CPU-only)"; say if unknown.
+    validations:
+      required: true
+  - type: input
+    id: docker-compose
+    attributes:
+      label: Docker and Compose versions
+      description: Give both versions, or say if not used or unknown. Do not paste configuration output.
+    validations:
+      required: true
+  - type: input
+    id: exculpata-version
+    attributes:
+      label: Exculpata version or commit
+      description: Give the release/tag or full commit SHA tested.
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Results and timings
+      description: Describe what worked, what failed, synthetic reproduction steps and elapsed timings with units. Note which steps were not tested.
+      placeholder: |
+        Synthetic workload and steps:
+        What worked:
+        What failed:
+        Timings (install, model load, inference or transcription; include units):
+        Not tested:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant sanitized logs (optional)
+      description: Include only minimal excerpts from a synthetic reproduction. Remove confidential material, client data, credentials, hostnames, internal settings, identities and paths; never paste production logs or environment dumps.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy attestation
+      description: Check every field and attachment, including metadata, before submitting.
+      options:
+        - label: I used synthetic or public data only. This report contains no confidential case material, client data, credentials, hostnames or internal settings.
+          required: true

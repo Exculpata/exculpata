@@ -115,7 +115,15 @@ A useful public report contains the exact commit, distribution/CPU/GPU/driver
 versions, image digests, model revisions, selected CLI options with generic
 paths, elapsed install time, each exercise result, and a minimal independent
 synthetic reproduction of any failure. Use the repository's existing issue
-and contribution templates; do not upload an environment dump or runtime logs.
+and contribution templates; do not upload an environment dump or production logs.
+
+Use the beta hardware form to
+[report your hardware](https://github.com/Exculpata/exculpata/issues/new?template=hardware_report.yml),
+including results and timings from synthetic workloads. Share only minimal,
+sanitized log excerpts from a synthetic reproduction, and check the form's
+privacy attestation before submitting. Big-GPU and multi-GPU setups are welcome;
+the reference profile is a starting point, not a cap. CPU-only testers can report
+no GPU with a count of 0 and VRAM marked not applicable.
 
 | Evidence | Current candidate status |
 | --- | --- |
