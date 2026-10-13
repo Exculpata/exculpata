@@ -7,12 +7,30 @@ import hashlib
 import re
 
 from .full_text_synthesis_repository import ADMISSION, VERSION, encoded_bytes
+from .generation import TRANSCRIPT_EVIDENCE_KIND
 from .hierarchical_synthesis import digest, run_synthesis, valid_claim
 from .workspace_store import WorkspaceProblem
 
 
 OUTCOME_REASONS = {"admitted", "unsupported_finding", "oversized_original", "finding_limit",
                    "input_byte_limit", "unsealed_or_invalidated"}
+
+
+def _admitted_finding_text(candidate, source):
+    token = source["support_token"]
+    claim = {"text": candidate["text"], "support_tokens": [token], "parents": [str(candidate["cursor"])]}
+    if valid_claim(claim, {token: source}):
+        return claim["text"]
+    # Classification saves an exact original span. Add presentation attribution
+    # only for that strongest support path; never rewrite the saved rationale or
+    # turn an unsupported transcript paraphrase into an admissible finding.
+    text = " ".join(candidate["text"].split()) if isinstance(candidate["text"], str) else ""
+    if (source["evidence_kind"] == TRANSCRIPT_EVIDENCE_KIND and text
+            and text.casefold() in " ".join(source["excerpt"].split()).casefold()):
+        claim["text"] = "The machine transcript appears to say that " + text
+        if valid_claim(claim, {token: source}):
+            return claim["text"]
+    return None
 
 
 def input_notice(receipt):
@@ -161,14 +179,15 @@ class FullTextSynthesisService:
             if hashlib.sha256(source["excerpt"].encode()).hexdigest() != source["excerpt_digest"]:
                 raise WorkspaceProblem("A resolved original has stale extraction digest metadata.")
             token, cursor = source["support_token"], candidate["cursor"]
-            if not valid_claim({"text": candidate["text"], "support_tokens": [token], "parents": [str(cursor)]}, {token: source}):
+            text = _admitted_finding_text(candidate, source)
+            if text is None:
                 outcomes[cursor][1] = "unsupported_finding"
                 continue
             step = {"full_text_cursor": cursor, "finding_key": candidate["finding_key"],
-                    "status": "supported", "text": candidate["text"], "query": f"Saved full-text finding {cursor}",
+                    "status": "supported", "text": text, "query": f"Saved full-text finding {cursor}",
                     "candidate_sources": 1,
                     "answer": {"answerable": True, "introduction": "", "missing_information": "", "limitation": None,
-                               "claims": [{"text": candidate["text"], "citations": [{key: source[key] for key in ("source_name", "location", "evidence_kind", "support_token")}]}]}}
+                               "claims": [{"text": text, "citations": [{key: source[key] for key in ("source_name", "location", "evidence_kind", "support_token")}]}]}}
             new_original = token not in evidence_by_token
             prepared["passes"].append(step)
             if new_original:

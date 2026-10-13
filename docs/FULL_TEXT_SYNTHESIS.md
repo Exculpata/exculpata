@@ -75,6 +75,17 @@ Saved machine rationales are independently checked against the located original
 unit before admission. Only the original passage supplies evidence to generation;
 a rationale or an earlier summary cannot substitute for its source.
 
+Classification saves exact original spans, including for machine transcripts.
+When such a transcript rationale lacks the required caution, admission adds
+"The machine transcript appears to say that" to the derived finding and reruns
+the unchanged original-source verifier. This applies only to a contiguous exact
+match in the resolved transcript (ignoring case and whitespace). Existing
+cautioned findings retain their wording. The saved rationale and original
+citation remain unchanged; no migration is required. Unsupported paraphrases
+and claims exceeding the existing 800-character limit after attribution remain
+explicitly omitted. All generated transcript claims still require caution, and
+the final answer retains its separate recording-review notice.
+
 Original locators bind the matter, document, source version, unit, location,
 excerpt digest, and full unit length. The application validates actual stored
 source text for every frozen ready source, including sources whose findings were
