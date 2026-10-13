@@ -43,12 +43,17 @@ still invalidates the comparison. Missing, changed, unreadable or unverifiable
 sources produce an explicit unavailable state without replacement text. Exceeding
 the existing source-validation budget gives a separate boundedness notice.
 
-Only after validating the complete unit does the response return its first
-6,000 characters at most, preserving whitespace. The structured response retains
-that exact source text. Inline browser display follows the `controls-to-spaces-v1`
+Only after validating the complete unit does the response return up to 6,000
+characters, preserving whitespace. New focused answers record their exact
+contiguous generation window, linked to the original support token and full-unit
+digest. Comparison displays that saved window and identifies its character range;
+it does not rerank the current source or substitute a prefix. Invalid, ambiguous,
+oversized or out-of-bounds saved window metadata produces the unavailable state.
+Historical answers without window metadata retain the exact prefix behavior.
+The structured response retains that exact source text. Inline browser display follows the `controls-to-spaces-v1`
 presentation policy without changing the returned snapshot or its digest; valid
-supplementary Unicode characters remain intact at the prefix boundary. The notice
-identifies this as a prefix; it is not a relevance-selected excerpt. The full-source link opens the
+supplementary Unicode characters remain intact at the window boundary. The notice
+distinguishes a saved window from a historical prefix. The full-source link opens the
 current source viewer, which may change after comparison. Document links use the
 validated searchable-unit position, preserving physical PDF page labels even
 when preceding pages are blank or unreadable. Transcript links seek
@@ -70,6 +75,9 @@ repopulating it. Network failures leave a keyboard-reachable retry and page link
 
 `tests/test_answer_cited_context.py` covers served comparisons, historical basis,
 source changes, authorization, escaping, bounds and unchanged saved payloads.
+`tests/test_answer_evidence_windows.py` checks that late-source answers compare
+the same window supplied to generation, malformed windows fail closed, and
+historical answers keep their prefix without changing their stored payload.
 `tests/test_answer_cited_context_leases.py` covers deletion deferral through the
 final response-body send and lease cleanup on rendering, send and cancellation
 failures.

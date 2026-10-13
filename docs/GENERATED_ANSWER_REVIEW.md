@@ -87,6 +87,30 @@ unchanged. `tests/test_compact_answers.py` holds the synthetic regressions.
 
 ## Synthetic regression
 
+Focused answers select one contiguous source window per admitted passage when
+the full passage cannot fit. Matching current-question terms take priority over
+conversation and notebook search context; without a literal match the beginning
+is used. Windows remain within 6,000 characters each and 48,000 characters across
+the packet. Short passages stay complete when the packet fits. These limits do
+not imply that all relevant context was supplied: a visible omission notice in
+both answer views and the saved answer basis records excluded character counts.
+Readable exports and Report inputs retain that basis. Saved window offsets are
+zero-based, end-exclusive character positions in the original cited unit.
+**Compare cited context** shows that saved window after validating the complete
+original, with a notice identifying the displayed character range. Older answers
+without window metadata keep their existing prefix comparison.
+
+Generation and text checks use the same exact contiguous window, without joining
+distant text. Citation links, full-unit digests, source-change checks and saved
+support continue to identify the original complete passage. Explicit saved-context
+support groups retain their existing whole-original admission policy. This does
+not change full-text synthesis, model settings or evidence ceilings.
+
+`tests/test_answer_evidence_windows.py` uses real synthetic source ingestion,
+retrieval, answer checking, persistence and exports in synchronous and queued
+paths. Its deterministic client answers only when the late source fact is present
+in the supplied packet; it does not measure model quality or semantic recall.
+
 `tests/test_generated_review_confidence.py` supplies four meaning-changing outputs
 to the generator boundary and checks that any accepted result is presented for
 review. A future verifier may reject them without breaking this contract. Faithful

@@ -339,6 +339,7 @@
                   {% endif %}
                 </details>
                 {% endif %}
+                {% if message.payload.evidence_windows and message.payload.evidence_windows.notice %}<p class="workflow-caution" role="note">{{ message.payload.evidence_windows.notice }}</p>{% endif %}
                 {% if message.payload.review_scope %}
                 <details class="answer-scope-summary{% if message.payload.review_scope.collection_wide_request or message.payload.review_scope.broad_summary_request %} collection-wide{% endif %}"{% if message.payload.review_scope.collection_wide_request or message.payload.review_scope.broad_summary_request %} open{% endif %}>
                   <summary>

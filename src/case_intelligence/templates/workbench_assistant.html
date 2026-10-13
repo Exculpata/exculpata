@@ -55,6 +55,7 @@
           {% if message.payload.source_coverage and message.payload.source_coverage.mode == 'partial' %}
           <small class="assistant-answer-coverage">Source coverage when created · {{ message.payload.source_coverage.notice }}</small>
           {% endif %}
+          {% if message.payload.evidence_windows and message.payload.evidence_windows.notice %}<p class="workflow-caution" role="note">{{ message.payload.evidence_windows.notice }}</p>{% endif %}
           {% if message.payload.review_scope %}
           <small class="assistant-answer-basis{% if message.payload.review_scope.collection_wide_request or message.payload.review_scope.broad_summary_request %} collection-wide{% endif %}" title="{{ message.payload.review_scope.notice }}">
             <strong>{{ 'Completeness caution' if message.payload.review_scope.collection_wide_request else (('Broader orientation' if message.payload.review_scope.mode == 'broader_orientation' else 'Focused result') if message.payload.review_scope.broad_summary_request else 'Focused answer') }}</strong>

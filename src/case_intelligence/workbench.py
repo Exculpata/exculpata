@@ -76,6 +76,7 @@ from .identity import (
 )
 from .full_text_review import FullTextReviewLedger, iter_text_export, review_export_snapshot
 from .text_ledger_response import TextLedgerStreamingResponse
+from .answer_evidence import answer_evidence_packet, disclose_evidence_windows
 from .generation import (
     EvidenceItem,
     GenerationGroundingRejected,
@@ -3559,7 +3560,7 @@ class CaseIntelligenceWorkbench:
 
     def _saved_answer_references(
         self, matter: MatterRecord, citations: Sequence[Mapping[str, object]],
-        *, notebook_preview: bool = False, source_navigation: bool = False,
+        *, notebook_preview: bool = False, source_navigation: bool = False, source_windows=None,
     ) -> tuple[dict[str, object], ...]:
         from .report_materials import resolve_saved_answer_references
 
@@ -3570,7 +3571,7 @@ class CaseIntelligenceWorkbench:
                 raise WorkspaceProblem("The saved answer has conflicting source support. Ask the question again in a new conversation.")
             values.append({**citation, "support_token": token})
         return resolve_saved_answer_references(self, matter, values,
-            notebook_preview=notebook_preview, source_navigation=source_navigation)
+            notebook_preview=notebook_preview, source_navigation=source_navigation, source_windows=source_windows)
 
     def _save_answer_to_notebook(
         self,
@@ -4871,17 +4872,7 @@ class CaseIntelligenceWorkbench:
             f"S{index}": citation
             for index, citation in enumerate(citations, 1)
         }
-        packet = tuple(
-            EvidenceItem(
-                identifier,
-                citation.source_name,
-                citation.location,
-                citation.excerpt[:6_000],
-                citation.evidence_kind,
-                document_id=citation.document_id,
-            )
-            for identifier, citation in evidence.items()
-        )
+        packet, windows = answer_evidence_packet(value, evidence, context=retrieval_query)
         history = tuple((message.role, message.content) for message in prior[-6:])
         try:
             answer = self.generator.answer(value, packet, history=history)
@@ -4916,6 +4907,7 @@ class CaseIntelligenceWorkbench:
                     answer,
                     evidence,
                 )
+                disclose_evidence_windows(payload, windows)
                 return self.workspace.append_message(
                     matter.matter_id,
                     conversation.conversation_id,
@@ -5102,17 +5094,7 @@ class CaseIntelligenceWorkbench:
                 f"S{index}": citation
                 for index, citation in enumerate(citations, 1)
             }
-            packet = tuple(
-                EvidenceItem(
-                    identifier,
-                    citation.source_name,
-                    citation.location,
-                    citation.excerpt[:6_000],
-                    citation.evidence_kind,
-                    document_id=citation.document_id,
-                )
-                for identifier, citation in evidence.items()
-            )
+            packet, windows = answer_evidence_packet(job.question, evidence, context=retrieval_query)
             history = tuple(
                 (message.role, message.content) for message in prior[-6:]
             )
@@ -5156,6 +5138,7 @@ class CaseIntelligenceWorkbench:
                 answer,
                 evidence,
             )
+            disclose_evidence_windows(payload, windows)
             if source_set_id is not None:
                 payload["source_scope"] = self.workspace.source_set(
                     matter.matter_id, source_set_id
@@ -5269,6 +5252,8 @@ class CaseIntelligenceWorkbench:
                         payload["review_scope"] = _focused_answer_scope(job.question, readiness,
                             result.verified_answer,
                             {f"S{index}": citation for index, citation in enumerate(result.citations, 1)})
+                        if "evidence_windows" in payload:
+                            disclose_evidence_windows(payload, payload["evidence_windows"])
                 return self.workspace.finish_answer_job(
                     job.job_id,
                     content=result.content,
