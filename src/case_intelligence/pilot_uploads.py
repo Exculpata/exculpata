@@ -2919,12 +2919,12 @@ class PilotStore:
             raise KeyError(document_id)
         return document
 
-    def mark_failed(self, document_id: str, message: str) -> PilotDocument:
+    def mark_failed(self, document_id: str, message: str, *, stage: str = "Needs attention") -> PilotDocument:
         with self._lock:
             document = self.get(document_id)
             document.state = "failed"
             document.message = message[:240]
-            document.processing_stage = "Needs attention"
+            document.processing_stage = stage
             self._drop_units(document)
             self._save((document_id,))
             return document

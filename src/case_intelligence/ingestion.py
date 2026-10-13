@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable
 
 from .pilot_uploads import PilotDocument, PilotStore, UploadProblem
+from .retrieval_limits import INPUT_BLOCKED_STAGE, RetrievalInputProblem
 from .source_locations import SourceLocationProblem, SourceLocationRegistry, SourceScanItem
 from .workspace_store import IngestJobRecord, MatterRecord, WorkspaceStore
 
@@ -160,6 +161,8 @@ class IngestionCoordinator:
                 )
                 self.index_document(matter, document)
                 terminal = (True, document.message)
+        except RetrievalInputProblem as exc:
+            terminal = (False, self._mark_failed(job, str(exc), stage=INPUT_BLOCKED_STAGE))
         except (UploadProblem, SourceLocationProblem) as exc:
             terminal = (False, self._mark_failed(job, str(exc)))
         except Exception:
@@ -186,11 +189,11 @@ class IngestionCoordinator:
                 except Exception:
                     pass
 
-    def _mark_failed(self, job: IngestJobRecord, message: str) -> str:
+    def _mark_failed(self, job: IngestJobRecord, message: str, *, stage: str = "Needs attention") -> str:
         safe_message = (message or "Processing did not finish. Choose Try again.")[:240]
         try:
             matter = self.resolve_matter(job.matter_id)
-            self.resolve_store(matter).mark_failed(job.document_id, safe_message)
+            self.resolve_store(matter).mark_failed(job.document_id, safe_message, stage=stage)
         except Exception:
             pass
         return safe_message
