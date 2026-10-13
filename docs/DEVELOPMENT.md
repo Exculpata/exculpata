@@ -129,6 +129,13 @@ and an updated aggregate content fingerprint, even when case selection and
 expected outcomes stay the same. Run `tests/test_review_acceptance_pack.py`
 alongside the affected workflow tests when updating these fixtures.
 
+Lease tests use the queue's injected clock for ownership deadlines and retain
+real coordinator threads and SQLite transactions. Advance lease time only after
+observing the required committed renewal or contention; use bounded monotonic
+waits for thread progress. Wall-clock sleeps must not decide whether a synthetic
+lease survives. Expiry cases explicitly cross the observed durable deadline and
+verify that the stale worker cannot renew or save.
+
 Exculpata OSS is the upstream source for portable product behavior. Work from
 a focused branch or worktree, keep one reviewable concern per change, and merge
 only after its synthetic regression and relevant operator documentation pass.
