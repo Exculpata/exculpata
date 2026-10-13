@@ -13313,8 +13313,8 @@ def create_workbench_app(
                     "identity_state": mapping.identity_state,
                     "revision": mapping.revision,
                     "segment_count": mapping.segment_count,
-                    "message": transcript_search.saved_notice("Speaker label", search_refreshed),
-                    "search_refreshed": search_refreshed,
+                    "message": "Speaker label saved across this transcript." if search_refreshed
+                        else transcript_search.saved_notice("Speaker label", False),
                     "overview_refreshing": bool(
                         speaker_summary is not None
                         and speaker_summary.state in {"queued", "running", "stale"}

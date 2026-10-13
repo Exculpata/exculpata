@@ -228,16 +228,22 @@ def test_old_registry_without_receipt_is_backfilled_once(tmp_path, projection):
         assert projection.writes == before + 1
 
 
-def test_speaker_json_reports_saved_pending_and_retry_enforces_membership(tmp_path, projection):
+@pytest.mark.parametrize("failure", [False, True])
+def test_speaker_json_preserves_success_contract_and_reports_pending(tmp_path, projection, failure):
     with TestClient(app(tmp_path / "runtime", projection)) as client:
         bench, matter, document, url = seed(client)
-        projection.fail = True
+        projection.fail = failure
         response = client.post(f"{url}/speakers", data={"expected_revision": 0,
             "speaker_cluster": "SPEAKER_00", "display_name": "Synthetic speaker", "identity_state": "confirmed"},
             headers={"Accept": "application/json"})
         assert response.status_code == 200
-        assert response.json()["search_refreshed"] is False
-        assert "saved; search update pending" in response.json()["message"]
+        assert response.json() == {
+            "speaker_cluster": "SPEAKER_00", "display_name": "Synthetic speaker",
+            "identity_state": "confirmed", "revision": 1, "segment_count": 1,
+            "message": "Speaker label saved; search update pending" if failure
+                else "Speaker label saved across this transcript.",
+            "overview_refreshing": True,
+        }
         other = bench.workspace.create_matter("Synthetic other matter", "", ACTOR)
         assert client.post(f"{url.replace(matter.slug, other.slug)}/search-refresh").status_code == 404
 
