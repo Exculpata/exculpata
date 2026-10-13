@@ -210,12 +210,28 @@ def test_online_backup_and_clean_restore_preserve_lease_and_snapshot_basis(tmp_p
     restored.close()
 
 
-def test_coordinator_runs_outside_caller_and_completes_transactionally(tmp_path):
+def test_coordinator_runs_outside_caller_and_completes_transactionally(tmp_path, monkeypatch):
     store, matter = setup_store(tmp_path / "control.sqlite")
-    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=0.3))
+    now = [100.0]
+    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=0.3), clock=lambda: now[0])
     queued = queue(jobs, matter)
     entered = threading.Event()
     release = threading.Event()
+    renewed = threading.Condition()
+    original_heartbeat = jobs.heartbeat
+
+    def heartbeat(job):
+        result = original_heartbeat(job)
+        with renewed:
+            renewed.notify_all()
+        return result
+
+    monkeypatch.setattr(jobs, "heartbeat", heartbeat)
+
+    def lease_was_extended():
+        active = jobs.get(matter.matter_id, ACTOR, queued.job_id)
+        return (active.state == "running" and active.lease_expires_at is not None
+                and active.lease_expires_at >= now[0] + jobs.policy.lease_seconds)
 
     def process(job, cancelled):
         jobs.record_input_fingerprint(job, FINGERPRINT)
@@ -231,8 +247,17 @@ def test_coordinator_runs_outside_caller_and_completes_transactionally(tmp_path)
     coordinator = ReportCompilationCoordinator(jobs, process=process, finish=finish)
     try:
         assert entered.wait(5)
-        time.sleep(0.5)
-        assert jobs.claim("synthetic-competing-worker") is None  # Heartbeats extend the lease.
+        original = jobs.get(matter.matter_id, ACTOR, queued.job_id)
+        # Advance only after observing each committed renewal. Runner scheduling
+        # affects the bounded wait, never whether the synthetic lease expires.
+        for _ in range(3):
+            with renewed:
+                now[0] += jobs.policy.lease_seconds / 2
+                assert renewed.wait_for(lease_was_extended, timeout=5), "Heartbeat did not extend the durable lease."
+            assert jobs.claim("synthetic-competing-worker") is None
+            active = jobs.get(matter.matter_id, ACTOR, queued.job_id)
+            assert active.attempts == 1 and active.lease_token == original.lease_token
+        assert now[0] > original.lease_expires_at
         release.set()
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and jobs.get(matter.matter_id, ACTOR, queued.job_id).state == "running":
@@ -301,17 +326,21 @@ def test_lease_expiring_during_builder_rolls_back_created_report(tmp_path):
 
 def test_late_previous_heartbeat_cannot_cancel_the_next_job(tmp_path, monkeypatch):
     store, matter = setup_store(tmp_path / "control.sqlite")
-    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=0.3))
+    now = [100.0]
+    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=0.3), clock=lambda: now[0])
     first = queue(jobs, matter)
+    now[0] += 0.01  # Preserve queue order without relying on wall-clock timestamps.
     second = queue(jobs, matter, "b")
     heartbeat_entered = threading.Event()
     release_heartbeat = threading.Event()
     second_entered = threading.Event()
     release_second = threading.Event()
     original = jobs.heartbeat
+    previous_heartbeat = []
 
     def delayed_heartbeat(job):
         if job.job_id == first.job_id:
+            previous_heartbeat.append(threading.current_thread())
             heartbeat_entered.set()
             assert release_heartbeat.wait(5)
         return original(job)
@@ -335,7 +364,8 @@ def test_late_previous_heartbeat_cannot_cancel_the_next_job(tmp_path, monkeypatc
     try:
         assert second_entered.wait(5)
         release_heartbeat.set()
-        time.sleep(0.1)
+        previous_heartbeat[0].join(timeout=5)
+        assert not previous_heartbeat[0].is_alive()
         release_second.set()
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and jobs.get(matter.matter_id, ACTOR, second.job_id).state == "running":
@@ -541,7 +571,8 @@ def test_shutdown_after_cancel_records_terminal_message_and_time(tmp_path):
 @pytest.mark.parametrize('expire', [False, True])
 def test_busy_heartbeat_retries_until_renewal_or_actual_lease_expiry(tmp_path, monkeypatch, expire):
     store, matter = setup_store(tmp_path / 'synthetic-contention.sqlite')
-    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=1.2))
+    now = [100.0]
+    jobs = ReportCompilationJobs(store, policy=CompilationJobPolicy(lease_seconds=1.2), clock=lambda: now[0])
     queued = queue(jobs, matter)
     processing = threading.Event()
     release = threading.Event()
@@ -562,12 +593,12 @@ def test_busy_heartbeat_retries_until_renewal_or_actual_lease_expiry(tmp_path, m
     monkeypatch.setattr(jobs, 'heartbeat', heartbeat)
     def process(job, cancelled):
         jobs.record_input_fingerprint(job, FINGERPRINT)
-        observed['deadline'] = job.lease_expires_at
+        observed['job'] = job
         processing.set()
         if expire:
             while not cancelled():
                 time.sleep(0.01)
-            observed['cancelled_at'] = time.time()
+            observed['cancelled_at'] = jobs.clock()
             cancellation_seen.set()
             assert release.wait(5)
             raise CompilationLeaseLost('Synthetic expired lease.')
@@ -582,17 +613,31 @@ def test_busy_heartbeat_retries_until_renewal_or_actual_lease_expiry(tmp_path, m
         assert processing.wait(5)
         writer.execute('BEGIN IMMEDIATE')
         assert busy.wait(3)  # Real independent SQLite writer outlasts busy_timeout.
+        # The durable deadline can include renewals before the writer acquired
+        # its lock. Hold lease time still until the intended contention exists.
+        lease_deadline = jobs.heartbeat_deadline(observed['job'])
+        assert lease_deadline is not None and jobs.clock() < lease_deadline
+        assert not cancellation_seen.is_set()
         if expire:
+            now[0] = lease_deadline
             assert cancellation_seen.wait(3)
-            assert observed['cancelled_at'] >= observed['deadline']
+            assert observed['cancelled_at'] >= lease_deadline
             assert not renewed.is_set()
             coordinator._stop.set()
             writer.rollback()
+            assert jobs.heartbeat(observed['job']) is False
+            with pytest.raises(CompilationLeaseLost):
+                jobs.complete(observed['job'], lambda: build_report(store, matter), fingerprint=FINGERPRINT)
+            assert store.connection.execute('SELECT count(*) FROM workbench_report').fetchone()[0] == 0
             release.set()
         else:
-            assert time.time() < observed['deadline']
+            now[0] = lease_deadline - jobs.policy.lease_seconds / 2
+            assert jobs.clock() < lease_deadline
             writer.rollback()
             assert renewed.wait(3)
+            active = jobs.get(matter.matter_id, ACTOR, queued.job_id)
+            assert active.lease_expires_at > lease_deadline
+            assert active.attempts == 1 and active.lease_token == observed['job'].lease_token
             release.set()
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline and jobs.get(matter.matter_id, ACTOR, queued.job_id).state == 'running':
