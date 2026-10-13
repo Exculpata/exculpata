@@ -12,6 +12,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from .compat_env import env
+from .retrieval_limits import (
+    MAX_BODY_BYTES, MAX_EMBEDDING_TEXTS, MAX_QUERY_CHARS, MAX_RERANK_TEXTS, MAX_TEXT_CHARS,
+)
 
 EMBEDDING_MODEL = os.getenv(
     "CASE_REVIEW_EMBEDDING_MODEL", "ibm-granite/granite-embedding-english-r2"
@@ -26,7 +29,6 @@ RERANKER_REVISION = os.getenv(
     "CASE_REVIEW_RERANKER_REVISION", "f7481e6055501a30fb19d090657df9ec1f79ab2c"
 )
 DEVICE = os.getenv("CASE_REVIEW_MODEL_DEVICE", "cuda")
-MAX_BODY_BYTES = 1_048_576
 
 
 class _RequestBodyTooLarge(Exception):
@@ -98,7 +100,7 @@ _reranker: Any = None
 def _validate_texts(values: object, *, maximum: int) -> list[str]:
     if not isinstance(values, list) or not values or len(values) > maximum:
         raise HTTPException(422, "invalid text batch")
-    if any(not isinstance(value, str) or not value.strip() or len(value) > 20_000 for value in values):
+    if any(not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT_CHARS for value in values):
         raise HTTPException(422, "invalid text batch")
     return values
 
@@ -144,7 +146,7 @@ def health() -> dict[str, object]:
 
 @app.post("/embed")
 def embed(payload: EmbedPayload) -> dict[str, object]:
-    texts = _validate_texts(payload.texts, maximum=48)
+    texts = _validate_texts(payload.texts, maximum=MAX_EMBEDDING_TEXTS)
     vectors = _embedding_model().encode(texts, normalize_embeddings=True)
     return {"vectors": [[float(value) for value in row] for row in vectors]}
 
@@ -152,9 +154,9 @@ def embed(payload: EmbedPayload) -> dict[str, object]:
 @app.post("/rerank")
 def rerank(payload: RerankPayload) -> dict[str, object]:
     query = payload.query
-    if not isinstance(query, str) or not query.strip() or len(query) > 512:
+    if not isinstance(query, str) or not query.strip() or len(query) > MAX_QUERY_CHARS:
         raise HTTPException(422, "invalid query")
-    texts = _validate_texts(payload.texts, maximum=40)
+    texts = _validate_texts(payload.texts, maximum=MAX_RERANK_TEXTS)
     scores = _reranker_model().predict([(query, text) for text in texts])
     return {"scores": [float(score) for score in scores]}
 

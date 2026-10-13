@@ -140,6 +140,7 @@ from .pilot_uploads import (
     securely_delete_owned_tree,
 )
 from .review_bench import RetrievalUnavailable
+from .retrieval_limits import INPUT_BLOCKED_STAGE, RetrievalInputProblem
 from .review_bench_v2 import (
     Candidate,
     DeterministicEmbeddingAdapter,
@@ -2229,7 +2230,7 @@ class CaseIntelligenceWorkbench:
             "byte_size": document.size,
             "source_sha256": document.digest,
             "origin": document.origin,
-            "retryable": document.state in {"failed", "needs_ocr"},
+            "retryable": document.state in {"failed", "needs_ocr"} and document.processing_stage != INPUT_BLOCKED_STAGE,
             "removable": document.state not in {"queued", "processing"},
             "has_video": bool(document.has_video),
             "content_basis_digest": self._document_content_basis(document),
@@ -2301,7 +2302,7 @@ class CaseIntelligenceWorkbench:
                     tone,
                     self._count_label(document),
                     store.action_token(document),
-                    document.state in {"failed", "needs_ocr"},
+                    document.state in {"failed", "needs_ocr"} and document.processing_stage != INPUT_BLOCKED_STAGE,
                     document.state not in {"queued", "processing"},
                     organization.review_state,
                     organization.collection_id or "",
@@ -4618,12 +4619,14 @@ class CaseIntelligenceWorkbench:
             return
         try:
             self._index_document(matter, document)
-        except Exception:
+        except Exception as exc:
             if self.postgres_connection is not None:
                 with self._postgres_lock:
                     self.postgres_connection.rollback()
             document.state = "failed"
-            document.message = "Saved, but processing did not finish. Choose Try again."
+            document.message = str(exc) if isinstance(exc, RetrievalInputProblem) else "Saved, but processing did not finish. Choose Try again."
+            if isinstance(exc, RetrievalInputProblem):
+                document.processing_stage = INPUT_BLOCKED_STAGE
             store._save()
 
     def retry_document(
@@ -4641,6 +4644,8 @@ class CaseIntelligenceWorkbench:
         store: PilotStore,
     ) -> None:
         document = store.get_by_action_token(token)
+        if document.processing_stage == INPUT_BLOCKED_STAGE:
+            raise UploadProblem(document.message, 409)
         media_job = self.workspace.media_job(
             matter.matter_id, document.document_id, document.version_id
         )

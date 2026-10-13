@@ -13,6 +13,7 @@ import json
 import subprocess
 import sys
 import urllib.request
+import urllib.error
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from importlib import resources
@@ -20,6 +21,9 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping, Protocol, Sequence
 
 from .review_quality import rank_exact_record_candidates, rank_temporal_candidates
+from .retrieval_limits import (
+    MAX_EMBEDDING_TEXTS, MAX_RERANK_TEXTS, RetrievalInputProblem, request_batches, text_fragments,
+)
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_RERANKER_MODEL = "Alibaba-NLP/gte-reranker-modernbert-base"
@@ -278,31 +282,76 @@ class RemoteEmbeddingAdapter:
     """Call a loopback model worker without importing Torch into the web process."""
 
     available = True
-    batch_limit = 48
+    batch_limit = MAX_EMBEDDING_TEXTS
 
     def __init__(self, base_url: str, timeout: float = 120.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
     def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
-        vectors: list[tuple[float, ...]] = []
-        for start in range(0, len(texts), self.batch_limit):
-            batch = list(texts[start : start + self.batch_limit])
-            request = urllib.request.Request(
-                f"{self.base_url}/embed",
-                data=json.dumps({"texts": batch}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                payload = json.load(response)
-            batch_vectors = tuple(
-                tuple(float(value) for value in row) for row in payload["vectors"]
-            )
-            if len(batch_vectors) != len(batch):
+        # A single vector remains attached to the original evidence unit. Only
+        # oversized model inputs are split; persisted ordinals/digests stay stable.
+        totals: list[list[float] | None] = [None] * len(texts)
+        originals: list[tuple[float, ...] | None] = [None] * len(texts)
+        counts = [0] * len(texts)
+        dimensions = None
+        for batch, body in request_batches(text_fragments(texts), maximum=min(self.batch_limit, MAX_EMBEDDING_TEXTS)):
+            payload = _model_request(self.base_url, "embed", body, self.timeout)
+            rows = _model_numbers(payload, "vectors", len(batch), vectors=True)
+            for (ordinal, fragment), vector in zip(batch, rows):
+                if dimensions is None:
+                    dimensions = len(vector)
+                if len(vector) != dimensions:
+                    raise RuntimeError("model worker returned an invalid embedding batch")
+                originals[ordinal] = vector
+                counts[ordinal] += 1
+                if totals[ordinal] is None:
+                    totals[ordinal] = [0.0] * dimensions
+                weight = len(fragment) / len(texts[ordinal])
+                for index, value in enumerate(vector):
+                    totals[ordinal][index] += value * weight
+        vectors = []
+        for total, original, count in zip(totals, originals, counts):
+            if original is None or total is None:
                 raise RuntimeError("model worker returned an invalid embedding batch")
-            vectors.extend(batch_vectors)
+            # Keep existing single-fragment behavior exactly. Multi-fragment
+            # vectors use a character-weighted mean, normalized for cosine search.
+            norm = math.hypot(*total) or 1.0
+            vectors.append(original if count == 1 else tuple(value / norm for value in total))
         return tuple(vectors)
+
+
+def _model_request(base_url: str, operation: str, body: bytes, timeout: float):
+    request = urllib.request.Request(f"{base_url}/{operation}", data=body,
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code in {413, 422}:
+            raise RetrievalInputProblem() from None
+        raise
+
+
+def _model_numbers(payload, key: str, count: int, *, vectors: bool = False):
+    label = "embedding" if vectors else "reranking"
+    try:
+        rows = payload[key]
+        if not isinstance(rows, list) or len(rows) != count:
+            raise ValueError
+        if vectors:
+            if any(not isinstance(row, list) or not row for row in rows):
+                raise ValueError
+            result = tuple(tuple(float(value) for value in row) for row in rows)
+            finite = all(math.isfinite(value) for row in result for value in row)
+        else:
+            result = tuple(float(value) for value in rows)
+            finite = all(math.isfinite(value) for value in result)
+        if not finite:
+            raise ValueError
+        return result
+    except (KeyError, TypeError, ValueError, OverflowError):
+        raise RuntimeError(f"model worker returned an invalid {label} batch") from None
 
 
 class RemoteRerankerAdapter:
@@ -315,19 +364,13 @@ class RemoteRerankerAdapter:
         self.timeout = timeout
 
     def rerank(self, query: str, candidates: Sequence[Candidate]) -> tuple[Candidate, ...]:
-        request = urllib.request.Request(
-            f"{self.base_url}/rerank",
-            data=json.dumps(
-                {"query": query, "texts": [candidate.text for candidate in candidates]}
-            ).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
-            payload = json.load(response)
-        scores = payload["scores"]
-        if len(scores) != len(candidates):
-            raise RuntimeError("model worker returned an invalid reranking batch")
+        scores = [float("-inf")] * len(candidates)
+        for batch, body in request_batches(text_fragments(item.text for item in candidates),
+                                           maximum=MAX_RERANK_TEXTS, query=query):
+            payload = _model_request(self.base_url, "rerank", body, self.timeout)
+            values = _model_numbers(payload, "scores", len(batch))
+            for (ordinal, _fragment), score in zip(batch, values):
+                scores[ordinal] = max(scores[ordinal], score)
         ranked = [
             replace(candidate, score=float(score))
             for candidate, score in zip(candidates, scores)

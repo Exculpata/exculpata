@@ -29,6 +29,7 @@ from .retrieval import RetrievalService, SearchRequest
 from .sqlite_store import SQLiteStore
 from .tickets import TicketStore
 from .pilot_uploads import MAX_FILES, PilotStore, RawUploadLimitMiddleware, UploadProblem
+from .retrieval_limits import INPUT_BLOCKED_STAGE, RetrievalInputProblem
 from .review_bench_v2 import (
     Candidate,
     DeterministicEmbeddingAdapter,
@@ -507,7 +508,7 @@ class ReviewBench:
                     item.message,
                     "ready" if item.state == "ready" else "waiting",
                     self.pilot.action_token(item),
-                    item.state == "failed",
+                    item.state == "failed" and item.processing_stage != INPUT_BLOCKED_STAGE,
                 )
                 for item in self.pilot.documents.values()
             )
@@ -758,10 +759,12 @@ class ReviewBench:
                 byte_size=document.size,
                 storage_key=document.stored_name,
             )
-        except Exception:
+        except Exception as exc:
             self.postgres_connection.rollback()
             document.state = "failed"
-            document.message = "Saved, but indexing did not finish. Choose Try again."
+            document.message = str(exc) if isinstance(exc, RetrievalInputProblem) else "Saved, but indexing did not finish. Choose Try again."
+            if isinstance(exc, RetrievalInputProblem):
+                document.processing_stage = INPUT_BLOCKED_STAGE
             self.pilot._save((document.document_id,))
 
     def _delete_pilot_postgres(self, document_id: str) -> None:
@@ -926,6 +929,8 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     def retry_pilot(document_id: str):
         try:
             current = bench.pilot.get_by_action_token(document_id)
+            if current.processing_stage == INPUT_BLOCKED_STAGE:
+                raise UploadProblem(current.message, 409)
             document = bench.pilot.retry(current.document_id)
             bench.index_pilot_document(document.document_id)
         except KeyError as exc:
