@@ -795,9 +795,8 @@ class PilotDocument:
     playback_size: int = 0
     playback_state: str = ""
     playback_message: str = ""
-    _units_loader: Callable[[str], tuple[PilotUnit, ...]] | None = field(
-        default=None, repr=False, compare=False
-    )
+    transcript_index_basis: str = ""
+    _units_loader: Callable[[str], tuple[PilotUnit, ...]] | None = field(default=None, repr=False, compare=False)
 
     _units_iterator: Callable | None = field(default=None, repr=False, compare=False)
 
@@ -872,6 +871,7 @@ _PILOT_DOCUMENT_FIELDS = (
     "playback_size",
     "playback_state",
     "playback_message",
+    "transcript_index_basis",
 )
 _SOURCE_REGISTRY_MARKER = {
     "version": 5,

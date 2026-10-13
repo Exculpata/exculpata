@@ -51,6 +51,12 @@
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
 
+  {% if search_pending %}
+  <div class="notice notice-error" role="status"><p>{{ search_pending_notice }}</p>
+    <form method="post" action="/matters/{{ matter.slug }}/sources/{{ media.row.action_token }}/search-refresh"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button button-secondary" type="submit">Retry search update</button></form>
+  </div>
+  {% endif %}
+
   {% if transcript_notices %}
   <details class="media-processing-card review-media-notices" aria-labelledby="transcript-notices-heading" data-transcript-notices><summary>Transcript processing notices</summary>
     <h2 id="transcript-notices-heading">Transcript processing notices</h2>
@@ -285,7 +291,7 @@
           <div class="transcript-segment-body">
             <div class="transcript-segment-meta"><button class="transcript-speaker-button" type="button" data-speaker-review-target="{{ segment.speaker_cluster }}" data-speaker-label="{{ segment.speaker_cluster }}" aria-label="Review speaker label {{ speaker_labels[segment.speaker_cluster] }}">{{ speaker_labels[segment.speaker_cluster] }}</button><span class="speaker-state speaker-{{ 'confirmed' if segment.speaker_identity_state == 'confirmed' else 'unconfirmed' }}" data-speaker-state-for="{{ segment.speaker_cluster }}">{{ 'Confirmed' if segment.speaker_identity_state == 'confirmed' else 'Unconfirmed' }}</span>{% if segment.low_confidence %}<span class="transcript-flag low">Low confidence</span>{% endif %}{% if segment.overlap %}<span class="transcript-flag overlap">Overlapping speech</span>{% endif %}{% if segment.current_revision %}<span class="transcript-flag edited">Corrected r{{ segment.current_revision }}</span>{% endif %}</div>
             <p>{{ segment.current_text }}</p>
-            <details class="transcript-editor"><summary>Review text</summary><form method="post" action="/matters/{{ matter.slug }}/sources/{{ media.row.action_token }}/segments/{{ segment.segment_id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="expected_revision" value="{{ segment.current_revision }}"><label><span>Current reviewed text</span><textarea name="text" maxlength="20000" required>{{ segment.current_text }}</textarea></label><div><small>The machine draft is immutable. Saving adds an attributed revision and refreshes retrieval.</small><button class="button button-primary" type="submit">Save correction</button></div>{% if segment.current_revision %}<details class="machine-draft"><summary>Compare machine draft</summary><p>{{ segment.model_text }}</p></details>{% endif %}</form></details>
+            <details class="transcript-editor"><summary>Review text</summary><form method="post" action="/matters/{{ matter.slug }}/sources/{{ media.row.action_token }}/segments/{{ segment.segment_id }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="expected_revision" value="{{ segment.current_revision }}"><label><span>Current reviewed text</span><textarea name="text" maxlength="20000" required>{{ segment.current_text }}</textarea></label><div><small>The machine draft is immutable. Saving adds an attributed revision and attempts to refresh search. Any pending search update is shown above.</small><button class="button button-primary" type="submit">Save correction</button></div>{% if segment.current_revision %}<details class="machine-draft"><summary>Compare machine draft</summary><p>{{ segment.model_text }}</p></details>{% endif %}</form></details>
           </div>
         </article>
         {% else %}

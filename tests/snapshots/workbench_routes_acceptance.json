@@ -99,6 +99,7 @@
   [["POST"], "/matters/{slug}/sources/{token}/resume"],
   [["POST"], "/matters/{slug}/sources/{token}/playback/retry"],
   [["POST"], "/matters/{slug}/sources/{token}/summary"],
+  [["POST"], "/matters/{slug}/sources/{token}/search-refresh"],
   [["POST"], "/matters/{slug}/sources/{token}/segments/{segment_id}"],
   [["POST"], "/matters/{slug}/sources/{token}/speakers"],
   [["GET"], "/matters/{slug}/sources/{token}/summary-export"],
