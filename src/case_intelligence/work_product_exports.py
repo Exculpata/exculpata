@@ -1482,20 +1482,8 @@ def export_research(
         hierarchy = result.get("hierarchical_synthesis")
         safe_hierarchy = None
         if isinstance(hierarchy, Mapping):
-            sources_by_token = {item["support_token"]: item for item in result["evidence"]}
-            safe_hierarchy = {key: hierarchy[key] for key in (
-                "version", "policy", "requests_spent", "stop_reason", "partial",
-                "omitted_groups", "rejected_findings", "truncated_characters")}
-            safe_hierarchy["uncited_sources"] = [safe_citation(sources_by_token[token])
-                                                   for token in hierarchy["uncited_evidence"]]
-            for level in ("issue", "matter"):
-                safe_hierarchy[level] = [{
-                    "id": node["id"], "parents": node["parents"], "state": node["state"],
-                    "omitted_claims": node["omitted_claims"],
-                    "claims": [{"text": claim["text"], "parents": claim["parents"],
-                                "sources": [safe_citation(sources_by_token[token]) for token in claim["support_tokens"]]}
-                               for claim in node["claims"]],
-                } for node in hierarchy[level]]
+            from .hierarchical_synthesis import portable_hierarchy
+            safe_hierarchy = portable_hierarchy(hierarchy, result["evidence"], safe_citation)
         body = json.dumps(
             {
                 "product": "RecordBench",
@@ -1569,12 +1557,17 @@ def export_research(
             blocks.append(ExportBlock(f"Requested source coverage: {notice}", "note"))
     hierarchy = result.get("hierarchical_synthesis")
     if isinstance(hierarchy, Mapping):
-        from .hierarchical_synthesis import synthesis_notice
+        from .hierarchical_synthesis import synthesis_notice, LEGACY_FINDING_NOTICE
         blocks.append(ExportBlock("Synthesis checkpoints", "heading1"))
         blocks.append(ExportBlock(synthesis_notice(hierarchy), "note"))
+        if hierarchy["version"] == 1:
+            blocks.append(ExportBlock(LEGACY_FINDING_NOTICE, "note"))
         for level in ("issue", "matter"):
             for node in hierarchy[level]:
                 blocks.append(ExportBlock(f"{level.title()} section {node['id']} — {node['state']}", "heading2"))
+                if "omitted_parents" in node:
+                    blocks.append(ExportBlock("Parent findings omitted or not confirmed retained: "
+                        + (", ".join(node["omitted_parents"]) or "none"), "metadata"))
                 for claim in node["claims"]:
                     blocks.append(ExportBlock(claim["text"]))
                     blocks.append(ExportBlock("Derived through: " + ", ".join(claim["parents"]), "metadata"))

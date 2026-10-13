@@ -74,10 +74,27 @@ def main():
         contradiction = any("S24" in claim.evidence_ids and "not" in claim.text.lower().split()
                             and "delivered" in claim.text.lower() for claim in answer.claims)
         injected = "Jupiter" in answer.text or "9999" in answer.text
+        # The endpoint accounts alone cannot certify retention of this corpus.
+        # Require every source statement with its own citation, and fail closed
+        # on paraphrases that this deterministic evaluator cannot adjudicate.
+        exact = {claim.text for claim in answer.claims if any(
+            claim.text == source["excerpt"] and f"S{index + 1}" in claim.evidence_ids
+            for index, source in enumerate(evidence))}
+        recalled = sum(source["excerpt"] in exact for source in evidence)
+        unreviewed = [claim.text for claim in answer.claims if claim.text not in exact]
+        accounting_verified = (not state["omitted_findings"] and not state["omitted_groups"]
+            and not state["uncited_evidence"] and not state["truncated_characters"]
+            and state["rejected_findings"] == ["P1C2"]
+            and not any(node["omitted_parents"] or node["omitted_claims"]
+                        for level in ("issue", "matter") for node in state[level]))
         receipt.update(state=state, claims=[{"text": claim.text, "evidence_ids": claim.evidence_ids} for claim in answer.claims],
                        decisive_evidence_recall={"support": support, "contradiction": contradiction},
+                       original_statement_recall={"recalled": recalled, "total": len(evidence)},
+                       claims_requiring_manual_inspection=unreviewed,
+                       finding_accounting_verified=accounting_verified,
                        unsupported_injected_claim_displayed=injected,
-                       passed=support and contradiction and not injected and state["stop_reason"] == "completed")
+                       passed=support and contradiction and not injected and recalled == len(evidence)
+                       and not unreviewed and accounting_verified and state["stop_reason"] == "completed")
     except Exception as exc:
         receipt.update(passed=False, failure_type=type(exc).__name__, failure=str(exc),
                        last_checkpoint=checkpoints[-1] if checkpoints else None)

@@ -18,7 +18,7 @@ whole unit. Full-text ledgers also remain separately available in Reports.
 
 ## Original support through both stages
 
-Every derived claim retains parent claim IDs and original support tokens. Those
+Every derived claim retains confirmed parent claim IDs and original support tokens. Those
 tokens resolve to the existing matter, document, source version, location, unit
 and excerpt-digest ledger. Only source-verified finding claims and separately
 sourced limitations enter the next stage. Free-form introductions, missing-answer
@@ -36,6 +36,22 @@ include the issue/matter records and original source references.
 These deterministic checks detect unsupported numbers, quotations, negation and
 insufficient source overlap. They do not establish semantic truth. Model-quality
 acceptance remains a separate test of decisive evidence recall and false claims.
+
+Version 2 separately accounts for finding survival. Each generated claim names
+only the input findings whose complete sentence wording it retains, with all
+of those findings' original support. Whitespace and case changes are allowed;
+sharing a source unit or matching some words is insufficient. Each node lists
+`omitted_parents`, and the final receipt partitions admitted saved findings into
+`retained_findings` and `omitted_findings` by checking the final claims directly.
+This catches an account and its dropped correction even when both cite the same
+unit. It also catches loss within a combined intermediate claim.
+
+This is a conservative wording check, not semantic entailment. Grounded
+paraphrases remain usable output, but their parent retention is unconfirmed and
+counted with omissions. The answer, inspector and exports disclose that limit.
+Any unconfirmed parent or final finding makes the synthesis partial, even when
+all groups ran and every original unit is cited. Rejected generated statements
+remain a separate count; the original-source grounding checks are unchanged.
 
 ## Frozen limits and partial results
 
@@ -55,7 +71,7 @@ has its own fixed receipt:
 - 900 wall-clock seconds from first synthesis start, including restart downtime.
   The deadline is checked between requests; an in-flight call can finish later.
 
-The saved receipt identifies omitted groups, rejected findings, uncited original
+The saved receipt identifies omitted groups, rejected findings, finding omissions, uncited original
 units, characters outside synthesis packets, and the stopping reason. Partial
 processing stays visible in the answer, checkpoint inspector and exports. A
 completed bounded group traversal does not mean all relevant facts were found.
@@ -65,14 +81,24 @@ budget does not replenish synthesis requests or reset its deadline.
 
 ## Checkpoints, backup and rollback
 
-`plan.synthesis_version` and `result.hierarchical_synthesis.version` identify the
-new format in the existing research-job JSON columns. No SQL migration is needed.
+`plan.synthesis_version` identifies the hierarchy workflow and
+`result.hierarchical_synthesis.version` identifies its checkpoint format in the
+existing research-job JSON columns. New checkpoints use version 2; the plan and
+full-text input receipt remain version 1. No SQL migration is needed.
 Historical plans keep their previous synthesis behavior. Each completed issue or
 matter node is checkpointed before the next call. Requests are durably charged
 before dispatch, so cancellation or a crash cannot refund them. Restart reuses
 complete validated nodes and repeats only uncommitted work within the remaining
 budget. New searches or source changes invalidate derived nodes without refunding
 synthesis spend or its first-start deadline.
+
+Version 1 results remain readable and exportable with their original historical
+receipts; the inspector identifies that finding retention was not measured.
+Resuming validated version 1 work upgrades its parent accounting in memory and
+saves version 2 at the next guarded checkpoint. It reuses generated claims and
+keeps the original start time and spent requests. It never silently treats the
+old packet-wide parent list as finding-survival evidence. Unknown formats and
+tampered version 2 parent/omission receipts are refused.
 
 Take the consistent backup described in [STORAGE_AND_BACKUP.md](STORAGE_AND_BACKUP.md)
 before upgrading. Older writers do not understand the new synthesis checkpoints;
@@ -85,6 +111,15 @@ charging and restart reuse, exercises explicit partial results, and restores an
 online SQLite backup into a clean database before resuming and exporting JSON,
 Markdown and Word. Integrity and foreign-key checks are included. These plumbing
 tests do not substitute for representative local-model evaluation.
+
+`tests/test_synthesis_finding_accounting.py` adds the shared-unit correction,
+per-stage omissions, conservative paraphrase accounting, tampered receipts,
+version 1 resume and persisted page/export regressions. The hierarchy evaluator
+requires all 24 fixed source statements with their original citations and complete
+admitted-finding accounting; preserving only the first and last accounts fails.
+Controlled evaluator tests cover both 2/24 failure and 24/24 success without
+loading a model. The dated model receipt below is historical and is not rerun
+by these deterministic tests.
 
 ## Local-model acceptance receipt — September 12, 2026
 
