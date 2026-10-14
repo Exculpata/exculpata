@@ -168,7 +168,6 @@ def main():
             def completed(matter):
                 return completed_on_server(matter) and driver.find_element(By.CSS_SELECTOR, '[data-file-chooser]').is_enabled()
 
-            # Exercise the real refresh code on a generated processing page.
             refresh_page_fixture = root / 'synthetic-refresh.html'
             refresh_page_fixture.write_text('<body data-ingestion-active><form data-upload-form><label>Collection name<input data-upload-collection-name></label></form><script>window.syntheticLoadToken=Math.random();</script><script>' + (ROOT / 'src/case_intelligence/static/case-intelligence.js').read_text() + '</script></body>')
             driver.get(refresh_page_fixture.as_uri())
