@@ -11,7 +11,9 @@ import re
 
 def without_source_references(text, cited):
     """Set aside exact metadata only in an explicit source-reference position."""
-    from .question_context import without_locator_references
+    from .question_context import transcript_record_references, without_locator_references
+    if transcript_record_references(text, cited):
+        return "Are there any other versions of the cited transcript?"
     text = without_locator_references(text, cited)
     for item in cited:
         # Only the source-bound appositive recognized above, in a request
@@ -66,6 +68,12 @@ def transcript_drop_reason(text, cited, *, details=None):
     """Keep a labelled speaker's words, negation and conditions with that speaker."""
     from .generation import TRANSCRIPT_EVIDENCE_KIND
     from .question_drafting import unsupported_quotes
+    from .question_context import transcript_record_references
+
+    # A whole, source-bound record-existence question makes no speaker claim,
+    # even when its source descriptor happens to overlap a speaker's words.
+    if transcript_record_references(text, cited):
+        return None
 
     turns = []
     for item in cited:

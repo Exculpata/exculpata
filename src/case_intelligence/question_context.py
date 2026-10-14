@@ -17,9 +17,57 @@ def typed_locator(item):
     return None
 
 
+def transcript_says_source(text, cited):
+    """Bind explicit 'machine transcript ... say' framing to a cited source."""
+    match = re.match(r"^What does the machine transcript(?: of the (?P<name>[\w -]{1,60}recording))?"
+                     r"(?: at (?P<position>\d{2,}:[0-5]\d:[0-5]\d))? say\b", text, re.I)
+    if not match:
+        return False
+    return any(item.evidence_kind == "transcript"
+               and (not match['position'] or match['position'] == item.location)
+               and (not match['name'] or match['name'].casefold() ==
+                    item.source_name.casefold().removeprefix('synthetic ').rsplit('.', 1)[0])
+               for item in cited)
+
+
+def transcript_record_references(text, cited):
+    """Recognize a whole existence question about one supplied transcript record.
+
+    This grammar contains no account of an event or speaker. Its descriptive
+    name and every listed position must identify the same cited recording. It
+    cannot admit an appended assertion, quoted metadata or a distractor citation.
+    Other wording still needs the ordinary excerpt and speaker checks.
+    """
+    if (not cited or any(item.evidence_kind != "transcript" or not typed_locator(item) for item in cited)
+            or len({item.source_name for item in cited}) != 1
+            or len({item.document_id for item in cited}) != 1):
+        return []
+    source = re.fullmatch(r"(?:Synthetic )?([A-Za-z][A-Za-z -]{0,59}) recording\.[A-Za-z0-9]{1,8}",
+                          cited[0].source_name, re.I)
+    if not source:
+        return []
+    label = re.escape(source[1])
+    timestamp = r"\d{2,}:[0-5]\d:[0-5]\d"
+    match = re.fullmatch(
+        r"Are there any (?:other )?(?:records|versions|records or versions) of the " + label
+        + r" transcript (?:that exist )?(?:beyond|besides) the machine transcript"
+        + r"(?: of the " + label + r" recording)? at (?P<positions>" + timestamp
+        + r"(?: and " + timestamp + r"){0,3})\?", text, re.I)
+    if not match:
+        return []
+    positions = list(re.finditer(timestamp, match['positions']))
+    by_location = {item.location: item.evidence_id for item in cited}
+    if (len(by_location) != len(cited) or len(positions) != len(cited)
+            or {position[0] for position in positions} != set(by_location)):
+        return []
+    offset = match.start('positions')
+    return [(offset + position.start(), offset + position.end(), by_location[position[0]])
+            for position in positions]
+
+
 def locator_references(text, cited):
     """Return exact source-bound spans and their supplied evidence IDs."""
-    references = []
+    references = transcript_record_references(text, cited)
     for item in cited:
         locator = typed_locator(item)
         if locator is None:

@@ -1,0 +1,433 @@
+{
+  "format": "recordbench-recorded-judge-evidence-v1",
+  "synthetic_only": true,
+  "source_comment": "https://github.com/Exculpata/exculpata/pull/142#issuecomment-6179462369",
+  "cases": [
+    {
+      "id": "crate-receipt",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\n  \"decisions\": [\n    {\n      \"candidate_id\": \"a1q2\",\n      \"reason\": \"grounded\"\n    }\n  ]\n}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        },
+        {
+          "stage": "judge-3",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a3q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a3q2\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q2",
+        "a3q1",
+        "a3q2"
+      ],
+      "questions": [
+        {
+          "text": "Do you know what happened when the blue crate arrived at the North Annex on 2026-03-05 at 09:15, and whether anyone signed the receipt or noted the seal condition?",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Do you know if the camera over bay 4 was out of service that morning, and whether you observed Morgan Sample unloading the truck at bay 4 with another worker whose name was not recorded?",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "What do you know about the status of the camera over bay 4 on the morning of the unloading, and whether anyone other than Morgan Sample was present during the unloading at bay 4?",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "grounded_output"
+    },
+    {
+      "id": "crate-records",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2"
+      ],
+      "questions": [
+        {
+          "text": "Please provide the synthetic receiving log.txt file, specifically Line 4, which records the blue crate's arrival at the North Annex on 2026-03-05 at 09:15, including the signature of Alex Example and the notation 'seal intact'.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide the synthetic dispatch email.txt file, specifically Paragraph 2, which mentions the driver's GPS tracker report for the route from the depot and notes that the carrier retains this report for 90 days.",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "supported_short_output"
+    },
+    {
+      "id": "phone-call",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2"
+      ],
+      "questions": [
+        {
+          "text": "What did Riley Demo report about the phone call they made to the front desk, and who answered?",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "What details are recorded in the front desk log regarding the call received at 10:07 on 2026-03-05?",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "supported_short_output"
+    },
+    {
+      "id": "phone-records",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\n  \"decisions\": [\n    {\n      \"candidate_id\": \"a1q1\",\n      \"reason\": \"grounded\"\n    },\n    {\n      \"candidate_id\": \"a1q2\",\n      \"reason\": \"grounded\"\n    }\n  ]\n}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2"
+      ],
+      "questions": [
+        {
+          "text": "Please provide the front desk log entry for the call received at 10:07 on 2026-03-05, including the details of the caller's report that the gate was open and the forwarding to security, as referenced in Synthetic desk log.txt.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide the switchboard recording for the front desk call received at 10:07 on 2026-03-05, if one exists, noting that the facilities memo states all front desk lines are recorded and retained for 30 days unless flagged.",
+          "evidence_ids": [
+            "S1",
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "filtered_short_output"
+    },
+    {
+      "id": "warehouse-inventory",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q3\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2",
+        "a1q3"
+      ],
+      "questions": [
+        {
+          "text": "What does the inventory sheet record for the count on 2026-04-02, and what does it record for the prior week's count?",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "What did Casey Placeholder write about the timing of the count and the location of two pallets?",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Does the holiday schedule indicate any office closures that might affect inventory counts?",
+          "evidence_ids": [
+            "S3"
+          ],
+          "relevant": false,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "grounded_output"
+    },
+    {
+      "id": "warehouse-records",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q3\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2",
+        "a1q3"
+      ],
+      "questions": [
+        {
+          "text": "Please provide the inventory sheet for model K7 filters showing the count of 48 cartons recorded on 2026-04-02 and the prior week's count of 60 cartons, as referenced in Synthetic inventory sheet.txt.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide the badge reader logs from the loading door that record entry times and badge numbers, as described in Synthetic security policy.txt.",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide any records or logs that document the movement or access of the 48 cartons of model K7 filters recorded on 2026-04-02, as referenced in Synthetic inventory sheet.txt.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "grounded_output"
+    },
+    {
+      "id": "vehicle-stop",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2"
+      ],
+      "questions": [
+        {
+          "text": "What does the incident report state regarding the reason for the traffic stop on Elm Street at 21:40?",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "According to the passenger statement, did the officer ask for permission before searching the trunk?",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "filtered_short_output"
+    },
+    {
+      "id": "vehicle-records",
+      "calls": [
+        {
+          "stage": "judge-1",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a1q1\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q2\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a1q3\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a1q1",
+        "a1q2",
+        "a1q3"
+      ],
+      "questions": [
+        {
+          "text": "Please provide the dash camera recording from Unit 12 for the evening shift on 2026-05-11.",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide the body-worn camera recording from Unit 12 for the evening shift on 2026-05-11.",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide the full text of the incident report regarding the stop of a grey hatchback on Elm Street at 21:40 by Officer Pat Sample.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "grounded_output"
+    },
+    {
+      "id": "transcript-meeting",
+      "calls": [],
+      "retained_candidate_ids": [],
+      "questions": [],
+      "outcome": "no_grounded_output"
+    },
+    {
+      "id": "transcript-records",
+      "calls": [
+        {
+          "stage": "judge-2",
+          "response": {
+            "role": "assistant",
+            "content": "{\"decisions\": [{\"candidate_id\": \"a2q3\", \"reason\": \"grounded\"}, {\"candidate_id\": \"a2q4\", \"reason\": \"grounded\"}]}",
+            "refusal": null,
+            "annotations": null,
+            "audio": null,
+            "function_call": null,
+            "tool_calls": [],
+            "reasoning": null
+          }
+        }
+      ],
+      "retained_candidate_ids": [
+        "a2q3",
+        "a2q4"
+      ],
+      "questions": [
+        {
+          "text": "Please provide any emails regarding the contract discussed at the meeting, if any, to clarify what Speaker 1 appears to say in the recording about never seeing the final contract.",
+          "evidence_ids": [
+            "S1"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        },
+        {
+          "text": "Please provide any records of the sent folder, if any, to clarify what Speaker 2 appears to say in the recording about checking the sent folder.",
+          "evidence_ids": [
+            "S2"
+          ],
+          "relevant": true,
+          "unsupported_quotes": []
+        }
+      ],
+      "outcome": "filtered_short_output"
+    }
+  ]
+}

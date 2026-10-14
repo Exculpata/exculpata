@@ -350,6 +350,28 @@ result uses `model_gate: not_run`, `model_judge_executed: false`, and a separate
 replay. A failed deterministic replay also exits nonzero. It is a regression aid,
 not a replacement for a fresh real-model receipt.
 
+The [#248 receipt](https://github.com/Exculpata/exculpata/pull/142#issuecomment-6179462369)
+has all ten cases in `tests/fixtures/question-drafts-recorded-248.json`; use that
+path with the same replay command and a fresh output path. Its six meeting
+candidates had no judge calls: four source-account questions still require
+speaker attribution, while the other two are identical questions about additional
+transcript records. A bounded whole-question grammar recognizes those uncertain
+record/version requests only when their descriptive name and every listed
+timestamp identify the same cited recording. This source reference can establish
+relevance without borrowing words from a speaker's account. Added assertions,
+quotations, unknown positions and extra citations do not qualify. Ordinary
+speaker questions retain their attribution, negation and condition checks.
+When document IDs are supplied, they must agree; equal filenames cannot combine
+different recordings or a known document with an unidentified one.
+
+The separate `question-drafts-judges-248.json` fixture contains only the actual
+public judge responses and historical outputs. Tests reapply those responses to
+the same candidate IDs in the nine other cases and compare their retained text,
+citations, outcomes and relevance annotations. They do not assign a recorded
+verdict to the newly surviving meeting question. A separate fake-judge unit test
+checks veto behavior; it is not model evidence. A fresh real-model gate is still
+required on the changed implementation.
+
 The recorded failures exposed an unrecognized named-document locator phrase,
 a missing explicit machine-transcript reporting form, and `sent`/passive
 `emailed` being treated as unrelated speaker terms. The repairs leave the

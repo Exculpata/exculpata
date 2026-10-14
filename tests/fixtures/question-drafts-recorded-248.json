@@ -1,0 +1,381 @@
+{
+  "format": "recordbench-question-replay-v1",
+  "synthetic_only": true,
+  "cases": [
+    {
+      "id": "crate-receipt",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What did you observe or record regarding the blue crate's arrival at the North Annex on 2026-03-05 at 09:15, and who else was present during that time?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Do you know what happened when the blue crate arrived at the North Annex on 2026-03-05 at 09:15, and whether anyone signed the receipt or noted the seal condition?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What do you know about the unloading of the truck at bay 4 on 2026-03-05, and whether the camera over bay 4 was operational that morning?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "text": "Do you know if the camera over bay 4 was out of service on the morning of 2026-03-05, and whether you observed Morgan Sample unloading the truck at bay 4 with another worker whose name was not recorded?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "What do you know about the status of the camera over bay 4 on the morning of 2026-03-05, and whether anyone other than Morgan Sample was present during the unloading at bay 4?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "text": "Do you know if the camera over bay 4 was out of service that morning, and whether you observed Morgan Sample unloading the truck at bay 4 with another worker whose name was not recorded?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "What do you know about the status of the camera over bay 4 on the morning of the unloading, and whether anyone other than Morgan Sample was present during the unloading at bay 4?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "crate-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the synthetic receiving log.txt file, specifically Line 4, which records the blue crate's arrival at the North Annex on 2026-03-05 at 09:15, including the signature of Alex Example and the notation 'seal intact'.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the synthetic dispatch email.txt file, specifically Paragraph 2, which mentions the driver's GPS tracker report for the route from the depot and notes that the carrier retains this report for 90 days.",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "phone-call",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What did Riley Demo report about the phone call they made to the front desk, and who answered?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What details are recorded in the front desk log regarding the call received at 10:07 on 2026-03-05?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "phone-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the front desk log entry for the call received at 10:07 on 2026-03-05, including the details of the caller's report that the gate was open and the forwarding to security, as referenced in Synthetic desk log.txt.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the switchboard recording for the front desk call received at 10:07 on 2026-03-05, if one exists, noting that the facilities memo states all front desk lines are recorded and retained for 30 days unless flagged.",
+              "evidence_ids": [
+                "S1",
+                "S2"
+              ]
+            },
+            {
+              "text": "Please clarify whether the front desk log entry for 2026-03-05 at 10:07 was flagged or retained beyond the standard 30-day period, as the facilities memo indicates recordings are retained for 30 days unless flagged.",
+              "evidence_ids": [
+                "S1",
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "warehouse-inventory",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What does the inventory sheet record for the count on 2026-04-02, and what does it record for the prior week's count?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What did Casey Placeholder write about the timing of the count and the location of two pallets?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Does the holiday schedule indicate any office closures that might affect inventory counts?",
+              "evidence_ids": [
+                "S3"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "warehouse-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the inventory sheet for model K7 filters showing the count of 48 cartons recorded on 2026-04-02 and the prior week's count of 60 cartons, as referenced in Synthetic inventory sheet.txt.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the badge reader logs from the loading door that record entry times and badge numbers, as described in Synthetic security policy.txt.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide any records or logs that document the movement or access of the 48 cartons of model K7 filters recorded on 2026-04-02, as referenced in Synthetic inventory sheet.txt.",
+              "evidence_ids": [
+                "S1"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vehicle-stop",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What does the incident report state regarding the reason for the traffic stop on Elm Street at 21:40?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "According to the passenger statement, did the officer ask for permission before searching the trunk?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "What does the passenger statement say about the officer's request for both the driver and passenger to step out of the vehicle?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "text": "What does the passenger statement say about the officer's request for both the driver and passenger to step out of the vehicle?",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "vehicle-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the dash camera recording from Unit 12 for the evening shift on 2026-05-11.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide the body-worn camera recording from Unit 12 for the evening shift on 2026-05-11.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide the full text of the incident report regarding the stop of a grey hatchback on Elm Street at 21:40 by Officer Pat Sample.",
+              "evidence_ids": [
+                "S1"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "transcript-meeting",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What does the machine transcript of the meeting recording at 00:03:12 say about whether the final contract was seen, and what does it say about when the contract was emailed?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What does the machine transcript of the meeting recording at 00:05:40 say about where the contract email might have been sent, and what does it say about checking the sent folder?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Are there any other records or versions of the meeting transcript that exist beyond the machine transcript of the meeting recording at 00:03:12 and 00:05:40?",
+              "evidence_ids": [
+                "S1",
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "text": "What does the machine transcript at 00:03:12 say about whether the final contract was seen, and what does it say about when the contract was emailed?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What does the machine transcript at 00:05:40 say about where the contract email might have been sent, and what does it say about checking the sent folder?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Are there any other records or versions of the meeting transcript that exist beyond the machine transcript of the meeting recording at 00:03:12 and 00:05:40?",
+              "evidence_ids": [
+                "S1",
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "transcript-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the email sent on the 14th, if any, to clarify what Speaker 2 appears to say in the recording about the final contract being emailed.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the sent folder records, if any, to clarify what Speaker 1 appears to say in the recording about the email going to the old address.",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": [
+            {
+              "text": "Please provide the email sent on the 14th, if any, to clarify what Speaker 2 appears to say in the recording about the final contract being emailed.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the sent folder records, if any, to clarify what Speaker 1 appears to say in the recording about the email going to the old address.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide any emails regarding the contract discussed at the meeting, if any, to clarify what Speaker 1 appears to say in the recording about never seeing the final contract.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide any records of the sent folder, if any, to clarify what Speaker 2 appears to say in the recording about checking the sent folder.",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        }
+      ]
+    }
+  ]
+}
