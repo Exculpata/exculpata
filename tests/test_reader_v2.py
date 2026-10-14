@@ -188,7 +188,6 @@ def test_find_survives_section_navigation_and_clear_keeps_review_origin(tmp_path
         cleared = parse_qs(urlsplit(html.unescape(clear.group(1))).query)
         assert cleared["entity_return_to"] == [origin] and "q" not in cleared
         assert "Return to review context" in client.get(html.unescape(clear.group(1))).text
-        # Without a query, section links carry none.
         plain = client.get(path, params={"unit": 1})
         nxt_plain = re.search(r'<a class="button button-secondary" href="([^"]+)">Next</a>', plain.text)
         assert "q" not in parse_qs(urlsplit(html.unescape(nxt_plain.group(1))).query)

@@ -177,7 +177,6 @@ def main(argv=None):
                     "Native keyboard focus is outside the unobscured viewport or hidden behind another control")
 
             def keyboard_to(element):
-                # Native Tab traversal, with no script focus or pointer action.
                 for _ in range(100):
                     if driver.switch_to.active_element == element:
                         assert element.is_displayed() and element.is_enabled()

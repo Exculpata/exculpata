@@ -173,8 +173,6 @@ def main():
                 assert 'Human review: Disputed' in body()
 
             def keyboard_link(predicate):
-                # Starting with a newly loaded page, reach a real anchor through
-                # native Tab navigation and activate it without pointer focus.
                 for _ in range(100):
                     active = driver.switch_to.active_element
                     if active.tag_name == 'a' and predicate(active):

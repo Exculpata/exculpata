@@ -33,9 +33,7 @@ def test_inbox_lists_suggestions_most_mentioned_first_with_their_passage(workben
     assert len(bench.entity_service(matter).list(matter.matter_id, WEB_ACTOR)[0]) == 7
     assert 'Suggestions to review <span class="suggestion-total">' in page
     assert "<mark>Jordan Sample</mark>" in page
-    # The passage links to the original support.
     assert re.search(rf'class="suggestion-source" href="/matters/{matter.slug}\?support=[0-9a-f]{{40}}#support-pane">Synthetic', page)
-    # Guided discovery is still available but collapsed while suggestions wait.
     assert '<details class="notebook-tool-card guided-discovery" aria-labelledby="discovery-heading">' in page
 
 
@@ -48,7 +46,6 @@ def test_type_filter_narrows_the_inbox(workbench):  # noqa: F811
     assert re.search(r'aria-current="page">Dates <span>1</span>', dates)
     people = client.get(f"/matters/{matter.slug}/entities", params={"kind": "people"}).text
     assert sorted(inbox_names(people)) == ["Alex Example", "Jordan Sample"]
-    # An unknown filter falls back to all suggestions.
     assert len(inbox_names(client.get(f"/matters/{matter.slug}/entities", params={"kind": "x"}).text)) == 4
 
 
@@ -494,7 +491,6 @@ def test_long_suggestion_names_wrap_instead_of_overflowing():
     css = (Path(__file__).resolve().parents[1] / "src/case_intelligence/static/workspace-layout.css").read_text()
     rule = re.search(r"\.suggestion-title a \{([^}]*)\}", css)[1]
     assert "overflow-wrap: anywhere" in rule and "min-width: 0" in rule
-    # Identity cards in the list below wrap the same long names.
     assert "overflow-wrap: anywhere" in re.search(r"\.notebook-tool-card h3 \{([^}]*)\}", css)[1]
 
 
@@ -558,7 +554,6 @@ def test_guided_discovery_keeps_the_inbox_position(workbench):  # noqa: F811
     form = re.search(r'<form data-discovery-batch.*?</form>', discovery, re.S)[0]
     assert '<input type="hidden" name="kind" value="people">' in form
     assert '<input type="hidden" name="inbox_page" value="2">' in form
-    # An unknown filter is never carried forward.
     other = client.get(coverage.replace("kind=people", "kind=unknown")).text
     back = html.unescape(re.search(r'<a href="([^"]+)">People (?:&amp;|&) things</a>', other)[1])
     assert "kind=unknown" not in back and "inbox_page=2" in back

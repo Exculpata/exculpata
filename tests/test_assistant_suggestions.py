@@ -81,7 +81,6 @@ def test_the_dock_has_a_labelled_close_control(workbench):  # noqa: F811
     fragment = dock(client.get(f"/matters/{matter.slug}/notebook").text)
     close = re.search(r'<button type="button" class="assistant-close" data-assistant-collapse '
                       r'aria-label="([^"]+)">.*?<span>([^<]+)</span>', fragment, re.S)
-    # The accessible name includes the visible label.
     assert close and close[2] == "Close" and close[2] in close[1]
 
 
@@ -91,13 +90,11 @@ def test_a_new_chat_drafted_in_the_browser_can_offer_the_same_suggestions(workbe
     conversation = bench.workspace.get_conversation(matter.matter_id)
     bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "user", "A synthetic earlier question?")
     fragment = dock(client.get(source_path(bench, matter)).text)
-    # A chat with messages shows no empty-state suggestions, but keeps them for New chat.
     assert 'id="assistant-suggestions-heading"' not in fragment
     template = re.search(r"<template data-assistant-suggestions-template>(.*?)</template>", fragment, re.S)
     assert template
     heading, items = suggestions(template[1].replace('-draft"', '"'))
     assert heading == "Suggested for this source" and len(items) == 3
     assert 'id="assistant-suggestions-heading-draft"' in template[1]
-    # Ids stay unique on the page.
     identifiers = re.findall(r'\bid="([^"]+)"', client.get(source_path(bench, matter)).text)
     assert len(identifiers) == len(set(identifiers))

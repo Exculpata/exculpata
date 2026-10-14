@@ -99,7 +99,6 @@ def test_adding_the_preview_creates_suggestions_that_record_they_came_from_an_an
     assert {(row[0], row[1]) for row in history} == {(ANSWER_HISTORY_ACTION, ACTOR)}
     inbox = client.get(f'/matters/{matter.slug}/entities').text
     assert inbox.count('suggestion-from-answer">From an answer</span>') == 3
-    # A repeat finds nothing new, and adding again adds nothing.
     again = client.post(url + '/preview', headers=JSON).json()
     assert again['items'] == [] and again['message'] == (
         'No new people, things or dates: they are already suggested, or none were found.')
@@ -266,7 +265,6 @@ def test_the_action_appears_on_each_claim_in_the_dock_and_the_full_conversation(
     assert re.search(r'data-suggest-timeline hidden>See dates in the timeline draft</a>', form[1])
     full = client.get(f'/matters/{matter.slug}', params={'conversation': conversation.conversation_id}).text
     assert f'action="{url}/preview"' in full
-    # The full conversation returns to the answer the reviewer was reading.
     anchor = f'/matters/{matter.slug}?conversation={conversation.conversation_id}#answer-support-{message.message_id}'
     assert f'name="return_to" value="{html.escape(anchor)}"' in full
     assert f'id="answer-support-{message.message_id}"' in full

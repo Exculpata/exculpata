@@ -109,7 +109,6 @@ def test_matter_search_box_submits_an_ordinary_exact_search(cedar):  # noqa: F81
     assert 'name="words"' in form[2] and 'name="search" value="1"' in form[2]
     result = client.get(form[1], params={"search": "1", "advanced": "0", "words": "gauge"})
     assert result.status_code == 200
-    # The Search page has its own full form; it does not repeat the bar search.
     assert 'class="matter-bar-search"' not in result.text
 
 
