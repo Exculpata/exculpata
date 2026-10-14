@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import shutil
 import sqlite3
+import threading
 import time
 
 import pytest
@@ -593,12 +594,19 @@ def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
     bench.run_automatic_discovery_once()
     statements = []
     connection = bench.workspace.connection
-    connection.set_trace_callback(statements.append)
+    poll_thread = threading.get_ident()
+    # The connection is shared: idle report claims also open writer transactions.
+    # Attribute every statement in this synchronous poll to its calling thread.
+    def trace_poll(sql):
+        if threading.get_ident() == poll_thread:
+            statements.append(sql)
+    connection.set_trace_callback(trace_poll)
     try:
         bench.automatic_entity_discovery(matter).automatic_progress(matter.matter_id)
     finally:
         connection.set_trace_callback(None)
     queries = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
+    assert queries, "the readiness poll must be traced"
     assert not [sql for sql in statements if "BEGIN IMMEDIATE" in sql.upper()]
     # Authorization included: the poll executes no write statement at all, so the
     # deferred transaction never becomes a writer.
