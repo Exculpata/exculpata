@@ -189,7 +189,6 @@ def main():
             card = one('.source-stat-card.ready')
             ActionChains(driver).move_to_element(card).perform()
             check('.source-stat-card.ready span')
-            # Follow a real status link and verify its selected state.
             card.click()
             wait.until(lambda _: one('.source-stat-card.ready').get_attribute('class').endswith('selected'))
             check('.source-stat-card.ready.selected span')
@@ -227,7 +226,6 @@ def main():
             driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', one('.source-library-filters'))
             driver.save_screenshot(str(output / 'dusk-mobile.png'))
             check('.source-library-filters input[type=search]')
-            # Round-trip theme selection retains every original Light computed style.
             driver.set_window_size(1440, 1100)
             driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
             Select(one('[data-theme-picker]')).select_by_value('light')

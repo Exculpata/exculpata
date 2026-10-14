@@ -49,7 +49,6 @@ def test_processing_yields_suggestions_without_a_model_or_a_review_run(workbench
     assert names(bench, matter) == [
         ("03/04/2026", "suggested"), ("Alex Example", "suggested"),
         ("Amber Cooperative", "suggested"), ("Jordan Sample", "suggested")]
-    # Nothing is reprocessed on the next pass.
     assert bench.run_automatic_discovery_once() == 0
     assert bench.workspace.connection.execute(
         "SELECT COUNT(*) FROM workbench_review_run WHERE matter_id=?", (matter.matter_id,)).fetchone()[0] == 0
@@ -384,7 +383,6 @@ def test_incomplete_coverage_needs_attention_and_can_be_retried(workbench, monke
     monkeypatch.setattr(bench, "automatic_entity_discovery", pending_units_unavailable)
     assert bench.run_automatic_discovery_once() == 1
     progress = bench.automatic_discovery_progress(matter)
-    # The source is not reported as complete: its coverage needs attention.
     assert progress["sources_complete"] == 0 and progress["sources_attention"] == 1
     status = client.get(f"/matters/{matter.slug}/processing-status").json()
     assert status["discovery"] == {
@@ -859,7 +857,6 @@ def test_source_readers_observe_a_stop_mid_read(workbench):
         list(reader.iter_selected(store, document, [30], read_check=stop_before_decode))
     # Before the buffer, before its one read (a small record), then before decoding.
     assert calls[:2] == [0, 0] and calls[2] > 0
-    # Once the stop clears, the next pass discovers everything.
     stop.clear()
     assert bench.run_automatic_discovery_once() == 30
 

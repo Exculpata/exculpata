@@ -298,8 +298,6 @@ def main():
             historical.find_element(By.CSS_SELECTOR, '.knowledge-support summary').send_keys(Keys.ENTER)
             record('The unavailable original retains its visible historical excerpt and complete-record link without a live source action')
 
-            # Reach the knowledge section using native Tab navigation, then open
-            # an account with Enter and inspect its actual source.
             for _ in range(120):
                 active = driver.switch_to.active_element
                 if active.tag_name == 'a' and active.text.startswith('Events and assertions ('):
