@@ -348,59 +348,74 @@ def unsupported_quotes(text: str, cited: Sequence[EvidenceItem]) -> tuple[str, .
 
 def verify_question(text: object, evidence_ids: object,
                     evidence: Mapping[str, EvidenceItem]) -> DraftedQuestion | None:
+    return inspect_question(text, evidence_ids, evidence)[0]
+
+
+def inspect_question(text, evidence_ids, evidence):
+    """The same verifier, with its first failing check and source-bound detail."""
     from .question_context import without_locator_references
+
+    def reject(check, **details):
+        return None, dict(check=check, **details)
+
     if not isinstance(text, str):
-        return None
+        return reject("text_type")
     try:
         text.encode("utf-8")  # e.g. an escaped lone surrogate from a runtime's JSON
     except UnicodeEncodeError:
-        return None
+        return reject("text_encoding")
     normalized = _LIST_MARKER.sub("", " ".join(text.split()).strip())
-    if not 8 <= len(normalized) <= MAX_DRAFTED_QUESTION_CHARS or _EVIDENCE_MARKER.search(normalized):
-        return None
+    if not 8 <= len(normalized) <= MAX_DRAFTED_QUESTION_CHARS:
+        return reject("text_length", normalized_length=len(normalized))
+    if _EVIDENCE_MARKER.search(normalized):
+        return reject("citation_label_in_text")
     if not isinstance(evidence_ids, (list, tuple)) or not 1 <= len(evidence_ids) <= 4:
-        return None
+        return reject("citation_count_or_type")
     identifiers: list[str] = []
     for identifier in evidence_ids:
         if not isinstance(identifier, str) or identifier not in evidence or identifier in identifiers:
-            return None
+            return reject("unknown_or_duplicate_citation")
         identifiers.append(identifier)
     cited = [evidence[identifier] for identifier in identifiers]
-    if unsupported_quotes(normalized, cited):
-        return None
+    if bad := unsupported_quotes(normalized, cited):
+        return reject("unsupported_quotation", unsupported_quotes=list(bad))
     source_text = "\n".join(item.excerpt for item in cited).casefold()
     source_numbers = set(_NUMBER.findall(source_text))
     factual_text = without_locator_references(normalized, cited).casefold()
-    if any(number not in source_numbers for number in _NUMBER.findall(factual_text)):
-        return None
-    if not _digit_tokens(factual_text) <= _digit_tokens(source_text):
-        return None
+    numbers = set(_NUMBER.findall(factual_text)) - source_numbers
+    digits = _digit_tokens(factual_text) - _digit_tokens(source_text)
+    if numbers or digits:
+        return reject("uncited_digit_bearing_detail", unsupported_numbers=sorted(numbers),
+                      unsupported_digit_tokens=sorted(digits))
     # A question must be about its passages: it shares at least one content word.
     source_terms = set(_tokens(source_text))
     # Do not supply an absent gender/identity through a pronoun. This is a narrow
     # lexical check, not a claim that supported pronouns have correct coreference.
     gendered = {"he", "him", "his", "she", "her", "hers"}
     if (set(_tokens(normalized)) & gendered) - source_terms:
-        return None
+        return reject("unstated_gendered_pronoun")
     if any(item.evidence_kind == TRANSCRIPT_EVIDENCE_KIND for item in cited):
         words = set(_tokens(normalized))
         # Anonymous labels are not a witness, interviewee or identified party.
         if (words & {"witness", "interviewee", "defendant", "suspect", "parties"}) - source_terms:
-            return None
+            return reject("unestablished_transcript_identity")
         # Require explicit source framing. A question about what a record says
         # can quote its words; other transcript questions must preserve its
         # apparent, rather than established, account.
         framed = (re.search(r"\b(?:recording|transcript)\b.*\bappears?\b", normalized, re.I)
                   or re.search(r"\bappears?\b.*\b(?:recording|transcript)\b", normalized, re.I)
-                  or re.search(r"\brecord (?:that )?says\b", normalized, re.I))
+                  or re.search(r"\brecord (?:that )?says\b", normalized, re.I)
+                  or re.search(r"^What does the machine transcript(?: of the [\w -]{1,60}recording)?"
+                               r"(?: at \d{2,}:[0-5]\d:[0-5]\d)? report Speaker \d+ said\b",
+                               normalized, re.I))
         if not framed:
-            return None
+            return reject("missing_transcript_source_framing")
         if re.match(r"(?:request|please provide)\b", normalized, re.I) and not re.search(r"\bif any\b", normalized, re.I):
-            return None
+            return reject("missing_transcript_discovery_condition")
     terms = [token for token in _tokens(normalized) if token not in _STOP_WORDS and len(token) > 2]
     if not any(token in source_terms for token in terms):
-        return None
-    return DraftedQuestion(normalized, tuple(identifiers))
+        return reject("no_content_overlap")
+    return DraftedQuestion(normalized, tuple(identifiers)), None
 
 
 def question_key(text: str) -> str:

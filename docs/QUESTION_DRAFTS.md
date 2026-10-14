@@ -80,15 +80,24 @@ case notes**, which adds one Suggested note.
   Exact cited source names and locations are allowed in explicit references
   such as `from [source name]` or `listed at [location]`. Their words do not
   support an identity elsewhere in the question. A narrow typed-locator rule
-  recognizes exact `Row N`, `Page N` and `Line N` document locations and exact
+  recognizes exact `Row N`, `Page N`, `Line N` and `Paragraph N` document locations and exact
   `HH:MM:SS` transcript positions from cited evidence. They may identify the
   cited source in a reference such as `record for Row 18` or `recording at 00:03:12`.
+  An exact named document followed by `file, specifically Line 4` (or another
+  supported supplied locator) is also a source reference. The exemption applies
+  only to that occurrence; it does not make a second `4` a supported count.
   A named source cannot borrow another source's location. An altered locator,
   arbitrary metadata format, uncited source location, or a second occurrence of
   those digits as a count/event time remains subject to excerpt verification.
   Explicitly located references also cannot borrow a quotation, digit or detected
   content detail from another cited passage outside those locations.
   Metadata quotations remain unsupported unless present in the excerpt.
+  A question beginning `What does the machine transcript ... report Speaker N
+  said` also frames the machine account explicitly. Its speaker, negation,
+  conditional and quotation checks still apply. In the narrow speaker term
+  comparison, passive `was emailed` supports the act of sending; the noun
+  `email` alone does not. This does not resolve pronoun antecedents between
+  speakers or permit another speaker's details.
   Local references to records
   and what `they contain` or `their entries` do not invent a person's pronoun.
   The audit distinguishes a temporal `when [name] left` clause from an assertion
@@ -309,3 +318,42 @@ new path; an existing or concurrently created file is never replaced.
 deterministic clients; `tests/test_question_drafts.py` covers the check, routes,
 saving and refusals; the `assistant-dock` browser journey covers the dock card
 with a deterministic synthetic drafting client.
+
+## Explaining a failed candidate
+
+Add `--explain` to the evaluator command above. Each case includes an
+`explanation` array, and a compact copy is printed to stderr; stdout remains one
+strict JSON receipt. Candidate IDs such as `a1q2` identify the attempt and original
+candidate. Explanations report the first failing production check, unsupported
+numbers or quotations, and conflicting speaker terms where applicable. Categories
+separate empty batches, quotation failures, source/span mismatches, relevance,
+duplicates and other checks. Relevance here is the frozen set's scoring annotation,
+not a new production rejection rule. Existing raw output and drop fields are kept;
+explanations do not change retry prompts, model budgets or decisions.
+
+Reproduce the three synthetic failures from the public
+[#247 receipt](https://github.com/Exculpata/exculpata/pull/142#issuecomment-6167585456)
+without a configured generator:
+
+```console
+.venv/bin/python scripts/evaluate-question-drafts.py \
+  --replay tests/fixtures/question-drafts-recorded-247.json --explain \
+  --output /tmp/question-drafts-offline-replay.json
+```
+
+Use a new output path for each run. Replay reads only the named synthetic raw
+batches and the benchmark passages. It preserves both empty top-ups, recalculates
+all deterministic decisions, and never reads runtime configuration or calls a
+model. It excludes historic scores, judge decisions and model identity. The
+result uses `model_gate: not_run`, `model_judge_executed: false`, and a separate
+`deterministic_checks_passed` field; `--require-model` always exits nonzero for a
+replay. A failed deterministic replay also exits nonzero. It is a regression aid,
+not a replacement for a fresh real-model receipt.
+
+The recorded failures exposed an unrecognized named-document locator phrase,
+a missing explicit machine-transcript reporting form, and `sent`/passive
+`emailed` being treated as unrelated speaker terms. The repairs leave the
+negation-losing meeting candidate and cross-speaker requests rejected. No broad
+whitespace, pipe, cell, quote or transcript normalization was needed. The fixed
+benchmark, model pins, generation budgets, target/minimum policy and accuracy
+thresholds are unchanged.

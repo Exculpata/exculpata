@@ -25,6 +25,10 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Write the receipt here (a new file).")
     parser.add_argument("--require-model", action="store_true",
                         help="Exit non-zero unless the model gate passed.")
+    parser.add_argument("--explain", action="store_true",
+                        help="Include per-candidate checks in JSON and print per-case explanations to stderr.")
+    parser.add_argument("--replay", type=Path,
+                        help="Offline synthetic raw-output replay; never calls a model or passes the model gate.")
     parser.add_argument("--profile", choices=("portable", "quality"),
                         help="The pinned generator profile in config/models.json that was run.")
     parser.add_argument("--runtime-profile", type=Path,
@@ -33,12 +37,18 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if (args.profile is None) != (args.runtime_profile is None):
         parser.error("Give --profile and --runtime-profile together.")
+    if args.replay and args.profile:
+        parser.error("Offline replay cannot use a model or runtime profile.")
     if args.output and args.output.exists():
         parser.error("Choose a new output file; the existing receipt was preserved.")
     try:
-        runtime = json.loads(args.runtime_profile.read_text(encoding="utf-8")) if args.runtime_profile else None
-        result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
-                         profile=args.profile, runtime=runtime)
+        if args.replay:
+            from case_intelligence.question_explanations import replay_receipt
+            result = replay_receipt(args.replay, args.cases, explain=args.explain)
+        else:
+            runtime = json.loads(args.runtime_profile.read_text(encoding="utf-8")) if args.runtime_profile else None
+            result = receipt(GroundedGenerationService(generator_from_environment()), args.cases,
+                             profile=args.profile, runtime=runtime, explain=args.explain)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
     # The receipt is strict, ASCII-escaped JSON, published atomically at a new path:
@@ -51,11 +61,17 @@ def main(argv=None):
     else:
         text = receipt_text(result)
     print(text, end="")
+    if args.explain:
+        for case in result.get('cases', ()):
+            print(json.dumps(dict(case=case['id'], outcome=case['outcome']['status'],
+                                  candidates=case['explanation']), ensure_ascii=True), file=sys.stderr)
     summary = result.get("limitation") or (
         f"{result['relevant_questions']}/{result['shown_questions']} shown questions cite only relevant passages; "
         f"{result['shown_unsupported_quotes']} quote text outside their passages; gate {result['model_gate']}."
         + "".join(f" {problem}" for problem in result.get("binding_problems", ())))
     print(summary, file=sys.stderr)
+    if args.replay:
+        return 0 if result['deterministic_checks_passed'] and not args.require_model else 1
     return 0 if result["model_gate"] == "passed" or not args.require_model else 1
 
 

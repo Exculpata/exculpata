@@ -14,6 +14,11 @@ def without_source_references(text, cited):
     from .question_context import without_locator_references
     text = without_locator_references(text, cited)
     for item in cited:
+        # Only the source-bound appositive recognized above, in a request
+        # position. A source name elsewhere remains factual prose to check.
+        text = re.sub(r"^(?:request|please provide)\s+(?:the\s+)?" + re.escape(item.source_name)
+                      + r"(?:\s+file)?(?=\s*,\s*specifically\s+cited location\b)",
+                      "Please provide the cited source", text, flags=re.I)
         for value in (item.source_name, item.location):
             # Exact names are not decomposed into an allow-list of words.
             # A name in an asserted event (rather than after a locator) stays checked.
@@ -37,6 +42,7 @@ def unstated_plural_pronouns(text, source_words):
 _SPEAKER = re.compile(r"\bSpeaker\s+\d+\b", re.I)
 _NEGATION = re.compile(r"\b(?:not|never|cannot|can't|didn't|doesn't|couldn't|hasn't|hadn't)\b", re.I)
 _CONDITION = re.compile(r"\b(?:if|whether|might|may|could|would|uncertain|unresolved)\b", re.I)
+_PASSIVE_EMAILED = re.compile(r"\b(?:was|were|is|are|be|been)\s+emailed\b", re.I)
 _WORD_FORMS = {"saw": "see", "seen": "see", "seeing": "see", "emailed": "email",
                "sent": "send", "sending": "send", "received": "receive", "receiving": "receive"}
 
@@ -47,11 +53,16 @@ def _content(text):
                "please", "provide", "request", "records", "record", "clarify", "unidentified",
                "machine", "synthetic", "about", "what", "which", "whether", "never", "not",
                "can", "could", "would", "should", "might", "may", "who", "where", "when", "how"}
-    return {_WORD_FORMS.get(word, word) for word in _tokens(text)
-            if len(word) > 2 and word not in _STOP_WORDS | generic and not word.isdigit()}
+    terms = {_WORD_FORMS.get(word, word) for word in _tokens(text)
+             if len(word) > 2 and word not in _STOP_WORDS | generic and not word.isdigit()}
+    # Passive "was emailed" supports the act of sending. The noun "email"
+    # alone does not; quotation matching and polarity remain unchanged.
+    if _PASSIVE_EMAILED.search(text):
+        terms.add('send')
+    return terms
 
 
-def transcript_drop_reason(text, cited):
+def transcript_drop_reason(text, cited, *, details=None):
     """Keep a labelled speaker's words, negation and conditions with that speaker."""
     from .generation import TRANSCRIPT_EVIDENCE_KIND
     from .question_drafting import unsupported_quotes
@@ -78,17 +89,26 @@ def transcript_drop_reason(text, cited):
     if len(labels) > 1 and not requested:
         return "missing_transcript_attribution"
     selected = [item for label, item in turns if not requested or label in requested]
+    if details is not None:
+        details.update(requested_speakers=sorted(requested), selected_turns=[item.excerpt for item in selected])
     # A quotation cannot be borrowed from a different speaker in the same passage.
-    if unsupported_quotes(text, selected):
+    if bad := unsupported_quotes(text, selected):
+        if details is not None:
+            details['unsupported_speaker_quotes'] = list(bad)
         return "wrong_transcript_speaker_quotation"
     own_terms = set().union(*(_content(item.excerpt) for item in selected))
     other_terms = set().union(*(_content(item.excerpt) for label, item in turns if label not in requested))
+    if details is not None:
+        details['conflicting_terms'] = sorted(terms & (other_terms - own_terms))
     if requested and terms & (other_terms - own_terms):
         return "cross_speaker_detail"
     for item in selected:
         for clause in re.split(r"[.!?;]\s+", item.excerpt):
             overlap = terms & _content(clause)
-            if len(overlap) < 2:
+            # The new sending implication must carry the email clause's
+            # polarity even in a short question with only that one overlap.
+            email_sending = 'send' in overlap and _PASSIVE_EMAILED.search(clause)
+            if len(overlap) < 2 and not email_sending:
                 continue
             if _NEGATION.search(clause) and not _NEGATION.search(text):
                 return "transcript_negation_lost"

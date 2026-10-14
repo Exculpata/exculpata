@@ -11,7 +11,7 @@ def typed_locator(item):
         if re.fullmatch(r"\d{2,}:[0-5]\d:[0-5]\d", item.location):
             return {"kind": "transcript_position", "value": item.location}
     elif item.evidence_kind == "document":
-        match = re.fullmatch(r"(Row|Page|Line) ([1-9]\d*)", item.location, re.I)
+        match = re.fullmatch(r"(Row|Page|Line|Paragraph) ([1-9]\d*)", item.location, re.I)
         if match:
             return {"kind": match[1].lower(), "value": item.location}
     return None
@@ -28,9 +28,14 @@ def locator_references(text, cited):
                  if locator["kind"] == "transcript_position" else
                  r"(?:record|entry|sheet|log|report|document|source|passage|note)s?")
         anchor = rf"(?:\b{nouns}|(?<!\w){re.escape(item.source_name)})"
-        pattern = (anchor + r"\s+(?:at|from|in|on|for)\s+(?:the\s+)?(?P<locator>"
-                   + re.escape(item.location) + r")(?![\w:-]|\.\d)")
-        for match in re.finditer(pattern, text, re.I):
+        suffix = r"(?P<locator>" + re.escape(item.location) + r")(?![\w:-]|\.\d)"
+        patterns = [anchor + r"\s+(?:at|from|in|on|for)\s+(?:the\s+)?" + suffix]
+        if item.evidence_kind == 'document':
+            # The exact source name binds this appositive; a generic "file"
+            # must not borrow another passage's location.
+            patterns.append(r"(?<!\w)" + re.escape(item.source_name)
+                            + r"(?:\s+file)?\s*,\s*specifically\s+" + suffix)
+        for match in (m for pattern in patterns for m in re.finditer(pattern, text, re.I)):
             context = re.split(r"[;?!]", text[:match.start('locator')])[-1]
             named = [(m.start(), source.source_name) for source in cited
                      for m in re.finditer(re.escape(source.source_name), context, re.I)]

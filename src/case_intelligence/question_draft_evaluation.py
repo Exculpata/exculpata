@@ -43,6 +43,7 @@ IMPLEMENTATION_PATHS = (
     "src/case_intelligence/question_context.py",
     "src/case_intelligence/question_language.py",
     "src/case_intelligence/question_judging.py",
+    "src/case_intelligence/question_explanations.py",
 )
 # The set is fixed: changing it needs a new file and a new recorded fingerprint.
 QUESTION_SET_FINGERPRINT = "7674d1da108db0dffe5392a7ca841c483e09e9ec220838a1afac5b5f99a5ea95"
@@ -120,7 +121,7 @@ class _Recording:
         return self.raw
 
 
-def evaluate(service, data: dict) -> dict:
+def evaluate(service, data: dict, *, explain=False) -> dict:
     """Run every case through the production drafting path and score what a reviewer would see."""
     recording = _Recording(service.client)
     original = service.client
@@ -177,6 +178,9 @@ def evaluate(service, data: dict) -> dict:
                 if len(questions) < MIN_QUESTIONS_PER_USABLE_CASE or not outcome["generation_complete"]:
                     failed.append(case["id"])
             result.update(questions=questions, raw=recording.raw, outcome=outcome)
+            if explain:
+                from .question_explanations import explain_candidates
+                result['explanation'] = explain_candidates(recording.raw, evidence, case['relevant'])
             cases.append(result)
     finally:
         service.client = original
@@ -276,7 +280,7 @@ def binding_problems(execution: dict, identity: dict, pin: dict | None = None) -
 
 
 def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
-            profile: str | None = None, runtime: dict | None = None) -> dict:
+            profile: str | None = None, runtime: dict | None = None, explain=False) -> dict:
     """Run the set and record a receipt bound to the code and the pinned model.
 
     The gate passes only when the pass bar is met on the pinned set, from a clean
@@ -315,7 +319,7 @@ def receipt(service, path: Path = DEFAULT_CASES, *, identity=model_identity,
             return None
     observed = dict(before=observe())
     try:
-        result.update(evaluate(service, data))
+        result.update(evaluate(service, data, explain=explain))
     except GenerationUnavailable as exc:
         result["limitation"] = f"The configured runtime failed during evaluation: {exc}"
         return result
