@@ -152,7 +152,6 @@ def main(argv=None):
             driver.save_screenshot(str(args.output / "dock-source-1440.png"))
             checks.append("At 1440px with a source open, the dock offers three questions about that source and a visible Close control")
 
-            # Native keyboard: Tab from the start of the page reaches a suggestion; Enter fills, never sends.
             js("document.activeElement && document.activeElement.blur(); window.scrollTo(0, 0)")
             find("body").send_keys(Keys.TAB)
             for _ in range(250):
@@ -188,7 +187,6 @@ def main(argv=None):
             assert find("#assistant-question").get_attribute("value") == question
             checks.append("Close and reopen work from the keyboard, move focus to the reopen tab and back to the kept question")
 
-            # A new chat drafted in the browser offers the same source suggestions.
             find("[data-assistant-new-chat]").click()
             wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, ".assistant-draft-empty [data-assistant-suggestion]"))
             draft = find(".assistant-draft-empty")
@@ -316,7 +314,6 @@ def main(argv=None):
                 assert rect(form.find_element(By.CSS_SELECTOR, "button"))["right"] <= width + 1
                 no_page_overflow()
                 driver.save_screenshot(str(args.output / f"dock-suggest-{width}.png"))
-            # An open proposal naming a source with a long unbroken filename still fits a phone.
             bench = app.state.workbench
             matter = bench.workspace.get_matter(prefix.rsplit("/", 1)[1], ACTOR)
             long_name = "Synthetic-" + "unbroken" * 24 + ".txt"

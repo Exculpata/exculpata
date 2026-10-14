@@ -257,8 +257,6 @@ def main(argv=None):
                     assert link["label"]
                     unique.setdefault(link["href"], link["label"])
                 assert unique
-                # Check every emitted link's response, then open every distinct
-                # destination in the actual browser (duplicate examples share URLs).
                 for href, label in unique.items():
                     response = driver.execute_async_script("""const done=arguments[arguments.length-1];
                         fetch(arguments[0],{credentials:'same-origin'}).then(async r=>done({

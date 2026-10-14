@@ -123,7 +123,6 @@ def main():
             record('Intake receipt leads to discovery readiness and preserves the receipt return path')
             go(prefix + '/entities')
             assert 'No entities yet' in body()
-            # Keyboard-only traversal of the creation controls.
             field = driver.find_element(By.CSS_SELECTOR, 'input[name=display_name]')
             field.send_keys('Alex Example', Keys.TAB, Keys.TAB, Keys.TAB, 'A. Example', Keys.TAB, Keys.ENTER)
             wait.until(lambda _: 'Original-source mentions (0)' in body())
@@ -163,7 +162,6 @@ def main():
             assert bench.entity_service(matter).list(matter.matter_id, ACTOR)[1] == 2
             record('Another same-name person remains distinct, with no automatic alias merge')
             go(entity_path)
-            # An independent editor changes the shared record while this form remains open.
             other = browser()
             other.get(base + entity_path)
             name = other.find_element(By.CSS_SELECTOR, 'input[name=display_name]')
@@ -193,7 +191,6 @@ def main():
             driver.set_window_size(1440, 1000)
             click('.notebook-item-form button')
             assert 'Unsaved synthetic correction' in body()
-            # Search-context return link survives selection, attachment and save.
             go(prefix + '/entities?return_to=' + prefix.replace('/', '%2F') + '%3Fmode%3Dsearch%26q%3Ddepot')
             driver.find_element(By.LINK_TEXT, 'Return to source review').click()
             assert 'mode=search' in driver.current_url and 'q=depot' in driver.current_url
@@ -211,7 +208,6 @@ def main():
             FullTextReviewLedger(bench.workspace).inventory(run, decision, document.parsed_units(), current_source=lambda: True)
             bench.workspace.fail_review_run(run.run_id, 'Synthetic inventory fixture finished; no generation requested.')
             go(prefix + '/entities')
-            # Guided discovery is collapsed while automatic suggestions wait for review.
             guided = driver.find_element(By.CSS_SELECTOR, 'details.guided-discovery')
             if guided.get_attribute('open') is None:
                 guided.find_element(By.CSS_SELECTOR, ':scope > summary').click()

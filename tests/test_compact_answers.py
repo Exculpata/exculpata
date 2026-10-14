@@ -28,10 +28,8 @@ def test_claims_carry_numbered_links_to_each_cited_passage(cedar, monkeypatch): 
     ]
     assert all(number == text for _, number, _, text in refs)
     full = re.findall(r'<a class="citation(?: media-citation)?" href="([^"]+)">', answer)
-    # Each number opens exactly the passage its full citation opens.
     assert [html.unescape(href) for href, *_ in refs] == [html.unescape(href) for href in full]
     assert re.findall(r'<span class="citation-number"><span class="visually-hidden">Source </span>(\d+)</span>', answer) == ["1", "2"]
-    # Save and compare actions remain on every citation.
     assert answer.count("Save passage to case notes") == 2
     assert answer.count("data-cited-context") == 2
 
@@ -47,7 +45,6 @@ def test_each_answer_states_its_caveats_once_inside_about(cedar, monkeypatch):  
     assert answer.count(html.escape(GENERATED_REVIEW_NOTICE, quote=False)) == 1
     assert html.escape(GENERATED_REVIEW_NOTICE, quote=False) in about.group(1)
     assert "Machine transcript" in about.group(1) and answer.count("Machine transcript") == 1
-    # The collapsed line announces every caveat inside it.
     summary = re.search(r"<summary>About this answer<small>([^<]*)</small></summary>", about.group(1))[1]
     assert summary == "Check each statement against its sources · includes machine transcript · searchable text was partial"
     assert answer.count("data-answer-about") == 1
@@ -89,7 +86,6 @@ def test_a_passage_cited_twice_in_one_statement_is_numbered_once(cedar, monkeypa
     page = client.get(f"/matters/{matter.slug}", params={"conversation": conversation.conversation_id})
     answer = _answer_html(page.text, message.message_id)
     assert re.findall(r'<a class="citation-ref" [^>]*>(\d+)</a>', answer) == ["1", "2"]
-    # Both full citations stay listed, sharing the passage's number.
     assert re.findall(r'<span class="citation-number"><span class="visually-hidden">Source </span>(\d+)</span>', answer) == ["1", "1", "2"]
 
 
@@ -101,7 +97,6 @@ def test_full_citations_announce_their_number(cedar, monkeypatch):  # noqa: F811
     full = re.findall(r'<a class="citation(?: media-citation)?" href="[^"]+">(.*?)</a>', answer, re.S)
     assert len(full) == 2
     for number, link in enumerate(full, 1):
-        # The number is part of the accessible name, not hidden from assistive technology.
         assert "aria-hidden" not in link.split("<svg", 1)[0]
         assert re.sub(r"<[^>]+>", "", link).strip().startswith(f"Source {number}")
 

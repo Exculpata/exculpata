@@ -473,7 +473,6 @@ def main(argv=None):
                 open_page("/setup?view=list")
                 disclosure = find(".matter-section-disclosure")
                 summary = disclosure.find_element(By.CSS_SELECTOR, "summary")
-                # Enter is native disclosure activation; Tab must visit links in order.
                 summary.send_keys(Keys.ENTER)
                 links = disclosure.find_elements(By.CSS_SELECTOR, "a")
                 for link in links:

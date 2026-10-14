@@ -163,8 +163,6 @@ def main():
                 if support_choices:
                     Select(support_choices[0]).select_by_index(1)
                 if keyboard:
-                    # Traverse from the title through the native controls and
-                    # activate the submit button without a pointer click.
                     form('create').find_element(By.CSS_SELECTOR, '[name="title"]').click()
                     for _ in range(30):
                         active = driver.switch_to.active_element
