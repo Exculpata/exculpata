@@ -77,7 +77,6 @@ def test_admin_closure_notifies_every_authorized_owner_or_member_without_new_aut
             assert neighbor.display_name not in response.text
             assert 'You own this matter' not in response.text
     if access == 'owner':
-        # Visible while working elsewhere, not only on the management page.
         assert 'data-closure-notices' in client.get(f'/matters/{neighbor.slug}/settings').text
     else:
         assert client.get(f'/matters/{matter.slug}/close').status_code == 404
