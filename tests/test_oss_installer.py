@@ -3213,7 +3213,6 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
     assert not any(key.startswith(other + "_") for key in installer._dotenv(path))
     assert installer._dotenv(path)[f"{prefix}_KERBEROS_PRINCIPAL"] == principal
     assert json.loads((root / "installation.json").read_text())["auth"] == "kerberos"
-    # Repeating the same reconfiguration must not duplicate or reformat keys.
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
                          "synthetic-release", ROOT, ())
     assert path.read_bytes() == expected
