@@ -200,7 +200,6 @@ def main():
                     links = links[1:]
                     assert driver.switch_to.active_element.text.strip() == 'Home'
                 assert len(links) == (6 if compact else 5)
-                # Exercise native keyboard traversal within the section destinations.
                 for link in links:
                     driver.switch_to.active_element.send_keys(Keys.TAB)
                     assert driver.switch_to.active_element == link

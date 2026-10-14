@@ -142,7 +142,6 @@ def main():
             wait.until(lambda _: driver.find_elements(By.ID,'support-pane'))
             activate(driver.find_element(By.LINK_TEXT,'Return to review context'))
             assert urlparse(driver.current_url).path == path
-            # Native Tab traversal from document start to the approval action.
             driver.get(base+path+f'?kind=entity&object_id={context["person"]}')
             for _ in range(180):
                 active = driver.switch_to.active_element

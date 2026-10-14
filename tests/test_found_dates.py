@@ -41,13 +41,11 @@ def test_full_dates_are_ordered_and_uncertain_ones_are_never_guessed(workbench):
     assert '<h2 id="found-dates-heading">Dates found in sources <span class="suggestion-total">4</span></h2>' in draft
     ordered = re.search(r"<h3>In date order</h3><ol class=\"found-date-list\">(.*?)</ol>", draft, re.S)[1]
     unordered = re.search(r"<h3>Order not established</h3><ul class=\"found-date-list\">(.*?)</ul>", draft, re.S)[1]
-    # By calendar day; the time is shown as stated.
     assert stated(ordered) == ["2026-01-02T09:30Z", "2026-03-05"]
     # Day/month order unknown, and an impossible calendar day: kept apart, in the order found.
     assert stated(unordered) == ["03/04/2026", "2026-02-30"]
     assert "day/month order unresolved" in unordered and "calendar date not established" in unordered
     assert "2 of 4 are full calendar dates" in draft
-    # Each entry shows its highlighted passage and links to the original.
     assert "<mark>2026-03-05</mark>" in ordered
     assert re.search(rf'class="suggestion-source" href="/matters/{matter.slug}\?support=[0-9a-f]{{40}}#support-pane">'
                      r"Synthetic delivery\.txt", ordered)
@@ -59,7 +57,6 @@ def test_the_draft_saves_nothing_and_skips_dates_set_aside(workbench):  # noqa: 
     service = bench.entity_service(matter)
     rows, _ = service.list(matter.matter_id, WEB_ACTOR)
     by_name = {row["display_name"]: row for row in rows}
-    # A reviewer sets one date identity aside and one passage of another.
     service.decide(matter.matter_id, WEB_ACTOR, [(by_name["03/04/2026"]["entity_id"], by_name["03/04/2026"]["revision"])],
                    status="dismissed")
     march = service.detail(matter.matter_id, WEB_ACTOR, by_name["2026-03-05"]["entity_id"])
@@ -288,7 +285,6 @@ def test_an_entry_shows_its_passage_review_apart_from_its_identity(workbench):  
     row = service.list(matter.matter_id, WEB_ACTOR)[0][0]
     service.decide(matter.matter_id, WEB_ACTOR, [(row["entity_id"], row["revision"])], status="confirmed")
     entity, mentions = service.detail(matter.matter_id, WEB_ACTOR, row["entity_id"])[:2]
-    # The identity is confirmed, but the reviewer disputes this passage.
     service.review_mention(matter.matter_id, WEB_ACTOR, entity["entity_id"], expected_revision=entity["revision"],
                            mention_id=mentions[0]["mention_id"], status="disputed")
     draft = section(client.get(f"/matters/{matter.slug}/chronology").text)
@@ -304,13 +300,11 @@ def test_reviewing_a_found_date_keeps_the_selected_passage_and_its_return(workbe
     row = next(row for row in service.list(matter.matter_id, WEB_ACTOR)[0] if row["display_name"] == "2026-03-05")
     token = service.detail(matter.matter_id, WEB_ACTOR, row["entity_id"])[1][0]["support_token"]
     source_review = f"/matters/{matter.slug}?support={token}"
-    # The reviewer is choosing where to use a passage, then reviews a found date.
     page = client.get(f"/matters/{matter.slug}/chronology", params={"support": token, "return_to": source_review}).text
     link = html.unescape(re.findall(r'<a href="([^"]+)" aria-label="[^"]+">Review this date</a>', section(page))[0])
     opened = client.get(link).text
     back = html.unescape(re.search(r'<a href="([^"]+)">Return to source review</a>', opened)[1])
     assert back.startswith(f"/matters/{matter.slug}/chronology?") and back.endswith("#found-dates-heading")
-    # The selected passage and its own return path survive the round trip.
     query = parse_qs(urlsplit(back).query)
     assert query["support"] == [token] and query["return_to"] == [source_review]
     assert client.get(back.split("#")[0]).status_code == 200

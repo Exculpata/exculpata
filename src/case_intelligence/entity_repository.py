@@ -172,7 +172,6 @@ class EntityRepository:
                     break
         return mention
 
-    # Found dates a reviewer has not set aside, by identity and by passage.
     DATE_DRAFT_STATUSES = ('suggested', 'needs_review', 'confirmed', 'disputed')
 
     def date_draft(self, matter_id, page=1, page_size=25):

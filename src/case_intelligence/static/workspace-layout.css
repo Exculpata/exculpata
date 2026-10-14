@@ -460,7 +460,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .matter-readiness.state-ready .matter-readiness-actions button { min-height: 28px; padding-block: 3px; }
 .readiness-limits-toggle[hidden], .matter-readiness:not(.state-ready) .readiness-limits-toggle { display: none; }
 
-/* Page titles inform; they do not take over the screen. */
 .matter-page .matter-heading h1,
 .matter-page .notebook-heading h1 { font-size: clamp(22px, 1.8vw, 28px); line-height: 1.15; }
 .matter-page .notebook-heading { padding-block: 4px; }
@@ -473,7 +472,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
   .matter-readiness.state-ready .matter-readiness-actions { grid-column: 2; }
 }
 
-/* Review: counts are a compact filter row, not a dashboard. */
 .matter-page .source-status-overview { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 8px; }
 .matter-page .source-status-overview .source-stat-card {
   display: inline-flex; align-items: baseline; gap: 6px; min-height: 0; padding: 5px 12px;
@@ -497,18 +495,15 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .matter-bar .matter-section-disclosure > summary { min-height: 36px; padding: 4px 6px; }
 .matter-bar .matter-section-disclosure .section-current small { display: none; }
 
-/* The reader spends its height on the record, not on chrome. */
 .source-review-main .matter-bar { margin-top: 0; }
 .source-review-main .source-review-heading { padding-top: 4px; padding-bottom: 4px; }
 .source-review-main .review-toolbar { margin-block: 4px; }
 
-/* Reader v2: PDF zoom choice beside the section controls. */
 .pdf-fit-toggle { display: inline-flex; gap: 4px; margin-inline: auto 8px; }
 .pdf-fit-toggle[hidden] { display: none; }
 .pdf-fit-toggle .button { min-height: 28px; padding: 3px 10px; font-size: 11px; }
 .pdf-fit-toggle .button[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); font-weight: 800; }
 
-/* Reader v2: folders inside the source queue. */
 .source-browser-folders { display: grid; gap: 4px; margin-block: 6px 10px; font-size: 12px; }
 .source-browser-folders p { margin: 0; overflow-wrap: anywhere; }
 .source-browser-folders ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
@@ -517,7 +512,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .source-browser-folders li a small { color: var(--ink-faint); }
 .source-browser-folders li a:hover { background: var(--surface-strong); }
 
-/* Reader v2: find inside the open file. */
 .review-find { flex: 1 1 120px; min-width: 110px; max-width: 240px; margin-left: auto; }
 .review-find input { width: 100%; min-height: 30px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-lifted); color: var(--ink); font-size: 12px; }
 .review-find-results { margin-block: 6px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-lifted); font-size: 12px; }
@@ -527,7 +521,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .review-find-results mark, .extracted-reader mark { padding: 1px 2px; border-radius: 2px; background: var(--highlight); color: inherit; }
 .review-find-results p { margin: 6px 0 0; }
 
-/* Automatic discovery: one quiet line under readiness, linking to suggestions. */
 .matter-readiness-discovery {
   display: flex;
   align-items: center;
@@ -552,7 +545,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
   opacity: 0.6;
 }
 
-/* People & things: suggestions inbox. One row per suggestion, decision at hand. */
 .suggestion-inbox {
   margin: 12px 0 16px;
   border: 1px solid var(--line);
@@ -620,7 +612,6 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
   .suggestion-actions form { flex: 1 1 0; display: flex; }
 }
 
-/* Compact cited answers: the statement reads first, numbered sources follow. */
 .answer-claims .answer-claim-text { margin: 0 0 4px; }
 .citation-ref {
   display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
@@ -650,14 +641,12 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
 .answer-claims .media-citation svg, .answer-limitation .media-citation svg { grid-column: 3; grid-row: 2; }
 .answer-claims .citation-label, .answer-limitation .citation-label { min-width: 0; overflow-wrap: anywhere; }
 
-/* Read-only draft of found dates on the timeline. */
 .found-date-list { margin: 6px 0 10px; padding-left: 1.4em; display: grid; gap: 8px; }
 .found-date { min-width: 0; }
 .found-date-when { margin: 0; overflow-wrap: anywhere; }
 .found-date-note { color: var(--ink-soft); font-size: 0.85em; }
 .found-date-actions { margin: 2px 0 0; font-size: 0.9em; }
 
-/* Assistant dock: a labelled Close control and page-aware suggested questions. */
 .assistant-header .assistant-close { display: inline-flex; gap: 4px; align-items: center; padding-inline: 8px; font-size: 11px; }
 .assistant-suggestions-heading { margin: 0; color: var(--ink-soft); font-size: 10px; font-weight: 700; }
 .assistant-suggestions-hint { margin: 2px 0 0; color: var(--ink-soft); font-size: 10px; }

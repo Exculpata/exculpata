@@ -112,14 +112,12 @@ def test_reader_queue_steps_through_folders_without_leaving_the_source(tmp_path)
         assert parse_qs(parse_qs(urlsplit(parent).query)["browse"][0])["folder"] == ["Production"]
         assert "Northwest" not in folders
 
-        # Folder steps keep the reader's own section and find state.
         kept = client.get(path, params={"browse": "view=list&kind=TXT&folder=Production/North",
                                         "unit": 1, "q": "synthetic"})
         folders = re.search(r'data-source-browser-folders>(.*?)</nav>', kept.text, re.S).group(1)
         for pattern in (r'class="source-folder-parent" href="([^"]+)"', r'<a href="([^"]+)"><span>Interviews</span>'):
             query = parse_qs(urlsplit(html.unescape(re.search(pattern, folders).group(1))).query)
             assert query["unit"] == ["1"] and query["q"] == ["synthetic"]
-        # Nothing extra is added when the reader has no state of its own.
         plain = re.search(r'data-source-browser-folders>(.*?)</nav>', nested.text, re.S).group(1)
         query = parse_qs(urlsplit(html.unescape(re.search(r'<a href="([^"]+)"><span>Interviews</span>', plain).group(1))).query)
         assert set(query) == {"browse"}

@@ -3309,7 +3309,6 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   display: none;
 }
 
-/* Milestone A8: large-matter Source Library and document review. */
 .source-family-section {
   display: grid;
   gap: 12px;
@@ -4152,7 +4151,6 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   .finding-card > footer { align-items: flex-start; flex-direction: column; }
 }
 
-/* Milestone A26: matter-wide processing awareness and dependable drafts */
 .matter-readiness {
   --readiness-color: var(--blue-action);
   margin-top: 11px;
@@ -5290,7 +5288,6 @@ select.source-scope {
   }
 }
 
-/* Matter notebook */
 .notebook-shell {
   width: min(1480px, 100%);
   min-width: 0;
@@ -5505,7 +5502,6 @@ select.source-scope {
 .notebook-stale-reference { color: var(--ink-faint); }
 .notebook-source-warning { color: #8a4d21; font-size: 11px; }
 
-/* Matter media review */
 .matter-media-activity {
   margin: 0 0 18px;
   padding: 15px 17px;
@@ -6630,7 +6626,6 @@ html[data-theme="dusk"] .document-reader iframe { background: #fff; }
   .assistant-suggestions { margin-top: 5px; }
 }
 
-/* Milestone A23: Matter Home review cockpit and review sequence */
 .matter-home-main,
 .work-product-shell {
   grid-column: 2;
@@ -7062,7 +7057,6 @@ html[data-theme="dusk"] .cockpit-thread::after { background: var(--canvas); }
   text-transform: none;
 }
 
-/* A29 · Deep Research and Full Review */
 .workflow-shell {
   grid-column: 2;
   width: 100%;
@@ -7562,7 +7556,6 @@ html[data-theme="dusk"] .review-mode-switcher > a.selected {
   .workflow-pagination span { font-size: 8px; }
 }
 
-/* Milestone A32: guided review, persistent activity, and completion actions */
 .activity-button {
   position: relative;
   display: inline-flex;
@@ -8071,7 +8064,6 @@ body.activity-open .activity-drawer { transform: translateX(0); }
 .people-main pre { max-width: 100%; overflow-x: auto; padding: 14px; background: var(--canvas); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 @media (max-width: 1050px) { .people-columns, .people-checklist { grid-template-columns: minmax(0, 1fr); } .people-checklist { gap: 18px; } }
 @media (max-width: 600px) { .people-main { padding: 26px 18px 48px; } .people-main .administrator-heading { flex-direction: column; gap: 16px; } .people-list li { align-items: flex-start; } .people-list .button { min-height: 44px; } .people-form .button { width: 100%; } }
-/* Find sources keeps the record itself at the center of the search. */
 .find-sources-shell { max-width: 1080px; padding: 36px 44px 56px; margin: 0 auto; }
 .find-sources-heading { display: flex; justify-content: space-between; gap: 24px; align-items: center; margin-bottom: 25px; }
 .find-matter-link { color: var(--ink-soft); font-size: 13px; }
@@ -8352,7 +8344,6 @@ code, kbd, samp, pre,
   font-family: var(--font-mono);
 }
 
-/* Optional reviewer orientation on Matter Home. */
 .matter-purpose-panel { scroll-margin-top: calc(var(--topbar-height) + 16px); margin: 20px 0; padding: 18px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 .matter-purpose-panel h2 { margin: 0 0 8px; font-size: 17px; }
 .matter-purpose-panel p, .matter-purpose-panel small { color: var(--ink-soft); }
