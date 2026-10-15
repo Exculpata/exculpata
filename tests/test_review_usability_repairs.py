@@ -53,7 +53,9 @@ def test_media_review_theme_and_independent_scroll_contract():
     assert "color-scheme: dark" in tokens and "color-scheme: light" in tokens
     assert ".speaker-review-panel {" in styles
     assert "background: var(--surface);" in styles
-    assert ".media-summary-card, .playback-compatibility" in styles
+    assert ".media-summary-card { border-color: var(--x-border);" in styles
+    playback = styles.split(".playback-compatibility {", 1)[1].split("}", 1)[0]
+    assert "background: var(--x-panel-raised);" in playback
 
 
 def test_media_review_tools_are_one_click_tabs_not_a_long_nested_column():
