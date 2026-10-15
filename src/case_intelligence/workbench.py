@@ -3000,12 +3000,12 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             bool(autoplay),
         )
 
-    def entity_service(self, matter, *, automatic=False):
+    def entity_service(self, matter, *, automatic=False, store=None):
         from .entity_service import EntityService, current_reference_indexes, current_source_indexes
         # Resolve the cache before taking a source guard/workspace transaction.
         # Opening another matter holds the cache lock while syncing its catalog;
         # callbacks under the workspace lock must never re-enter that cache.
-        store = self.source_store(matter)
+        store = store if store is not None else self.source_store(matter)
         return EntityService(
             self.workspace.entity_repository(automatic=automatic),
             source_guard=store.mutation_guard,
@@ -3057,7 +3057,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             location=candidate.citation, unit_number=unit.number, chunk_id=candidate.chunk_id,
             excerpt_digest=candidate.excerpt_digest, excerpt=candidate.text[:6000], support_token=token)
 
-    def automatic_entity_discovery(self, matter, should_stop=None):
+    def automatic_entity_discovery(self, matter, should_stop=None, *, store=None):
         """Discovery that runs as the inactive system principal after processing.
 
         should_stop() is also polled for every bounded read inside the source
@@ -3083,14 +3083,16 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 if ordinal > MAX_AUTOMATIC_DISCOVERY_UNITS:
                     raise ValueError('Source exceeds the automatic discovery unit ceiling.')
                 yield ordinal, unit.text, self._discovery_reference(matter, document, unit, ordinal)
-        return EntityDiscovery(self.entity_service(matter, automatic=True), load_document=load_document)
+        return EntityDiscovery(self.entity_service(matter, automatic=True, store=store), load_document=load_document)
 
-    def automatic_discovery_progress(self, matter):
+    def automatic_discovery_progress(self, matter, *, store=None):
         """Coverage counts when automatic discovery is enabled; otherwise None."""
         if self.automatic_discovery is None:
             return None
         try:
-            return self.automatic_entity_discovery(matter).automatic_progress(matter.matter_id)
+            discovery = (self.automatic_entity_discovery(matter) if store is None
+                         else self.automatic_entity_discovery(matter, store=store))
+            return discovery.automatic_progress(matter.matter_id)
         except KeyError:
             return None
 
@@ -6731,6 +6733,7 @@ def create_workbench_app(
     def matter_readiness_projection(
         matter: MatterRecord,
         record: MatterReadinessRecord | None = None,
+        *, store: PilotStore | None = None,
     ) -> dict[str, object]:
         readiness = record or bench.workspace.matter_readiness(matter.matter_id)
         recording_hold_only = (
@@ -6917,7 +6920,7 @@ def create_workbench_app(
         coverage = _source_coverage(readiness)
         discovery = {"label": "", "href": "", "working": False}
         if readiness.total_count:
-            progress = bench.automatic_discovery_progress(matter)
+            progress = bench.automatic_discovery_progress(matter, store=store)
             attention = progress["sources_attention"] if progress else 0
             # Sources needing attention are counted independently of pending
             # work, so incomplete coverage stays visible even while work remains.

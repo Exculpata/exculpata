@@ -33,18 +33,22 @@ def install_briefing_home(templates, *, bench, auth_context, readiness_for):
             sources_url=f"/matters/{matter.slug}/setup?view=list",
             refresh_url=f"/matters/{matter.slug}/home")
         try:
-            service = bench.entity_service(matter)
+            # Resolve the cache once before the source/workspace snapshot. Both
+            # readiness and metadata must use that live store without taking
+            # the cache lock again while the workspace lock is held.
+            store = bench.source_store(matter)
+            service = bench.entity_service(matter, store=store)
             # Both locks are reentrant. Keep the fresh completion check and D1
             # snapshot within the same mutation boundary, without an outer SQL
             # transaction around collaborators that own their transactions.
             with service.source_guard(), bench.workspace._lock:
                 bench.workspace.membership(matter.matter_id, actor)
-                if _processing(readiness_for(matter)):
+                if _processing(readiness_for(matter, store=store)):
                     return result
                 briefing = build_briefing(matter, actor, workspace=bench.workspace,
                     entity_service=service, intake_receipts=IntakeReceipts(bench.workspace),
-                    source_metadata=bench.source_store(matter).get)
-                readiness = readiness_for(matter)
+                    source_metadata=store.get)
+                readiness = readiness_for(matter, store=store)
                 if _processing(readiness):
                     return result
             result.update(state="ready", briefing=briefing, can_query=bool(readiness.get("can_query")))

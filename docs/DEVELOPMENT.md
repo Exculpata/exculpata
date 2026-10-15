@@ -128,6 +128,14 @@ order and can freeze both requests. Capturing the store does not cache validatio
 results: current source versions, passages, and membership remain checked under
 the existing source guard and authorized transaction. The overlapping-action
 regressions in `tests/test_workspace_lock_order.py` exercise this boundary.
+Home's briefing snapshot must also pass its already resolved live store through
+both readiness checks (including automatic-discovery progress) and source metadata
+lookup. Reentrant source/workspace locks do not make re-entering the global cache
+safe: another matter can own that cache while waiting for the workspace lock,
+even when its store is already cached. `tests/test_briefing_lock_order.py` overlaps
+the real Home route with cached and uncached lookups, with discovery on and off.
+Keep membership, completion and support rechecks inside the existing snapshot;
+capture the store object, not an earlier readiness or authorization result.
 
 The frozen Review acceptance pack pins test nodes and their complete files,
 including helpers. Changes to those files require reviewed node/file digests
