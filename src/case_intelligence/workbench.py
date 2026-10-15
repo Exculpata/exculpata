@@ -88,6 +88,7 @@ from .generation import (
     VerifiedAnswer,
     generator_from_environment,
 )
+from .answer_question_drafts import AnswerQuestionDrafts, register_answer_question_routes
 from .ingestion import IngestionCoordinator
 from .report_review_basis import research_sections, review_sections
 from .local_account_admin import register_local_account_routes
@@ -922,7 +923,7 @@ class AutomaticDiscoveryCoordinator:
         self._thread.join()
 
 
-class CaseIntelligenceWorkbench:
+class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     """Matter-isolated Milestone A runtime behind an explicit actor boundary."""
 
     def __init__(
@@ -15644,6 +15645,10 @@ def create_workbench_app(
                 "timeline_url": f"/matters/{slug}/chronology#found-dates-heading" if dates else "",
             }, headers={"Cache-Control": "no-store"})
         return _answer_feedback(slug, conversation_id, return_path, notice)
+
+    register_answer_question_routes(
+        app, bench=bench, templates=templates, auth_context=auth_context, base_context=base_context,
+        require_csrf=require_csrf, authorized_matter=authorized_matter, audit=audit, answer_feedback=_answer_feedback, query_url=_query_url, review_return_href=_source_review_return_href)
 
     @app.post(
         "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/notebook/claims/{claim_index}/citations/{citation_index}",

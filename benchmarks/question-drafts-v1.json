@@ -1,0 +1,117 @@
+{
+  "format": "recordbench-question-draft-set-v1",
+  "synthetic_only": true,
+  "description": "Invented passages for drafting witness questions and discovery requests. Each case mixes passages about the topic with unrelated distractors; relevant lists the passages a drafted question may cite to count as relevant.",
+  "cases": [
+    {
+      "id": "crate-receipt",
+      "purpose": "witness",
+      "topic": "What happened when the blue crate arrived at the North Annex?",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic receiving log.txt", "location": "Line 4", "excerpt": "The blue crate arrived at the North Annex on 2026-03-05 at 09:15. Alex Example signed the receipt and wrote \"seal intact\" beside the entry."},
+        {"id": "S2", "source_name": "Synthetic shift notes.txt", "location": "Line 2", "excerpt": "Morgan Sample unloaded the truck at bay 4 with one other worker whose name was not recorded. The camera over bay 4 was out of service that morning."},
+        {"id": "S3", "source_name": "Synthetic cafeteria menu.txt", "location": "Line 1", "excerpt": "Tuesday lunch: lentil soup, rye bread and an apple. The cafeteria closes at 14:00."}
+      ]
+    },
+    {
+      "id": "crate-records",
+      "purpose": "discovery",
+      "topic": "Records about the blue crate's delivery",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic receiving log.txt", "location": "Line 4", "excerpt": "The blue crate arrived at the North Annex on 2026-03-05 at 09:15. Alex Example signed the receipt and wrote \"seal intact\" beside the entry."},
+        {"id": "S2", "source_name": "Synthetic dispatch email.txt", "location": "Paragraph 2", "excerpt": "Dispatch confirmed the driver's GPS tracker logged the route from the depot. The tracker report is kept by the carrier for 90 days."},
+        {"id": "S3", "source_name": "Synthetic parking memo.txt", "location": "Paragraph 1", "excerpt": "Visitors should park in the west lot. Permits are renewed every January."}
+      ]
+    },
+    {
+      "id": "phone-call",
+      "purpose": "witness",
+      "topic": "The phone call Riley Demo says they made",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic interview notes.txt", "location": "Page 2", "excerpt": "Riley Demo said they called the front desk \"a little after ten\" to report the open gate, and that a man answered but did not give his name."},
+        {"id": "S2", "source_name": "Synthetic desk log.txt", "location": "Line 12", "excerpt": "Front desk log, 2026-03-05: 10:07 call received, caller reported gate open, forwarded to security. Entry initialed J.K."},
+        {"id": "S3", "source_name": "Synthetic newsletter.txt", "location": "Page 1", "excerpt": "The volunteer choir will rehearse on Thursdays at 19:00 in the community hall."}
+      ]
+    },
+    {
+      "id": "phone-records",
+      "purpose": "discovery",
+      "topic": "Records of the call to the front desk",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic desk log.txt", "location": "Line 12", "excerpt": "Front desk log, 2026-03-05: 10:07 call received, caller reported gate open, forwarded to security. Entry initialed J.K."},
+        {"id": "S2", "source_name": "Synthetic facilities memo.txt", "location": "Paragraph 3", "excerpt": "All front desk lines are recorded by the switchboard system and recordings are retained for 30 days unless flagged."},
+        {"id": "S3", "source_name": "Synthetic garden plan.txt", "location": "Line 3", "excerpt": "Plant tulip bulbs along the north fence in October."}
+      ]
+    },
+    {
+      "id": "warehouse-inventory",
+      "purpose": "witness",
+      "topic": "The missing inventory count at the warehouse",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic inventory sheet.txt", "location": "Row 18", "excerpt": "Count on 2026-04-02 recorded 48 cartons of model K7 filters; the prior week's count recorded 60 cartons."},
+        {"id": "S2", "source_name": "Synthetic supervisor statement.txt", "location": "Paragraph 1", "excerpt": "Casey Placeholder wrote that the count was done \"in a hurry before the audit\" and that two pallets were stacked behind the loading door."},
+        {"id": "S3", "source_name": "Synthetic holiday schedule.txt", "location": "Line 2", "excerpt": "The office is closed on the first Monday of September."}
+      ]
+    },
+    {
+      "id": "warehouse-records",
+      "purpose": "discovery",
+      "topic": "Inventory and access records for the warehouse",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic inventory sheet.txt", "location": "Row 18", "excerpt": "Count on 2026-04-02 recorded 48 cartons of model K7 filters; the prior week's count recorded 60 cartons."},
+        {"id": "S2", "source_name": "Synthetic security policy.txt", "location": "Section 4", "excerpt": "Badge readers at the loading door log every entry with badge number and time. Logs export weekly to the facilities office."},
+        {"id": "S3", "source_name": "Synthetic recipe card.txt", "location": "Line 1", "excerpt": "Bake the bread at 220 degrees for 35 minutes."}
+      ]
+    },
+    {
+      "id": "vehicle-stop",
+      "purpose": "witness",
+      "topic": "The traffic stop on Elm Street",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic incident report.txt", "location": "Page 1", "excerpt": "Officer Pat Sample stopped a grey hatchback on Elm Street at 21:40 for a broken tail light. The report states the driver \"appeared nervous\"."},
+        {"id": "S2", "source_name": "Synthetic passenger statement.txt", "location": "Page 1", "excerpt": "Jordan Example, the passenger, said the officer asked them both to step out and searched the trunk without asking permission."},
+        {"id": "S3", "source_name": "Synthetic library notice.txt", "location": "Line 1", "excerpt": "Overdue books may be returned at the night drop box."}
+      ]
+    },
+    {
+      "id": "vehicle-records",
+      "purpose": "discovery",
+      "topic": "Recordings and logs from the Elm Street stop",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic incident report.txt", "location": "Page 1", "excerpt": "Officer Pat Sample stopped a grey hatchback on Elm Street at 21:40 for a broken tail light. The report states the driver \"appeared nervous\"."},
+        {"id": "S2", "source_name": "Synthetic equipment roster.txt", "location": "Row 7", "excerpt": "Unit 12 was assigned a body-worn camera and a dash camera for the evening shift on 2026-05-11."},
+        {"id": "S3", "source_name": "Synthetic bake sale flyer.txt", "location": "Line 2", "excerpt": "All proceeds support the school band trip."}
+      ]
+    },
+    {
+      "id": "transcript-meeting",
+      "purpose": "witness",
+      "topic": "What was said at the meeting about the contract",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic meeting recording.wav", "location": "00:03:12", "excerpt": "Speaker 1: I never saw the final contract. Speaker 2: It was emailed on the 14th, I am sure of it."},
+        {"id": "S2", "source_name": "Synthetic meeting recording.wav", "location": "00:05:40", "excerpt": "Speaker 1: If it was emailed, it went to the old address. Speaker 2: We can check the sent folder."},
+        {"id": "S3", "source_name": "Synthetic weather note.txt", "location": "Line 1", "excerpt": "Light rain is expected in the afternoon."}
+      ]
+    },
+    {
+      "id": "transcript-records",
+      "purpose": "discovery",
+      "topic": "Emails about the contract discussed at the meeting",
+      "relevant": ["S1", "S2"],
+      "passages": [
+        {"id": "S1", "source_name": "Synthetic meeting recording.wav", "location": "00:03:12", "excerpt": "Speaker 1: I never saw the final contract. Speaker 2: It was emailed on the 14th, I am sure of it."},
+        {"id": "S2", "source_name": "Synthetic meeting recording.wav", "location": "00:05:40", "excerpt": "Speaker 1: If it was emailed, it went to the old address. Speaker 2: We can check the sent folder."},
+        {"id": "S3", "source_name": "Synthetic gym schedule.txt", "location": "Line 4", "excerpt": "Yoga classes start at 07:00 on weekdays."}
+      ]
+    }
+  ]
+}

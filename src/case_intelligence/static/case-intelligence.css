@@ -5813,6 +5813,22 @@ select.source-scope {
 .suggestion-preview-actions button:not(.button-primary) { background: var(--surface); color: var(--ink); }
 .suggestion-preview-list { padding-left: 20px; }
 .suggestion-preview-sources, .suggestion-preview-list { overflow-wrap: anywhere; }
+/* Draft questions from an answer: two actions, then a proposal card that saves nothing until Save. */
+.question-draft-form, .question-draft-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 8px 0 0; font-size: 12px; }
+.question-draft-actions form { margin: 0; }
+.question-draft-label { color: var(--ink-soft); font-weight: 700; }
+.question-draft-form button { padding: 2px 0; border: 0; background: transparent; color: var(--accent-dark); cursor: pointer; font: 700 11px var(--font-ui); text-align: left; }
+.question-draft-form [data-question-draft-status] { flex-basis: 100%; }
+.question-draft-card { margin: 8px 0 0; border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 12px; background: var(--canvas); }
+.question-draft-card h3 { margin: 0; font-size: 13px; }
+.question-draft-card p, .question-draft-card small { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.question-draft-list { margin: 8px 0 0; padding-left: 20px; }
+.question-draft-list li + li { margin-top: 6px; }
+.question-draft-list small { display: block; color: var(--ink-faint); }
+.question-draft-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; font-size: 12px; }
+.question-draft-card-actions button { min-height: 32px; padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 6px; cursor: pointer; font: 700 12px var(--font-ui); }
+.question-draft-card-actions button:not(.button-primary) { background: var(--surface); color: var(--ink); }
+.question-draft-card-actions a { color: var(--accent-dark); font-weight: 700; text-decoration: underline; }
 .save-claim-form button, .citation-with-save form button { padding: 2px 0; border: 0; background: transparent; color: var(--accent-dark); cursor: pointer; font: 700 10px var(--font-ui); }
 .citation-with-save { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--canvas); }
 .citation-with-save .citation { border: 0; border-radius: 0; }

@@ -310,6 +310,14 @@ the timeline draft**. When nothing new is found, the status says so and
 conversation, the proposal is its own page, and the full conversation returns to
 the answer afterwards.
 
+Below each generated answer, **Draft from this answer's passages** offers
+**Questions for a witness** and **Discovery requests**; see
+[question drafts](QUESTION_DRAFTS.md). In the dock the draft appears as a
+proposal card under the answer that takes focus; **Dismiss** removes it and
+returns focus to the button, and **Save to case notes** saves one Suggested note
+without leaving the page, then links to case notes. Without JavaScript, and from
+the full conversation, the draft opens as its own page with the same choices.
+
 ## Manual source review workspace
 
 **Review** opens the source library. **Find records matching a rule** retains

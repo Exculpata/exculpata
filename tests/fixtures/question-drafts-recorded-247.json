@@ -1,0 +1,105 @@
+{
+  "format": "recordbench-question-replay-v1",
+  "synthetic_only": true,
+  "cases": [
+    {
+      "id": "crate-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the synthetic receiving log.txt file, specifically Line 4, which records the blue crate's arrival at the North Annex on 2026-03-05 at 09:15, including the signature of Alex Example and the notation 'seal intact'.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the synthetic dispatch email.txt file, specifically Paragraph 2, which mentions the driver's GPS tracker report for the route from the depot and notes that the carrier retains this report for 90 days.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide the synthetic dispatch email.txt file, specifically Paragraph 2, to confirm if the tracker report mentioned is the one kept by the carrier for 90 days.",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "transcript-meeting",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "What does the machine transcript of the meeting recording at 00:03:12 report Speaker 1 said regarding seeing the final contract?",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "What does the machine transcript of the meeting recording at 00:05:40 report Speaker 1 said about where an emailed contract might have been sent?",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "What does the machine transcript of the meeting recording at 00:03:12 report Speaker 2 said about when the contract was emailed?",
+              "evidence_ids": [
+                "S1"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    },
+    {
+      "id": "transcript-records",
+      "attempts": [
+        {
+          "questions": [
+            {
+              "text": "Please provide the email sent on the 14th, if any, to clarify what Speaker 2 appears to say in the recording about the final contract being emailed on that date.",
+              "evidence_ids": [
+                "S1"
+              ]
+            },
+            {
+              "text": "Please provide the sent folder records, if any, to clarify what Speaker 2 appears to say in the recording about checking the sent folder for an email sent to the old address.",
+              "evidence_ids": [
+                "S2"
+              ]
+            },
+            {
+              "text": "Please provide the email sent to the old address, if any, to clarify what Speaker 1 appears to say in the recording about the email going to the old address.",
+              "evidence_ids": [
+                "S2"
+              ]
+            }
+          ]
+        },
+        {
+          "questions": []
+        },
+        {
+          "questions": []
+        }
+      ]
+    }
+  ]
+}

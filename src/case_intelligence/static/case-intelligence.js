@@ -3440,6 +3440,40 @@
   let assistantDraft = false;
   let assistantDraftBuffer = null;
   let assistantEpoch = 0;
+  // Draft saves and dock refreshes are coordinated: no save starts while a refresh is in
+  // flight, and a refresh waits for pending saves, then keeps their results visible.
+  let assistantRefreshesInFlight = 0;
+  let assistantSavesSettled = [];
+  // Open, unsaved question drafts keyed by their form's action, carried into a refreshed dock.
+  let assistantCarriedDrafts = new Map();
+  const assistantQuestionWritesPending = () => Number(assistantDock?.dataset.questionSavesPending || 0)
+    + Number(assistantDock?.dataset.questionDraftsPending || 0);
+  const settleAssistantQuestionWrites = () => {
+    if (!assistantQuestionWritesPending()) assistantSavesSettled.splice(0).forEach((resolve) => resolve());
+  };
+  // Changing or starting a conversation would replace the dock and hide a pending draft or
+  // save, so the picker and New chat are held until every pending draft and save is known.
+  const holdAssistantNavigation = (dock) => {
+    const picker = dock.querySelector("[data-assistant-conversation-picker]");
+    const holds = Number(dock.dataset.questionNavigationHolds || 0);
+    if (!holds) dock.dataset.questionPickerWasDisabled = String(Boolean(picker?.disabled));
+    dock.dataset.questionNavigationHolds = String(holds + 1);
+    if (picker) picker.disabled = true;
+    dock.querySelector("[data-assistant-new-chat]")?.setAttribute("aria-disabled", "true");
+  };
+  const releaseAssistantNavigation = (dock) => {
+    const remaining = Number(dock.dataset.questionNavigationHolds || 1) - 1;
+    if (remaining > 0) {
+      dock.dataset.questionNavigationHolds = String(remaining);
+      return;
+    }
+    const picker = dock.querySelector("[data-assistant-conversation-picker]");
+    const pickerWasDisabled = dock.dataset.questionPickerWasDisabled === "true";
+    delete dock.dataset.questionNavigationHolds;
+    delete dock.dataset.questionPickerWasDisabled;
+    if (picker && !pickerWasDisabled) picker.disabled = false;
+    dock.querySelector("[data-assistant-new-chat]")?.removeAttribute("aria-disabled");
+  };
   let assistantHistorySwitch = null;
   let reviewQuestionScope = null;
   // Set by the source reader: limits the next question to the open source.
@@ -3731,7 +3765,7 @@
     }
   };
 
-  const refreshAssistant = async (requestedFragmentUrl, operation) => {
+  const replaceAssistantDock = async (requestedFragmentUrl, operation) => {
     window.clearTimeout(assistantPollTimer);
     if (!requestedFragmentUrl) releaseAssistantHistorySwitch();
     const fragmentUrl = requestedFragmentUrl || assistantDock?.dataset.fragmentUrl;
@@ -3752,11 +3786,56 @@
     if (!ownsAssistantOperation(operation)) return;
     const replacement = holder.querySelector("[data-assistant-dock]");
     if (!replacement || !assistantDock) throw new Error("Assistant response was incomplete.");
+    // Replacing the dock would hide a pending draft or draft save's result, so wait for every one.
+    while (assistantQuestionWritesPending() > 0) {
+      await new Promise((resolve) => assistantSavesSettled.push(resolve));
+      if (!ownsAssistantOperation(operation)) return;
+    }
+    // Open, unsaved drafts stay open for review in the refreshed dock.
+    assistantCarriedDrafts = new Map(Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+      .map((form) => [form.getAttribute("action"), form.nextElementSibling])
+      .filter(([, card]) => card && !card.hidden && card.questionDraft)
+      .map(([action, card]) => [action, card.questionDraft]));
+    let savedNotices = [];
+    try {
+      savedNotices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
+    } catch (_error) {
+      savedNotices = [];
+    }
     // A terminal job enables writing before its refreshed history arrives.
     // Preserve the current composer state, including choices made before the
     // fetch, only within the same conversation and epoch (scope changes and
     // New chat invalidate the refresh above).
     const sameConversation = replacement.dataset.conversationId === originatingDock.dataset.conversationId;
+    // The dock shows only recent messages; an answer with an open draft that a refresh of
+    // the same conversation would leave out is kept at the top of the new thread so the
+    // draft is not lost. Switching conversations leaves the other conversation's drafts.
+    if (!sameConversation) assistantCarriedDrafts = new Map();
+    const replacementThread = replacement.querySelector("[data-assistant-thread]");
+    const replacementActions = new Set(Array.from(replacement.querySelectorAll("[data-assistant-draft-questions]"))
+      .map((form) => form.getAttribute("action")));
+    Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+      .filter((form) => assistantCarriedDrafts.has(form.getAttribute("action"))
+        && !replacementActions.has(form.getAttribute("action")))
+      .reverse()
+      .forEach((form) => {
+        const message = form.closest(".assistant-message");
+        if (!message || !replacementThread) return;
+        const kept = message.cloneNode(true);
+        // The copy starts clean; binding the new dock restores its open draft.
+        kept.querySelectorAll("[data-question-draft-card], [data-suggest-preview-card]").forEach((card) => {
+          card.replaceChildren();
+          card.hidden = true;
+        });
+        kept.querySelectorAll("[data-question-draft-status], [data-save-passage-status], [data-suggest-passage-status]")
+          .forEach((status) => status.replaceChildren());
+        kept.querySelectorAll("[aria-busy], [aria-disabled]").forEach((node) => {
+          node.removeAttribute("aria-busy");
+          node.removeAttribute("aria-disabled");
+        });
+        replacementThread.prepend(kept);
+        replacementThread.dataset.hasMessages = "true";
+      });
     const currentTextarea = originatingComposer?.querySelector("textarea");
     const replacementComposer = replacement.querySelector("[data-assistant-question-form]");
     const replacementTextarea = replacementComposer?.querySelector("textarea");
@@ -3779,12 +3858,32 @@
     saveAssistantConversationPreference(assistantDock.dataset.conversationId || "");
     ensureAssistantDraftOption();
     bindAssistant();
+    // A draft save that finished while this refresh waited keeps its result and link.
+    savedNotices.forEach((notice) => {
+      const draftForm = Array.from(assistantDock.querySelectorAll("[data-assistant-draft-questions]"))
+        .find((candidate) => candidate.getAttribute("action") === notice.action);
+      const feedback = draftForm?.querySelector("[data-question-draft-status]");
+      if (!feedback) return;
+      const link = document.createElement("a");
+      link.href = notice.url;
+      link.textContent = "Open case notes";
+      feedback.replaceChildren(document.createTextNode(`${notice.message} `), link);
+    });
     if (retainFocus && replacementTextarea && !replacementTextarea.disabled) {
       replacementTextarea.focus({ preventScroll: true });
       replacementTextarea.setSelectionRange(...selection);
     }
     const thread = assistantDock.querySelector("[data-assistant-thread]");
     if (thread?.dataset.hasMessages === "true") thread.scrollTop = thread.scrollHeight;
+  };
+
+  const refreshAssistant = async (requestedFragmentUrl, operation) => {
+    assistantRefreshesInFlight += 1;
+    try {
+      return await replaceAssistantDock(requestedFragmentUrl, operation);
+    } finally {
+      assistantRefreshesInFlight -= 1;
+    }
   };
 
   const pollAssistant = async () => {
@@ -4056,8 +4155,189 @@
       });
     });
 
+    // Draft questions from an answer's passages: a proposal card that saves nothing
+    // until the reviewer chooses Save. Drafted text is only ever set as text.
+    assistantDock.querySelectorAll("[data-assistant-draft-questions]").forEach((draftForm) => {
+      const card = draftForm.nextElementSibling;
+      const feedback = draftForm.querySelector("[data-question-draft-status]");
+      const element = (tag, text, className) => {
+        const node = document.createElement(tag);
+        if (text) node.textContent = text;
+        if (className) node.className = className;
+        return node;
+      };
+      const hidden = (name, value) => {
+        const input = element("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = value;
+        return input;
+      };
+      const showDraft = (draft, opener, { focus = true } = {}) => {
+        card.replaceChildren();
+        card.questionDraft = draft;
+        const heading = element("h3", `${draft.label} · draft for review`);
+        heading.tabIndex = -1;
+        card.append(heading, element("p", "Nothing is saved yet. Check each question against its sources.", "question-draft-hint"));
+        if (draft.notice) card.append(element("p", draft.notice, "question-draft-notice"));
+        if (!draft.questions.length) {
+          const dismiss = element("button", "Dismiss");
+          dismiss.type = "button";
+          card.append(dismiss);
+          card.hidden = false;
+          if (focus) heading.focus();
+          dismiss.addEventListener("click", () => {
+            if (draftForm.getAttribute("aria-busy") === "true") return;
+            card.replaceChildren();
+            card.hidden = true;
+            card.questionDraft = null;
+            feedback.textContent = "Empty draft dismissed; nothing was saved.";
+            opener?.focus();
+          });
+          return;
+        }
+        const saveForm = element("form");
+        saveForm.method = "post";
+        saveForm.action = draft.save_url;
+        saveForm.append(hidden("csrf_token", csrfToken), hidden("purpose", draft.purpose), hidden("basis", draft.basis || ""));
+        const list = element("ol", "", "question-draft-list");
+        draft.questions.forEach((question) => {
+          const item = element("li");
+          item.append(element("p", question.text), element("small", `Sources: ${question.sources.join("; ")}`));
+          saveForm.append(hidden("question", question.text), hidden("passages", question.passages.join(",")));
+          list.append(item);
+        });
+        const actions = element("div", "", "question-draft-card-actions");
+        const save = element("button", "Save to case notes", "button-primary");
+        save.type = "submit";
+        const dismiss = element("button", "Dismiss");
+        dismiss.type = "button";
+        const status = element("span", "", "question-draft-save-status");
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        actions.append(save, dismiss, status);
+        saveForm.append(list, actions);
+        card.append(saveForm);
+        card.hidden = false;
+        if (focus) heading.focus();
+        dismiss.addEventListener("click", () => {
+          // While Save is pending its outcome is unknown, so Dismiss cannot claim nothing was saved;
+          // while a replacement draft is pending, this card is about to be replaced.
+          if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
+          card.replaceChildren();
+          card.hidden = true;
+          card.questionDraft = null;
+          feedback.textContent = "Draft dismissed; nothing was saved.";
+          opener?.focus();
+        });
+        saveForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          // No save starts while a replacement draft is pending: its result would be lost with this card.
+          if (saveForm.getAttribute("aria-busy") === "true" || draftForm.getAttribute("aria-busy") === "true") return;
+          // Nor while the dock is being refreshed: the refresh would replace this card.
+          if (assistantRefreshesInFlight > 0) {
+            status.textContent = "The assistant is updating. Try Save again in a moment.";
+            return;
+          }
+          saveForm.setAttribute("aria-busy", "true");
+          const held = [save, dismiss, ...draftForm.querySelectorAll("button")];
+          held.forEach((control) => control.setAttribute("aria-disabled", "true"));
+          const dock = assistantDock;
+          dock.dataset.questionSavesPending = String(Number(dock.dataset.questionSavesPending || 0) + 1);
+          holdAssistantNavigation(dock);
+          status.textContent = "Saving…";
+          try {
+            const response = await fetch(saveForm.action, {
+              method: "POST", body: new FormData(saveForm),
+              headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+            });
+            const result = await assistantJson(response);
+            if (!result.item_id) throw new Error("The note could not be confirmed.");
+            if (!saveForm.isConnected) return;
+            status.textContent = result.message;
+            const link = element("a", "Open case notes");
+            link.href = result.notebook_url;
+            actions.replaceChildren(status, link);
+            card.questionDraft = null;
+            if (assistantRefreshesInFlight > 0) {
+              // A refresh is waiting to replace the dock; it carries this result over.
+              const notices = JSON.parse(assistantDock.dataset.questionSaveNotices || "[]");
+              notices.push({ action: draftForm.getAttribute("action"), message: result.message, url: result.notebook_url });
+              assistantDock.dataset.questionSaveNotices = JSON.stringify(notices);
+            }
+          } catch (error) {
+            if (saveForm.isConnected) status.textContent = `${error.message} You can safely try again.`;
+          } finally {
+            saveForm.removeAttribute("aria-busy");
+            held.forEach((control) => control.removeAttribute("aria-disabled"));
+            const remaining = Number(dock.dataset.questionSavesPending || 1) - 1;
+            if (remaining > 0) dock.dataset.questionSavesPending = String(remaining);
+            else delete dock.dataset.questionSavesPending;
+            releaseAssistantNavigation(dock);
+            settleAssistantQuestionWrites();
+          }
+        });
+      };
+      draftForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        // No new draft replaces a card whose Save is still pending.
+        if (draftForm.getAttribute("aria-busy") === "true" || card.querySelector('form[aria-busy="true"]')) return;
+        // Nor starts while the dock is being refreshed, which would replace this form.
+        if (assistantRefreshesInFlight > 0) {
+          feedback.textContent = "The assistant is updating. Try drafting again in a moment.";
+          return;
+        }
+        const opener = event.submitter;
+        const body = new FormData(draftForm);
+        body.set("purpose", opener?.value || "witness");
+        draftForm.setAttribute("aria-busy", "true");
+        // An open card's Save and Dismiss are held too, until the replacement arrives or fails.
+        const held = [...draftForm.querySelectorAll("button"), ...card.querySelectorAll("button")];
+        held.forEach((button) => button.setAttribute("aria-disabled", "true"));
+        feedback.textContent = "Drafting from the cited passages… this can take a minute.";
+        // A refresh that arrives meanwhile waits for this draft, then carries it over.
+        const dock = assistantDock;
+        dock.dataset.questionDraftsPending = String(Number(dock.dataset.questionDraftsPending || 0) + 1);
+        holdAssistantNavigation(dock);
+        try {
+          const response = await fetch(draftForm.action, {
+            method: "POST", body,
+            headers: { Accept: "application/json", "X-CSRF-Token": csrfToken },
+          });
+          const draft = await assistantJson(response);
+          if (!Array.isArray(draft.questions) || !draft.save_url || !draft.basis
+              || (!draft.questions.length && draft.outcome?.status !== "no_usable_content")) {
+            throw new Error("The draft could not be confirmed.");
+          }
+          if (!draftForm.isConnected) return;
+          feedback.textContent = draft.questions.length
+            ? `Drafted ${draft.questions.length} question${draft.questions.length === 1 ? "" : "s"} for review.`
+            : draft.notice;
+          showDraft(draft, opener);
+        } catch (error) {
+          if (draftForm.isConnected) feedback.textContent = `${error.message} You can safely try again.`;
+        } finally {
+          draftForm.removeAttribute("aria-busy");
+          held.forEach((button) => button.removeAttribute("aria-disabled"));
+          const remaining = Number(dock.dataset.questionDraftsPending || 1) - 1;
+          if (remaining > 0) dock.dataset.questionDraftsPending = String(remaining);
+          else delete dock.dataset.questionDraftsPending;
+          releaseAssistantNavigation(dock);
+          settleAssistantQuestionWrites();
+        }
+      });
+      // A draft that was open when the dock refreshed stays open for review.
+      const carried = assistantCarriedDrafts.get(draftForm.getAttribute("action"));
+      if (carried) {
+        assistantCarriedDrafts.delete(draftForm.getAttribute("action"));
+        showDraft(carried, null, { focus: false });
+        feedback.textContent = "The chat updated; this draft is still open for review.";
+      }
+    });
+
     const conversationPicker = assistantDock.querySelector("[data-assistant-conversation-picker]");
     conversationPicker?.addEventListener("change", async () => {
+      if (assistantQuestionWritesPending() > 0) return;
       const conversationId = conversationPicker.value;
       if (conversationId === "__draft__") {
         beginAssistantDraft();
@@ -4090,6 +4370,8 @@
     });
 
     assistantDock.querySelector("[data-assistant-new-chat]")?.addEventListener("click", () => {
+      // A pending draft or draft save keeps this dock until its result is shown.
+      if (assistantQuestionWritesPending() > 0) return;
       beginAssistantDraft();
     });
 

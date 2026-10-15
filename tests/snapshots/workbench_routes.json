@@ -177,6 +177,8 @@
   [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/notebook/claims/{claim_index}"],
   [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/suggestions/claims/{claim_index}/preview"],
   [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/suggestions/claims/{claim_index}"],
+  [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/questions"],
+  [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/questions/save"],
   [["POST"], "/matters/{slug}/conversations/{conversation_id}/messages/{message_id}/notebook/claims/{claim_index}/citations/{citation_index}"],
   [["GET"], "/matters/{slug}/notebook/export"],
   [["GET"], "/matters/{slug}/notebook/items/{item_id}/export"],

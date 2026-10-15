@@ -18,6 +18,9 @@ from .answer_presentation import (
     GENERATED_TRANSCRIPT_INTRODUCTION,
 )
 from .review_budget import DEFAULT_REVIEW_BUDGET
+from .question_generation import (
+    QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
+)
 from .review_quality import answer_advances_objective, classify_question
 from .service_endpoints import validate_service_endpoint
 
@@ -518,6 +521,7 @@ class OllamaGenerator:
     def __init__(
         self, endpoint: str, model: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
         opener: urllib.request.OpenerDirector | None = None,
+        question_profile: QuestionGenerationProfile | None = None,
     ) -> None:
         self.endpoint = _validate_endpoint(endpoint)
         self.model = model.strip()
@@ -525,6 +529,7 @@ class OllamaGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._opener = opener
+        self.question_profile = question_profile or QuestionGenerationProfile()
 
     @property
     def available(self) -> bool:
@@ -574,6 +579,9 @@ class OllamaGenerator:
             raise GenerationUnavailable("The answer service returned an invalid response.")
         return _parse_model_content(message.get("content"))
 
+    def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
+        return generate_question_draft(self, "ollama", purpose=purpose, topic=topic, evidence=evidence)
+
     def classify_source(
         self,
         *,
@@ -618,6 +626,7 @@ class OpenAICompatibleGenerator:
         api_key: str = "",
         disable_thinking: bool = False,
         opener: urllib.request.OpenerDirector | None = None,
+        question_profile: QuestionGenerationProfile | None = None,
     ) -> None:
         self.endpoint = _validate_endpoint(endpoint)
         self.model = model.strip()
@@ -627,6 +636,7 @@ class OpenAICompatibleGenerator:
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self.disable_thinking = bool(disable_thinking)
         self._opener = opener
+        self.question_profile = question_profile or QuestionGenerationProfile()
 
     @property
     def available(self) -> bool:
@@ -739,6 +749,10 @@ class OpenAICompatibleGenerator:
         return _parse_model_content(message.get("content"))
 
 
+    def draft_questions(self, *, purpose: str, topic: str, evidence: Sequence[EvidenceItem]) -> Mapping[str, object]:
+        return generate_question_draft(self, "openai", purpose=purpose, topic=topic, evidence=evidence)
+
+
 class UnavailableGenerator:
     @property
     def available(self) -> bool:
@@ -750,6 +764,9 @@ class UnavailableGenerator:
     def classify_source(self, **_: object) -> Mapping[str, object]:
         raise GenerationUnavailable("Answering is temporarily unavailable. Search and source review still work.")
 
+    def draft_questions(self, **_: object) -> Mapping[str, object]:
+        raise GenerationUnavailable("Drafting is temporarily unavailable. Search and source review still work.")
+
 
 def generator_from_environment() -> GeneratorClient:
     backend = os.getenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "").strip().casefold()
@@ -759,13 +776,15 @@ def generator_from_environment() -> GeneratorClient:
     model = os.getenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
     timeout = float(os.getenv("CASE_INTELLIGENCE_GENERATOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)))
     if backend == "ollama":
-        return OllamaGenerator(endpoint, model, timeout=timeout)
+        return OllamaGenerator(endpoint, model, timeout=timeout,
+                               question_profile=question_profile_from_environment())
     if backend == "openai":
         return OpenAICompatibleGenerator(
             endpoint,
             model,
             timeout=timeout,
             api_key=os.getenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", ""),
+            question_profile=question_profile_from_environment(),
             disable_thinking=(
                 os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "0") == "1"
             ),

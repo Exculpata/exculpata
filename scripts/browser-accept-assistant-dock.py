@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the assistant dock's Close control, page-aware suggestions and answer-passage suggestions with synthetic records."""
+"""Check the assistant dock's Close control, page-aware suggestions and answer-passage actions with synthetic records."""
 from __future__ import annotations
 
 import argparse
@@ -65,6 +65,21 @@ def seed_answer(bench, prefix, document=None):
     bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "assistant", "Synthetic answer",
         {"kind": "generated", "claims": [{"text": "Alex Example signed for the blue crate.",
                                           "citations": [bench._saved_answer_citation_payload(citation)]}]})
+
+
+class SyntheticDrafts:
+    """A deterministic drafting client for the journey; it drafts fixed questions from the passage it is given."""
+    available = True
+
+    def draft_questions(self, *, purpose, topic, evidence):
+        first = evidence[0].evidence_id
+        return {"questions": [
+            {"text": "Who else was at the North Annex when the blue crate arrived on 2026-03-05?", "evidence_ids": [first]},
+            {"text": "How did Alex Example confirm what was in the blue crate before signing?", "evidence_ids": [first]},
+            {"text": "Why does the record say \"it was already open\"?", "evidence_ids": [first]},
+            # Grounded only in the second answer's passage; the check drops it for the first.
+            {"text": "Who saw Morgan Example sign the second log on 2026-04-01?", "evidence_ids": [first]},
+        ]}
 
 
 def main(argv=None):
@@ -335,6 +350,240 @@ def main(argv=None):
             no_page_overflow()
             driver.save_screenshot(str(args.output / "dock-suggest-preview-320.png"))
             checks.append("At 390px and 320px the answer-passage Suggest control fits, and an open proposal naming a long unbroken filename wraps without sideways scrolling")
+
+            # Draft questions: a proposal card that saves nothing until Save.
+            # Rendering a draft rebuilds the card, so read it in the page, not through held elements:
+            # the drafting request has settled, and the card shows the expected heading and a Save.
+            draft_shown = lambda target, label: js(
+                "const card = arguments[0]; return Boolean(!card.previousElementSibling?.hasAttribute('aria-busy')"
+                " && card.querySelector('h3')?.textContent.startsWith(arguments[1])"
+                " && [...card.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Save to case notes'"
+                " && b.getAttribute('aria-disabled') !== 'true'));",
+                target, label)
+            bench = app.state.workbench
+            bench.generator.client = SyntheticDrafts()
+            # The journey added a second source above, so draft from Case notes, where the dock also opens.
+            notes = prefix + "/notebook"
+            matter = bench.workspace.get_matter(prefix.rsplit("/", 1)[1], ACTOR)
+            saved_notes = lambda: len(bench.workspace.all_notebook_items(matter.matter_id, ACTOR))
+            viewport(1440, 900)
+            open_page(notes)
+            witness = wait.until(lambda _: driver.find_element(By.CSS_SELECTOR, '[data-assistant-draft-questions] button[value="witness"]'))
+            js("arguments[0].focus()", witness)
+            witness.send_keys(Keys.ENTER)
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            heading = card.find_element(By.CSS_SELECTOR, "h3")
+            assert heading.text == "Questions for a witness · draft for review", heading.text
+            assert js("return document.activeElement") == heading
+            items = card.find_elements(By.CSS_SELECTOR, ".question-draft-list li")
+            # The invented quotation failed the check and is not shown.
+            assert len(items) == 2 and all("Sources: " in item.text for item in items), [item.text for item in items]
+            assert "did not pass citation and text checks" in card.text
+            assert saved_notes() == 0
+            no_page_overflow()
+            driver.save_screenshot(str(args.output / "dock-draft-1440.png"))
+            dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
+            js("arguments[0].focus()", dismiss)
+            dismiss.send_keys(Keys.ENTER)
+            wait.until(lambda _: not card.is_displayed())
+            assert js("return document.activeElement") == witness
+            assert find("[data-question-draft-status]").text == "Draft dismissed; nothing was saved."
+            assert saved_notes() == 0
+            checks.append("Draft questions works from the keyboard: the proposal card takes focus, shows only questions that pass the check with their sources, and Dismiss saves nothing and returns focus")
+
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            assert card.find_element(By.CSS_SELECTOR, "h3").text.startswith("Discovery requests")
+            # A slow replacement draft holds the open card's Save and Dismiss, so no save is lost with the card.
+            js("window.__originalFetch = window.fetch; window.fetch = (url, init) => /\\/questions$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : window.__originalFetch(url, init);")
+            find('[data-assistant-draft-questions] button[value="witness"]').click()
+            wait.until(lambda _: find("[data-question-draft-status]").text.startswith("Drafting from the cited passages"))
+            old_save = card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']")
+            assert old_save.get_attribute("aria-disabled") == "true"
+            assert card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']").get_attribute("aria-disabled") == "true"
+            old_save.click()
+            assert saved_notes() == 0
+            # Conversation navigation is held while the draft is pending, so New chat cannot discard it.
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            new_chat = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-new-chat]")
+            assert new_chat and all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
+            js("arguments[0].click()", new_chat[0])
+            assert js("return arguments[0].isConnected", card)
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            assert saved_notes() == 0
+            assert not js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? false")
+            assert all(button.get_attribute("aria-disabled") is None for button in new_chat)
+            js("window.fetch = window.__originalFetch;")
+            # The second answer's card is open too, so two saves can overlap.
+            second_form = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")[1]
+            second_card = driver.find_elements(By.CSS_SELECTOR, "[data-question-draft-card]")[1]
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", second_form)
+            second_form.find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            wait.until(lambda _: second_card.is_displayed() and second_card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+            # A slow Save holds Dismiss and the draft buttons until its result is known; the second
+            # card's save is slower, so navigation stays held until both are known.
+            js("const original = window.fetch; window.fetch = (url, init) => /\\/questions\\/save$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, url === arguments[0] ? 4000 : 1500)).then(() => original(url, init))"
+               " : original(url, init);", second_card.find_element(By.CSS_SELECTOR, "form").get_attribute("action"))
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in card.text)
+            second_card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in second_card.text)
+            held_dismiss = card.find_element(By.XPATH, ".//button[normalize-space()='Dismiss']")
+            assert held_dismiss.get_attribute("aria-disabled") == "true"
+            # Conversation navigation is held too, so the dock is not replaced before the result shows.
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            new_chat = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-new-chat]")
+            assert all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
+            held_dismiss.click()
+            assert card.is_displayed() and saved_notes() == 0
+            wait.until(lambda _: "Questions saved to case notes for review." in card.text)
+            assert card.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
+            # The first save finished, but the second is still pending: navigation stays held.
+            assert "Saving…" in second_card.text
+            assert js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? true")
+            assert all(button.get_attribute("aria-disabled") == "true" for button in new_chat)
+            wait.until(lambda _: "Questions saved to case notes for review." in second_card.text)
+            assert not js("return document.querySelector('[data-assistant-conversation-picker]')?.disabled ?? false")
+            assert all(button.get_attribute("aria-disabled") is None for button in new_chat)
+            assert saved_notes() == 2
+            assert driver.current_url.startswith(base + notes), driver.current_url
+            # A dock refresh (here through the dock's Cancel path, answered synthetically) that
+            # arrives during a slow save waits for it, then keeps its result and link.
+            js("window.fetch = (url, init) => String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : /\\/questions(\\/save)?$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : window.__originalFetch(url, init);")
+            press_cancel = ("const dock = document.querySelector('[data-assistant-dock]'); window.__oldDock = dock;"
+                            " const button = document.createElement('button'); button.type = 'button';"
+                            " button.dataset.assistantCancel = ''; button.dataset.actionUrl = '/synthetic-cancel';"
+                            " dock.append(button); button.click();")
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            # The card still shows the saved witness draft until the slow replacement arrives.
+            wait.until(lambda _: draft_shown(card, "Discovery requests"))
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Saving…" in card.text)
+            js(press_cancel)
+            assert js("return window.__oldDock.isConnected") and "Saving…" in card.text
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            carried = find("[data-assistant-draft-questions] [data-question-draft-status]")
+            assert "Questions saved to case notes for review." in carried.text, carried.text
+            assert carried.find_element(By.LINK_TEXT, "Open case notes").get_attribute("href").endswith(prefix + "/notebook")
+            assert saved_notes() == 3
+            # And no save starts while a refresh is already in flight.
+            find('[data-assistant-draft-questions] button[value="witness"]').click()
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: card.is_displayed()
+                       and card.find_elements(By.XPATH, ".//button[normalize-space()='Save to case notes']"))
+            js("const fragment = document.querySelector('[data-assistant-dock]').dataset.fragmentUrl;"
+               " const previous = window.fetch; window.fetch = (url, init) => String(url).includes(fragment)"
+               " ? new Promise((resolve) => setTimeout(resolve, 2000)).then(() => window.__originalFetch(url, init))"
+               " : previous(url, init);")
+            js(press_cancel)
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            assert "The assistant is updating. Try Save again in a moment." in card.text, card.text
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert saved_notes() == 3
+            # The open, unsaved draft is carried into the refreshed dock for review.
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            draft_status = lambda: find("[data-assistant-draft-questions] [data-question-draft-status]").text
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            # No draft starts while a refresh is in flight.
+            js(press_cancel)
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            assert draft_status() == "The assistant is updating. Try drafting again in a moment.", draft_status()
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            # A refresh that arrives while a slow draft is in flight waits for it, then carries it over.
+            js("window.fetch = (url, init) => /\\/questions$/.test(String(url))"
+               " ? new Promise((resolve) => setTimeout(resolve, 1500)).then(() => window.__originalFetch(url, init))"
+               " : String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : window.__originalFetch(url, init);")
+            find('[data-assistant-draft-questions] button[value="discovery"]').click()
+            wait.until(lambda _: draft_status().startswith("Drafting from the cited passages"))
+            js(press_cancel)
+            assert js("return window.__oldDock.isConnected")
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            card = find("[data-question-draft-card]")
+            wait.until(lambda _: draft_shown(card, "Discovery requests"))
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            # Saving the carried card works; this discovery draft was already saved above, so it adds nothing.
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "Those questions were already saved to case notes." in card.text)
+            assert saved_notes() == 3
+            # An answer with an open draft that newer messages push out of the dock's recent
+            # window is kept in the refreshed dock, so the draft is not lost.
+            first_form = find("[data-assistant-draft-questions]")
+            kept_action = first_form.get_attribute("action")
+            first_form.find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            card = first_form.find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            conversation = bench.workspace.get_conversation(matter.matter_id)
+            for index in range(4):
+                bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "user", f"Synthetic follow-up {index}")
+                bench.workspace.append_message(matter.matter_id, conversation.conversation_id, "assistant", f"Synthetic note {index}", {})
+            js(press_cancel)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            forms = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")
+            assert [form.get_attribute("action") for form in forms] == [kept_action], [form.get_attribute("action") for form in forms]
+            card = forms[0].find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            assert draft_status() == "The chat updated; this draft is still open for review.", draft_status()
+            card.find_element(By.XPATH, ".//button[normalize-space()='Save to case notes']").click()
+            wait.until(lambda _: "saved to case notes" in card.text)
+            js("window.fetch = window.__originalFetch;")
+            # Later checks reload the page; give them a recent answer again.
+            seed_answer(bench, prefix)
+            # Switching conversations never copies another conversation's answer or open draft.
+            first_conversation = conversation.conversation_id
+            other = bench.workspace.create_conversation(matter.matter_id, "Synthetic second chat")
+            bench.workspace.append_message(matter.matter_id, other.conversation_id, "user", "Synthetic other question")
+            js("window.fetch = (url, init) => String(url).endsWith('/synthetic-cancel')"
+               " ? Promise.resolve(new Response(JSON.stringify({state: 'cancelled', message: 'Request cancelled'}),"
+               " {headers: {'Content-Type': 'application/json'}}))"
+               " : window.__originalFetch(url, init);")
+            js(press_cancel)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            wait.until(lambda _: js("return [...document.querySelectorAll('[data-assistant-conversation-picker] option')]"
+                                    ".some((option) => option.value === arguments[0])", other.conversation_id))
+            forms = driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]")
+            forms[-1].find_element(By.CSS_SELECTOR, 'button[value="witness"]').click()
+            card = forms[-1].find_element(By.XPATH, "following-sibling::*[1]")
+            wait.until(lambda _: draft_shown(card, "Questions for a witness"))
+            choose_conversation = ("window.__oldDock = document.querySelector('[data-assistant-dock]');"
+                                   " const picker = document.querySelector('[data-assistant-conversation-picker]');"
+                                   " picker.value = arguments[0]; picker.dispatchEvent(new Event('change', {bubbles: true}));")
+            js(choose_conversation, other.conversation_id)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert js("return document.querySelector('[data-assistant-dock]').dataset.conversationId") == other.conversation_id
+            assert driver.find_elements(By.CSS_SELECTOR, "[data-assistant-draft-questions]") == []
+            assert first_conversation not in js("return document.querySelector('[data-assistant-thread]').innerHTML")
+            js(choose_conversation, first_conversation)
+            wait.until(lambda _: not js("return window.__oldDock.isConnected"))
+            assert js("return document.querySelector('[data-assistant-dock]').dataset.conversationId") == first_conversation
+            js("window.fetch = window.__originalFetch;")
+            checks.append("While a slow replacement draft is pending the open card's Save and Dismiss and conversation navigation are held, and while a slow Save is pending Dismiss, conversation navigation and dock refreshes wait until every overlapping save or draft is known, keeping each result and open draft, even one whose answer leaves the dock's recent messages, but never into another conversation; no save or draft starts during a refresh; each saved draft adds one Suggested case note without leaving the page and links to case notes")
+
+            for width, height in ((390, 844), (320, 640)):
+                viewport(width, height)
+                open_page(notes)
+                witness = wait.until(lambda _: driver.find_element(By.CSS_SELECTOR, '[data-assistant-draft-questions] button[value="witness"]'))
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", witness)
+                witness.click()
+                card = find("[data-question-draft-card]")
+                wait.until(lambda _: card.is_displayed() and card.find_elements(By.CSS_SELECTOR, ".question-draft-list li"))
+                box = rect(card)
+                assert box["left"] >= -1 and box["right"] <= width + 1, (width, box)
+                no_page_overflow()
+                driver.save_screenshot(str(args.output / f"dock-draft-{width}.png"))
+            checks.append("At 390px and 320px the draft actions and proposal card fit without sideways scrolling")
 
             receipt["passed"] = True
             (args.output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
