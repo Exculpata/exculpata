@@ -63,3 +63,7 @@ case_intelligence = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# A stuck test dumps every thread and exits the worker. 360s sits above the
+# longest in-suite subprocess budget (300s) and far below a merge-queue wait.
+faulthandler_timeout = 360
+faulthandler_exit_on_timeout = true

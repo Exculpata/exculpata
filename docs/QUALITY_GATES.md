@@ -89,6 +89,10 @@ The parallel application suite prints test nodes and outcomes with unbuffered
 output, short tracebacks, failure/skip summaries and the 25 slowest phases. Worker
 crashes fail the run without automatic worker restart. Captured streams stay out
 of failure output and JUnit logs; fixtures and assertions must still be synthetic.
+Each test has 360 seconds. On expiry the worker dumps every thread traceback to
+the job log and exits; the disabled worker restart then fails the run. The limit
+is above the suite's longest in-test subprocess budget and below a merge-queue
+wait, so a silent hang shows its stacks instead of stalling the queue.
 
 CI retains only `application-results.xml` for five days, with the run ID and attempt
 in its artifact name. Hard cancellation can prevent report creation or upload;
