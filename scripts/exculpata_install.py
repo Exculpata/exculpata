@@ -31,6 +31,8 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+from installer_terminal import C, Console, terminal_text
+
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
@@ -170,54 +172,6 @@ RELEASE_FILES = (
     "install",
     "pyproject.toml",
 )
-
-
-class C:
-    green = "\033[38;5;46m"
-    cyan = "\033[38;5;51m"
-    magenta = "\033[38;5;201m"
-    amber = "\033[38;5;220m"
-    dim = "\033[2m"
-    bold = "\033[1m"
-    reset = "\033[0m"
-
-
-@dataclass
-class Console:
-    color: bool
-    quiet: bool = False
-
-    def paint(self, value: str, color: str) -> str:
-        return f"{color}{value}{C.reset}" if self.color else value
-
-    def line(self, value: str = "") -> None:
-        if not self.quiet:
-            print(value, flush=True)
-
-    def phase(self, number: int, title: str, detail: str) -> None:
-        marker = self.paint(f"PHASE {number:02d}", C.magenta + C.bold)
-        self.line(f"\n{marker}  {self.paint(title, C.cyan + C.bold)}")
-        self.line(f"          {self.paint(detail, C.dim)}")
-
-    def ok(self, value: str) -> None:
-        self.line(f"  {self.paint('[OK]', C.green + C.bold)} {value}")
-
-    def note(self, value: str) -> None:
-        self.line(f"  {self.paint('[::]', C.cyan)} {value}")
-
-    def warn(self, value: str) -> None:
-        self.line(f"  {self.paint('[!!]', C.amber + C.bold)} {value}")
-
-    def banner(self, mode: str) -> None:
-        art = "EXCULPATA"
-        self.line(self.paint(art, C.green + C.bold))
-        self.line(
-            self.paint(
-                f"  EVIDENCE NODE PROVISIONER // {mode.upper()} // BUILD {VERSION}",
-                C.cyan,
-            )
-        )
-        self.line(self.paint("  LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL.", C.dim))
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,7 +332,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--restore-target", type=Path)
     parser.add_argument("--snapshot", default="latest")
     parser.add_argument("--schedule-backups", action="store_true")
-    parser.add_argument("--no-color", action="store_true")
+    parser.add_argument("--no-color", action="store_true", help="plain output without color or animation")
+    parser.add_argument("--plain", action="store_true", help="plain, screen-reader-friendly output without color or animation")
+    parser.add_argument("--no-animation", action="store_true", help="keep color but disable typing and progress redraws")
     parser.add_argument("--quiet", action="store_true")
     return parser
 
@@ -403,8 +359,8 @@ def _choose(prompt: str, choices: Sequence[str], default: str, *, non_interactiv
 
 IDENTITY_FIELDS = {
     "local": (
-        ("admin_username", "Initial administrator username", "recordbench.admin"),
-        ("admin_display_name", "Administrator display name", "RecordBench Administrator"),
+        ("admin_username", "Initial administrator username", "exculpata.admin"),
+        ("admin_display_name", "Administrator display name", "Exculpata Administrator"),
     ),
     "oidc": (
         ("oidc_issuer", "OIDC issuer URL", "https://identity.example.test/realms/case-team"),
@@ -420,12 +376,20 @@ IDENTITY_FIELDS = {
 }
 
 
+def _identity_fields(args: argparse.Namespace):
+    fields = IDENTITY_FIELDS[args.auth]
+    if args.auth == "local" and args.names == "recordbench":
+        return tuple((name, prompt, "recordbench.admin" if name == "admin_username"
+                      else "RecordBench Administrator") for name, prompt, _ in fields)
+    return fields
+
+
 def _collect_identity_choices(args: argparse.Namespace) -> None:
     """Collect non-secret choices once so preflight checks the actual installation."""
     if args.auth is None:
         args.auth = _choose("Identity mode", ("local", "oidc", "kerberos"), "local",
                             non_interactive=args.non_interactive)
-    for name, prompt, default in IDENTITY_FIELDS[args.auth]:
+    for name, prompt, default in _identity_fields(args):
         if getattr(args, name) is None:
             setattr(args, name, _ask(prompt, default, non_interactive=args.non_interactive))
     if args.auth == "local":
@@ -435,6 +399,75 @@ def _collect_identity_choices(args: argparse.Namespace) -> None:
         args.kerberos_realm = args.kerberos_realm.upper()
         if args.kerberos_keytab is None and not args.non_interactive and not args.dry_run:
             args.kerberos_keytab = Path(_ask("Path to the exported HTTP service keytab", "", non_interactive=False))
+
+
+def _compose_output_action(command: Sequence[str]) -> str | None:
+    if list(command[:2]) != ["docker", "compose"]:
+        return None
+    index = 2
+    while index < len(command) and command[index] in {"--env-file", "-f", "--profile"}:
+        index += 2
+    action = command[index] if index < len(command) else None
+    # Credential consumers, model license plans, and diagnostic query output
+    # retain their existing stream/capture contract and never enter build logs.
+    return action if action in {"build", "up", "stop", "start"} else None
+
+
+@contextmanager
+def _build_log(root: Path, action: str):
+    """Open a new owner-only log through validated, held directory descriptors."""
+    state = root / "state"
+    if (not state.is_absolute() or not _storage_path_text_valid(state)
+            or state.resolve().is_relative_to(PROJECT.resolve())):
+        raise RuntimeError("Build logs require a node state directory outside the checkout")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    directory = os.open("/", flags)
+    try:
+        for component in state.parts[1:]:
+            parent = os.fstat(directory)
+            if parent.st_uid not in {0, os.geteuid()} or (
+                    parent.st_mode & 0o022 and not parent.st_mode & stat.S_ISVTX):
+                raise RuntimeError("Build log directory ancestry is unsafe")
+            child = os.open(component, flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        metadata = os.fstat(directory)
+        if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise RuntimeError("Build log state directory must be owner-only mode 0700")
+        filename = f"installer-{action}-{time.strftime('%Y%m%dT%H%M%S', time.gmtime())}-{secrets.token_hex(4)}.log"
+        descriptor = os.open(filename, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=directory)
+        with os.fdopen(descriptor, "w+b") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            yield state / filename, stream
+    finally:
+        os.close(directory)
+
+
+def _run_logged(console: Console, command: Sequence[str], action: str,
+                environment: Mapping[str, str] | None, check: bool) -> subprocess.CompletedProcess[str]:
+    root = Path(command[command.index("--env-file") + 1]).parent
+    with _build_log(root, action) as (path, stream):
+        console.note(f"Full Docker output :: {path}")
+        with console.progress(f"Docker {action} :: output spooling to private log"):
+            result = subprocess.run(command, cwd=PROJECT, env=environment,
+                                    stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        stream.flush()
+        if result.returncode:
+            console.warn(f"Docker {action} failed (exit {result.returncode}); log tail :: {path}")
+            # Bound memory even when a tool emits an enormous unterminated line.
+            stream.seek(0, os.SEEK_END)
+            length = stream.tell()
+            stream.seek(max(0, length - 65536))
+            tail = stream.read().decode("utf-8", errors="replace").splitlines()[-40:]
+            for line in tail:
+                console.line("    " + terminal_text(line))
+            console.note(f"Full Docker output :: {path}")
+            if check:
+                raise subprocess.CalledProcessError(result.returncode, command)
+        else:
+            console.ok(f"Docker {action} complete :: {path}")
+        return result
 
 
 def _run(
@@ -451,10 +484,21 @@ def _run(
     console.note(f"exec :: {safe}")
     if dry_run:
         return subprocess.CompletedProcess(command, 0, "", "")
+    environment = _compose_environment(command, env)
+    action = _compose_output_action(command)
+    if list(command[:2]) == ["docker", "compose"] and (not console.color or action):
+        # Plain mode also governs Compose's own terminal effects, including
+        # credential consumers whose output must never enter the build log.
+        # Logged commands need plain child output even on an animated console.
+        environment = dict(os.environ if environment is None else environment)
+        environment.update(NO_COLOR="1", COMPOSE_ANSI="never",
+                           COMPOSE_PROGRESS="plain", BUILDKIT_PROGRESS="plain")
+    if action and not capture and input_value is None and "--env-file" in command:
+        return _run_logged(console, command, action, environment, check)
     return subprocess.run(
         command,
         cwd=PROJECT,
-        env=_compose_environment(command, env),
+        env=environment,
         input=input_value,
         text=True,
         check=check,
@@ -2035,9 +2079,9 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             # Share account-admin's NFC and Unicode control policy; names are
             # reported only as valid/invalid, with no runtime dependency.
             login = (args.admin_username if args.admin_username is not None else
-                     "" if existing_resume else "recordbench.admin").strip().casefold()
+                     "" if existing_resume else ("recordbench.admin" if args.names == "recordbench" else "exculpata.admin")).strip().casefold()
             display = (args.admin_display_name if args.admin_display_name is not None else
-                       "" if existing_resume else "RecordBench Administrator").strip()
+                       "" if existing_resume else ("RecordBench Administrator" if args.names == "recordbench" else "Exculpata Administrator")).strip()
             try:
                 _account_format()["normalized_account"](login, display)
                 identity_ok = True
@@ -2240,7 +2284,7 @@ def _render_preflight(console: Console, result: PreflightResult) -> None:
     console.phase(1, "HOST HANDSHAKE", "Read-only prerequisites; no state created or services started")
     for check in result.checks:
         marker = "OK" if check.state == "pass" else "BLOCK" if check.blocking else "NOTE"
-        console.line(f"  [{marker}] {check.name}: {check.observed}")
+        console.status(marker, f"{check.name}: {check.observed}")
         console.line(f"          Enables: {check.required_capability}")
         if check.remedy:
             console.line(f"          Next: {check.remedy}")
@@ -3789,7 +3833,8 @@ def main() -> int:
     if args.enable_account_management and (args.command not in {"install", "preflight"} or args.auth != "local"):
         _parser().error("--enable-account-management requires install or preflight with explicit --auth local; existing nodes retain their saved account configuration")
     console = Console(
-        color=sys.stdout.isatty() and not args.no_color and os.getenv("NO_COLOR") is None,
+        color=not (args.no_color or args.plain),
+        animation=not (args.no_animation or args.no_color or args.plain),
         quiet=args.quiet,
     )
     if args.json and args.command != "preflight":
@@ -3818,7 +3863,7 @@ def main() -> int:
         else:
             _render_preflight(console, result)
         return 0 if result.ready else 1
-    console.banner(args.command)
+    console.banner(args.command, VERSION)
     try:
         if args.root is None:
             default_root = _default_root()

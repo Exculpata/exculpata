@@ -1,0 +1,15 @@
+{
+  "scope": "Actual PTY renderer timing: banner and all eight synthetic phase titles; not installation acceptance",
+  "no_animation_seconds": [
+    0.035423417008132674,
+    0.0327546250045998,
+    0.0441402919968823
+  ],
+  "animated_seconds": [
+    0.49094124999828637,
+    0.4887337919935817,
+    0.49238937500922475
+  ],
+  "median_added_seconds": 0.4555178329901537,
+  "typing_budget_seconds": 0.45
+}

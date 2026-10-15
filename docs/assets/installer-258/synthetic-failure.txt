@@ -1,0 +1,49 @@
+Synthetic child-process logger regression; Docker engine not used. Not installation acceptance.
+
+  [ NOTE ] exec :: docker compose --env-file /private/tmp/exculpata-synthetic-failure-6svzpqpx/compose.env build app
+  [ NOTE ] Full Docker output :: /private/tmp/exculpata-synthetic-failure-6svzpqpx/state/installer-build-20261015T234134-f1e09373.log
+  [ NOTE ] Docker build :: output spooling to private log
+  [ WARN ] Docker build failed (exit 17); log tail :: /private/tmp/exculpata-synthetic-failure-6svzpqpx/state/installer-build-20261015T234134-f1e09373.log
+    synthetic build step 16
+    synthetic build step 17
+    synthetic build step 18
+    synthetic build step 19
+    synthetic build step 20
+    synthetic build step 21
+    synthetic build step 22
+    synthetic build step 23
+    synthetic build step 24
+    synthetic build step 25
+    synthetic build step 26
+    synthetic build step 27
+    synthetic build step 28
+    synthetic build step 29
+    synthetic build step 30
+    synthetic build step 31
+    synthetic build step 32
+    synthetic build step 33
+    synthetic build step 34
+    synthetic build step 35
+    synthetic build step 36
+    synthetic build step 37
+    synthetic build step 38
+    synthetic build step 39
+    synthetic build step 40
+    synthetic build step 41
+    synthetic build step 42
+    synthetic build step 43
+    synthetic build step 44
+    synthetic build step 45
+    synthetic build step 46
+    synthetic build step 47
+    synthetic build step 48
+    synthetic build step 49
+    synthetic build step 50
+    synthetic build step 51
+    synthetic build step 52
+    synthetic build step 53
+    synthetic build step 54
+    synthetic forced failure
+  [ NOTE ] Full Docker output :: /private/tmp/exculpata-synthetic-failure-6svzpqpx/state/installer-build-20261015T234134-f1e09373.log
+
+Actual child return code: 17; log mode: 0600; full log lines: 56
