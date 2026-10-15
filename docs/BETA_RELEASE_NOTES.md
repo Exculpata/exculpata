@@ -24,6 +24,16 @@ Start with [the reference installation](BETA_REFERENCE_INSTALL.md),
 [model acquisition](MODEL_ACQUISITION.md), [startup troubleshooting](RUNTIME_STARTUP.md)
 and [transcript processing notices](TRANSCRIPT_PROCESSING_NOTICES.md).
 
+## Ethics assessment kit
+
+The [data-handling statement](ethics/DATA_HANDLING.md),
+[vendor-vetting checklist](ethics/VENDOR_VETTING_CHECKLIST.md) and
+[client discussion template](ethics/CLIENT_DISCLOSURE_TEMPLATE.md) connect
+reference implementation evidence with jurisdiction-specific review questions.
+They document network exceptions and bounded tests, not a blanket offline,
+privacy or legal-compliance guarantee. Complete the assessment for the actual
+installation and client before use. Not legal advice. Verify the rules in your jurisdiction.
+
 ## Qualification still required before tagging
 
 The initial candidate passed synthetic GPU document review, English/Spanish

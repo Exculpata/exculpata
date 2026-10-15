@@ -29,6 +29,11 @@ workflows use local models for retrieval, answers, and media transcription.
 > acceptance and maintainer approval are pending. This is not production
 > certification for confidential casework. See the [candidate release notes](docs/BETA_RELEASE_NOTES.md).
 
+The beta ethics kit provides an evidence-linked [data-handling statement](docs/ethics/DATA_HANDLING.md),
+[vendor-vetting checklist](docs/ethics/VENDOR_VETTING_CHECKLIST.md), and
+[client discussion template](docs/ethics/CLIENT_DISCLOSURE_TEMPLATE.md).
+It supports a lawyer’s assessment of a specific installation and use; it is not legal advice or a compliance certification.
+
 ## See Exculpata in action
 
 Follow a fictional Harbor Street matter from adding records to source-linked
