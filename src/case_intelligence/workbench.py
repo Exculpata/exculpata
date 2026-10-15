@@ -7433,7 +7433,7 @@ def create_workbench_app(
             "actor_name": context.display_name,
             "actor_initials": context.initials,
             "csrf_token": context.csrf_token,
-            "theme": preference.theme,
+            "theme": preference.theme, "accent": preference.accent,
             "current_path": requested_path(request),
             "auth_mode": identity.auth_mode,
             "membership": membership,
@@ -8537,40 +8537,9 @@ def create_workbench_app(
         response.delete_cookie(SESSION_COOKIE, path="/")
         return response
 
-    @app.post(
-        "/preferences/theme",
-        dependencies=[Depends(require_csrf)],
-        include_in_schema=False,
-    )
-    def set_appearance_theme(
-        request: Request,
-        theme: str = Form(..., max_length=24),
-        next_path: str = Form("/", alias="next", max_length=2_048),
-    ):
-        context = auth_context(request)
-        # Cyberpunk and retro are schema-ready design directions. Only themes
-        # with a complete, reviewed component treatment are exposed to staff.
-        if theme not in {"dark", "light", "dusk"}:
-            raise HTTPException(400, "Choose an available appearance theme.")
-        try:
-            preference = bench.workspace.set_principal_theme(
-                context.principal_id, theme
-            )
-        except WorkspaceProblem as exc:
-            raise HTTPException(400, str(exc)) from exc
-        audit(
-            request,
-            "preference.theme",
-            "success",
-            context=context,
-            object_type="principal",
-            object_id=context.principal_id,
-        )
-        return RedirectResponse(
-            IdentityService.safe_next(next_path, default="/"),
-            status_code=303,
-            headers=response_headers("Theme", preference.theme),
-        )
+    from .appearance import register_appearance_routes
+    register_appearance_routes(app, workspace=bench.workspace, require_csrf=require_csrf,
+                               auth_context=auth_context, audit=audit)
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:

@@ -165,17 +165,26 @@ def main():
                     const result=[s.backgroundColor,s.color,s.opacity,s.borderColor];
                     button.remove(); return result;
                 """)
-            outside_light = outside_disabled_style()
-            Select(one('[data-theme-picker]')).select_by_value('dusk')
-            wait.until(lambda _: one('html').get_attribute('data-theme') == 'dusk')
-            # Dusk must not restyle this control. Danger and secondary borders
-            # are pinned to the Light tokens in case-intelligence.css.
-            dusk_disabled = outside_disabled_style()
-            assert dusk_disabled == outside_light, (outside_light, dusk_disabled)
-            report['checks'].append('Disabled buttons outside the source library retain their existing styles')
-            one('.source-status-overview').screenshot(str(output / 'dusk-status.png'))
-            one('.source-library-filters').screenshot(str(output / 'dusk-filters.png'))
-            one('.source-bulk-toolbar').screenshot(str(output / 'dusk-bulk.png'))
+            from browser_appearance import APPEARANCES, select_appearance
+            for mode, accent in APPEARANCES:
+                select_appearance(driver, wait, mode, accent)
+                for selector in ('.source-stat-card strong', '.source-stat-card span',
+                                 '.source-library-filters input[type=search]', '.source-library-filters select',
+                                 '.source-bulk-toolbar strong', '.source-bulk-toolbar select',
+                                 '[data-source-bulk-submit]:disabled'):
+                    check(selector)
+                outside = outside_disabled_style()
+                # Disabled actions remain readable on their own theme surface.
+                from exculpata_theme_contrast import cr
+                def hex_color(value):
+                    return '#' + ''.join(f'{int(v):02X}' for v in value.removeprefix('rgb(').removesuffix(')').split(','))
+                assert cr(hex_color(outside[0]), hex_color(outside[1])) >= 4.5
+                assert float(outside[2]) == 1
+            select_appearance(driver, wait, 'dark', 'amber')
+            report['checks'].append('All six palettes keep source controls and disabled actions readable')
+            one('.source-status-overview').screenshot(str(output / 'accent-status.png'))
+            one('.source-library-filters').screenshot(str(output / 'accent-filters.png'))
+            one('.source-bulk-toolbar').screenshot(str(output / 'accent-bulk.png'))
             for selector in ('.source-stat-card strong', '.source-stat-card span', '.source-library-filters input[type=search]',
                              '.source-library-filters select', '.source-library-filters > a',
                              '.source-bulk-toolbar strong', '.source-bulk-toolbar select',
@@ -204,7 +213,7 @@ def main():
                 assert style[0] == 'solid' and style[1] >= 2, style
                 check(selector, minimum=3, property='outlineColor')
                 check(selector, minimum=3, property='outlineColor', adjacent=True)
-            one('.source-library-filters').screenshot(str(output / 'dusk-focus.png'))
+            one('.source-library-filters').screenshot(str(output / 'accent-focus.png'))
             select_all = one('[data-source-select-all]')
             driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', select_all)
             select_all.click()
@@ -220,16 +229,15 @@ def main():
             wait.until(lambda _: one('[data-source-bulk-submit]').is_enabled())
             check('[data-bulk-set-name]')
             check('[data-source-bulk-submit]')
-            one('.source-bulk-toolbar').screenshot(str(output / 'dusk-bulk-active.png'))
+            one('.source-bulk-toolbar').screenshot(str(output / 'accent-bulk-active.png'))
             driver.set_window_size(430, 1000)
             wait.until(lambda _: driver.execute_script('return document.querySelector("[data-matter-rail]").getBoundingClientRect().right <= 0'))
             driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', one('.source-library-filters'))
-            driver.save_screenshot(str(output / 'dusk-mobile.png'))
+            driver.save_screenshot(str(output / 'accent-mobile.png'))
             check('.source-library-filters input[type=search]')
             driver.set_window_size(1440, 1100)
             driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
-            Select(one('[data-theme-picker]')).select_by_value('light')
-            wait.until(lambda _: one('html').get_attribute('data-theme') == 'light')
+            select_appearance(driver, wait, 'light', 'cyan')
             wait_for_light_snapshot(wait, snapshot, light)
             report['checks'].append('Light computed styles preserved after theme round trip')
             report['passed'] = True

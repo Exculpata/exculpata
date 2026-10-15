@@ -1,0 +1,217 @@
+{
+  "synthetic": true,
+  "browser": "Chrome on macOS",
+  "viewport": {
+    "width": 1230,
+    "height": 849
+  },
+  "base": "dbd3c7f1ba9e7fc4c39dc96cb97e5e8e7c6c5336",
+  "views": [
+    {
+      "view": "home",
+      "accent": "cyan",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "ask",
+      "accent": "cyan",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "case-file",
+      "accent": "cyan",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "home",
+      "accent": "green",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "ask",
+      "accent": "green",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "case-file",
+      "accent": "green",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "home",
+      "accent": "amber",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "ask",
+      "accent": "amber",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "case-file",
+      "accent": "amber",
+      "error": "#FF6B6B",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "dark",
+      "muted": "#8B9096",
+      "overflow": false,
+      "warning": "#FFB020"
+    },
+    {
+      "view": "home",
+      "accent": "cyan",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "ask",
+      "accent": "cyan",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "case-file",
+      "accent": "cyan",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "home",
+      "accent": "green",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "ask",
+      "accent": "green",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "case-file",
+      "accent": "green",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "home",
+      "accent": "amber",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "ask",
+      "accent": "amber",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Harbor Street",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    },
+    {
+      "view": "case-file",
+      "accent": "amber",
+      "error": "#C2281F",
+      "external": false,
+      "heading": "Turn review into something useful",
+      "mode": "light",
+      "muted": "#5A6069",
+      "overflow": false,
+      "warning": "#9C5900"
+    }
+  ],
+  "checks": {
+    "reloadAndNavigation": true,
+    "backForward": true,
+    "freshSignIn": true,
+    "mobile390": true,
+    "mobile320": true,
+    "remoteStylesAndScripts": false
+  }
+}

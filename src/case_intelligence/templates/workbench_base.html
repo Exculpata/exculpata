@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="{{ theme|default('dark') }}">
+<html lang="en" data-theme="{{ theme|default('dark') }}" data-accent="{{ accent|default('cyan') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -63,8 +63,19 @@
         <select id="appearance-theme" name="theme" aria-label="Appearance theme" data-theme-picker>
           <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
           <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
-          <option value="dusk" {% if theme == 'dusk' %}selected{% endif %}>Dusk</option>
         </select>
+        <noscript><button type="submit">Save appearance</button></noscript>
+      </form>
+      <form class="theme-picker" method="post" action="/preferences/accent" data-accent-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ current_path }}">
+        <label class="visually-hidden" for="appearance-accent">Accent</label>
+        <select id="appearance-accent" name="accent" aria-label="Appearance accent" data-accent-picker>
+          <option value="cyan" {% if accent == 'cyan' %}selected{% endif %}>Cyan</option>
+          <option value="green" {% if accent == 'green' %}selected{% endif %}>Green</option>
+          <option value="amber" {% if accent == 'amber' %}selected{% endif %}>Amber</option>
+        </select>
+        <noscript><button type="submit">Save accent</button></noscript>
       </form>
       <details class="account-menu">
         <summary aria-label="Open account menu">
@@ -82,8 +93,19 @@
             <select id="account-appearance-theme" name="theme" data-theme-picker>
               <option value="dark" {% if theme == 'dark' %}selected{% endif %}>Dark</option>
               <option value="light" {% if theme == 'light' %}selected{% endif %}>Light</option>
-              <option value="dusk" {% if theme == 'dusk' %}selected{% endif %}>Dusk</option>
             </select>
+            <noscript><button type="submit">Save appearance</button></noscript>
+          </form>
+          <form class="account-theme-form" method="post" action="/preferences/accent" data-accent-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="next" value="{{ current_path }}">
+            <label for="account-appearance-accent">Accent</label>
+            <select id="account-appearance-accent" name="accent" aria-label="Appearance accent" data-accent-picker>
+              <option value="cyan" {% if accent == 'cyan' %}selected{% endif %}>Cyan</option>
+              <option value="green" {% if accent == 'green' %}selected{% endif %}>Green</option>
+              <option value="amber" {% if accent == 'amber' %}selected{% endif %}>Amber</option>
+            </select>
+            <noscript><button type="submit">Save accent</button></noscript>
           </form>
           <a href="/matters/manage">Manage matters</a>
           {% if is_administrator %}<a href="/admin/setup">Team setup</a><a href="/admin/people">People</a><a href="/admin/groups">Team groups</a><a href="/admin">Administrator</a>{% endif %}

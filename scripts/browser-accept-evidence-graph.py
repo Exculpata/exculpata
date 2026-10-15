@@ -246,11 +246,11 @@ def main():
             assert 'Alex Example' in body()
             record('Find more originals opens the selected name through the literal phrase search control')
 
-            for theme, label in (('dark', 'dark'), ('light', 'day'), ('dusk', 'dusk')):
+            from browser_appearance import APPEARANCES, select_appearance
+            for theme, accent in APPEARANCES:
+                label = f'{theme}-{accent}'
                 driver.get(graph_url)
-                picker = driver.find_element(By.CSS_SELECTOR, '#appearance-theme')
-                Select(picker).select_by_value(theme)
-                wait.until(lambda current: current.find_element(By.TAG_NAME, 'html').get_attribute('data-theme') == theme)
+                select_appearance(driver, wait, theme, accent)
                 graph_ready(context['person'])
                 assert_no_page_overflow()
                 driver.execute_script('window.scrollTo(0,0)')
@@ -261,7 +261,7 @@ def main():
                 readable_cards()
                 diagram_size = driver.find_element(By.CSS_SELECTOR, 'svg.evidence-graph').rect
                 assert diagram_size['width'] >= 1000 and diagram_size['height'] >= 200, diagram_size
-            record('Dark, Day and Dusk themes preserve the diagram, labeled roles, competing accounts, and original-source actions')
+            record('All six mode/accent combinations preserve the diagram, labeled roles, competing accounts, and original-source actions')
 
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(
                 width=390, height=844, deviceScaleFactor=1, mobile=False))
@@ -271,12 +271,12 @@ def main():
             diagram = driver.find_element(By.CSS_SELECTOR, '.graph-diagram-scroll')
             assert driver.execute_script('return arguments[0].scrollWidth > arguments[0].clientWidth', diagram)
             driver.execute_script('window.scrollTo(0,0)')
-            driver.save_screenshot(str(output / 'connections-dusk-mobile.png'))
+            driver.save_screenshot(str(output / 'connections-light-amber-mobile.png'))
             open_accounts()
             evidence = driver.find_element(By.ID, 'connection-evidence')
             driver.execute_script("arguments[0].scrollIntoView({block:'start',behavior:'instant'})", evidence)
             assert_no_page_overflow()
-            driver.save_screenshot(str(output / 'connections-dusk-mobile-evidence.png'))
+            driver.save_screenshot(str(output / 'connections-light-amber-mobile-evidence.png'))
             click(driver.find_element(By.CSS_SELECTOR, '.graph-account-competing a.graph-original-link'))
             pane = wait.until(EC.visibility_of_element_located((By.ID, 'support-pane')))
             assert ORIGINALS['Generated competing account.txt'] in pane.text

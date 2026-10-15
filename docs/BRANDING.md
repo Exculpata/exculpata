@@ -21,7 +21,7 @@ clear space and use a solid background with enough contrast. The application
 sign-in screen still shows "Review the record. Build the work."
 
 The workbench appearance is the theme in [Exculpata theme](EXCULPATA_THEME.md).
-Dark is the default. Light and Dusk stay available from the appearance control.
+Dark/Cyan is the default. Dark and Light each support independently saved Cyan, Green, and Amber accents. See [appearance tokens and contrast](EXCULPATA_THEME.md).
 Geist and JetBrains Mono are self-hosted; the app does not load them from a font service.
 
 ## Assets

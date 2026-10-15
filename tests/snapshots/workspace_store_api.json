@@ -212,6 +212,7 @@
   ["set_matter_group_grant", "(self, matter_id: 'str', group_id: 'str', actor_id: 'str', *, present: 'bool', administrator_override: 'bool' = False, session_id: 'str | None' = None, request_id: 'str' = 'team-group') -> 'None'"],
   ["set_matter_retention", "(self, matter_id: 'str', actor_id: 'str', expires_at: 'datetime', *, administrator_override: 'bool' = False) -> 'MatterRetentionRecord'"],
   ["set_notebook_item_status", "(self, matter_id: 'str', actor_id: 'str', item_id: 'str', status: 'str', *, expected_updated_at: 'str') -> 'NotebookItemRecord'"],
+  ["set_principal_accent", "(self, principal_id: 'str', accent: 'str') -> 'PrincipalPreferenceRecord'"],
   ["set_principal_theme", "(self, principal_id: 'str', theme: 'str') -> 'PrincipalPreferenceRecord'"],
   ["set_research_plan", "(self, job_id: 'str', plan: 'Mapping[str, object]', total_steps: 'int') -> 'ResearchJobRecord'"],
   ["set_team_group_member", "(self, group_id: 'str', principal_id: 'str', actor_id: 'str', *, present: 'bool', administrator_override: 'bool' = False, session_id: 'str | None' = None, request_id: 'str' = 'team-group') -> 'None'"],

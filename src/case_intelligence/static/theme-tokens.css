@@ -11,15 +11,15 @@
   --x-focus-ring-offset: 2px;
   color-scheme: light dark;
 }
-/* Default follows the OS setting; an explicit data-theme attribute overrides it. */
-:root, [data-theme="dark"] {
+/* Default is Dark/Cyan; mode and accent are independent. */
+:root, [data-theme="dark"], [data-theme="dark"][data-accent="cyan"] {
   --x-bg: #0B0D10;
   --x-panel: #14161A;
   --x-panel-raised: #1C1F24;
   --x-text: #EDEAE2;
-  --x-text-muted: #82878E;
+  --x-text-muted: #8B9096;
   --x-border: #2A2E35;
-  --x-border-strong: #5C646E;
+  --x-border-strong: #626A75;
   --x-accent: #22D3EE;
   --x-accent-hover: #67E8F9;
   --x-accent-active: #06B6D4;
@@ -29,30 +29,59 @@
   --x-error: #FF6B6B;
   --x-focus-ring: #22D3EE;
   --x-selection-bg: #0E4A57;
+  --x-shadow: #000000;
+  --x-warning-bg: #30281A;
+  --x-error-bg: #321D20;
+  --x-success-bg: #162D21;
   color-scheme: dark;
 }
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) {
-  --x-bg: #F7F5F0;
-  --x-panel: #EDEAE2;
-  --x-panel-raised: #FFFFFF;
-  --x-text: #0B0D10;
-  --x-text-muted: #5A6069;
-  --x-border: #D6D2C8;
-  --x-border-strong: #81868E;
-  --x-accent: #097488;
-  --x-accent-hover: #086A7C;
-  --x-accent-active: #065A69;
-  --x-accent-contrast: #FFFFFF;
-  --x-success: #0C7A41;
-  --x-warning: #9C5900;
-  --x-error: #C2281F;
-  --x-focus-ring: #097488;
-  --x-selection-bg: #BDEBF3;
-    color-scheme: light;
-  }
+[data-theme="dark"][data-accent="green"] {
+  --x-bg: #0B0D10;
+  --x-panel: #14161A;
+  --x-panel-raised: #1C1F24;
+  --x-text: #EDEAE2;
+  --x-text-muted: #8B9096;
+  --x-border: #2A2E35;
+  --x-border-strong: #626A75;
+  --x-accent: #39FF88;
+  --x-accent-hover: #7AFFB0;
+  --x-accent-active: #20D96D;
+  --x-accent-contrast: #0B0D10;
+  --x-success: #39FF88;
+  --x-warning: #FFB020;
+  --x-error: #FF6B6B;
+  --x-focus-ring: #39FF88;
+  --x-selection-bg: #124D2A;
+  --x-shadow: #000000;
+  --x-warning-bg: #30281A;
+  --x-error-bg: #321D20;
+  --x-success-bg: #162D21;
+  color-scheme: dark;
 }
-[data-theme="light"] {
+[data-theme="dark"][data-accent="amber"] {
+  --x-bg: #0B0D10;
+  --x-panel: #14161A;
+  --x-panel-raised: #1C1F24;
+  --x-text: #EDEAE2;
+  --x-text-muted: #8B9096;
+  --x-border: #2A2E35;
+  --x-border-strong: #626A75;
+  --x-accent: #FFB020;
+  --x-accent-hover: #FFCA65;
+  --x-accent-active: #E99A0B;
+  --x-accent-contrast: #0B0D10;
+  --x-success: #39FF88;
+  --x-warning: #FFB020;
+  --x-error: #FF6B6B;
+  --x-focus-ring: #FFB020;
+  --x-selection-bg: #573B0E;
+  --x-shadow: #000000;
+  --x-warning-bg: #30281A;
+  --x-error-bg: #321D20;
+  --x-success-bg: #162D21;
+  color-scheme: dark;
+}
+[data-theme="light"], [data-theme="light"][data-accent="cyan"] {
   --x-bg: #F7F5F0;
   --x-panel: #EDEAE2;
   --x-panel-raised: #FFFFFF;
@@ -69,6 +98,56 @@
   --x-error: #C2281F;
   --x-focus-ring: #097488;
   --x-selection-bg: #BDEBF3;
+  --x-shadow: #000000;
+  --x-warning-bg: #FFF2D9;
+  --x-error-bg: #FDECE9;
+  --x-success-bg: #E3F3E9;
+  color-scheme: light;
+}
+[data-theme="light"][data-accent="green"] {
+  --x-bg: #F7F5F0;
+  --x-panel: #EDEAE2;
+  --x-panel-raised: #FFFFFF;
+  --x-text: #0B0D10;
+  --x-text-muted: #5A6069;
+  --x-border: #D6D2C8;
+  --x-border-strong: #81868E;
+  --x-accent: #0C7A41;
+  --x-accent-hover: #0C793F;
+  --x-accent-active: #096533;
+  --x-accent-contrast: #FFFFFF;
+  --x-success: #0C7A41;
+  --x-warning: #9C5900;
+  --x-error: #C2281F;
+  --x-focus-ring: #0E8A4A;
+  --x-selection-bg: #C6EBD4;
+  --x-shadow: #000000;
+  --x-warning-bg: #FFF2D9;
+  --x-error-bg: #FDECE9;
+  --x-success-bg: #E3F3E9;
+  color-scheme: light;
+}
+[data-theme="light"][data-accent="amber"] {
+  --x-bg: #F7F5F0;
+  --x-panel: #EDEAE2;
+  --x-panel-raised: #FFFFFF;
+  --x-text: #0B0D10;
+  --x-text-muted: #5A6069;
+  --x-border: #D6D2C8;
+  --x-border-strong: #81868E;
+  --x-accent: #9C5900;
+  --x-accent-hover: #8C5000;
+  --x-accent-active: #754300;
+  --x-accent-contrast: #FFFFFF;
+  --x-success: #0C7A41;
+  --x-warning: #9C5900;
+  --x-error: #C2281F;
+  --x-focus-ring: #A15C00;
+  --x-selection-bg: #F6DFB5;
+  --x-shadow: #000000;
+  --x-warning-bg: #FFF2D9;
+  --x-error-bg: #FDECE9;
+  --x-success-bg: #E3F3E9;
   color-scheme: light;
 }
 ::selection { background: var(--x-selection-bg); color: var(--x-text); }

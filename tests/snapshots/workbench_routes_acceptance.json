@@ -14,6 +14,7 @@
   [["POST"], "/auth/local"],
   [["POST"], "/auth/logout"],
   [["POST"], "/preferences/theme"],
+  [["POST"], "/preferences/accent"],
   [["GET"], "/favicon.ico"],
   [["GET"], "/admin/people"],
   [["GET"], "/admin/people/setup"],

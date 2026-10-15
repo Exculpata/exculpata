@@ -49,7 +49,8 @@ def test_media_review_theme_and_independent_scroll_contract():
     assert "max-height: calc(100vh - var(--topbar-height) - 28px)" in styles
     assert "overscroll-behavior: contain" in styles
     assert "--scrollbar-thumb-hover" in styles
-    assert "color-scheme: dark" in styles
+    tokens = (ROOT / "src/case_intelligence/static/theme-tokens.css").read_text(encoding="utf-8")
+    assert "color-scheme: dark" in tokens and "color-scheme: light" in tokens
     assert ".speaker-review-panel {" in styles
     assert "background: var(--surface);" in styles
     assert ".media-summary-card, .playback-compatibility" in styles

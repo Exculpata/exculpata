@@ -1,7 +1,7 @@
 # Synthetic browser acceptance
 
 The `synthetic-browser` job in the quality workflow runs the existing intake
-receipt, Dusk readability and Report bundle journeys on Ubuntu 24.04 and Python
+receipt, appearance readability and Report bundle journeys on Ubuntu 24.04 and Python
 3.12. Reports always include `--verify-readiness`: the browser checks export preview, missing
 source repair, cross-matter denial and interrupted-close recovery as well as
 Markdown/Word downloads. The Report script enters the visible reading/editor
@@ -90,8 +90,8 @@ replace the complete pinned Linux suite.
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background
-in Dark, Light and Dusk, requiring at least 4.5:1 contrast. It preserves the
-existing Light foreground through a theme round trip, checks heading visibility
+in all six Dark/Light and Cyan/Green/Amber combinations, requiring at least 4.5:1 contrast. It preserves the
+Light token foreground through a theme round trip, checks heading visibility
 and horizontal overflow, and follows Home → Ask → Search → Ask using native
 Enter activation of the real navigation. The bounded `ask-heading-*.png`
 screenshots and receipt contain only synthetic demo content; this journey does
@@ -273,33 +273,10 @@ contents. A reserved filename alone is not completion. Synthetic regressions
 cover empty placeholders, partial archives, and completed archives while retaining
 the existing bounded browser wait.
 
-## Dusk source readability
+## Appearance source readability
 
-The pinned runner also runs a disposable source-library theme journey with 26
-synthetic text sources and a generated collection. It checks rendered text and
-placeholder contrast of at least 4.5:1 for status cards (idle, hover and selected),
-collection chips, filters, bulk actions, and disabled controls, including paged
-navigation. Disabled text uses the same readability target even though inactive
-controls are exempt from WCAG text contrast requirements. The contrast calculation
-composites ancestor backgrounds and opacity. Keyboard traversal checks a solid
-focus outline of at least 2px and 3:1 against the control and its parent surface.
-The journey also checks mobile filters and a Light theme round trip.
+The pinned runner retains the historical `dusk` journey/artifact identifier for compatibility, but `browser-accept-dusk.py` now validates all six mode/accent combinations. Its disposable library has 26 synthetic text sources and a generated collection. It checks rendered text and placeholder contrast of at least 4.5:1 for status cards, collection chips, filters, bulk actions, and disabled controls. Disabled text uses the same readability target even though inactive controls are exempt from WCAG text contrast requirements. The calculation composites ancestor backgrounds and opacity.
 
-The `dusk` artifact directory contains bounded synthetic screenshots of status
-cards, filters, disabled and enabled bulk actions, keyboard focus and mobile
-layout. These checks cover source-library controls, not every Dusk screen or
-native operating-system select popup. Dusk overrides use existing theme tokens;
-Light styles and source workflows are unchanged. This journey is independent of
-the intake-selection acceptance and does not require changes to its runner steps.
+The detailed Dark/Amber journey also checks hover, selected cards, paged navigation, mobile filters, and keyboard focus (solid outline at least 2px and 3:1 against the control and its parent surface). A final Light/Cyan round trip compares the complete computed-style snapshot with the original, including foreground, background, opacity, borders and element count. Timeouts and thresholds remain strict.
 
-The standalone Dusk journey clears deployment environment settings before it
-constructs its disposable application, using the shared synthetic environment
-helper. This applies both to direct invocation and invocation through the runner.
-
-The Dusk journey checks that disabled-button overrides remain confined to the
-source library and preserve disabled styling elsewhere.
-After switching back to Light, it waits for the complete computed-style snapshot
-to match the original, including color, background color, opacity and border
-color for every captured element. The theme attribute alone does not establish
-that styles have settled. A timeout identifies the first differing element and
-property (or a changed element count); the comparison and timeout remain strict.
+Account controls exercise independently persisted mode and accent through the mobile account menu. Ask heading, matter context, Case file, graph, full-text review and layout journeys cover all six combinations. The standalone journeys clear deployment settings before constructing their disposable application. All fixtures and screenshot artifacts are synthetic.

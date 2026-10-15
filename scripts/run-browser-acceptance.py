@@ -48,13 +48,23 @@ JOURNEYS = (
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
 )
-ARTIFACT_NAMES = (
+ARTIFACT_NAMES = tuple(
+    name
+    for mode in ('dark', 'light') for accent in ('cyan', 'green', 'amber')
+    for name in (f'ask-heading-{mode}-{accent}-1440.png', f'ask-heading-{mode}-{accent}-390.png',
+                 f'context-{mode}-{accent}-desktop.png', f'knowledge-{mode}-{accent}-desktop.png',
+                 f'text-ledger-{mode}-{accent}.png',
+                 f'ask-heading-review-{mode}-{accent}-1920.png',
+                 f'ask-heading-conversation-{mode}-{accent}-1920.png')
+) + (
+    'context-light-amber-mobile.png', 'knowledge-light-amber-mobile.png',
+
     'source-role-1440.png', 'source-role-390.png', 'source-role-320.png', 'source-role-conflict-320.png',
     'receipt-browser-result.json', 'receipt.json', 'failure.png', 'failure.html',
     'purpose-empty-1440.png', 'purpose-edit-1440.png', 'purpose-edit-390.png',
     'purpose-edit-320.png', 'purpose-conflict-320.png',
-    'dusk-status.png', 'dusk-filters.png', 'dusk-bulk.png', 'dusk-focus.png',
-    'dusk-bulk-active.png', 'dusk-mobile.png',
+    'accent-status.png', 'accent-filters.png', 'accent-bulk.png', 'accent-focus.png',
+    'accent-bulk-active.png', 'accent-mobile.png',
     'ask-heading-dark-1440.png', 'ask-heading-dark-390.png',
     'ask-heading-light-1440.png', 'ask-heading-light-390.png',
     'ask-heading-dusk-1440.png', 'ask-heading-dusk-390.png',

@@ -74,6 +74,7 @@ class PrincipalPreferenceRecord:
     principal_id: str
     theme: str
     updated_at: str
+    accent: str = "cyan"
 
 
 @dataclass(frozen=True)

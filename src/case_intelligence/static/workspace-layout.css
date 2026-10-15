@@ -277,7 +277,7 @@
   .account-menu-panel { width: min(18rem, calc(100vw - 24px)); max-height: calc(100dvh - var(--topbar-height) - 20px); overflow: auto; }
   .account-menu-panel :is(a, button, select) { min-height: 44px; font-size: .875rem; }
 }
-.topbar :focus-visible { outline-color: #a4d4ff; }
+.topbar :focus-visible { outline-color: var(--x-focus-ring); }
 .skip-link { max-width: calc(100vw - 16px); }
 main { scroll-margin-top: calc(var(--topbar-height) + 12px); }
 @media (forced-colors: active) {
@@ -619,7 +619,7 @@ body.review-notes-open .matter-assistant { visibility: hidden; }
   background: var(--surface-strong); color: var(--blue-action); font-size: 10px; font-weight: 800; line-height: 1;
   text-decoration: none;
 }
-.citation-ref:hover, .citation-ref:focus-visible { background: var(--blue-action); color: var(--surface); }
+.citation-ref:hover, .citation-ref:focus-visible { background: var(--blue-action); color: var(--x-accent-contrast); }
 .citation-number {
   display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px;
   margin-right: 6px; border-radius: 8px; background: var(--surface-strong); font-size: 10px; font-weight: 800;

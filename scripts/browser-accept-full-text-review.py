@@ -34,13 +34,17 @@ class SyntheticGenerator:
 def measure_ledger_contrast(driver, output: Path) -> dict:
     """Measure the populated ledger, compositing actual ancestor backgrounds."""
     contrast = runpy.run_path(str(ROOT / 'scripts/browser-accept-dusk.py'))['CONTRAST']
+    original_accent = driver.execute_script('return document.documentElement.dataset.accent')
     original_theme = driver.execute_script('return document.documentElement.dataset.theme')
     report = {'synthetic_only': True, 'passed': False, 'minimum_text_ratio': 4.5, 'themes': {}}
     driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
         {'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
     try:
-        for theme in ('dark', 'light', 'dusk'):
-            driver.execute_script("document.documentElement.dataset.theme=arguments[0];document.querySelectorAll('[data-theme-picker]').forEach(select=>select.value=arguments[0])", theme)
+        from browser_appearance import APPEARANCES
+        for mode, accent in APPEARANCES:
+            theme = f'{mode}-{accent}'
+            driver.execute_script("document.documentElement.dataset.theme=arguments[0];document.querySelectorAll('[data-theme-picker]').forEach(select=>select.value=arguments[0])", mode)
+            driver.execute_script("document.documentElement.dataset.accent=arguments[0]", accent)
             cells = driver.find_elements(By.CSS_SELECTOR, '.text-review-ledger th, .text-review-ledger td, .text-review-ledger td a')
             assert len(driver.find_elements(By.CSS_SELECTOR, '.text-review-ledger tbody tr')) == 15
             measurements = []
@@ -54,6 +58,7 @@ def measure_ledger_contrast(driver, output: Path) -> dict:
         (output / 'text-ledger-contrast.json').write_text(json.dumps(report, indent=2) + '\n')
         return report
     finally:
+        driver.execute_script("document.documentElement.dataset.accent=arguments[0]", original_accent)
         driver.execute_script("document.documentElement.dataset.theme=arguments[0];document.querySelectorAll('[data-theme-picker]').forEach(select=>select.value=arguments[0])", original_theme)
         driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride', {})
 
@@ -144,7 +149,7 @@ def main():
             ledger_contrast = measure_ledger_contrast(driver, args.output)
             assert ledger_contrast['passed'], {theme: result['minimum_ratio'] for theme, result in ledger_contrast['themes'].items()}
             if args.ledger_contrast_only:
-                print(json.dumps({'passed': True, 'synthetic_only': True, 'checks': ['Populated full-text ledger text meets 4.5:1 in Light and Dusk']}))
+                print(json.dumps({'passed': True, 'synthetic_only': True, 'checks': ['Populated full-text ledger text meets 4.5:1 in all six mode/accent combinations']}))
                 return
             for width, label in ((1440, 'desktop'), (390, 'mobile')):
                 driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
@@ -206,7 +211,7 @@ def main():
             driver.save_screenshot(str(args.output / 'full-review-resume.png'))
             resume.click()
             wait.until(lambda _: bench.workspace.review_run(matter.matter_id, actor, queued.run_id).state == 'queued')
-            receipt = {'provenance': 'synthetic', 'checks': ['launch and coverage precede decision lists at desktop and mobile widths', 'text ledger safe cancellation and resume preserve the same run', 'explicit full-text launch', 'populated text-ledger text meets 4.5:1 in Light and Dusk', 'decision inspector shows exact support without persisting excerpts', 'late fifteenth-unit finding', 'separate failed-unit coverage', 'desktop and mobile without page overflow', 'complete JSON download', 'saved full-text run copied to readable Report', 'bounded full-text scope and source citation retained', 'Report desktop and mobile without overflow', 'Report Markdown download']}
+            receipt = {'provenance': 'synthetic', 'checks': ['launch and coverage precede decision lists at desktop and mobile widths', 'text ledger safe cancellation and resume preserve the same run', 'explicit full-text launch', 'populated text-ledger text meets 4.5:1 in all six mode/accent combinations', 'decision inspector shows exact support without persisting excerpts', 'late fifteenth-unit finding', 'separate failed-unit coverage', 'desktop and mobile without page overflow', 'complete JSON download', 'saved full-text run copied to readable Report', 'bounded full-text scope and source citation retained', 'Report desktop and mobile without overflow', 'Report Markdown download']}
             (args.output / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
             print(json.dumps(receipt))
         finally:
