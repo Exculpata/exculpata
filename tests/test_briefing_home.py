@@ -35,12 +35,12 @@ def helper(monkeypatch, *, flag='1', readiness=None, member=True):
             raise KeyError('generated-nonmember')
     workspace = SimpleNamespace(membership=membership, _lock=RLock(), connection=None)
     service = SimpleNamespace(source_guard=nullcontext)
-    bench = SimpleNamespace(workspace=workspace, entity_service=lambda _matter: service,
+    bench = SimpleNamespace(workspace=workspace, entity_service=lambda _matter, **_kwargs: service,
         source_store=lambda _matter: SimpleNamespace(get=lambda _id: None))
     readings = iter(readiness or [{}, {}])
     module.install_briefing_home(templates, bench=bench,
         auth_context=lambda _request: SimpleNamespace(principal_id='generated-actor'),
-        readiness_for=lambda _matter: next(readings))
+        readiness_for=lambda _matter, **_kwargs: next(readings))
     return templates.env.globals, request, matter, bench
 
 
@@ -87,6 +87,46 @@ def test_snapshot_completion_is_rechecked_and_read_only_administrator_is_not_imp
     globals_, request, matter, _bench = helper(monkeypatch, member=False)
     assert globals_['home_briefing'](request, matter) is None
     assert len(calls) == 1
+
+
+def test_home_captures_one_live_store_before_locked_readiness_and_assembly(monkeypatch):
+    globals_, request, matter, bench = helper(monkeypatch)
+    store = SimpleNamespace(get=lambda _id: None)
+    calls = []
+
+    def source_store(selected):
+        assert selected is matter
+        assert not bench.workspace._lock._is_owned()
+        calls.append("store")
+        return store
+
+    def entity_service(selected, *, store):
+        assert selected is matter and store is captured
+        assert not bench.workspace._lock._is_owned()
+        return SimpleNamespace(source_guard=nullcontext)
+
+    def readiness(selected, *, store):
+        assert selected is matter and store is captured
+        assert bench.workspace._lock._is_owned()
+        calls.append("readiness")
+        return {"can_query": True}
+
+    def build(*_args, **kwargs):
+        assert bench.workspace._lock._is_owned()
+        assert kwargs["source_metadata"] == captured.get
+        calls.append("build")
+        return Briefing(matter.matter_id, matter.slug, (), ())
+
+    captured = store
+    bench.source_store = source_store
+    bench.entity_service = entity_service
+    templates = SimpleNamespace(env=SimpleNamespace(globals=globals_))
+    module.install_briefing_home(templates, bench=bench,
+        auth_context=lambda _request: SimpleNamespace(principal_id="generated-actor"),
+        readiness_for=readiness)
+    monkeypatch.setattr(module, "build_briefing", build)
+    assert globals_["home_briefing"](request, matter)["can_query"] is True
+    assert calls == ["store", "readiness", "build", "readiness"]
 
 
 def test_terminal_failures_and_paused_discovery_show_briefing_and_read_limit_is_linked(monkeypatch):
