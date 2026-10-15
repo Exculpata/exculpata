@@ -60,6 +60,14 @@ def test_theme_fonts_are_self_hosted_with_licenses():
     # The previous gray fails 4.5:1 on the light canvas. Placeholders use muted text.
     assert "#8993a4" not in styles
     assert "textarea::placeholder,\n.matter-search-form input::placeholder {\n  color: var(--ink-faint);" in styles
+    # Source-library hints lost their Dusk-only color. The browser gray is 4.22:1 on dark canvas.
+    assert (
+        ".source-library-filters input::placeholder,\n"
+        ".source-bulk-toolbar input::placeholder {\n"
+        "  color: var(--ink-faint);\n"
+        "  opacity: 1;\n"
+        "}"
+    ) in styles
     dependencies = (ROOT / "docs/DEPENDENCIES.md").read_text(encoding="utf-8")
     assert "Geist" in dependencies and "JetBrains Mono" in dependencies
     assert "SIL Open Font License" in dependencies
