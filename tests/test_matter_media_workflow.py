@@ -1876,7 +1876,9 @@ def test_interrupted_overview_at_automatic_limit_requires_manual_retry(tmp_path)
         bench = client.app.state.workbench
         matter = bench.matter(slug, ACTOR)
         failed = _wait_for_summary(bench, matter, document, "failed")
-        with bench.workspace.connection:
+        # The media coordinator still shares this connection. Hold the workspace
+        # lock for the fixture write so it cannot overlap a worker statement.
+        with bench.workspace._lock, bench.workspace.connection:
             bench.workspace.connection.execute(
                 "UPDATE workbench_media_summary SET state='running',attempts=? "
                 "WHERE transcript_id=?",
@@ -1985,7 +1987,8 @@ def test_report_media_clip_export_re_resolves_exact_timestamped_source(tmp_path)
         assert "Interview.wav — 00:00–00:02" in exported.text
 
         foreign_marker = "Generated foreign recording label"
-        with bench.workspace.connection:
+        # Report and media workers still share this connection.
+        with bench.workspace._lock, bench.workspace.connection:
             bench.workspace.connection.execute(
                 "UPDATE workbench_report_citation SET source_name=? "
                 "WHERE matter_id=? AND report_id=? AND kind='media_clip'",
