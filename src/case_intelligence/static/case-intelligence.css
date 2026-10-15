@@ -3448,6 +3448,13 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   background: var(--canvas);
 }
 
+/* The browser placeholder gray is about 4.22:1 on the dark canvas. */
+.source-library-filters input::placeholder,
+.source-bulk-toolbar input::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
 .upload-collection-name > span {
   color: var(--ink-soft);
   font-size: 12px;
