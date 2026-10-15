@@ -1,116 +1,244 @@
-# Exculpata theme
+# Exculpata appearance
 
-The workbench uses the approved tokens in
-`src/case_intelligence/static/theme-tokens.css`. Dark is the default
-appearance. Light remains available, and Dusk keeps its existing palette.
-The appearance control still switches among Dark, Light, and Dusk.
+Choose **Dark** or **Light** independently from **Cyan**, **Green**, or **Amber** in the top bar. On narrow screens both controls are in the account menu. Each choice is saved for the signed-in person, survives reload and sign-in, and leaves the other choice unchanged. The default is Dark/Cyan. Dusk is retired; an existing Dusk preference migrates to Dark/Cyan while retaining its timestamp. Existing Light and Dark preferences retain their mode and gain Cyan.
 
-In Dark appearance, the Review / Add sources page heading uses the theme text
-color. Selected Ask conversations use the raised-panel background with the
-existing theme title and muted metadata colors. Light retains its pale selected
-card and existing text colors. The Ask matter heading keeps its separate theme
-treatment. See the [synthetic Chrome evidence](ui-usability-audit/2026-10-11/review-conversation/receipt.json).
+All six palettes are generated into `src/case_intelligence/static/theme-tokens.css` by `scripts/contrast.py --write`. Run `python scripts/contrast.py` to validate both the checked-in values and WCAG AA contrast. Mode and accent are selected by `data-theme` and `data-accent` on the root element. Pages without attributes use Dark/Cyan; operating-system appearance does not override a saved preference.
 
-Disabled buttons outside the source library stay on the Light disabled
-treatment when Dusk is selected. Their fill and text are already fixed, and
-their danger or secondary border stays on the Light error and strong-border
-tokens. Disabled controls inside the source library keep the Dusk
-source-library treatment.
+Text and accent labels meet 4.5:1; strong control borders and focus indicators meet 3:1. Checks include raised panels, hover and active accents, text selection, disabled controls' muted text, and semantic surfaces. Warning, error, and success foreground/background tokens are identical across accents within a mode. Status words and icons retain their meaning even when the chosen brand accent is amber or green. The review banner and retention/grace status use warning/error tokens, never the brand accent. The fixed brand logo remains the approved logo asset.
 
-Fonts are self-hosted in `src/case_intelligence/static/fonts/` and loaded
-with relative `@font-face` URLs. Geist is used for interface text and
-headings. JetBrains Mono is used for code, identifiers, and citations.
+`case-intelligence.css` references tokens rather than hardcoded accent colors. Prefer `--x-accent`, `--x-accent-hover`, `--x-accent-active`, and `--x-accent-contrast` for actions; `--x-warning`, `--x-error`, or `--x-success` with the corresponding `*-bg` token for status. Use `--x-text-muted` for secondary text, `--x-border-strong` for control boundaries, and `--x-focus-ring` for keyboard focus. Shadows use the neutral `--x-shadow` token.
 
-The token file still follows `prefers-color-scheme` only when no
-`data-theme` attribute is present. Signed-in pages set `data-theme` from
-the saved appearance, which defaults to dark.
+Fonts remain self-hosted under `static/fonts`: Geist for interface text and JetBrains Mono for code/citations, each with its SIL Open Font License 1.1 file. No remote styles, fonts, scripts, or requests are needed for appearance changes.
 
-## Token specification
+## Validation and migration
 
-The tokens live in `src/case_intelligence/static/theme-tokens.css` as `--x-*` custom properties.
-- The default theme follows `prefers-color-scheme`.
-- Setting `data-theme="dark"` or `data-theme="light"` on `<html>` (or any container) forces that theme.
+The synthetic backup/clean-restore/upgrade/rollback drill is in `tests/test_appearance_accents.py`; see [storage guidance](STORAGE_AND_BACKUP.md). Route tests cover authentication, CSRF, safe redirects, compatibility headers, repeated updates, principal isolation, and a fresh sign-in. The browser journeys exercise all six combinations and mobile controls. [Screenshot evidence](brand-accent-evidence/README.md) includes Home, Ask, and Case file for every combination plus the pre-change Dusk view.
 
-## Tokens
-| Token | Use |
-|---|---|
-| `bg` | App background |
-| `panel` | Cards, sidebars, list rows |
-| `panel-raised` | Popovers, modals, menus |
-| `text` | Body text |
-| `text-muted` | Secondary text, metadata, timestamps |
-| `border` | Decorative dividers (contrast not required) |
-| `border-strong` | Input and control borders that must be visible (at least 3:1) |
-| `accent`, `accent-hover`, `accent-active` | Links, primary buttons, the brand cursor. Primary is Proof Cyan. |
-| `accent-contrast` | Label text on accent-filled buttons |
-| `success` | Receipted, cited, ok (green family) |
-| `warning` | Disclosed issues, partial results (amber family) |
-| `error` | Failures, destructive actions |
-| `focus-ring` | `:focus-visible` outline: 2px wide with a 2px offset |
-| `selection-bg` | Background of selected text |
-| `font-sans` / `font-mono` | Geist / JetBrains Mono, with system fallbacks |
+## Generated contrast checks
 
-## Fonts
-- Geist and JetBrains Mono are both licensed under the SIL Open Font License 1.1. The license texts are `src/case_intelligence/static/fonts/OFL-Geist.txt` and `src/case_intelligence/static/fonts/OFL-JetBrainsMono.txt`, taken from the upstream repos.
-- The woff2 files are the Latin-subset variable fonts (from Fontsource), loaded with `@font-face` from relative paths. Nothing is fetched at runtime.
+222 checks across six palettes. Values below are generated from the same checked token sets.
 
-## Adjusted by the contrast script
-- dark `--x-text-muted`: #787E86 → **#82878E**
-- dark `--x-border-strong`: #5A616B → **#5C646E**
-- light `--x-border-strong`: #8A8F96 → **#81868E**
-- light `--x-success`: #0E8A4A → **#0C7A41**
-- light `--x-warning`: #A15C00 → **#9C5900**
-
-## WCAG AA contrast (generated by `python3 contrast.py`)
-| Theme | Pair | Ratio | Minimum | Result |
-|---|---|---|---|---|
-| dark | `text` #EDEAE2 on `bg` #0B0D10 | 16.19:1 | 4.5:1 | PASS |
-| dark | `text` #EDEAE2 on `panel` #14161A | 15.07:1 | 4.5:1 | PASS |
-| dark | `text` #EDEAE2 on `panel-raised` #1C1F24 | 13.75:1 | 4.5:1 | PASS |
-| dark | `text-muted` #82878E on `bg` #0B0D10 | 5.38:1 | 4.5:1 | PASS |
-| dark | `text-muted` #82878E on `panel` #14161A | 5.01:1 | 4.5:1 | PASS |
-| dark | `text-muted` #82878E on `panel-raised` #1C1F24 | 4.57:1 | 4.5:1 | PASS |
-| dark | `accent` #22D3EE on `bg` #0B0D10 | 10.77:1 | 4.5:1 | PASS |
-| dark | `accent` #22D3EE on `panel` #14161A | 10.02:1 | 4.5:1 | PASS |
-| dark | `accent-hover` #67E8F9 on `bg` #0B0D10 | 13.42:1 | 4.5:1 | PASS |
-| dark | `accent-active` #06B6D4 on `bg` #0B0D10 | 8.01:1 | 4.5:1 | PASS |
-| dark | `success` #39FF88 on `bg` #0B0D10 | 14.67:1 | 4.5:1 | PASS |
-| dark | `warning` #FFB020 on `bg` #0B0D10 | 10.64:1 | 4.5:1 | PASS |
-| dark | `error` #FF6B6B on `bg` #0B0D10 | 7.01:1 | 4.5:1 | PASS |
-| dark | `success` #39FF88 on `panel` #14161A | 13.66:1 | 4.5:1 | PASS |
-| dark | `warning` #FFB020 on `panel` #14161A | 9.90:1 | 4.5:1 | PASS |
-| dark | `error` #FF6B6B on `panel` #14161A | 6.53:1 | 4.5:1 | PASS |
-| dark | `accent-contrast` #0B0D10 on `accent` #22D3EE | 10.77:1 | 4.5:1 | PASS |
-| dark | `accent-contrast` #0B0D10 on `accent-hover` #67E8F9 | 13.42:1 | 4.5:1 | PASS |
-| dark | `accent-contrast` #0B0D10 on `accent-active` #06B6D4 | 8.01:1 | 4.5:1 | PASS |
-| dark | `text` #EDEAE2 on `selection-bg` #0E4A57 | 8.18:1 | 4.5:1 | PASS |
-| dark | `border-strong` #5C646E on `bg` #0B0D10 | 3.25:1 | 3:1 | PASS |
-| dark | `border-strong` #5C646E on `panel` #14161A | 3.02:1 | 3:1 | PASS |
-| dark | `focus-ring` #22D3EE on `bg` #0B0D10 | 10.77:1 | 3:1 | PASS |
-| dark | `focus-ring` #22D3EE on `panel` #14161A | 10.02:1 | 3:1 | PASS |
-| dark | `focus-ring` #22D3EE on `panel-raised` #1C1F24 | 9.14:1 | 3:1 | PASS |
-| light | `text` #0B0D10 on `bg` #F7F5F0 | 17.86:1 | 4.5:1 | PASS |
-| light | `text` #0B0D10 on `panel` #EDEAE2 | 16.19:1 | 4.5:1 | PASS |
-| light | `text` #0B0D10 on `panel-raised` #FFFFFF | 19.46:1 | 4.5:1 | PASS |
-| light | `text-muted` #5A6069 on `bg` #F7F5F0 | 5.82:1 | 4.5:1 | PASS |
-| light | `text-muted` #5A6069 on `panel` #EDEAE2 | 5.27:1 | 4.5:1 | PASS |
-| light | `text-muted` #5A6069 on `panel-raised` #FFFFFF | 6.34:1 | 4.5:1 | PASS |
-| light | `accent` #097488 on `bg` #F7F5F0 | 4.99:1 | 4.5:1 | PASS |
-| light | `accent` #097488 on `panel` #EDEAE2 | 4.52:1 | 4.5:1 | PASS |
-| light | `accent-hover` #086A7C on `bg` #F7F5F0 | 5.73:1 | 4.5:1 | PASS |
-| light | `accent-active` #065A69 on `bg` #F7F5F0 | 7.21:1 | 4.5:1 | PASS |
-| light | `success` #0C7A41 on `bg` #F7F5F0 | 4.97:1 | 4.5:1 | PASS |
-| light | `warning` #9C5900 on `bg` #F7F5F0 | 5.02:1 | 4.5:1 | PASS |
-| light | `error` #C2281F on `bg` #F7F5F0 | 5.33:1 | 4.5:1 | PASS |
-| light | `success` #0C7A41 on `panel` #EDEAE2 | 4.51:1 | 4.5:1 | PASS |
-| light | `warning` #9C5900 on `panel` #EDEAE2 | 4.55:1 | 4.5:1 | PASS |
-| light | `error` #C2281F on `panel` #EDEAE2 | 4.83:1 | 4.5:1 | PASS |
-| light | `accent-contrast` #FFFFFF on `accent` #097488 | 5.43:1 | 4.5:1 | PASS |
-| light | `accent-contrast` #FFFFFF on `accent-hover` #086A7C | 6.24:1 | 4.5:1 | PASS |
-| light | `accent-contrast` #FFFFFF on `accent-active` #065A69 | 7.85:1 | 4.5:1 | PASS |
-| light | `text` #0B0D10 on `selection-bg` #BDEBF3 | 15.14:1 | 4.5:1 | PASS |
-| light | `border-strong` #81868E on `bg` #F7F5F0 | 3.36:1 | 3:1 | PASS |
-| light | `border-strong` #81868E on `panel` #EDEAE2 | 3.05:1 | 3:1 | PASS |
-| light | `focus-ring` #097488 on `bg` #F7F5F0 | 4.99:1 | 3:1 | PASS |
-| light | `focus-ring` #097488 on `panel` #EDEAE2 | 4.52:1 | 3:1 | PASS |
-| light | `focus-ring` #097488 on `panel-raised` #FFFFFF | 5.43:1 | 3:1 | PASS |
+| Appearance | Pair | Ratio | Minimum |
+|---|---|---:|---:|
+| dark-cyan | `text` on `bg` | 16.19:1 | 4.5:1 |
+| dark-cyan | `text` on `panel` | 15.07:1 | 4.5:1 |
+| dark-cyan | `text` on `panel-raised` | 13.75:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `bg` | 6.05:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `panel` | 5.63:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `panel-raised` | 5.14:1 | 4.5:1 |
+| dark-cyan | `accent` on `bg` | 10.77:1 | 4.5:1 |
+| dark-cyan | `accent` on `panel` | 10.02:1 | 4.5:1 |
+| dark-cyan | `accent` on `panel-raised` | 9.14:1 | 4.5:1 |
+| dark-cyan | `accent-hover` on `bg` | 13.42:1 | 4.5:1 |
+| dark-cyan | `accent-hover` on `panel` | 12.50:1 | 4.5:1 |
+| dark-cyan | `accent-hover` on `panel-raised` | 11.40:1 | 4.5:1 |
+| dark-cyan | `accent-active` on `bg` | 8.01:1 | 4.5:1 |
+| dark-cyan | `accent-active` on `panel` | 7.46:1 | 4.5:1 |
+| dark-cyan | `accent-active` on `panel-raised` | 6.81:1 | 4.5:1 |
+| dark-cyan | `success` on `bg` | 14.67:1 | 4.5:1 |
+| dark-cyan | `warning` on `bg` | 10.64:1 | 4.5:1 |
+| dark-cyan | `error` on `bg` | 7.01:1 | 4.5:1 |
+| dark-cyan | `success` on `panel` | 13.66:1 | 4.5:1 |
+| dark-cyan | `warning` on `panel` | 9.90:1 | 4.5:1 |
+| dark-cyan | `error` on `panel` | 6.53:1 | 4.5:1 |
+| dark-cyan | `warning` on `warning-bg` | 7.95:1 | 4.5:1 |
+| dark-cyan | `error` on `error-bg` | 5.68:1 | 4.5:1 |
+| dark-cyan | `success` on `success-bg` | 11.06:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `warning-bg` | 4.52:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `error-bg` | 4.90:1 | 4.5:1 |
+| dark-cyan | `text-muted` on `success-bg` | 4.56:1 | 4.5:1 |
+| dark-cyan | `accent-contrast` on `accent` | 10.77:1 | 4.5:1 |
+| dark-cyan | `accent-contrast` on `accent-hover` | 13.42:1 | 4.5:1 |
+| dark-cyan | `accent-contrast` on `accent-active` | 8.01:1 | 4.5:1 |
+| dark-cyan | `text` on `selection-bg` | 8.18:1 | 4.5:1 |
+| dark-cyan | `border-strong` on `bg` | 3.56:1 | 3:1 |
+| dark-cyan | `border-strong` on `panel` | 3.31:1 | 3:1 |
+| dark-cyan | `border-strong` on `panel-raised` | 3.02:1 | 3:1 |
+| dark-cyan | `focus-ring` on `bg` | 10.77:1 | 3:1 |
+| dark-cyan | `focus-ring` on `panel` | 10.02:1 | 3:1 |
+| dark-cyan | `focus-ring` on `panel-raised` | 9.14:1 | 3:1 |
+| dark-green | `text` on `bg` | 16.19:1 | 4.5:1 |
+| dark-green | `text` on `panel` | 15.07:1 | 4.5:1 |
+| dark-green | `text` on `panel-raised` | 13.75:1 | 4.5:1 |
+| dark-green | `text-muted` on `bg` | 6.05:1 | 4.5:1 |
+| dark-green | `text-muted` on `panel` | 5.63:1 | 4.5:1 |
+| dark-green | `text-muted` on `panel-raised` | 5.14:1 | 4.5:1 |
+| dark-green | `accent` on `bg` | 14.67:1 | 4.5:1 |
+| dark-green | `accent` on `panel` | 13.66:1 | 4.5:1 |
+| dark-green | `accent` on `panel-raised` | 12.46:1 | 4.5:1 |
+| dark-green | `accent-hover` on `bg` | 15.53:1 | 4.5:1 |
+| dark-green | `accent-hover` on `panel` | 14.45:1 | 4.5:1 |
+| dark-green | `accent-hover` on `panel-raised` | 13.19:1 | 4.5:1 |
+| dark-green | `accent-active` on `bg` | 10.38:1 | 4.5:1 |
+| dark-green | `accent-active` on `panel` | 9.67:1 | 4.5:1 |
+| dark-green | `accent-active` on `panel-raised` | 8.82:1 | 4.5:1 |
+| dark-green | `success` on `bg` | 14.67:1 | 4.5:1 |
+| dark-green | `warning` on `bg` | 10.64:1 | 4.5:1 |
+| dark-green | `error` on `bg` | 7.01:1 | 4.5:1 |
+| dark-green | `success` on `panel` | 13.66:1 | 4.5:1 |
+| dark-green | `warning` on `panel` | 9.90:1 | 4.5:1 |
+| dark-green | `error` on `panel` | 6.53:1 | 4.5:1 |
+| dark-green | `warning` on `warning-bg` | 7.95:1 | 4.5:1 |
+| dark-green | `error` on `error-bg` | 5.68:1 | 4.5:1 |
+| dark-green | `success` on `success-bg` | 11.06:1 | 4.5:1 |
+| dark-green | `text-muted` on `warning-bg` | 4.52:1 | 4.5:1 |
+| dark-green | `text-muted` on `error-bg` | 4.90:1 | 4.5:1 |
+| dark-green | `text-muted` on `success-bg` | 4.56:1 | 4.5:1 |
+| dark-green | `accent-contrast` on `accent` | 14.67:1 | 4.5:1 |
+| dark-green | `accent-contrast` on `accent-hover` | 15.53:1 | 4.5:1 |
+| dark-green | `accent-contrast` on `accent-active` | 10.38:1 | 4.5:1 |
+| dark-green | `text` on `selection-bg` | 8.24:1 | 4.5:1 |
+| dark-green | `border-strong` on `bg` | 3.56:1 | 3:1 |
+| dark-green | `border-strong` on `panel` | 3.31:1 | 3:1 |
+| dark-green | `border-strong` on `panel-raised` | 3.02:1 | 3:1 |
+| dark-green | `focus-ring` on `bg` | 14.67:1 | 3:1 |
+| dark-green | `focus-ring` on `panel` | 13.66:1 | 3:1 |
+| dark-green | `focus-ring` on `panel-raised` | 12.46:1 | 3:1 |
+| dark-amber | `text` on `bg` | 16.19:1 | 4.5:1 |
+| dark-amber | `text` on `panel` | 15.07:1 | 4.5:1 |
+| dark-amber | `text` on `panel-raised` | 13.75:1 | 4.5:1 |
+| dark-amber | `text-muted` on `bg` | 6.05:1 | 4.5:1 |
+| dark-amber | `text-muted` on `panel` | 5.63:1 | 4.5:1 |
+| dark-amber | `text-muted` on `panel-raised` | 5.14:1 | 4.5:1 |
+| dark-amber | `accent` on `bg` | 10.64:1 | 4.5:1 |
+| dark-amber | `accent` on `panel` | 9.90:1 | 4.5:1 |
+| dark-amber | `accent` on `panel-raised` | 9.04:1 | 4.5:1 |
+| dark-amber | `accent-hover` on `bg` | 12.87:1 | 4.5:1 |
+| dark-amber | `accent-hover` on `panel` | 11.98:1 | 4.5:1 |
+| dark-amber | `accent-hover` on `panel-raised` | 10.93:1 | 4.5:1 |
+| dark-amber | `accent-active` on `bg` | 8.42:1 | 4.5:1 |
+| dark-amber | `accent-active` on `panel` | 7.84:1 | 4.5:1 |
+| dark-amber | `accent-active` on `panel-raised` | 7.15:1 | 4.5:1 |
+| dark-amber | `success` on `bg` | 14.67:1 | 4.5:1 |
+| dark-amber | `warning` on `bg` | 10.64:1 | 4.5:1 |
+| dark-amber | `error` on `bg` | 7.01:1 | 4.5:1 |
+| dark-amber | `success` on `panel` | 13.66:1 | 4.5:1 |
+| dark-amber | `warning` on `panel` | 9.90:1 | 4.5:1 |
+| dark-amber | `error` on `panel` | 6.53:1 | 4.5:1 |
+| dark-amber | `warning` on `warning-bg` | 7.95:1 | 4.5:1 |
+| dark-amber | `error` on `error-bg` | 5.68:1 | 4.5:1 |
+| dark-amber | `success` on `success-bg` | 11.06:1 | 4.5:1 |
+| dark-amber | `text-muted` on `warning-bg` | 4.52:1 | 4.5:1 |
+| dark-amber | `text-muted` on `error-bg` | 4.90:1 | 4.5:1 |
+| dark-amber | `text-muted` on `success-bg` | 4.56:1 | 4.5:1 |
+| dark-amber | `accent-contrast` on `accent` | 10.64:1 | 4.5:1 |
+| dark-amber | `accent-contrast` on `accent-hover` | 12.87:1 | 4.5:1 |
+| dark-amber | `accent-contrast` on `accent-active` | 8.42:1 | 4.5:1 |
+| dark-amber | `text` on `selection-bg` | 8.57:1 | 4.5:1 |
+| dark-amber | `border-strong` on `bg` | 3.56:1 | 3:1 |
+| dark-amber | `border-strong` on `panel` | 3.31:1 | 3:1 |
+| dark-amber | `border-strong` on `panel-raised` | 3.02:1 | 3:1 |
+| dark-amber | `focus-ring` on `bg` | 10.64:1 | 3:1 |
+| dark-amber | `focus-ring` on `panel` | 9.90:1 | 3:1 |
+| dark-amber | `focus-ring` on `panel-raised` | 9.04:1 | 3:1 |
+| light-cyan | `text` on `bg` | 17.86:1 | 4.5:1 |
+| light-cyan | `text` on `panel` | 16.19:1 | 4.5:1 |
+| light-cyan | `text` on `panel-raised` | 19.46:1 | 4.5:1 |
+| light-cyan | `text-muted` on `bg` | 5.82:1 | 4.5:1 |
+| light-cyan | `text-muted` on `panel` | 5.27:1 | 4.5:1 |
+| light-cyan | `text-muted` on `panel-raised` | 6.34:1 | 4.5:1 |
+| light-cyan | `accent` on `bg` | 4.99:1 | 4.5:1 |
+| light-cyan | `accent` on `panel` | 4.52:1 | 4.5:1 |
+| light-cyan | `accent` on `panel-raised` | 5.43:1 | 4.5:1 |
+| light-cyan | `accent-hover` on `bg` | 5.73:1 | 4.5:1 |
+| light-cyan | `accent-hover` on `panel` | 5.19:1 | 4.5:1 |
+| light-cyan | `accent-hover` on `panel-raised` | 6.24:1 | 4.5:1 |
+| light-cyan | `accent-active` on `bg` | 7.21:1 | 4.5:1 |
+| light-cyan | `accent-active` on `panel` | 6.53:1 | 4.5:1 |
+| light-cyan | `accent-active` on `panel-raised` | 7.85:1 | 4.5:1 |
+| light-cyan | `success` on `bg` | 4.97:1 | 4.5:1 |
+| light-cyan | `warning` on `bg` | 5.02:1 | 4.5:1 |
+| light-cyan | `error` on `bg` | 5.33:1 | 4.5:1 |
+| light-cyan | `success` on `panel` | 4.51:1 | 4.5:1 |
+| light-cyan | `warning` on `panel` | 4.55:1 | 4.5:1 |
+| light-cyan | `error` on `panel` | 4.83:1 | 4.5:1 |
+| light-cyan | `warning` on `warning-bg` | 4.93:1 | 4.5:1 |
+| light-cyan | `error` on `error-bg` | 5.07:1 | 4.5:1 |
+| light-cyan | `success` on `success-bg` | 4.71:1 | 4.5:1 |
+| light-cyan | `text-muted` on `warning-bg` | 5.72:1 | 4.5:1 |
+| light-cyan | `text-muted` on `error-bg` | 5.54:1 | 4.5:1 |
+| light-cyan | `text-muted` on `success-bg` | 5.51:1 | 4.5:1 |
+| light-cyan | `accent-contrast` on `accent` | 5.43:1 | 4.5:1 |
+| light-cyan | `accent-contrast` on `accent-hover` | 6.24:1 | 4.5:1 |
+| light-cyan | `accent-contrast` on `accent-active` | 7.85:1 | 4.5:1 |
+| light-cyan | `text` on `selection-bg` | 15.14:1 | 4.5:1 |
+| light-cyan | `border-strong` on `bg` | 3.36:1 | 3:1 |
+| light-cyan | `border-strong` on `panel` | 3.05:1 | 3:1 |
+| light-cyan | `border-strong` on `panel-raised` | 3.66:1 | 3:1 |
+| light-cyan | `focus-ring` on `bg` | 4.99:1 | 3:1 |
+| light-cyan | `focus-ring` on `panel` | 4.52:1 | 3:1 |
+| light-cyan | `focus-ring` on `panel-raised` | 5.43:1 | 3:1 |
+| light-green | `text` on `bg` | 17.86:1 | 4.5:1 |
+| light-green | `text` on `panel` | 16.19:1 | 4.5:1 |
+| light-green | `text` on `panel-raised` | 19.46:1 | 4.5:1 |
+| light-green | `text-muted` on `bg` | 5.82:1 | 4.5:1 |
+| light-green | `text-muted` on `panel` | 5.27:1 | 4.5:1 |
+| light-green | `text-muted` on `panel-raised` | 6.34:1 | 4.5:1 |
+| light-green | `accent` on `bg` | 4.97:1 | 4.5:1 |
+| light-green | `accent` on `panel` | 4.51:1 | 4.5:1 |
+| light-green | `accent` on `panel-raised` | 5.42:1 | 4.5:1 |
+| light-green | `accent-hover` on `bg` | 5.04:1 | 4.5:1 |
+| light-green | `accent-hover` on `panel` | 4.57:1 | 4.5:1 |
+| light-green | `accent-hover` on `panel-raised` | 5.49:1 | 4.5:1 |
+| light-green | `accent-active` on `bg` | 6.60:1 | 4.5:1 |
+| light-green | `accent-active` on `panel` | 5.98:1 | 4.5:1 |
+| light-green | `accent-active` on `panel-raised` | 7.19:1 | 4.5:1 |
+| light-green | `success` on `bg` | 4.97:1 | 4.5:1 |
+| light-green | `warning` on `bg` | 5.02:1 | 4.5:1 |
+| light-green | `error` on `bg` | 5.33:1 | 4.5:1 |
+| light-green | `success` on `panel` | 4.51:1 | 4.5:1 |
+| light-green | `warning` on `panel` | 4.55:1 | 4.5:1 |
+| light-green | `error` on `panel` | 4.83:1 | 4.5:1 |
+| light-green | `warning` on `warning-bg` | 4.93:1 | 4.5:1 |
+| light-green | `error` on `error-bg` | 5.07:1 | 4.5:1 |
+| light-green | `success` on `success-bg` | 4.71:1 | 4.5:1 |
+| light-green | `text-muted` on `warning-bg` | 5.72:1 | 4.5:1 |
+| light-green | `text-muted` on `error-bg` | 5.54:1 | 4.5:1 |
+| light-green | `text-muted` on `success-bg` | 5.51:1 | 4.5:1 |
+| light-green | `accent-contrast` on `accent` | 5.42:1 | 4.5:1 |
+| light-green | `accent-contrast` on `accent-hover` | 5.49:1 | 4.5:1 |
+| light-green | `accent-contrast` on `accent-active` | 7.19:1 | 4.5:1 |
+| light-green | `text` on `selection-bg` | 15.04:1 | 4.5:1 |
+| light-green | `border-strong` on `bg` | 3.36:1 | 3:1 |
+| light-green | `border-strong` on `panel` | 3.05:1 | 3:1 |
+| light-green | `border-strong` on `panel-raised` | 3.66:1 | 3:1 |
+| light-green | `focus-ring` on `bg` | 4.06:1 | 3:1 |
+| light-green | `focus-ring` on `panel` | 3.68:1 | 3:1 |
+| light-green | `focus-ring` on `panel-raised` | 4.42:1 | 3:1 |
+| light-amber | `text` on `bg` | 17.86:1 | 4.5:1 |
+| light-amber | `text` on `panel` | 16.19:1 | 4.5:1 |
+| light-amber | `text` on `panel-raised` | 19.46:1 | 4.5:1 |
+| light-amber | `text-muted` on `bg` | 5.82:1 | 4.5:1 |
+| light-amber | `text-muted` on `panel` | 5.27:1 | 4.5:1 |
+| light-amber | `text-muted` on `panel-raised` | 6.34:1 | 4.5:1 |
+| light-amber | `accent` on `bg` | 5.02:1 | 4.5:1 |
+| light-amber | `accent` on `panel` | 4.55:1 | 4.5:1 |
+| light-amber | `accent` on `panel-raised` | 5.47:1 | 4.5:1 |
+| light-amber | `accent-hover` on `bg` | 5.91:1 | 4.5:1 |
+| light-amber | `accent-hover` on `panel` | 5.35:1 | 4.5:1 |
+| light-amber | `accent-hover` on `panel-raised` | 6.44:1 | 4.5:1 |
+| light-amber | `accent-active` on `bg` | 7.53:1 | 4.5:1 |
+| light-amber | `accent-active` on `panel` | 6.83:1 | 4.5:1 |
+| light-amber | `accent-active` on `panel-raised` | 8.21:1 | 4.5:1 |
+| light-amber | `success` on `bg` | 4.97:1 | 4.5:1 |
+| light-amber | `warning` on `bg` | 5.02:1 | 4.5:1 |
+| light-amber | `error` on `bg` | 5.33:1 | 4.5:1 |
+| light-amber | `success` on `panel` | 4.51:1 | 4.5:1 |
+| light-amber | `warning` on `panel` | 4.55:1 | 4.5:1 |
+| light-amber | `error` on `panel` | 4.83:1 | 4.5:1 |
+| light-amber | `warning` on `warning-bg` | 4.93:1 | 4.5:1 |
+| light-amber | `error` on `error-bg` | 5.07:1 | 4.5:1 |
+| light-amber | `success` on `success-bg` | 4.71:1 | 4.5:1 |
+| light-amber | `text-muted` on `warning-bg` | 5.72:1 | 4.5:1 |
+| light-amber | `text-muted` on `error-bg` | 5.54:1 | 4.5:1 |
+| light-amber | `text-muted` on `success-bg` | 5.51:1 | 4.5:1 |
+| light-amber | `accent-contrast` on `accent` | 5.47:1 | 4.5:1 |
+| light-amber | `accent-contrast` on `accent-hover` | 6.44:1 | 4.5:1 |
+| light-amber | `accent-contrast` on `accent-active` | 8.21:1 | 4.5:1 |
+| light-amber | `text` on `selection-bg` | 14.96:1 | 4.5:1 |
+| light-amber | `border-strong` on `bg` | 3.36:1 | 3:1 |
+| light-amber | `border-strong` on `panel` | 3.05:1 | 3:1 |
+| light-amber | `border-strong` on `panel-raised` | 3.66:1 | 3:1 |
+| light-amber | `focus-ring` on `bg` | 4.76:1 | 3:1 |
+| light-amber | `focus-ring` on `panel` | 4.32:1 | 3:1 |
+| light-amber | `focus-ring` on `panel-raised` | 5.19:1 | 3:1 |

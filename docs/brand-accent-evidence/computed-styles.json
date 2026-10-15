@@ -1,0 +1,176 @@
+[
+  {
+    "accent": "cyan",
+    "action": {
+      "background": "rgb(34, 211, 238)",
+      "color": "rgb(11, 13, 16)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(34, 211, 238)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "dark",
+    "tokens": {
+      "accent": "#22D3EE",
+      "accent-contrast": "#0B0D10",
+      "bg": "#0B0D10",
+      "error": "#FF6B6B",
+      "error-bg": "#321D20",
+      "focus-ring": "#22D3EE",
+      "panel": "#14161A",
+      "panel-raised": "#1C1F24",
+      "text-muted": "#8B9096",
+      "warning": "#FFB020",
+      "warning-bg": "#30281A"
+    },
+    "actionContrast": 10.767,
+    "focusMinimumContrast": 9.144
+  },
+  {
+    "accent": "green",
+    "action": {
+      "background": "rgb(57, 255, 136)",
+      "color": "rgb(11, 13, 16)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(57, 255, 136)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "dark",
+    "tokens": {
+      "accent": "#39FF88",
+      "accent-contrast": "#0B0D10",
+      "bg": "#0B0D10",
+      "error": "#FF6B6B",
+      "error-bg": "#321D20",
+      "focus-ring": "#39FF88",
+      "panel": "#14161A",
+      "panel-raised": "#1C1F24",
+      "text-muted": "#8B9096",
+      "warning": "#FFB020",
+      "warning-bg": "#30281A"
+    },
+    "actionContrast": 14.67,
+    "focusMinimumContrast": 12.459
+  },
+  {
+    "accent": "amber",
+    "action": {
+      "background": "rgb(255, 176, 32)",
+      "color": "rgb(11, 13, 16)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(255, 176, 32)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "dark",
+    "tokens": {
+      "accent": "#FFB020",
+      "accent-contrast": "#0B0D10",
+      "bg": "#0B0D10",
+      "error": "#FF6B6B",
+      "error-bg": "#321D20",
+      "focus-ring": "#FFB020",
+      "panel": "#14161A",
+      "panel-raised": "#1C1F24",
+      "text-muted": "#8B9096",
+      "warning": "#FFB020",
+      "warning-bg": "#30281A"
+    },
+    "actionContrast": 10.639,
+    "focusMinimumContrast": 9.036
+  },
+  {
+    "accent": "cyan",
+    "action": {
+      "background": "rgb(9, 116, 136)",
+      "color": "rgb(255, 255, 255)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(9, 116, 136)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "light",
+    "tokens": {
+      "accent": "#097488",
+      "accent-contrast": "#FFFFFF",
+      "bg": "#F7F5F0",
+      "error": "#C2281F",
+      "error-bg": "#FDECE9",
+      "focus-ring": "#097488",
+      "panel": "#EDEAE2",
+      "panel-raised": "#FFFFFF",
+      "text-muted": "#5A6069",
+      "warning": "#9C5900",
+      "warning-bg": "#FFF2D9"
+    },
+    "actionContrast": 5.433,
+    "focusMinimumContrast": 4.519
+  },
+  {
+    "accent": "green",
+    "action": {
+      "background": "rgb(12, 122, 65)",
+      "color": "rgb(255, 255, 255)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(14, 138, 74)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "light",
+    "tokens": {
+      "accent": "#0C7A41",
+      "accent-contrast": "#FFFFFF",
+      "bg": "#F7F5F0",
+      "error": "#C2281F",
+      "error-bg": "#FDECE9",
+      "focus-ring": "#0E8A4A",
+      "panel": "#EDEAE2",
+      "panel-raised": "#FFFFFF",
+      "text-muted": "#5A6069",
+      "warning": "#9C5900",
+      "warning-bg": "#FFF2D9"
+    },
+    "actionContrast": 5.418,
+    "focusMinimumContrast": 3.675
+  },
+  {
+    "accent": "amber",
+    "action": {
+      "background": "rgb(156, 89, 0)",
+      "color": "rgb(255, 255, 255)",
+      "opacity": "1"
+    },
+    "focus": {
+      "color": "rgb(161, 92, 0)",
+      "style": "solid",
+      "width": "2px"
+    },
+    "mode": "light",
+    "tokens": {
+      "accent": "#9C5900",
+      "accent-contrast": "#FFFFFF",
+      "bg": "#F7F5F0",
+      "error": "#C2281F",
+      "error-bg": "#FDECE9",
+      "focus-ring": "#A15C00",
+      "panel": "#EDEAE2",
+      "panel-raised": "#FFFFFF",
+      "text-muted": "#5A6069",
+      "warning": "#9C5900",
+      "warning-bg": "#FFF2D9"
+    },
+    "actionContrast": 5.465,
+    "focusMinimumContrast": 4.317
+  }
+]

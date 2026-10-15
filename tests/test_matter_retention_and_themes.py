@@ -137,7 +137,7 @@ def test_abandoned_upload_detection_and_theme_preference(tmp_path):
     assert store.abandoned_upload_sessions() == (session,)
 
     assert store.principal_preference("principal-owner").theme == "dark"
-    assert store.set_principal_theme("principal-owner", "dusk").theme == "dusk"
+    assert store.set_principal_theme("principal-owner", "light").theme == "light"
     assert store.set_principal_theme("principal-owner", "dark").theme == "dark"
     assert store.principal_preference("principal-owner").theme == "dark"
     with pytest.raises(WorkspaceProblem, match="available appearance"):
@@ -255,7 +255,7 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
         assert 'data-theme="dark"' in setup.text
         assert 'value="dark"' in setup.text
         assert 'value="light"' in setup.text
-        assert 'value="dusk"' in setup.text
+        assert 'value="dusk"' not in setup.text
         identifiers = re.findall(r'\bid="([^"]+)"', setup.text)
         assert len(identifiers) == len(set(identifiers))
         for accessible_control in (
@@ -310,13 +310,13 @@ def test_temporary_matter_theme_lifecycle_and_persistent_assistant_routes(tmp_pa
 
         themed = client.post(
             "/preferences/theme",
-            data={"theme": "dusk", "next": f"/matters/{slug}/setup"},
+            data={"theme": "dark", "next": f"/matters/{slug}/setup"},
             follow_redirects=False,
         )
         assert themed.status_code == 303
         assert themed.headers["location"] == f"/matters/{slug}/setup"
-        dusk = client.get(f"/matters/{slug}/setup")
-        assert 'data-theme="dusk"' in dusk.text
+        dark = client.get(f"/matters/{slug}/setup")
+        assert 'data-theme="dark"' in dark.text
         light = client.post(
             "/preferences/theme",
             data={"theme": "light", "next": f"/matters/{slug}/setup"},

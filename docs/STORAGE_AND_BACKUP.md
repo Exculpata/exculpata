@@ -527,3 +527,9 @@ The [C1 drill](#matter-objective-and-background-c1) uses
 [C2 drill](#charging-papers-as-background-documents-c2) uses
 `scripts/source-role-storage-restore-drill.py`. These references describe how to
 verify restoration, not evidence that a new drill or deployed-node check ran.
+
+## Appearance preference upgrade (0043)
+
+Before upgrading an existing workspace, follow the stopped-runtime backup and clean restore procedure above. Migration `0043_appearance_accents.sql` atomically rebuilds the principal preference table to replace Dusk with independent mode and accent fields. Dusk becomes Dark/Cyan; Light and Dark retain their mode with Cyan. Principal IDs and timestamps are preserved; other workspace tables are untouched.
+
+`tests/test_appearance_accents.py::test_legacy_dusk_migration_backup_clean_restore_and_rollback` exercises a synthetic legacy backup, removes the original, restores into a clean workspace, checks the migrated rows and SQLite integrity/foreign keys, then repeats backup/restore with a saved accent. It also restores the pre-upgrade snapshot as the rollback path. Downgrading an upgraded database in place is not supported: restore the pre-upgrade backup with the previous application version.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 _SPEC = importlib.util.spec_from_file_location(
@@ -54,7 +55,7 @@ def test_theme_fonts_are_self_hosted_with_licenses():
     assert login.index("theme-tokens.css") < login.index("case-intelligence.css")
     assert 'data-theme="{{ theme|default(\'dark\') }}"' in base
     assert 'data-theme="dark"' in login
-    assert 'value="dark"' in base and 'value="light"' in base and 'value="dusk"' in base
+    assert 'value="dark"' in base and 'value="light"' in base and 'value="dusk"' not in base
     assert "var(--x-font-sans)" in styles and "var(--font-mono)" in styles
     # The previous gray fails 4.5:1 on the light canvas. Placeholders use muted text.
     assert "#8993a4" not in styles
@@ -64,21 +65,70 @@ def test_theme_fonts_are_self_hosted_with_licenses():
     assert "SIL Open Font License" in dependencies
 
 
-def test_dusk_disabled_buttons_outside_the_source_library_keep_light_borders():
+def test_all_accents_keep_semantic_colors_and_disabled_controls():
     tokens = parse_theme_tokens(THEME_TOKENS.read_text(encoding="utf-8"))
-    styles = (STATIC / "case-intelligence.css").read_text(encoding="utf-8")
-    danger = (
-        'html[data-theme="dusk"] :is(.button-danger:disabled, .button-danger.disabled) {\n'
-        f"  border-color: {tokens['light']['error']};\n"
-        "}"
-    )
-    secondary = (
-        'html[data-theme="dusk"] :is(.button-secondary:disabled, .button-secondary.disabled) {\n'
-        f"  border-color: {tokens['light']['border-strong']};\n"
-        "}"
-    )
-    assert danger in styles
-    assert secondary in styles
-    library = 'html[data-theme="dusk"] .source-library :is(.button:disabled, .button.disabled)'
-    assert styles.index(danger) < styles.index(library)
-    assert styles.index(secondary) < styles.index(library)
+    assert len(tokens) == 6
+    for mode in ("dark", "light"):
+        for name in ("warning", "error", "success", "warning-bg", "error-bg", "success-bg"):
+            assert len({tokens[f"{mode}-{accent}"][name] for accent in ("cyan", "green", "amber")}) == 1
+    styles = (STATIC / "case-intelligence.css").read_text()
+    assert ".button-danger:disabled, .button-danger.disabled { border-color: var(--x-error); }" in styles
+    assert ".button-secondary:disabled, .button-secondary.disabled { border-color: var(--x-border-strong); }" in styles
+    for path in STATIC.glob("*.css"):
+        assert 'data-theme="dusk"' not in path.read_text()
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", styles)
+
+
+def test_generated_css_is_reproducible():
+    assert THEME_TOKENS.read_text() == _CONTRAST.render_tokens()
+
+
+def _declaration(css, selector, property_name):
+    """Read the last ordinary rule for a focused component selector."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    values = [value.strip() for selectors, block in re.findall(r"([^{}]+)\{([^{}]*)\}", css)
+              if selector in [part.strip() for part in selectors.split(",")]
+              for name, value in re.findall(r"([a-z-]+)\s*:\s*([^;]+);", block)
+              if name == property_name]
+    assert values, (selector, property_name)
+    return values[-1]
+
+
+def _token_value(palette, declaration):
+    match = re.fullmatch(r"var\(--x-([a-z-]+)\)", declaration)
+    assert match, f"Component color must follow its palette: {declaration}"
+    return palette[match[1]]
+
+
+def test_topbar_focus_and_citation_hover_follow_every_palette():
+    layout = (STATIC / "workspace-layout.css").read_text()
+    focus = _declaration(layout, ".topbar :focus-visible", "outline-color")
+    citation_text = _declaration(layout, ".citation-ref:hover", "color")
+    assert focus == "var(--x-focus-ring)"
+    assert citation_text == "var(--x-accent-contrast)"
+    for palette in parse_theme_tokens(THEME_TOKENS.read_text()).values():
+        # Both topbar canvas and the raised picker can touch the focus ring.
+        for surface in ("panel", "panel-raised"):
+            assert _CONTRAST.cr(_token_value(palette, focus), palette[surface]) >= 3
+        assert _CONTRAST.cr(_token_value(palette, citation_text), palette["accent"]) >= 4.5
+
+
+def test_graph_text_links_and_keyboard_target_follow_every_palette():
+    graph = (STATIC / "evidence-graph.css").read_text()
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", graph)
+    # A mode-only override would let the light graph retain an unrelated accent.
+    assert "data-theme" not in graph
+    prefix = ".evidence-graph-page "
+    text = _declaration(graph, prefix + ".evidence-graph text", "fill")
+    subtitle = _declaration(graph, prefix + ".evidence-graph .graph-subtitle", "fill")
+    link = _declaration(graph, prefix + ".evidence-graph .graph-account-link", "fill")
+    focus = _declaration(graph, prefix + ".evidence-graph a:focus rect", "stroke")
+    assert link == focus == "var(--x-accent)"
+    historical = _declaration(graph, prefix + ".graph-role-historical rect", "stroke")
+    assert historical == "var(--x-warning)"
+    for palette in parse_theme_tokens(THEME_TOKENS.read_text()).values():
+        for node in (".graph-center rect", ".graph-record rect", ".graph-role rect", ".graph-role-historical rect"):
+            surface = _token_value(palette, _declaration(graph, prefix + node, "fill"))
+            for foreground in (text, subtitle, link):
+                assert _CONTRAST.cr(_token_value(palette, foreground), surface) >= 4.5
+            assert _CONTRAST.cr(_token_value(palette, focus), surface) >= 3

@@ -154,7 +154,7 @@ _AUDIT_DETAIL_STATES = {
     "unreviewed",
     "uploaded",
 }
-PREFERENCE_THEMES = ("dark", "light", "dusk", "cyberpunk", "retro")
+PREFERENCE_THEMES = ("dark", "light")
 MATTER_ACTIVITY_KINDS = ("source", "conversation", "notebook", "analysis", "report")
 MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS = 3
 _ANALYSIS_RESTART_MESSAGE = (
@@ -268,6 +268,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                      '0036_answer_context.sql', '0037_automatic_entity_discovery.sql', '0038_matter_purpose.sql'):
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+        from .appearance import migrate_appearance
+        migrate_appearance(self.connection)
         from .source_roles import migrate_source_roles
         migrate_source_roles(self.connection)
         from .case_lifecycle_migration import migrate_case_lifecycle
@@ -832,49 +834,16 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         return tuple(self._principal(row) for row in rows)
 
     def principal_preference(self, principal_id: str) -> PrincipalPreferenceRecord:
-        principal = self.get_principal(principal_id)
-        with self._lock:
-            row = self.connection.execute(
-                "SELECT principal_id,theme,updated_at FROM workbench_principal_preference "
-                "WHERE principal_id=?",
-                (principal.principal_id,),
-            ).fetchone()
-        if row is None:
-            return PrincipalPreferenceRecord(principal.principal_id, "dark", principal.created_at)
-        return self._preference(row)
+        from .appearance import read_preference
+        return read_preference(self, principal_id)
 
-    def set_principal_theme(
-        self, principal_id: str, theme: str
-    ) -> PrincipalPreferenceRecord:
-        principal = self.get_principal(principal_id)
-        selected = (theme or "").strip().casefold()
-        if selected not in PREFERENCE_THEMES:
-            raise WorkspaceProblem("Choose an available appearance theme.")
-        now = self._now()
-        with self._lock, self.connection:
-            if selected == "dark":
-                # Dark is the default. The preference check constraint stores
-                # light, dusk, and the unreleased directions, so choosing dark
-                # clears a saved override instead of inserting a new value.
-                self.connection.execute(
-                    "DELETE FROM workbench_principal_preference WHERE principal_id=?",
-                    (principal.principal_id,),
-                )
-                return PrincipalPreferenceRecord(principal.principal_id, "dark", now)
-            self.connection.execute(
-                "INSERT INTO workbench_principal_preference(principal_id,theme,updated_at) "
-                "VALUES (?,?,?) ON CONFLICT(principal_id) DO UPDATE SET "
-                "theme=excluded.theme,updated_at=excluded.updated_at",
-                (principal.principal_id, selected, now),
-            )
-            row = self.connection.execute(
-                "SELECT principal_id,theme,updated_at FROM workbench_principal_preference "
-                "WHERE principal_id=?",
-                (principal.principal_id,),
-            ).fetchone()
-        if row is None:
-            raise RuntimeError("appearance preference did not persist")
-        return self._preference(row)
+    def set_principal_theme(self, principal_id: str, theme: str) -> PrincipalPreferenceRecord:
+        from .appearance import set_preference
+        return set_preference(self, principal_id, "theme", theme)
+
+    def set_principal_accent(self, principal_id: str, accent: str) -> PrincipalPreferenceRecord:
+        from .appearance import set_preference
+        return set_preference(self, principal_id, "accent", accent)
 
     def record_matter_activity(
         self,

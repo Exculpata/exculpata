@@ -19,7 +19,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
 
 from demo import require_response, seed_demo
 
@@ -74,19 +74,6 @@ def main():
                     wait.until(EC.staleness_of(old))
                     wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
 
-                def theme(value):
-                    if one('html').get_attribute('data-theme') == value:
-                        return
-                    picker = one('#appearance-theme')
-                    if not picker.is_displayed():
-                        one('.account-menu > summary').click()
-                        picker = one('#account-appearance-theme')
-                    old = one('html')
-                    Select(picker).select_by_value(value)
-                    wait.until(EC.staleness_of(old))
-                    wait.until(lambda _: one('html').get_attribute('data-theme') == value
-                        and driver.execute_script('return document.readyState') == 'complete')
-
                 def current_section(label):
                     selected = one('.matter-section-tabs [aria-current="page"] > span')
                     assert selected.get_attribute('textContent') == label
@@ -103,9 +90,11 @@ def main():
                     current_section('Ask')
                     assert one('.matter-heading h1').text == 'Harbor Street'
                     report['checks'].append(f'{width}px: Home → Ask navigation')
-                    for appearance in ('light', 'dark', 'dusk', 'light'):
+                    from browser_appearance import APPEARANCES, select_appearance
+                    for mode, accent in (*APPEARANCES, ('light', 'cyan')):
+                        appearance = f'{mode}-{accent}'
                         print(f'Measuring {width}px {appearance} heading', flush=True)
-                        theme(appearance)
+                        select_appearance(driver, wait, mode, accent)
                         driver.execute_script('window.scrollTo(0, 0)')
                         heading = one('.matter-heading h1')
                         assert heading.is_displayed()
@@ -115,9 +104,9 @@ def main():
                                 && document.documentElement.scrollWidth <= innerWidth;''', heading, width)
                         measured = driver.execute_script(CONTRAST, heading, None, 'color', False)
                         report['measurements'].append({'width': width, 'theme': appearance, **measured})
-                        if appearance == 'light':
-                            # Preserve the pre-fix Light foreground exactly, including after round trip.
-                            assert measured['fg'] == [10, 22, 48, 1], measured
+                        if mode == 'light':
+                            # Light headings use the shared readable text token, including after round trip.
+                            assert measured['fg'] == [11, 13, 16, 1], measured
                         driver.save_screenshot(str(output / f'ask-heading-{appearance}-{width}.png'))
                         report['checks'].append(f'{width}px {appearance}: heading visible without overflow')
                     navigate(one(f'.matter-section-tabs a[href="{prefix}/exact-search"]'))
@@ -139,8 +128,9 @@ def main():
                         prefix + '/conversations/' + response['conversation_id'] + '/rename',
                         data={'title': title}), 303)
                 light_before = None
-                for appearance in ('light', 'dark', 'light'):
-                    theme(appearance)
+                for mode, accent in (('light', 'cyan'), *APPEARANCES, ('light', 'cyan')):
+                    appearance = f'{mode}-{accent}'
+                    select_appearance(driver, wait, mode, accent)
                     driver.get(base + prefix + '/setup')
                     assert one('.setup-heading h1').text == 'Review'
                     assert one('.source-intake-heading h2').text == 'Add sources'
@@ -178,18 +168,18 @@ def main():
                         colors[target] = measured
                         report['measurements'].append({
                             'width': 1920, 'theme': appearance, 'target': target, **measured})
-                    if appearance == 'light':
-                        # The selected card's original Light fill and foregrounds are contractual.
+                    if mode == 'light':
+                        # Light selected cards use raised surfaces and the shared text tokens.
                         assert colors['selected-title']['fg'] == [11, 13, 16, 1]
                         assert colors['selected-metadata']['fg'] == [90, 96, 105, 1]
-                        assert colors['selected-title']['bg'] == [245, 247, 250, 1]
-                        assert colors['selected-metadata']['bg'] == [245, 247, 250, 1]
+                        assert colors['selected-title']['bg'] == [255, 255, 255, 1]
+                        assert colors['selected-metadata']['bg'] == [255, 255, 255, 1]
                         if light_before is not None:
                             assert colors == light_before
                         light_before = colors
                     driver.save_screenshot(str(output / f'ask-heading-conversation-{appearance}-1920.png'))
                     report['checks'].append(f'1920px {appearance}: selected and unselected conversation labels visible')
-                report['checks'].append('1920px: Light selected-card colors preserved through theme round trip')
+                report['checks'].append('1920px: Light selected-card token colors preserved through six-palette round trip')
                 # Capture every state even when the original dark contrast fails.
                 for measured in report['measurements']:
                     assert measured['ratio'] >= 4.5, measured

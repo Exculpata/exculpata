@@ -15,5 +15,5 @@
 .knowledge-source span, .knowledge-source strong, .knowledge-source a { display: block; }
 .knowledge-source a { padding-block: 8px; }
 .knowledge-pagination { align-items: center; }
-html[data-theme="dusk"] .knowledge-record { background: #17232f; color: #e7edf4; border-color: #435365; }
+
 @container notebook (max-width: 850px) { .knowledge-sections { grid-template-columns: minmax(0, 1fr); } }

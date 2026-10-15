@@ -6,6 +6,7 @@ below its minimum is a failure. Text pairs need 4.5:1. UI and focus pairs need
 """
 from __future__ import annotations
 
+import argparse
 import colorsys
 import json
 import re
@@ -23,20 +24,32 @@ CHECKS = [
     ("text-muted", "panel-raised", 4.5),
     ("accent", "bg", 4.5),
     ("accent", "panel", 4.5),
+    ("accent", "panel-raised", 4.5),
     ("accent-hover", "bg", 4.5),
+    ("accent-hover", "panel", 4.5),
+    ("accent-hover", "panel-raised", 4.5),
     ("accent-active", "bg", 4.5),
+    ("accent-active", "panel", 4.5),
+    ("accent-active", "panel-raised", 4.5),
     ("success", "bg", 4.5),
     ("warning", "bg", 4.5),
     ("error", "bg", 4.5),
     ("success", "panel", 4.5),
     ("warning", "panel", 4.5),
     ("error", "panel", 4.5),
+    ("warning", "warning-bg", 4.5),
+    ("error", "error-bg", 4.5),
+    ("success", "success-bg", 4.5),
+    ("text-muted", "warning-bg", 4.5),
+    ("text-muted", "error-bg", 4.5),
+    ("text-muted", "success-bg", 4.5),
     ("accent-contrast", "accent", 4.5),
     ("accent-contrast", "accent-hover", 4.5),
     ("accent-contrast", "accent-active", 4.5),
     ("text", "selection-bg", 4.5),
     ("border-strong", "bg", 3),
     ("border-strong", "panel", 3),
+    ("border-strong", "panel-raised", 3),
     ("focus-ring", "bg", 3),
     ("focus-ring", "panel", 3),
     ("focus-ring", "panel-raised", 3),
@@ -109,6 +122,30 @@ def adjusted_tokens() -> dict[str, dict[str, str]]:
             "selection-bg": "#BDEBF3",
         },
     }
+    accents = {
+        "dark": {
+            "cyan": ("#22D3EE", "#67E8F9", "#06B6D4", "#0E4A57"),
+            "green": ("#39FF88", "#7AFFB0", "#20D96D", "#124D2A"),
+            "amber": ("#FFB020", "#FFCA65", "#E99A0B", "#573B0E"),
+        },
+        "light": {
+            "cyan": ("#097488", "#086A7C", "#065A69", "#BDEBF3"),
+            "green": ("#0E8A4A", "#0C793F", "#096533", "#C6EBD4"),
+            "amber": ("#A15C00", "#8C5000", "#754300", "#F6DFB5"),
+        },
+    }
+    tokens = {
+        f"{mode}-{accent}": {**values, "accent": palette[0], "accent-hover": palette[1],
+                              "accent-active": palette[2], "focus-ring": palette[0],
+                              "selection-bg": palette[3]}
+        for mode, values in tokens.items() for accent, palette in accents[mode].items()
+    }
+    # Semantic colors and their surfaces are invariant under accent changes.
+    for name, values in tokens.items():
+        dark = name.startswith("dark-")
+        values.update({"shadow": "#000000", "warning-bg": "#30281A" if dark else "#FFF2D9",
+                       "error-bg": "#321D20" if dark else "#FDECE9",
+                       "success-bg": "#162D21" if dark else "#E3F3E9"})
     original = json.loads(json.dumps(tokens))
     for theme in tokens.values():
         for _ in range(4):
@@ -140,41 +177,45 @@ def contrast_failures(tokens: dict[str, dict[str, str]]) -> list[str]:
     return failures
 
 
+def token_block(mode, values, selector):
+    lines = [f"{selector} {{", *(f"  --x-{name}: {value};" for name, value in values.items()),
+             f"  color-scheme: {mode};", "}"]
+    return "\n".join(lines)
+
+
+def render_tokens():
+    """Generate all six palettes with an explicit Dark/Cyan default."""
+    current = THEME_TOKENS.read_text(encoding="utf-8")
+    prefix = current[:current.index("/* Default")]
+    blocks = [prefix + "/* Default is Dark/Cyan; mode and accent are independent. */"]
+    for name, values in adjusted_tokens().items():
+        mode, accent = name.split("-")
+        selector = f'[data-theme="{mode}"][data-accent="{accent}"]'
+        if accent == "cyan":
+            selector = (":root, " if mode == "dark" else "") + f'[data-theme="{mode}"], ' + selector
+        blocks.append(token_block(mode, values, selector))
+    blocks.append("::selection { background: var(--x-selection-bg); color: var(--x-text); }")
+    blocks.append(":focus-visible { outline: var(--x-focus-ring-width) solid var(--x-focus-ring); outline-offset: var(--x-focus-ring-offset); }")
+    return "\n".join(blocks) + "\n"
+
+
 def parse_theme_tokens(css: str) -> dict[str, dict[str, str]]:
-    """Read the dark and light --x-* color tokens from theme-tokens.css."""
-
-    def colors(block: str) -> dict[str, str]:
-        found = {
-            match.group(1): match.group(2).upper()
-            for match in re.finditer(r"--x-([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6})\s*;", block)
+    result = {}
+    for match in re.finditer(r'\[data-theme="(dark|light)"\]\[data-accent="(cyan|green|amber)"\] \{(.*?)\n\}', css, re.DOTALL):
+        result[f"{match[1]}-{match[2]}"] = {
+            name: value.upper() for name, value in re.findall(r"--x-([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6})\s*;", match[3])
         }
-        return found
-
-    dark_match = re.search(
-        r":root, \[data-theme=\"dark\"\] \{(?P<body>.*?)\n\}",
-        css,
-        re.DOTALL,
-    )
-    light_match = re.search(
-        r"\[data-theme=\"light\"\] \{(?P<body>.*?)\n\}",
-        css,
-        re.DOTALL,
-    )
-    prefers_match = re.search(
-        r":root:not\(\[data-theme\]\) \{(?P<body>.*?)\n\s*\}",
-        css,
-        re.DOTALL,
-    )
-    if dark_match is None or light_match is None or prefers_match is None:
-        raise ValueError("theme-tokens.css is missing a dark, light, or prefers-color-scheme block")
-    light = colors(light_match.group("body"))
-    prefers = colors(prefers_match.group("body"))
-    if light != prefers:
-        raise ValueError("light theme tokens differ from the prefers-color-scheme block")
-    return {"dark": colors(dark_match.group("body")), "light": light}
+    if len(result) != 6:
+        raise ValueError("theme-tokens.css must contain all six mode/accent palettes")
+    return result
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--write", action="store_true", help="regenerate the checked token stylesheet")
+    args = parser.parse_args()
+    if args.write:
+        THEME_TOKENS.write_text(render_tokens(), encoding="utf-8")
     css = THEME_TOKENS.read_text(encoding="utf-8")
     parsed = parse_theme_tokens(css)
     expected = adjusted_tokens()
@@ -188,7 +229,7 @@ def main() -> int:
     if failures or drifted:
         print("\n".join([*failures, *drifted]))
         return 1
-    print("fails: 0")
+    print(f"6 palettes, {len(CHECKS) * 6} contrast checks; fails: 0")
     return 0
 
 

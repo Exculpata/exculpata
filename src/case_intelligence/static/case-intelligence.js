@@ -3424,9 +3424,13 @@
     if (matterFilterEmpty) matterFilterEmpty.hidden = visible !== 0;
   });
 
+  document.querySelectorAll("[data-accent-picker]").forEach((accentPicker) => {
+    accentPicker.addEventListener("change", () => {
+      accentPicker.closest("[data-accent-form]")?.requestSubmit();
+    });
+  });
   document.querySelectorAll("[data-theme-picker]").forEach((themePicker) => {
     themePicker.addEventListener("change", () => {
-      document.documentElement.dataset.theme = themePicker.value;
       themePicker.closest("[data-theme-form]")?.requestSubmit();
     });
   });

@@ -120,7 +120,7 @@ def test_response_aliases_emit_authoritative_equal_values_despite_inbound_header
         slug = _matter(client, "Synthetic alias response matter")
         _, token = _upload_and_wait(client, slug)
         responses = [
-            (client.post("/preferences/theme", data={"theme": "dusk"}, headers=inbound, follow_redirects=False), "Theme", "dusk", 303),
+            (client.post("/preferences/theme", data={"theme": "light"}, headers=inbound, follow_redirects=False), "Theme", "light", 303),
             (client.get(f"/matters/{slug}/notebook/export", headers=inbound), "Export", "work-product", 200),
             (client.get(f"/matters/{slug}/sources/{token}/content", headers=inbound), "Playback", "original", 200),
         ]

@@ -168,20 +168,21 @@ def main():
             assert 'Alex Role Corrected' in body() and context['person'] in body()
             inspect('assertion', assertion_id)
             activate(button('Accept current basis'))
-            for theme in ('dark', 'light','dusk'):
+            from browser_appearance import APPEARANCES, select_appearance
+            for mode, accent in APPEARANCES:
+                theme = f'{mode}-{accent}'
                 inspect('assertion', assertion_id)
-                Select(driver.find_element(By.ID,'appearance-theme')).select_by_value(theme)
-                wait.until(lambda _: driver.find_element(By.TAG_NAME,'html').get_attribute('data-theme') == theme)
+                select_appearance(driver, wait, mode, accent)
                 no_overflow()
                 driver.save_screenshot(str(output/f'context-{theme}-desktop.png'))
-            record('Changed role identity retains recorded name and current review status; explicit approval and Dark/Light/Dusk inspection fit desktop')
+            record('Changed role identity retains recorded name and current review status; explicit approval and six-palette inspection fit desktop')
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',dict(width=390,height=844,deviceScaleFactor=1,mobile=False))
             inspect('assertion', assertion_id)
             no_overflow()
             assert 'Recorded identity: Alex Example' in body() and 'Current human review: Dismissed' in body()
             inspect('entity',context['other'])
             no_overflow()
-            driver.save_screenshot(str(output/'context-dusk-mobile.png'))
+            driver.save_screenshot(str(output/'context-light-amber-mobile.png'))
             activate(button('Remove from context',driver.find_element(By.ID,'selected-'+context['other'])))
             no_overflow()
             assert not driver.find_elements(By.ID,'selected-'+context['other'])

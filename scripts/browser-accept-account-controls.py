@@ -17,7 +17,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
@@ -95,14 +95,13 @@ def main():
             driver.get(protected)
             wait.until(lambda _: js('return document.documentElement.scrollWidth <= innerWidth'))
             report['checks'].append('Authenticated long-name header fits 320px without horizontal overflow')
-            account = find('.account-menu > summary')
-            account.send_keys(Keys.ENTER)
-            wait.until(lambda _: find('#account-appearance-theme').is_displayed())
-            Select(find('#account-appearance-theme')).select_by_value('dusk')
-            wait.until(lambda _: js('return document.documentElement.dataset.theme') == 'dusk')
+            from browser_appearance import select_appearance
+            select_appearance(driver, wait, 'light', 'cyan')
+            select_appearance(driver, wait, 'dark', 'amber')
             driver.refresh()
-            wait.until(lambda _: js('return document.documentElement.dataset.theme') == 'dusk')
-            report['checks'].append('Compact account appearance control persists Dusk across reload')
+            wait.until(lambda _: js('return document.documentElement.dataset.theme') == 'dark'
+                       and js('return document.documentElement.dataset.accent') == 'amber')
+            report['checks'].append('Compact account appearance controls persist Dark and Amber across reload')
             find('.account-menu > summary').send_keys(Keys.ENTER)
             signout = find('.logout-form button')
             signout.send_keys(Keys.NULL)

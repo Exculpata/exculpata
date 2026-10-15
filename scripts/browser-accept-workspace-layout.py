@@ -582,9 +582,11 @@ def main(argv=None):
                 return style
 
             viewport(1440, 900)
-            for theme in ("dark", "light", "dusk"):
+            from browser_appearance import APPEARANCES
+            for mode, accent in APPEARANCES:
+                theme = f"{mode}-{accent}"
                 open_page(paths["notes"])
-                js("document.documentElement.dataset.theme=arguments[0]", theme)
+                js("document.documentElement.dataset.theme=arguments[0];document.documentElement.dataset.accent=arguments[1]", mode, accent)
                 driver.find_element(By.TAG_NAME, "body").send_keys(Keys.TAB)
                 skip = find(".skip-link")
                 assert driver.switch_to.active_element == skip
@@ -604,10 +606,10 @@ def main(argv=None):
                 measurements[f"forced_colors_focus_{theme}"] = [keyboard_focus(control) for control in controls]
                 driver.execute_cdp_cmd("Emulation.setEmulatedMedia", {"features": []})
                 go(paths["review"])
-                js("document.documentElement.dataset.theme=arguments[0]", theme)
+                js("document.documentElement.dataset.theme=arguments[0];document.documentElement.dataset.accent=arguments[1]", mode, accent)
                 question = find('.composer-wrap textarea[name="question"]')
                 measurements[f"question_focus_{theme}"] = keyboard_focus(question)
-            checks.append("Dark, Light and Dusk skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
+            checks.append("All six mode/accent combinations skip links activate actual main content; keyboard links, summaries, inputs, selects and buttons have opaque outlines including forced-colors")
 
             # Font preference and WCAG-style spacing are separate stress cases.
             # Neither this nor a CSS viewport change is evidence of native zoom.
