@@ -112,15 +112,6 @@ tests that exercise automatic processing. A passing rerun alone does not fix a
 fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
 entering the connection transaction; stopping one coordinator does not stop the
 other workers that share that connection.
-Python callbacks (user-defined functions, authorizers, traces, progress
-handlers) run while that connection's SQLite mutex is held. CPython keeps the
-GIL across parameter binding, so a callback and a bind on the same connection
-freeze the process permanently; `busy_timeout` does not apply. Importing
-`case_intelligence` installs `sqlite_callback_guard`, which takes one reentrant
-lock per connection before every pysqlite call on it so the waiter releases the
-GIL. Other connections stay concurrent. That lock does not replace
-`workspace._lock`: a multi-statement fixture transaction must still hold the
-workspace lock for its whole body.
 The same lock must cover direct reads, backups and transaction-state assertions.
 For a rollback check, hold it across the rejected operation and the assertion so
 an idle report worker's claim transaction cannot be mistaken for a leaked one.
