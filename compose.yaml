@@ -459,7 +459,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
       - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=16m
-    entrypoint: ["recordbench"]
+    entrypoint: ["exculpata"]
 
 volumes:
   postgres-data:

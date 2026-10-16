@@ -101,7 +101,12 @@ def test_compose_package_entry_points_exist(tmp_path, prefix):
         'docker', 'compose', '-f', str(compose), '--profile', '*',
         'config', '--format', 'json'], env=environment, text=True))
     services = config['services']
-    assert services['account-admin']['entrypoint'] == ['recordbench']
+    assert services['account-admin']['entrypoint'] == ['exculpata']
+    executable = Path(sys.executable).parent / services['account-admin']['entrypoint'][0]
+    result = subprocess.run([str(executable), 'storage', '--help'], cwd=ROOT,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ''
     assert services['transcription-cleanup']['command'][0] == 'transcription-v2'
     installed = {entry.name for name in ('exculpata', 'exculpata-transcription-v2')
                  for entry in distribution(name).entry_points}
@@ -115,7 +120,8 @@ def test_compose_package_entry_points_exist(tmp_path, prefix):
                 referenced.update(re.findall(
                     r'\b(?:recordbench(?:-workbench|-retrieval-worker)?|'
                     r'exculpata(?:-workbench|-retrieval-worker)?|transcription-v2)\b', token))
-    assert referenced == {'recordbench', 'transcription-v2'}
+    # The generator's served-model argument still contains the legacy name.
+    assert referenced == {'exculpata', 'recordbench', 'transcription-v2'}
     assert referenced <= installed
     for dockerfile in (ROOT / 'Dockerfile', ROOT / 'services/transcription/Dockerfile'):
         for line in dockerfile.read_text().splitlines():

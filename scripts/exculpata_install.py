@@ -3281,16 +3281,16 @@ def _provision(
         profiles.append("transcription")
     compose = _compose(root, profiles, auth=auth, local_accounts=args.enable_account_management)
 
-    console.phase(5, "FORGE RUNTIME", "Building isolated OCR, review, retrieval, and transcription images")
+    console.phase(5, "PREPARE RUNTIME", "Building isolated OCR, review, retrieval, and transcription images")
     if not args.dry_run:
         _install_phase(root, "runtime", "checking")
     targets = _build_targets(auth, models)
     _run(console, [*compose, "build", *targets], dry_run=args.dry_run)
     if not args.dry_run:
         _install_phase(root, "runtime", "complete")
-    console.ok("Runtime images forged")
+    console.ok("Runtime images built")
 
-    console.phase(6, "SEAL CONTROL PLANE", "Initializing managed storage and attributed access")
+    console.phase(6, "CONFIGURE SERVICES", "Initializing managed storage and attributed access")
     if args.dry_run:
         storage_root = args.storage_root or root / "matter-storage"
     else:
@@ -3421,7 +3421,7 @@ def _provision(
         console.phase(8, "NODE ARMED", "Preparation complete; services intentionally remain stopped")
         console.ok(f"Resume with: ./install install --root {shlex.quote(str(root))} --resume")
         return
-    console.phase(8, "IGNITE NODE", "Launching the private service mesh and waiting for health consensus")
+    console.phase(8, "START SERVICES", "Starting services and checking application health and sign-in readiness")
     active = []
     if models in {"all", "review"}:
         active.append("ai")
@@ -3543,9 +3543,9 @@ def _wait_health(console: Console, root: Path) -> None:
     url = f"https://{authority}:{port}/health"
     started = time.monotonic()
     deadline = started + 900
-    next_report = time.monotonic() + 15
+    next_report = started + 30
     last = "services are starting"
-    console.note("Waiting for application health")
+    console.note("Waiting for application health and sign-in readiness; elapsed 0s")
     for phase in ("running", "login_reachable", "basic_review", "selected_capabilities"):
         _install_phase(root, phase, "checking")
     while time.monotonic() < deadline:
@@ -3597,8 +3597,8 @@ def _wait_health(console: Console, root: Path) -> None:
                 last += "; sign-in endpoint is not reachable"
         observed = time.monotonic()
         if observed >= next_report:
-            console.note(f"health consensus pending, elapsed {format_elapsed(observed - started)} :: {last}")
-            next_report = time.monotonic() + 15
+            console.note(f"Waiting for application health and sign-in readiness; elapsed {int(observed - started)}s")
+            next_report = observed + 30
         time.sleep(3)
     raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
 
