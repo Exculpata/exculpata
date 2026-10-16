@@ -49,6 +49,9 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+    /* Measured pane height is the shell clientHeight, which already excludes
+       the banner. --workspace-top is the pane padding, not the banner. The
+       fallback matches the shell so an unmeasured pane does not add it back. */
     max-height: max(0px, calc(var(--review-pane-height, calc(100dvh - var(--topbar-height) - var(--evaluation-banner-offset))) - var(--workspace-top) - var(--review-composer-height, 160px) - var(--review-composer-offset, 0px) - 24px));
   }
 

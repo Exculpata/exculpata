@@ -267,8 +267,15 @@ def main(argv=None):
                 }
                 nav = find("[data-conversation-list]")
                 previous_pane, bounds = scroll(pane), rect(nav)
-                wheel(bounds["right"] - 8, (bounds["top"] + bounds["bottom"]) / 2, 700)
-                wait.until(lambda _: scroll(nav) > 0)
+                # Wheel the list content. The right edge is the scrollbar gutter, and a
+                # wheel there can leave the list mid-scroll so End never becomes its key.
+                wheel((bounds["left"] + bounds["right"]) / 2, (bounds["top"] + bounds["bottom"]) / 2, 700)
+                seen = []
+                def list_wheel_settled(_):
+                    seen.append(scroll(nav))
+                    return len(seen) >= 2 and seen[-1] > 0 and seen[-1] == seen[-2]
+                wait.until(list_wheel_settled)
+                js("arguments[0].focus({preventScroll:true})", nav)
                 nav.send_keys(Keys.END)
                 wait.until(lambda _: js("return arguments[0].scrollTop + arguments[0].clientHeight >= arguments[0].scrollHeight - 2", nav))
                 assert abs(scroll(pane) - previous_pane) <= 1
@@ -320,8 +327,13 @@ def main(argv=None):
                 }
                 nav = find("[data-conversation-list]")
                 bounds, previous_pane = rect(nav), scroll(pane)
-                wheel(bounds["right"] - 8, (bounds["top"] + bounds["bottom"]) / 2, 700)
-                wait.until(lambda _: scroll(nav) > 0)
+                wheel((bounds["left"] + bounds["right"]) / 2, (bounds["top"] + bounds["bottom"]) / 2, 700)
+                seen = []
+                def open_list_settled(_):
+                    seen.append(scroll(nav))
+                    return len(seen) >= 2 and seen[-1] > 0 and seen[-1] == seen[-2]
+                wait.until(open_list_settled)
+                js("arguments[0].focus({preventScroll:true})", nav)
                 nav.send_keys(Keys.END)
                 wait.until(lambda _: js("return arguments[0].scrollTop + arguments[0].clientHeight >= arguments[0].scrollHeight - 2", nav))
                 assert abs(scroll(pane) - previous_pane) <= 1
