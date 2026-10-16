@@ -1,0 +1,12 @@
+{
+ "format":"exculpata-workflow-eval-v1",
+ "todo":"Adapt to #267 harness when its schema merges; local loader checks expected pairs.",
+ "items":[
+  {"id":"time", "question":"Which delivery accounts differ about the time?", "expected_pairs":[["time-left", "time-right"]], "difference_type":"time_date"},
+  {"id":"location", "question":"Which accounts name different delivery places?", "expected_pairs":[["location-left", "location-right"]], "difference_type":"location"},
+  {"id":"count", "question":"Which accounts report different parcel counts?", "expected_pairs":[["count-left", "count-right"]], "difference_type":"quantity_count"},
+  {"id":"presence", "question":"Which accounts differ about who was present?", "expected_pairs":[["presence-left", "presence-right"]], "difference_type":"people_present"},
+  {"id":"same-time", "question":"Do equivalent clock formats produce a candidate?", "expected_pairs":[]},
+  {"id":"added-detail", "question":"Does a compatible added detail produce a candidate?", "expected_pairs":[]}
+ ]
+}

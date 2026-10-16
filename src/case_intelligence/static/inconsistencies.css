@@ -1,0 +1,19 @@
+.inconsistency-shell { max-width: 1200px; margin: auto; padding: 24px; }
+.inconsistency-shell p { line-height: 1.6; }
+.inconsistency-filters, .inconsistency-actions, .inconsistency-exports { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.inconsistency-filters label { display: grid; gap: 6px; }
+.inconsistency-shell button, .inconsistency-shell select { min-height: 44px; padding: 10px 16px; }
+.inconsistency-card { margin-top: 24px; padding: 20px; border: 1px solid var(--border, #64748b); border-radius: 8px; }
+.inconsistency-passages { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.inconsistency-passages section { min-width: 0; overflow-wrap: anywhere; }
+.inconsistency-passages blockquote { margin: 12px 0; white-space: pre-wrap; line-height: 1.65; }
+.inconsistency-passages mark { background: #fde68a; color: #18202b; }
+.inconsistency-actions { border-top: 1px solid var(--border, #64748b); padding-top: 12px; }
+@media (max-width: 480px) {
+  .inconsistency-shell { padding: 12px; }
+  .inconsistency-card { padding: 12px; }
+  .inconsistency-passages { grid-template-columns: minmax(0, 1fr); }
+  .inconsistency-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .inconsistency-actions button { width: 100%; padding: 8px 4px; }
+  .inconsistency-filters label, .inconsistency-filters select { width: 100%; }
+}
