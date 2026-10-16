@@ -79,6 +79,20 @@ def test_nearest_xterm_all_brand_colors():
     }
 
 
+def test_wordmark_keeps_fixed_cells_and_vertical_stems_aligned():
+    # Regression: the former joined artwork shifted U/L/P upper strokes by one.
+    for glyph in terminal._WORDMARK_GLYPHS.values():
+        assert len(glyph) == 5
+        assert {len(row) for row in glyph} == {7}
+    rows = terminal.WORDMARK.splitlines()
+    assert len(rows) == 5 and {len(row) for row in rows} == {73}
+    for index in (3, 4, 5):  # U, L, P in EXCULPATA
+        stem = 2 + index * 8
+        assert all(rows[row][stem] == "|" for row in (1, 2, 3))
+    # Both A cells must be identical, including their baseline.
+    assert all(row[50:57] == row[66:73] for row in rows)
+
+
 def test_typing_budget_covers_banner_and_all_phases(monkeypatch, tty):
     monkeypatch.setattr(sys, "stdout", tty)
     delays = []

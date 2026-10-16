@@ -37,6 +37,23 @@ class C:
     reset = "\033[0m"
 
 
+# Seven-column cells keep every stroke aligned at an 80-column terminal width.
+_WORDMARK_GLYPHS = {
+    "E": (" _____ ", "| ____|", "|  _|  ", "| |___ ", "|_____|"),
+    "X": ("__   __", "\\ \\ / /", " \\ V / ", " / . \\ ", "/_/ \\_\\"),
+    "C": (" _____ ", "/ ____|", "| |    ", "| |___ ", "\\_____|"),
+    "U": (" _   _ ", "| | | |", "| | | |", "| |_| |", " \\___/ "),
+    "L": (" _     ", "| |    ", "| |    ", "| |___ ", "|_____|"),
+    "P": (" ____  ", "|  _ \\ ", "| |_) |", "|  __/ ", "|_|    "),
+    "A": ("   _   ", "  / \\  ", " / _ \\ ", "/ ___ \\", "/_/ \\_\\"),
+    "T": (" _____ ", "|_   _|", "  | |  ", "  | |  ", "  |_|  "),
+}
+WORDMARK = "\n".join(
+    "  " + " ".join(_WORDMARK_GLYPHS[letter][row] for letter in "EXCULPATA")
+    for row in range(5)
+)
+
+
 # Terminal escape sequences from child processes must never control the terminal.
 _ESCAPE = re.compile(r"\x1b(?:\][^\x07\x1b]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])")
 
@@ -107,13 +124,7 @@ class Console:
         self.status("WARN", value)
 
     def banner(self, mode: str, version: str = "0.1.0-beta.1") -> None:
-        self.line(self.paint(r"""
-   _______  _______ _   _ _     ____   _  _____  _
-  | ____\ \/ / ____| | | | |   |  _ \ / \|_   _|/ \
-  |  _|  \  / |   | | | | |   | |_) / _ \ | | / _ \
-  | |___ /  \ |___| |_| | |___|  __/ ___ \| |/ ___ \
-  |_____/_/\_\_____|\___/_____|_| /_/   \_\_/_/   \_\
-""".rstrip(), C.cyan + C.bold))
+        self.line(self.paint("\n" + WORDMARK, C.cyan + C.bold))
         self.typed(f"  EVIDENCE NODE PROVISIONER // {mode.upper()} // BUILD {version}")
         self.line(self.paint("  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+", C.muted))
 

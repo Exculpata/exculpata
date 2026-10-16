@@ -1,13 +1,17 @@
 # Installer terminal evidence — issue 258
 
-Synthetic presentation evidence recorded 2026-10-15. These captures do **not**
+Synthetic presentation evidence recorded 2026-10-16. These captures do **not**
 claim a supported Linux installation or doctor acceptance.
 
 - [Terminal preview](terminal-preview.png) renders the actual PTY bytes in the
-  [asciinema v2 cast](terminal-preview.cast). The dark canvas belongs to the
+  [asciinema v2 cast](terminal-preview.cast), captured with an actual 80-column
+  PTY and rendered on its fixed monospace grid. The wordmark uses seven-column
+  glyph cells; a regression checks its 73-column width and U/L/P stem alignment.
+  The dark canvas belongs to the
   preview; the installer does not set a terminal background. The cast contains
   no environment dump, host identity, password, or token.
-- [Plain preview](plain-preview.txt) is the same real invocation with `--plain`.
+- [Plain preview](plain-preview.txt) is the same real invocation with `--plain`,
+  with trailing blank cells trimmed in the text artifact.
 - [Animation timing](animation-timing.json) measures three actual PTY runs each
   with and without animation, rendering the banner and eight synthetic phase
   titles. Median added time was 0.456 seconds. The shared typing-delay budget is
