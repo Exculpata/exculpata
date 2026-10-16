@@ -289,6 +289,23 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--names", choices=("recordbench", "exculpata"), help="naming generation for a fresh node; existing nodes cannot be renamed")
     parser.add_argument("--root", type=Path, help="exact installation state directory")
     parser.add_argument("--storage-root", type=Path, help="dedicated local or mounted-NAS matter storage directory")
+    parser.add_argument(
+        "--storage-profile",
+        choices=("production", "evaluation"),
+        default=None,
+        help="production keeps the 100 GiB reserve; evaluation is a smaller reserve for synthetic data only",
+    )
+    parser.add_argument(
+        "--evaluation-reserve-gib",
+        type=int,
+        default=None,
+        help="whole GiB evaluation reserve from 1 through 100 (default 10, or EXCULPATA_EVALUATION_RESERVE_GIB)",
+    )
+    parser.add_argument(
+        "--allow-evaluation-downgrade",
+        action="store_true",
+        help="required to switch an existing production node to the evaluation storage profile",
+    )
     parser.add_argument("--auth", choices=("local", "oidc", "kerberos"), default=None)
     parser.add_argument("--enable-account-management", action="store_true", help="enable browser account changes for an explicit --auth local installation")
     parser.add_argument("--models", choices=("none", "review", "transcription", "all"), default=None)
@@ -1556,6 +1573,340 @@ def _service_home_ready() -> bool:
         return False
 
 
+_PRODUCTION_RESERVE_GIB = 100
+_PRODUCTION_MIN_FREE_DISK_BYTES = 107374182400
+_EVALUATION_DEFAULT_RESERVE_GIB = 10
+_PRODUCTION_CAPACITY_TARGET_GIB = {"none": 150, "review": 200, "transcription": 300, "all": 300}
+# Pinned model bytes measured 2026-10-15. Hugging Face tree sizes use the
+# revisions in config/models.json. Alignment and punkt sizes are Content-Length
+# of the catalog URLs. Nemotron counts only its staged allow_patterns files.
+# Community-1 counts the four catalog models for that backend. Image sizes are
+# Docker image-list virtual sizes recorded in docs/INSTALL.md.
+_EVALUATION_MODEL_BYTES = {
+    "generator-portable": 9_342_907_469,
+    "generator-quality": 19_329_393_661,
+    "embedding": 599_707_529,
+    "reranker": 2_535_494_661,
+    "asr": 3_090_839_273,
+    "alignment-en": 377_664_473,
+    "alignment-es": 377_686_809,
+    "punkt": 4_319_076,
+    "diarization-nemotron": 396_999_309,
+    "diarization-community-1": 77_255_406,
+}
+# Virtual sizes from the Docker engine image list API for the images
+# `./install --models none` built on 2026-10-15. The four CPU images do not
+# share layers with each other. retrieval, vllm, and transcription images stay
+# at 0 until the same measurement is recorded; those profiles still add their
+# pinned model bytes. See docs/INSTALL.md.
+_EVALUATION_IMAGE_BYTES = {
+    "app": 1_072_085_818,
+    "gateway": 106_216_980,
+    "postgres": 638_421_012,
+    "clamav": 406_589_383,
+    "retrieval": 0,
+    "vllm": 0,
+    "transcription-api": 0,
+    "transcription-worker": 0,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class StoragePlan:
+    profile: str
+    reserve_gib: int
+    min_free_disk_bytes: int
+    capacity_target_gib: int
+    transition: str
+    refusal: str
+
+
+def _ceil_gib(amount: int) -> int:
+    return (int(amount) + 1024**3 - 1) // 1024**3
+
+
+def _evaluation_payload_bytes(models: str, args: argparse.Namespace | None) -> int:
+    """Bytes of images and pinned models the selected profile actually stages."""
+    total = sum(_EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav"))
+    review_profile = getattr(args, "review_model_profile", "auto") if args is not None else "auto"
+    languages: tuple[str, ...] = ("en",)
+    if args is not None:
+        try:
+            languages = _transcription_languages(getattr(args, "transcription_languages", "en"))
+        except RuntimeError:
+            languages = ("en",)
+    diarization = bool(getattr(args, "enable_diarization", False)) if args is not None else False
+    backend = getattr(args, "diarization_backend", "nemotron") if args is not None else "nemotron"
+    if models in {"review", "all"}:
+        total += _EVALUATION_IMAGE_BYTES["retrieval"] + _EVALUATION_IMAGE_BYTES["vllm"]
+        total += _EVALUATION_MODEL_BYTES["embedding"] + _EVALUATION_MODEL_BYTES["reranker"]
+        # auto tries the quality generator first, so the advisory target covers it.
+        generator = "generator-portable" if review_profile == "portable" else "generator-quality"
+        total += _EVALUATION_MODEL_BYTES[generator]
+    if models in {"transcription", "all"}:
+        total += _EVALUATION_IMAGE_BYTES["transcription-api"] + _EVALUATION_IMAGE_BYTES["transcription-worker"]
+        total += _EVALUATION_MODEL_BYTES["asr"] + _EVALUATION_MODEL_BYTES["punkt"]
+        for language in languages:
+            total += _EVALUATION_MODEL_BYTES[f"alignment-{language}"]
+        if diarization:
+            key = "diarization-community-1" if backend == "community-1" else "diarization-nemotron"
+            total += _EVALUATION_MODEL_BYTES[key]
+    return total
+
+
+def _evaluation_capacity_target_gib(models: str, reserve_gib: int, args: argparse.Namespace | None) -> int:
+    return reserve_gib + _ceil_gib(_evaluation_payload_bytes(models, args))
+
+
+def _parse_evaluation_reserve(args: argparse.Namespace | None) -> tuple[int | None, str]:
+    flagged = args is not None and getattr(args, "evaluation_reserve_gib", None) is not None
+    if flagged:
+        value = args.evaluation_reserve_gib
+        source = "--evaluation-reserve-gib"
+    else:
+        text = os.environ.get("EXCULPATA_EVALUATION_RESERVE_GIB", "").strip()
+        if not text:
+            return _EVALUATION_DEFAULT_RESERVE_GIB, ""
+        if not text.isdecimal():
+            return None, "EXCULPATA_EVALUATION_RESERVE_GIB must be a whole number of GiB from 1 through 100"
+        value = int(text)
+        source = "EXCULPATA_EVALUATION_RESERVE_GIB"
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 100:
+        return None, f"{source} must be a whole number of GiB from 1 through 100"
+    return value, ""
+
+
+def _read_saved_storage(root: Path | None) -> tuple[str, int] | None:
+    """Return the persisted profile. None means this directory is not a node yet."""
+    if root is None:
+        return None
+    path = Path(root) / "installation.json"
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return ("invalid", -1)
+    if not isinstance(record, dict):
+        return ("invalid", -1)
+    profile = record.get("storage_profile", "production")
+    if not isinstance(profile, str) or profile not in {"production", "evaluation"}:
+        return ("invalid", -1)
+    if profile == "production":
+        if "storage_reserve_gib" in record and record.get("storage_reserve_gib") != _PRODUCTION_RESERVE_GIB:
+            return ("invalid", -1)
+        return ("production", _PRODUCTION_RESERVE_GIB)
+    reserve = record.get("storage_reserve_gib")
+    if isinstance(reserve, bool) or not isinstance(reserve, int) or not 1 <= reserve <= 100:
+        return ("invalid", -1)
+    return ("evaluation", reserve)
+
+
+def _production_storage_plan(models: str, transition: str, refusal: str = "") -> StoragePlan:
+    return StoragePlan(
+        "production",
+        _PRODUCTION_RESERVE_GIB,
+        _PRODUCTION_MIN_FREE_DISK_BYTES,
+        _PRODUCTION_CAPACITY_TARGET_GIB[models],
+        transition,
+        refusal,
+    )
+
+
+def _evaluation_storage_plan(
+    models: str,
+    args: argparse.Namespace | None,
+    reserve_gib: int,
+    transition: str,
+    refusal: str = "",
+) -> StoragePlan:
+    return StoragePlan(
+        "evaluation",
+        reserve_gib,
+        reserve_gib * 1024**3,
+        _evaluation_capacity_target_gib(models, reserve_gib, args),
+        transition,
+        refusal,
+    )
+
+
+def _storage_plan(models: str, args: argparse.Namespace | None) -> StoragePlan:
+    """Resolve the profile to enforce. A missing choice keeps production, or the saved profile."""
+    requested = getattr(args, "storage_profile", None) if args is not None else None
+    flag_reserve = getattr(args, "evaluation_reserve_gib", None) if args is not None else None
+    allow_downgrade = bool(getattr(args, "allow_evaluation_downgrade", False)) if args is not None else False
+    saved = _read_saved_storage(getattr(args, "root", None) if args is not None else None)
+    if saved is not None and saved[0] == "invalid":
+        return _production_storage_plan(
+            models,
+            "unchanged",
+            "Saved storage profile is invalid. Restore installation.json before changing it.",
+        )
+    if saved is None:
+        if (requested or "production") == "production":
+            refusal = "--evaluation-reserve-gib applies only with --storage-profile evaluation" if flag_reserve is not None else ""
+            return _production_storage_plan(models, "fresh", refusal)
+        reserve, error = _parse_evaluation_reserve(args)
+        if error or reserve is None:
+            return _production_storage_plan(models, "fresh", error or "evaluation storage reserve is invalid")
+        return _evaluation_storage_plan(models, args, reserve, "fresh")
+    saved_profile, saved_reserve = saved
+    target = requested or saved_profile
+    if target == saved_profile == "production":
+        refusal = "--evaluation-reserve-gib applies only with --storage-profile evaluation" if flag_reserve is not None else ""
+        return _production_storage_plan(models, "unchanged", refusal)
+    if target == saved_profile == "evaluation":
+        if flag_reserve is None:
+            return _evaluation_storage_plan(models, args, saved_reserve, "unchanged")
+        reserve, error = _parse_evaluation_reserve(args)
+        if error or reserve is None:
+            return _evaluation_storage_plan(
+                models, args, saved_reserve, "unchanged", error or "evaluation storage reserve is invalid"
+            )
+        transition = "retune" if reserve != saved_reserve else "unchanged"
+        return _evaluation_storage_plan(models, args, reserve, transition)
+    if saved_profile == "production" and target == "evaluation":
+        if not allow_downgrade:
+            return _production_storage_plan(
+                models,
+                "downgrade",
+                "Refusing to lower an existing production node's storage reserve. "
+                "Pass --allow-evaluation-downgrade with --storage-profile evaluation only when this node will not hold real case data.",
+            )
+        reserve, error = _parse_evaluation_reserve(args)
+        if error or reserve is None:
+            return _production_storage_plan(models, "downgrade", error or "evaluation storage reserve is invalid")
+        return _evaluation_storage_plan(models, args, reserve, "downgrade")
+    if saved_profile == "evaluation" and target == "production":
+        return _production_storage_plan(models, "promote")
+    return _production_storage_plan(models, "unchanged", "storage profile transition is invalid")
+
+
+def _reserve_messages(plan: StoragePlan) -> tuple[str, str]:
+    if plan.profile == "production":
+        return (
+            "Admit sources above the configured 100 GiB storage reserve",
+            "Provide more than 100 GiB free on this filesystem, plus capacity for images, models and matter data. See profile targets in docs/INSTALL.md.",
+        )
+    return (
+        f"Admit synthetic or sample sources above the configured {plan.reserve_gib} GiB evaluation reserve",
+        "This is an evaluation node, not for real case data. "
+        f"Provide more than {plan.reserve_gib} GiB free on this filesystem. "
+        "The default evaluation reserve is 10 GiB; pass --evaluation-reserve-gib or set "
+        "EXCULPATA_EVALUATION_RESERVE_GIB to a whole number from 1 through 100.",
+    )
+
+
+def _capacity_messages(plan: StoragePlan) -> tuple[str, str, str]:
+    if plan.profile == "production":
+        return (
+            f"Alpha evaluation target: {plan.capacity_target_gib} GiB before matter data",
+            "Leave headroom for images and selected models",
+            "Plan additional SSD capacity for the selected profile. These evaluation targets are not validated minimums.",
+        )
+    return (
+        f"Evaluation capacity target: {plan.capacity_target_gib} GiB before matter data",
+        "Leave headroom for the selected profile's measured image and model footprint",
+        "The target adds that measured footprint to the evaluation reserve. It is planning guidance for synthetic or sample data, not a validated collection minimum.",
+    )
+
+
+def _free_gib(path: Path) -> float | None:
+    try:
+        _resolved, ancestor, safe = _storage_path_status(path)
+        if not safe:
+            return None
+        return shutil.disk_usage(ancestor).free / (1024**3)
+    except (OSError, RuntimeError):
+        return None
+
+
+def _require_free_above(paths: Sequence[Path], reserve_gib: int, *, purpose: str) -> None:
+    for path in paths:
+        free = _free_gib(path)
+        if free is None or free <= reserve_gib:
+            raise RuntimeError(f"{purpose} requires more than {reserve_gib} GiB free on node and matter storage")
+
+
+def _remove_env_keys(path: Path, keys: set[str]) -> None:
+    original = path.read_text(encoding="utf-8")
+    kept = []
+    for line in original.splitlines(keepends=True):
+        if line.strip().partition("=")[0] in keys:
+            continue
+        kept.append(line)
+    updated = "".join(kept)
+    if updated != original:
+        _private_write(path, updated, replace=True)
+
+
+def _apply_storage_profile(args: argparse.Namespace, root: Path, *, dry_run: bool) -> None:
+    """Persist an explicit profile change. Unchanged nodes are left byte-for-byte alone."""
+    plan = _storage_plan(args.models or "none", args)
+    if plan.refusal:
+        raise RuntimeError(plan.refusal)
+    if plan.transition not in {"downgrade", "promote", "retune"}:
+        return
+    storage_root = args.storage_root or root / "matter-storage"
+    purpose = (
+        "switching an evaluation node to production"
+        if plan.transition == "promote"
+        else "the selected evaluation storage reserve"
+    )
+    _require_free_above((root, storage_root), plan.reserve_gib, purpose=purpose)
+    if dry_run:
+        return
+    record_path = root / "installation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise RuntimeError("installed node metadata is invalid")
+    app_env = _app_env(root)
+    transcription_env = root / "config" / "transcription.env"
+    if plan.profile == "evaluation":
+        record["storage_profile"] = "evaluation"
+        record["storage_reserve_gib"] = plan.reserve_gib
+        _replace_env(app_env, "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", str(plan.reserve_gib))
+        _replace_env(app_env, "CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
+        _replace_env(transcription_env, "TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES", str(plan.min_free_disk_bytes))
+    else:
+        record.pop("storage_profile", None)
+        record.pop("storage_reserve_gib", None)
+        _replace_env(app_env, "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "100")
+        _remove_env_keys(app_env, {"CASE_INTELLIGENCE_STORAGE_PROFILE"})
+        _replace_env(transcription_env, "TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES", "107374182400")
+    _atomic_private_write(record_path, json.dumps(record, indent=2) + "\n")
+
+
+def _assert_saved_storage_consistent(root: Path, installation: Mapping[str, object]) -> tuple[str, int]:
+    profile = installation.get("storage_profile", "production")
+    if not isinstance(profile, str) or profile not in {"production", "evaluation"}:
+        raise RuntimeError("saved storage profile is invalid")
+    if profile == "production":
+        if "storage_reserve_gib" in installation and installation.get("storage_reserve_gib") != _PRODUCTION_RESERVE_GIB:
+            raise RuntimeError("saved storage reserve disagrees with the production profile")
+        expected = _PRODUCTION_RESERVE_GIB
+    else:
+        expected = installation.get("storage_reserve_gib")
+        if isinstance(expected, bool) or not isinstance(expected, int) or not 1 <= expected <= 100:
+            raise RuntimeError("saved evaluation storage reserve is unavailable")
+    app_env = _dotenv(_app_env(root))
+    if app_env.get("CASE_INTELLIGENCE_STORAGE_PROFILE", "production") != profile:
+        raise RuntimeError("saved storage profile disagrees with application configuration")
+    try:
+        reserve = int(app_env["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("saved storage reserve is unavailable") from exc
+    if reserve != expected:
+        raise RuntimeError("saved storage reserve disagrees with the storage profile")
+    try:
+        minimum = int(_dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"])
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("saved transcription disk minimum is unavailable") from exc
+    if minimum != expected * 1024**3:
+        raise RuntimeError("transcription free-disk minimum disagrees with the storage reserve")
+    return profile, expected
+
+
 def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                        model_args: argparse.Namespace | None = None,
                        needs_model_staging: bool = True,
@@ -1600,17 +1951,24 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         except (OSError, subprocess.TimeoutExpired):
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
+    storage_plan = _storage_plan(models, args)
     if docker:
         try:
             driver_probe = _probe(["docker", "info", "--format", "{{.Driver}}"])
             driver = driver_probe.stdout.strip() if driver_probe.returncode == 0 else ""
         except (OSError, subprocess.TimeoutExpired):
             driver = ""
+        driver_remedy = (
+            "Inspect docker info on the engine host. On nested hosts prefer fuse-overlayfs over vfs when supported; budget build space above the 100 GiB runtime reserve. See docs/INSTALL.md#atypical-docker-hosts."
+            if storage_plan.profile == "production"
+            else "Inspect docker info on the engine host. On nested hosts prefer fuse-overlayfs over vfs when supported; "
+            f"budget build space above the {storage_plan.reserve_gib} GiB evaluation reserve. See docs/INSTALL.md#atypical-docker-hosts."
+        )
         add("docker-storage-driver", bool(driver) and driver != "vfs",
             "VFS copies image layers" if driver == "vfs" else
             ("Non-VFS driver reported" if driver else "Storage driver unavailable"),
             "Preserve disk headroom during image builds",
-            "Inspect docker info on the engine host. On nested hosts prefer fuse-overlayfs over vfs when supported; budget build space above the 100 GiB runtime reserve. See docs/INSTALL.md#atypical-docker-hosts.", blocking=False)
+            driver_remedy, blocking=False)
     openssl = shutil.which("openssl") is not None
     add("openssl", openssl, "OpenSSL available" if openssl else "OpenSSL missing",
         "Prepare HTTPS", "Install the distribution OpenSSL package; retain HTTPS and secure cookies.")
@@ -1751,6 +2109,12 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             "Managed storage is separate from node control paths" if compatible else "Managed storage overlaps node control paths or uses an invalid path",
             "Keep source storage separate from installation configuration",
             "Use the default matter-storage directory, a separate dedicated directory, or a custom child outside config, secrets, runtime, transcription, state, models, tls, accounts, releases, compose.env and installation.json. Matter storage cannot equal or contain the node root.")
+        if storage_plan.refusal or storage_plan.profile == "evaluation":
+            evaluation_selected = storage_plan.profile == "evaluation" and not storage_plan.refusal
+            add("storage-profile", evaluation_selected,
+                "Evaluation node, not for real case data" if evaluation_selected else "Production storage profile remains in effect",
+                "Try the product with synthetic or sample data only" if evaluation_selected else "Keep the 100 GiB production reserve",
+                storage_plan.refusal or "Use synthetic or sample data only. This evaluation node is not for real case data.")
         for name, path in (("node-storage", args.root), ("matter-storage", storage_root)):
             try:
                 path, ancestor, safe = _storage_path_status(path)
@@ -1771,16 +2135,17 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                         "Initialize or reopen the managed source boundary",
                         "Choose an empty dedicated matter storage root, or an intact initialized RecordBench storage root. Without a valid marker, matters, .matter-purging and ingestion-staging must not exist; do not delete existing data to bypass this check.")
                 free = shutil.disk_usage(ancestor).free / (1024 ** 3) if safe else None
-                add(name + "-reserve", free is not None and free > 100,
+                reserve_capability, reserve_remedy = _reserve_messages(storage_plan)
+                add(name + "-reserve", free is not None and free > storage_plan.reserve_gib,
                     f"{free:.1f} GiB free" if free is not None else "Capacity could not be checked safely",
-                    "Admit sources above the configured 100 GiB storage reserve",
-                    "Provide more than 100 GiB free on this filesystem, plus capacity for images, models and matter data. See profile targets in docs/INSTALL.md.")
-                target = {"none": 150, "review": 200, "transcription": 300, "all": 300}[models]
+                    reserve_capability,
+                    reserve_remedy)
                 if name == "node-storage":
-                    add("capacity-target", free is not None and free >= target,
-                        f"Alpha evaluation target: {target} GiB before matter data",
-                        "Leave headroom for images and selected models",
-                        "Plan additional SSD capacity for the selected profile. These evaluation targets are not validated minimums.", blocking=False)
+                    capacity_observed, capacity_capability, capacity_remedy = _capacity_messages(storage_plan)
+                    add("capacity-target", free is not None and free >= storage_plan.capacity_target_gib,
+                        capacity_observed,
+                        capacity_capability,
+                        capacity_remedy, blocking=False)
             except (OSError, RuntimeError, KeyError, ValueError):
                 add(name, False, "Directory metadata unavailable", "Inspect storage before installation",
                     "Ask the storage administrator to restore directory access, then rerun preflight.")
@@ -2079,6 +2444,9 @@ def _configure(
     if auth not in IDENTITY_FIELDS:
         raise RuntimeError("identity choices must be collected and checked before configuration")
     models = args.models or "none"
+    storage_plan = _storage_plan(models, args)
+    if storage_plan.refusal:
+        raise RuntimeError(storage_plan.refusal)
     transcription_languages = _transcription_languages(
         args.transcription_languages
     )
@@ -2195,8 +2563,10 @@ def _configure(
         "CASE_INTELLIGENCE_UPLOAD_COLLECTION_GIB": 100,
         "CASE_INTELLIGENCE_MEDIA_FILE_GIB": 100,
         "CASE_INTELLIGENCE_DOCUMENT_FILE_MIB": 512,
-        "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": 100,
+        "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": 100 if storage_plan.profile == "production" else storage_plan.reserve_gib,
     }
+    if storage_plan.profile == "evaluation":
+        app_values["CASE_INTELLIGENCE_STORAGE_PROFILE"] = "evaluation"
     admin_username = admin_display = None
     if auth == "local":
         if args.enable_account_management:
@@ -2293,7 +2663,9 @@ def _configure(
         "TRANSCRIPTION_V2_MAX_RETAINED_BYTES_PER_OWNER": 214748364800,
         "TRANSCRIPTION_V2_MAX_RETAINED_JOBS_GLOBAL": 400,
         "TRANSCRIPTION_V2_MAX_RETAINED_BYTES_GLOBAL": 858993459200,
-        "TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES": 107374182400,
+        "TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES": (
+            107374182400 if storage_plan.profile == "production" else storage_plan.min_free_disk_bytes
+        ),
         "TRANSCRIPTION_V2_MAX_MEDIA_DURATION_SECONDS": 43200,
         "TRANSCRIPTION_V2_DELIVERY_TOKEN_SECONDS": 600,
         "HF_HUB_OFFLINE": 1,
@@ -2321,6 +2693,10 @@ def _configure(
                     "release_path": str(release_path),
                     "node_id": hashlib_short(root),
                     "storage_root": str(paths["storage"]),
+                    **(
+                        {"storage_profile": "evaluation", "storage_reserve_gib": storage_plan.reserve_gib}
+                        if storage_plan.profile == "evaluation" else {}
+                    ),
                     "auth": auth,
                     "local_account_management": bool(args.enable_account_management),
                     "initial_administrator": admin_username if auth == "local" else None,
@@ -2746,7 +3122,7 @@ def _provision(
     try:
         _run(console, [*runtime_compose, "up", "-d", "--remove-orphans"], dry_run=args.dry_run)
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError("Service startup failed. " + _STARTUP_REMEDY) from exc
+        raise RuntimeError("Service startup failed. " + _startup_remedy(root)) from exc
     if not args.dry_run:
         _wait_health(console, root)
     console.ok("RecordBench node is online")
@@ -2773,6 +3149,18 @@ _STARTUP_REMEDY = (
     "filesystems (builds can erode the 100 GiB reserve), and Docker bridge connectivity. "
     "See docs/INSTALL.md#startup-troubleshooting; correct the cause before resume or doctor."
 )
+
+
+def _startup_remedy(root: Path) -> str:
+    try:
+        record = json.loads((root / "installation.json").read_text(encoding="utf-8"))
+        reserve = record.get("storage_reserve_gib") if isinstance(record, dict) else None
+        if (isinstance(record, dict) and record.get("storage_profile") == "evaluation"
+                and isinstance(reserve, int) and not isinstance(reserve, bool)):
+            return _STARTUP_REMEDY.replace("the 100 GiB reserve", f"the {reserve} GiB evaluation reserve")
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        pass
+    return _STARTUP_REMEDY
 
 
 def _installed_auth_mode(root: Path, installation: Mapping[str, object]) -> str:
@@ -2898,7 +3286,7 @@ def _wait_health(console: Console, root: Path) -> None:
             console.note(f"health consensus pending :: {last}")
             next_report = time.monotonic() + 15
         time.sleep(3)
-    raise RuntimeError(f"node did not reach health before timeout ({last}). {_STARTUP_REMEDY}")
+    raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
 
 
 def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
@@ -2912,6 +3300,13 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     config, _ = _installed_release(root)
     expected_auth = _installed_auth_mode(root, config)
     console.ok(f"saved authentication mode :: {expected_auth}")
+    storage_profile, storage_reserve = _assert_saved_storage_consistent(root, config)
+    if storage_profile == "evaluation":
+        console.ok(
+            f"storage profile :: evaluation; {storage_reserve} GiB reserve; evaluation node, not for real case data"
+        )
+    else:
+        console.ok(f"storage profile :: production; {storage_reserve} GiB reserve")
     profiles = list(config.get("profiles", []))
     compose = _compose(root, profiles)
     _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
@@ -3021,6 +3416,7 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
             raise RuntimeError("saved storage mount disagrees with the installed node layout")
     if app_env.get("CASE_INTELLIGENCE_AUTH_MODE") != auth:
         raise RuntimeError("saved authentication mode disagrees with application configuration")
+    _assert_saved_storage_consistent(root, installation)
     if auth == "local":
         expected_file = ("/var/lib/recordbench-accounts/local-accounts.json" if account_management
                          else "/run/recordbench-secrets/local-accounts.json")
@@ -3128,6 +3524,7 @@ def _resume_node(console: Console, args: argparse.Namespace, root: Path) -> None
                 # model set must pass admission using actual free device memory.
                 _preflight(console, models=models, dry_run=False, args=args,
                            needs_model_staging=needs_model_staging)
+            _apply_storage_profile(args, root, dry_run=args.dry_run)
             if not args.dry_run:
                 _install_phase(root, "configuration", "complete")
             console.ok(f"release capsule :: {installation.get('release_id', 'legacy')}")
@@ -3315,12 +3712,15 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
     console.phase(3, "LOAD NEW RELEASE CAPSULE", "Hashing an allowlisted source tree and preserving the prior runtime intact")
     release_id, release = _stage_release(console, root, dry_run=args.dry_run)
     if release_id == installation.get("release_id"):
+        _apply_storage_profile(args, root, dry_run=args.dry_run)
         console.ok("Node already runs this exact release capsule")
         if not args.dry_run:
             _doctor(console, args, root)
         return
     old_installation_text = (root / "installation.json").read_text(encoding="utf-8")
     old_compose_text = (root / "compose.env").read_text(encoding="utf-8")
+    old_app_text = _app_env(root).read_text(encoding="utf-8")
+    old_transcription_text = (root / "config" / "transcription.env").read_text(encoding="utf-8")
     updated = dict(installation)
     updated.update(
         {
@@ -3339,6 +3739,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
     compose = _compose(root, profiles, release=release, auth=auth)
     console.phase(4, "FORGE REPLACEMENT RUNTIME", "Building versioned images without overwriting the rollback image set")
     try:
+        _apply_storage_profile(args, root, dry_run=args.dry_run)
         _run(console, [*compose, "build", *_build_targets(auth, models)], dry_run=args.dry_run)
         _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
         console.phase(5, "ATOMIC NODE SWAP", "Starting the new capsule and waiting for application and storage consensus")
@@ -3367,6 +3768,8 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
             try:
                 _atomic_private_write(root / "compose.env", old_compose_text)
                 _atomic_private_write(root / "installation.json", old_installation_text)
+                _atomic_private_write(_app_env(root), old_app_text)
+                _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
                 rollback = _compose(root, profiles, release=old_release, auth=auth)
                 _run(console, [*rollback, "up", "-d", "--remove-orphans"])
                 _wait_health(console, root)

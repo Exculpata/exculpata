@@ -256,6 +256,26 @@ svg {
   letter-spacing: 0.03em;
 }
 
+.evaluation-node-banner {
+  position: fixed;
+  z-index: 200;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 8px 16px;
+  background: var(--x-warning-bg);
+  color: var(--warning);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.3;
+  text-align: center;
+}
+
+body:has(.evaluation-node-banner) {
+  padding-bottom: 42px;
+}
+
 .administrator-link,
 .administrator-view-label {
   padding: 4px 8px;

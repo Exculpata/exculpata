@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
 </head>
 <body class="login-page">
+  {% if evaluation_storage_node %}<p class="evaluation-node-banner" role="status">Evaluation node, not for real case data</p>{% endif %}
   <main class="login-shell">
     <section class="login-card" aria-labelledby="login-heading">
       <img class="login-brand-mark" src="{{ asset_url('favicon.svg') }}" alt="">

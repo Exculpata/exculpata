@@ -1329,7 +1329,10 @@ def saved_gpu_node(tmp_path, *, model_profile="quality", models="review"):
     environment.update({key.replace("RECORDBENCH_", "EXCULPATA_", 1): value
                         for key, value in environment.items() if key.startswith("RECORDBENCH_")})
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved GPU plan"))
-    (root / "config" / "transcription.env").write_text('TRANSCRIPTION_V2_MIN_FREE_VRAM_MB="16000"\n')
+    (root / "config" / "transcription.env").write_text(
+        'TRANSCRIPTION_V2_MIN_FREE_VRAM_MB="16000"\n'
+        'TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES="107374182400"\n'
+    )
     return root, installation, environment
 
 
@@ -3216,3 +3219,227 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
                          "synthetic-release", ROOT, ())
     assert path.read_bytes() == expected
+
+
+def _free_disk(monkeypatch, gib: float) -> None:
+    monkeypatch.setattr(
+        installer.shutil,
+        "disk_usage",
+        lambda path: type("Disk", (), {"free": int(gib * 1024**3)})(),
+    )
+
+
+def _control_bytes(root: Path) -> dict[str, bytes]:
+    return {
+        "installation": (root / "installation.json").read_bytes(),
+        "app": (root / "config" / "recordbench.env").read_bytes(),
+        "transcription": (root / "config" / "transcription.env").read_bytes(),
+    }
+
+
+def test_production_storage_profile_keeps_100_gib_reserve(tmp_path, ready_host, monkeypatch):
+    _free_disk(monkeypatch, 40)
+    args = preflight_args(tmp_path, "--models", "none")
+    checks = checks_by_name(installer._collect_preflight("none", args))
+    assert checks["node-storage-reserve"].state == "fail"
+    assert checks["node-storage-reserve"].blocking is True
+    assert checks["matter-storage-reserve"].state == "fail"
+    assert checks["node-storage-reserve"].required_capability == "Admit sources above the configured 100 GiB storage reserve"
+    assert "100 GiB" in checks["node-storage-reserve"].remedy
+    assert "storage-profile" not in checks
+    assert checks["capacity-target"].blocking is False
+    assert checks["capacity-target"].observed == "Alpha evaluation target: 150 GiB before matter data"
+    _free_disk(monkeypatch, 100)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "fail"
+    _free_disk(monkeypatch, 100 + 1 / 1024**3)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
+    for models, target in {"none": 150, "review": 200, "transcription": 300, "all": 300}.items():
+        plan = installer._storage_plan(models, preflight_args(tmp_path, "--models", models))
+        assert plan.profile == "production" and plan.reserve_gib == 100
+        assert plan.min_free_disk_bytes == 107374182400
+        assert plan.capacity_target_gib == target and plan.refusal == ""
+
+
+def test_evaluation_storage_passes_at_40_gib_and_blocks_at_its_reserve(tmp_path, ready_host, monkeypatch):
+    args = preflight_args(tmp_path, "--storage-profile", "evaluation", "--models", "none")
+    _free_disk(monkeypatch, 40)
+    result = installer._collect_preflight("none", args)
+    checks = checks_by_name(result)
+    assert result.ready
+    assert checks["node-storage-reserve"].state == "pass"
+    assert checks["matter-storage-reserve"].state == "pass"
+    assert checks["storage-profile"].observed == "Evaluation node, not for real case data"
+    assert checks["storage-profile"].state == "pass"
+    plan = installer._storage_plan("none", args)
+    assert plan.reserve_gib == 10
+    assert plan.min_free_disk_bytes == 10 * 1024**3
+    assert plan.capacity_target_gib == 10 + installer._ceil_gib(installer._evaluation_payload_bytes("none", args))
+    assert checks["capacity-target"].observed == f"Evaluation capacity target: {plan.capacity_target_gib} GiB before matter data"
+    assert checks["capacity-target"].blocking is False
+    for gib in (9, 10):
+        _free_disk(monkeypatch, gib)
+        blocked = checks_by_name(installer._collect_preflight("none", args))
+        assert blocked["node-storage-reserve"].state == "fail"
+        assert blocked["node-storage-reserve"].blocking is True
+        assert "10 GiB" in blocked["node-storage-reserve"].required_capability
+        assert "not for real case data" in blocked["node-storage-reserve"].remedy
+
+
+def test_evaluation_reserve_is_configurable_and_ignored_for_production(tmp_path, ready_host, monkeypatch):
+    monkeypatch.setenv("EXCULPATA_EVALUATION_RESERVE_GIB", "12")
+    args = preflight_args(tmp_path, "--storage-profile", "evaluation")
+    _free_disk(monkeypatch, 12)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "fail"
+    _free_disk(monkeypatch, 13)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
+    flagged = preflight_args(tmp_path, "--storage-profile", "evaluation", "--evaluation-reserve-gib", "8")
+    _free_disk(monkeypatch, 9)
+    assert checks_by_name(installer._collect_preflight("none", flagged))["node-storage-reserve"].state == "pass"
+    production = preflight_args(tmp_path)
+    _free_disk(monkeypatch, 40)
+    checks = checks_by_name(installer._collect_preflight("none", production))
+    assert checks["node-storage-reserve"].state == "fail"
+    assert "100 GiB" in checks["node-storage-reserve"].required_capability
+    assert "storage-profile" not in checks
+    rejected = preflight_args(tmp_path, "--evaluation-reserve-gib", "10")
+    checks = checks_by_name(installer._collect_preflight("none", rejected))
+    assert checks["storage-profile"].state == "fail"
+    assert checks["node-storage-reserve"].state == "fail"
+    invalid = preflight_args(tmp_path, "--storage-profile", "evaluation", "--evaluation-reserve-gib", "0")
+    _free_disk(monkeypatch, 400)
+    checks = checks_by_name(installer._collect_preflight("none", invalid))
+    assert checks["storage-profile"].state == "fail"
+    assert "1 through 100" in checks["storage-profile"].remedy
+    assert checks["node-storage-reserve"].required_capability.startswith("Admit sources above the configured 100 GiB")
+
+
+def test_evaluation_capacity_target_follows_the_selected_model_footprint():
+    none = installer._parser().parse_args(["preflight", "--storage-profile", "evaluation", "--models", "none"])
+    review = installer._parser().parse_args(["preflight", "--storage-profile", "evaluation", "--models", "review"])
+    portable = installer._parser().parse_args([
+        "preflight", "--storage-profile", "evaluation", "--models", "review", "--review-model-profile", "portable"])
+    transcription = installer._parser().parse_args([
+        "preflight", "--storage-profile", "evaluation", "--models", "transcription", "--transcription-languages", "en,es"])
+    none_bytes = installer._evaluation_payload_bytes("none", none)
+    assert none_bytes == sum(installer._EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav"))
+    # Fresh CPU image virtual sizes measured 2026-10-15 from the installer build.
+    assert none_bytes == 1_072_085_818 + 106_216_980 + 638_421_012 + 406_589_383
+    assert installer._evaluation_payload_bytes("review", review) > installer._evaluation_payload_bytes("review", portable) > none_bytes
+    assert installer._evaluation_payload_bytes("transcription", transcription) > none_bytes
+    assert installer._evaluation_payload_bytes("all", review) > installer._evaluation_payload_bytes("review", review)
+
+
+def test_production_configuration_omits_evaluation_profile(tmp_path):
+    from tests.test_first_run_handoff import configured_node
+    root, _, paths = configured_node(tmp_path)
+    application = (paths["config"] / "recordbench.env").read_text()
+    transcription = (paths["config"] / "transcription.env").read_text()
+    record = json.loads((root / "installation.json").read_text())
+    assert 'CASE_INTELLIGENCE_STORAGE_RESERVE_GIB="100"' in application
+    assert "CASE_INTELLIGENCE_STORAGE_PROFILE" not in application
+    assert 'TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES="107374182400"' in transcription
+    assert "storage_profile" not in record and "storage_reserve_gib" not in record
+
+
+def test_evaluation_configuration_persists_profile_reserve_and_transcription_minimum(tmp_path):
+    from tests.test_first_run_handoff import configured_node
+    root, _, paths = configured_node(tmp_path, storage_profile="evaluation", evaluation_reserve_gib=10)
+    application = installer._dotenv(paths["config"] / "recordbench.env")
+    transcription = installer._dotenv(paths["config"] / "transcription.env")
+    record = json.loads((root / "installation.json").read_text())
+    assert application["CASE_INTELLIGENCE_STORAGE_PROFILE"] == "evaluation"
+    assert application["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] == "10"
+    assert transcription["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == str(10 * 1024**3)
+    assert record["storage_profile"] == "evaluation" and record["storage_reserve_gib"] == 10
+    profile, reserve = installer._assert_saved_storage_consistent(root, record)
+    assert profile == "evaluation" and reserve == 10
+
+
+def test_doctor_reports_storage_profile(tmp_path, capsys):
+    from tests.test_first_run_handoff import configured_node
+    root, _, _ = configured_node(tmp_path)
+    args = installer._parser().parse_args(["doctor", "--root", str(root), "--dry-run"])
+    installer._doctor(installer.Console(color=False), args, root)
+    assert "storage profile :: production; 100 GiB reserve" in capsys.readouterr().out
+    evaluation, _, _ = configured_node(tmp_path / "evaluation", storage_profile="evaluation")
+    args = installer._parser().parse_args(["doctor", "--root", str(evaluation), "--dry-run"])
+    installer._doctor(installer.Console(color=False), args, evaluation)
+    assert "storage profile :: evaluation; 10 GiB reserve; evaluation node, not for real case data" in capsys.readouterr().out
+
+
+def test_doctor_rejects_a_storage_profile_that_disagrees_with_the_application(tmp_path):
+    from tests.test_first_run_handoff import configured_node
+    root, _, _ = configured_node(tmp_path)
+    installer._replace_env(root / "config" / "recordbench.env", "CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
+    args = installer._parser().parse_args(["doctor", "--root", str(root), "--dry-run"])
+    with pytest.raises(RuntimeError, match="storage profile disagrees"):
+        installer._doctor(installer.Console(color=False, quiet=True), args, root)
+
+
+def test_production_to_evaluation_downgrade_is_refused_without_the_explicit_flag(tmp_path, ready_host, monkeypatch):
+    from tests.test_first_run_handoff import configured_node
+    root, _, _ = configured_node(tmp_path)
+    before = _control_bytes(root)
+    _free_disk(monkeypatch, 400)
+    args = installer._parser().parse_args([
+        "install", "--resume", "--root", str(root), "--models", "none", "--storage-profile", "evaluation", "--non-interactive"])
+    checks = checks_by_name(installer._collect_preflight("none", args))
+    assert checks["storage-profile"].state == "fail" and checks["storage-profile"].blocking is True
+    assert "allow-evaluation-downgrade" in checks["storage-profile"].remedy
+    assert checks["node-storage-reserve"].state == "pass"
+    assert "100 GiB" in checks["node-storage-reserve"].required_capability
+    with pytest.raises(RuntimeError, match="allow-evaluation-downgrade"):
+        installer._apply_storage_profile(args, root, dry_run=False)
+    assert _control_bytes(root) == before
+    allowed = installer._parser().parse_args([
+        "install", "--resume", "--root", str(root), "--models", "none", "--storage-profile", "evaluation",
+        "--allow-evaluation-downgrade", "--non-interactive"])
+    _free_disk(monkeypatch, 40)
+    allowed_checks = checks_by_name(installer._collect_preflight("none", allowed))
+    assert allowed_checks["storage-profile"].observed == "Evaluation node, not for real case data"
+    assert allowed_checks["node-storage-reserve"].state == "pass"
+    assert _control_bytes(root) == before
+    installer._apply_storage_profile(allowed, root, dry_run=False)
+    record = json.loads((root / "installation.json").read_text())
+    assert record["storage_profile"] == "evaluation" and record["storage_reserve_gib"] == 10
+    assert installer._dotenv(root / "config" / "recordbench.env")["CASE_INTELLIGENCE_STORAGE_PROFILE"] == "evaluation"
+    assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == str(10 * 1024**3)
+
+
+def test_evaluation_to_production_rechecks_the_100_gib_reserve(tmp_path, ready_host, monkeypatch):
+    from tests.test_first_run_handoff import configured_node
+    root, _, _ = configured_node(tmp_path, storage_profile="evaluation")
+    before = _control_bytes(root)
+    args = installer._parser().parse_args([
+        "install", "--resume", "--root", str(root), "--models", "none", "--storage-profile", "production", "--non-interactive"])
+    _free_disk(monkeypatch, 40)
+    checks = checks_by_name(installer._collect_preflight("none", args))
+    assert checks["node-storage-reserve"].state == "fail"
+    assert "100 GiB" in checks["node-storage-reserve"].required_capability
+    with pytest.raises(RuntimeError, match="more than 100 GiB"):
+        installer._apply_storage_profile(args, root, dry_run=False)
+    assert _control_bytes(root) == before
+    _free_disk(monkeypatch, 101)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
+    installer._apply_storage_profile(args, root, dry_run=False)
+    application = installer._dotenv(root / "config" / "recordbench.env")
+    record = json.loads((root / "installation.json").read_text())
+    assert "storage_profile" not in record and "storage_reserve_gib" not in record
+    assert "CASE_INTELLIGENCE_STORAGE_PROFILE" not in application
+    assert application["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] == "100"
+    assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == "107374182400"
+
+
+def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, ready_host, monkeypatch):
+    from tests.test_first_run_handoff import configured_node
+    root, _, _ = configured_node(tmp_path, storage_profile="evaluation", evaluation_reserve_gib=10)
+    before = _control_bytes(root)
+    monkeypatch.setenv("EXCULPATA_EVALUATION_RESERVE_GIB", "4")
+    args = installer._parser().parse_args([
+        "install", "--resume", "--root", str(root), "--models", "none", "--non-interactive"])
+    _free_disk(monkeypatch, 9)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "fail"
+    _free_disk(monkeypatch, 11)
+    assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
+    installer._apply_storage_profile(args, root, dry_run=False)
+    assert _control_bytes(root) == before

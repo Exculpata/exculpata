@@ -23,6 +23,13 @@ MARKER_VERSION = 1
 _OWNED_DIRECTORIES = ("matters", ".matter-purging", "ingestion-staging")
 
 
+def node_storage_profile() -> str:
+    """Return the installer storage profile. Only an explicit evaluation value is evaluation."""
+
+    value = os.getenv("CASE_INTELLIGENCE_STORAGE_PROFILE", "").strip()
+    return "evaluation" if value == "evaluation" else "production"
+
+
 def format_bytes(value: int) -> str:
     """Format an integer byte boundary without overstating precision."""
 

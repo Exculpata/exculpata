@@ -23,6 +23,7 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}{% if active_matter %} matter-page{% endif %}{% if show_assistant_dock %} assistant-available{% endif %}" data-csrf-token="{{ csrf_token }}" data-assistant-default="{{ 'collapsed' if source_sequence is defined else assistant_default|default('open') }}">
+  {% if evaluation_storage_node %}<p class="evaluation-node-banner" role="status">Evaluation node, not for real case data</p>{% endif %}
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
     <div class="brand-zone">
