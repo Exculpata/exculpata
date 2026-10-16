@@ -61,7 +61,7 @@ def test_plain_cli_has_no_escapes_redraws_or_sleep(tmp_path, monkeypatch, tty, m
     assert time.monotonic() - start < 1
     output = tty.getvalue()
     assert "\x1b" not in output and "\r" not in output
-    for word in ("EVIDENCE NODE PROVISIONER", "PHASE 01", "OK", "NOTE", "BLOCK"):
+    for word in ("Exculpata installer", "PHASE 01", "OK", "NOTE", "BLOCK"):
         assert word in output
     assert not (tmp_path / "node").exists()
 
@@ -188,7 +188,7 @@ def test_failed_build_main_still_exits_one(synthetic_docker, monkeypatch, capsys
     assert "Docker build failed (exit 17)" in output
     assert "synthetic final diagnostic" in output and "Full Docker output" in output
     if not quiet:
-        assert "BOOT SEQUENCE HALTED" in output
+        assert "Doctor stopped" in output
 
 
 @pytest.mark.parametrize("mode", ["dry-run", "capture", "credential", "license-plan"])
@@ -547,6 +547,47 @@ def test_logged_build_progress_is_honest_and_fits(synthetic_docker, monkeypatch,
     for line in text.splitlines():
         if "step " in line or "images built" in line or "waiting for Docker output" in line:
             assert terminal.cell_width(line) <= width - 1
+
+
+def test_plain_progress_throttles_step_bursts_and_keeps_counts(synthetic_docker, monkeypatch, capsys):
+    """A frozen clock prints the first step and later count changes, not every layer."""
+    _root, command = synthetic_docker
+    docker = Path(os.environ["PATH"].split(os.pathsep)[0]) / "docker"
+    monkeypatch.setattr(terminal, "terminal_width", lambda: 160)
+    monkeypatch.setattr(installer.time, "monotonic", lambda: 1000.0)
+    monkeypatch.setenv("SYNTHETIC_EXIT", "0")
+    lines = "\n".join(
+        f"print('#{{n}} [app {{n}}/12] RUN echo synthetic-step-{{n}}', flush=True)".replace("{n}", str(number))
+        for number in range(1, 13)
+    )
+    docker.write_text(
+        f"#!{sys.executable}\nimport sys\n{lines}\n"
+        "print('[+] Building 1.2s (4/10)', flush=True)\n"
+        "raise SystemExit(0)\n"
+    )
+    assert installer._run(terminal.Console(color=False), command).returncode == 0
+    step_lines = [line for line in capsys.readouterr().out.splitlines() if "step " in line]
+    assert len(step_lines) == 2
+    assert "step 1 of 12" in step_lines[0] and "images built" in step_lines[0]
+    assert "build steps 4 of 10" in step_lines[1]
+    assert "images built" in step_lines[1] and "step 12 of 12" in step_lines[1]
+
+    clock = {"now": 1000.0}
+
+    def advance():
+        clock["now"] += 6.0
+        return clock["now"]
+
+    monkeypatch.setattr(installer.time, "monotonic", advance)
+    spaced = "\n".join(
+        f"print('#{{n}} [app {{n}}/4] RUN echo synthetic-later-{{n}}', flush=True)".replace("{n}", str(number))
+        for number in range(1, 5)
+    )
+    docker.write_text(f"#!{sys.executable}\nimport sys\n{spaced}\nraise SystemExit(0)\n")
+    assert installer._run(terminal.Console(color=False), command).returncode == 0
+    later = capsys.readouterr().out
+    assert "step 1 of 4" in later and "step 4 of 4" in later
+    assert "images built" in later
 
 
 def test_animated_progress_frames_stay_inside_50_columns(monkeypatch, tty):

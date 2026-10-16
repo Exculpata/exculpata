@@ -4,8 +4,8 @@
   |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
   | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
   |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
-  EVIDENCE NODE PROVISIONER // DOCTOR // BUILD 0.1.0-beta.1
-  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+
+  Exculpata installer // DOCTOR // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
 
   PHASE 01 / NODE DIAGNOSTIC
              Checking configuration, permissions, Compose graph, and live health

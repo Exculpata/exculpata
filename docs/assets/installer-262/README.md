@@ -16,11 +16,16 @@ installer does not set a terminal background.
   and BuildKit step fractions are the lines the installer printed. Narrow
   frames clip that recorded text. [Install excerpt](install-excerpt.txt) is the
   same selection with color removed, plus the handoff from that run.
-- [Up log, 80](up-progress-80.png) and [50](up-progress-50.png) are the fixed
-  parser reading this install's private Compose up log. The live process had
-  already started and printed `waiting for Docker output` because it did not
-  yet accept Compose's aligned spacing. These frames are that log, not a second
-  engine run.
+- [Compose up, 80](up-progress-80.png) and [50](up-progress-50.png) are a live
+  capture of this installer while `docker compose up -d --remove-orphans` runs
+  for the practice node. The command is the ignite command: compose files for
+  that node, and no `--profile tools`. Elapsed time advances, and container
+  lines appear about every five seconds with the latest reported action. The
+  50-column frame is the same run shape with progress rows clipped.
+- Banner lines in the doctor and uninstall text use the current labels
+  (`Exculpata installer` and `This account runs this command.`). The uninstall
+  stop line uses `Uninstall stopped`. The rest of those captures is the
+  recorded run, including the earlier permission-denied `rmdir`.
 - [Node online, 80](node-online-80.png) and [50](node-online-50.png) are the
   install's handoff bytes. Long lines wrap at the frame width.
 - [Doctor, plain](doctor-plain.txt) is `./install doctor --root /srv/exculpata --plain`

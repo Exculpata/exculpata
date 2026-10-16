@@ -4,8 +4,8 @@
   |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
   | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
   |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
-  EVIDENCE NODE PROVISIONER // UNINSTALL // BUILD 0.1.0-beta.1
-  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+
+  Exculpata installer // UNINSTALL // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
 
   UNINSTALL PLAN
   [ NOTE ] Compose project: exculpata-5593a4b3d8
@@ -24,8 +24,8 @@ DRY_EXIT:0
   |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
   | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
   |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
-  EVIDENCE NODE PROVISIONER // UNINSTALL // BUILD 0.1.0-beta.1
-  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+
+  Exculpata installer // UNINSTALL // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
 
   UNINSTALL PLAN
   [ NOTE ] Compose project: exculpata-5593a4b3d8
@@ -39,5 +39,5 @@ DRY_EXIT:0
   [ NOTE ] Matter storage is inside the node root and will be removed with it: /srv/exculpata/matter-storage
   [ NOTE ] Service account and group are not changed by this command
 
-  [ WARN ] BOOT SEQUENCE HALTED :: [Errno 13] Permission denied: '/srv/exculpata'
+  [ WARN ] Uninstall stopped :: [Errno 13] Permission denied: '/srv/exculpata'
 UNINSTALL_EXIT:1

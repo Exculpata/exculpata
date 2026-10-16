@@ -92,11 +92,35 @@ def test_password_stdin_fails_fast_without_echo(tmp_path, monkeypatch, capsys, v
 
 def test_password_without_a_terminal_fails_fast(tmp_path, monkeypatch):
     monkeypatch.setattr(installer.getpass, "getpass", lambda prompt="": pytest.fail("prompted without a terminal"))
+    monkeypatch.setattr(installer, "_dev_tty_openable", lambda: False)
     _tty(monkeypatch, False)
     args = _interactive_args(tmp_path / "node")
     with pytest.raises(RuntimeError, match="--password-stdin") as error:
         installer._password(args)
     assert "14 to 1,024 Unicode code points" in str(error.value)
+
+
+def test_plain_password_rules_have_no_color(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(installer.getpass, "getpass", lambda prompt="": PASSWORD)
+    _tty(monkeypatch, True)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    args = installer._parser().parse_args([
+        "install", "--root", str(tmp_path / "node"), "--auth", "local", "--plain",
+    ])
+    assert installer._password(args) == PASSWORD
+    output = capsys.readouterr().out
+    assert "\x1b" not in output
+    assert "Unicode code points" in output
+
+
+def test_password_prompt_accepts_piped_stdout(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    monkeypatch.setattr(installer.getpass, "getpass", lambda prompt="": PASSWORD)
+    args = _interactive_args(tmp_path / "node")
+    assert installer._password(args) == PASSWORD
 
 
 def test_spaces_count_as_unicode_code_points(tmp_path, monkeypatch):
@@ -317,6 +341,42 @@ def test_uninstall_accepts_exculpata_compose_names(node, monkeypatch, capsys):
     output = capsys.readouterr().out
     assert project in output and "Dry run: nothing was removed" in output
     assert not _removed(_calls())
+
+
+def test_uninstall_refuses_banned_root_before_removing_any_docker_resource(node, monkeypatch, capsys):
+    root, _ = node
+    monkeypatch.setattr(installer.Path, "home", classmethod(lambda cls: root))
+    monkeypatch.setattr(sys, "argv", ["install", "uninstall", "--root", str(root), "--delete-data", "--yes", "--plain"])
+    assert installer.main() == 1
+    assert not _removed(_calls())
+    assert _calls() == []
+    assert root.is_dir()
+
+
+def test_uninstall_refuses_external_home_storage_before_any_docker_call(node, monkeypatch, capsys, tmp_path):
+    root, _paths = node
+    external = tmp_path / "external-home"
+    external.mkdir()
+    (external / ".recordbench-managed-storage.json").write_text("synthetic marker")
+    installation = json.loads((root / "installation.json").read_text())
+    installation["storage_root"] = str(external)
+    (root / "installation.json").write_text(json.dumps(installation))
+    monkeypatch.setattr(installer.Path, "home", classmethod(lambda cls: external))
+    monkeypatch.setattr(sys, "argv", [
+        "install", "uninstall", "--root", str(root), "--delete-data", "--yes", "--plain",
+    ])
+    assert installer.main() == 1
+    assert _calls() == []
+    assert root.is_dir() and (external / ".recordbench-managed-storage.json").is_file()
+
+
+def test_uninstall_keep_data_still_removes_containers_when_the_root_is_home(node, monkeypatch, capsys):
+    root, _paths = node
+    monkeypatch.setattr(installer.Path, "home", classmethod(lambda cls: root))
+    monkeypatch.setattr(sys, "argv", ["install", "uninstall", "--root", str(root), "--yes", "--plain"])
+    assert installer.main() == 0
+    assert ["rm", "-f", "--", "a" * 64] in _calls()
+    assert root.is_dir()
 
 
 def test_uninstall_refuses_a_project_that_does_not_match_the_root(node, monkeypatch, capsys):

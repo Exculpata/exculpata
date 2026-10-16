@@ -289,8 +289,8 @@ class Console:
         width = terminal_width()
         mark = WORDMARK if width >= 73 else clip_cells("  EXCULPATA" if width >= 11 else "EXCULPATA", width)
         self.line(self.paint("\n" + mark, C.cyan + C.bold))
-        self.typed(f"  EVIDENCE NODE PROVISIONER // {mode.upper()} // BUILD {version}")
-        self.line(self.paint("  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+", C.muted))
+        self.typed(f"  Exculpata installer // {mode.upper()} // BUILD {version}")
+        self.line(self.paint("  +-- This account runs this command. --+", C.muted))
 
     def progress_event(self, text: str) -> None:
         """Print one progress event. Animated consoles redraw inside progress()."""

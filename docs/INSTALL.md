@@ -166,7 +166,11 @@ it writes.
    three attempts. Those attempts do not discard the username, hostname, or
    other answers already given, and they do not write node files. A
    non-interactive run still fails on the first invalid password and names the
-   rule without printing the password. Accept the default matter-storage path.
+   rule without printing the password. Piping standard output, for example
+   through `tee`, still prompts when standard input is a terminal or `/dev/tty`
+   can be opened. `--plain` and `--no-color` print the rules without color.
+   Input that is not a terminal and has no controlling terminal fails fast and
+   names the rule. Accept the default matter-storage path.
    Retain that username and password for the browser. The installer builds the
    application, creates its first administrator, obtains malware signatures and
    starts the private companion services. No model weights are selected.
@@ -414,10 +418,12 @@ Elapsed time is included. When Docker has not reported a total, the line says
 `waiting for Docker output` (or the latest real action) and an animated
 terminal shows a moving marker. The installer does not invent a percentage.
 Plain mode, `--no-color`, any `NO_COLOR` value, any `CI` value, `TERM=dumb`,
-and non-TTY stdout print one new line when the step changes and about every
-five seconds while it has not, with no color, carriage return, or cursor
-control. Narrow terminals clip that progress row so it does not wrap. Each
-command prints its unique log path under
+and non-TTY stdout print when the image-built count or the BuildKit build-step
+fraction changes. That line includes the latest counts. Layer, instruction, and
+container updates print at most about one additional line every five seconds.
+Those lines have no color, carriage return, or cursor control. Narrow terminals
+clip that progress row so it does not wrap. Each command prints its unique log
+path under
 `<node-root>/state/installer-<action>-<UTC timestamp>-<random suffix>.log`.
 The state directory must be owner-only mode 0700, outside the source checkout;
 logs are new files with mode 0600. On failure, the terminal shows the last 40
@@ -1006,11 +1012,14 @@ confirmation mismatch is explained and asked again; the first mistake does not
 exit, and earlier answers in that run are kept. Exhausting the three attempts
 exits without writing node files and without changing a saved node. Resume
 still uses the saved non-secret choices, so a later run does not ask for them
-again. Non-interactive and non-TTY input fails on the first invalid value and
-names the rule and the administrator-password field. The password itself is
-not printed, logged, or included in the error. Standalone preflight and dry
-runs do not consume it. The one-use input is cleared at account initialization
-and on error.
+again. Piping standard output, for example through `tee`, still prompts when
+standard input is a terminal or `/dev/tty` can be opened. `--plain` and
+`--no-color` print the rules without color. Non-interactive input, and input
+that is not a terminal and has no controlling terminal, fails on the first
+invalid value and names the rule and the administrator-password field. The
+password itself is not printed, logged, or included in the error. Standalone
+preflight and dry runs do not consume it. The one-use input is cleared at
+account initialization and on error.
 
 A successful doctor check recovers prepared-phase progress from a matching
 provisioning seal even if the current progress receipt is absent or from an older
@@ -1039,6 +1048,13 @@ removes nothing. A wrong confirmation, a missing terminal without `--yes`, a
 symbolic-link root, or a Compose project name that does not match this root
 exits without removing anything.
 
+Before Docker is asked to list or remove anything, `--delete-data` refuses a
+node root or an external matter-storage path that is the account home, the
+checkout, `/`, a path with fewer than three parts, or a path reached through a
+symbolic link. A refusal at that point removes nothing. Keeping data does not
+apply that deletion refusal: containers and networks for this project can still
+be removed when the node root itself stays.
+
 Resources are removed only after Docker inspect shows the Compose project
 label for this root. Volume names must also start with that project name.
 Images are removed only when every tag is in this node's image namespace
@@ -1049,8 +1065,7 @@ deletes the node root and, when it is outside that root, the recorded matter
 storage directory if it contains this node's storage marker. If this account
 cannot unlink that directory from its parent, the command removes the contents
 and leaves the empty directory in place. An administrator who created
-`/srv/exculpata` can then remove the empty directory. Paths shorter
-than `/srv/exculpata`, the checkout, and the account home are refused.
+`/srv/exculpata` can then remove the empty directory.
 
 Exit status is 0 when the plan is applied or a dry run finishes, and 1 when
 uninstall refuses or a removal fails. Leaving an empty node directory because

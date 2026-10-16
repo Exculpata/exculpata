@@ -1,7 +1,11 @@
 # Installer terminal evidence — issue 258
 
 Synthetic presentation evidence recorded 2026-10-16. These captures do **not**
-claim a supported Linux installation or doctor acceptance.
+claim a supported Linux installation or doctor acceptance. The banner and stop
+lines in the text and cast files use the current labels (`Exculpata installer`,
+`This account runs this command.`, and `Install stopped`). The PNG frames were
+re-rendered from those updated casts; they are not a new terminal recording.
+The rest of each capture is unchanged.
 
 - [Terminal preview](terminal-preview.png) renders the actual PTY bytes in the
   [asciinema v2 cast](terminal-preview.cast), captured with an actual 80-column

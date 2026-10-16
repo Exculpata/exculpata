@@ -486,14 +486,29 @@ def _compose_build_targets(command: Sequence[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(targets))
 
 
+def _progress_counts(activity: DockerActivity) -> tuple[object, ...]:
+    """Image and build-step totals. Layer text is not part of this count."""
+    return (tuple(activity.built), activity.build_current, activity.build_total)
+
+
 def _follow_docker_log(path: Path, stop: threading.Event, console: Console,
                        status: dict[str, str], targets: tuple[str, ...]) -> None:
     """Read the private log as Docker writes it and publish an honest summary."""
     activity = DockerActivity(targets)
     started = time.monotonic()
-    last_emit = 0.0
+    last_emit: float | None = None
+    last_counts = _progress_counts(activity)
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     pending = ""
+
+    def publish(text: str, now: float) -> None:
+        nonlocal last_emit, last_counts
+        if console.animation:
+            return
+        console.progress_event(text)
+        last_emit = now
+        last_counts = _progress_counts(activity)
+
     try:
         with open(path, "rb", buffering=0) as reader:
             while True:
@@ -510,19 +525,23 @@ def _follow_docker_log(path: Path, stop: threading.Event, console: Console,
                     updated = activity.observe(piece)
                     if not updated:
                         continue
-                    elapsed = format_elapsed(time.monotonic() - started)
+                    now = time.monotonic()
+                    elapsed = format_elapsed(now - started)
                     status["elapsed"] = elapsed
                     status["detail"] = updated
-                    if not console.animation:
-                        console.progress_event(f"{elapsed} {updated}")
-                        last_emit = time.monotonic()
-                elapsed = format_elapsed(time.monotonic() - started)
+                    counts = _progress_counts(activity)
+                    # Layer and container lines can arrive in a burst. Counts stay visible.
+                    if counts != last_counts or last_emit is None or now - last_emit >= 5:
+                        publish(f"{elapsed} {updated}", now)
+                now = time.monotonic()
+                elapsed = format_elapsed(now - started)
                 status["elapsed"] = elapsed
                 status["detail"] = activity.summary()
-                now = time.monotonic()
-                if not console.animation and now - last_emit >= 5:
-                    console.progress_event(f"{elapsed} {status['detail']}")
-                    last_emit = now
+                due = (last_emit is None and now - started >= 5) or (
+                    last_emit is not None and now - last_emit >= 5
+                )
+                if due:
+                    publish(f"{elapsed} {status['detail']}", now)
                 if not chunk:
                     if stop.is_set():
                         break
@@ -2560,23 +2579,35 @@ def _password_problem(value: str) -> str | None:
     return None
 
 
+def _dev_tty_openable() -> bool:
+    """True when getpass can use the controlling terminal. Stdout is not required."""
+    try:
+        descriptor = os.open("/dev/tty", os.O_RDWR)
+    except OSError:
+        return False
+    os.close(descriptor)
+    return True
+
+
 def _password_interactive(args: argparse.Namespace) -> bool:
     if args.password_stdin or args.non_interactive:
         return False
     try:
-        return bool(sys.stdin.isatty() and sys.stdout.isatty())
+        if sys.stdin.isatty():
+            return True
     except OSError:
-        return False
+        pass
+    return _dev_tty_openable()
 
 
-def _prompt_line(text: str, marker: str) -> None:
+def _prompt_line(text: str, marker: str, *, color: bool) -> None:
     width = max(1, terminal_width() - 1)
     prefix = f"  [{marker:^6}] "
     body_width = max(8, width - len(prefix))
     parts = textwrap.wrap(
         terminal_text(text), width=body_width, break_long_words=False, break_on_hyphens=False,
     ) or [""]
-    console = Console(color=True, animation=False)
+    console = Console(color=color, animation=False)
     accent = (C.amber if marker == "WARN" else C.cyan) + C.bold
     for index, part in enumerate(parts):
         body = clip_cells(part, body_width)
@@ -2611,6 +2642,7 @@ def _answered_choices(args: argparse.Namespace) -> str:
 
 
 def _password(args: argparse.Namespace) -> str:
+    prompt_color = not (getattr(args, "plain", False) or getattr(args, "no_color", False))
     if args.password_stdin:
         value = sys.stdin.readline(4097).rstrip("\r\n")
         problem = _password_problem(value)
@@ -2623,7 +2655,7 @@ def _password(args: argparse.Namespace) -> str:
             "The administrator password must contain 14 to 1,024 Unicode code points "
             "(spaces count) and no NUL character."
         )
-    _prompt_line(_PASSWORD_RULE, "NOTE")
+    _prompt_line(_PASSWORD_RULE, "NOTE", color=prompt_color)
     for attempt in range(1, _PASSWORD_ATTEMPTS + 1):
         try:
             value = getpass.getpass("Initial administrator password: ")
@@ -2637,7 +2669,7 @@ def _password(args: argparse.Namespace) -> str:
             ) from exc
         if problem is None:
             return value
-        _prompt_line(f"{problem}. Attempt {attempt} of {_PASSWORD_ATTEMPTS}.", "WARN")
+        _prompt_line(f"{problem}. Attempt {attempt} of {_PASSWORD_ATTEMPTS}.", "WARN", color=prompt_color)
         value = ""
     raise RuntimeError(
         "administrator password was not accepted after 3 attempts. "
@@ -2982,7 +3014,7 @@ def _configure(
             + "\n",
             replace=(root / "installation.json").exists(),
         )
-    console.ok(f"identity matrix :: {auth}")
+    console.ok(f"Admin account :: {auth}")
     console.ok(f"model payload   :: {models}")
     console.ok(
         "GPU topology    :: "
@@ -3919,7 +3951,7 @@ def _backup(console: Console, args: argparse.Namespace, root: Path) -> None:
         raise RuntimeError(
             "backup is not initialized; provide --repository and --recovery-key-output"
         )
-    console.phase(2, "TRANSMIT VAULT SNAPSHOT", "Quiescing briefly, restarting service, then transferring encrypted blocks")
+    console.phase(2, "BACKUP", "Running the backup command for this node")
     command = [sys.executable, str(tool), "backup", "--node-root", str(root)]
     if args.dry_run:
         command.append("--dry-run")
@@ -4224,6 +4256,22 @@ def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
     installation = json.loads(installation_path.read_text(encoding="utf-8"))
     if not isinstance(installation, dict):
         raise RuntimeError("uninstall refused: installation.json is invalid. Nothing was removed.")
+    storage_value = installation.get("storage_root")
+    storage = Path(storage_value) if isinstance(storage_value, str) else None
+    external_storage = None
+    if args.delete_data:
+        # Root and external matter-storage checks run before Docker is asked to
+        # list or remove anything. Deletion repeats the root check.
+        _refuse_broad_deletion(root)
+        if storage is not None and storage.is_absolute() and not storage.is_symlink():
+            try:
+                inside = storage.resolve().is_relative_to(root.resolve())
+            except OSError:
+                inside = False
+            marker = storage / f".{names}-managed-storage.json"
+            if not inside and marker.is_file() and not marker.is_symlink():
+                external_storage = storage
+                _refuse_broad_deletion(external_storage)
     containers = _uninstall_rows([
         "docker", "ps", "-a", "--no-trunc", "--filter", f"label=com.docker.compose.project={project}",
         "--format", "{{.ID}}\t{{.Names}}",
@@ -4250,17 +4298,6 @@ def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
     removable_images, kept_images = (
         _classified_images(images, namespace) if args.delete_data else ([], [])
     )
-    storage_value = installation.get("storage_root")
-    storage = Path(storage_value) if isinstance(storage_value, str) else None
-    external_storage = None
-    if (args.delete_data and storage is not None and storage.is_absolute() and not storage.is_symlink()):
-        try:
-            inside = storage.resolve().is_relative_to(root.resolve())
-        except OSError:
-            inside = False
-        marker = storage / f".{names}-managed-storage.json"
-        if not inside and marker.is_file() and not marker.is_symlink():
-            external_storage = storage
     console.line("\n  UNINSTALL PLAN")
     console.note(f"Compose project: {project}")
     console.note("Containers to remove: " + (", ".join(containers) if containers else "none listed"))
@@ -4482,7 +4519,7 @@ def main() -> int:
         return 0
     except (OSError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         console.line()
-        console.warn(f"BOOT SEQUENCE HALTED :: {exc}")
+        console.warn(f"{args.command[:1].upper()}{args.command[1:]} stopped :: {exc}")
         if (not args.dry_run and args.command != "uninstall" and "root" in locals()
                 and (root / "installation.json").is_file()):
             try:
