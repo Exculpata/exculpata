@@ -16,7 +16,11 @@ start older code on an upgraded store.
 
 ## Previous policy
 
-Exculpata is a temporary review workspace. The creation form defaults to
+The numbered procedure below applies only to that pre-0040 binary. On the
+current application, `purge_due_matters` reports no deletions and
+`due_matter_retentions` is empty. A stored date does not authorize deletion.
+
+Exculpata, under that previous policy, is a temporary review workspace. The creation form defaults to
 30 days, with 7/30/60/90-day choices. The review end is followed by seven days
 of export grace. Once that period ends, enabled maintenance may permanently
 delete the matter without an additional confirmation. The owner or an
