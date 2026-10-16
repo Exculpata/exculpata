@@ -20,6 +20,9 @@ htmlcov/
 .idea/
 .DS_Store
 
+# Wrangler local state can include an account id.
+.wrangler/
+
 # Local configuration and secrets
 .env
 .env.*

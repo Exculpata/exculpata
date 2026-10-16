@@ -33,22 +33,21 @@ Geist and JetBrains Mono are self-hosted; the app does not load them from a font
 | [Light-text wordmark](assets/brand/wordmark-cyan-transparent-lighttext.png) | README hero on a dark background. |
 | [Dark-text wordmark](assets/brand/wordmark-cyan-transparent-darktext.png) | README hero on a light background. |
 | [Social preview](assets/brand/social-preview-1280x640.png) | 1280 × 640 image for the GitHub social preview setting. |
-| [Desktop walkthrough](assets/recordbench-desktop-walkthrough.mp4) | 4:47 landscape tour of the fictional Harbor Street matter, at 1280 × 720. |
-| [Mobile walkthrough](assets/recordbench-mobile-walkthrough.mp4) | 5:34 portrait tour of the same fictional matter, at 720 × 1280. |
+| [Launch video, 16:9](assets/exculpata-launch-16x9.mp4) | 1:00 landscape video with soundtrack, at 1920 × 1080. |
+| [Launch video, 9:16](assets/exculpata-launch-9x16.mp4) | 1:00 vertical video with soundtrack, at 1080 × 1920. |
 
 The SVGs are self-contained. They contain no external image or font requests,
 case screenshots, or deployment details. The application favicon repeats the
 canonical icon; keep them synchronized if the mark changes.
 Use descriptive alternative text when embedding an asset.
 
-## Demo walkthroughs
+## Launch video
 
-Present the videos as **Desktop walkthrough** and **Mobile walkthrough**, under
-**See Exculpata in action**. They replace the former 51-second teaser as the
-repository's featured demos. Both follow the fictional Harbor Street matter
-through records, source-linked questions, review, and work product. Keep the
-on-screen labels and fictional-case/development-alpha notices visible. Do not
-present either walkthrough as production validation or institutional endorsement.
+Present the one-minute launch video under **See Exculpata in action**, desktop
+(16:9) first, then vertical (9:16). It follows a fictional Calder Reservoir
+administrative inquiry built from synthetic records. Keep the fictional-case
+and development-alpha notices visible. Do not present the video as production
+validation or institutional endorsement.
 
 For GitHub, upload each video as an attachment and place its stable
 `github.com/user-attachments/assets/` URL alone in a paragraph to render a
@@ -56,7 +55,7 @@ player. A repository-file link is a download fallback, not an inline player.
 Keep that fallback for other Markdown viewers. Never commit the temporary signed
 media URL returned by the renderer. Preserve each video's aspect ratio and timing.
 
-See [media rights](assets/MEDIA_RIGHTS.md) for the supplied walkthroughs and the
+See [media rights](assets/MEDIA_RIGHTS.md) for the launch videos and the
 separate rights notice retained for the older teaser.
 
 ## Short description

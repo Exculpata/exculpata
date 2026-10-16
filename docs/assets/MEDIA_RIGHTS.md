@@ -1,17 +1,18 @@
 # Demo media rights
 
-## Current walkthroughs
+## Launch videos
 
-`recordbench-desktop-walkthrough.mp4` and
-`recordbench-mobile-walkthrough.mp4` were supplied by the maintainer for
-publication as Exculpata's desktop and mobile GitHub demos. Both show the
-fictional Harbor Street demonstration matter. The supplied files are preserved
-without re-encoding.
+`exculpata-launch-16x9.mp4` and `exculpata-launch-9x16.mp4` are the one-minute
+desktop (1920 × 1080) and vertical (1080 × 1920) launch videos, both with a
+soundtrack. They follow a fictional Calder Reservoir administrative inquiry
+built from synthetic records. The supplied files are preserved without
+re-encoding. The same bytes are copied under `site/assets/` for the static
+landing page. Poster stills beside those copies are frames from these videos.
 
-The maintainer confirms the rights to publish these AI-assisted demos and
-licenses both complete videos, including their audio tracks, under the
-repository's [Apache-2.0 license](../../LICENSE). No separate audio exclusion
-applies to either new walkthrough.
+The maintainer confirms holding the rights to both complete launch videos,
+including the soundtrack, and licenses them under the repository's
+[Apache-2.0 license](../../LICENSE). The poster stills are covered by the
+same license. No separate audio exclusion applies to either launch video.
 
 ## Previous teaser
 

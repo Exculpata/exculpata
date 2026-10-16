@@ -36,24 +36,22 @@ It supports a lawyer’s assessment of a specific installation and use; it is no
 
 ## See Exculpata in action
 
-Follow a fictional Harbor Street matter from adding records to source-linked
-answers, media review, notes, timelines, reports, and export. These desktop and
-mobile walkthroughs use synthetic records and demonstrate the development alpha.
+A one-minute launch video follows a fictional Calder Reservoir administrative
+inquiry built from synthetic records. Desktop (16:9) is first, then the vertical
+(9:16) cut. The case is fictional; the app and its actions are real. This is a
+preview, not production validation.
 
-### Desktop walkthrough · 4:47
+### Launch video · 1:00 · 16:9
 
-https://github.com/user-attachments/assets/e14f468e-7ea6-46de-84e0-d9c865e1db53
+<!-- USER-ATTACHMENTS URL: 16x9 -->
 
-[Watch or download the desktop walkthrough](docs/assets/recordbench-desktop-walkthrough.mp4?raw=true)
+[Watch or download the 16:9 launch video](docs/assets/exculpata-launch-16x9.mp4?raw=true)
 
-### Mobile walkthrough · 5:34
+### Launch video · 1:00 · 9:16
 
-https://github.com/user-attachments/assets/2506daba-2922-4f8a-b2a0-b5e518b10a27
+<!-- USER-ATTACHMENTS URL: 9x16 -->
 
-[Watch or download the mobile walkthrough](docs/assets/recordbench-mobile-walkthrough.mp4?raw=true)
-
-On-screen labels explain each step. The case is fictional; the app and its
-actions are real. These walkthroughs are previews, not production validation.
+[Watch or download the 9:16 launch video](docs/assets/exculpata-launch-9x16.mp4?raw=true)
 
 Want to help shape it? [Help build Exculpata](#help-build-it)—workflow feedback,
 synthetic test material, and clear bug reports are as useful as code.
@@ -451,10 +449,9 @@ in [release readiness](docs/RELEASE_READINESS.md) and the
 Exculpata is licensed under [Apache-2.0](LICENSE). Dependencies, containers,
 and models retain their respective licenses and terms. Their notice inventory
 remains part of the [publication review](docs/PUBLICATION_CHECKLIST.md).
-The new desktop and mobile walkthroughs, including their audio, are also
-licensed under Apache-2.0. Only the previous teaser's original soundtrack is
-excluded from the software license;
-see [media rights](docs/assets/MEDIA_RIGHTS.md).
+The launch videos, including their soundtracks, are also licensed under
+Apache-2.0. Only the previous teaser's original soundtrack is excluded from
+the software license; see [media rights](docs/assets/MEDIA_RIGHTS.md).
 
 Outside contributors sign the [CLA](CLA.md) once, via the CLA Assistant
 GitHub app. The Exculpata name and logo are not licensed under Apache-2.0; see

@@ -55,6 +55,14 @@ REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES = frozenset(
         "4fda816440a2b260c0f98662327e8ad67c3e2351a39e0300deb8d8e778ecccb5",
     }
 )
+# Exact media blobs whose raw bytes were reviewed. Local
+# --allow-reviewed-media-digest values are added to this set at scan time.
+# docs/assets/exculpata-launch-16x9.mp4 and site/assets/exculpata-launch-16x9.mp4.
+# docs/assets/exculpata-launch-9x16.mp4 and site/assets/exculpata-launch-9x16.mp4.
+REVIEWED_MEDIA_DIGESTS = (
+    "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
+    "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
+)
 COAUTHOR_TRAILER = re.compile(
     rb"(?m)^Co-authored-by: ([^<>\r\n\0]+) <([^<>\s\0]+)>\r?$"
 )
@@ -497,6 +505,25 @@ def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> lis
     return findings
 
 
+# One- or two-character local parts plus a four-character domain are six or
+# seven bytes. Only an exact reviewed media blob may ignore that collision.
+_SHORT_REVIEWED_EMAIL_COLLISION_BYTES = 8
+
+
+def _without_short_email_collisions(data: bytes) -> bytes:
+    masked = bytearray(data)
+    changed = False
+    for match in EMAIL.finditer(data):
+        if match.end() - match.start() >= _SHORT_REVIEWED_EMAIL_COLLISION_BYTES:
+            continue
+        at = data.find(b"@", match.start(), match.end())
+        if at < 0:
+            continue
+        masked[at] = 0
+        changed = True
+    return bytes(masked) if changed else data
+
+
 def _scan_content(
     data: bytes,
     *,
@@ -507,13 +534,16 @@ def _scan_content(
     reviewed_media_digests: tuple[str, ...] = (),
 ) -> list[Finding]:
     # Only a manually reviewed, exact media blob may adjudicate accidental
-    # three-byte matches in compressed bytes. Decoded metadata retains all terms.
+    # three-byte deny terms and sub-8-byte email-shaped runs in its raw bytes.
+    # Longer matches, other files, and decoded metadata retain every check.
     raw_deny = deny
+    scanned = data
     if (Path(name).suffix.casefold() in MEDIA_SUFFIXES
             and hashlib.sha256(data).hexdigest() in reviewed_media_digests):
         raw_deny = tuple(term for term in deny if len(term) != 3)
+        scanned = _without_short_email_collisions(data)
     findings = _scan_bytes(
-        data,
+        scanned,
         location=location,
         deny=raw_deny,
         allowed_deny_literals=allowed_deny_literals,
@@ -938,7 +968,7 @@ def main() -> int:
     baseline_identities = _baseline_public_git_identities(
         args.allow_public_baseline_git_identity
     )
-    media_digests = tuple(args.allow_reviewed_media_digest)
+    media_digests = tuple(dict.fromkeys((*REVIEWED_MEDIA_DIGESTS, *args.allow_reviewed_media_digest)))
     merge_commits = tuple(args.allow_public_merge_commit)
     if any(re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) is None for value in merge_commits):
         raise RuntimeError("Public merge must be an exact commit")

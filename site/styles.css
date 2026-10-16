@@ -67,6 +67,14 @@ h1 span { color: var(--accent); }
 .button:hover { background: var(--accent-hover); color: var(--bg); }
 .hero-intro .local-first { margin-top: 22px; color: var(--muted); font: 14px/1.6 "JetBrains Mono", ui-monospace, monospace; }
 
+.launch { padding: 84px 0 64px; border-top: 1px solid var(--border); }
+.launch h2 { font-size: clamp(32px, 4.4vw, 48px); font-weight: 610; letter-spacing: -.035em; line-height: 1.15; }
+.launch-intro { max-width: 640px; margin-top: 22px; color: var(--muted); font-size: 20px; line-height: 1.5; letter-spacing: -.015em; }
+.launch figure { margin: 36px 0 0; }
+.launch video { display: block; width: 100%; max-width: 100%; height: auto; background: #000; border-radius: 6px; }
+.launch figcaption { margin-top: 14px; color: var(--muted); font: 14px/1.6 "JetBrains Mono", ui-monospace, monospace; }
+.launch-narrow { display: none; }
+
 .capabilities { padding: 84px 0 64px; border-top: 1px solid var(--border); }
 .capabilities h2 { font-size: clamp(32px, 4.4vw, 48px); font-weight: 610; letter-spacing: -.035em; line-height: 1.15; }
 .capability-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 44px; margin-top: 48px; }
@@ -97,6 +105,7 @@ footer > a { color: var(--accent); }
   .capability-list p { font-size: 18px; }
   .audience { gap: 48px; }
   .audience-copy > p:first-child { font-size: 20px; }
+  .launch-intro { font-size: 18px; }
 }
 
 @media (max-width: 800px) {
@@ -116,6 +125,10 @@ footer > a { color: var(--accent); }
   h3 { font-size: 22px; }
   .capability-list p { max-width: 520px; margin-top: 12px; }
   .review-note { margin-top: 32px; font-size: 15px; }
+  .launch { padding: 56px 0; }
+  .launch-wide { display: none; }
+  .launch-narrow { display: block; }
+  .launch-narrow video { width: min(100%, 420px); margin-inline: auto; }
   .audience { grid-template-columns: 1fr; gap: 28px; padding: 56px 0; }
   .audience h2 { font-size: 52px; }
   .resource-links { gap: 12px 28px; }

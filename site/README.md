@@ -13,14 +13,30 @@ From the repository root:
 python3 -m http.server 8080 --bind 127.0.0.1 --directory site
 ```
 
-Open the loopback server in a browser. For a future Cloudflare Pages project,
-select no framework, leave the build command empty, and set the build output
-directory to `site`. The directory is the complete static output; it does not
-need the Python application. `_headers` defines the Cloudflare response headers.
-The HTML also includes a resource CSP for local preview; the Python preview
-server does not apply `_headers`. No deployment or domain configuration is part
-of this change. Leave Cloudflare Web Analytics and automatic script injection off
-to preserve the page's no-tracking contract.
+Open the loopback server in a browser. The directory is the complete static
+output; it does not need the Python application. The HTML also includes a
+resource CSP for local preview; the Python preview server does not apply
+`_headers`.
+
+exculpata.com is the Workers Static Assets Worker `exculpata-site`. From the
+repository root, `wrangler.toml` names that Worker, points `main` at
+`site-worker/range.js`, and serves `[assets] directory = "./site"` through the
+`ASSETS` binding. The worker runs first only for `/assets/*.mp4`, so a video
+range request can answer 206 while every other path is still a static asset.
+The page stays free of JavaScript. The worker lives outside `site/`.
+
+`site/.assetsignore` keeps this README out of the uploaded assets. `_headers`
+sets the security headers and an explicit Content-Type for HTML, CSS, MP4,
+JPEG, SVG, WOFF2, and plain text. The committed config names the Worker
+and the asset directory. Choose the preview alias at upload time.
+
+```console
+npx wrangler versions upload --preview-alias <name>
+npx wrangler versions deploy
+```
+
+Leave Cloudflare Web Analytics and automatic script injection off to preserve
+the page's no-tracking contract.
 
 ## Content and asset provenance
 
@@ -37,6 +53,16 @@ Claims were checked against the source at
 
 The page does not promise on-prem-only operation, exhaustive review, guaranteed
 accuracy, production acceptance, or planned frontier-agent capabilities.
+
+A launch video sits under the hero. `assets/exculpata-launch-16x9.mp4` and
+`assets/exculpata-launch-9x16.mp4` are byte-for-byte copies of the files in
+`docs/assets/`. Each `<video>` uses `controls`, `preload="metadata"`, and
+`playsinline`, with a poster and no autoplay. Wide screens show the 16:9 cut.
+Narrow screens, at the same 800px breakpoint as the rest of the page, show the
+9:16 cut. The posters are small JPEGs taken from a frame around 0:20, when the
+app is on screen. The inquiry in the video is fictional and built from synthetic
+records. `media-src 'self'` is set in the page policy and in `_headers` so the
+browser can load those self-hosted files. The page stays free of JavaScript.
 
 `assets/exculpata-wordmark.svg` and `assets/exculpata-icon.svg` are unchanged copies
 from `docs/assets/brand/`. The two variable WOFF2 fonts and their SIL Open Font
@@ -67,8 +93,8 @@ node scripts/browser-accept-static-site.cjs /path/to/chromium /tmp/fresh-site-ch
 
 It starts a disposable loopback server, blocks external requests, checks five
 desktop/mobile viewports, and saves screenshots plus a receipt. The header must
-contain only the brand/home link and GitHub link; both content sections remain
-readable by scrolling. It also checks horizontal overflow, keyboard access,
+contain only the brand/home link and GitHub link; the launch video and both
+content sections remain readable by scrolling. It also checks horizontal overflow, keyboard access,
 local-only resources, and visible breathing room beneath the footer at the end
 of the page. Desktop/mobile bottom-view screenshots complement the full-page
 captures. Footer padding includes the mobile safe-area inset. The page has no
