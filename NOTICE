@@ -5,9 +5,11 @@ This product includes third-party software and optionally downloads third-party
 model artifacts. Their licenses and terms remain those of their respective
 authors. See THIRD_PARTY_NOTICES.md and config/models.json.
 
-The desktop and mobile walkthroughs in docs/assets/recordbench-desktop-walkthrough.mp4
-and docs/assets/recordbench-mobile-walkthrough.mp4, including their audio tracks,
-are licensed under Apache-2.0 by the maintainer.
+The launch videos in docs/assets/exculpata-launch-16x9.mp4 and
+docs/assets/exculpata-launch-9x16.mp4, including the same files copied under
+site/assets/ and their soundtracks, are licensed under Apache-2.0 by the
+maintainer. Poster stills extracted from those videos for the landing page
+are covered by the same license.
 
 Only the original soundtrack in docs/assets/recordbench-teaser.mp4 is excluded
 from the Apache-2.0 software license. No standalone license to that older

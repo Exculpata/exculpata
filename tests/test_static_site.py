@@ -92,8 +92,41 @@ def test_original_brand_assets_and_font_licenses_are_preserved():
     }
     for output, source in sources.items():
         assert (SITE / output).read_bytes() == (ROOT / source).read_bytes(), output
-    expected = {"index.html", "styles.css", "_headers", "README.md", *sources}
+    media = {
+        "assets/exculpata-launch-16x9.mp4": "docs/assets/exculpata-launch-16x9.mp4",
+        "assets/exculpata-launch-9x16.mp4": "docs/assets/exculpata-launch-9x16.mp4",
+    }
+    posters = {
+        "assets/exculpata-launch-16x9-poster.jpg",
+        "assets/exculpata-launch-9x16-poster.jpg",
+    }
+    for output, source in media.items():
+        assert (SITE / output).read_bytes() == (ROOT / source).read_bytes(), output
+    expected = {"index.html", "styles.css", "_headers", "README.md", *sources, *media, *posters}
     assert {str(path.relative_to(SITE)) for path in SITE.rglob("*") if path.is_file()} == expected
+
+
+def test_launch_video_is_self_hosted_without_autoplay():
+    videos = [attrs for tag, attrs in Page().elements if tag == "video"]
+    expected = [
+        ("./assets/exculpata-launch-16x9.mp4", "./assets/exculpata-launch-16x9-poster.jpg", 1920, 1080),
+        ("./assets/exculpata-launch-9x16.mp4", "./assets/exculpata-launch-9x16-poster.jpg", 1080, 1920),
+    ]
+    assert len(videos) == len(expected)
+    for attrs, (src, poster, width, height) in zip(videos, expected):
+        assert attrs["src"] == src and attrs["poster"] == poster
+        assert attrs["preload"] == "metadata"
+        assert "controls" in attrs and "playsinline" in attrs and "autoplay" not in attrs
+        assert int(attrs["width"]) == width and int(attrs["height"]) == height
+        local_file(src)
+        poster_file = local_file(poster)
+        data = poster_file.read_bytes()
+        assert data.startswith(b"\xff\xd8\xff") and len(data) < 400_000
+    css = (SITE / "styles.css").read_text()
+    assert ".launch-narrow { display: none; }" in css
+    assert ".launch-wide { display: none; }" in css
+    assert ".launch-narrow { display: block; }" in css
+    assert "autoplay" not in (SITE / "index.html").read_text()
 
 
 def test_static_policy_blocks_scripts_and_connections():
@@ -102,7 +135,8 @@ def test_static_policy_blocks_scripts_and_connections():
     directives = dict(part.strip().split(" ", 1) for part in policy.split(";") if part.strip())
     assert directives == {
         "default-src": "'none'", "style-src": "'self'", "img-src": "'self'",
-        "font-src": "'self'", "base-uri": "'none'", "form-action": "'none'",
+        "font-src": "'self'", "media-src": "'self'", "base-uri": "'none'",
+        "form-action": "'none'",
     }
     headers = (SITE / "_headers").read_text()
     assert headers.startswith("/*\n")

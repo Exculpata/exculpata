@@ -14,7 +14,10 @@ const site = path.join(root, 'site');
 assert(process.argv[2] && process.argv[3], 'Provide a Chromium executable and fresh output directory.');
 const output = path.resolve(process.argv[3]);
 fs.mkdirSync(output); // Never overwrite previous evidence.
-const mime = { '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
+const mime = {
+  '.html': 'text/html', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2',
+  '.mp4': 'video/mp4', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+};
 const headers = Object.fromEntries(fs.readFileSync(path.join(site, '_headers'), 'utf8')
   .split('\n').filter(line => line.startsWith('  ')).map(line => {
     const colon = line.indexOf(':');
