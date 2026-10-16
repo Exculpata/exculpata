@@ -47,6 +47,7 @@ from starlette.concurrency import run_in_threadpool
 from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
 from .static_assets import asset_url, static_cache_control
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
+from .citation_highlight import has_readable_highlight, highlight_segments
 from .answer_jobs import AnswerCoordinator, AnswerJobFailure, AnswerResult
 from .answer_queries import MAX_SEARCH_CHARS, append_notebook_query, contextual_query, query_windows, search_windows
 from .answer_presentation import GENERATED_REVIEW_NOTICE, answer_content, answer_introduction, answer_limitation, answer_failure_notice, modality_coverage_notice, research_content, rejected_answer_content, rejected_answer_notice, review_rejection_notice, REJECTED_ANSWER_NOTICE
@@ -768,6 +769,15 @@ class SupportView:
     start_ms: int
     end_ms: int
     autoplay: bool
+
+    @property
+    def highlighted_lines(self) -> tuple[tuple[tuple[str, bool], ...], ...]:
+        # Mark readable cited text only; OCR symbol noise stays visible unmarked.
+        return highlight_segments(self.lines)
+
+    @property
+    def has_readable_highlight(self) -> bool:
+        return has_readable_highlight(self.highlighted_lines)
 
 
 class MatterMaintenanceCoordinator:
