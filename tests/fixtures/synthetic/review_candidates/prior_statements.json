@@ -1,0 +1,55 @@
+[
+  {
+    "id": "same-person-0",
+    "expected": true,
+    "kind": "possible_inconsistency",
+    "scope": "same_witness",
+    "speaker_ids": [
+      "person-0"
+    ]
+  },
+  {
+    "id": "same-person-1",
+    "expected": true,
+    "kind": "possible_inconsistency",
+    "scope": "same_witness",
+    "speaker_ids": [
+      "person-1"
+    ]
+  },
+  {
+    "id": "same-person-2",
+    "expected": true,
+    "kind": "possible_inconsistency",
+    "scope": "same_witness",
+    "speaker_ids": [
+      "person-2"
+    ]
+  },
+  {
+    "id": "lookalike-0",
+    "expected": false,
+    "kind": "possible_inconsistency",
+    "scope": "cross_witness",
+    "speaker_ids": [
+      "a",
+      "b"
+    ]
+  },
+  {
+    "id": "lookalike-1",
+    "expected": false,
+    "kind": "other",
+    "scope": "same_witness",
+    "speaker_ids": [
+      "a"
+    ]
+  },
+  {
+    "id": "lookalike-2",
+    "expected": false,
+    "kind": "possible_inconsistency",
+    "scope": "same_witness",
+    "speaker_ids": []
+  }
+]

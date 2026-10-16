@@ -13937,6 +13937,8 @@ def create_workbench_app(
                              transfer_response_lease=transfer_matter_response_lease)
     from .statement_comparison_routes import install_statement_comparison_routes
     install_statement_comparison_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
+    from .review_candidate_routes import install_review_candidate_routes
+    install_review_candidate_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes
     install_evidence_graph_routes(app, assertions_for=bench.assertion_service,
                                   authorized_matter=authorized_matter, auth_context=auth_context,
