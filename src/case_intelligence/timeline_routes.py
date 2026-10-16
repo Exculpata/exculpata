@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse, Response
 from .timeline_builder import build_timeline
 from .timeline_exports import export_timeline
 from .timeline_jobs import TimelineJobs
+from .timeline_promotion import promote_entry
 from .workspace_store import WorkspaceProblem
 
 
@@ -102,19 +103,8 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
         except ValueError as exc:
             raise HTTPException(400, 'Select an entity and its displayed revision') from exc
         try:
-            # Revalidate all date bases under the source guard. AssertionService
-            # owns the authorized write transaction and primary source account.
-            with service.entities.source_guard():
-                for citation in entry['citations']:
-                    reference = service.entities.resolve_support(citation['support_token'])
-                    if reference['source_version_id'] != citation['source_version_id'] or reference['excerpt_digest'] != citation['excerpt_digest']:
-                        raise KeyError(entry_id)
-                row = service.create(matter.matter_id, actor, support=entry['citations'][0]['support_token'],
-                    attributed_to=entry['citations'][0]['document_title'][:200],
-                    roles=[dict(entity_id=entity_id, expected_revision=revision, role=role)], record_type='event',
-                    title=' '.join(entry['description'].split())[:160], statement=entry['description'],
-                    raw_date=entry['date_label'][:200], date_uncertainty=entry['uncertainty'] + (' Possible date conflict; compare the draft sources.' if entry['conflict_group'] else ''),
-                    sort_date=entry['sort_key'][:10], status='needs_review')
+            row = promote_entry(service, matter.matter_id, actor, entry,
+                                entity_id=entity_id, revision=revision, role=role)
         except KeyError as exc:
             raise HTTPException(404, 'Entry, source or entity is no longer available') from exc
         except WorkspaceProblem as exc:

@@ -122,3 +122,27 @@ def test_ranges_with_same_start_but_different_end_conflict():
     result=build_timeline([unit('Alex Example inspected the parcel between April 16–18, 2034.','a'),
                            unit('Alex Example inspected the parcel between April 16–19, 2034.','b')])
     assert len(result.conflicts)==1
+
+@pytest.mark.parametrize('relative,expected', [('The next morning','2034-04-19'),
+    ('The following day','2034-04-19'), ('The previous day','2034-04-17')])
+def test_relative_day_composes_with_clock_and_keeps_anchor_citation(relative, expected):
+    result = build_timeline([unit('Record date: April 18, 2034.', 'a', 1),
+        unit(relative+' at 09:00 Alex Example delivered the parcel.', 'a', 2)])
+    clock = next(e for e in result.entries if e['precision']=='minute')
+    day = next(e for e in result.entries if e['date_label']==relative)
+    assert day['sort_key'] == expected
+    assert clock['sort_key'] == expected+'T09:00'
+    assert {c['locator']['page'] for c in clock['citations']} == {1, 2}
+
+@pytest.mark.parametrize('text', [
+    '2034-04-18 or 2034-04-19. The next morning at 09:00 Alex delivered the parcel.',
+    '2034-04-18. The next morning or the previous day at 09:00 Alex delivered the parcel.',
+    '2034-04-18. Alex recalled the next morning at 09:00 when describing the parcel.',
+    'On April 18, 2034 at 09:00 and the next morning at 10:00 Alex delivered parcels.',
+    '9999-12-31. The next morning at 09:00 Alex delivered the parcel.',
+    '0001-01-01. The previous day at 09:00 Alex delivered the parcel.',
+])
+def test_ambiguous_or_out_of_range_relative_clock_stays_unresolved(text):
+    result = build_timeline([unit(text)])
+    assert any(e['precision']=='minute' for e in result.undated)
+    assert not any(e['precision']=='minute' for e in result.entries)

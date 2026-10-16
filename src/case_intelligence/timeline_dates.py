@@ -116,9 +116,33 @@ def resolve_mention(mention, anchor):
     if mention.start_date and mention.start_date.startswith('T'):
         return replace(mention, start_date=anchor+mention.start_date, end_date=anchor+mention.end_date if mention.end_date else None)
     if mention.kind == 'unresolved_relative' and re.search(r'next|following|previous', mention.text, re.I):
-        day = date.fromisoformat(anchor) + timedelta(days=-1 if 'previous' in mention.text.lower() else 1)
+        try:
+            day = date.fromisoformat(anchor) + timedelta(days=-1 if 'previous' in mention.text.lower() else 1)
+        except (ValueError, OverflowError):
+            return mention
         return replace(mention, kind='approximate', start_date=day.isoformat())
     return mention
+
+
+def mention_span(text, mention):
+    boundaries = [0] + [m.end() for m in re.finditer(r'\n\s*\n|(?<=[.!?])\s+(?=[A-Z])', text)] + [len(text)]
+    return max(p for p in boundaries if p <= mention.start), min(p for p in boundaries if p >= mention.end)
+
+
+def resolve_in_context(mention, anchor, sentence_mentions):
+    """A clock in a relative-day sentence uses that day, never the raw anchor."""
+    relatives = [m for m in sentence_mentions if m.kind == 'unresolved_relative'
+                 and re.search(r'next|following|previous', m.text, re.I)]
+    clock = bool(mention.start_date and mention.start_date.startswith('T'))
+    if len(relatives) > 1 and (clock or mention in relatives):
+        return mention
+    if clock and relatives:
+        clocks = [m for m in sentence_mentions if m.start_date and m.start_date.startswith('T')]
+        if len(clocks) != 1 or mention.start < relatives[0].end:
+            return mention
+        relative = resolve_mention(relatives[0], anchor)
+        return resolve_mention(mention, relative.start_date)
+    return resolve_mention(mention, anchor)
 
 
 def extract_dates(text):
@@ -126,4 +150,9 @@ def extract_dates(text):
     mentions = _extract_mentions(text)
     anchors = {m.start_date for m in mentions if m.kind == 'exact' and m.precision == 'day' and m.start_date}
     anchor = next(iter(anchors)) if len(anchors) == 1 else None
-    return [resolve_mention(m, anchor) for m in mentions]
+    result = []
+    for mention in mentions:
+        start, end = mention_span(text, mention)
+        context = [m for m in mentions if start <= m.start and m.end <= end]
+        result.append(resolve_in_context(mention, anchor, context))
+    return result

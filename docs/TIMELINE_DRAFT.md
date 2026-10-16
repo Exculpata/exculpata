@@ -9,6 +9,8 @@ month/day ranges, 12/24-hour times, approximate markers and simple next/previous
 references. Two-digit years and missing years stay unordered. Timezones are not
 inferred. Relative values use only a single unambiguous explicit date in the same
 source document, preferring the same sentence. The anchor is included as a citation.
+Clock times in a relative-day sentence use that resolved day. Multiple relative-day
+references in one sentence and dates outside the supported calendar stay unresolved.
 Retrospective wording does not inherit a document-header date. Other document-date
 associations still require attorney review. Invalid calendar values are omitted.
 
@@ -36,4 +38,7 @@ The export response requires the existing matter response lease. CSV neutralizes
 spreadsheet formula prefixes. Promotion rechecks current source support and requires
 an explicitly selected entity/revision and role, following AssertionService's existing
 contract. It creates an event with Needs review status and retains date uncertainty.
+All distinct supporting passages, including a date anchor on another page, are saved
+in the same transaction through the existing assertion create/attach operations.
+If any account fails validation or storage, the entire promotion rolls back.
 Review the saved record to correct the date, attribution or entity role.

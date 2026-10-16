@@ -6,7 +6,7 @@ import re
 from collections import defaultdict
 
 from .answer_evidence import validated_window_text
-from .timeline_dates import DateMention, _extract_mentions, extract_dates, resolve_mention
+from .timeline_dates import RELATIVE, _extract_mentions, mention_span, resolve_in_context
 from .workspace_store import WorkspaceProblem
 
 NOTICE = 'Draft timeline generated from the records for attorney review. Entries are not findings.'
@@ -40,10 +40,7 @@ def _hash(value):
 
 def _span(text, mention):
     # Sentence boundaries exclude decimal/time abbreviations and retain wrapped lines.
-    boundaries = [0] + [m.end() for m in re.finditer(r'\n\s*\n|(?<=[.!?])\s+(?=[A-Z])', text)] + [len(text)]
-    start = max(p for p in boundaries if p <= mention.start)
-    end = min(p for p in boundaries if p >= mention.end)
-    return start, end
+    return mention_span(text, mention)
 
 
 def _citation(unit, start, end, token):
@@ -97,9 +94,13 @@ def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit:
             choices = local or anchors[unit.document_id]
             dates = {m.start_date for _, m in choices}
             anchor = choices[0] if len(dates) == 1 else None
-            if not local and re.search(r'\b(?:earlier|previous|prior|recalled|remembered)\b', citation['excerpt'], re.I):
+            # A recognized "previous day" is resolvable; unrelated retrospective
+            # wording still prevents borrowing the document date.
+            retrospective = RELATIVE.sub('', citation['excerpt'])
+            if not local and re.search(r'\b(?:earlier|previous|prior|recalled|remembered)\b', retrospective, re.I):
                 anchor = None
-            resolved = resolve_mention(mention, anchor[1].start_date if anchor else None)
+            context = [m for m in mentions if start <= m.start and m.end <= end]
+            resolved = resolve_in_context(mention, anchor[1].start_date if anchor else None, context)
             citations = [citation]
             uncertainty = mention.kind if mention.kind != 'exact' else ''
             if resolved != mention:

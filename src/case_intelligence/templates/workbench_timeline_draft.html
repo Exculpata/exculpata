@@ -1,7 +1,7 @@
 {% extends 'workbench_base.html' %}
 {% block title %}Draft timeline · {{ matter.display_name }} · {{ product_name }}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/timeline-draft.css">
+<link rel="stylesheet" href="{{ asset_url('timeline-draft.css') }}">
 <main id="main-content" tabindex="-1" class="notebook-main timeline-draft">
 <header class="notebook-heading"><div><p class="eyebrow">{{ matter.display_name }}</p><h1>Draft timeline</h1></div></header>
 {% with active='timeline_draft' %}{% include 'workbench_matter_tabs.html' %}{% endwith %}

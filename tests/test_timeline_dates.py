@@ -43,3 +43,17 @@ def test_public_extractor_resolves_same_document_relative_date():
     mentions=extract_dates('April 18, 2034. The next morning the parcel moved.')
     assert mentions[-1].start_date=='2034-04-19'
     assert extract_dates('April 18, 2034 or April 19, 2034. The next morning it moved.')[-1].kind=='unresolved_relative'
+
+@pytest.mark.parametrize('relative,expected', [('The next morning','2034-04-19'),
+    ('The following day','2034-04-19'), ('The previous day','2034-04-17')])
+def test_relative_day_clock_composition(relative, expected):
+    mentions = extract_dates('April 18, 2034. '+relative+' at 09:00 Alex delivered the parcel.')
+    assert mentions[-1].start_date == expected+'T09:00'
+    assert mentions[-2].start_date == expected
+
+@pytest.mark.parametrize('text', ['9999-12-31. The next morning at 09:00 it moved.',
+    '0001-01-01. The previous day at 09:00 it moved.'])
+def test_relative_calendar_bounds_remain_unresolved(text):
+    mentions = extract_dates(text)
+    assert mentions[-2].start_date is None
+    assert mentions[-1].start_date == 'T09:00'

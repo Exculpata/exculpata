@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.generation import UnavailableGenerator
 from tests.test_matter_notebook import _create_matter, WEB_ACTOR
+from tests.test_workflow_quality_handoff import pdf_bytes
 
 @pytest.fixture
 def timeline_client(tmp_path,monkeypatch):
@@ -11,9 +12,11 @@ def timeline_client(tmp_path,monkeypatch):
     with TestClient(create_workbench_app(tmp_path,auth_mode='test',generator=UnavailableGenerator())) as client:
         slug=_create_matter(client,'Synthetic timeline review')
         data={'alpha.txt':'Alex Example delivered the parcel at Cedar Depot on April 18, 2034.',
-              'beta.txt':'Alex Example delivered the parcel at Cedar Depot on April 19, 2034.',
-              'relative.txt':'Record date: 2034-04-18.\n\nThe next morning Alex Example inspected the parcel.'}
-        result=client.post(f'/matters/{slug}/uploads',files=[('files',(name,text.encode(),'text/plain')) for name,text in data.items()])
+              'beta.txt':'Alex Example delivered the parcel at Cedar Depot on April 19, 2034.'}
+        files=[('files',(name,text.encode(),'text/plain')) for name,text in data.items()]
+        files.append(('files', ('relative.pdf', pdf_bytes(['Record date: 2034-04-18.',
+            'The next morning Alex Example inspected the parcel.']), 'application/pdf')))
+        result=client.post(f'/matters/{slug}/uploads',files=files)
         assert result.status_code==200
         yield client,slug
 
@@ -41,8 +44,34 @@ def test_export_banner_promote_refresh(timeline_client):
     assert detail['record']['raw_date']=='The next morning'
     assert detail['record']['status']=='needs_review'
     assert detail['accounts'] and all(a['available'] for a in detail['accounts'])
+    assert len(detail['accounts']) == 2
+    assert {a['support_token'] for a in detail['accounts']} == {c['support_token'] for c in entry['citations']}
+    assert {a['unit_number'] for a in detail['accounts']} == {1, 2}
     assert client.post(prefix+'/refresh').status_code==200
     assert 'Refresh completed' in client.get(prefix).text
+
+def test_anchor_attachment_failure_rolls_back_entire_promotion(timeline_client, monkeypatch):
+    from case_intelligence.assertion_repository import AssertionRepository
+    from case_intelligence.workspace_store import WorkspaceProblem
+    client, slug = timeline_client
+    prefix = f'/matters/{slug}/timeline/draft'
+    entry = next(e for e in client.get(prefix+'/export').json()['entries'] if e['date_label']=='The next morning')
+    entity = client.post(f'/matters/{slug}/entities/actions', data={
+        'action':'create', 'display_name':'Alex Example', 'entity_type':'person'}, follow_redirects=False)
+    entity_id = entity.headers['location'].split('?')[0].split('/')[-1]
+    original = AssertionRepository.add_account
+    def fail_anchor(repo, *args, **kwargs):
+        result = original(repo, *args, **kwargs)
+        if len(repo.accounts(args[0], args[2])) == 2:
+            raise WorkspaceProblem('Synthetic anchor write failure')
+        return result
+    monkeypatch.setattr(AssertionRepository, 'add_account', fail_anchor)
+    response = client.post(prefix+'/'+entry['entry_id']+'/promote',
+        data={'entity_selection':entity_id+':1'}, follow_redirects=False)
+    assert response.status_code == 409
+    bench = client.app.state.workbench
+    matter = bench.matter(slug, WEB_ACTOR)
+    assert bench.assertion_service(matter).list(matter.matter_id, WEB_ACTOR)[1] == 0
 
 def test_cross_matter_entry_and_entity_rejected(timeline_client):
     client,slug=timeline_client
