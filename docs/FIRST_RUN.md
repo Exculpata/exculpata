@@ -9,9 +9,11 @@ receipts or the handoff.
 ## CPU practice matter
 
 Start with the [Ubuntu CPU node quick start](INSTALL.md#cpu-node-quick-start-ubuntu-2404)
-and a successful `./install doctor --root /srv/recordbench`. This first journey
+and a successful `./install doctor --root /srv/exculpata`. This first journey
 uses just the installer-created administrator and one synthetic text file.
 Team setup, additional accounts and adoption checks come later.
+Legacy nodes retain `/srv/recordbench`, the `recordbench` service account, and
+`recordbench.admin` (or their saved custom paths and administrator).
 
 1. **Reach loopback HTTPS.** On the node itself, use
    `https://localhost:8443`. For a remote node, run this on your browser computer
@@ -26,18 +28,18 @@ Team setup, additional accounts and adoption checks come later.
    port or change the bind address for this exercise.
 
 2. **Trust this practice node's certificate before signing in.** The installer
-   generated `/srv/recordbench/tls/tls.crt` for `localhost`. As the service
+   generated `/srv/exculpata/tls/tls.crt` for `localhost`. As the service
    account, inspect its fingerprint:
 
    ```console
-   openssl x509 -in /srv/recordbench/tls/tls.crt -noout -sha256 -fingerprint
+   openssl x509 -in /srv/exculpata/tls/tls.crt -noout -sha256 -fingerprint
    ```
 
    In another terminal as the ordinary operator on the node, export only that
    public certificate to the operator's home, outside the checkout:
 
    ```console
-   sudo -u recordbench cat /srv/recordbench/tls/tls.crt > "$HOME/loopback.crt"
+   sudo -u exculpata cat /srv/exculpata/tls/tls.crt > "$HOME/loopback.crt"
    ```
 
    If browsing remotely, copy it on the browser computer through the same
@@ -64,18 +66,18 @@ Team setup, additional accounts and adoption checks come later.
    sudo apt-get install --yes libnss3-tools
    mkdir -p "$HOME/.pki/nssdb"
    certutil -N -d "sql:$HOME/.pki/nssdb" --empty-password
-   certutil -A -d "sql:$HOME/.pki/nssdb" -n synthetic-recordbench-loopback \
+   certutil -A -d "sql:$HOME/.pki/nssdb" -n synthetic-exculpata-loopback \
      -t 'C,,' -i "$HOME/loopback.crt"
    ```
 
    Do not initialize over an existing user's certificate database. Other
    browsers may have their own certificate store. When finished, remove this
-   trust with `certutil -D -d "sql:$HOME/.pki/nssdb" -n synthetic-recordbench-loopback`.
+   trust with `certutil -D -d "sql:$HOME/.pki/nssdb" -n synthetic-exculpata-loopback`.
 
 3. **Sign in as the first administrator.** Use the username shown in the
-   installer handoff (default `recordbench.admin`) and the password you entered
+   installer handoff (default `exculpata.admin`) and the password you entered
    during installation. This is an application account, separate from the
-   `recordbench` Linux service account. No preview identity or seeded account
+   `exculpata` Linux service account. No preview identity or seeded account
    is needed. An administrator with no matter arrives at **Team setup**.
 
 4. **Create a practice matter.** Choose **Create matter**, name it
@@ -118,7 +120,7 @@ contribution still uses [make bootstrap/check](../CONTRIBUTING.md#set-up-a-devel
 
 ## Continue an interrupted installation
 
-Run `./install install --root /srv/recordbench --resume` using the same reviewed
+Run `./install install --root /srv/exculpata --resume` using the same reviewed
 release and service-account identity. Paths with spaces are quoted in the
 printed command. Resume uses the saved configuration, account-directory profile,
 initial administrator identity, model selection and storage boundary. Before any
@@ -182,7 +184,7 @@ It contains no passwords, tokens, source text or user identity. States are
 Resume revalidates completed preparation; its old receipt is not a readiness
 override. `--prepare-only` performs preparation without starting services. A
 failed selected model remains incomplete while healthy basic review can still
-be reported separately. `./install doctor --root /srv/recordbench` repeats the
+be reported separately. `./install doctor --root /srv/exculpata` repeats the
 live checks and prints the handoff. A failure retains node state and reports the
 next unverified phase for recovery.
 

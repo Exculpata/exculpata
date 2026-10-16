@@ -12,7 +12,10 @@ environment and does not deploy the application.
 Fresh nodes use an `exculpata` service account and default to `/srv/exculpata`,
 `config/exculpata.env`, an `exculpata-<hash>` Compose project/image namespace,
 and `.exculpata-managed-storage.json`. The administrator prepares the service
-account as shown below; the installer runs without root privileges.
+account as shown below; the installer runs without root privileges. Fresh local
+accounts default to `exculpata.admin` / `Exculpata Administrator`; legacy nodes
+retain `recordbench.admin` / `RecordBench Administrator`. Explicit choices and
+saved administrator identities are unchanged.
 
 Existing nodes keep their names. A retained `config/recordbench.env`,
 `.recordbench-managed-storage.json` (including separate managed storage), or
@@ -191,6 +194,44 @@ Host OCR/media tools and a Python development environment are for the separate
 [code contribution path](../CONTRIBUTING.md#set-up-a-development-checkout);
 they are not prerequisites for this containerized node. NVIDIA, learned search,
 generated answers and transcription are outside this CPU path.
+
+## Terminal output and private build logs
+
+The interactive boot console uses the Exculpata palette and brief typed banner
+and phase titles. Typing has a shared 0.45-second delay budget for the entire
+run; progress indicators wait for real work and do not slow it down. Use
+`--no-animation` to keep color without typing or redraws. Use `--plain` for
+screen readers or line-oriented logs: no color, typing, or carriage returns.
+`--no-color`, any `NO_COLOR` value, any `CI` value, `TERM=dumb`, or non-TTY stdout also select
+plain output. Quiet mode suppresses routine events, but Docker failure warnings,
+log tails, and paths remain visible. `--json`, dry runs, and prompts retain their contracts.
+Truecolor terminals use the brand hex colors; other color terminals use their
+nearest fixed xterm-256 colors (indices 16–255), without changing the terminal
+background. Narrow terminals use a single-line wordmark; spinner frames stay
+within the current terminal width, including after a resize.
+
+Docker builds and Compose service start/stop output are collapsed into a progress
+line. Each command prints its unique log path under
+`<node-root>/state/installer-<action>-<UTC timestamp>-<random suffix>.log`.
+The state directory must be owner-only mode 0700, outside the source checkout;
+logs are new files with mode 0600. On failure, the terminal shows the last 40
+lines (at most 64 KiB) with terminal controls removed, then repeats the full log
+path. The original failure still stops installation. Logs remain local for the
+operator to inspect; do not publish them without a separate review. There is no
+automatic rotation or expiry. After a command has finished and its diagnostic
+output is no longer needed, the node operator may remove that command’s exact
+`installer-*.log` file. Do not remove active logs or other state files.
+
+If a private log cannot be created (for example, an older state directory has
+different permissions or ownership, or the filesystem is full), a NOTE explains
+that output is streaming directly without a retained log. The command runs once
+using the existing output streams, including recovery start/up commands. The
+installer never relaxes permissions, follows log symlinks, writes a fallback log
+in the checkout, or retries a command already launched. Child failure status is
+preserved even when reading its log tail fails.
+No log is created by dry runs or read-only preflight. Credential-input commands,
+model license plans, and diagnostic queries retain their existing output path;
+passwords and staging tokens are never passed to the build logger.
 
 ## Hardware and capability profiles
 
