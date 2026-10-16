@@ -47,6 +47,7 @@ JOURNEYS = (
     ('matter-purpose', 'browser-accept-matter-purpose.py', 'receipt.json', 6, ()),
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
+    ('timeline-draft', 'browser-accept-timeline-draft.py', 'receipt.json', 13, ()),
 )
 ARTIFACT_NAMES = tuple(
     name
@@ -61,6 +62,7 @@ ARTIFACT_NAMES = tuple(
 
     'source-role-1440.png', 'source-role-390.png', 'source-role-320.png', 'source-role-conflict-320.png',
     'receipt-browser-result.json', 'receipt.json', 'failure.png', 'failure.html',
+    'timeline-1440.png', 'timeline-390.png',
     'purpose-empty-1440.png', 'purpose-edit-1440.png', 'purpose-edit-390.png',
     'purpose-edit-320.png', 'purpose-conflict-320.png',
     'accent-status.png', 'accent-filters.png', 'accent-bulk.png', 'accent-focus.png',
