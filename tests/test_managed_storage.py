@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
     LEGACY_PRODUCT,
     LEGACY_STEM,
 )
@@ -261,6 +262,11 @@ def test_both_marker_generations_open_without_rewriting(tmp_path, monkeypatch, n
     payload = json.loads(original)
     assert payload["product"] == (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
     assert payload["storage_id"].startswith(f"{names}-storage-")
+    swapped = dict(payload)
+    swapped["product"] = CURRENT_PRODUCT if payload["product"] == f"{LEGACY_PRODUCT}" else f"{LEGACY_PRODUCT}"
+    marker.write_text(json.dumps(swapped) + "\n", encoding="utf-8")
+    assert ManagedMatterStorage(root, policy=policy, require_marker=True).capacity().ready
+    marker.write_bytes(original)
     monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", "exculpata" if names == f"{LEGACY_STEM}" else f"{LEGACY_STEM}")
     assert ManagedMatterStorage(root, policy=policy, require_marker=True).capacity().ready
     assert marker.read_bytes() == original

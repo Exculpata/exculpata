@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = re.compile(r"recordbench", re.IGNORECASE)
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "artifacts", ".tmp"}
+SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "artifacts", ".tmp"}
 
 # Whole files that must keep the previous spelling, with the reason.
 ALLOWLIST: dict[str, str] = {
@@ -32,7 +32,7 @@ ALLOWLIST: dict[str, str] = {
     "deploy/systemd/recordbench-backup.service.in": "Unit name for nodes already scheduled under the previous generation.",
     "deploy/systemd/recordbench-backup.timer.in": "Timer unit name for nodes already scheduled under the previous generation.",
     "docs/assets/recordbench-banner.svg": "Historical wordmark. The title text is the previous name.",
-    "compose.yaml": "Postgres role/database, container volume targets, and env alias pairs stay so existing nodes start unchanged.",
+    "compose.yaml": "Postgres role/database, container volume targets, and env alias pairs stay so existing nodes start unchanged. Fresh project, image, HOME, and portable served-model defaults use the current name.",
     "compose.kerberos.yaml": "Kerberos overlay keeps the same volume targets and alias pairs as existing nodes.",
     "compose.local-accounts.yaml": "Local-account overlay keeps the accounts and secrets mounts existing nodes already use.",
     "scripts/compose-check.sh": "Renders both env prefixes and asserts the retained container mount targets.",
@@ -61,7 +61,6 @@ KEPT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"/var/lib/recordbench"), "Container data volume. Existing installs mount this path."),
     (re.compile(r"/run/recordbench-secrets"), "Container secrets mount. Existing installs mount this path."),
     (re.compile(r"/var/lib/recordbench-accounts"), "Container accounts volume. Existing installs mount this path."),
-    (re.compile(r"/tmp/recordbench-home"), "Container HOME tmpfs. Renamed for new installs in the safe-default follow-up; stripped until that edit lands."),
     (re.compile(r"/run/recordbench-auth"), "Kerberos runtime directory inside the proxy image."),
     (re.compile(r"recordbench\.keytab"), "Keytab filename stored for an existing node."),
     (re.compile(r"recordbench\.env"), "Configuration filename for a node created under the previous generation."),
@@ -70,8 +69,7 @@ KEPT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"recordbench_case_lifecycle_writer"), "Applied SQLite function."),
     (re.compile(r"recordbench_case_content_cleanup"), "Applied SQLite function."),
     (re.compile(r"recordbench-nemotron-v1"), "Wire schema shared with the isolated Nemotron interpreter."),
-    (re.compile(r"recordbench-qwen35-"), "Served model id. The portable default is renamed for new installs in the safe-default follow-up."),
-    (re.compile(r"recordbench-"), "Persisted format ids, schema names, and temp prefixes already stored or exchanged."),
+    (re.compile(r"recordbench-(?!qwen35-|home\b)"), "Persisted format ids, schema names, and temp prefixes already stored or exchanged. The portable served-model id and container HOME are not in this exception."),
     (re.compile(r"recordbench:"), "Browser storage keys already saved in sessions."),
     (re.compile(r"recordbenchSource"), "Browser history-state key already saved in sessions."),
     (re.compile(r"X-RecordBench-"), "Previous response and proxy headers stay so existing clients and header clearing keep working."),

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
     LEGACY_ENV_PREFIX,
     LEGACY_HEADER_PREFIX,
-    LEGACY_PRODUCT,
     LEGACY_STEM,
 )
 
@@ -8219,8 +8219,8 @@ def create_workbench_app(
                 if capabilities["answering"] == "ready" and storage["ready"]
                 else "degraded"
             ),
-            "product": f"{LEGACY_PRODUCT}",
-            "data": f"private {LEGACY_PRODUCT} node",
+            "product": CURRENT_PRODUCT,
+            "data": f"private {CURRENT_PRODUCT} node",
             "capabilities": capabilities,
             "ingest_jobs": bench.workspace.ingest_counts(),
             "media_jobs": bench.workspace.media_job_counts(),

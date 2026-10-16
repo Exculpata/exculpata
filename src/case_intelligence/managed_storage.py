@@ -5,6 +5,7 @@ from __future__ import annotations
 from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
+    accepts_product,
 )
 
 import json
@@ -292,7 +293,7 @@ class ManagedMatterStorage:
         if (
             not isinstance(payload, dict)
             or payload.get("format_version") != MARKER_VERSION
-            or payload.get("product") != (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
+            or not accepts_product(payload.get("product"))
             or not isinstance(payload.get("storage_id"), str)
             or not payload["storage_id"].startswith(f"{names}-storage-")
         ):

@@ -126,8 +126,7 @@ def test_compose_package_entry_points_exist(tmp_path, prefix):
                 referenced.update(re.findall(
                     rf"\b(?:{LEGACY_STEM}(?:-workbench|-retrieval-worker)?|"
                     r'exculpata(?:-workbench|-retrieval-worker)?|transcription-v2)\b', token))
-    # The generator's served-model argument still contains the previous product stem.
-    assert referenced == {'exculpata', f"{LEGACY_STEM}", 'transcription-v2'}
+    assert referenced == {'exculpata', 'transcription-v2'}
     assert referenced <= installed
     for dockerfile in (ROOT / 'Dockerfile', ROOT / 'services/transcription/Dockerfile'):
         for line in dockerfile.read_text().splitlines():

@@ -32,7 +32,7 @@ RUN pip install --no-cache-dir --no-build-isolation --require-hashes -r /opt/rec
     && pip install --no-cache-dir --no-deps --no-build-isolation . \
     && pip check
 
-ENV HOME=/tmp/recordbench-home
+ENV HOME=/tmp/exculpata-home
 EXPOSE 8786
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=6 \
   CMD python -c "import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8786/health',timeout=3)); assert p['status'] in {'ok','degraded'} and p['storage']['status']=='ready'"

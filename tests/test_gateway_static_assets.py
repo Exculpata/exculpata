@@ -1,7 +1,6 @@
 """Synthetic regression for the installed HTTPS gateway's internal HTTP hop."""
 
 from case_intelligence.legacy_names import (
-    LEGACY_ENV_PREFIX,
     LEGACY_PRODUCT,
     LEGACY_STEM,
 )
@@ -75,7 +74,7 @@ def test_gateway_and_kerberos_templates_clear_both_names_before_trusted_assignme
                 assert apache.index(unset) < apache.index(f"Include /run/{LEGACY_STEM}-auth/proxy-secret.conf")
                 assert f'RequestHeader set {name} "%s"' in entrypoint
     compose = (root / "compose.kerberos.yaml").read_text()
-    assert f"{LEGACY_ENV_PREFIX}UPSTREAM: kerberos-proxy:8080" in compose
+    assert "EXCULPATA_UPSTREAM: kerberos-proxy:8080" in compose
     assert not re.search(r"^\s+ports:", compose, flags=re.M)
 
 

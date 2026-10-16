@@ -1,8 +1,8 @@
-name: ${EXCULPATA_COMPOSE_PROJECT:-${RECORDBENCH_COMPOSE_PROJECT:-recordbench}}
+name: ${EXCULPATA_COMPOSE_PROJECT:-${RECORDBENCH_COMPOSE_PROJECT:-exculpata}}
 
 services:
   postgres:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/postgres:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/postgres:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/postgres
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       start_period: 10s
 
   clamav:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/clamav
     restart: unless-stopped
@@ -66,7 +66,7 @@ services:
   # Keep the hostile-file parser offline. Only this updater receives egress,
   # and it shares signatures—not uploaded evidence—with the scanner.
   clamav-updater:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/clamav
     restart: unless-stopped
@@ -92,7 +92,7 @@ services:
 
   retrieval:
     profiles: [ai]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/retrieval:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/retrieval:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: retrieval
@@ -105,7 +105,7 @@ services:
     shm_size: 4gb
     gpus: all
     environment:
-      RECORDBENCH_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_ALLOW_CONTAINER_BIND: "1"
       CASE_REVIEW_MODEL_DEVICE: ${EXCULPATA_RETRIEVAL_DEVICE:-${RECORDBENCH_RETRIEVAL_DEVICE:-cpu}}
       CASE_REVIEW_EMBEDDING_MODEL: ${EXCULPATA_EMBEDDING_MODEL:-${RECORDBENCH_EMBEDDING_MODEL:-ibm-granite/granite-embedding-english-r2}}
       CASE_REVIEW_EMBEDDING_REVISION: ${EXCULPATA_EMBEDDING_REVISION:-${RECORDBENCH_EMBEDDING_REVISION:-47ea694b257b703fee9253d75c2b1f2985180498}}
@@ -125,7 +125,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/retrieval-native:rw,exec,nosuid,nodev,size=512m
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=32m
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
     networks: [models]
 
   generator:
@@ -157,7 +157,7 @@ services:
       - --revision
       - ${EXCULPATA_GENERATOR_REVISION:-${RECORDBENCH_GENERATOR_REVISION:-851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a}}
       - --served-model-name
-      - ${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-recordbench-qwen35-4b}}
+      - ${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-exculpata-qwen35-4b}}
       - --host
       - 0.0.0.0
       - --port
@@ -178,7 +178,7 @@ services:
       - vllm
       - --no-enable-log-requests
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5)); assert any(x.get('id') == '${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-recordbench-qwen35-4b}}' for x in p.get('data',[]))\""]
+      test: ["CMD-SHELL", "python3 -c \"import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5)); assert any(x.get('id') == '${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-exculpata-qwen35-4b}}' for x in p.get('data',[]))\""]
       interval: 15s
       timeout: 8s
       retries: 60
@@ -186,7 +186,7 @@ services:
 
   transcription-api:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -225,7 +225,7 @@ services:
 
   transcription-worker:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-worker:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-worker:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: worker
@@ -274,7 +274,7 @@ services:
 
   transcription-cleanup:
     profiles: [transcription-tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -298,7 +298,7 @@ services:
 
   transcription-cleanup-daemon:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -328,7 +328,7 @@ services:
       - while true; do transcription-v2 purge-expired; sleep 300; done
 
   app:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: application
@@ -341,8 +341,8 @@ services:
     env_file:
       - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}
     environment:
-      RECORDBENCH_ALLOW_CONTAINER_BIND: "1"
-      RECORDBENCH_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
+      EXCULPATA_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
       CASE_INTELLIGENCE_POSTGRES_DSN_FILE: /run/recordbench-secrets/postgres-dsn
       CASE_INTELLIGENCE_CLAMAV_HOST: clamav
       CASE_INTELLIGENCE_CLAMAV_PORT: "3310"
@@ -376,11 +376,11 @@ services:
         read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=32m
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
     networks: [front, services, models]
 
   gateway:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/gateway
     restart: unless-stopped
@@ -390,9 +390,9 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, NET_BIND_SERVICE, SETGID, SETUID]
     pids_limit: 128
     environment:
-      RECORDBENCH_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-recordbench.example.test}}
-      RECORDBENCH_UPSTREAM: ${EXCULPATA_GATEWAY_UPSTREAM:-${RECORDBENCH_GATEWAY_UPSTREAM:-app:8786}}
-      NGINX_ENVSUBST_FILTER: ^RECORDBENCH_
+      EXCULPATA_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-recordbench.example.test}}
+      EXCULPATA_UPSTREAM: ${EXCULPATA_GATEWAY_UPSTREAM:-${RECORDBENCH_GATEWAY_UPSTREAM:-app:8786}}
+      NGINX_ENVSUBST_FILTER: ^EXCULPATA_
     ports:
       - "${EXCULPATA_BIND_ADDRESS:-${RECORDBENCH_BIND_ADDRESS:-127.0.0.1}}:${EXCULPATA_HTTPS_PORT:-${RECORDBENCH_HTTPS_PORT:-8443}}:8443"
     volumes:
@@ -415,7 +415,7 @@ services:
 
   model-stager:
     profiles: [tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/model-stager:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/model-stager:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: deploy/model-stager
     environment:
@@ -440,7 +440,7 @@ services:
     environment:
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
     profiles: [tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: application
@@ -458,7 +458,7 @@ services:
         target: /var/lib/recordbench/matter-storage
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=16m
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=16m
     entrypoint: ["exculpata"]
 
 volumes:

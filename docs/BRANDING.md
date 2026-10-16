@@ -116,7 +116,17 @@ Settings and request headers that still use the `RECORDBENCH_` and
 `X-RecordBench-` prefixes keep working. The process logs a one-time warning
 when a legacy environment variable or request header is actually used, and it
 does not log the value. Response headers include both names so existing clients
-keep working. PostgreSQL's user and database remain `recordbench`. Applied SQL
+keep working. Fresh Compose files set `EXCULPATA_ALLOW_CONTAINER_BIND`,
+`EXCULPATA_BACKUP_STATUS_FILE`, `EXCULPATA_SERVER_NAME`, and
+`EXCULPATA_UPSTREAM` so a new container does not log a deprecation for a
+setting it did not choose. The gateway still clears both `X-Exculpata-*` and
+`X-RecordBench-*` request headers. When the project or image namespace is
+unset, the Compose default is `exculpata`. Newly built application images use
+`HOME=/tmp/exculpata-home`. A fresh portable review service advertises
+`exculpata-qwen35-4b`; `recordbench-qwen35-4b` and `recordbench-qwen35-9b`
+remain accepted so an existing generator id still matches. Reconfigure keeps
+a served-model id already saved in `compose.env`. `/opt/recordbench` stays
+the image workdir. PostgreSQL's user and database remain `recordbench`. Applied SQL
 functions keep `recordbench_principal_enabled`,
 `recordbench_case_lifecycle_writer`, and
 `recordbench_case_content_cleanup`. Container paths such as

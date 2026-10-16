@@ -19,15 +19,18 @@ from .review_bench_v2 import DEFAULT_EMBEDDING_MODEL, DEFAULT_RERANKER_MODEL
 
 PORTFOLIO_SCHEMA_VERSION = 1
 PORTFOLIO_ID = f"{LEGACY_STEM}-local-ai-v1"
-APPROVED_GENERATOR_MODEL = f"{LEGACY_STEM}-qwen35-4b"
+APPROVED_GENERATOR_MODEL = "exculpata-qwen35-4b"
 APPROVED_GENERATOR_REPOSITORY = "Qwen/Qwen3.5-4B"
 APPROVED_GENERATOR_REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
+_PORTABLE_PROFILE = {
+    "profile": "portable",
+    "repository": APPROVED_GENERATOR_REPOSITORY,
+    "revision": APPROVED_GENERATOR_REVISION,
+}
 APPROVED_GENERATOR_PROFILES = {
-    APPROVED_GENERATOR_MODEL: {
-        "profile": "portable",
-        "repository": APPROVED_GENERATOR_REPOSITORY,
-        "revision": APPROVED_GENERATOR_REVISION,
-    },
+    APPROVED_GENERATOR_MODEL: _PORTABLE_PROFILE,
+    # Nodes installed before the portable id changed still advertise this name.
+    f"{LEGACY_STEM}-qwen35-4b": _PORTABLE_PROFILE,
     f"{LEGACY_STEM}-qwen35-9b": {
         "profile": "quality",
         "repository": "Qwen/Qwen3.5-9B",

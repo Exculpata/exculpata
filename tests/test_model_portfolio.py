@@ -71,6 +71,14 @@ def test_unreviewed_generator_is_visible_but_not_reported_ready() -> None:
     assert projection["generator"]["configured_model"] == "unreviewed-candidate"
 
 
+def test_previous_portable_served_name_stays_a_reviewed_configuration() -> None:
+    projection = _projection(_Service(model=f"{LEGACY_STEM}-qwen35-4b"))
+
+    assert projection["ready"] is True
+    assert projection["generator"]["profile"] == "portable"
+    assert projection["generator"]["repository"] == "Qwen/Qwen3.5-4B"
+
+
 def test_quality_generator_tier_is_also_a_reviewed_configuration() -> None:
     projection = _projection(_Service(model=f"{LEGACY_STEM}-qwen35-9b"))
 

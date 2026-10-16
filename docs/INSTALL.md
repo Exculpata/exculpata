@@ -26,7 +26,13 @@ retain saved paths, project/image namespace and environment key spelling; an
 unchanged configuration remains byte-identical. Updates change only the release
 coordinate as before. PostgreSQL's user and database, applied SQL function
 names, and container volume paths stay on their existing names in both
-generations. There is no naming migration.
+generations. There is no naming migration. A fresh Compose file defaults an
+unset project and image namespace to `exculpata`, uses `/tmp/exculpata-home`
+as the container home, and serves the portable review model as
+`exculpata-qwen35-4b`. An existing node keeps the project, namespace, and
+served-model id already saved in its environment. Application health reports
+`Exculpata`. Install and backup checks also accept a node that still reports
+the previous product name.
 
 `./install doctor --root <node-root>` reports the naming generation.
 `--names exculpata` explicitly selects the new generation on a fresh node;
@@ -803,14 +809,16 @@ account contents.
 
 OIDC and Kerberos resume likewise validate the retained provider choices before
 Compose builds or service changes, including in a dry run. New provider flags do
-not override the saved application environment (`config/exculpata.env` on new
-nodes, `config/exculpata.env` on legacy nodes) or replace canonical credentials.
+not override the saved application environment (`config/exculpata.env` on a
+fresh node, or the previous generation's config file named in
+[brand compatibility](BRANDING.md)) or replace canonical credentials.
 OIDC checks the saved issuer, client, groups, scopes, claim names, token method,
 matching external origin and canonical secret reference, then validates the
 owned mode-0600 `secrets/oidc-client-secret` using the same UTF-8 rules as a fresh
 installation. Kerberos checks the saved realm, admission groups/principals,
 matching HTTP service identity, canonical proxy-secret reference, a nonempty
-owned mode-0600 `secrets/exculpata.keytab`, and the owned mode-0600 proxy secret's
+owned mode-0600 keytab for that generation (see
+[brand compatibility](BRANDING.md)), and the owned mode-0600 proxy secret's
 32–256-character ASCII syntax. Both refuse symbolic-link credential files and
 keep their contents out of output. Missing SSSD or Kerberos configuration paths
 block resume; these presence checks do not establish a working domain exchange.
@@ -1067,7 +1075,7 @@ be removed when the node root itself stays.
 Resources are removed only after Docker inspect shows the Compose project
 label for this root. Volume names must also start with that project name.
 Images are removed only when every tag is in this node's image namespace
-(`exculpata-<hash>/...` or `exculpata-<hash>/...`). That check happens
+(`<saved-namespace>-<hash>/...` for this node's image namespace). That check happens
 before any container, volume, or image is removed. An image with any tag
 outside the namespace is left in place and named in the plan. `--delete-data` also
 deletes the node root and, when it is outside that root, the recorded matter

@@ -5,7 +5,6 @@ CI's deployment-contract job so a missing runtime cannot silently skip it.
 """
 
 from case_intelligence.legacy_names import (
-    LEGACY_ENV_PREFIX,
     LEGACY_PRODUCT,
 )
 from pathlib import Path
@@ -38,8 +37,8 @@ class GatewayHeaderContract(unittest.TestCase):
                 "-keyout", str(scratch / "tls.key"), "-out", str(scratch / "tls.crt"),
                 "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost")
             template = (ROOT / "deploy/gateway/default.conf.template").read_text()
-            rendered = template.replace(f"${{{LEGACY_ENV_PREFIX}SERVER_NAME}}", "localhost").replace(
-                f"${{{LEGACY_ENV_PREFIX}UPSTREAM}}", "127.0.0.1:8786")
+            rendered = template.replace("${EXCULPATA_SERVER_NAME}", "localhost").replace(
+                "${EXCULPATA_UPSTREAM}", "127.0.0.1:8786")
             # A separate HTTP server observes the headers that actually arrive
             # after proxying; the TLS gateway configuration is otherwise intact.
             variables = "|".join("$http_" + name.lower().replace("-", "_") for name in names)

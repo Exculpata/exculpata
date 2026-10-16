@@ -25,9 +25,11 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
 from case_intelligence.compat_env import required_env as _required_env
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
     LEGACY_ENV_PREFIX,
     LEGACY_PRODUCT,
     LEGACY_STEM,
+    accepts_product,
 )
 sys.path.pop(0)
 from exculpata_install import NamingError, STORAGE_MARKERS, _node_names, _compose_environment
@@ -366,9 +368,9 @@ def _health(compose: Sequence[str]) -> Mapping[str, Any]:
     try:
         value = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise BackupError(f"{LEGACY_PRODUCT} health response is invalid") from exc
-    if not isinstance(value, dict) or value.get("product") != f"{LEGACY_PRODUCT}":
-        raise BackupError(f"{LEGACY_PRODUCT} application health check failed")
+        raise BackupError(f"{CURRENT_PRODUCT} health response is invalid") from exc
+    if not isinstance(value, dict) or not accepts_product(value.get("product")):
+        raise BackupError(f"{CURRENT_PRODUCT} application health check failed")
     return value
 
 

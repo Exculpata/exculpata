@@ -252,10 +252,12 @@ def test_installation_naming_record_symlink_is_refused(tmp_path):
 
 
 @pytest.mark.parametrize("overlay", [None, "compose.kerberos.yaml"])
-def test_compose_without_naming_environment_uses_legacy_defaults(tmp_path, overlay):
+def test_compose_without_naming_environment_uses_current_defaults(tmp_path, overlay):
     # The full graph requires mount paths and application env files. Supply only
     # those synthetic prerequisites; neither naming family nor a .env file may
-    # supply a project, image namespace, or release default.
+    # supply a project, image namespace, or release default. Unset Compose
+    # defaults are the current name. A saved node still injects its stored
+    # project, and a missing saved key stays on the previous stem.
     root, _, _ = configured_node(tmp_path)
     saved = installer._dotenv(root / "compose.env")
     paths = {key: value for key, value in saved.items()
@@ -272,15 +274,15 @@ def test_compose_without_naming_environment_uses_legacy_defaults(tmp_path, overl
     result = subprocess.run([*command, "config", "--format", "json"], env=env,
                             capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
-    assert graph["name"] == f"{LEGACY_STEM}"
+    assert graph["name"] == "exculpata"
     for service in graph["services"].values():
         if "build" in service:
-            assert service["image"].startswith(f"{LEGACY_STEM}/")
+            assert service["image"].startswith("exculpata/")
 
 
 @pytest.mark.parametrize("overlay", [None, "compose.kerberos.yaml"])
 def test_compose_naming_fields_render_with_no_environment(tmp_path, overlay):
-    # Render the production naming expressions with literally no environment.
+    # Render the naming expressions with literally no environment.
     # Mounts/env files are exercised by the full-graph regression above.
     sources = [(ROOT / "compose.yaml").read_text()]
     if overlay:
@@ -301,6 +303,6 @@ def test_compose_naming_fields_render_with_no_environment(tmp_path, overlay):
         input=config, env={}, capture_output=True, text=True, check=True,
     )
     graph = json.loads(result.stdout)
-    assert graph["name"] == f"{LEGACY_STEM}"
+    assert graph["name"] == "exculpata"
     assert len(graph["services"]) == len(images)
-    assert all(service["image"].startswith(f"{LEGACY_STEM}/") for service in graph["services"].values())
+    assert all(service["image"].startswith("exculpata/") for service in graph["services"].values())

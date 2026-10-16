@@ -157,10 +157,10 @@
     "algorithm": "sha256",
     "test_node_sha256": {
       "tests/test_generation.py::test_empty_evidence_abstains_without_calling_model": "532352d1610eaa0b4c8772f04102a1f4a0c5b5654447dc60ed15db51ebeb6d3e",
-      "tests/test_matter_management.py": "c61b1d1e4bb3d49b0655e650d869bbe4add212f880716c075135d6201eca7e87",
+      "tests/test_matter_management.py": "8e4b8485424e7cfb98870f2419b5fb7dedb03f35a55476052a2bb12fb430ced6",
       "tests/test_matter_media_workflow.py::test_dual_modal_answer_resolves_page_and_timestamp_support": "858424dd2c99d0517ba830ad09ffb52289072446fb7cd1d78c4e575783d530d8",
       "tests/test_matter_media_workflow.py::test_failed_optional_overview_explains_cause_retries_and_independence": "e2739a13d5bdf9319fc76c424958f366961bff6949fe213fbc5aede088fe2503",
-      "tests/test_matter_media_workflow.py::test_media_upload_transcript_review_range_citations_exports_and_clips": "9b54a82169d617cf9bba2eb9edefd69b7f14b91e57e4400d7d385500664c1967",
+      "tests/test_matter_media_workflow.py::test_media_upload_transcript_review_range_citations_exports_and_clips": "d8cebc8e88bb355d68f37de2caf4bb3bcbbec2191bbe341e76bc746daf492377",
       "tests/test_matter_media_workflow.py::test_speaker_review_browser_contract_preserves_player_scroll_and_focus": "7955f04e150e91e0fa9549f733efbff67a55372d4e31735d46888df1beeee5e8",
       "tests/test_matter_media_workflow.py::test_speaker_review_save_updates_every_passage_without_navigation": "fa963ea12ae0266dbacf94d437238d6bf10a2e04974b4765ec2222b4e638bccd",
       "tests/test_research_and_full_review.py::test_full_review_freezes_every_source_versions_criteria_and_computes_validation": "473959c1656360c7e180520da382fef398ce26fad701c8df4901f07a9b097a50",
@@ -187,21 +187,21 @@
     },
     "test_file_sha256": {
       "tests/test_generation.py": "17d7434cd3e1c41b03792a82a146f0fee4fc0c25bad7158d21fe0d00bcbcd2f9",
-      "tests/test_matter_management.py": "c61b1d1e4bb3d49b0655e650d869bbe4add212f880716c075135d6201eca7e87",
-      "tests/test_matter_media_workflow.py": "c82447d509bf073c62bb8540a10a731148a3ec1fa48a38effa31b8ce11674487",
-      "tests/test_research_and_full_review.py": "8bf029818a62e9fe1c4aed3ec1726cd8ee3cd0d2695195dee5b95c70fd43af7c",
-      "tests/test_review_acceptance_pack.py": "b30d2e361499432e4a6593bca6014fa603fd2b16f3b0985cc77344d436d47cc8",
+      "tests/test_matter_management.py": "8e4b8485424e7cfb98870f2419b5fb7dedb03f35a55476052a2bb12fb430ced6",
+      "tests/test_matter_media_workflow.py": "b09318e04ddf7cdcdd638632fbb28e08831c6128ac8e87013ee6c0aaab750696",
+      "tests/test_research_and_full_review.py": "cb9f99e1353121fad2b8c83a7ce901387915919dc1b55c439cccc9c548f04704",
+      "tests/test_review_acceptance_pack.py": "3ac55894eb7c3afcab8401d517092d0795e9750e60e8c2fa0d7156e32d2b311f",
       "tests/test_review_conversation_continuity.py": "09704a41af1e43e1e2d996cf6863eb97ab1f1678dee0b86fc3cc2538e9f48974",
       "tests/test_review_quality.py": "2c37d4c9af59f79d00df3ed044499343496c7e9ac065b9293f195036a065e8da",
       "tests/test_upload_pilot.py": "1b5fc2f7caf739423ef27c73557906e7d1a02e7fedf311f4260999f28817b179",
       "tests/test_video_frame_ocr_contract.py": "e579b30ed86445a093ac6ddee03aade3f5ac2edefe4b1252836112efbe33dfc6",
-      "tests/test_work_product_exports.py": "edd684480d213b0892e2290e532e9a830a6f23b4a10bd8d07ff868f70bd10258"
+      "tests/test_work_product_exports.py": "9ccbad3e79cc4e6e8dce8ec514c91a3d4945139e686d8eda5c60b182c493c7e5"
     },
     "fixture_file_sha256": {
       "benchmarks/review_acceptance/v1/objective-with-final-withheld.json": "fe3b839f5d4abcf6af7656b16ef6f5e753fa078f488781e54ab375fdc39f1fbd",
       "src/case_intelligence/demo_data/synthetic_case_report.pdf": "1ff22292da788d1fe8512b897e7e9db98d642767ccd6f1ed30e271b041fc840a",
       "src/case_intelligence/static/demo-audio.wav": "4d24de1f7f3d8417b80dc7d92b9f0a919a0bc304719cfaa7a330588d2cb0f2fd"
     },
-    "content_fingerprint": "075d69ba4963463fa978ab190070eaea85cb444b34bb5e9b075cfdba31ec7b56"
+    "content_fingerprint": "8da922041cb74c14e830f9952372a137f12ba6555d615603a2e45a2d72e101c6"
   }
 }

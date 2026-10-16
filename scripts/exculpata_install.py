@@ -54,6 +54,7 @@ from case_intelligence.legacy_names import (
     LEGACY_HEADER_PREFIX,
     LEGACY_PRODUCT,
     LEGACY_STEM,
+    accepts_product,
 )
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
@@ -1279,7 +1280,7 @@ def _review_model_plan(
         "portable": (
             "Qwen/Qwen3.5-4B",
             "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
-            f"{LEGACY_STEM}-qwen35-4b",
+            "exculpata-qwen35-4b",
         ),
         "quality": (
             "Qwen/Qwen3.5-9B",
@@ -1701,7 +1702,7 @@ def _matter_storage_layout_valid(path: Path) -> bool:
             return False
         payload = json.loads(marker.read_text(encoding="utf-8"))
         if (not isinstance(payload, dict) or payload.get("format_version") != 1
-                or payload.get("product") != (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
+                or not accepts_product(payload.get("product"))
                 or not isinstance(payload.get("storage_id"), str)
                 or not payload["storage_id"].startswith(f"{names}-storage-")):
             return False
@@ -2858,6 +2859,15 @@ def _configure(
         "CASE_INTELLIGENCE_DOCUMENT_FILE_MIB": 512,
         "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": 100 if storage_plan.profile == "production" else storage_plan.reserve_gib,
     }
+    if (root / "compose.env").is_file():
+        saved_served = _env(
+            f"{LEGACY_ENV_PREFIX}GENERATOR_SERVED_NAME",
+            "",
+            environ=_dotenv(root / "compose.env"),
+        )
+        if saved_served:
+            compose_values[f"{LEGACY_ENV_PREFIX}GENERATOR_SERVED_NAME"] = saved_served
+            app_values["CASE_INTELLIGENCE_GENERATOR_MODEL"] = saved_served
     if storage_plan.profile == "evaluation":
         app_values["CASE_INTELLIGENCE_STORAGE_PROFILE"] = "evaluation"
     admin_username = admin_display = None
@@ -3568,7 +3578,7 @@ def _wait_health(console: Console, root: Path) -> None:
                     payload = json.loads(response.read(262_144))
         except (OSError, ValueError, subprocess.CalledProcessError, http.client.HTTPException) as exc:
             last = exc.__class__.__name__
-        if isinstance(payload, dict) and payload.get("product") == f"{LEGACY_PRODUCT}":
+        if isinstance(payload, dict) and accepts_product(payload.get("product")):
             effective_auth = _running_auth_mode(root, settings)
             if effective_auth is not None and effective_auth != expected_auth:
                 raise RuntimeError(

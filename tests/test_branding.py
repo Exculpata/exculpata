@@ -1,5 +1,6 @@
 
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
     LEGACY_PRODUCT,
     LEGACY_STEM,
 )
@@ -33,7 +34,8 @@ def test_exculpata_identity_preserves_health_contract_and_brands_login_and_mark(
     ) as client:
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["product"] == f"{LEGACY_PRODUCT}"
+        assert health.json()["product"] == CURRENT_PRODUCT
+        assert health.json()["data"] == f"private {CURRENT_PRODUCT} node"
 
         login = client.get("/auth/login")
         assert login.status_code == 200
