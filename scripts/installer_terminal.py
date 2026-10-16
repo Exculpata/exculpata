@@ -10,6 +10,7 @@ import time
 import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Sequence
 
 
 BRAND = {
@@ -81,6 +82,147 @@ def clip_cells(value: str, width: int) -> str:
     return "".join(result)
 
 
+def format_elapsed(seconds: float) -> str:
+    """Whole-second duration. Hours appear only after 60 minutes."""
+    whole = max(0, int(seconds))
+    hours, rem = divmod(whole, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {secs:02d}s"
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def progress_event_text(text: str, width: int) -> str:
+    """One progress row clipped so a narrow terminal does not wrap it."""
+    return clip_cells(f"  [ NOTE ] {text}", max(0, width - 1))
+
+
+def cell_width(value: str) -> int:
+    return sum(
+        0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+        for char in value
+    )
+
+
+class DockerActivity:
+    """Summarize BuildKit and Compose lines without inventing a total or a percentage."""
+
+    def __init__(self, targets: Sequence[str] = ()) -> None:
+        self.targets = tuple(dict.fromkeys(targets))
+        self.built: list[str] = []
+        self.service: str | None = None
+        self.step_current: int | None = None
+        self.step_total: int | None = None
+        self.instruction: str | None = None
+        self.build_current: int | None = None
+        self.build_total: int | None = None
+        self.note: str | None = None
+
+    def observe(self, line: str) -> str | None:
+        if len(line) > 2000:
+            return None
+        before = self.summary()
+        self._consume(terminal_text(line).strip())
+        after = self.summary()
+        return after if after != before else None
+
+    def summary(self) -> str:
+        parts: list[str] = []
+        if self.targets:
+            parts.append(f"images built {len(self.built)} of {len(self.targets)}")
+        elif self.built:
+            parts.append(f"images built {len(self.built)}")
+        if self.build_current is not None and self.build_total is not None:
+            parts.append(f"build steps {self.build_current} of {self.build_total}")
+        if self.step_current is not None and self.step_total is not None:
+            label = f"{self.service} " if self.service else ""
+            parts.append(f"{label}step {self.step_current} of {self.step_total}")
+        if self.instruction:
+            parts.append(self.instruction)
+        elif self.note:
+            parts.append(self.note)
+        return "; ".join(parts) if parts else "waiting for Docker output"
+
+    def _consume(self, line: str) -> None:
+        if not line:
+            return
+        prefixed = re.match(r"^[A-Za-z0-9_.-]+ \| (.*)$", line)
+        if prefixed:
+            line = prefixed.group(1).strip()
+        # Byte-progress redraws report a moving percentage. That is not a step total.
+        if "%" in line and not line.startswith("#"):
+            return
+        building = re.match(r"^\[\+\] Building \S+ \((\d+)/(\d+)\)", line)
+        if building:
+            self.build_current = int(building.group(1))
+            self.build_total = int(building.group(2))
+            return
+        image = re.match(r"^Image\s+(\S+)\s+(Building|Built|Pulling|Pulled)$", line)
+        legacy = None if image else re.match(r"^(\S+)\s+(Built|Pulled)$", line)
+        chosen = image or legacy
+        if chosen:
+            token, state = chosen.group(1), chosen.group(2)
+            if legacy and self.targets and self._known_service(token) is None:
+                return
+            if legacy and not self.targets and "/" not in token and ":" not in token:
+                return
+            service = self._known_service(token)
+            if state in {"Built", "Pulled"} and service and service not in self.built:
+                self.built.append(service)
+            elif state in {"Building", "Pulling"}:
+                self.note = f"{state.lower()} {service or token}"
+                self.instruction = None
+            return
+        step = re.match(r"^#\d+ \[([^\]]+)\] (.+)$", line)
+        if step:
+            bracket, detail = step.group(1), step.group(2)
+            fraction = re.search(r"(\d+)/(\d+)", bracket)
+            self.service = self._known_service(bracket.split()[0])
+            if fraction:
+                self.step_current = int(fraction.group(1))
+                self.step_total = int(fraction.group(2))
+            else:
+                self.step_current = self.step_total = None
+            self.instruction = clip_cells(detail, 120)
+            self.note = None
+            return
+        pulling = re.match(r"^(\S+): Pulling from (\S+)$", line)
+        if pulling:
+            self.note = f"pulling {pulling.group(2)}"
+            self.instruction = None
+            return
+        layer = re.match(
+            r"^([0-9a-f]{4,64}): (Pulling fs layer|Waiting|Download complete|Verifying Checksum|Extracting|Pull complete|Already exists)$",
+            line,
+        )
+        if layer:
+            self.note = f"layer {layer.group(1)}: {layer.group(2)}"
+            self.instruction = None
+            return
+        # Compose aligns these rows with more than one space.
+        resource = re.match(
+            r"^(Container|Network|Volume) (\S+)\s+(Creating|Created|Starting|Started|Running|Restarting|Stopping|Stopped|Removing|Removed|Healthy|Waiting)$",
+            line,
+        )
+        if resource:
+            self.note = f"{resource.group(1)} {resource.group(2)} {resource.group(3)}"
+            self.instruction = None
+
+    def _known_service(self, token: str) -> str | None:
+        leaf = token.rsplit("/", 1)[-1].split(":", 1)[0]
+        if self.targets:
+            if leaf in self.targets:
+                return leaf
+            if token in self.targets:
+                return token
+            return None
+        if leaf and leaf not in {"internal", "Image"} and not leaf[0].isdigit():
+            return leaf
+        return None
+
+
 @dataclass
 class Console:
     color: bool
@@ -150,8 +292,18 @@ class Console:
         self.typed(f"  EVIDENCE NODE PROVISIONER // {mode.upper()} // BUILD {version}")
         self.line(self.paint("  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+", C.muted))
 
+    def progress_event(self, text: str) -> None:
+        """Print one progress event. Animated consoles redraw inside progress()."""
+        if self.quiet or self.animation:
+            return
+        visible = progress_event_text(text, terminal_width())
+        marker = "  [ NOTE ] "
+        if self.color and visible.startswith(marker):
+            visible = "  " + self.paint("[ NOTE ]", C.cyan + C.bold) + visible[len(marker) - 1:]
+        self.line(visible)
+
     @contextmanager
-    def progress(self, title: str):
+    def progress(self, title: str, status: dict[str, str] | None = None):
         title = terminal_text(title).replace("\t", " ")
         self.note(title)
         stop = threading.Event()
@@ -164,7 +316,13 @@ class Console:
                 while not stop.wait(0.1):
                     # Leave the final cell unused to avoid terminal auto-wrap.
                     indicator = "|/-\\"[index % 4]
-                    frame = clip_cells(f"  [{indicator} WORK] {title}", terminal_width() - 1)
+                    if status is None:
+                        text = title
+                    else:
+                        elapsed = terminal_text(status.get("elapsed") or "")
+                        detail = terminal_text(status.get("detail") or title)
+                        text = f"{elapsed} {detail}".strip()
+                    frame = clip_cells(f"  [{indicator} WORK] {text}", terminal_width() - 1)
                     print("\r" + self.paint(frame, C.cyan) + "\033[K", end="", flush=True)
                     redrawn = True
                     index += 1

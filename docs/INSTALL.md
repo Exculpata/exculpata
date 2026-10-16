@@ -147,8 +147,15 @@ it writes.
    ```
 
    Resolve any `BLOCK` before installing. Accept the proposed administrator
-   username or choose your own, and enter a new password of at least 14
-   characters at the hidden prompt. Accept the default matter-storage path.
+   username or choose your own. The installer states the password rules before
+   the hidden prompt: 14 to 1,024 Unicode code points, counted with Python
+   `len()` (spaces count; combining marks count separately), with no NUL
+   character. A passphrase of several words can meet the length. A too-short
+   password or a mismatched confirmation is explained and asked again, up to
+   three attempts. Those attempts do not discard the username, hostname, or
+   other answers already given, and they do not write node files. A
+   non-interactive run still fails on the first invalid password and names the
+   rule without printing the password. Accept the default matter-storage path.
    Retain that username and password for the browser. The installer builds the
    application, creates its first administrator, obtains malware signatures and
    starts the private companion services. No model weights are selected.
@@ -165,8 +172,11 @@ it writes.
    Expect exit status 0, **Node diagnostic complete**, and complete running,
    login-reachable, basic-review and selected-capability states. An unselected
    AI capability can remain unavailable with `--models none`. Browser sign-in
-   is still unverified. For an interrupted install, follow the printed resume
-   command; for startup failures, use [startup troubleshooting](#startup-troubleshooting).
+   is still unverified. A healthy node then prints `NODE ONLINE` with the URL,
+   the administrator username, and the next step. The password is not printed.
+   For an interrupted install, follow the printed resume command; for startup
+   failures, use [startup troubleshooting](#startup-troubleshooting).
+   To remove the practice node later, see [Teardown / uninstall](#teardown--uninstall).
 
 6. Follow [CPU practice matter](FIRST_RUN.md#cpu-practice-matter) to trust the
    loopback certificate, sign in at `https://localhost:8443`, create one matter
@@ -210,8 +220,19 @@ nearest fixed xterm-256 colors (indices 16–255), without changing the terminal
 background. Narrow terminals use a single-line wordmark; spinner frames stay
 within the current terminal width, including after a resize.
 
-Docker builds and Compose service start/stop output are collapsed into a progress
-line. Each command prints its unique log path under
+Docker builds and Compose service start, stop, and up output stay out of the
+terminal. The installer reads the private log while the command runs and prints
+only what that output actually reports: images built out of the services named
+on the command, a BuildKit step such as `3 of 7` when the line contains that
+fraction, the current instruction, pull-layer state, or the container action.
+Elapsed time is included. When Docker has not reported a total, the line says
+`waiting for Docker output` (or the latest real action) and an animated
+terminal shows a moving marker. The installer does not invent a percentage.
+Plain mode, `--no-color`, any `NO_COLOR` value, any `CI` value, `TERM=dumb`,
+and non-TTY stdout print one new line when the step changes and about every
+five seconds while it has not, with no color, carriage return, or cursor
+control. Narrow terminals clip that progress row so it does not wrap. Each
+command prints its unique log path under
 `<node-root>/state/installer-<action>-<UTC timestamp>-<random suffix>.log`.
 The state directory must be owner-only mode 0700, outside the source checkout;
 logs are new files with mode 0600. On failure, the terminal shows the last 40
@@ -794,8 +815,17 @@ canonical read-only secrets mount. Resume checks that file before provisioning;
 restore a missing or invalid CA rather than replacing the saved provider options.
 For a local installation that still needs its first account, installation reads
 and validates password input after read-only preflight and before any node writes
-or provisioning commands. Standalone preflight and dry runs do not consume it.
-The one-use input is cleared at account initialization and on error.
+or provisioning commands. Interactive entry states the 14 to 1,024 Unicode
+code-point rule first, then allows three attempts. A too-short password or a
+confirmation mismatch is explained and asked again; the first mistake does not
+exit, and earlier answers in that run are kept. Exhausting the three attempts
+exits without writing node files and without changing a saved node. Resume
+still uses the saved non-secret choices, so a later run does not ask for them
+again. Non-interactive and non-TTY input fails on the first invalid value and
+names the rule and the administrator-password field. The password itself is
+not printed, logged, or included in the error. Standalone preflight and dry
+runs do not consume it. The one-use input is cleared at account initialization
+and on error.
 
 A successful doctor check recovers prepared-phase progress from a matching
 provisioning seal even if the current progress receipt is absent or from an older
@@ -805,6 +835,70 @@ merely because its progress receipt predates the current release. Browser sign-i
 remains a separate unverified step.
 
 Resume never initializes a replacement account store when a provisioning seal exists, including a seal from an older release or a damaged seal. Restore the canonical account backup first. Retained application account-file and management-root settings must exactly match the selected managed or read-only account layout before any Compose command runs.
+
+## Teardown / uninstall
+
+`./install uninstall --root <node-root>` removes only that node's Compose
+containers and networks. It keeps volumes, images, the node root, and matter
+storage unless you also pass `--delete-data`. It does not change the service
+account or group, and it does not prune Docker or touch another project.
+
+The command prints the Compose project, the container and network ids it found,
+and whether volumes, namespace images, and the node root will be removed or
+kept. It removes nothing until you type the installation root exactly.
+Non-interactive use requires `--yes`. `--dry-run` prints the same plan and
+removes nothing. A wrong confirmation, a missing terminal without `--yes`, a
+symbolic-link root, or a Compose project name that does not match this root
+exits without removing anything.
+
+Resources are removed only after Docker inspect shows the Compose project
+label for this root. Volume names must also start with that project name.
+Images are removed only when every tag is in this node's image namespace
+(`exculpata-<hash>/...` or `recordbench-<hash>/...`). That check happens
+before any container, volume, or image is removed. An image with any tag
+outside the namespace is left in place and named in the plan. `--delete-data` also
+deletes the node root and, when it is outside that root, the recorded matter
+storage directory if it contains this node's storage marker. If this account
+cannot unlink that directory from its parent, the command removes the contents
+and leaves the empty directory in place. An administrator who created
+`/srv/exculpata` can then remove the empty directory. Paths shorter
+than `/srv/exculpata`, the checkout, and the account home are refused.
+
+Exit status is 0 when the plan is applied or a dry run finishes, and 1 when
+uninstall refuses or a removal fails. Leaving an empty node directory because
+its parent is not writable is still exit 0; the plan says so. A failure after
+removal has started leaves the node root in place when that is still true.
+This command does not add an installation phase.
+
+The operating-system account is outside the node. After the node data you
+asked to delete is gone, an administrator who created the dedicated account
+can remove it when no other node uses it:
+
+```bash
+sudo userdel exculpata
+sudo groupdel exculpata
+sudo rm -rf /var/lib/exculpata-home
+```
+
+Run the directory removal only after confirming that path is the account's
+HOME and that nothing else you need is stored there. Do not delete a shared
+group that another service still uses.
+
+The same boundaries, without the installer, are:
+
+```bash
+# From the node root, after reading compose.env for the project name.
+docker ps -a --filter label=com.docker.compose.project=<project>
+docker rm -f <container-id-for-this-project>
+docker network rm <network-id-for-this-project>
+# Only when deleting data:
+docker volume rm <project>_<volume>
+docker image rm <namespace>/<name>:<tag>
+# Then remove the node root and any recorded external matter storage.
+```
+
+Confirm each id with `docker inspect` before deleting it. Do not run
+`docker system prune`.
 
 ## Dependency reproducibility
 
