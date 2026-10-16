@@ -30,6 +30,7 @@ IPV4 = re.compile(r"(?<![\w.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![\w.])")
 def identifying_pattern(cell: str) -> bool:
     # Decode common disguises; never echo potentially identifying values in CI.
     cell = html.unescape(unquote(cell)).replace("`", "")
+    cell = re.sub(r"\\([\\`*{}\[\]()#+\-.!_>|@])", r"\1", cell)
     if FQDN.search(cell) or USER_AT.search(cell) or IPV4.search(cell):
         return True
     for token in re.findall(r"[0-9a-fA-F:]+(?:%[\w.-]+)?", cell):
@@ -46,7 +47,17 @@ def identifying_pattern(cell: str) -> bool:
 def cells(line: str) -> list[str]:
     if not line.startswith("|") or not line.endswith("|"):
         raise ValueError("table rows must start and end with a pipe")
-    return [part.strip().replace(r"\|", "|") for part in re.split(r"(?<!\\)\|", line[1:-1])]
+    parts, current = [], []
+    backslashes = 0
+    for char in line[1:-1]:
+        if char == "|" and backslashes % 2 == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+        backslashes = backslashes + 1 if char == "\\" else 0
+    parts.append("".join(current).strip())
+    return [part.replace(r"\|", "|") for part in parts]
 
 
 def validate(text: str) -> list[str]:

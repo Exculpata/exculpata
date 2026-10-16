@@ -63,7 +63,7 @@ def test_invalid_enums_fail(column, value):
 @pytest.mark.parametrize('column', ['Hardware (generic)', 'Notes'])
 @pytest.mark.parametrize('value', [
     'node.example.test', 'operator@', 'operator@example.test', '192.0.2.8',
-    '2001:db8::1', '[::1]', 'node%2eexample%2etest', 'operator&#64;example.test',
+    '2001:db8::1', '[::1]', r'node\.example\.test', r'operator\@', 'node%2eexample%2etest', 'operator&#64;example.test',
 ])
 def test_identifiers_fail_without_echoing_value(column, value):
     errors = table.validate(document(**{column: value}))
@@ -140,3 +140,8 @@ def test_make_and_ci_run_both_checks_without_bypassing_gates():
     for script in ('check-compatibility-table.py', 'check-tester-doc-links.py'):
         assert f'scripts/{script}' in make
         assert f'python scripts/{script}' in workflow
+
+
+def test_even_backslashes_do_not_hide_extra_columns():
+    assert table.validate(document(Notes=r"Synthetic \\| extra"))
+    assert table.validate(document(Notes=r"Synthetic \\\| literal")) == []
