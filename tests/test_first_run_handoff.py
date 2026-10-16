@@ -121,9 +121,9 @@ def test_health_records_useful_cpu_capability_without_claiming_failed_model_read
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **kw: io.BytesIO(json.dumps(payload).encode()))
     monkeypatch.setattr(installer, "_login_reachable", lambda root: True)
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"auth_mode": "local"}', ""))
-    clock = iter([0, 0, 1, 2, 901])
-    monkeypatch.setattr(installer.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(installer.time, "sleep", lambda _: None)
+    clock = [0]
+    monkeypatch.setattr(installer.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda _: clock.__setitem__(0, 901))
     with pytest.raises(RuntimeError, match="selected capabilities"):
         installer._wait_health(installer.Console(color=False), root)
     phases = installer._install_progress(root)["phases"]

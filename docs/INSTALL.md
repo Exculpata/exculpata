@@ -409,6 +409,14 @@ nearest fixed xterm-256 colors (indices 16–255), without changing the terminal
 background. Narrow terminals use a single-line wordmark; spinner frames stay
 within the current terminal width, including after a resize.
 
+The install stages include `PREPARE RUNTIME`, `CONFIGURE SERVICES`, and
+`START SERVICES`. While application health or sign-in readiness is pending,
+the console reports elapsed seconds at most once every 30 seconds. Transient
+probe errors are held for the final timeout diagnostic; the health checks and
+15-minute timeout are unchanged. `NODE ONLINE` still requires successful
+readiness checks. Installer administration uses the `exculpata` command;
+explicit legacy CLI aliases such as `recordbench` retain their deprecation notice.
+
 Docker builds and Compose service start, stop, and up output stay out of the
 terminal. The installer reads the private log while the command runs and prints
 only what that output actually reports: images built out of the services named

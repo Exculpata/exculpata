@@ -69,7 +69,8 @@ def test_interrupted_provisioning_resume_retains_canonical_account_profile(tmp_p
     assert calls == [True]
 
 
-def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_host, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("prepare_only", [False, True])
+def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_host, monkeypatch, capsys, prepare_only) -> None:
     node = tmp_path.resolve() / "node"
     monkeypatch.setattr(sys, "argv", [
             str(ROOT / "install"),
@@ -81,10 +82,9 @@ def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_ho
             "--models",
             "none",
             "--non-interactive",
-            "--prepare-only",
             "--dry-run",
             "--no-color",
-        ])
+        ] + (["--prepare-only"] if prepare_only else []))
     assert installer.main() == 0
     output = capsys.readouterr().out
     for marker in (
@@ -92,12 +92,14 @@ def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_ho
         "CLAIM NODE STORAGE",
         "LOAD RELEASE CAPSULE",
         "IDENTITY + FRONT DOOR",
-        "FORGE RUNTIME",
-        "SEAL CONTROL PLANE",
-        "NODE ARMED",
+        "PREPARE RUNTIME",
+        "CONFIGURE SERVICES",
+        "NODE ARMED" if prepare_only else "START SERVICES",
         "PLAN COMPLETE",
     ):
         assert marker in output
+    for retired in ("FORGE RUNTIME", "SEAL CONTROL PLANE", "IGNITE NODE"):
+        assert retired not in output
     assert not node.exists()
     assert "password=" not in output.casefold()
     assert "token=" not in output.casefold()
