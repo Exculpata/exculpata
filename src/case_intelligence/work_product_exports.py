@@ -20,6 +20,7 @@ from html import escape as xml_escape
 from typing import Mapping, Sequence
 
 from .answer_presentation import GENERATED_REVIEW_NOTICE, answer_content, answer_introduction, answer_limitation, modality_coverage_notice, research_content, rejected_answer_content, rejected_answer_notice, review_rejection_notice
+from .model_export_notes import append_model_notes, apply_model_fields
 from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .pdf_coverage import PDF_SAVED_RESULT_NOTICE
@@ -705,6 +706,7 @@ def _answer_blocks(message: MessageRecord) -> list[ExportBlock]:
             blocks.append(ExportBlock(f"Requested source coverage: {notice}", "note"))
     if kind == "generated":
         blocks.append(ExportBlock(GENERATED_REVIEW_NOTICE, "note"))
+        append_model_notes(blocks, payload, ExportBlock)
         introduction = answer_introduction(_plain(payload.get("introduction")))
         if introduction:
             blocks.append(ExportBlock(introduction))
@@ -1424,6 +1426,7 @@ def export_research(
                 "missing_information": _plain(rejected_answer_notice(answer.get("missing_information"))) if answer.get("answerable") is False else _plain(answer.get("missing_information")),
                 "evidence_notice": _plain(answer.get("evidence_notice")),
             }
+            apply_model_fields(safe_answer, answer)
             limitation = answer.get("limitation")
             if isinstance(limitation, Mapping):
                 safe_answer["limitation"] = {
@@ -1553,6 +1556,7 @@ def export_research(
             ExportBlock(GENERATED_REVIEW_NOTICE, "note"),
             ExportBlock(summary),
         ))
+        append_model_notes(blocks, result.get("answer"), ExportBlock)
     evidence_notice = _plain((result.get("answer") or {}).get("evidence_notice"))
     if evidence_notice:
         blocks.append(ExportBlock(evidence_notice, "note"))

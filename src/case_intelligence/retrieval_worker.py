@@ -33,7 +33,10 @@ RERANKER_MODEL = os.getenv(
 RERANKER_REVISION = os.getenv(
     "CASE_REVIEW_RERANKER_REVISION", "f7481e6055501a30fb19d090657df9ec1f79ab2c"
 )
-DEVICE = os.getenv("CASE_REVIEW_MODEL_DEVICE", "cuda")
+def _model_device() -> str:
+    """Embeddings and reranking stay in this process. CPU is an explicit device, not a remote API."""
+
+    return os.getenv("CASE_REVIEW_MODEL_DEVICE", "cuda") or "cuda"
 
 
 class _RequestBodyTooLarge(Exception):
@@ -118,7 +121,7 @@ def _embedding_model():
         _embedding = SentenceTransformer(
             EMBEDDING_MODEL,
             revision=EMBEDDING_REVISION,
-            device=DEVICE,
+            device=_model_device(),
             local_files_only=True,
             trust_remote_code=False,
         )
@@ -133,7 +136,7 @@ def _reranker_model():
         _reranker = CrossEncoder(
             RERANKER_MODEL,
             revision=RERANKER_REVISION,
-            device=DEVICE,
+            device=_model_device(),
             local_files_only=True,
             trust_remote_code=False,
         )

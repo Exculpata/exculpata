@@ -4622,6 +4622,29 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         del payload["excerpt"]
         return payload
 
+    def _noted_answer_payload(
+        self,
+        answer: VerifiedAnswer,
+        evidence: Mapping[str, WorkbenchCitation],
+    ) -> dict[str, object]:
+        notice = ""
+        schema = ""
+        if answer.model_called:
+            client = getattr(self.generator, "client", None)
+            notice = str(getattr(client, "model_notice", "") or "")
+            mode = str(getattr(client, "schema_mode", "") or "")
+            schema = {
+                "verified": "verified",
+                "validate_and_retry": "not enforced",
+                "refused": "refused",
+            }.get(mode, "")
+        payload = self._answer_payload(answer, evidence)
+        if notice:
+            payload["model_notice"] = notice
+        if schema:
+            payload["schema_enforcement"] = schema
+        return payload
+
     @staticmethod
     def _answer_payload(
         answer: VerifiedAnswer,
@@ -4712,7 +4735,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             answer = self.generator.answer(value, packet, history=history)
         except GenerationGroundingRejected:
             answer = self._verification_abstention()
-        payload = self._answer_payload(answer, evidence)
+        payload = self._noted_answer_payload(answer, evidence)
         with self.source_store(matter).mutation_guard():
             if any(
                 self._current_workflow_citation(matter, citation) is None
@@ -4939,7 +4962,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 raise AnswerJobFailure(
                     "Access to this matter was removed before the answer completed."
                 ) from exc
-            payload = self._answer_payload(answer, evidence)
+            payload = self._noted_answer_payload(answer, evidence)
             if selected_snapshot is not None:
                 payload['recorded_context_job'] = job.job_id
                 payload['recorded_context_attempt'] = job.attempts
@@ -5259,7 +5282,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         state = service.run(job.question, prepared, checkpoint, boundary,
                             prepared.get("hierarchical_synthesis"))
         answer = synthesis_answer(state, prepared["evidence"])
-        payload = self._answer_payload(answer, {f"S{number}": self._workflow_citation(source)
+        payload = self._noted_answer_payload(answer, {f"S{number}": self._workflow_citation(source)
             for number, source in enumerate(prepared["evidence"], 1)})
         boundary()
         return {**prepared, "hierarchical_synthesis": state,
@@ -5626,7 +5649,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                         research_step_question(job.question, query),
                         packet,
                     )
-                    payload = self._answer_payload(answer, evidence)
+                    payload = self._noted_answer_payload(answer, evidence)
                     pass_shape = modality_coverage(
                         job.question,
                         evidence,
@@ -5648,7 +5671,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                         "query": query,
                         "status": "needs_review",
                         "text": rejected_answer.text,
-                        "answer": self._answer_payload(rejected_answer, evidence),
+                        "answer": self._noted_answer_payload(rejected_answer, evidence),
                         "candidate_passages": len(found),
                         "candidate_sources": len({item.document_id for item in found}),
                     }
@@ -5817,7 +5840,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             for item in passes
             if item.get("status") != "supported"
         ]
-        final_answer_payload = self._answer_payload(final_answer, final_evidence)
+        final_answer_payload = self._noted_answer_payload(final_answer, final_evidence)
         evidence_shape = modality_coverage(
             job.question,
             final_evidence,
@@ -6172,9 +6195,23 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     def capabilities(self) -> dict[str, str]:
         storage = self.storage_capacity_projection(include_managed_usage=False)
         malware = scanner_status(self.malware_scanner)
+        client = getattr(self.generator, "client", None)
+        refresh = getattr(client, "refresh_schema_status", None)
+        if callable(refresh):
+            refresh()
+        schema_mode = str(getattr(client, "schema_mode", "unprobed") or "unprobed")
+        schema_label = {
+            "verified": "verified",
+            "validate_and_retry": "not enforced",
+            "refused": "refused",
+            "unreachable": "not checked",
+        }.get(schema_mode, "not checked")
         return {
             "search": "word + meaning" if self.learned_retrieval else "word search only",
             "answering": "ready" if self.generator.available else "temporarily unavailable",
+            "schema_enforcement": schema_label,
+            "schema_detail": str(getattr(client, "schema_detail", "") or ""),
+            "model_qualification": str(getattr(client, "model_notice", "") or ""),
             "source_review": "ready",
             "ingestion": "background queue" if self.background_ingestion else "request-bound",
             "ocr": os.getenv("CASE_INTELLIGENCE_OCR_MODE", "off") or "off",

@@ -79,6 +79,19 @@ def model_portfolio_projection(
     model_id = str(getattr(client, "model", "") or "")
     endpoint = getattr(client, "endpoint", "")
     direct_mode = bool(getattr(client, "disable_thinking", False))
+    schema_mode = str(getattr(client, "schema_mode", "unprobed") or "unprobed")
+    schema_enforcement = {
+        "verified": "verified",
+        "validate_and_retry": "not enforced",
+        "refused": "refused",
+        "unreachable": "not checked",
+    }.get(schema_mode, "not checked")
+    try:
+        from .model_qualification import qualification_label
+
+        model_qualification = str(getattr(client, "model_notice", "") or "") or qualification_label(model_id)
+    except (OSError, ValueError):
+        model_qualification = "unvalidated model" if model_id else ""
     generator_ready = _available(generator)
     generator_profile = APPROVED_GENERATOR_PROFILES.get(model_id)
     approved_generator = bool(
@@ -153,6 +166,9 @@ def model_portfolio_projection(
             ),
             "runtime": "vLLM 0.22.0",
             "mode": "Direct structured generation",
+            "schema_enforcement": schema_enforcement,
+            "schema_detail": str(getattr(client, "schema_detail", "") or ""),
+            "model_qualification": model_qualification,
             "context_tokens": 16_384,
             "maximum_active": generation_concurrency,
         },

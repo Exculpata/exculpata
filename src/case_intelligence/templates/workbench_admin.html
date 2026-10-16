@@ -155,6 +155,8 @@
     <details class="administrator-ai-details">
       <summary>Readiness and evaluation decision</summary>
       <p><strong>Local answering:</strong> the approved offline configuration is {{ 'ready' if model_portfolio.generator.ready else 'not ready' }}. Exact component identities remain in the operator record, not staff-facing pages.</p>
+      <p><strong>Schema enforcement:</strong> {{ model_portfolio.generator.schema_enforcement }}{% if model_portfolio.generator.schema_detail %}. {{ model_portfolio.generator.schema_detail }}{% endif %}</p>
+      <p><strong>Model qualification:</strong> {{ model_portfolio.generator.model_qualification or 'No answer model is configured.' }}</p>
       <p><strong>Evidence safeguards:</strong> answers receive a bounded set of cited passages, and every displayed claim still passes independent citation checks.</p>
       <p><strong>Specialized work:</strong> document text recognition and media transcription use separate capacity. Media processing is {{ 'ready' if model_portfolio.media_ready else 'temporarily unavailable' }}.</p>
       <p><strong>Evaluation status:</strong> {{ model_portfolio.evaluation.detail }}</p>
