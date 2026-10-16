@@ -1,0 +1,8 @@
+name = "exculpata-site"
+main = "site-worker/range.js"
+compatibility_date = "2026-10-16"
+
+[assets]
+directory = "./site"
+binding = "ASSETS"
+run_worker_first = [ "/assets/*.mp4" ]

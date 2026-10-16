@@ -13,14 +13,30 @@ From the repository root:
 python3 -m http.server 8080 --bind 127.0.0.1 --directory site
 ```
 
-Open the loopback server in a browser. For a future Cloudflare Pages project,
-select no framework, leave the build command empty, and set the build output
-directory to `site`. The directory is the complete static output; it does not
-need the Python application. `_headers` defines the Cloudflare response headers.
-The HTML also includes a resource CSP for local preview; the Python preview
-server does not apply `_headers`. No deployment or domain configuration is part
-of this change. Leave Cloudflare Web Analytics and automatic script injection off
-to preserve the page's no-tracking contract.
+Open the loopback server in a browser. The directory is the complete static
+output; it does not need the Python application. The HTML also includes a
+resource CSP for local preview; the Python preview server does not apply
+`_headers`.
+
+exculpata.com is the Workers Static Assets Worker `exculpata-site`. From the
+repository root, `wrangler.toml` names that Worker, points `main` at
+`site-worker/range.js`, and serves `[assets] directory = "./site"` through the
+`ASSETS` binding. The worker runs first only for `/assets/*.mp4`, so a video
+range request can answer 206 while every other path is still a static asset.
+The page stays free of JavaScript. The worker lives outside `site/`.
+
+`site/.assetsignore` keeps this README out of the uploaded assets. `_headers`
+sets the security headers and an explicit Content-Type for HTML, CSS, MP4,
+JPEG, SVG, WOFF2, and plain text. The committed config names the Worker
+and the asset directory. Choose the preview alias at upload time.
+
+```console
+npx wrangler versions upload --preview-alias <name>
+npx wrangler versions deploy
+```
+
+Leave Cloudflare Web Analytics and automatic script injection off to preserve
+the page's no-tracking contract.
 
 ## Content and asset provenance
 

@@ -2,6 +2,7 @@
 from html.parser import HTMLParser
 from pathlib import Path
 import re
+import tomllib
 from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 
@@ -102,7 +103,10 @@ def test_original_brand_assets_and_font_licenses_are_preserved():
     }
     for output, source in media.items():
         assert (SITE / output).read_bytes() == (ROOT / source).read_bytes(), output
-    expected = {"index.html", "styles.css", "_headers", "README.md", *sources, *media, *posters}
+    expected = {
+        "index.html", "styles.css", "_headers", ".assetsignore", "README.md",
+        *sources, *media, *posters,
+    }
     assert {str(path.relative_to(SITE)) for path in SITE.rglob("*") if path.is_file()} == expected
 
 
@@ -143,3 +147,43 @@ def test_static_policy_blocks_scripts_and_connections():
     assert f"Content-Security-Policy: {policy}; frame-ancestors 'none'" in headers
     assert "Referrer-Policy: no-referrer" in headers
     assert "X-Content-Type-Options: nosniff" in headers
+    rules = {}
+    path = None
+    for line in headers.splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("  "):
+            name, value = line.split(":", 1)
+            if name.strip() == "Content-Type":
+                rules[path] = value.strip()
+        else:
+            path = line.strip()
+    assert rules == {
+        "/*.html": "text/html; charset=utf-8",
+        "/*.css": "text/css; charset=utf-8",
+        "/assets/*.mp4": "video/mp4",
+        "/assets/*.jpg": "image/jpeg",
+        "/assets/*.svg": "image/svg+xml",
+        "/assets/fonts/*.woff2": "font/woff2",
+        "/assets/fonts/*.txt": "text/plain; charset=utf-8",
+    }
+    assert (SITE / ".assetsignore").read_text().split() == ["README.md"]
+
+
+def test_workers_static_assets_config_has_no_account_binding():
+    config = tomllib.loads((ROOT / "wrangler.toml").read_text())
+    assert config["name"] == "exculpata-site"
+    assert config["main"] == "site-worker/range.js"
+    assert config["compatibility_date"] == "2026-10-16"
+    assert config["assets"] == {
+        "directory": "./site",
+        "binding": "ASSETS",
+        "run_worker_first": ["/assets/*.mp4"],
+    }
+    assert "account_id" not in config
+    published = (ROOT / "wrangler.toml").read_text() + (ROOT / "site-worker" / "range.js").read_text()
+    assert "workers.dev" not in published and "account_id" not in published
+    assert "env.ASSETS.fetch" in (ROOT / "site-worker" / "range.js").read_text()
+    deploy = (SITE / "README.md").read_text()
+    assert "npx wrangler versions upload --preview-alias <name>" in deploy
+    assert "npx wrangler versions deploy" in deploy
