@@ -44,6 +44,11 @@ remain checked. Record the digest and reason privately. Never use this option
 to excuse actual private content. The pre-push hook reads equivalent repeated
 `recordbench.reviewedMediaDigest` local configuration entries.
 
+A media sample box (`mdat`) can also contain an email-shaped run shorter than
+8 bytes, the floor of the address grammar. The scanner ignores only that
+collision inside the sample payload. A longer email-shaped value in the sample,
+any email-shaped value outside it, and decoded media metadata still block.
+
 For an inspected historical GitHub merge, `--allow-public-merge-commit SHA`
 permits only an already approved public Git username in the conventional
 `Merge pull request #N from USER/branch` first line of that exact commit.

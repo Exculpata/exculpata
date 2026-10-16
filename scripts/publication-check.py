@@ -497,6 +497,52 @@ def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> lis
     return findings
 
 
+# A one- or two-character local part plus a four-character domain is six or
+# seven bytes. Compressed sample bytes collide with that floor; longer runs do not.
+_COINCIDENTAL_SAMPLE_EMAIL_BYTES = 8
+
+
+def _mdat_payload_ranges(data: bytes) -> tuple[tuple[int, int], ...]:
+    ranges: list[tuple[int, int]] = []
+    offset = 0
+    limit = len(data)
+    while offset + 8 <= limit:
+        size = int.from_bytes(data[offset:offset + 4], "big")
+        header = 8
+        if size == 1:
+            if offset + 16 > limit:
+                break
+            size = int.from_bytes(data[offset + 8:offset + 16], "big")
+            header = 16
+        elif size == 0:
+            size = limit - offset
+        if size < header or offset + size > limit:
+            break
+        if data[offset + 4:offset + 8] == b"mdat":
+            ranges.append((offset + header, offset + size))
+        offset += size
+    return tuple(ranges)
+
+
+def _without_coincidental_sample_emails(data: bytes) -> bytes:
+    ranges = _mdat_payload_ranges(data)
+    if not ranges:
+        return data
+    masked = bytearray(data)
+    changed = False
+    for match in EMAIL.finditer(data):
+        if match.end() - match.start() >= _COINCIDENTAL_SAMPLE_EMAIL_BYTES:
+            continue
+        if not any(start <= match.start() and match.end() <= end for start, end in ranges):
+            continue
+        at = data.find(b"@", match.start(), match.end())
+        if at < 0:
+            continue
+        masked[at] = 0
+        changed = True
+    return bytes(masked) if changed else data
+
+
 def _scan_content(
     data: bytes,
     *,
@@ -508,12 +554,16 @@ def _scan_content(
 ) -> list[Finding]:
     # Only a manually reviewed, exact media blob may adjudicate accidental
     # three-byte matches in compressed bytes. Decoded metadata retains all terms.
+    # Sample data may also contain a sub-8-byte email-shaped collision. Longer
+    # email-shaped runs, values outside the sample, and metadata stay checked.
     raw_deny = deny
-    if (Path(name).suffix.casefold() in MEDIA_SUFFIXES
-            and hashlib.sha256(data).hexdigest() in reviewed_media_digests):
-        raw_deny = tuple(term for term in deny if len(term) != 3)
+    scanned = data
+    if Path(name).suffix.casefold() in MEDIA_SUFFIXES:
+        scanned = _without_coincidental_sample_emails(data)
+        if hashlib.sha256(data).hexdigest() in reviewed_media_digests:
+            raw_deny = tuple(term for term in deny if len(term) != 3)
     findings = _scan_bytes(
-        data,
+        scanned,
         location=location,
         deny=raw_deny,
         allowed_deny_literals=allowed_deny_literals,
