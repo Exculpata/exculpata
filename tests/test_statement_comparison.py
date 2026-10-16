@@ -98,3 +98,14 @@ def test_explicit_presence_and_absence_compare_the_same_person():
     pair = dict(id='explicit-presence', left='Alex Example said Jordan Sample was present at Cedar Depot during delivery.',
                 right='Alex Example said Jordan Sample was absent at Cedar Depot during delivery.')
     assert any(c.difference_type == 'people_present' for c in comparisons(pair))
+
+
+def test_extraction_context_change_cannot_reuse_a_review_signature():
+    left = unit(PAIRS[0]['left'] + '\n\nThe label was readable.', 'left')
+    changed = unit(PAIRS[0]['left'] + '\n\nThe label was partly obscured.', 'left')
+    right = unit(PAIRS[0]['right'], 'right')
+    assert left.source_version_id == changed.source_version_id
+    before = compare(attribute_statements([left, right], []))
+    after = compare(attribute_statements([changed, right], []))
+    assert before and after
+    assert {c.signature for c in before}.isdisjoint(c.signature for c in after)

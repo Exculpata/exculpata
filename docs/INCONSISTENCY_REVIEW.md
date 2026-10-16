@@ -23,7 +23,7 @@ Each displayed/exported pair must retain two exact validated original windows.
 Missing, changed or out-of-window citations are dropped and counted.
 
 Review state lives in the control SQLite database, including with PostgreSQL search.
-It is keyed by matter, workflow namespace and source-version-sensitive signature.
+It is keyed by matter, workflow namespace and source-version/extracted-unit-sensitive signature.
 Changed sources cannot inherit an old decision. The equivalent PostgreSQL migration
 provides a portable schema; the application does not dual-write review decisions.
 Complete stopped-runtime backups retain the control database, session state, source

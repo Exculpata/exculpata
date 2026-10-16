@@ -120,7 +120,7 @@ def attribute_statements(units, entities):
                 window=dict(start=start, end=end, original_chars=len(unit.text), omitted_chars=len(unit.text) - (end-start)),
                 record_date=(re.search(r'^Record date:\s*([^\n]+)', unit.text, re.M).group(1)
                              if re.search(r'^Record date:\s*([^\n]+)', unit.text, re.M) else 'Date not stated'))
-            result.append(Statement(_signature(unit.document_id, unit.source_version_id, unit.chunk_id, str(start), text),
+            result.append(Statement(_signature(unit.document_id, unit.source_version_id, unit.excerpt_digest, unit.chunk_id, str(start), text),
                 speaker, attribution, unit.document_id, unit.citation, text, terms, citation, name))
             if len(result) >= MAX_STATEMENTS:
                 return result
@@ -149,10 +149,11 @@ def _slots(statement):
 def compare(statements):
     """Pair aligned clauses, with explicit bounded limits and stable signatures."""
     found = {}
+    statement_slots = {statement.statement_id: _slots(statement) for statement in statements}
     document_terms = {}
     for statement in statements:
         document_terms.setdefault(statement.source_id, set())
-        if _slots(statement):
+        if statement_slots[statement.statement_id]:
             document_terms[statement.source_id].update(statement.event_terms)
     for index, (left, right) in enumerate(combinations(sorted(statements, key=lambda s: s.statement_id), 2)):
         if index >= MAX_PAIRS or len(found) >= MAX_CANDIDATES:
@@ -160,7 +161,7 @@ def compare(statements):
         if left.source_id == right.source_id or not left.speaker_entity_id or not right.speaker_entity_id:
             continue
         shared = set(left.event_terms) & set(right.event_terms)
-        ls, rs = _slots(left), _slots(right)
+        ls, rs = statement_slots[left.statement_id], statement_slots[right.statement_id]
         object_context = (left.speaker_entity_id == right.speaker_entity_id
             and any(key[0] == 'object_description' for key in ls.keys() & rs.keys())
             and len(document_terms[left.source_id] & document_terms[right.source_id]) >= 3)
