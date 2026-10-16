@@ -131,6 +131,8 @@ PUBLIC_BOT_NOREPLY_ADDRESSES = frozenset(
     {
         b"49699333+dependabot[bot]@users.noreply.github.com",
         b"noreply@" + b"github.com",
+        # Cursor cloud agent commit identity. Exact address only.
+        b"cursoragent@" + b"cursor.com",
     }
 )
 DEPENDABOT_SIGNOFF_LINE = b"Signed-off-by: dependabot[bot] <support@" + b"github.com>"
@@ -242,7 +244,7 @@ def _safe_example_ip(
 
 
 def _recognized_public_automation_email(data: bytes, match: re.Match[bytes]) -> bool:
-    """True only for the two public bot no-reply addresses or Dependabot's exact sign-off line."""
+    """True only for exact public automation addresses or Dependabot's sign-off line."""
     address = match.group(0).lower()
     if address in PUBLIC_BOT_NOREPLY_ADDRESSES:
         return True

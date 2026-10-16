@@ -393,8 +393,12 @@ def test_public_bot_identities_and_dependabot_signoff_are_exact():
     email = publication.Finding("git-metadata", "non-example-email-address")
     denied = publication.Finding("git-metadata", "operator-deny-term")
 
+    cloud_agent = b"cursoragent@" + b"cursor.com"
+    other_cursor = b"other@" + b"cursor.com"
     assert publication._scan_bytes(dependabot, location="git-metadata", deny=()) == []
     assert publication._scan_bytes(web_flow, location="git-metadata", deny=()) == []
+    assert publication._scan_bytes(cloud_agent, location="git-metadata", deny=()) == []
+    assert email in publication._scan_bytes(other_cursor, location="git-metadata", deny=())
     assert publication._scan_bytes(b"Bump\n\n" + signoff + b"\n", location="git-metadata", deny=()) == []
     assert publication._scan_bytes(signoff + b"\r", location="git-metadata", deny=()) == []
     assert email in publication._scan_bytes(personal, location="git-metadata", deny=())
