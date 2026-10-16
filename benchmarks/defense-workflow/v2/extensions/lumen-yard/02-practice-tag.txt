@@ -1,0 +1,13 @@
+Practice tag note
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-102
+Record date: 2034-06-02
+Person: Pim Quill
+Object: Lumen Yard
+
+Pim Quill printed one paper tag marked LY-DEMO-14 at Lumen Yard. A practice tag marked
+LY-DEMO-41 was discarded into a scrap box. The note records printing only and does not
+show which spool later received either tag.
+
+All names, locations, dates, and identifiers in this record were invented.

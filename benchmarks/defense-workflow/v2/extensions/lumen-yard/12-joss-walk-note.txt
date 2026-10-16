@@ -1,0 +1,15 @@
+Walk note from Joss Wicker
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-112
+Record date: 2034-06-04
+Person: Joss Wicker
+Person: Pim Quill
+Object: Lumen Yard
+Object: Copper Annex
+
+Joss Wicker checked the north walk after seeing an empty cart at Copper Annex. The canvas
+curtain still blocked the walk. Joss Wicker did not observe Pim Quill during the transfer
+from Lumen Yard.
+
+All names, locations, dates, and identifiers in this record were invented.

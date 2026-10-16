@@ -133,8 +133,10 @@ unchanged; the integrity checks still reject undeclared changes.
 
 ## Defense-workflow scorecard
 
-`benchmarks/defense-workflow/v1/suite.json` is a separate, versioned synthetic
+`benchmarks/defense-workflow/v2/suite.json` is the current versioned synthetic
 discovery set for grading answer correctness, citation support, abstention, and
-latency. It reuses the Harbor Street demo records. Stub mode runs without a
-model and is covered by `tests/test_defense_eval.py`. A perfect stub score is a
-harness check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).
+latency across Harbor Street and Lumen Yard. Version 1 stays loadable. Stub
+mode with the lexical retriever runs without a model or a database and is
+covered by `tests/test_defense_eval.py`. The PostgreSQL hybrid path is covered
+by `tests/test_defense_eval_postgres.py`. A perfect stub score is a harness
+check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).

@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import sys
 import time
+import urllib.request
 from typing import Any, Callable, Mapping, Sequence
 
 from .generation import (
@@ -28,7 +29,10 @@ from .generation import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SUITE = ROOT / "benchmarks" / "defense-workflow" / "v1" / "suite.json"
+DEFAULT_SUITE = ROOT / "benchmarks" / "defense-workflow" / "v2" / "suite.json"
+_POSTGRES_DSN_ENV = "CASE_REVIEW_POSTGRES_TEST_DSN"
+_LEARNED_DENSE_FLOOR = 0.72
+_LEARNED_RERANK_FLOOR = 0.80
 QUESTION_TYPES = (
     "fact_lookup",
     "chronology",
@@ -55,6 +59,13 @@ _QUESTION_KEYS = {
     "question_id", "matter_id", "type", "question", "expect_abstention",
     "required_facts", "forbidden_facts",
 }
+_QUESTION_OPTIONAL = frozenset({"near_misses"})
+_COMPARE_METRICS = (
+    ("answer_correct", "Answer"),
+    ("citation_support", "Citation"),
+    ("abstention_correct", "Abstention"),
+    ("retrieval_hit", "Retrieval"),
+)
 _FACT_KEYS = {"fact_id", "answer_text", "supports"}
 _SUPPORT_KEYS = {"passage_id", "support_text"}
 
@@ -85,6 +96,7 @@ class Question:
     expect_abstention: bool
     required_facts: tuple[Fact, ...]
     forbidden_facts: tuple[str, ...]
+    near_misses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,8 +162,14 @@ def suite_fingerprint(suite: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _require_keys(value: Mapping[str, Any], expected: set[str], label: str) -> None:
-    if set(value) != expected:
+def _require_keys(
+    value: Mapping[str, Any],
+    expected: set[str],
+    label: str,
+    optional: frozenset[str] = frozenset(),
+) -> None:
+    keys = set(value)
+    if not expected <= keys or not keys <= expected | set(optional):
         raise DefenseEvalError(f"{label} keys do not match the versioned suite")
 
 
@@ -182,7 +200,9 @@ def load_suite(path: Path | None = None, *, root: Path = ROOT) -> Suite:
     if suite_fingerprint(payload) != payload["fingerprint"]:
         raise DefenseEvalError("defense-workflow suite fingerprint mismatch")
     passages = _load_passages(payload["passages"], root)
-    questions = _load_questions(payload["questions"], passages)
+    questions = _load_questions(
+        payload["questions"], passages, require_near_misses=payload["suite_version"] != "1",
+    )
     types = {question.type for question in questions}
     if types != set(QUESTION_TYPES):
         raise DefenseEvalError("the suite must include every defense question type")
@@ -228,7 +248,12 @@ def _load_passages(records: object, root: Path) -> tuple[Passage, ...]:
     return tuple(passages)
 
 
-def _load_questions(records: object, passages: Sequence[Passage]) -> tuple[Question, ...]:
+def _load_questions(
+    records: object,
+    passages: Sequence[Passage],
+    *,
+    require_near_misses: bool,
+) -> tuple[Question, ...]:
     if not isinstance(records, list) or not records:
         raise DefenseEvalError("the suite needs questions")
     by_id = {passage.passage_id: passage for passage in passages}
@@ -237,7 +262,7 @@ def _load_questions(records: object, passages: Sequence[Passage]) -> tuple[Quest
     for record in records:
         if not isinstance(record, dict):
             raise DefenseEvalError("a question record is malformed")
-        _require_keys(record, _QUESTION_KEYS, "question")
+        _require_keys(record, _QUESTION_KEYS, "question", optional=_QUESTION_OPTIONAL)
         question_id = record["question_id"]
         if not isinstance(question_id, str) or question_id in seen:
             raise DefenseEvalError("question identifiers must be unique")
@@ -255,11 +280,41 @@ def _load_questions(records: object, passages: Sequence[Passage]) -> tuple[Quest
         expects_absence = record["type"] == "not_in_record"
         if record["expect_abstention"] != expects_absence or bool(facts) == expects_absence:
             raise DefenseEvalError(f"{question_id} mixes abstention with required facts")
+        near_misses = _load_near_misses(record, by_id, facts, require_near_misses)
         questions.append(Question(
             question_id, record["matter_id"], record["type"], record["question"],
-            record["expect_abstention"], facts, tuple(forbidden),
+            record["expect_abstention"], facts, tuple(forbidden), near_misses,
         ))
     return tuple(questions)
+
+
+def _load_near_misses(
+    record: Mapping[str, Any],
+    passages: Mapping[str, Passage],
+    facts: Sequence[Fact],
+    required: bool,
+) -> tuple[str, ...]:
+    question_id = record["question_id"]
+    if "near_misses" not in record:
+        if required:
+            raise DefenseEvalError(f"{question_id} needs a near-miss passage")
+        return ()
+    near = record["near_misses"]
+    if not isinstance(near, list) or any(not isinstance(item, str) or not item for item in near):
+        raise DefenseEvalError(f"{question_id} has a malformed near miss")
+    if len(near) != len(set(near)) or (required and not near):
+        raise DefenseEvalError(f"{question_id} needs distinct near-miss passages")
+    support_ids = {support.passage_id for fact in facts for support in fact.supports}
+    for passage_id in near:
+        passage = passages.get(passage_id)
+        if passage is None or passage.matter_id != record["matter_id"] or passage_id in support_ids:
+            raise DefenseEvalError(f"{question_id} near miss is not a competing passage")
+        if any(
+            normalize(support.support_text) in normalize(passage.text)
+            for fact in facts for support in fact.supports
+        ):
+            raise DefenseEvalError(f"{question_id} near miss contains a reference span")
+    return tuple(near)
 
 
 def _load_facts(records: object, passages: Mapping[str, Passage], question_id: str) -> tuple[Fact, ...]:
@@ -323,6 +378,228 @@ def rank_passages(passages: Sequence[Passage], query: str, top_k: int) -> tuple[
     return tuple(passage for _score, passage in ranked[:top_k])
 
 
+def lexical_retriever_record() -> dict[str, Any]:
+    return {
+        "name": "lexical",
+        "index": "in-process",
+        "embedder": None,
+        "reranker": None,
+        "learned_thresholds": False,
+    }
+
+
+def defense_matter_database_id(matter_id: str) -> str:
+    """Stable workbench matter id for one synthetic suite matter."""
+    digest = hashlib.sha256(f"defense-workflow:{matter_id}".encode("utf-8")).hexdigest()
+    return f"ci-matter-{digest[:32]}"
+
+
+def _healthy_retrieval_worker() -> str | None:
+    """Match production: a loopback worker is learned only when both models are loaded."""
+    raw = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
+    if not raw:
+        return None
+    try:
+        from .service_endpoints import validate_service_endpoint
+        endpoint = validate_service_endpoint(
+            raw,
+            environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS",
+            label="retrieval worker endpoint",
+            schemes=frozenset({"http"}),
+            origin_only=True,
+        )
+    except ValueError:
+        return None
+    try:
+        with urllib.request.urlopen(endpoint + "/health", timeout=2) as response:
+            payload = json.load(response)
+    except (OSError, ValueError):
+        return None
+    if (
+        isinstance(payload, dict)
+        and payload.get("status") == "ok"
+        and payload.get("embedding_loaded") is True
+        and payload.get("reranker_loaded") is True
+    ):
+        return endpoint
+    return None
+
+
+def hybrid_adapters(worker_url: str | None):
+    """Production adapter pair. Learned floors apply only with a healthy worker."""
+    from .review_bench_v2 import (
+        DeterministicEmbeddingAdapter,
+        DeterministicReranker,
+        RemoteEmbeddingAdapter,
+        RemoteRerankerAdapter,
+    )
+    if worker_url:
+        return (
+            RemoteEmbeddingAdapter(worker_url),
+            RemoteRerankerAdapter(worker_url),
+            {
+                "minimum_dense_score": _LEARNED_DENSE_FLOOR,
+                "minimum_rerank_score": _LEARNED_RERANK_FLOOR,
+            },
+        )
+    return DeterministicEmbeddingAdapter(), DeterministicReranker(), {}
+
+
+class PostgresHybridRetriever:
+    """Search indexed passages with HybridRetriever on PostgreSQL.
+
+    Each passage is one text unit in the product FTS and pgvector index.
+    Search is lexical full-text plus dense cosine, fused, then reranked.
+    Without a healthy retrieval worker the embedder and reranker are the
+    deterministic adapters production uses when learned retrieval is off.
+    The database id is a ci-matter hash, and those rows are removed on close.
+    """
+
+    def __init__(self, suite: Suite, dsn: str | None = None) -> None:
+        configured = (dsn if dsn is not None else os.getenv(_POSTGRES_DSN_ENV, "")).strip()
+        if not configured:
+            raise DefenseEvalError("PostgreSQL retrieval needs CASE_REVIEW_POSTGRES_TEST_DSN")
+        self.suite = suite
+        self._dsn = configured
+        self._database_ids = {
+            matter_id: defense_matter_database_id(matter_id)
+            for matter_id in {passage.matter_id for passage in suite.passages}
+        }
+        self._connection = None
+        self._delete = None
+        self._retriever = None
+        self.record = {
+            "name": "postgres-hybrid",
+            "index": "postgresql-fts-pgvector",
+            "embedder": None,
+            "reranker": None,
+            "learned_thresholds": False,
+        }
+        self._open()
+
+    def _open(self) -> None:
+        try:
+            import psycopg
+        except ImportError as exc:
+            raise DefenseEvalError("PostgreSQL retrieval needs the postgres extra") from exc
+        from .pilot_uploads import PilotUnit
+        from .review_bench_v2 import (
+            HybridRetriever,
+            PostgresHybridBackend,
+            apply_postgres_migrations,
+            delete_postgres_matter,
+            upsert_postgres_document,
+        )
+        try:
+            connection = psycopg.connect(self._dsn, connect_timeout=2)
+        except Exception as exc:
+            raise DefenseEvalError(
+                "PostgreSQL retrieval could not open the configured database"
+            ) from exc
+        self._connection = connection
+        self._delete = delete_postgres_matter
+        worker = _healthy_retrieval_worker()
+        embedder, reranker, floors = hybrid_adapters(worker)
+        self.record = {
+            "name": "postgres-hybrid",
+            "index": "postgresql-fts-pgvector",
+            "embedder": type(embedder).__name__,
+            "reranker": type(reranker).__name__,
+            "learned_thresholds": bool(floors),
+        }
+        try:
+            with connection.cursor() as cursor:
+                apply_postgres_migrations(cursor)
+            connection.commit()
+            for database_id in self._database_ids.values():
+                delete_postgres_matter(connection, matter_id=database_id)
+            self._index(connection, PilotUnit, upsert_postgres_document, embedder)
+            self._retriever = HybridRetriever(
+                PostgresHybridBackend(connection), embedder, reranker, **floors,
+            )
+        except Exception as exc:
+            self.close()
+            if isinstance(exc, DefenseEvalError):
+                raise
+            raise DefenseEvalError(
+                "PostgreSQL retrieval could not index the synthetic suite"
+            ) from exc
+
+    def _index(self, connection, unit_type, upsert, embedder) -> None:
+        grouped: dict[str, list[Passage]] = {}
+        for passage in self.suite.passages:
+            grouped.setdefault(passage.matter_id, []).append(passage)
+        for matter_id, passages in grouped.items():
+            database_id = self._database_ids[matter_id]
+            for passage in passages:
+                upsert(
+                    connection,
+                    matter_id=database_id,
+                    matter_name=matter_id,
+                    document_id=passage.passage_id,
+                    display_name=Path(passage.path).name,
+                    media_type="text/plain",
+                    units=(unit_type(1, passage.text, 1, passage.text.count("\n") + 1),),
+                    embedder=embedder,
+                    content_digest=passage.sha256,
+                    byte_size=len(passage.text.encode("utf-8")),
+                    storage_key="defense-eval-synthetic",
+                )
+
+    def close(self) -> None:
+        connection = self._connection
+        delete = self._delete
+        self._connection = None
+        self._retriever = None
+        if connection is None:
+            return
+        failed = False
+        try:
+            if delete is not None:
+                for database_id in self._database_ids.values():
+                    delete(connection, matter_id=database_id)
+        except Exception:
+            failed = True
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+        finally:
+            connection.close()
+        if failed:
+            raise DefenseEvalError("PostgreSQL retrieval could not remove the synthetic matter")
+
+    def __enter__(self) -> "PostgresHybridRetriever":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        self.close()
+        return False
+
+    def __call__(self, passages: Sequence[Passage], query: str, top_k: int) -> tuple[Passage, ...]:
+        if self._retriever is None or not passages:
+            return ()
+        matter_id = passages[0].matter_id
+        if any(passage.matter_id != matter_id for passage in passages):
+            raise DefenseEvalError("PostgreSQL retrieval stays inside one matter")
+        if not 1 <= top_k <= MAX_TOP_K:
+            raise DefenseEvalError(f"top_k must be from 1 to {MAX_TOP_K}")
+        by_id = {passage.passage_id: passage for passage in passages}
+        try:
+            hits = self._retriever.search(self._database_ids[matter_id], query, top_k)
+        except Exception as exc:
+            raise DefenseEvalError("PostgreSQL retrieval search failed") from exc
+        selected: list[Passage] = []
+        for hit in hits:
+            passage = by_id.get(hit.document_id)
+            if passage is None or passage.matter_id != matter_id:
+                raise DefenseEvalError(
+                    "PostgreSQL retrieval returned a passage outside the question matter"
+                )
+            selected.append(passage)
+        return tuple(selected)
+
+
 def _contains(haystack: str, needle: str) -> bool:
     return bool(needle) and normalize(needle) in normalize(haystack)
 
@@ -330,7 +607,7 @@ def _contains(haystack: str, needle: str) -> bool:
 class ReferenceStub:
     """Quote each retrieved reference span, or abstain when the span was not retrieved.
 
-    This is the CI answerer. It checks the harness and the lexical retriever.
+    This is the CI answerer. It checks the harness and whichever retriever ran.
     It is not a model quality result.
     """
 
@@ -485,6 +762,7 @@ def run_eval(
     judge: Judge | None = None,
     model: Mapping[str, Any] | None = None,
     retriever: Retriever = rank_passages,
+    retriever_record: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     by_id = {passage.passage_id: passage for passage in suite.passages}
     rows: list[dict[str, Any]] = []
@@ -507,7 +785,10 @@ def run_eval(
             judgment["included_in_deterministic_totals"] = False
             row["llm_judge"] = judgment
         rows.append(row)
-    return _scorecard(suite, rows, model or {"mode": "unspecified"}, judge is not None)
+    return _scorecard(
+        suite, rows, model or {"mode": "unspecified"}, judge is not None,
+        retriever_record or lexical_retriever_record(),
+    )
 
 
 def _rate(numerator: int, denominator: int) -> float | None:
@@ -516,7 +797,13 @@ def _rate(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4)
 
 
-def _scorecard(suite: Suite, rows: Sequence[Mapping[str, Any]], model: Mapping[str, Any], judged: bool) -> dict[str, Any]:
+def _scorecard(
+    suite: Suite,
+    rows: Sequence[Mapping[str, Any]],
+    model: Mapping[str, Any],
+    judged: bool,
+    retriever: Mapping[str, Any],
+) -> dict[str, Any]:
     total = len(rows)
     retrieval_rows = [row for row in rows if row["retrieval_hit"] is not None]
     retrieval_hits = sum(row["retrieval_hit"] is True for row in retrieval_rows)
@@ -529,6 +816,7 @@ def _scorecard(suite: Suite, rows: Sequence[Mapping[str, Any]], model: Mapping[s
         "measurement_only": True,
         "release_threshold": None,
         "model": dict(model),
+        "retriever": dict(retriever),
         "llm_judge": {
             "enabled": judged,
             "label": "optional_llm_judge",
@@ -573,6 +861,12 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
         "These rates are measurements, not a release threshold.",
         "",
     ]
+    retriever = scorecard.get("retriever") or {}
+    if retriever:
+        lines.append(
+            f"Retriever: `{retriever.get('name', '')}` index `{retriever.get('index', '')}`."
+        )
+        lines.append("")
     if mode == "stub":
         lines.append(
             "Stub mode uses the reference answerer. A perfect stub score means the "
@@ -705,6 +999,97 @@ def _judge_from_client(client: Any) -> Judge:
     return judge
 
 
+def _read_scorecard(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise DefenseEvalError("a scorecard is not readable JSON") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("questions"), list):
+        raise DefenseEvalError("a scorecard has no question list")
+    rows: dict[str, Mapping[str, Any]] = {}
+    for row in payload["questions"]:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("question_id"), str)
+            or row["question_id"] in rows
+            or not isinstance(row.get("type"), str)
+        ):
+            raise DefenseEvalError("a scorecard has a malformed question")
+        for key, _label in _COMPARE_METRICS:
+            value = row.get(key)
+            if value is not None and type(value) is not bool:
+                raise DefenseEvalError("a scorecard has a malformed score")
+        rows[row["question_id"]] = row
+    payload = dict(payload)
+    payload["questions"] = rows
+    return payload
+
+
+def _metric_counts(rows: Mapping[str, Mapping[str, Any]], ids: Sequence[str], key: str) -> tuple[int, int]:
+    applicable = [rows[item] for item in ids if rows[item].get(key) is not None]
+    return sum(row[key] is True for row in applicable), len(applicable)
+
+
+def _delta_cell(left: tuple[int, int], right: tuple[int, int]) -> str:
+    return f"{left[0]}/{left[1]} -> {right[0]}/{right[1]} ({right[0] - left[0]:+d})"
+
+
+def compare_scorecards(left_path: Path, right_path: Path) -> str:
+    """Print per-category deltas of scorecard B minus scorecard A."""
+    left = _read_scorecard(Path(left_path))
+    right = _read_scorecard(Path(right_path))
+    shared = sorted(set(left["questions"]) & set(right["questions"]))
+    only_left = sorted(set(left["questions"]) - set(right["questions"]))
+    only_right = sorted(set(right["questions"]) - set(left["questions"]))
+    lines = [
+        "Defense workflow comparison",
+        "",
+        f"A fingerprint `{left.get('fingerprint')}` version `{left.get('suite_version')}`.",
+        f"B fingerprint `{right.get('fingerprint')}` version `{right.get('suite_version')}`.",
+        "",
+    ]
+    if left.get("fingerprint") != right.get("fingerprint"):
+        lines.append("Fingerprints differ. Deltas cover question ids present in both cards.")
+    else:
+        lines.append("Fingerprints match. Deltas are B minus A on the shared questions.")
+    lines.append("")
+    categories = ["overall", *sorted({left["questions"][item]["type"] for item in shared})]
+    lines.append("| Category | " + " | ".join(label for _key, label in _COMPARE_METRICS) + " |")
+    lines.append("| --- | " + " | ".join("---" for _ in _COMPARE_METRICS) + " |")
+    for category in categories:
+        ids = shared if category == "overall" else [
+            item for item in shared if left["questions"][item]["type"] == category
+        ]
+        cells = [
+            _delta_cell(
+                _metric_counts(left["questions"], ids, key),
+                _metric_counts(right["questions"], ids, key),
+            )
+            for key, _label in _COMPARE_METRICS
+        ]
+        lines.append(f"| {category} | " + " | ".join(cells) + " |")
+    lines.extend(["", "## Question flips", ""])
+    flips: list[str] = []
+    for item in shared:
+        changes = []
+        for key, label in _COMPARE_METRICS:
+            before = left["questions"][item].get(key)
+            after = right["questions"][item].get(key)
+            if before != after:
+                changes.append(f"{label} {before} -> {after}")
+        if changes:
+            flips.append(f"- `{item}`: " + "; ".join(changes))
+    lines.append("\n".join(flips) if flips else "None.")
+    if only_left or only_right:
+        lines.extend([
+            "",
+            "Question ids only in A: " + (", ".join(f"`{item}`" for item in only_left) or "none") + ".",
+            "Question ids only in B: " + (", ".join(f"`{item}`" for item in only_right) or "none") + ".",
+        ])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m case_intelligence.defense_eval",
@@ -713,21 +1098,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             "versioned synthetic defense-workflow set."
         ),
     )
-    parser.add_argument("--mode", choices=("stub", "configured"), required=True,
+    parser.add_argument("--mode", choices=("stub", "configured"),
                         help="stub is the GPU-free CI answerer; configured uses CASE_INTELLIGENCE_GENERATOR_*")
-    parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
-    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--suite", type=Path, default=None)
+    parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     parser.add_argument("--force", action="store_true", help="replace an existing scorecard in the output directory")
     parser.add_argument("--judge", action="store_true",
                         help="configured mode only; raw LLM judgment, excluded from deterministic totals")
     parser.add_argument("--profile", choices=("portable", "quality"),
                         help="record the pinned generator profile beside the configured model name")
+    parser.add_argument("--retriever", choices=("lexical", "postgres"), default="lexical",
+                        help="lexical is the GPU-free database-free default; postgres runs hybrid search and the reranker")
+    parser.add_argument("--compare", nargs=2, metavar=("A.json", "B.json"),
+                        help="print per-category deltas of scorecard B minus scorecard A")
     args = parser.parse_args(argv)
+    if args.compare:
+        if args.mode or args.output_dir or args.judge or args.profile or args.force or args.suite or args.retriever != "lexical":
+            parser.error("--compare only reads two scorecards")
+        try:
+            print(compare_scorecards(args.compare[0], args.compare[1]), end="")
+        except (DefenseEvalError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        return 0
+    if not args.mode or args.output_dir is None:
+        parser.error("--mode and --output-dir are required unless --compare is set")
     if args.judge and args.mode != "configured":
         parser.error("the LLM judge runs only with --mode configured")
     if args.profile and args.mode != "configured":
         parser.error("--profile is only recorded for --mode configured")
+    postgres = None
     try:
         suite = load_suite(args.suite)
         record = _model_record(args.mode, args.profile)
@@ -745,11 +1146,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             answerer = ConfiguredAnswerer(service)
             if args.judge:
                 judge = _judge_from_client(client)
-        scorecard = run_eval(suite, answerer, top_k=args.top_k, judge=judge, model=record)
+        if args.retriever == "postgres":
+            postgres = PostgresHybridRetriever(suite)
+            retriever: Retriever = postgres
+            retriever_record = postgres.record
+        else:
+            retriever = rank_passages
+            retriever_record = lexical_retriever_record()
+        scorecard = run_eval(
+            suite, answerer, top_k=args.top_k, judge=judge, model=record,
+            retriever=retriever, retriever_record=retriever_record,
+        )
         json_path, markdown_path = write_scorecard(args.output_dir, scorecard, force=args.force)
+        if postgres is not None:
+            postgres.close()
+            postgres = None
     except (DefenseEvalError, OSError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    finally:
+        if postgres is not None:
+            try:
+                postgres.close()
+            except DefenseEvalError as exc:
+                print(str(exc), file=sys.stderr)
     totals = scorecard["aggregates"]
     print(f"Wrote {json_path}")
     print(f"Wrote {markdown_path}")

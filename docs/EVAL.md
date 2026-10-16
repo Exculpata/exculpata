@@ -32,32 +32,31 @@ second verified rubric.
 
 ## The versioned set
 
-[`benchmarks/defense-workflow/v1/suite.json`](../benchmarks/defense-workflow/v1/suite.json)
-is suite `defense-workflow` version `1`. It reuses the synthetic Harbor Street
-text records in [`demo_data/harbor-street/`](../demo_data/README.md) and adds
-two extension files under `benchmarks/defense-workflow/v1/extensions/`:
+[`benchmarks/defense-workflow/v2/suite.json`](../benchmarks/defense-workflow/v2/suite.json)
+is the default suite, `defense-workflow` version `2`. It reuses the synthetic
+Harbor Street text records in [`demo_data/harbor-street/`](../demo_data/README.md),
+keeps the version 1 machine transcript, and adds a second synthetic matter,
+Lumen Yard, under `benchmarks/defense-workflow/v2/extensions/`. Version 1 remains
+loadable at `benchmarks/defense-workflow/v1/suite.json` and is not edited when
+the question set grows.
 
-- a machine transcript of a recorded statement by the fictional Vela Quenrix
-- a one-page distractor from a separate fictional matter, Lumen Yard
+Version 2 has 42 questions across both matters. Each question names one or more
+near-miss passages: same matter, not a reference passage, and, where the
+question has a reference span, that span does not occur in the near-miss text.
+Citing a near-miss fails citation support. The types are fact lookup,
+cross-document chronology, contradictions between witness statements,
+impeachment material, media-transcript questions, and questions whose correct
+answer is not in the record.
 
-The native-text PDFs and the intentionally unreadable note are not passages in
-this version. Names, places, dates, and identifiers are invented. No real
+The native-text PDFs and the intentionally unreadable Harbor Street note are
+not passages. Names, places, dates, and identifiers are invented. No real
 person, case, host, or employer is represented.
-
-Question types:
-
-- fact lookup
-- cross-document chronology
-- contradictions between witness statements
-- impeachment material
-- a media-transcript question
-- questions whose correct answer is not in the record
 
 The suite stores a SHA-256 for every passage and a fingerprint over the suite
 body. Loading fails if a passage byte changes or the fingerprint does not
-match. Do not edit version 1 to match an observed model. Add a new suite
-version, with its own file and fingerprint, when questions, reference facts,
-or passage bytes change. Compare scorecards only when the fingerprints match.
+match. Do not edit a published version to match an observed model. Add a new
+suite version, with its own file and fingerprint, when questions, reference
+facts, or passage bytes change.
 
 ## CI stub mode
 
@@ -72,10 +71,45 @@ python -m case_intelligence.defense_eval --mode stub --output-dir /tmp/defense-e
 The command writes `scorecard.json` and `scorecard.md`. It refuses to replace
 an existing scorecard unless `--force` is set. Exit 0 means the harness
 finished. Exit 2 means the suite or the arguments could not be evaluated.
-Inspect the totals either way. A perfect stub card means the lexical retriever
+Inspect the totals either way. A perfect stub card means the selected retriever
 found every reference passage and the scorer accepted those quotes.
-`tests/test_defense_eval.py` runs this mode inside the application suite, so
-code changes exercise the harness without a GPU.
+`tests/test_defense_eval.py` runs lexical stub mode inside the application
+suite, so code changes exercise the harness without a GPU or a database.
+
+## Retrieval
+
+`--retriever lexical` is the default. It ranks passage text inside the
+question's matter with deterministic token overlap. It does not open a
+database, call a model, or use the network. CI on every pull request uses this
+retriever.
+
+`--retriever postgres` runs the same search the workbench uses for a PostgreSQL
+index. Each passage is stored as one text unit. `HybridRetriever` then runs
+PostgreSQL full-text search, pgvector cosine search, reciprocal rank fusion,
+and the reranker, including the exact-record and temporal reorder used on that
+path. Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
+scorecard records the retriever name, index, embedder class, and reranker
+class. It does not record the connection string.
+
+When `CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL` answers `/health` with both
+models loaded, this mode uses the remote embedding and reranker adapters and
+the production dense and rerank floors. Otherwise it uses
+`DeterministicEmbeddingAdapter` and `DeterministicReranker`, which is the
+GPU-free pair, on the real PostgreSQL index. The postgres-integration job runs
+`tests/test_defense_eval_postgres.py` on that GPU-free pair. Rows are stored
+under a `ci-matter-` id derived from the synthetic matter label and deleted
+when the run finishes.
+
+The product full-text query ANDs the question's words. A long question often
+matches no single passage, so the dense lane and the reranker decide the top
+set. With the deterministic pair, that currently misses five reference
+passages. Lexical mode still retrieves all 34. The difference is a measurement
+of this path, not a failed harness.
+
+```console
+python -m case_intelligence.defense_eval --mode stub --retriever postgres \
+  --output-dir /tmp/defense-eval-postgres
+```
 
 ## Configured model
 
@@ -108,6 +142,20 @@ python -m case_intelligence.defense_eval --mode configured --judge \
 `--top-k` defaults to 8 and cannot exceed 12, which is the number of evidence
 slots the answer schema accepts.
 
+## Comparing two scorecards
+
+`--compare A.json B.json` reads two finished scorecards and prints per-category
+deltas of B minus A. It does not run retrieval or a model, and it cannot be
+combined with `--mode`. Exit 0 means both cards were readable. A negative delta
+is still exit 0; the table is how a pull request shows a regression. Questions
+present on only one card are listed and left out of the rates. When the
+fingerprints differ, the report says so before the deltas.
+
+```console
+python -m case_intelligence.defense_eval \
+  --compare /tmp/defense-eval-before/scorecard.json /tmp/defense-eval-after/scorecard.json
+```
+
 ## How to read the scorecard
 
 The markdown card leads with the suite version, fingerprint, and mode. The
@@ -132,9 +180,8 @@ Use the card this way:
 - Judge verdicts can disagree with the deterministic totals. The totals do
   not move when the judge disagrees.
 
-The harness ranker is deterministic lexical overlap over the versioned
-passages, scoped to the question's matter. `run_eval` accepts a replacement
-retriever, so a retrieval change can be graded on this set. Configured answers
-go through the product generator and verifier. This version does not execute
-the PostgreSQL hybrid index; that path remains covered by its own acceptance
-tests.
+The default ranker is deterministic lexical overlap over the versioned
+passages, scoped to the question's matter. `--retriever postgres` grades the
+PostgreSQL hybrid index and reranker on the same questions. Configured answers
+go through the product generator and verifier. Use `--compare` to put the
+category deltas in the pull request.
