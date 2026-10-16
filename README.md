@@ -313,8 +313,10 @@ CPU runtime images from that install total 2,223,313,193 bytes (2.071 GiB).
 With the default 10 GiB evaluation reserve, the advisory target is 13 GiB
 free before matter data. The production profile stays at the 150 GB target
 and the 100 GiB reserve. The path keeps HTTPS on loopback and uses local
-accounts. Other distributions are unproven; the guide lists the portable
-host and container capabilities.
+accounts. Stop, start, upgrade, uninstall, and a clean reinstall are in
+the [node lifecycle](docs/INSTALL.md#node-lifecycle). Ubuntu 24.04 is the
+accepted host. The guide lists Arch Linux package equivalents; that path
+has not been accepted as a working node.
 
 ### Contribute code
 
