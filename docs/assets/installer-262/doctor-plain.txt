@@ -1,0 +1,49 @@
+
+   _____  __   __  _____   _   _   _       ____      _     _____     _   
+  | ____| \ \ / / / ____| | | | | | |     |  _ \    / \   |_   _|   / \  
+  |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
+  | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
+  |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
+  Exculpata installer // DOCTOR // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
+
+  PHASE 01 / NODE DIAGNOSTIC
+             Checking configuration, permissions, Compose graph, and live health
+  [  OK  ] naming generation :: exculpata
+  [  OK  ] control file :: compose.env
+  [  OK  ] control file :: installation.json
+  [  OK  ] control file :: exculpata.env
+  [  OK  ] saved authentication mode :: local
+  [  OK  ] storage profile :: evaluation; 10 GiB reserve; evaluation node, not for real case data
+  [ NOTE ] exec :: docker compose --env-file /srv/exculpata/compose.env -f /srv/exculpata/releases/0.1.0-beta.1-454e4235c5e0/compose.yaml -f /srv/exculpata/releases/0.1.0-beta.1-454e4235c5e0/compose.local-accounts.yaml config --quiet
+  [ NOTE ] exec :: docker compose --env-file /srv/exculpata/compose.env -f /srv/exculpata/releases/0.1.0-beta.1-454e4235c5e0/compose.yaml -f /srv/exculpata/releases/0.1.0-beta.1-454e4235c5e0/compose.local-accounts.yaml ps
+NAME                                    IMAGE                                                     COMMAND                  SERVICE          CREATED          STATUS                    PORTS
+exculpata-5593a4b3d8-app-1              exculpata-5593a4b3d8/app:0.1.0-beta.1-454e4235c5e0        "exculpata-workbench…"   app              12 minutes ago   Up 4 minutes (healthy)    8786/tcp
+exculpata-5593a4b3d8-clamav-1           exculpata-5593a4b3d8/clamav:0.1.0-beta.1-454e4235c5e0     "/init"                  clamav           12 minutes ago   Up 4 minutes (healthy)    3310/tcp, 7357/tcp
+exculpata-5593a4b3d8-clamav-updater-1   exculpata-5593a4b3d8/clamav:0.1.0-beta.1-454e4235c5e0     "/init freshclam --d…"   clamav-updater   12 minutes ago   Up 12 minutes (healthy)   3310/tcp, 7357/tcp
+exculpata-5593a4b3d8-gateway-1          exculpata-5593a4b3d8/gateway:0.1.0-beta.1-454e4235c5e0    "/docker-entrypoint.…"   gateway          12 minutes ago   Up 3 minutes (healthy)    80/tcp, 127.0.0.1:8443->8443/tcp
+exculpata-5593a4b3d8-postgres-1         exculpata-5593a4b3d8/postgres:0.1.0-beta.1-454e4235c5e0   "docker-entrypoint.s…"   postgres         12 minutes ago   Up 12 minutes (healthy)   5432/tcp
+  [ NOTE ] Waiting for application health
+  [  OK  ] Application health, selected capabilities and sign-in endpoint passed; authentication mode :: local
+  [ WARN ] Basic review is available; an unselected optional capability remains unavailable
+  [  OK  ] Node diagnostic complete
+
+  INSTALLATION HANDOFF
+  [  OK  ] Open in your browser: https://localhost:8443/auth/login
+  [ NOTE ] Sign-in mode: local
+  [ NOTE ] Initial administrator username: exculpata.admin
+  [ NOTE ] prepared: complete
+  [ NOTE ] running: complete
+  [ NOTE ] login reachable: complete
+  [ NOTE ] basic review: complete
+  [ NOTE ] selected capabilities: complete
+  [ NOTE ] Browser sign-in: not verified by the installer; sign in and follow Team setup
+  [ WARN ] Loopback smoke certificate: arrange a trusted certificate and matching hostname before team access; do not bypass browser certificate protection
+
+  NODE ONLINE
+  [  OK  ] URL: https://localhost:8443/auth/login
+  [ NOTE ] Administrator username: exculpata.admin
+  [ NOTE ] Next: sign in, create a practice matter, then run ./install doctor --root /srv/exculpata
+  [ NOTE ] The administrator password is not shown
+  [ NOTE ] No password or token is included in this handoff
+DOCTOR_EXIT:0

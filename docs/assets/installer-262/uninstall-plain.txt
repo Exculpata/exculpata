@@ -1,0 +1,43 @@
+
+   _____  __   __  _____   _   _   _       ____      _     _____     _   
+  | ____| \ \ / / / ____| | | | | | |     |  _ \    / \   |_   _|   / \  
+  |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
+  | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
+  |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
+  Exculpata installer // UNINSTALL // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
+
+  UNINSTALL PLAN
+  [ NOTE ] Compose project: exculpata-5593a4b3d8
+  [ NOTE ] Containers to remove: 34ec157264f67bc2cdab50b00799f3a1aba44c53d3e6db196ffa0eace17d7fc0	exculpata-5593a4b3d8-gateway-1, 0f664cb5286097bac965d3a4ac37d73019af3de999f5f23841ac5bf5b7870b6d	exculpata-5593a4b3d8-app-1, 9d99dd62fd90c63cf9cf659ebae75cd98ce1d021bb4b20e7ee67883484c55436	exculpata-5593a4b3d8-clamav-1, bd288719a2372ee1248c46a60a23111e68a632bfa736195404900f8567c2b6e0	exculpata-5593a4b3d8-postgres-1, f328c7f427507593aa4a9078e2dfcfc9e42fb0ca0a81795dae5aa1b8af106665	exculpata-5593a4b3d8-clamav-updater-1
+  [ NOTE ] Networks to remove: c4e4d952d669350d875eb2b5338482661d20ab2a98ec32ec6b6e971c3d032c6d	exculpata-5593a4b3d8_front, da7e690a2ec186a46d6f144931bcbfc2babc273360055d67e8f2a2043d340e53	exculpata-5593a4b3d8_models, 74138c6ffacfe8d918109c6802c97b1c06340b8597337ecc1cf7386a317dea5b	exculpata-5593a4b3d8_services, 93cba43ba7a86ac4aa84607f12e74c0181ef2b1074e92ef5f8aa426fc2aed66f	exculpata-5593a4b3d8_updates
+  [ NOTE ] Volumes to keep: exculpata-5593a4b3d8_clamav-signatures, exculpata-5593a4b3d8_postgres-data
+  [ NOTE ] Namespace images to keep: exculpata-5593a4b3d8/gateway:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/clamav:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/postgres:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/app:0.1.0-beta.1-454e4235c5e0
+  [ NOTE ] Node root to keep: /srv/exculpata
+  [ NOTE ] Matter storage to keep: /srv/exculpata/matter-storage
+  [ NOTE ] Service account and group are not changed by this command
+  [ NOTE ] Dry run: nothing was removed
+DRY_EXIT:0
+
+   _____  __   __  _____   _   _   _       ____      _     _____     _   
+  | ____| \ \ / / / ____| | | | | | |     |  _ \    / \   |_   _|   / \  
+  |  _|    \ V /  | |     | | | | | |     | |_) |  / _ \    | |    / _ \ 
+  | |___   / . \  | |___  | |_| | | |___  |  __/  / ___ \   | |   / ___ \
+  |_____| /_/ \_\ \_____|  \___/  |_____| |_|     /_/ \_\   |_|   /_/ \_\
+  Exculpata installer // UNINSTALL // BUILD 0.1.0-beta.1
+  +-- This account runs this command. --+
+
+  UNINSTALL PLAN
+  [ NOTE ] Compose project: exculpata-5593a4b3d8
+  [ NOTE ] Containers to remove: 34ec157264f67bc2cdab50b00799f3a1aba44c53d3e6db196ffa0eace17d7fc0	exculpata-5593a4b3d8-gateway-1, 0f664cb5286097bac965d3a4ac37d73019af3de999f5f23841ac5bf5b7870b6d	exculpata-5593a4b3d8-app-1, 9d99dd62fd90c63cf9cf659ebae75cd98ce1d021bb4b20e7ee67883484c55436	exculpata-5593a4b3d8-clamav-1, bd288719a2372ee1248c46a60a23111e68a632bfa736195404900f8567c2b6e0	exculpata-5593a4b3d8-postgres-1, f328c7f427507593aa4a9078e2dfcfc9e42fb0ca0a81795dae5aa1b8af106665	exculpata-5593a4b3d8-clamav-updater-1
+  [ NOTE ] Networks to remove: c4e4d952d669350d875eb2b5338482661d20ab2a98ec32ec6b6e971c3d032c6d	exculpata-5593a4b3d8_front, da7e690a2ec186a46d6f144931bcbfc2babc273360055d67e8f2a2043d340e53	exculpata-5593a4b3d8_models, 74138c6ffacfe8d918109c6802c97b1c06340b8597337ecc1cf7386a317dea5b	exculpata-5593a4b3d8_services, 93cba43ba7a86ac4aa84607f12e74c0181ef2b1074e92ef5f8aa426fc2aed66f	exculpata-5593a4b3d8_updates
+  [ NOTE ] Volumes to remove: exculpata-5593a4b3d8_clamav-signatures, exculpata-5593a4b3d8_postgres-data
+  [ NOTE ] Volumes to keep: none
+  [ NOTE ] Namespace images to remove: exculpata-5593a4b3d8/gateway:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/clamav:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/postgres:0.1.0-beta.1-454e4235c5e0, exculpata-5593a4b3d8/app:0.1.0-beta.1-454e4235c5e0
+  [ NOTE ] Images left in place because a tag is outside this namespace: none
+  [ NOTE ] Node root to remove: /srv/exculpata
+  [ NOTE ] Matter storage is inside the node root and will be removed with it: /srv/exculpata/matter-storage
+  [ NOTE ] Service account and group are not changed by this command
+
+  [ WARN ] Uninstall stopped :: [Errno 13] Permission denied: '/srv/exculpata'
+UNINSTALL_EXIT:1

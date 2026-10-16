@@ -61,14 +61,22 @@ the explicit option, local sign-in retains the operator-managed account layout.
 ## CPU node quick start (Ubuntu 24.04)
 
 This path is for trying the product or doing UI work on a **fresh dedicated
-Ubuntu 24.04 x86-64 host**. Use synthetic material. Start with an ordinary
-sudo-capable operator account, internet access, 8 CPU cores, 16 GiB RAM and
-at least 150 GiB free SSD space when you keep the default production storage
-profile. That profile blocks unless more than 100 GiB is free. Keep more than
-that reserve free after image builds; 220 GiB of disk was allocated for the
-acceptance VM. Docker image storage needs headroom too. These are evaluation
-targets, not a supported-release or collection-capacity claim. Other Linux
-distributions are unproven; the portable capabilities are listed below.
+Ubuntu 24.04 x86-64 host**. Use synthetic material. Two operating-system
+accounts are involved. The host administrator is an ordinary sudo-capable
+account: that account installs packages, starts Docker, and creates the
+service account. The `exculpata` service account then runs every `./install`
+command and the Compose stop and start commands. It does not use sudo. The
+browser administrator created during install is a third identity, inside the
+application, and is not an operating-system account.
+
+Start with internet access, 8 CPU cores, 16 GiB RAM and at least 150 GiB free
+SSD space when you keep the default production storage profile. That profile
+blocks unless more than 100 GiB is free. Keep more than that reserve free
+after image builds; 220 GiB of disk was allocated for the acceptance VM.
+Docker image storage needs headroom too. These are evaluation targets, not a
+supported-release or collection-capacity claim. Ubuntu 24.04 is the accepted
+host. Arch Linux package names are listed in the capability map below; that
+path has not been accepted as a working node.
 
 To try the same CPU path on a smaller disk, add `--storage-profile evaluation`
 to the preflight and install commands. Evaluation is for synthetic or sample
@@ -100,7 +108,7 @@ production node to evaluation requires `--allow-evaluation-downgrade`.
 Switching evaluation back to production rechecks the 100 GiB reserve before
 it writes.
 
-1. Install the host packages and start Docker:
+1. As the host administrator, install the host packages and start Docker:
 
    ```console
    sudo apt-get update
@@ -108,8 +116,9 @@ it writes.
    sudo systemctl enable --now docker
    ```
 
-2. Create the dedicated non-root service account, its real owner-only HOME,
-   and an empty node root. Run these once on the fresh host:
+2. As the host administrator, create the dedicated non-root service account,
+   its real owner-only HOME, and an empty node root. Run these once on the
+   fresh host:
 
    ```console
    sudo groupadd --system exculpata
@@ -124,7 +133,9 @@ it writes.
    normal permissions. This operating-system account owns the node; it is
    separate from the administrator you will create for browser sign-in.
 
-3. In that new service-account session, check Docker and clone the source:
+3. In that new service-account session, check Docker and clone the source.
+   The remaining quick-start commands run as `exculpata`, not as the
+   administrator:
 
    ```console
    docker info --format '{{.ServerVersion}}'
@@ -147,8 +158,19 @@ it writes.
    ```
 
    Resolve any `BLOCK` before installing. Accept the proposed administrator
-   username or choose your own, and enter a new password of at least 14
-   characters at the hidden prompt. Accept the default matter-storage path.
+   username or choose your own. The installer states the password rules before
+   the hidden prompt: 14 to 1,024 Unicode code points, counted with Python
+   `len()` (spaces count; combining marks count separately), with no NUL
+   character. A passphrase of several words can meet the length. A too-short
+   password or a mismatched confirmation is explained and asked again, up to
+   three attempts. Those attempts do not discard the username, hostname, or
+   other answers already given, and they do not write node files. A
+   non-interactive run still fails on the first invalid password and names the
+   rule without printing the password. Piping standard output, for example
+   through `tee`, still prompts when standard input is a terminal or `/dev/tty`
+   can be opened. `--plain` and `--no-color` print the rules without color.
+   Input that is not a terminal and has no controlling terminal fails fast and
+   names the rule. Accept the default matter-storage path.
    Retain that username and password for the browser. The installer builds the
    application, creates its first administrator, obtains malware signatures and
    starts the private companion services. No model weights are selected.
@@ -156,7 +178,7 @@ it writes.
    The Compose limit serializes shared-image builds; see the reproduced
    [image-build remedy](#shared-image-build-collision).
 
-5. Verify the running node from the same checkout and account:
+5. As `exculpata`, verify the running node from the same checkout:
 
    ```console
    ./install doctor --root /srv/exculpata
@@ -165,8 +187,12 @@ it writes.
    Expect exit status 0, **Node diagnostic complete**, and complete running,
    login-reachable, basic-review and selected-capability states. An unselected
    AI capability can remain unavailable with `--models none`. Browser sign-in
-   is still unverified. For an interrupted install, follow the printed resume
-   command; for startup failures, use [startup troubleshooting](#startup-troubleshooting).
+   is still unverified. A healthy node then prints `NODE ONLINE` with the URL,
+   the administrator username, and the next step. The password is not printed.
+   For an interrupted install, follow the printed resume command; for startup
+   failures, use [startup troubleshooting](#startup-troubleshooting).
+   Stop, start, upgrade, uninstall, and reinstall are in
+   [Node lifecycle](#node-lifecycle).
 
 6. Follow [CPU practice matter](FIRST_RUN.md#cpu-practice-matter) to trust the
    loopback certificate, sign in at `https://localhost:8443`, create one matter
@@ -178,22 +204,195 @@ operator sections below; this isolated practice node is not adoption acceptance.
 
 ### Portable package and capability map
 
-Package names below describe the Ubuntu path. Equivalent capabilities on other
-distributions have not been accepted as a working node path.
+Package names below describe the Ubuntu path. Arch Linux names are the
+official packages that provide the same host capabilities. They are not a
+second accepted install path.
 
-| Where | Ubuntu packages / capability | Purpose |
-| --- | --- | --- |
-| Node host | `git`, `ca-certificates` | Obtain the public source and verify HTTPS downloads |
-| Node host | `python3` (Ubuntu 24.04 supplies 3.12), `openssl` | Run the existing stdlib installer and prepare loopback TLS |
-| Node host | `docker.io`, `docker-compose-v2` | Docker Engine, daemon access and Compose v2 builds/services |
-| Node host | Dedicated account, writable mode-0700 HOME and storage; working clock/DNS/HTTPS egress | Own state, build images and refresh malware signatures |
-| Containers, supplied by `./install` | Application Python dependencies, document/media tools, English/Spanish OCR, PostgreSQL/pgvector, ClamAV, HTTPS gateway | CPU intake, extraction, word search, source review and exports |
-| Browser computer | Current browser, trusted loopback certificate; SSH client for a remote node | Sign in and use the UI through loopback HTTPS |
+| Where | Ubuntu 24.04 packages | Arch Linux package names | Purpose |
+| --- | --- | --- | --- |
+| Node host | `git`, `ca-certificates` | `git`, `ca-certificates` | Obtain the public source and verify HTTPS downloads |
+| Node host | `python3` (Ubuntu 24.04 supplies 3.12), `openssl` | `python` (provides the `python3` command), `openssl` | Run the existing stdlib installer and prepare loopback TLS |
+| Node host | `docker.io`, `docker-compose-v2` | `docker`, `docker-compose`, `docker-buildx` | Docker Engine, Compose v2, and Buildx |
+| Node host | Dedicated account, writable mode-0700 HOME and storage; working clock/DNS/HTTPS egress | Same account, HOME, storage, clock, DNS, and HTTPS egress | Own state, build images and refresh malware signatures |
+| Containers, supplied by `./install` | Application Python dependencies, document/media tools, English/Spanish OCR, PostgreSQL/pgvector, ClamAV, HTTPS gateway | Supplied by `./install`, not by the host packages | CPU intake, extraction, word search, source review and exports |
+| Browser computer | Current browser, trusted loopback certificate; SSH client for a remote node | Same browser, certificate, and SSH client | Sign in and use the UI through loopback HTTPS |
+
+On Arch, the host administrator installs those packages with the host package
+manager and starts Docker with the same `sudo systemctl enable --now docker`
+command as the Ubuntu step. The `groupadd`, `useradd`, and `install -d`
+commands later in this playbook use the same flags. Before preflight, the
+service account runs `python3 --version` and `docker compose version`. Arch's
+`python` package can be newer than Ubuntu 24.04's Python 3.12; the installer
+uses whatever `python3` is on `PATH`. This playbook has been run on Ubuntu
+24.04. It has not been accepted on Arch.
 
 Host OCR/media tools and a Python development environment are for the separate
 [code contribution path](../CONTRIBUTING.md#set-up-a-development-checkout);
 they are not prerequisites for this containerized node. NVIDIA, learned search,
 generated answers and transcription are outside this CPU path.
+
+## Node lifecycle
+
+Use this section, together with the quick start, to install a CPU practice
+node, check it, stop and start it, upgrade it, remove it while keeping data,
+remove it completely, and install it again. Commands are grouped by the
+account that runs them.
+
+- **Host administrator.** The sudo-capable account from quick-start steps 1
+  and 2. It installs packages, starts Docker, creates `/srv/exculpata` and
+  the `exculpata` account, removes an empty node directory when the service
+  account cannot unlink it, and deletes that account when no node still uses
+  it.
+- **Service account `exculpata`.** The account from quick-start step 3. It
+  runs `./install`, `docker info`, `docker compose`, and the stop and start
+  commands below. It does not use sudo.
+- **Application administrator.** The username chosen during install, by
+  default `exculpata.admin`. This identity exists only for browser sign-in.
+  It does not run these commands, and its password is never printed here.
+
+### Install the practice node
+
+The host administrator completes quick-start steps 1 and 2. In the service
+account session, from the clone:
+
+```console
+./install preflight --root /srv/exculpata --models none --auth local \
+  --enable-account-management --server-name localhost --bind-address 127.0.0.1 \
+  --storage-profile evaluation
+COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models none --auth local \
+  --enable-account-management --server-name localhost --bind-address 127.0.0.1 \
+  --storage-profile evaluation
+```
+
+Accept the default matter-storage path, the default administrator username,
+and the default display name, or type replacements. The password rules are
+stated before the hidden prompt. A healthy install prints `NODE ONLINE` and
+does not print the password.
+
+### Check health
+
+As `exculpata`, from the same checkout:
+
+```console
+./install doctor --root /srv/exculpata
+```
+
+Exit status 0, **Node diagnostic complete**, and `NODE ONLINE` mean the
+selected services and the sign-in endpoint passed. With `--models none`, an
+unselected AI capability can remain unavailable. The password is not printed.
+
+### Stop and start
+
+As `exculpata`. These commands stop and start this node's containers. They
+do not remove containers, volumes, images, or the node root. The release
+path comes from the installation record. The files below are the CPU
+local-account node from the quick start: the base Compose file, the
+local-account overlay, and the `tools` profile.
+
+```console
+release_path=$(python3 -c 'import json; print(json.load(open("/srv/exculpata/installation.json"))["release_path"])')
+docker compose --env-file /srv/exculpata/compose.env \
+  -f "$release_path/compose.yaml" \
+  -f "$release_path/compose.local-accounts.yaml" \
+  --profile tools \
+  stop
+docker compose --env-file /srv/exculpata/compose.env \
+  -f "$release_path/compose.yaml" \
+  -f "$release_path/compose.local-accounts.yaml" \
+  --profile tools \
+  start
+./install doctor --root /srv/exculpata
+```
+
+`stop` leaves the containers in place and exits. `start` runs those
+containers again. Compose v2 reports each container and waits until the
+dependencies in this file are healthy. Doctor is the health check after
+they are back.
+
+### Upgrade the practice node
+
+As `exculpata`, from the checkout that should become the running release.
+Update that clone first. This practice node has no bundled backup, so the
+command records that choice with `--no-backup`. If `config/backup.json`
+exists, omit `--no-backup`; the update then requires a new successful
+backup, as described in [Upgrade](#upgrade).
+
+```console
+./install update --root /srv/exculpata --no-backup
+```
+
+When the checkout matches the installed capsule, the command says the node
+already runs that capsule and checks health. When the checkout differs, it
+stages a new capsule, builds it without deleting the previous images, starts
+it, and prints the handoff. A failed replacement is rolled back to the
+previous release. Old images are kept until you remove the node with
+`--delete-data`.
+
+### Uninstall that keeps data
+
+As `exculpata`. This removes this node's containers and networks. It keeps
+volumes, images, the node root, matter storage, and the service account.
+
+```console
+./install uninstall --root /srv/exculpata
+```
+
+The command prints the plan, then waits. Type `/srv/exculpata` and press
+Enter. A different line removes nothing. When stdin is not a terminal, the
+same keep-data removal is:
+
+```console
+./install uninstall --root /srv/exculpata --yes
+```
+
+`--dry-run` prints the plan and removes nothing. The deletion boundary is
+[Teardown / uninstall](#teardown--uninstall).
+
+### Full removal
+
+As `exculpata`. This removes the containers, networks, labeled volumes,
+namespace images, and node contents. It still does not remove the service
+account.
+
+```console
+./install uninstall --root /srv/exculpata --delete-data --yes
+```
+
+If the service account cannot unlink `/srv/exculpata` from its parent, the
+command removes the contents, leaves the empty directory, and exits 0. The
+host administrator then removes that empty directory:
+
+```console
+sudo rmdir /srv/exculpata
+```
+
+When no other node uses the account, the host administrator removes it.
+`getent passwd exculpata` prints the home path. Confirm that path is
+`/var/lib/exculpata-home` and that nothing else you need is stored there.
+`userdel` removes the user. On Ubuntu it also removes a private primary
+group of the same name when that group has no other members. The group
+line removes `exculpata` only when it is still present. If that line exits
+because the group is already gone, continue with the home removal:
+
+```console
+getent passwd exculpata
+sudo userdel exculpata
+getent group exculpata && sudo groupdel exculpata
+sudo rm -rf /var/lib/exculpata-home
+```
+
+Do not delete a group that another account still uses.
+
+### Clean reinstall
+
+The host administrator repeats quick-start step 2 on the empty host: create
+the `exculpata` group and account, the mode-0700 home, and an empty
+`/srv/exculpata`, then open a service-account session. As `exculpata`,
+repeat the preflight and install commands in
+[Install the practice node](#install-the-practice-node). Then run
+[Check health](#check-health). The new install creates a new application
+administrator password; the previous password is not reused from a removed
+node.
 
 ## Terminal output and private build logs
 
@@ -210,8 +409,21 @@ nearest fixed xterm-256 colors (indices 16–255), without changing the terminal
 background. Narrow terminals use a single-line wordmark; spinner frames stay
 within the current terminal width, including after a resize.
 
-Docker builds and Compose service start/stop output are collapsed into a progress
-line. Each command prints its unique log path under
+Docker builds and Compose service start, stop, and up output stay out of the
+terminal. The installer reads the private log while the command runs and prints
+only what that output actually reports: images built out of the services named
+on the command, a BuildKit step such as `3 of 7` when the line contains that
+fraction, the current instruction, pull-layer state, or the container action.
+Elapsed time is included. When Docker has not reported a total, the line says
+`waiting for Docker output` (or the latest real action) and an animated
+terminal shows a moving marker. The installer does not invent a percentage.
+Plain mode, `--no-color`, any `NO_COLOR` value, any `CI` value, `TERM=dumb`,
+and non-TTY stdout print when the image-built count or the BuildKit build-step
+fraction changes. That line includes the latest counts. Layer, instruction, and
+container updates print at most about one additional line every five seconds.
+Those lines have no color, carriage return, or cursor control. Narrow terminals
+clip that progress row so it does not wrap. Each command prints its unique log
+path under
 `<node-root>/state/installer-<action>-<UTC timestamp>-<random suffix>.log`.
 The state directory must be owner-only mode 0700, outside the source checkout;
 logs are new files with mode 0600. On failure, the terminal shows the last 40
@@ -794,8 +1006,20 @@ canonical read-only secrets mount. Resume checks that file before provisioning;
 restore a missing or invalid CA rather than replacing the saved provider options.
 For a local installation that still needs its first account, installation reads
 and validates password input after read-only preflight and before any node writes
-or provisioning commands. Standalone preflight and dry runs do not consume it.
-The one-use input is cleared at account initialization and on error.
+or provisioning commands. Interactive entry states the 14 to 1,024 Unicode
+code-point rule first, then allows three attempts. A too-short password or a
+confirmation mismatch is explained and asked again; the first mistake does not
+exit, and earlier answers in that run are kept. Exhausting the three attempts
+exits without writing node files and without changing a saved node. Resume
+still uses the saved non-secret choices, so a later run does not ask for them
+again. Piping standard output, for example through `tee`, still prompts when
+standard input is a terminal or `/dev/tty` can be opened. `--plain` and
+`--no-color` print the rules without color. Non-interactive input, and input
+that is not a terminal and has no controlling terminal, fails on the first
+invalid value and names the rule and the administrator-password field. The
+password itself is not printed, logged, or included in the error. Standalone
+preflight and dry runs do not consume it. The one-use input is cleared at
+account initialization and on error.
 
 A successful doctor check recovers prepared-phase progress from a matching
 provisioning seal even if the current progress receipt is absent or from an older
@@ -805,6 +1029,79 @@ merely because its progress receipt predates the current release. Browser sign-i
 remains a separate unverified step.
 
 Resume never initializes a replacement account store when a provisioning seal exists, including a seal from an older release or a damaged seal. Restore the canonical account backup first. Retained application account-file and management-root settings must exactly match the selected managed or read-only account layout before any Compose command runs.
+
+## Teardown / uninstall
+
+The account and the command sequence are in [Node lifecycle](#node-lifecycle).
+This section is the deletion boundary.
+
+`./install uninstall --root <node-root>` removes only that node's Compose
+containers and networks. It keeps volumes, images, the node root, and matter
+storage unless you also pass `--delete-data`. It does not change the service
+account or group, and it does not prune Docker or touch another project.
+
+The command prints the Compose project, the container and network ids it found,
+and whether volumes, namespace images, and the node root will be removed or
+kept. It removes nothing until you type the installation root exactly.
+Non-interactive use requires `--yes`. `--dry-run` prints the same plan and
+removes nothing. A wrong confirmation, a missing terminal without `--yes`, a
+symbolic-link root, or a Compose project name that does not match this root
+exits without removing anything.
+
+Before Docker is asked to list or remove anything, `--delete-data` refuses a
+node root or an external matter-storage path that is the account home, the
+checkout, `/`, a path with fewer than three parts, or a path reached through a
+symbolic link. A refusal at that point removes nothing. Keeping data does not
+apply that deletion refusal: containers and networks for this project can still
+be removed when the node root itself stays.
+
+Resources are removed only after Docker inspect shows the Compose project
+label for this root. Volume names must also start with that project name.
+Images are removed only when every tag is in this node's image namespace
+(`exculpata-<hash>/...` or `recordbench-<hash>/...`). That check happens
+before any container, volume, or image is removed. An image with any tag
+outside the namespace is left in place and named in the plan. `--delete-data` also
+deletes the node root and, when it is outside that root, the recorded matter
+storage directory if it contains this node's storage marker. If this account
+cannot unlink that directory from its parent, the command removes the contents
+and leaves the empty directory in place. An administrator who created
+`/srv/exculpata` can then remove the empty directory.
+
+Exit status is 0 when the plan is applied or a dry run finishes, and 1 when
+uninstall refuses or a removal fails. Leaving an empty node directory because
+its parent is not writable is still exit 0; the plan says so. A failure after
+removal has started leaves the node root in place when that is still true.
+This command does not add an installation phase.
+
+The operating-system account is outside the node. After the node data you
+asked to delete is gone, an administrator who created the dedicated account
+can remove it when no other node uses it:
+
+```bash
+sudo userdel exculpata
+sudo groupdel exculpata
+sudo rm -rf /var/lib/exculpata-home
+```
+
+Run the directory removal only after confirming that path is the account's
+HOME and that nothing else you need is stored there. Do not delete a shared
+group that another service still uses.
+
+The same boundaries, without the installer, are:
+
+```bash
+# From the node root, after reading compose.env for the project name.
+docker ps -a --filter label=com.docker.compose.project=<project>
+docker rm -f <container-id-for-this-project>
+docker network rm <network-id-for-this-project>
+# Only when deleting data:
+docker volume rm <project>_<volume>
+docker image rm <namespace>/<name>:<tag>
+# Then remove the node root and any recorded external matter storage.
+```
+
+Confirm each id with `docker inspect` before deleting it. Do not run
+`docker system prune`.
 
 ## Dependency reproducibility
 

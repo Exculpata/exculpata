@@ -61,7 +61,7 @@ def test_plain_cli_has_no_escapes_redraws_or_sleep(tmp_path, monkeypatch, tty, m
     assert time.monotonic() - start < 1
     output = tty.getvalue()
     assert "\x1b" not in output and "\r" not in output
-    for word in ("EVIDENCE NODE PROVISIONER", "PHASE 01", "OK", "NOTE", "BLOCK"):
+    for word in ("Exculpata installer", "PHASE 01", "OK", "NOTE", "BLOCK"):
         assert word in output
     assert not (tmp_path / "node").exists()
 
@@ -188,7 +188,7 @@ def test_failed_build_main_still_exits_one(synthetic_docker, monkeypatch, capsys
     assert "Docker build failed (exit 17)" in output
     assert "synthetic final diagnostic" in output and "Full Docker output" in output
     if not quiet:
-        assert "BOOT SEQUENCE HALTED" in output
+        assert "Doctor stopped" in output
 
 
 @pytest.mark.parametrize("mode", ["dry-run", "capture", "credential", "license-plan"])
@@ -478,3 +478,144 @@ def test_large_child_output_has_no_pipe_deadlock_and_bounded_tail(synthetic_dock
     output = capsys.readouterr().out
     assert "synthetic final diagnostic" in output and len(output) < 67000
     assert next((root / "state").glob("*.log")).stat().st_size > 2 * 1024 * 1024
+
+
+def test_docker_activity_uses_reported_counts_and_skips_percentages():
+    activity = terminal.DockerActivity(("app", "gateway"))
+    assert activity.summary() == "images built 0 of 2"
+    assert activity.observe("#3 [app 2/7] RUN apt-get update") == (
+        "images built 0 of 2; app step 2 of 7; RUN apt-get update"
+    )
+    assert activity.observe("abcdef123456: Downloading [=====>] 50%") is None
+    assert "%" not in activity.summary()
+    assert activity.observe("Image app Built") == (
+        "images built 1 of 2; app step 2 of 7; RUN apt-get update"
+    )
+    assert activity.observe("[+] Building 4.0s (8/15)") == (
+        "images built 1 of 2; build steps 8 of 15; app step 2 of 7; RUN apt-get update"
+    )
+    assert activity.observe("gateway | #4 [gateway 1/3] RUN true") == (
+        "images built 1 of 2; build steps 8 of 15; gateway step 1 of 3; RUN true"
+    )
+    unknown = terminal.DockerActivity(())
+    assert unknown.summary() == "waiting for Docker output"
+    assert unknown.observe("Container synthetic-app-1 Started") == "Container synthetic-app-1 Started"
+    assert unknown.observe("Container synthetic-app-1  Waiting") == "Container synthetic-app-1 Waiting"
+    assert unknown.observe("Network synthetic-net  Created") == "Network synthetic-net Created"
+    assert unknown.observe("Volume synthetic-data  Created") == "Volume synthetic-data Created"
+    assert "%" not in unknown.summary()
+
+
+@pytest.mark.parametrize("mode", ["plain", "NO_COLOR", "CI", "TERM=dumb", "non-tty"])
+@pytest.mark.parametrize("width", [80, 50])
+def test_logged_build_progress_is_honest_and_fits(synthetic_docker, monkeypatch, capsys, mode, width):
+    root, command = synthetic_docker
+    docker = Path(os.environ["PATH"].split(os.pathsep)[0]) / "docker"
+    docker.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "print('#1 [app 1/2] RUN echo synthetic-step', flush=True)\n"
+        "print('synthetic-secret-marker stays in the log', flush=True)\n"
+        "print('abcdef123456: Downloading [=====>] 50%', flush=True)\n"
+        "print('#2 [app 2/2] RUN echo synthetic-step-two', flush=True)\n"
+        "print('Image app Built', flush=True)\n"
+        "raise SystemExit(0)\n"
+    )
+    monkeypatch.setattr(terminal, "terminal_width", lambda: width)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    if mode == "NO_COLOR":
+        monkeypatch.setenv("NO_COLOR", "1")
+    elif mode == "CI":
+        monkeypatch.setenv("CI", "1")
+    elif mode == "TERM=dumb":
+        monkeypatch.setenv("TERM", "dumb")
+    output = io.StringIO()
+    monkeypatch.setattr(output, "isatty", lambda: mode != "non-tty")
+    monkeypatch.setattr(sys, "stdout", output)
+    monkeypatch.setenv("SYNTHETIC_EXIT", "0")
+    assert installer._run(terminal.Console(color=mode != "plain"), command).returncode == 0
+    text = output.getvalue()
+    assert "\x1b" not in text and "\r" not in text
+    assert "images built" in text and "synthetic-secret-marker" not in text
+    assert "50%" not in text and "%" not in text
+    if width >= 80:
+        assert "step 1 of 2" in text and "step 2 of 2" in text
+        assert "images built 1 of 1" in text
+    log = next((root / "state").glob("*.log")).read_text()
+    assert "synthetic-secret-marker" in log and "50%" in log
+    for line in text.splitlines():
+        if "step " in line or "images built" in line or "waiting for Docker output" in line:
+            assert terminal.cell_width(line) <= width - 1
+
+
+def test_plain_progress_throttles_step_bursts_and_keeps_counts(synthetic_docker, monkeypatch, capsys):
+    """A frozen clock prints the first step and later count changes, not every layer."""
+    _root, command = synthetic_docker
+    docker = Path(os.environ["PATH"].split(os.pathsep)[0]) / "docker"
+    monkeypatch.setattr(terminal, "terminal_width", lambda: 160)
+    monkeypatch.setattr(installer.time, "monotonic", lambda: 1000.0)
+    monkeypatch.setenv("SYNTHETIC_EXIT", "0")
+    lines = "\n".join(
+        f"print('#{{n}} [app {{n}}/12] RUN echo synthetic-step-{{n}}', flush=True)".replace("{n}", str(number))
+        for number in range(1, 13)
+    )
+    docker.write_text(
+        f"#!{sys.executable}\nimport sys\n{lines}\n"
+        "print('[+] Building 1.2s (4/10)', flush=True)\n"
+        "raise SystemExit(0)\n"
+    )
+    assert installer._run(terminal.Console(color=False), command).returncode == 0
+    step_lines = [line for line in capsys.readouterr().out.splitlines() if "step " in line]
+    assert len(step_lines) == 2
+    assert "step 1 of 12" in step_lines[0] and "images built" in step_lines[0]
+    assert "build steps 4 of 10" in step_lines[1]
+    assert "images built" in step_lines[1] and "step 12 of 12" in step_lines[1]
+
+    clock = {"now": 1000.0}
+
+    def advance():
+        clock["now"] += 6.0
+        return clock["now"]
+
+    monkeypatch.setattr(installer.time, "monotonic", advance)
+    spaced = "\n".join(
+        f"print('#{{n}} [app {{n}}/4] RUN echo synthetic-later-{{n}}', flush=True)".replace("{n}", str(number))
+        for number in range(1, 5)
+    )
+    docker.write_text(f"#!{sys.executable}\nimport sys\n{spaced}\nraise SystemExit(0)\n")
+    assert installer._run(terminal.Console(color=False), command).returncode == 0
+    later = capsys.readouterr().out
+    assert "step 1 of 4" in later and "step 4 of 4" in later
+    assert "images built" in later
+
+
+def test_animated_progress_frames_stay_inside_50_columns(monkeypatch, tty):
+    monkeypatch.setattr(sys, "stdout", tty)
+    monkeypatch.setattr(terminal, "terminal_width", lambda: 50)
+    class ClockedEvent:
+        calls = 0
+        def wait(self, _):
+            self.calls += 1
+            return self.calls > 3
+        def set(self):
+            pass
+    class ImmediateThread:
+        def __init__(self, target, **_):
+            self.target = target
+        def start(self):
+            self.target()
+        def join(self):
+            pass
+    monkeypatch.setattr(terminal.threading, "Event", ClockedEvent)
+    monkeypatch.setattr(terminal.threading, "Thread", ImmediateThread)
+    status = {"elapsed": "2m 05s", "detail": "images built 1 of 4; app step 3 of 9; RUN " + "synthetic " * 20}
+    with terminal.Console(color=True, animation=True).progress("Docker build", status):
+        pass
+    frames = tty.getvalue().split("\r")[1:]
+    assert frames[-1] == "\x1b[2K"
+    for frame in frames[:-1]:
+        assert "\n" not in frame
+        visible = terminal.terminal_text(frame)
+        assert terminal.cell_width(visible) < 50
+        assert "%" not in visible

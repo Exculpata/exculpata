@@ -1,0 +1,29 @@
+  PHASE 05 / FORGE RUNTIME
+             Building isolated OCR, review, retrieval, and transcription images
+  [ NOTE ] 22s images built 0 of 5; account-admin step 5 of 8; COPY pyproject.t
+  [ NOTE ] 22s images built 0 of 5; account-admin step 6 of 8; COPY src ./src
+  [ NOTE ] 22s images built 0 of 5; account-admin step 8 of 8; RUN pip install 
+  [ NOTE ] 50s images built 0 of 5; postgres step 1 of 2; FROM docker.io/pgvect
+  [ NOTE ] 57s images built 0 of 5; clamav step 1 of 2; FROM docker.io/clamav/c
+  [ NOTE ] 1m 00s images built 0 of 5; app step 8 of 8; RUN pip install --no-ca
+  [ NOTE ] 1m 01s images built 0 of 5; gateway step 1 of 2; FROM docker.io/libr
+  [ NOTE ] 1m 02s images built 5 of 5; resolving provenance for metadata file
+  [  OK  ] Docker build complete :: /srv/exculpata/state/installer-build-20261016T112247-0e8151ba.log
+  INSTALLATION HANDOFF
+  [  OK  ] Open in your browser: https://localhost:8443/auth/login
+  [ NOTE ] Sign-in mode: local
+  [ NOTE ] Initial administrator username: exculpata.admin
+  [ NOTE ] prepared: complete
+  [ NOTE ] running: complete
+  [ NOTE ] login reachable: complete
+  [ NOTE ] basic review: complete
+  [ NOTE ] selected capabilities: complete
+  [ NOTE ] Browser sign-in: not verified by the installer; sign in and follow Team setup
+  [ WARN ] Loopback smoke certificate: arrange a trusted certificate and matching hostname before team access; do not bypass browser certificate protection
+
+  NODE ONLINE
+  [  OK  ] URL: https://localhost:8443/auth/login
+  [ NOTE ] Administrator username: exculpata.admin
+  [ NOTE ] Next: sign in, create a practice matter, then run ./install doctor --root /srv/exculpata
+  [ NOTE ] The administrator password is not shown
+  [ NOTE ] No password or token is included in this handoff

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import codecs
+import errno
 import csv
 import fnmatch
 import getpass
@@ -22,6 +24,8 @@ import ssl
 import stat
 import subprocess
 import sys
+import textwrap
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -31,7 +35,15 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
-from installer_terminal import C, Console, terminal_text
+from installer_terminal import (
+    C,
+    Console,
+    DockerActivity,
+    clip_cells,
+    format_elapsed,
+    terminal_text,
+    terminal_width,
+)
 
 
 PROJECT = Path(__file__).resolve().parents[1]
@@ -237,7 +249,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "command",
         nargs="?",
-        choices=("install", "preflight", "doctor", "update", "backup", "restore"),
+        choices=("install", "preflight", "doctor", "update", "backup", "restore", "uninstall"),
         default="install",
     )
     parser.add_argument("--names", choices=("recordbench", "exculpata"), help="naming generation for a fresh node; existing nodes cannot be renamed")
@@ -336,6 +348,10 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--plain", action="store_true", help="plain, screen-reader-friendly output without color or animation")
     parser.add_argument("--no-animation", action="store_true", help="keep color but disable typing and progress redraws")
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--yes", action="store_true",
+                        help="confirm uninstall without a prompt; other commands ignore it")
+    parser.add_argument("--delete-data", action="store_true",
+                        help="uninstall also removes this node's volumes, namespace images, and node data")
     return parser
 
 
@@ -444,6 +460,96 @@ def _build_log(root: Path, action: str):
         os.close(directory)
 
 
+def _compose_build_targets(command: Sequence[str]) -> tuple[str, ...]:
+    """Service names after `docker compose build`. Empty when the set is unknown."""
+    if _compose_output_action(command) != "build":
+        return ()
+    index = 2
+    while index < len(command) and command[index] in {"--env-file", "-f", "--profile"}:
+        index += 2
+    if index >= len(command) or command[index] != "build":
+        return ()
+    targets: list[str] = []
+    pending_value = False
+    valued = {"--build-arg", "--progress", "--ssh", "--secret", "--builder"}
+    for token in command[index + 1:]:
+        if pending_value:
+            pending_value = False
+            continue
+        if token in valued:
+            pending_value = True
+            continue
+        if token.startswith("-"):
+            continue
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", token):
+            targets.append(token)
+    return tuple(dict.fromkeys(targets))
+
+
+def _progress_counts(activity: DockerActivity) -> tuple[object, ...]:
+    """Image and build-step totals. Layer text is not part of this count."""
+    return (tuple(activity.built), activity.build_current, activity.build_total)
+
+
+def _follow_docker_log(path: Path, stop: threading.Event, console: Console,
+                       status: dict[str, str], targets: tuple[str, ...]) -> None:
+    """Read the private log as Docker writes it and publish an honest summary."""
+    activity = DockerActivity(targets)
+    started = time.monotonic()
+    last_emit: float | None = None
+    last_counts = _progress_counts(activity)
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    pending = ""
+
+    def publish(text: str, now: float) -> None:
+        nonlocal last_emit, last_counts
+        if console.animation:
+            return
+        console.progress_event(text)
+        last_emit = now
+        last_counts = _progress_counts(activity)
+
+    try:
+        with open(path, "rb", buffering=0) as reader:
+            while True:
+                chunk = reader.read(65536)
+                if chunk:
+                    pending += decoder.decode(chunk)
+                elif stop.is_set():
+                    pending += decoder.decode(b"", final=True)
+                pieces = re.split(r"[\r\n]+", pending)
+                pending = pieces.pop() if pieces else ""
+                if len(pending) > 65536:
+                    pending = pending[-4096:]
+                for piece in pieces:
+                    updated = activity.observe(piece)
+                    if not updated:
+                        continue
+                    now = time.monotonic()
+                    elapsed = format_elapsed(now - started)
+                    status["elapsed"] = elapsed
+                    status["detail"] = updated
+                    counts = _progress_counts(activity)
+                    # Layer and container lines can arrive in a burst. Counts stay visible.
+                    if counts != last_counts or last_emit is None or now - last_emit >= 5:
+                        publish(f"{elapsed} {updated}", now)
+                now = time.monotonic()
+                elapsed = format_elapsed(now - started)
+                status["elapsed"] = elapsed
+                status["detail"] = activity.summary()
+                due = (last_emit is None and now - started >= 5) or (
+                    last_emit is not None and now - last_emit >= 5
+                )
+                if due:
+                    publish(f"{elapsed} {status['detail']}", now)
+                if not chunk:
+                    if stop.is_set():
+                        break
+                    stop.wait(0.2)
+    except OSError:
+        return
+
+
 def _run_logged(console: Console, command: Sequence[str], action: str,
                 environment: Mapping[str, str] | None, check: bool) -> subprocess.CompletedProcess[str]:
     root = Path(command[command.index("--env-file") + 1]).parent
@@ -464,9 +570,21 @@ def _run_logged(console: Console, command: Sequence[str], action: str,
                     raise subprocess.CalledProcessError(result.returncode, command)
             return result
         console.note(f"Full Docker output :: {path}")
-        with console.progress(f"Docker {action} :: output spooling to private log"):
-            result = subprocess.run(command, cwd=PROJECT, env=environment,
-                                    stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        status = {"elapsed": "0s", "detail": DockerActivity(_compose_build_targets(command)).summary()}
+        stop = threading.Event()
+        follower = threading.Thread(
+            target=_follow_docker_log,
+            args=(path, stop, console, status, _compose_build_targets(command)),
+            daemon=True,
+        )
+        follower.start()
+        try:
+            with console.progress(f"Docker {action}; full output stays in the private log", status):
+                result = subprocess.run(command, cwd=PROJECT, env=environment,
+                                        stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
+        finally:
+            stop.set()
+            follower.join(timeout=5)
         if result.returncode:
             console.warn(f"Docker {action} failed (exit {result.returncode}); log tail :: {path}", force=True)
             try:
@@ -2441,18 +2559,126 @@ def _prepare_directories(
     return paths
 
 
+_PASSWORD_ATTEMPTS = 3
+_PASSWORD_RULE = (
+    "Administrator password rules: 14 to 1,024 Unicode code points, counted with Python len(). "
+    "Spaces count, and combining marks count separately. NUL is not allowed. "
+    "A passphrase of several words can meet the length."
+)
+
+
+def _password_problem(value: str) -> str | None:
+    """Name the broken rule. The password value is never included."""
+    if "\x00" in value:
+        return ("administrator password contains a NUL character; "
+                "it must contain 14 to 1,024 Unicode code points without NUL")
+    count = len(value)
+    if count < 14 or count > 1024:
+        return (f"administrator password is {count} Unicode code points; "
+                "it must contain 14 to 1,024 Unicode code points (spaces count) without NUL")
+    return None
+
+
+def _dev_tty_openable() -> bool:
+    """True when getpass can use the controlling terminal. Stdout is not required."""
+    try:
+        descriptor = os.open("/dev/tty", os.O_RDWR)
+    except OSError:
+        return False
+    os.close(descriptor)
+    return True
+
+
+def _password_interactive(args: argparse.Namespace) -> bool:
+    if args.password_stdin or args.non_interactive:
+        return False
+    try:
+        if sys.stdin.isatty():
+            return True
+    except OSError:
+        pass
+    return _dev_tty_openable()
+
+
+def _prompt_line(text: str, marker: str, *, color: bool) -> None:
+    width = max(1, terminal_width() - 1)
+    prefix = f"  [{marker:^6}] "
+    body_width = max(8, width - len(prefix))
+    parts = textwrap.wrap(
+        terminal_text(text), width=body_width, break_long_words=False, break_on_hyphens=False,
+    ) or [""]
+    console = Console(color=color, animation=False)
+    accent = (C.amber if marker == "WARN" else C.cyan) + C.bold
+    for index, part in enumerate(parts):
+        body = clip_cells(part, body_width)
+        if index == 0 and console.color:
+            print(f"  {console.paint(f'[{marker:^6}]', accent)} {body}", flush=True)
+        else:
+            print((prefix if index == 0 else " " * len(prefix)) + body, flush=True)
+
+
+def _answered_choices(args: argparse.Namespace) -> str:
+    """Non-secret choices already collected. Passwords are not arguments."""
+    fields = (
+        ("--root", getattr(args, "root", None)),
+        ("--storage-root", getattr(args, "storage_root", None)),
+        ("--auth", getattr(args, "auth", None)),
+        ("--models", getattr(args, "models", None)),
+        ("--admin-username", getattr(args, "admin_username", None)),
+        ("--admin-display-name", getattr(args, "admin_display_name", None)),
+        ("--server-name", getattr(args, "server_name", None)),
+        ("--bind-address", getattr(args, "bind_address", None)),
+        ("--storage-profile", getattr(args, "storage_profile", None)),
+    )
+    parts = []
+    for flag, value in fields:
+        if value is None or value == "":
+            continue
+        text = str(value)
+        if any(char in text for char in "\x00\r\n"):
+            continue
+        parts.append(f"{flag} {shlex.quote(text)}")
+    return " ".join(parts)
+
+
 def _password(args: argparse.Namespace) -> str:
+    prompt_color = not (getattr(args, "plain", False) or getattr(args, "no_color", False))
     if args.password_stdin:
         value = sys.stdin.readline(4097).rstrip("\r\n")
-    elif args.non_interactive:
-        raise RuntimeError("local non-interactive installation requires --password-stdin")
-    else:
-        value = getpass.getpass("Initial administrator password: ")
-        if value != getpass.getpass("Confirm administrator password: "):
-            raise RuntimeError("administrator passwords did not match")
-    if not 14 <= len(value) <= 1024 or "\x00" in value:
-        raise RuntimeError("administrator password must contain 14 to 1,024 characters without NUL")
-    return value
+        problem = _password_problem(value)
+        if problem:
+            raise RuntimeError(problem)
+        return value
+    if not _password_interactive(args):
+        raise RuntimeError(
+            "local non-interactive installation requires --password-stdin. "
+            "The administrator password must contain 14 to 1,024 Unicode code points "
+            "(spaces count) and no NUL character."
+        )
+    _prompt_line(_PASSWORD_RULE, "NOTE", color=prompt_color)
+    for attempt in range(1, _PASSWORD_ATTEMPTS + 1):
+        try:
+            value = getpass.getpass("Initial administrator password: ")
+            problem = _password_problem(value)
+            if problem is None and value != getpass.getpass("Confirm administrator password: "):
+                problem = "The two administrator password entries did not match"
+        except (EOFError, KeyboardInterrupt) as exc:
+            raise RuntimeError(
+                "administrator password entry stopped before a valid password. "
+                "It must contain 14 to 1,024 Unicode code points (spaces count) and no NUL character."
+            ) from exc
+        if problem is None:
+            return value
+        _prompt_line(f"{problem}. Attempt {attempt} of {_PASSWORD_ATTEMPTS}.", "WARN", color=prompt_color)
+        value = ""
+    raise RuntimeError(
+        "administrator password was not accepted after 3 attempts. "
+        "It must contain 14 to 1,024 Unicode code points (spaces count) and no NUL character, "
+        "and the two entries must match. "
+        "No node files were written or changed by this password entry. "
+        "Saved installation choices from an earlier run are unchanged and are not asked again on resume. "
+        + (f"Re-run with the same non-secret choices: {_answered_choices(args)}." if _answered_choices(args) else "")
+    )
 
 
 def _assert_unfinished_account_bootstrap(root: Path) -> None:
@@ -2788,7 +3014,7 @@ def _configure(
             + "\n",
             replace=(root / "installation.json").exists(),
         )
-    console.ok(f"identity matrix :: {auth}")
+    console.ok(f"Admin account :: {auth}")
     console.ok(f"model payload   :: {models}")
     console.ok(
         "GPU topology    :: "
@@ -2935,7 +3161,31 @@ def _handoff(console: Console, root: Path, *, dry_run: bool = False) -> None:
     if incomplete:
         console.warn(f"Next unverified step: {incomplete.replace('_', ' ')}")
         console.note(f"Continue with: ./install install --root {shlex.quote(str(root))} --resume")
+    else:
+        shown_username = username if (
+            installation.get("auth") == "local" and isinstance(username, str)
+            and re.fullmatch(r"[a-z0-9][a-z0-9._@-]{2,127}", username)
+        ) else None
+        _node_online(console, root, host, port, installation.get("auth"), shown_username)
     console.note("No password or token is included in this handoff")
+
+
+def _node_online(console: Console, root: Path, host: str, port: int, auth: object, username: str | None) -> None:
+    """Final screen for a node whose recorded phases are complete or not selected."""
+    console.line()
+    console.line(console.paint("  NODE ONLINE", C.green + C.bold))
+    console.ok(f"URL: https://{host}:{port}/auth/login")
+    if auth == "local" and isinstance(username, str):
+        console.note(f"Administrator username: {username}")
+    elif auth == "local":
+        console.note("Administrator username: not recorded")
+    else:
+        console.note(f"Sign-in mode: {auth}")
+    console.note(
+        "Next: sign in, create a practice matter, then run ./install doctor --root "
+        + shlex.quote(str(root))
+    )
+    console.note("The administrator password is not shown")
 
 
 def _gateway_probe_address(environment: Mapping[str, str]) -> str:
@@ -3291,9 +3541,11 @@ def _wait_health(console: Console, root: Path) -> None:
     address = _gateway_probe_address(env)
     authority = f"[{address}]" if ":" in address else address
     url = f"https://{authority}:{port}/health"
-    deadline = time.monotonic() + 900
+    started = time.monotonic()
+    deadline = started + 900
     next_report = time.monotonic() + 15
     last = "services are starting"
+    console.note("Waiting for application health")
     for phase in ("running", "login_reachable", "basic_review", "selected_capabilities"):
         _install_phase(root, phase, "checking")
     while time.monotonic() < deadline:
@@ -3343,8 +3595,9 @@ def _wait_health(console: Console, root: Path) -> None:
                 last += "; running authentication mode is unavailable: verify the app supports protected authentication diagnostics and recreate it with the intended configuration"
             if not login_reachable:
                 last += "; sign-in endpoint is not reachable"
-        if time.monotonic() >= next_report:
-            console.note(f"health consensus pending :: {last}")
+        observed = time.monotonic()
+        if observed >= next_report:
+            console.note(f"health consensus pending, elapsed {format_elapsed(observed - started)} :: {last}")
             next_report = time.monotonic() + 15
         time.sleep(3)
     raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
@@ -3698,7 +3951,7 @@ def _backup(console: Console, args: argparse.Namespace, root: Path) -> None:
         raise RuntimeError(
             "backup is not initialized; provide --repository and --recovery-key-output"
         )
-    console.phase(2, "TRANSMIT VAULT SNAPSHOT", "Quiescing briefly, restarting service, then transferring encrypted blocks")
+    console.phase(2, "BACKUP", "Running the backup command for this node")
     command = [sys.executable, str(tool), "backup", "--node-root", str(root)]
     if args.dry_run:
         command.append("--dry-run")
@@ -3845,6 +4098,303 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         raise RuntimeError(f"update failed and rollback was attempted: {update_error}") from update_error
 
 
+_PROJECT_NAME = re.compile(r"^(?:exculpata|recordbench)-[0-9a-f]{10}$")
+_DOCKER_ID = re.compile(r"^[0-9a-f]{12,64}$")
+
+
+def _docker_capture(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(command, cwd=PROJECT, text=True, capture_output=True, check=False, timeout=120)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Docker did not answer within 120 seconds.") from exc
+
+
+def _owned_image(tag: str, namespace: str) -> bool:
+    repository = tag.rsplit(":", 1)[0] if ":" in tag else tag
+    return bool(namespace) and repository.startswith(namespace + "/") and repository.count("/") == 1 and ".." not in repository
+
+
+def _image_tags_owned(image_id: str, namespace: str) -> bool:
+    result = _docker_capture(["docker", "image", "inspect", "--format", "{{json .RepoTags}}", image_id])
+    if result.returncode != 0:
+        return False
+    try:
+        tags = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(tags, list) and bool(tags) and all(
+        isinstance(tag, str) and _owned_image(tag, namespace) for tag in tags
+    )
+
+
+def _remove_node_tree(path: Path) -> str:
+    """Remove a node directory. An empty remainder means the parent is not writable."""
+    _refuse_broad_deletion(path)
+    try:
+        for child in list(path.iterdir()):
+            if child.is_symlink() or not child.is_dir():
+                child.unlink()
+            else:
+                shutil.rmtree(child)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Could not remove {terminal_text(str(path))} ({exc.strerror or exc.errno}). "
+            "Removal already started. The node root was kept."
+        ) from exc
+    try:
+        path.rmdir()
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EPERM} and path.is_dir() and not any(path.iterdir()):
+            return "empty"
+        raise
+    return "removed"
+
+
+def _refuse_broad_deletion(path: Path) -> None:
+    if path.is_symlink() or not path.is_absolute() or path == Path("/") or len(path.parts) < 3:
+        raise RuntimeError("uninstall refused to delete this path. Nothing further was removed.")
+    resolved = path.resolve()
+    banned = {Path("/"), Path.home().resolve(), PROJECT.resolve()}
+    if resolved in banned or resolved in PROJECT.resolve().parents or resolved in Path.home().resolve().parents:
+        raise RuntimeError("uninstall refused to delete this path. Nothing further was removed.")
+    if any(parent.is_symlink() for parent in path.parents):
+        raise RuntimeError("uninstall refused a path that contains a symbolic link. Nothing further was removed.")
+
+
+def _uninstall_rows(command: Sequence[str], label: str, *, untouched: bool = True) -> list[str]:
+    result = _docker_capture(command)
+    if result.returncode != 0:
+        detail = terminal_text(result.stderr or result.stdout or "docker failed").strip()
+        suffix = "Nothing was removed." if untouched else "Removal already started; the node root was kept."
+        raise RuntimeError(f"Could not list this node's {label} ({detail or 'docker failed'}). {suffix}")
+    return [terminal_text(line).strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _docker_label(kind: str, ident: str) -> str:
+    if kind == "container":
+        command = ["docker", "inspect", "--type", "container", "--format",
+                   '{{index .Config.Labels "com.docker.compose.project"}}', ident]
+    elif kind == "network":
+        command = ["docker", "network", "inspect", "--format",
+                   '{{index .Labels "com.docker.compose.project"}}', ident]
+    elif kind == "volume":
+        command = ["docker", "volume", "inspect", "--format",
+                   '{{index .Labels "com.docker.compose.project"}}', ident]
+    else:
+        raise RuntimeError("uninstall refused an unknown Docker resource. Nothing was removed.")
+    result = _docker_capture(command)
+    if result.returncode != 0:
+        return ""
+    return terminal_text(result.stdout).strip()
+
+
+def _checked_docker_ids(rows: Sequence[str], project: str, kind: str) -> list[str]:
+    checked = []
+    for row in rows:
+        ident, separator, _name = row.partition("\t")
+        ident = ident.removeprefix("sha256:")
+        if not separator or not _DOCKER_ID.fullmatch(ident) or _docker_label(kind, ident) != project:
+            raise RuntimeError(
+                f"Refusing to remove {kind} {terminal_text(row)}; it is not labeled for this project. Nothing was removed."
+            )
+        checked.append(ident)
+    return checked
+
+
+def _classified_volumes(rows: Sequence[str], project: str) -> tuple[list[str], list[str]]:
+    """Named project volumes can be removed. Every other listed volume stays."""
+    remove, keep = [], []
+    for name in rows:
+        owned = (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,200}", name) is not None
+                 and name.startswith(project + "_")
+                 and _docker_label("volume", name) == project)
+        (remove if owned else keep).append(terminal_text(name))
+    return remove, keep
+
+
+def _classified_images(images: Sequence[tuple[str, str]], namespace: str) -> tuple[list[tuple[str, str]], list[str]]:
+    """Remove an image only when every current tag is in this namespace."""
+    remove, keep = [], []
+    for image_id, tag in images:
+        if _image_tags_owned(image_id, namespace):
+            remove.append((image_id, tag))
+        else:
+            keep.append(tag)
+    return remove, keep
+
+
+def _docker_remove(command: Sequence[str], label: str) -> None:
+    result = _docker_capture(command)
+    if result.returncode != 0:
+        detail = terminal_text(result.stderr or result.stdout or "docker failed").strip()
+        raise RuntimeError(
+            f"Could not remove {label} ({detail or result.returncode}). "
+            "Removal stopped. The node root was kept."
+        )
+
+
+def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
+    """Remove this node's Compose resources. Data stays unless --delete-data is set."""
+    original = args.root.expanduser() if args.root is not None else root
+    if original.is_symlink() or any(parent.is_symlink() for parent in original.parents):
+        raise RuntimeError("uninstall --root cannot be or contain a symbolic link. Nothing was removed.")
+    if not root.is_dir() or root.is_symlink() or not root.is_absolute() or root == Path("/"):
+        raise RuntimeError("uninstall --root must be an existing absolute directory other than /. Nothing was removed.")
+    compose_env = root / "compose.env"
+    installation_path = root / "installation.json"
+    if (not compose_env.is_file() or compose_env.is_symlink()
+            or not installation_path.is_file() or installation_path.is_symlink()):
+        raise RuntimeError("uninstall refused: compose.env and installation.json must be regular files. Nothing was removed.")
+    env = _dotenv(compose_env)
+    names = _node_names(root)
+    expected = f"{names}-{hashlib_short(root)}"
+    # Fresh nodes store EXCULPATA_* names. Older nodes store RECORDBENCH_* names.
+    project = _env("RECORDBENCH_COMPOSE_PROJECT", "", environ=env) or ""
+    namespace = _env("RECORDBENCH_IMAGE_NAMESPACE", "", environ=env) or ""
+    if project != expected or namespace != expected or not _PROJECT_NAME.fullmatch(project):
+        raise RuntimeError("uninstall refused: the Compose project does not match this root. Nothing was removed.")
+    installation = json.loads(installation_path.read_text(encoding="utf-8"))
+    if not isinstance(installation, dict):
+        raise RuntimeError("uninstall refused: installation.json is invalid. Nothing was removed.")
+    storage_value = installation.get("storage_root")
+    storage = Path(storage_value) if isinstance(storage_value, str) else None
+    external_storage = None
+    if args.delete_data:
+        # Root and external matter-storage checks run before Docker is asked to
+        # list or remove anything. Deletion repeats the root check.
+        _refuse_broad_deletion(root)
+        if storage is not None and storage.is_absolute() and not storage.is_symlink():
+            try:
+                inside = storage.resolve().is_relative_to(root.resolve())
+            except OSError:
+                inside = False
+            marker = storage / f".{names}-managed-storage.json"
+            if not inside and marker.is_file() and not marker.is_symlink():
+                external_storage = storage
+                _refuse_broad_deletion(external_storage)
+    containers = _uninstall_rows([
+        "docker", "ps", "-a", "--no-trunc", "--filter", f"label=com.docker.compose.project={project}",
+        "--format", "{{.ID}}\t{{.Names}}",
+    ], "containers")
+    volumes = _uninstall_rows([
+        "docker", "volume", "ls", "--filter", f"label=com.docker.compose.project={project}",
+        "--format", "{{.Name}}",
+    ], "volumes")
+    networks = _uninstall_rows([
+        "docker", "network", "ls", "--no-trunc", "--filter", f"label=com.docker.compose.project={project}",
+        "--format", "{{.ID}}\t{{.Name}}",
+    ], "networks")
+    images = []
+    seen_images: set[str] = set()
+    for line in _uninstall_rows(["docker", "image", "ls", "--no-trunc", "--format", "{{.ID}}\t{{.Repository}}:{{.Tag}}"], "images"):
+        image_id, separator, tag = line.partition("\t")
+        image_id = image_id.removeprefix("sha256:")
+        if separator and image_id not in seen_images and _DOCKER_ID.fullmatch(image_id) and _owned_image(tag, namespace):
+            seen_images.add(image_id)
+            images.append((image_id, tag))
+    container_ids = _checked_docker_ids(containers, project, "container")
+    network_ids = _checked_docker_ids(networks, project, "network")
+    removable_volumes, kept_volumes = _classified_volumes(volumes, project)
+    removable_images, kept_images = (
+        _classified_images(images, namespace) if args.delete_data else ([], [])
+    )
+    console.line("\n  UNINSTALL PLAN")
+    console.note(f"Compose project: {project}")
+    console.note("Containers to remove: " + (", ".join(containers) if containers else "none listed"))
+    console.note("Networks to remove: " + (", ".join(networks) if networks else "none listed"))
+    if args.delete_data:
+        console.note("Volumes to remove: " + (", ".join(removable_volumes) if removable_volumes else "none listed"))
+        console.note("Volumes to keep: " + (", ".join(kept_volumes) if kept_volumes else "none"))
+        console.note("Namespace images to remove: " + (
+            ", ".join(tag for _, tag in removable_images) if removable_images else "none listed"
+        ))
+        console.note("Images left in place because a tag is outside this namespace: " + (
+            ", ".join(kept_images) if kept_images else "none"
+        ))
+    else:
+        console.note("Volumes to keep: " + (", ".join(volumes) if volumes else "none listed"))
+        console.note("Namespace images to keep: " + (", ".join(tag for _, tag in images) if images else "none listed"))
+    console.note(f"Node root to {'remove' if args.delete_data else 'keep'}: {root}")
+    if external_storage is not None:
+        console.note(f"Matter storage outside the node root to remove: {external_storage}")
+    elif storage is not None and args.delete_data:
+        console.note(f"Matter storage is inside the node root and will be removed with it: {storage}")
+    elif storage is not None:
+        console.note(f"Matter storage to keep: {storage}")
+    console.note("Service account and group are not changed by this command")
+    if args.dry_run:
+        console.note("Dry run: nothing was removed")
+        return
+    if not args.yes:
+        try:
+            interactive = sys.stdin.isatty()
+        except OSError:
+            interactive = False
+        if not interactive:
+            raise RuntimeError("Uninstall confirmation requires a terminal or --yes. Nothing was removed.")
+        prompt = "Type the installation root to confirm: "
+        if external_storage is not None:
+            prompt = f"Type the installation root to confirm removal, including matter storage at {external_storage}: "
+        typed = input(prompt).strip()
+        if typed != str(root):
+            raise RuntimeError("Confirmation did not match the installation root. Nothing was removed.")
+    for ident in container_ids:
+        if _docker_label("container", ident) != project:
+            raise RuntimeError(f"Refusing to remove container {ident}; its project label changed. The node root was kept.")
+        _docker_remove(["docker", "rm", "-f", "--", ident], f"container {ident}")
+    for ident in network_ids:
+        if _docker_label("network", ident) != project:
+            raise RuntimeError(f"Refusing to remove network {ident}; its project label changed. The node root was kept.")
+        _docker_remove(["docker", "network", "rm", ident], f"network {ident}")
+    if not args.delete_data:
+        remaining_volumes = set(_uninstall_rows([
+            "docker", "volume", "ls", "--filter", f"label=com.docker.compose.project={project}", "--format", "{{.Name}}",
+        ], "volumes", untouched=False))
+        missing = [name for name in volumes if name not in remaining_volumes]
+        if missing:
+            raise RuntimeError("Uninstall stopped because a volume that should have been kept is gone: " + ", ".join(missing))
+        if not root.is_dir():
+            raise RuntimeError("Uninstall stopped because the node root is missing after a data-keeping uninstall.")
+        console.ok("Uninstall finished. Listed containers and networks were removed. Volumes, images, and the node root were kept.")
+        console.note("The service account and group were not changed")
+        return
+    for name in removable_volumes:
+        if _docker_label("volume", name) != project:
+            raise RuntimeError(f"Refusing to remove volume {name}; its project label changed. The node root was kept.")
+        _docker_remove(["docker", "volume", "rm", name], f"volume {name}")
+    for image_id, tag in removable_images:
+        if not _image_tags_owned(image_id, namespace):
+            raise RuntimeError(
+                f"Refusing to remove image {tag}; its tags are not all in this namespace. "
+                "Removal already started. The node root was kept."
+            )
+        _docker_remove(["docker", "image", "rm", image_id], f"namespace image {tag}")
+    if external_storage is not None:
+        storage_fate = _remove_node_tree(external_storage)
+        if storage_fate == "removed":
+            console.ok(f"Removed matter storage {external_storage}")
+        else:
+            console.note(
+                f"Matter storage contents were removed. The empty directory {external_storage} "
+                "remains because this account cannot remove it from its parent."
+            )
+    root_fate = _remove_node_tree(root)
+    if root_fate == "removed":
+        root_sentence = "The node root was removed."
+    else:
+        root_sentence = (
+            f"The node root contents were removed. The empty directory {root} remains "
+            "because this account cannot remove it from its parent."
+        )
+    console.ok(
+        "Uninstall finished. Listed containers, networks, and removable volumes were removed. "
+        "Confirmed namespace images were removed. " + root_sentence
+    )
+    if kept_images:
+        console.note("Images left in place because a tag is outside this namespace: " + ", ".join(kept_images))
+    console.note("The service account and group were not changed")
+
+
 def main() -> int:
     args = _parser().parse_args()
     if args.enable_account_management and (args.command not in {"install", "preflight"} or args.auth != "local"):
@@ -3882,6 +4432,8 @@ def main() -> int:
         return 0 if result.ready else 1
     console.banner(args.command, VERSION)
     try:
+        if args.command == "uninstall" and args.root is None:
+            raise RuntimeError("uninstall requires --root. Nothing was removed.")
         if args.root is None:
             default_root = _default_root()
             args.root = Path(
@@ -3895,6 +4447,9 @@ def main() -> int:
             raise RuntimeError("installation root cannot contain control characters")
         root = args.root.expanduser().resolve(strict=False)
         _select_names(args, root)
+        if args.command == "uninstall":
+            _uninstall(console, args, root)
+            return 0
         if args.command == "doctor":
             _doctor(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
@@ -3964,8 +4519,9 @@ def main() -> int:
         return 0
     except (OSError, RuntimeError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
         console.line()
-        console.warn(f"BOOT SEQUENCE HALTED :: {exc}")
-        if not args.dry_run and "root" in locals() and (root / "installation.json").is_file():
+        console.warn(f"{args.command[:1].upper()}{args.command[1:]} stopped :: {exc}")
+        if (not args.dry_run and args.command != "uninstall" and "root" in locals()
+                and (root / "installation.json").is_file()):
             try:
                 _handoff(console, root)
             except (OSError, RuntimeError, KeyError, ValueError):
