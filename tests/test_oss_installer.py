@@ -3430,6 +3430,57 @@ def test_evaluation_to_production_rechecks_the_100_gib_reserve(tmp_path, ready_h
     assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == "107374182400"
 
 
+def test_one_off_evaluation_environment_leaves_a_production_node_unchanged_on_resume_and_upgrade(
+    tmp_path, ready_host, monkeypatch,
+):
+    from tests.test_first_run_handoff import configured_node
+    from case_intelligence.local_accounts import LocalAccountRepository
+    root, _, paths = configured_node(tmp_path)
+    before = _control_bytes(root)
+    installation = json.loads(before["installation"])
+    LocalAccountRepository(paths["accounts"] / "local-accounts.json").initialize(
+        "alice.admin", "Alice Administrator", "synthetic-resume-password", actor="synthetic-operator")
+    monkeypatch.setenv("EXCULPATA_EVALUATION_RESERVE_GIB", "4")
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
+    _free_disk(monkeypatch, 400)
+    for command in (
+        ["install", "--resume", "--root", str(root), "--models", "none", "--non-interactive"],
+        ["update", "--root", str(root), "--non-interactive", "--no-backup"],
+    ):
+        args = installer._parser().parse_args(command)
+        checks = checks_by_name(installer._collect_preflight("none", args))
+        assert "storage-profile" not in checks
+        assert checks["node-storage-reserve"].state == "pass"
+        assert checks["node-storage-reserve"].required_capability.startswith(
+            "Admit sources above the configured 100 GiB"
+        )
+    monkeypatch.setattr(
+        installer, "_run", lambda *args, **kwargs: subprocess.CompletedProcess(args[1], 0, "", "")
+    )
+    monkeypatch.setattr(installer, "_provision", lambda *args, **kwargs: None)
+    monkeypatch.setattr(installer, "_doctor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        installer,
+        "_stage_release",
+        lambda *args, **kwargs: (installation["release_id"], Path(installation["release_path"])),
+    )
+    resume = installer._parser().parse_args(
+        ["install", "--resume", "--root", str(root), "--non-interactive"]
+    )
+    installer._resume_node(installer.Console(color=False, quiet=True), resume, root)
+    upgrade = installer._parser().parse_args(
+        ["update", "--root", str(root), "--non-interactive", "--no-backup"]
+    )
+    installer._update(installer.Console(color=False, quiet=True), upgrade, root)
+    assert _control_bytes(root) == before
+    application = installer._dotenv(root / "config" / "recordbench.env")
+    assert application["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] == "100"
+    assert "CASE_INTELLIGENCE_STORAGE_PROFILE" not in application
+    assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == "107374182400"
+    record = json.loads((root / "installation.json").read_text())
+    assert "storage_profile" not in record and "storage_reserve_gib" not in record
+
+
 def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, ready_host, monkeypatch):
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path, storage_profile="evaluation", evaluation_reserve_gib=10)

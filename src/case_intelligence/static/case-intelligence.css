@@ -19,6 +19,7 @@
   --font-reading: var(--x-font-sans);
   --font-mono: var(--x-font-mono);
   --topbar-height: 64px;
+  --evaluation-banner-offset: 0px;
   --rail-width: 276px;
   --support-width: 440px;
   --radius-sm: 8px;
@@ -257,11 +258,15 @@ svg {
 }
 
 .evaluation-node-banner {
-  position: fixed;
-  z-index: 200;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: sticky;
+  z-index: 900;
+  top: var(--topbar-height);
+  grid-column: 1 / -1;
+  display: flex;
+  min-height: 38px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   padding: 8px 16px;
   background: var(--x-warning-bg);
@@ -272,8 +277,27 @@ svg {
   text-align: center;
 }
 
-body:has(.evaluation-node-banner) {
-  padding-bottom: 42px;
+body.evaluation-storage {
+  --evaluation-banner-offset: 38px;
+}
+
+body.login-page.evaluation-storage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+body.login-page .evaluation-node-banner {
+  top: 0;
+  margin: 0 -18px;
+}
+
+body.login-page.evaluation-storage .login-shell {
+  align-self: center;
+  margin-top: auto;
+  margin-bottom: auto;
 }
 
 .administrator-link,
@@ -355,7 +379,7 @@ body:has(.evaluation-node-banner) {
 .matter-rail {
   position: fixed;
   z-index: 60;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   bottom: 0;
   left: 0;
   display: flex;
@@ -4584,7 +4608,7 @@ select.source-scope {
   .rail-scrim {
     position: fixed;
     z-index: 115;
-    inset: var(--topbar-height) 0 0;
+    inset: calc(var(--topbar-height) + var(--evaluation-banner-offset)) 0 0;
     display: block;
     visibility: hidden;
     background: color-mix(in srgb, var(--x-shadow) 22%, transparent);
@@ -6235,7 +6259,7 @@ body.assistant-available .next-steps { display: none; }
 .matter-assistant {
   position: fixed;
   z-index: 70;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   right: 0;
   bottom: 0;
   width: var(--assistant-width);
@@ -7563,7 +7587,7 @@ body.assistant-collapsed .assistant-collapsed-tab > span:last-child { font-size:
 .activity-scrim {
   position: fixed;
   z-index: 178;
-  inset: var(--topbar-height) 0 0;
+  inset: calc(var(--topbar-height) + var(--evaluation-banner-offset)) 0 0;
   display: none;
   background: color-mix(in srgb, var(--x-shadow) 42%, transparent);
   cursor: default;
@@ -7571,7 +7595,7 @@ body.assistant-collapsed .assistant-collapsed-tab > span:last-child { font-size:
 .activity-drawer {
   position: fixed;
   z-index: 180;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   right: 0;
   bottom: 0;
   width: min(430px, calc(100vw - 32px));

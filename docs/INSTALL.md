@@ -74,6 +74,9 @@ default reserve is 10 GiB. Override it with `--evaluation-reserve-gib` or
 `EXCULPATA_EVALUATION_RESERVE_GIB` as a whole number of GiB from 1 through 100.
 The installer still requires free space strictly above the selected reserve,
 and it scales the transcription free-disk minimum to that same byte count.
+At runtime a positive reserve under 100 GiB refuses to start unless
+`CASE_INTELLIGENCE_STORAGE_PROFILE` is `evaluation`, and an evaluation reserve
+outside 1 through 100 whole GiB also refuses to start.
 
 Measured on 2026-10-15 from the images a fresh `./install --models none`
 build tagged, the four CPU runtime images (application, gateway, PostgreSQL,

@@ -30,6 +30,36 @@ def node_storage_profile() -> str:
     return "evaluation" if value == "evaluation" else "production"
 
 
+def evaluation_storage_banner(reserve_bytes: int) -> bool:
+    """Show the evaluation warning for an evaluation node or a reduced positive reserve."""
+
+    if node_storage_profile() == "evaluation":
+        return True
+    return 0 < int(reserve_bytes) < DEFAULT_STORAGE_RESERVE_BYTES
+
+
+def _require_runtime_storage_reserve(reserve_bytes: int) -> None:
+    """Keep a reduced reserve from starting unless this process is an evaluation node.
+
+    Reserve 0 remains the established test and CI escape. Any other reserve under
+    the 100 GiB production floor, and any evaluation reserve outside 1 through 100
+    whole GiB, refuses to start.
+    """
+
+    profile = node_storage_profile()
+    whole_gib, remainder = divmod(int(reserve_bytes), GIB)
+    if profile == "evaluation":
+        if remainder or not 1 <= whole_gib <= 100:
+            raise RuntimeError(
+                "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB must be a whole number from 1 through 100 on an evaluation node"
+            )
+        return
+    if 0 < reserve_bytes < DEFAULT_STORAGE_RESERVE_BYTES:
+        raise RuntimeError(
+            "a storage reserve under 100 GiB requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"
+        )
+
+
 def format_bytes(value: int) -> str:
     """Format an integer byte boundary without overstating precision."""
 
@@ -115,7 +145,9 @@ class StoragePolicy:
             minimum=0,
             maximum=16 * 1024 * GIB,
         )
-        return cls(matter, session, media, document, reserve)
+        policy = cls(matter, session, media, document, reserve)
+        _require_runtime_storage_reserve(policy.reserve_bytes)
+        return policy
 
 
 @dataclass(frozen=True)
