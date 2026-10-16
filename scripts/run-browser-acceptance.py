@@ -217,6 +217,7 @@ def child_environment(scratch: Path) -> dict[str, str]:
         'PYTHONNOUSERSITE': '1', 'PYTHONUNBUFFERED': '1',
         'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1',
         'CASE_INTELLIGENCE_STORAGE_RESERVE_GIB': '0',
+        'CASE_INTELLIGENCE_TEST_MODE': '1',
         'NO_PROXY': 'localhost,127.0.0.1,::1',
     }
 

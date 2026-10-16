@@ -23,6 +23,60 @@ MARKER_VERSION = 1
 _OWNED_DIRECTORIES = ("matters", ".matter-purging", "ingestion-staging")
 
 
+def node_storage_profile() -> str:
+    """Return the installer storage profile. Only an explicit evaluation value is evaluation."""
+
+    value = os.getenv("CASE_INTELLIGENCE_STORAGE_PROFILE", "").strip()
+    return "evaluation" if value == "evaluation" else "production"
+
+
+EVALUATION_STORAGE_NOTICE = "Evaluation node, not for real case data"
+TEST_STORAGE_NOTICE = "Test node: no storage reserve, not for real case data"
+
+
+def test_storage_mode() -> bool:
+    """Return whether this process explicitly opted into the zero-reserve test escape."""
+
+    return os.getenv("CASE_INTELLIGENCE_TEST_MODE", "").strip() == "1"
+
+
+def storage_reserve_notice(reserve_bytes: int) -> str:
+    """Return the persistent storage warning, or an empty string for a production reserve."""
+
+    reserve = int(reserve_bytes)
+    if node_storage_profile() == "evaluation" or 0 < reserve < DEFAULT_STORAGE_RESERVE_BYTES:
+        return EVALUATION_STORAGE_NOTICE
+    if reserve == 0 and test_storage_mode():
+        return TEST_STORAGE_NOTICE
+    return ""
+
+
+def _require_runtime_storage_reserve(reserve_bytes: int) -> None:
+    """Keep a reduced reserve from starting unless this process names why.
+
+    An evaluation node accepts a whole number of GiB from 1 through 100. Reserve 0
+    starts only with CASE_INTELLIGENCE_TEST_MODE=1. Any other reserve under the
+    100 GiB production floor refuses to start.
+    """
+
+    profile = node_storage_profile()
+    whole_gib, remainder = divmod(int(reserve_bytes), GIB)
+    if profile == "evaluation":
+        if remainder or not 1 <= whole_gib <= 100:
+            raise RuntimeError(
+                "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB must be a whole number from 1 through 100 on an evaluation node"
+            )
+        return
+    if reserve_bytes == 0:
+        if not test_storage_mode():
+            raise RuntimeError("a zero storage reserve requires CASE_INTELLIGENCE_TEST_MODE=1")
+        return
+    if reserve_bytes < DEFAULT_STORAGE_RESERVE_BYTES:
+        raise RuntimeError(
+            "a storage reserve under 100 GiB requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"
+        )
+
+
 def format_bytes(value: int) -> str:
     """Format an integer byte boundary without overstating precision."""
 
@@ -108,7 +162,9 @@ class StoragePolicy:
             minimum=0,
             maximum=16 * 1024 * GIB,
         )
-        return cls(matter, session, media, document, reserve)
+        policy = cls(matter, session, media, document, reserve)
+        _require_runtime_storage_reserve(policy.reserve_bytes)
+        return policy
 
 
 @dataclass(frozen=True)

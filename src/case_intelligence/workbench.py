@@ -110,7 +110,7 @@ from .media_evidence import (
     transcript_processing_notices,
     transcript_units,
 )
-from .managed_storage import ManagedMatterStorage, StoragePolicy, format_bytes
+from .managed_storage import ManagedMatterStorage, StoragePolicy, format_bytes, storage_reserve_notice
 from .malware_scan import MalwareScanner, scanner_from_environment, scanner_status
 from .loose_file_preflight import evaluate_loose_file_preflight
 from .intake_receipts import IntakeReceipts, IntakeUploadResumeMismatch
@@ -6423,6 +6423,7 @@ def create_workbench_app(
         generated_review_notice=GENERATED_REVIEW_NOTICE,
         product_name=PRODUCT_NAME,
         product_tagline=PRODUCT_TAGLINE,
+        storage_reserve_notice=storage_reserve_notice(bench.storage_policy.reserve_bytes),
         citation_href=_workspace_citation_href,
         entity_context_href=_entity_context_href,
         source_browse_href=_source_browse_href,

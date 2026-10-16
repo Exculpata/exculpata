@@ -615,6 +615,7 @@ def test_standalone_workspace_layout_clears_deployment_settings_before_app(works
     def check_app(*args, **kwargs):
         assert all('synthetic-must-not-be-used' != value for value in os.environ.values())
         assert os.environ['CASE_INTELLIGENCE_STORAGE_RESERVE_GIB'] == '0'
+        assert os.environ['CASE_INTELLIGENCE_TEST_MODE'] == '1'
         raise AppBoundary
 
     monkeypatch.setattr(workspace_layout_script, 'create_workbench_app', check_app)

@@ -139,7 +139,8 @@ def isolate_environment() -> None:
         if key.startswith(("CASE_INTELLIGENCE_", "RECORDBENCH_", "PG")):
             del os.environ[key]
     os.environ.update(CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY="1",
-        CASE_INTELLIGENCE_STORAGE_RESERVE_GIB="0")
+        CASE_INTELLIGENCE_STORAGE_RESERVE_GIB="0",
+        CASE_INTELLIGENCE_TEST_MODE="1")
 
     def deny_network(event, args):
         if event in {"socket.connect", "socket.getaddrinfo"}:

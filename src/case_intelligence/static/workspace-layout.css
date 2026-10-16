@@ -49,7 +49,10 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    max-height: max(0px, calc(var(--review-pane-height, calc(100dvh - var(--topbar-height))) - var(--workspace-top) - var(--review-composer-height, 160px) - var(--review-composer-offset, 0px) - 24px));
+    /* Measured pane height is the shell clientHeight, which already excludes
+       the banner. --workspace-top is the pane padding, not the banner. The
+       fallback matches the shell so an unmeasured pane does not add it back. */
+    max-height: max(0px, calc(var(--review-pane-height, calc(100dvh - var(--topbar-height) - var(--evaluation-banner-offset))) - var(--workspace-top) - var(--review-composer-height, 160px) - var(--review-composer-offset, 0px) - 24px));
   }
 
   .conversation-history > :not(nav) { flex-shrink: 0; }
@@ -330,7 +333,7 @@ main { scroll-margin-top: calc(var(--topbar-height) + 12px); }
 .source-note-panel textarea { width: 100%; min-height: 120px; padding: 10px; resize: vertical; color: var(--ink); background: var(--canvas); border: 1px solid var(--line-strong); border-radius: 6px; }
 .source-note-panel label { font-size: 13px; }
 .source-note-provenance { overflow-wrap: anywhere; }
-.review-enhanced .source-note-panel { position: fixed; z-index: 72; right: 0; top: var(--topbar-height); bottom: 0; width: var(--assistant-width); overflow: auto; }
+.review-enhanced .source-note-panel { position: fixed; z-index: 72; right: 0; top: calc(var(--topbar-height) + var(--evaluation-banner-offset)); bottom: 0; width: var(--assistant-width); overflow: auto; }
 body.review-notes-open .app-frame { padding-right: var(--assistant-width); }
 body.review-notes-open .matter-assistant { visibility: hidden; }
 .source-note-panel[hidden] { display: none; }

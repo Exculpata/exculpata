@@ -268,7 +268,7 @@ as supported.
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
-| **CPU evaluation** — intake, OCR, word search, source review, and exports | 8 cores | 16 GB | None | 150 GB |
+| **CPU evaluation** — intake, OCR, word search, source review, and exports | 8 cores | 16 GB | None | 150 GB production, or 13 GB with `--storage-profile evaluation` |
 | **Local document review** — evaluation features plus semantic retrieval, reranking, and local answers | 12 cores | 32 GB | 1 GPU with 16 GB VRAM | 200 GB |
 | **Every-source checks and media** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM | 300 GB |
 
@@ -304,10 +304,17 @@ their cited sources.
 
 To try the product or work on its UI, follow the short
 [Ubuntu 24.04 CPU node path](docs/INSTALL.md#cpu-node-quick-start-ubuntu-2404):
-dedicated service account and Docker → `./install` with `--models none` →
-`doctor` → [first-admin sign-in and a synthetic practice matter](docs/FIRST_RUN.md#cpu-practice-matter).
-It keeps HTTPS on loopback and uses local accounts. Other distributions are
-unproven; the guide lists the portable host and container capabilities.
+dedicated service account and Docker → `./install` with `--models none` and
+`--storage-profile evaluation` → `doctor` →
+[first-admin sign-in and a synthetic practice matter](docs/FIRST_RUN.md#cpu-practice-matter).
+Evaluation is for synthetic or sample data. The workbench shows
+"Evaluation node, not for real case data". Measured on 2026-10-15, the four
+CPU runtime images from that install total 2,223,313,193 bytes (2.071 GiB).
+With the default 10 GiB evaluation reserve, the advisory target is 13 GiB
+free before matter data. The production profile stays at the 150 GB target
+and the 100 GiB reserve. The path keeps HTTPS on loopback and uses local
+accounts. Other distributions are unproven; the guide lists the portable
+host and container capabilities.
 
 ### Contribute code
 

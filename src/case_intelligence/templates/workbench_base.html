@@ -22,7 +22,7 @@
   {% if briefing_enabled %}<link rel="stylesheet" href="{{ asset_url('briefing.css') }}"><script src="{{ asset_url('briefing.js') }}" defer></script>{% endif %}
   {% block extra_head %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}{% if active_matter %} matter-page{% endif %}{% if show_assistant_dock %} assistant-available{% endif %}" data-csrf-token="{{ csrf_token }}" data-assistant-default="{{ 'collapsed' if source_sequence is defined else assistant_default|default('open') }}">
+<body class="{% block body_class %}{% endblock %}{% if active_matter %} matter-page{% endif %}{% if show_assistant_dock %} assistant-available{% endif %}{% if storage_reserve_notice %} evaluation-storage{% endif %}" data-csrf-token="{{ csrf_token }}" data-assistant-default="{{ 'collapsed' if source_sequence is defined else assistant_default|default('open') }}">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
     <div class="brand-zone">
@@ -119,6 +119,7 @@
   </header>
 
   <div class="app-frame{% if closure_notices %} has-closure-notices{% endif %}">
+    {% if storage_reserve_notice %}<p class="evaluation-node-banner" role="status">{{ storage_reserve_notice }}</p>{% endif %}
     <aside class="matter-rail" id="matter-rail" data-matter-rail>
       <div class="rail-content">
         <div class="rail-heading"><p class="rail-label">Matters</p><span>{{ matter_navigation|length }}</span></div>

@@ -148,7 +148,9 @@ jobs:
         env:
           # Hosted runners are intentionally smaller than supported review nodes.
           # Production keeps the 100 GiB default from recordbench.env.example.
+          # Reserve 0 starts only with the explicit test switch.
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: "0"
+          CASE_INTELLIGENCE_TEST_MODE: "1"
           # A bounded pool overlaps SQLite/filesystem waits on the same hosted
           # runner; xdist's documented auto-worker override retains -n auto.
           PYTEST_XDIST_AUTO_NUM_WORKERS: "6"

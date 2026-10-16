@@ -79,15 +79,16 @@ def test_usage_projection_tolerates_an_atomic_file_rename(tmp_path, monkeypatch)
 
 
 def test_storage_policy_environment_is_strict_and_relational(monkeypatch):
+    monkeypatch.delenv("CASE_INTELLIGENCE_STORAGE_PROFILE", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_MATTER_QUOTA_GIB", "250")
     monkeypatch.setenv("CASE_INTELLIGENCE_UPLOAD_COLLECTION_GIB", "100")
     monkeypatch.setenv("CASE_INTELLIGENCE_MEDIA_FILE_GIB", "80")
     monkeypatch.setenv("CASE_INTELLIGENCE_DOCUMENT_FILE_MIB", "768")
-    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "50")
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "100")
     policy = StoragePolicy.from_environment()
     assert policy.matter_quota_bytes == 250 * 1024**3
     assert policy.document_file_bytes == 768 * 1024**2
-    assert policy.reserve_bytes == 50 * 1024**3
+    assert policy.reserve_bytes == 100 * 1024**3
 
     monkeypatch.setenv("CASE_INTELLIGENCE_UPLOAD_COLLECTION_GIB", "251")
     with pytest.raises(ValueError, match="matter quota"):
@@ -95,6 +96,33 @@ def test_storage_policy_environment_is_strict_and_relational(monkeypatch):
     monkeypatch.setenv("CASE_INTELLIGENCE_UPLOAD_COLLECTION_GIB", "not-a-number")
     with pytest.raises(RuntimeError, match="whole positive"):
         StoragePolicy.from_environment()
+
+
+def test_runtime_reserve_requires_evaluation_below_100_gib_and_bounds_that_profile(monkeypatch):
+    monkeypatch.delenv("CASE_INTELLIGENCE_STORAGE_PROFILE", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_TEST_MODE", raising=False)
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    with pytest.raises(RuntimeError, match="CASE_INTELLIGENCE_TEST_MODE=1"):
+        StoragePolicy.from_environment()
+    monkeypatch.setenv("CASE_INTELLIGENCE_TEST_MODE", "1")
+    assert StoragePolicy.from_environment().reserve_bytes == 0
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "10")
+    with pytest.raises(RuntimeError, match="requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"):
+        StoragePolicy.from_environment()
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "99")
+    with pytest.raises(RuntimeError, match="requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"):
+        StoragePolicy.from_environment()
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
+    for value in ("0", "101"):
+        monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", value)
+        with pytest.raises(RuntimeError, match="1 through 100"):
+            StoragePolicy.from_environment()
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "50")
+    assert StoragePolicy.from_environment().reserve_bytes == 50 * 1024**3
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "1")
+    assert StoragePolicy.from_environment().reserve_bytes == 1024**3
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "100")
+    assert StoragePolicy.from_environment().reserve_bytes == 100 * 1024**3
 
 
 def test_resumable_finalize_retains_retry_link_without_duplicate_source_bytes(tmp_path):

@@ -16,11 +16,16 @@ ROOT = Path(__file__).parents[1]
 PASSWORD = "synthetic-handoff-password"
 
 
-def configured_node(tmp_path, *, storage_root=None, names="recordbench"):
+def configured_node(tmp_path, *, storage_root=None, names="recordbench", storage_profile=None, evaluation_reserve_gib=None):
     root = tmp_path / "Synthetic Node"
     console = installer.Console(color=False)
+    extra = []
+    if storage_profile is not None:
+        extra.extend(["--storage-profile", storage_profile])
+    if evaluation_reserve_gib is not None:
+        extra.extend(["--evaluation-reserve-gib", str(evaluation_reserve_gib)])
     args = installer._parser().parse_args(["install", "--names", names, "--auth", "local", "--enable-account-management",
-        "--models", "none", "--non-interactive", "--prepare-only", "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator"])
+        "--models", "none", "--non-interactive", "--prepare-only", "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator", *extra])
     installer._collect_identity_choices(args)
     paths = installer._prepare_directories(console, root, storage_root=storage_root, resume=False, dry_run=False)
     cert, key = paths["tls"] / "synthetic.crt", paths["tls"] / "synthetic.key"

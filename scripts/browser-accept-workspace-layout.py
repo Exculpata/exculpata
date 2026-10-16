@@ -267,8 +267,15 @@ def main(argv=None):
                 }
                 nav = find("[data-conversation-list]")
                 previous_pane, bounds = scroll(pane), rect(nav)
-                wheel(bounds["right"] - 8, (bounds["top"] + bounds["bottom"]) / 2, 700)
-                wait.until(lambda _: scroll(nav) > 0)
+                # Wheel the list content. The right edge is the scrollbar gutter, and a
+                # wheel there can leave the list mid-scroll so End never becomes its key.
+                wheel((bounds["left"] + bounds["right"]) / 2, (bounds["top"] + bounds["bottom"]) / 2, 700)
+                seen = []
+                def list_wheel_settled(_):
+                    seen.append(scroll(nav))
+                    return len(seen) >= 2 and seen[-1] > 0 and seen[-1] == seen[-2]
+                wait.until(list_wheel_settled)
+                js("arguments[0].focus({preventScroll:true})", nav)
                 nav.send_keys(Keys.END)
                 wait.until(lambda _: js("return arguments[0].scrollTop + arguments[0].clientHeight >= arguments[0].scrollHeight - 2", nav))
                 assert abs(scroll(pane) - previous_pane) <= 1
@@ -288,6 +295,14 @@ def main(argv=None):
             conversation_layouts["760"] = {"history_position": "static", "list_max_height": "250px", "history_bottom_after_scroll": rect(history)["bottom"]}
             screenshot("review-support-closed-760-stacked")
             checks.append("Without support, 761/820/900px history stays beside clickable active content and scrolls independently; at760px capped static history scrolls away above the conversation")
+            def storage_banner():
+                banner = find(".evaluation-node-banner")
+                offset = js("return getComputedStyle(document.body).getPropertyValue('--evaluation-banner-offset').trim()")
+                assert banner.is_displayed()
+                assert banner.text == "Test node: no storage reserve, not for real case data"
+                assert offset == "38px", offset
+                return banner, offset
+
             for width in (761, 820, 900):
                 viewport(width, 900)
                 go(paths["review"] + f"&support={support}")
@@ -296,13 +311,29 @@ def main(argv=None):
                 wheel(width - 30, 180, 1900)
                 wait.until(lambda _: scroll(pane) > 1000)
                 history, composer, drawer = find(".conversation-history"), find(".composer-wrap"), find(".support-pane")
+                banner, offset = storage_banner()
+                shell = find(".workspace-shell")
+                assert rect(shell)["top"] >= rect(banner)["bottom"] - 1
+                assert rect(shell)["bottom"] <= js("return innerHeight") + 1, (width, rect(shell), offset)
                 assert rect(history)["top"] >= rect(find(".topbar"))["bottom"]
                 assert rect(history)["bottom"] <= rect(composer)["top"] - 5, (width, rect(history), rect(composer))
-                assert rect(composer)["bottom"] <= rect(drawer)["top"] + 1
+                composer_box, drawer_box = rect(composer), rect(drawer)
+                assert composer_box["bottom"] <= drawer_box["top"] + 1, (width, composer_box, drawer_box, offset)
+                measurements[f"support_drawer_{width}"] = {
+                    "banner_offset": offset,
+                    "composer_bottom": composer_box["bottom"],
+                    "drawer_top": drawer_box["top"],
+                    "shell_bottom": rect(shell)["bottom"],
+                }
                 nav = find("[data-conversation-list]")
                 bounds, previous_pane = rect(nav), scroll(pane)
-                wheel(bounds["right"] - 8, (bounds["top"] + bounds["bottom"]) / 2, 700)
-                wait.until(lambda _: scroll(nav) > 0)
+                wheel((bounds["left"] + bounds["right"]) / 2, (bounds["top"] + bounds["bottom"]) / 2, 700)
+                seen = []
+                def open_list_settled(_):
+                    seen.append(scroll(nav))
+                    return len(seen) >= 2 and seen[-1] > 0 and seen[-1] == seen[-2]
+                wait.until(open_list_settled)
+                js("arguments[0].focus({preventScroll:true})", nav)
                 nav.send_keys(Keys.END)
                 wait.until(lambda _: js("return arguments[0].scrollTop + arguments[0].clientHeight >= arguments[0].scrollHeight - 2", nav))
                 assert abs(scroll(pane) - previous_pane) <= 1
@@ -310,8 +341,18 @@ def main(argv=None):
                 screenshot(f"review-support-open-{width}")
             viewport(820, 650)
             # Resize the open page without navigation: the drawer offset changes
-            # independently of the composer's intrinsic dimensions.
+            # independently of the composer's intrinsic dimensions. The storage
+            # banner stays on, so this width still has to clear the drawer.
             wait.until(lambda _: rect(find(".conversation-history"))["bottom"] <= rect(find(".composer-wrap"))["top"] - 5)
+            _, offset = storage_banner()
+            composer_box, drawer_box = rect(find(".composer-wrap")), rect(find(".support-pane"))
+            assert composer_box["bottom"] <= drawer_box["top"] + 1, (composer_box, drawer_box, offset)
+            assert rect(find(".workspace-shell"))["bottom"] <= js("return innerHeight") + 1
+            measurements["support_drawer_820x650"] = {
+                "banner_offset": offset,
+                "composer_bottom": composer_box["bottom"],
+                "drawer_top": drawer_box["top"],
+            }
             history, nav = find(".conversation-history"), find("[data-conversation-list]")
             previous_pane = scroll(find(".workspace-main"))
             bounds = rect(history)
@@ -323,7 +364,7 @@ def main(argv=None):
             assert js("const r=arguments[0].getBoundingClientRect(); return arguments[0].contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))", last)
             assert abs(scroll(find(".workspace-main")) - previous_pane) <= 1
             screenshot("review-support-open-short-tablet")
-            checks.append("Tablet support drawer and composer leave conversation navigation independently scrollable at 761, 820 and 900 pixels")
+            checks.append("Tablet support drawer and composer leave conversation navigation independently scrollable at 761, 820 and 900 pixels with the test-node banner on")
             checks.append("Resizing open support to 820x650 keeps the whole history scrollable and its final link clickable above the composer")
             def no_page_overflow():
                 assert js("return document.documentElement.scrollWidth <= innerWidth + 1"), "Page scrolls sideways"

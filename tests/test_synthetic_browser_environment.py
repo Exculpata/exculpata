@@ -15,6 +15,7 @@ def test_synthetic_browser_environment_removes_host_backends(monkeypatch):
     monkeypatch.setenv("RECORDBENCH_QA_BROWSER_CHANNEL", "chrome")
     namespace["isolate_environment"]()
     assert {k: v for k, v in os.environ.items() if k.startswith(("CASE_INTELLIGENCE_", "CASE_REVIEW_"))} == {
-        "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0"}
+        "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0",
+        "CASE_INTELLIGENCE_TEST_MODE": "1"}
     assert "RECORDBENCH_LOCAL_ACCOUNT_ROOT" not in os.environ
     assert os.environ["RECORDBENCH_QA_BROWSER_CHANNEL"] == "chrome"

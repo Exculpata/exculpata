@@ -35,7 +35,7 @@ Python 3.12, ffmpeg, ImageMagick, poppler, English and Spanish Tesseract, the Do
 
 Refresh the virtualenv with `python3.12 scripts/bootstrap-dev.py`. `make bootstrap` also runs `make hooks`, which fails while Cursor owns `core.hooksPath`. Before pushing, run `.venv/bin/python scripts/publication-check.py`. That scan uses `git rev-list --all`, so a full clone can report historical findings that are only reachable from other remote branches.
 
-`make test-postgres` and `make check-fast` need `CASE_REVIEW_POSTGRES_TEST_DSN` set to the synthetic value in `.github/workflows/quality-gates.yml`. On this smaller VM also export `CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0`, as that workflow does. `docker compose config` validates the Compose files without a running Docker engine.
+`make test-postgres` and `make check-fast` need `CASE_REVIEW_POSTGRES_TEST_DSN` set to the synthetic value in `.github/workflows/quality-gates.yml`. On this smaller VM also export `CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0` and `CASE_INTELLIGENCE_TEST_MODE=1`, as that workflow does. `docker compose config` validates the Compose files without a running Docker engine.
 
 For a loopback UI check:
 

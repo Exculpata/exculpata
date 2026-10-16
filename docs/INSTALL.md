@@ -60,11 +60,42 @@ the explicit option, local sign-in retains the operator-managed account layout.
 This path is for trying the product or doing UI work on a **fresh dedicated
 Ubuntu 24.04 x86-64 host**. Use synthetic material. Start with an ordinary
 sudo-capable operator account, internet access, 8 CPU cores, 16 GiB RAM and
-at least 150 GiB free SSD space. Keep more than the unchanged 100 GiB reserve
-free after image builds; 220 GiB of disk was allocated for the acceptance VM.
-Docker image storage needs headroom too. These are evaluation targets, not a
-supported-release or collection-capacity claim. Other Linux distributions are
-unproven; the portable capabilities are listed below.
+at least 150 GiB free SSD space when you keep the default production storage
+profile. That profile blocks unless more than 100 GiB is free. Keep more than
+that reserve free after image builds; 220 GiB of disk was allocated for the
+acceptance VM. Docker image storage needs headroom too. These are evaluation
+targets, not a supported-release or collection-capacity claim. Other Linux
+distributions are unproven; the portable capabilities are listed below.
+
+To try the same CPU path on a smaller disk, add `--storage-profile evaluation`
+to the preflight and install commands. Evaluation is for synthetic or sample
+data. The workbench shows **Evaluation node, not for real case data**. The
+default reserve is 10 GiB. Override it with `--evaluation-reserve-gib` or
+`EXCULPATA_EVALUATION_RESERVE_GIB` as a whole number of GiB from 1 through 100.
+The installer still requires free space strictly above the selected reserve,
+and it scales the transcription free-disk minimum to that same byte count.
+At runtime a positive reserve under 100 GiB refuses to start unless
+`CASE_INTELLIGENCE_STORAGE_PROFILE` is `evaluation`, and an evaluation reserve
+outside 1 through 100 whole GiB also refuses to start. A zero reserve starts
+only with `CASE_INTELLIGENCE_TEST_MODE=1`, and the workbench then shows
+**Test node: no storage reserve, not for real case data**.
+
+Measured on 2026-10-15 from the images a fresh `./install --models none`
+build tagged, the four CPU runtime images (application, gateway, PostgreSQL,
+and ClamAV) have a combined Docker image-list virtual size of 2,223,313,193
+bytes (2.071 GiB). Those images do not share layers with each other. The
+advisory capacity target adds that footprint, rounded up to the next GiB, to
+the 10 GiB reserve: **13 GiB free before matter data**. The same measurement
+left 1,353,810,012 bytes of image-build cache and 160,779,531 bytes of
+PostgreSQL and ClamAV volumes. The cache can be reclaimed. Malware signature
+updates and matter data need space beyond those figures. Keep free space
+strictly above the reserve after the build. Review, transcription, and combined profiles add the pinned model bytes
+from `config/models.json`. Their retrieval, vLLM, and transcription image
+sizes are not in the 2026-10-15 CPU measurement, so those advisory targets
+cover the CPU images plus the pinned models only. Switching an existing
+production node to evaluation requires `--allow-evaluation-downgrade`.
+Switching evaluation back to production rechecks the 100 GiB reserve before
+it writes.
 
 1. Install the host packages and start Docker:
 
@@ -105,9 +136,11 @@ unproven; the portable capabilities are listed below.
 
    ```console
    ./install preflight --root /srv/exculpata --models none --auth local \
-     --enable-account-management --server-name localhost --bind-address 127.0.0.1
+     --enable-account-management --server-name localhost --bind-address 127.0.0.1 \
+     --storage-profile evaluation
    COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models none --auth local \
-     --enable-account-management --server-name localhost --bind-address 127.0.0.1
+     --enable-account-management --server-name localhost --bind-address 127.0.0.1 \
+     --storage-profile evaluation
    ```
 
    Resolve any `BLOCK` before installing. Accept the proposed administrator
@@ -171,7 +204,11 @@ validated minimums:
 | Local document review | 12 cores | 32 GB | 1 GPU with 16 GB VRAM | 200 GB |
 | Every-source checks and media | 16 cores | 64 GB | 1 GPU with 24 GB VRAM | 300 GB |
 
-These targets do not guarantee collection size, speed, or concurrency. More
+These targets assume the default production storage profile and its 100 GiB
+reserve. `--storage-profile evaluation` uses a 10 GiB reserve by default. For
+CPU `--models none`, the measured image footprint makes the advisory target
+13 GiB free before matter data, as described in the CPU quick start. These
+targets do not guarantee collection size, speed, or concurrency. More
 sources, longer recordings, and more simultaneous users need more capacity.
 Consult [release readiness](RELEASE_READINESS.md) before treating a
 configuration as supported. Free-space targets cover application images,
@@ -292,9 +329,12 @@ For missing prerequisites:
   and validate the same non-secret settings accepted by the runtime.
   These checks do not verify credentials or a working identity-provider exchange.
 - Leave more than the installer's 100 GiB storage safety reserve free on the
-  selected filesystems. The larger profile targets above are advisory alpha
-  planning figures, not validated minimums. Container-engine image storage may
-  be on a different filesystem and needs separate capacity planning.
+  selected filesystems when the storage profile is production, the default.
+  `--storage-profile evaluation` lowers that blocking reserve to 10 GiB unless
+  `--evaluation-reserve-gib` selects another whole number from 1 through 100.
+  The larger profile targets above are advisory alpha planning figures, not
+  validated minimums. Container-engine image storage may be on a different
+  filesystem and needs separate capacity planning.
 - Retain loopback HTTPS for evaluation, or supply a readable certificate/key
   pair trusted by the organization for explicit LAN access. Preflight checks the
   choice, IP bind-address syntax, server-name syntax and file access. The bind
@@ -452,11 +492,13 @@ Proxy/mirror configuration and persistent updater access remain operator work
 outside the portable tree; keep scanner/model networks private. Confirm a real
 signature refresh and healthy scanner before retrying acceptance.
 
-**Build erodes reserve:** 112 GiB free can pass the 100 GiB check but fall below
-reserve during image construction, especially with `vfs`. The CPU 150 GiB target
-is advisory, not a guarantee. Budget peak image layers/build cache in addition to
-models, data and the protected reserve on both the engine and node/matter
-filesystems. Check `df -h /srv/exculpata` and the selected matter path after
+**Build erodes reserve:** 112 GiB free can pass the 100 GiB production check but fall below
+reserve during image construction, especially with `vfs`. The same thing happens
+on an evaluation node: free space must stay strictly above the selected reserve
+after the build. The CPU 150 GiB production target, and the 13 GiB evaluation
+target for `--models none`, are advisory, not a guarantee. Budget peak image
+layers/build cache in addition to models, data and the protected reserve on both
+the engine and node/matter filesystems. Check `df -h /srv/exculpata` and the selected matter path after
 build; inspect `docker system df` and the engine host's Docker Root Dir filesystem.
 A remote engine's disk is not measured by local `df`. Runtime
 `storage.reserve_satisfied=false` means restore capacity above the configured

@@ -19,6 +19,7 @@
   --font-reading: var(--x-font-sans);
   --font-mono: var(--x-font-mono);
   --topbar-height: 64px;
+  --evaluation-banner-offset: 0px;
   --rail-width: 276px;
   --support-width: 440px;
   --radius-sm: 8px;
@@ -115,7 +116,7 @@ svg {
 
 .topbar {
   position: fixed;
-  z-index: 80;
+  z-index: 960;
   inset: 0 0 auto;
   display: grid;
   grid-template-columns: var(--rail-width) minmax(0, 1fr) auto;
@@ -256,6 +257,48 @@ svg {
   letter-spacing: 0.03em;
 }
 
+.evaluation-node-banner {
+  position: sticky;
+  z-index: 900;
+  top: var(--topbar-height);
+  grid-column: 1 / -1;
+  height: 38px;
+  margin: 0;
+  padding: 0 16px;
+  overflow: hidden;
+  background: var(--x-warning-bg);
+  color: var(--warning);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 38px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.evaluation-storage {
+  --evaluation-banner-offset: 38px;
+}
+
+body.login-page.evaluation-storage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding-top: 0;
+}
+
+body.login-page .evaluation-node-banner {
+  top: 0;
+  margin: 0 -18px;
+}
+
+body.login-page.evaluation-storage .login-shell {
+  align-self: center;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
 .administrator-link,
 .administrator-view-label {
   padding: 4px 8px;
@@ -335,7 +378,7 @@ svg {
 .matter-rail {
   position: fixed;
   z-index: 60;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   bottom: 0;
   left: 0;
   display: flex;
@@ -1782,7 +1825,9 @@ html[data-theme="dark"] .setup-page .setup-heading h1 {
 .workspace-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100vh - var(--topbar-height));
+  /* The banner is a grid row above this shell. Subtract it or the sticky
+     composer ends that far below the viewport-fixed support drawer. */
+  height: calc(100vh - var(--topbar-height) - var(--evaluation-banner-offset));
   overflow: hidden;
 }
 
@@ -3108,7 +3153,7 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
-  height: calc(100vh - var(--topbar-height));
+  height: calc(100vh - var(--topbar-height) - var(--evaluation-banner-offset));
   overflow: hidden;
   border-left: 1px solid var(--line);
   background: var(--canvas);
@@ -4564,7 +4609,7 @@ select.source-scope {
   .rail-scrim {
     position: fixed;
     z-index: 115;
-    inset: var(--topbar-height) 0 0;
+    inset: calc(var(--topbar-height) + var(--evaluation-banner-offset)) 0 0;
     display: block;
     visibility: hidden;
     background: color-mix(in srgb, var(--x-shadow) 22%, transparent);
@@ -4625,7 +4670,7 @@ select.source-scope {
     bottom: 0;
     left: 0;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(43vh, 430px);
+    height: max(0px, calc(min(43vh, 430px) - var(--evaluation-banner-offset)));
     border: 1px solid var(--line-strong);
     border-radius: 18px 18px 0 0;
     background: var(--canvas);
@@ -4634,7 +4679,7 @@ select.source-scope {
   }
 
   body.support-is-open .composer-wrap {
-    bottom: min(43vh, 430px);
+    bottom: max(0px, calc(min(43vh, 430px) - var(--evaluation-banner-offset)));
   }
 
   .drawer-handle {
@@ -5101,11 +5146,11 @@ select.source-scope {
   }
 
   .support-pane {
-    height: clamp(260px, 32vh, 320px);
+    height: max(0px, calc(clamp(260px, 32vh, 320px) - var(--evaluation-banner-offset)));
   }
 
   body.support-is-open .composer-wrap {
-    bottom: clamp(260px, 32vh, 320px);
+    bottom: max(0px, calc(clamp(260px, 32vh, 320px) - var(--evaluation-banner-offset)));
   }
 
   .support-header h2 {
@@ -5909,11 +5954,11 @@ select.source-scope {
 
 @media (max-width: 900px) {
   body.support-media-is-open .support-pane {
-    height: min(78vh, 720px);
+    height: max(0px, calc(min(78vh, 720px) - var(--evaluation-banner-offset)));
   }
 
   body.support-media-is-open .composer-wrap {
-    bottom: min(78vh, 720px);
+    bottom: max(0px, calc(min(78vh, 720px) - var(--evaluation-banner-offset)));
   }
 }
 
@@ -6215,7 +6260,7 @@ body.assistant-available .next-steps { display: none; }
 .matter-assistant {
   position: fixed;
   z-index: 70;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   right: 0;
   bottom: 0;
   width: var(--assistant-width);
@@ -7543,7 +7588,7 @@ body.assistant-collapsed .assistant-collapsed-tab > span:last-child { font-size:
 .activity-scrim {
   position: fixed;
   z-index: 178;
-  inset: var(--topbar-height) 0 0;
+  inset: calc(var(--topbar-height) + var(--evaluation-banner-offset)) 0 0;
   display: none;
   background: color-mix(in srgb, var(--x-shadow) 42%, transparent);
   cursor: default;
@@ -7551,7 +7596,7 @@ body.assistant-collapsed .assistant-collapsed-tab > span:last-child { font-size:
 .activity-drawer {
   position: fixed;
   z-index: 180;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--evaluation-banner-offset));
   right: 0;
   bottom: 0;
   width: min(430px, calc(100vw - 32px));
