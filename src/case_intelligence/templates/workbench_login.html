@@ -13,8 +13,8 @@
   <link rel="stylesheet" href="{{ asset_url('theme-tokens.css') }}">
   <link rel="stylesheet" href="{{ asset_url('case-intelligence.css') }}">
 </head>
-<body class="login-page{% if evaluation_storage_node %} evaluation-storage{% endif %}">
-  {% if evaluation_storage_node %}<p class="evaluation-node-banner" role="status">Evaluation node, not for real case data</p>{% endif %}
+<body class="login-page{% if storage_reserve_notice %} evaluation-storage{% endif %}">
+  {% if storage_reserve_notice %}<p class="evaluation-node-banner" role="status">{{ storage_reserve_notice }}</p>{% endif %}
   <main class="login-shell">
     <section class="login-card" aria-labelledby="login-heading">
       <img class="login-brand-mark" src="{{ asset_url('favicon.svg') }}" alt="">

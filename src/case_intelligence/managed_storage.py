@@ -30,20 +30,33 @@ def node_storage_profile() -> str:
     return "evaluation" if value == "evaluation" else "production"
 
 
-def evaluation_storage_banner(reserve_bytes: int) -> bool:
-    """Show the evaluation warning for an evaluation node or a reduced positive reserve."""
+EVALUATION_STORAGE_NOTICE = "Evaluation node, not for real case data"
+TEST_STORAGE_NOTICE = "Test node: no storage reserve, not for real case data"
 
-    if node_storage_profile() == "evaluation":
-        return True
-    return 0 < int(reserve_bytes) < DEFAULT_STORAGE_RESERVE_BYTES
+
+def test_storage_mode() -> bool:
+    """Return whether this process explicitly opted into the zero-reserve test escape."""
+
+    return os.getenv("CASE_INTELLIGENCE_TEST_MODE", "").strip() == "1"
+
+
+def storage_reserve_notice(reserve_bytes: int) -> str:
+    """Return the persistent storage warning, or an empty string for a production reserve."""
+
+    reserve = int(reserve_bytes)
+    if node_storage_profile() == "evaluation" or 0 < reserve < DEFAULT_STORAGE_RESERVE_BYTES:
+        return EVALUATION_STORAGE_NOTICE
+    if reserve == 0 and test_storage_mode():
+        return TEST_STORAGE_NOTICE
+    return ""
 
 
 def _require_runtime_storage_reserve(reserve_bytes: int) -> None:
-    """Keep a reduced reserve from starting unless this process is an evaluation node.
+    """Keep a reduced reserve from starting unless this process names why.
 
-    Reserve 0 remains the established test and CI escape. Any other reserve under
-    the 100 GiB production floor, and any evaluation reserve outside 1 through 100
-    whole GiB, refuses to start.
+    An evaluation node accepts a whole number of GiB from 1 through 100. Reserve 0
+    starts only with CASE_INTELLIGENCE_TEST_MODE=1. Any other reserve under the
+    100 GiB production floor refuses to start.
     """
 
     profile = node_storage_profile()
@@ -54,7 +67,11 @@ def _require_runtime_storage_reserve(reserve_bytes: int) -> None:
                 "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB must be a whole number from 1 through 100 on an evaluation node"
             )
         return
-    if 0 < reserve_bytes < DEFAULT_STORAGE_RESERVE_BYTES:
+    if reserve_bytes == 0:
+        if not test_storage_mode():
+            raise RuntimeError("a zero storage reserve requires CASE_INTELLIGENCE_TEST_MODE=1")
+        return
+    if reserve_bytes < DEFAULT_STORAGE_RESERVE_BYTES:
         raise RuntimeError(
             "a storage reserve under 100 GiB requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"
         )

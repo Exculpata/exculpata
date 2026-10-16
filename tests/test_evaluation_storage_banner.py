@@ -98,12 +98,32 @@ def test_reserve_under_100_gib_without_evaluation_profile_refuses_to_start(tmp_p
 
 def test_zero_reserve_escape_starts_without_the_evaluation_banner(tmp_path, monkeypatch):
     monkeypatch.delenv("CASE_INTELLIGENCE_STORAGE_PROFILE", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_TEST_MODE", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    with pytest.raises(RuntimeError, match="CASE_INTELLIGENCE_TEST_MODE=1"):
+        _app(tmp_path)
+    monkeypatch.setenv("CASE_INTELLIGENCE_TEST_MODE", "1")
     app = _app(tmp_path)
     with TestClient(app, base_url="https://recordbench.example.test") as client:
         login = client.get("/auth/login")
         assert login.status_code == 200
         assert BANNER not in login.text
+        assert login.text.count("Test node: no storage reserve, not for real case data") == 1
+        assert 'class="evaluation-node-banner"' in login.text
+        signed_in = client.post(
+            "/auth/local",
+            data={
+                "username": "alice.reviewer",
+                "password": "synthetic-local-password",
+                "login_challenge": _challenge(login.text),
+                "next": "/matters/new",
+            },
+            follow_redirects=False,
+        )
+        assert signed_in.status_code == 303
+        matter = client.get("/matters/new")
+        assert matter.status_code == 200
+        assert matter.text.count("Test node: no storage reserve, not for real case data") == 1
 
 
 def test_explicit_reduced_reserve_shows_the_banner_without_a_profile(tmp_path, monkeypatch):

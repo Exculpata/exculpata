@@ -116,7 +116,7 @@ svg {
 
 .topbar {
   position: fixed;
-  z-index: 80;
+  z-index: 960;
   inset: 0 0 auto;
   display: grid;
   grid-template-columns: var(--rail-width) minmax(0, 1fr) auto;
@@ -262,19 +262,18 @@ svg {
   z-index: 900;
   top: var(--topbar-height);
   grid-column: 1 / -1;
-  display: flex;
-  min-height: 38px;
-  box-sizing: border-box;
-  align-items: center;
-  justify-content: center;
+  height: 38px;
   margin: 0;
-  padding: 8px 16px;
+  padding: 0 16px;
+  overflow: hidden;
   background: var(--x-warning-bg);
   color: var(--warning);
   font-size: 14px;
   font-weight: 750;
-  line-height: 1.3;
+  line-height: 38px;
   text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 body.evaluation-storage {

@@ -101,6 +101,7 @@ def main():
         preupgrade_manifest = stopped_copy(runtime, preupgrade)
         sys.path.insert(0, str(ROOT / 'src'))
         os.environ['CASE_INTELLIGENCE_STORAGE_RESERVE_GIB'] = '0'
+        os.environ['CASE_INTELLIGENCE_TEST_MODE'] = '1'
         from fastapi.testclient import TestClient
         from case_intelligence.workbench import create_workbench_app
         from case_intelligence.workspace_store import WorkspaceProblem

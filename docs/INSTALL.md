@@ -76,7 +76,9 @@ The installer still requires free space strictly above the selected reserve,
 and it scales the transcription free-disk minimum to that same byte count.
 At runtime a positive reserve under 100 GiB refuses to start unless
 `CASE_INTELLIGENCE_STORAGE_PROFILE` is `evaluation`, and an evaluation reserve
-outside 1 through 100 whole GiB also refuses to start.
+outside 1 through 100 whole GiB also refuses to start. A zero reserve starts
+only with `CASE_INTELLIGENCE_TEST_MODE=1`, and the workbench then shows
+**Test node: no storage reserve, not for real case data**.
 
 Measured on 2026-10-15 from the images a fresh `./install --models none`
 build tagged, the four CPU runtime images (application, gateway, PostgreSQL,

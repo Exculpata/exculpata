@@ -100,7 +100,11 @@ def test_storage_policy_environment_is_strict_and_relational(monkeypatch):
 
 def test_runtime_reserve_requires_evaluation_below_100_gib_and_bounds_that_profile(monkeypatch):
     monkeypatch.delenv("CASE_INTELLIGENCE_STORAGE_PROFILE", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_TEST_MODE", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    with pytest.raises(RuntimeError, match="CASE_INTELLIGENCE_TEST_MODE=1"):
+        StoragePolicy.from_environment()
+    monkeypatch.setenv("CASE_INTELLIGENCE_TEST_MODE", "1")
     assert StoragePolicy.from_environment().reserve_bytes == 0
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "10")
     with pytest.raises(RuntimeError, match="requires CASE_INTELLIGENCE_STORAGE_PROFILE=evaluation"):

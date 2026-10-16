@@ -55,6 +55,7 @@ def main() -> int:
         repository = LocalAccountRepository(root / "accounts/local-accounts.json")
         repository.initialize("alice.admin", "Alice Administrator", "synthetic-browser-password", actor="synthetic-operator")
         os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
+        os.environ["CASE_INTELLIGENCE_TEST_MODE"] = "1"
         app = create_workbench_app(root / "runtime", generator=UnavailableGenerator(), auth_mode="local",
             secure_cookie=True, local_settings=LocalAccountSettings(repository.path, management_root=repository.path.parent),
             learned_retrieval=False, answer_workers=1)

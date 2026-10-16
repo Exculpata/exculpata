@@ -10,3 +10,4 @@ def isolate_environment() -> None:
                 name.startswith("RECORDBENCH_") and not name.startswith("RECORDBENCH_QA_")):
             del os.environ[name]
     os.environ["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] = "0"
+    os.environ["CASE_INTELLIGENCE_TEST_MODE"] = "1"
