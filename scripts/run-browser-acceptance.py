@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run pinned, synthetic browser journeys and retain bounded diagnostics only."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -358,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
     summary = {'synthetic_only': True, 'passed': False}
     try:
-        with tempfile.TemporaryDirectory(prefix='recordbench-browser-ci-') as temporary:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-browser-ci-") as temporary:
             scratch = Path(temporary).resolve()
             name = host_platform()
             chrome, driver, version = install_browser(scratch, name, args.archives)

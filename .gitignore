@@ -35,6 +35,7 @@ htmlcov/
 *.keystore
 config/source-locations.json
 config/recordbench.env
+config/exculpata.env
 config/transcription.env
 secrets/
 *.keytab
@@ -52,6 +53,7 @@ installation.json
 artifacts/
 .tmp/
 recordbench-node/
+exculpata-node/
 runtime/
 state/
 backups/

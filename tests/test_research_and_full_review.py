@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+)
 import hashlib
 import io
 import json
@@ -1246,7 +1250,7 @@ def test_review_workspace_runs_exports_and_final_bundle_include_new_work_product
         assert not ({"rationale", "citations", "source_name"} & review_status.json().keys())
         csv_url = re.search(r'href="([^"]+/export\?format=csv)"', review_result.text).group(1)
         csv_export = client.get(csv_url)
-        assert csv_export.status_code == 200 and "RecordBench label" in csv_export.text
+        assert csv_export.status_code == 200 and f"{LEGACY_PRODUCT} label" in csv_export.text
 
         second = client.post(
             "/matters",

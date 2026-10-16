@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Synthetic slice-16 upgrade, clean restore and baseline rollback; no installed node."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import json
 import os
@@ -15,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--baseline-ref', default='e11ab25ccbbde7e864914b3bb7ba56603792b8b4')
 args = parser.parse_args()
 baseline = subprocess.check_output(['git', 'rev-parse', args.baseline_ref + '^{commit}'], cwd=ROOT, text=True).strip()
-with tempfile.TemporaryDirectory(prefix='recordbench-entity-restore-') as temporary:
+with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-entity-restore-") as temporary:
     root = Path(temporary).resolve()
     bundle = root / 'baseline.tar'
     with bundle.open('wb') as output:

@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from case_intelligence.contracts import SourceLocator, SourceReference, TicketAction
 from case_intelligence.projections import project_reference, project_retrieval, project_source, project_ticket
 from case_intelligence.tickets import TicketStore
@@ -28,4 +32,4 @@ def test_ticket_projection_contains_only_opaque_uri_and_expiry() -> None:
     launch = tickets.mint(MatterAccess({ACTOR_ALPHA: {ALPHA}}), ACTOR_ALPHA, ALPHA, TicketAction.OPEN_ORIGINAL, "version-alpha", 1)
     projected = project_ticket(launch).model_dump()
     assert set(projected) == {"uri", "expires_at"}
-    assert projected["uri"].startswith("recordbench://ticket/")
+    assert projected["uri"].startswith(f"{LEGACY_STEM}://ticket/")

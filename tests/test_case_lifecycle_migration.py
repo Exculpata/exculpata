@@ -1,5 +1,9 @@
 """A generated legacy database, atomic upgrade, and an isolated restore drill."""
 
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
 from tests.case_lifecycle_helpers import lifecycle_session
 from datetime import datetime, timezone
 from importlib import resources
@@ -87,7 +91,7 @@ def test_upgrade_keeps_legacy_dates_states_and_requires_explicit_selection(tmp_p
 
 def test_atomic_failure_restores_old_schema_and_rename_setting(tmp_path):
     connection = legacy_database(tmp_path / 'generated.sqlite')
-    connection.create_function('recordbench_case_lifecycle_writer', 0, lambda: 1)
+    connection.create_function(f"{LEGACY_STEM}_case_lifecycle_writer", 0, lambda: 1)
     old_lifecycle = snapshot(connection, 'workbench_matter_lifecycle')
     old_schema = connection.execute("SELECT sql FROM sqlite_master WHERE name='workbench_matter_lifecycle'").fetchone()[0]
 
@@ -119,11 +123,11 @@ def test_synthetic_backup_clean_restore_and_old_writer_refusal(tmp_path):
     backup.close()
     upgraded = WorkspaceStore(path, clock=lambda: NOW)
     # An already-open old writer sees the committed SQL guard too.
-    with pytest.raises(sqlite3.OperationalError, match='recordbench_case_lifecycle_writer'):
+    with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
     old.rollback()
     # The original 0007 startup backfill must also fail, even on ignored rows.
-    with pytest.raises(sqlite3.OperationalError, match='recordbench_case_lifecycle_writer'):
+    with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
         old.executescript(resources.files('case_intelligence').joinpath(
             'migrations/sqlite/0007_matter_lifecycle.sql').read_text())
     old.close()
@@ -152,8 +156,8 @@ def test_v40_backup_upgrade_fences_old_writer_and_never_invents_authority(tmp_pa
     """Exercise the actual 0040 schema, including its version-one writer fences."""
     path = tmp_path / 'generated-v40.sqlite'
     old = legacy_database(path)
-    old.create_function('recordbench_case_lifecycle_writer', 0, lambda: 1)
-    old.create_function('recordbench_case_content_cleanup', 1, lambda matter_id: 0)
+    old.create_function(f"{LEGACY_STEM}_case_lifecycle_writer", 0, lambda: 1)
+    old.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda matter_id: 0)
     old.executescript(resources.files('case_intelligence').joinpath(
         'migrations/sqlite/0040_case_lifecycle.sql').read_text())
     before = snapshot(old, 'workbench_matter_lifecycle')
@@ -210,8 +214,8 @@ def test_v41_backup_clean_restore_and_atomic_oidc_upgrade(tmp_path):
         source.backup(destination)
     failing = sqlite3.connect(path)
     failing.row_factory = sqlite3.Row
-    failing.create_function('recordbench_case_lifecycle_writer', 0, lambda: 2)
-    failing.create_function('recordbench_case_content_cleanup', 1, lambda _: 0)
+    failing.create_function(f"{LEGACY_STEM}_case_lifecycle_writer", 0, lambda: 2)
+    failing.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _: 0)
     failing.set_authorizer(lambda action, name, *_: sqlite3.SQLITE_DENY
         if action == sqlite3.SQLITE_CREATE_TABLE and name == 'workbench_case_oidc_authorization'
         else sqlite3.SQLITE_OK)

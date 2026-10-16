@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from datetime import timedelta
 
 import pytest
@@ -34,7 +38,7 @@ def test_ticket_is_opaque_digest_only_and_exact_ttl() -> None:
     launch = tickets.mint(
         access, ACTOR_ALPHA, ALPHA, TicketAction.OPEN_ORIGINAL, "version-alpha", 3
     )
-    assert launch.uri.startswith("recordbench://ticket/")
+    assert launch.uri.startswith(f"{LEGACY_STEM}://ticket/")
     assert (
         "matter" not in launch.uri
         and "open" not in launch.uri
@@ -182,10 +186,10 @@ def test_collision_decision_never_overwrites() -> None:
 def test_ticket_uri_parser_rejects_noncanonical_and_empty_tokens() -> None:
     tickets, _, access, _ = store()
     for uri in (
-        "recordbench://ticket/",
-        "recordbench://ticket/token%20value",
-        "recordbench://ticket/token:part",
-        "recordbench://ticket/token/part",
+        f"{LEGACY_STEM}://ticket/",
+        f"{LEGACY_STEM}://ticket/token%20value",
+        f"{LEGACY_STEM}://ticket/token:part",
+        f"{LEGACY_STEM}://ticket/token/part",
     ):
         with pytest.raises(TicketError):
             tickets.redeem(

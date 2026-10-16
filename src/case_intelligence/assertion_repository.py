@@ -1,4 +1,8 @@
 """Evidence assertion persistence composed with the authorized entity unit of work."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from contextlib import contextmanager
 import json
 import uuid
@@ -212,7 +216,7 @@ class AssertionRepository:
         for row in self.connection.execute('SELECT a.assertion_id FROM workbench_assertion a WHERE ' + where +
                 " ORDER BY (a.sort_date=''),a.sort_date,a.created_at,a.assertion_id", parameters):
             assertion_id = row[0]
-            yield dict(format='recordbench-assertion-v1', record=self.get(matter_id, assertion_id),
+            yield dict(format=f"{LEGACY_STEM}-assertion-v1", record=self.get(matter_id, assertion_id),
                 roles=self.roles(matter_id, assertion_id), accounts=self.accounts(matter_id, assertion_id),
                 history=self.history(matter_id, assertion_id),
                 source_support='Retained original-source support; availability is not revalidated in this bundle.')

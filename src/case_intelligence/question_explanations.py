@@ -1,5 +1,10 @@
 """Inspect synthetic candidate decisions without giving recorded output model authority."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
@@ -68,7 +73,7 @@ def replay_receipt(path, cases_path, *, explain=False):
         raise ValueError('Recorded output must be at most 1 MB.')
     recorded = json.loads(encoded)
     if (not isinstance(recorded, dict) or set(recorded) != {'format', 'synthetic_only', 'cases'}
-            or recorded['format'] != 'recordbench-question-replay-v1' or recorded['synthetic_only'] is not True
+            or recorded['format'] != f"{LEGACY_STEM}-question-replay-v1" or recorded['synthetic_only'] is not True
             or not isinstance(recorded['cases'], list) or not 1 <= len(recorded['cases']) <= 100):
         raise ValueError('Not a synthetic question replay.')
     data, fingerprint = load_cases(cases_path)
@@ -95,7 +100,7 @@ def replay_receipt(path, cases_path, *, explain=False):
             return QuestionDraftReceipt(replies[purpose, topic, passages].popleft(), profile={}, calls=[])
 
     result = evaluate(GroundedGenerationService(RecordedClient()), {'cases': selected}, explain=explain)
-    result.update(format='recordbench-question-replay-result-v1', synthetic_only=True, replay_only=True,
+    result.update(format=f"{LEGACY_STEM}-question-replay-result-v1", synthetic_only=True, replay_only=True,
                   model_gate='not_run', model_judge_executed=False, execution=execution_metadata(),
                   source_set_fingerprint=fingerprint, recorded_output_sha256=hashlib.sha256(encoded).hexdigest(),
                   limitation='Offline deterministic replay only. No model inference or model judge ran; '

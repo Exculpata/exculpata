@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Exercise saved Report downloads and deliberate synthetic closure in Chrome."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 from datetime import datetime, timedelta
@@ -67,7 +72,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-reports-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-reports-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / "downloads"
         downloads.mkdir()

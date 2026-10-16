@@ -1,5 +1,10 @@
-"""Operator-facing projection of RecordBench's configured local AI portfolio."""
+"""Operator-facing projection of Exculpata's configured local AI portfolio."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 from typing import Mapping
 from urllib.parse import urlparse
@@ -13,8 +18,8 @@ from .review_bench_v2 import DEFAULT_EMBEDDING_MODEL, DEFAULT_RERANKER_MODEL
 
 
 PORTFOLIO_SCHEMA_VERSION = 1
-PORTFOLIO_ID = "recordbench-local-ai-v1"
-APPROVED_GENERATOR_MODEL = "recordbench-qwen35-4b"
+PORTFOLIO_ID = f"{LEGACY_STEM}-local-ai-v1"
+APPROVED_GENERATOR_MODEL = f"{LEGACY_STEM}-qwen35-4b"
 APPROVED_GENERATOR_REPOSITORY = "Qwen/Qwen3.5-4B"
 APPROVED_GENERATOR_REVISION = "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a"
 APPROVED_GENERATOR_PROFILES = {
@@ -23,7 +28,7 @@ APPROVED_GENERATOR_PROFILES = {
         "repository": APPROVED_GENERATOR_REPOSITORY,
         "revision": APPROVED_GENERATOR_REVISION,
     },
-    "recordbench-qwen35-9b": {
+    f"{LEGACY_STEM}-qwen35-9b": {
         "profile": "quality",
         "repository": "Qwen/Qwen3.5-9B",
         "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",

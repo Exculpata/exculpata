@@ -1,5 +1,10 @@
 """Bounded, persistent localhost upload storage for the supervised pilot."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
@@ -284,7 +289,7 @@ def _tesseract_reading(
     """Return text and word confidences from one bounded Tesseract run."""
     import sys
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-ocr-") as directory:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-ocr-") as directory:
         base = Path(directory) / "page"
         recognized = subprocess.run(
             [
@@ -304,7 +309,7 @@ def _tesseract_reading(
         # inherited cap, not just the nominal maximum, and never trust output
         # from a process that did not report successful limit installation.
         receipt_line, separator, _ = recognized.stdout[:32].partition(b"\n")
-        receipt = re.fullmatch(rb"recordbench-ocr-limit:([0-9]{1,8})", receipt_line) if separator else None
+        receipt = re.fullmatch((rf"{LEGACY_STEM}-ocr-limit:([0-9]{{1,8}})").encode(), receipt_line) if separator else None
         if receipt is None or (effective_limit := int(receipt[1])) > MAX_OCR_TSV_BYTES:
             raise _OcrStop("failed")
         text_path, table_path = base.with_suffix(".txt"), base.with_suffix(".tsv")

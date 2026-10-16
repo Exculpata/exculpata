@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 import re
 
@@ -68,7 +72,7 @@ def test_production_node_has_no_evaluation_banner(tmp_path, monkeypatch):
     monkeypatch.delenv("CASE_INTELLIGENCE_STORAGE_PROFILE", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "100")
     app = _app(tmp_path)
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get("/auth/login")
         assert login.status_code == 200
         assert BANNER not in login.text
@@ -104,7 +108,7 @@ def test_zero_reserve_escape_starts_without_the_evaluation_banner(tmp_path, monk
         _app(tmp_path)
     monkeypatch.setenv("CASE_INTELLIGENCE_TEST_MODE", "1")
     app = _app(tmp_path)
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get("/auth/login")
         assert login.status_code == 200
         assert BANNER not in login.text
@@ -138,7 +142,7 @@ def test_explicit_reduced_reserve_shows_the_banner_without_a_profile(tmp_path, m
         storage_policy=StoragePolicy(reserve_bytes=10 * GIB),
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get("/auth/login")
         assert login.status_code == 200
         assert login.text.count(BANNER) == 1
@@ -149,7 +153,7 @@ def test_evaluation_banner_persists_across_login_and_matter_pages(tmp_path, monk
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "10")
     app = _app(tmp_path)
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get("/auth/login")
         assert login.status_code == 200
         assert login.text.count(BANNER) == 1

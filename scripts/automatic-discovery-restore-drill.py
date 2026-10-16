@@ -6,6 +6,10 @@ ledger. A synthetic store created by that revision is backed up, upgraded by
 this checkout, discovered automatically, backed up again and restored cleanly.
 The untouched pre-upgrade backup is then opened by the baseline reader.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 import os
 from contextlib import nullcontext
@@ -46,7 +50,7 @@ def copy(source, target):
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix='recordbench-automatic-discovery-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-automatic-discovery-") as temporary:
         root = Path(temporary)
         archive_path = root / 'baseline.tar'
         with archive_path.open('wb') as output:

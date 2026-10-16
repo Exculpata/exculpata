@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Exercise Activity's real modal lifecycle with delayed synthetic responses."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import asyncio
@@ -68,7 +73,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     report = {'passed': False, 'synthetic_only': True, 'checks': []}
     checks = report['checks']
-    with tempfile.TemporaryDirectory(prefix='recordbench-activity-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-activity-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / 'runtime', auth_mode='test',
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))

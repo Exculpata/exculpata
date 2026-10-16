@@ -49,9 +49,15 @@ from installer_terminal import (
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
 from case_intelligence.compat_env import env as _env, required_env as _required_env
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
-STORAGE_MARKERS = (".recordbench-managed-storage.json", ".exculpata-managed-storage.json")
+STORAGE_MARKERS = (f".{LEGACY_STEM}-managed-storage.json", ".exculpata-managed-storage.json")
 
 
 class NamingError(RuntimeError):
@@ -60,7 +66,7 @@ class NamingError(RuntimeError):
 
 def _legacy_account() -> bool:
     try:
-        pwd.getpwnam("recordbench")
+        pwd.getpwnam(f"{LEGACY_STEM}")
         return True
     except KeyError:
         return False
@@ -79,10 +85,10 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         if not isinstance(record, dict):
             raise NamingError("Saved installation metadata is invalid.")
         if "names" in record:
-            if record["names"] not in ("recordbench", "exculpata"):
+            if record["names"] not in (f"{LEGACY_STEM}", "exculpata"):
                 raise NamingError("Saved installation naming generation is invalid.")
             generations.add(record["names"])
-    for names in ("recordbench", "exculpata"):
+    for names in (f"{LEGACY_STEM}", "exculpata"):
         path = root / "config" / f"{names}.env"
         if path.exists() or path.is_symlink():
             generations.add(names)
@@ -91,8 +97,8 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         raise NamingError("Saved Compose configuration cannot be a symbolic link.")
     if (root / "compose.env").is_file():
         saved = _dotenv(root / "compose.env")
-        storage = Path(_env("RECORDBENCH_STORAGE_ROOT", str(storage), environ=saved))
-    for names in ("recordbench", "exculpata"):
+        storage = Path(_env(f"{LEGACY_ENV_PREFIX}STORAGE_ROOT", str(storage), environ=saved))
+    for names in (f"{LEGACY_STEM}", "exculpata"):
         for directory in (root, storage):
             marker = directory / f".{names}-managed-storage.json"
             if marker.exists() or marker.is_symlink():
@@ -103,7 +109,7 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         return generations.pop()
     # P2 may already use EXCULPATA environment keys; those are not a migration.
     if (root / "installation.json").exists() or (root / "compose.env").exists() or _legacy_account():
-        return "recordbench"
+        return f"{LEGACY_STEM}"
     return None
 
 
@@ -121,8 +127,8 @@ def _select_names(args: argparse.Namespace, root: Path) -> str:
 
 
 def _default_root() -> Path:
-    legacy = Path("/srv/recordbench")
-    return legacy if _detected_names(legacy) == "recordbench" else Path("/srv/exculpata")
+    legacy = Path(f"/srv/{LEGACY_STEM}")
+    return legacy if _detected_names(legacy) == f"{LEGACY_STEM}" else Path("/srv/exculpata")
 
 
 def _app_env(root: Path, *, names: str | None = None) -> Path:
@@ -144,11 +150,11 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     saved = _dotenv(Path(command[command.index("--env-file") + 1]))
     result = dict(os.environ if environment is None else environment)
     for key in tuple(result):
-        if key.startswith(("RECORDBENCH_", "EXCULPATA_")) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
+        if key.startswith((f"{LEGACY_ENV_PREFIX}", "EXCULPATA_")) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
             result.pop(key)
     # Compose defaults changed for new checkouts; older nodes may omit these.
     for suffix in ("COMPOSE_PROJECT", "IMAGE_NAMESPACE"):
-        result[f"EXCULPATA_{suffix}"] = _env(f"RECORDBENCH_{suffix}", "recordbench", environ=saved)
+        result[f"EXCULPATA_{suffix}"] = _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)
     return result
 
 
@@ -205,14 +211,14 @@ class GpuPlan:
 
     def environment(self) -> dict[str, str]:
         return {
-            "RECORDBENCH_GPU_LAYOUT": self.layout,
-            "RECORDBENCH_GENERATOR_GPU": ",".join(self.generator_gpus),
-            "RECORDBENCH_GENERATOR_TENSOR_PARALLEL": str(
+            f"{LEGACY_ENV_PREFIX}GPU_LAYOUT": self.layout,
+            f"{LEGACY_ENV_PREFIX}GENERATOR_GPU": ",".join(self.generator_gpus),
+            f"{LEGACY_ENV_PREFIX}GENERATOR_TENSOR_PARALLEL": str(
                 max(len(self.generator_gpus), 1)
             ),
-            "RECORDBENCH_TRANSCRIPTION_GPU": self.transcription_gpu,
-            "RECORDBENCH_RETRIEVAL_DEVICE": self.retrieval_device,
-            "RECORDBENCH_RETRIEVAL_GPU": self.retrieval_gpu,
+            f"{LEGACY_ENV_PREFIX}TRANSCRIPTION_GPU": self.transcription_gpu,
+            f"{LEGACY_ENV_PREFIX}RETRIEVAL_DEVICE": self.retrieval_device,
+            f"{LEGACY_ENV_PREFIX}RETRIEVAL_GPU": self.retrieval_gpu,
         }
 
 
@@ -230,14 +236,14 @@ class ReviewModelPlan:
 
     def environment(self) -> dict[str, str]:
         return {
-            "RECORDBENCH_GENERATOR_MODEL_ID": self.model_id,
-            "RECORDBENCH_GENERATOR_REVISION": self.revision,
-            "RECORDBENCH_GENERATOR_SERVED_NAME": self.served_name,
-            "RECORDBENCH_GENERATOR_DTYPE": self.dtype,
-            "RECORDBENCH_GENERATOR_GPU_UTILIZATION": (
+            f"{LEGACY_ENV_PREFIX}GENERATOR_MODEL_ID": self.model_id,
+            f"{LEGACY_ENV_PREFIX}GENERATOR_REVISION": self.revision,
+            f"{LEGACY_ENV_PREFIX}GENERATOR_SERVED_NAME": self.served_name,
+            f"{LEGACY_ENV_PREFIX}GENERATOR_DTYPE": self.dtype,
+            f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION": (
                 f"{self.gpu_utilization:.2f}"
             ),
-            "RECORDBENCH_GENERATOR_SEQUENCES": str(self.max_sequences),
+            f"{LEGACY_ENV_PREFIX}GENERATOR_SEQUENCES": str(self.max_sequences),
         }
 
 
@@ -252,7 +258,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("install", "preflight", "doctor", "update", "backup", "restore", "uninstall"),
         default="install",
     )
-    parser.add_argument("--names", choices=("recordbench", "exculpata"), help="naming generation for a fresh node; existing nodes cannot be renamed")
+    parser.add_argument("--names", choices=(f"{LEGACY_STEM}", "exculpata"), help="naming generation for a fresh node; existing nodes cannot be renamed")
     parser.add_argument("--root", type=Path, help="exact installation state directory")
     parser.add_argument("--storage-root", type=Path, help="dedicated local or mounted-NAS matter storage directory")
     parser.add_argument(
@@ -380,23 +386,23 @@ IDENTITY_FIELDS = {
     ),
     "oidc": (
         ("oidc_issuer", "OIDC issuer URL", "https://identity.example.test/realms/case-team"),
-        ("oidc_client_id", "OIDC client ID", "recordbench"),
-        ("oidc_allowed_groups", "OIDC allowed groups", "RecordBench_Users"),
-        ("oidc_admin_groups", "OIDC administrator groups", "RecordBench_Administrators"),
+        ("oidc_client_id", "OIDC client ID", f"{LEGACY_STEM}"),
+        ("oidc_allowed_groups", "OIDC allowed groups", f"{LEGACY_PRODUCT}_Users"),
+        ("oidc_admin_groups", "OIDC administrator groups", f"{LEGACY_PRODUCT}_Administrators"),
     ),
     "kerberos": (
         ("kerberos_realm", "Kerberos realm", "EXAMPLE.TEST"),
-        ("kerberos_allowed_groups", "Allowed Kerberos group", "recordbench_users@example.test"),
-        ("kerberos_admin_groups", "Administrator Kerberos group", "recordbench_administrators@example.test"),
+        ("kerberos_allowed_groups", "Allowed Kerberos group", f"{LEGACY_STEM}_users@example.test"),
+        ("kerberos_admin_groups", "Administrator Kerberos group", f"{LEGACY_STEM}_administrators@example.test"),
     ),
 }
 
 
 def _identity_fields(args: argparse.Namespace):
     fields = IDENTITY_FIELDS[args.auth]
-    if args.auth == "local" and args.names == "recordbench":
-        return tuple((name, prompt, "recordbench.admin" if name == "admin_username"
-                      else "RecordBench Administrator") for name, prompt, _ in fields)
+    if args.auth == "local" and args.names == f"{LEGACY_STEM}":
+        return tuple((name, prompt, f"{LEGACY_STEM}.admin" if name == "admin_username"
+                      else f"{LEGACY_PRODUCT} Administrator") for name, prompt, _ in fields)
     return fields
 
 
@@ -838,15 +844,15 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     if aliases:
         expanded = {}
         for key, value in values.items():
-            if key.startswith(("EXCULPATA_", "RECORDBENCH_")):
-                suffix = key.removeprefix("RECORDBENCH_").removeprefix("EXCULPATA_")
-                new, old = f"EXCULPATA_{suffix}", f"RECORDBENCH_{suffix}"
+            if key.startswith(("EXCULPATA_", f"{LEGACY_ENV_PREFIX}")):
+                suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix("EXCULPATA_")
+                new, old = f"EXCULPATA_{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
                 preferred = values.get(new)
                 expanded[new] = values.get(old, "") if preferred in (None, "") else preferred
             else:
                 expanded[key] = value
         values = expanded
-    product = "Exculpata" if heading.startswith("Exculpata") else "RecordBench"
+    product = "Exculpata" if heading.startswith("Exculpata") else f"{LEGACY_PRODUCT}"
     lines = [f"# {heading}", f"# Generated by the {product} node provisioner."]
     for key, value in values.items():
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None:
@@ -992,17 +998,17 @@ def tempfile_name(parent: Path, prefix: str) -> str:
 def _installed_release(root: Path) -> tuple[dict[str, object], Path]:
     path = root / "installation.json"
     if path.is_symlink() or not path.is_file():
-        raise RuntimeError("RecordBench node is not installed")
+        raise RuntimeError(f"{LEGACY_PRODUCT} node is not installed")
     try:
         installation = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        raise RuntimeError("RecordBench installation record is invalid") from exc
+        raise RuntimeError(f"{LEGACY_PRODUCT} installation record is invalid") from exc
     if (not isinstance(installation, dict)
             or installation.get("auth") not in ("local", "oidc", "kerberos")
             or installation.get("models", "none") not in ("none", "review", "transcription", "all")
             or not isinstance(installation.get("profiles", []), list)
             or not all(isinstance(profile, str) for profile in installation.get("profiles", []))):
-        raise RuntimeError("RecordBench installation record is invalid")
+        raise RuntimeError(f"{LEGACY_PRODUCT} installation record is invalid")
     configured = installation.get("release_path")
     release = Path(configured) if isinstance(configured, str) else PROJECT
     if not release.is_absolute() or not (release / "compose.yaml").is_file():
@@ -1273,12 +1279,12 @@ def _review_model_plan(
         "portable": (
             "Qwen/Qwen3.5-4B",
             "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
-            "recordbench-qwen35-4b",
+            f"{LEGACY_STEM}-qwen35-4b",
         ),
         "quality": (
             "Qwen/Qwen3.5-9B",
             "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
-            "recordbench-qwen35-9b",
+            f"{LEGACY_STEM}-qwen35-9b",
         ),
     }
     model_id, revision, served_name = definitions[profile]
@@ -1592,7 +1598,7 @@ def _identity_options_valid(args: argparse.Namespace) -> bool:
     if not client or len(client) > 512 or any(ord(character) < 32 for character in client):
         return False
     for value, origin_only in ((values["oidc_issuer"], False),
-                               (f"https://{(args.server_name or 'recordbench.example.test').strip().casefold()}:{args.https_port}", True)):
+                               (f"https://{(args.server_name or f"{LEGACY_STEM}.example.test").strip().casefold()}:{args.https_port}", True)):
         candidate = value.strip().rstrip("/")
         if not candidate or len(candidate) > 1024:
             return False
@@ -1622,7 +1628,7 @@ def _saved_oidc_ca_valid(root: Path, value: str) -> bool:
     path = Path(value)
     # The standard app graph mounts this canonical credential directory. Do not
     # mistake a host path or a traversal outside that mount for a runtime file.
-    if (path.parent != Path('/run/recordbench-secrets')
+    if (path.parent != Path(f"/run/{LEGACY_STEM}-secrets")
             or path.name in {'', '.', '..'} or '..' in path.parts):
         return False
     source = root / 'secrets' / path.name
@@ -1656,14 +1662,14 @@ def _saved_provider_options_valid(args: argparse.Namespace) -> bool:
         if not _identity_options_valid(options):
             return False
         if args.auth == "kerberos":
-            return (environment.get("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "").strip() == "/run/recordbench-secrets/kerberos-proxy-secret"
-                    and _env("RECORDBENCH_KERBEROS_PRINCIPAL", environ=compose) == f"HTTP/{args.server_name}@{options.kerberos_realm.strip().upper()}")
+            return (environment.get("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "").strip() == f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret"
+                    and _env(f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL", environ=compose) == f"HTTP/{args.server_name}@{options.kerberos_realm.strip().upper()}")
         origin = environment.get("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", "").strip().rstrip("/")
         origins = {f"https://{args.server_name}:{args.https_port}"}
         if args.https_port == 443:
             origins.add(f"https://{args.server_name}")
         if (origin not in origins or environment.get("CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE", "").strip()
-                != "/run/recordbench-secrets/oidc-client-secret"):
+                != f"/run/{LEGACY_STEM}-secrets/oidc-client-secret"):
             return False
         if not _saved_oidc_ca_valid(args.root, environment.get('CASE_INTELLIGENCE_OIDC_CA_FILE', '').strip()):
             return False
@@ -1686,7 +1692,7 @@ def _matter_storage_layout_valid(path: Path) -> bool:
     if len(markers) > 1:
         return False
     marker = markers[0] if markers else path / STORAGE_MARKERS[1]
-    names = "recordbench" if marker.name == STORAGE_MARKERS[0] else "exculpata"
+    names = f"{LEGACY_STEM}" if marker.name == STORAGE_MARKERS[0] else "exculpata"
     owned = tuple(path / name for name in ("matters", ".matter-purging", "ingestion-staging"))
     if not marker.exists() and not marker.is_symlink():
         return not any(entry.exists() or entry.is_symlink() for entry in owned)
@@ -1695,7 +1701,7 @@ def _matter_storage_layout_valid(path: Path) -> bool:
             return False
         payload = json.loads(marker.read_text(encoding="utf-8"))
         if (not isinstance(payload, dict) or payload.get("format_version") != 1
-                or payload.get("product") != ("RecordBench" if names == "recordbench" else "Exculpata")
+                or payload.get("product") != (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
                 or not isinstance(payload.get("storage_id"), str)
                 or not payload["storage_id"].startswith(f"{names}-storage-")):
             return False
@@ -2214,9 +2220,9 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             # Share account-admin's NFC and Unicode control policy; names are
             # reported only as valid/invalid, with no runtime dependency.
             login = (args.admin_username if args.admin_username is not None else
-                     "" if existing_resume else ("recordbench.admin" if args.names == "recordbench" else "exculpata.admin")).strip().casefold()
+                     "" if existing_resume else (f"{LEGACY_STEM}.admin" if args.names == f"{LEGACY_STEM}" else "exculpata.admin")).strip().casefold()
             display = (args.admin_display_name if args.admin_display_name is not None else
-                       "" if existing_resume else ("RecordBench Administrator" if args.names == "recordbench" else "Exculpata Administrator")).strip()
+                       "" if existing_resume else (f"{LEGACY_PRODUCT} Administrator" if args.names == f"{LEGACY_STEM}" else "Exculpata Administrator")).strip()
             try:
                 _account_format()["normalized_account"](login, display)
                 identity_ok = True
@@ -2244,11 +2250,11 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                     "Start the configured OIDC provider",
                     "Restore secrets/oidc-client-secret as an owned mode-0600 regular file. UTF-8 content must contain 16–4096 characters after trailing CR/LF removal, without embedded CR/LF or NUL.")
             else:
-                valid = _credential_source_available(args.root / "secrets/recordbench.keytab", private=True)
+                valid = _credential_source_available(args.root / f"secrets/{LEGACY_STEM}.keytab", private=True)
                 add("kerberos-keytab-input", valid,
                     "Saved keytab metadata is valid" if valid else "Saved keytab is missing or unsafe",
                     "Start the configured Kerberos gateway",
-                    "Restore secrets/recordbench.keytab as a nonempty owned mode-0600 regular file of at most 1 MiB. The proxy still validates its HTTP service principal at startup.")
+                    f"Restore secrets/{LEGACY_STEM}.keytab as a nonempty owned mode-0600 regular file of at most 1 MiB. The proxy still validates its HTTP service principal at startup.")
                 valid = _kerberos_proxy_source_valid(args.root / "secrets/kerberos-proxy-secret")
                 add("kerberos-proxy-secret", valid,
                     "Saved proxy secret is valid; contents not reported" if valid else "Saved proxy secret is missing, unsafe or invalid",
@@ -2303,7 +2309,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                     add("node-empty", empty_or_resume,
                         "Existing root can be prepared" if empty_or_resume else "Installation root already contains files",
                         "Prepare a dedicated installation root",
-                        "Choose a new empty node directory. Use --resume only when this directory belongs to the RecordBench node being resumed.")
+                        f"Choose a new empty node directory. Use --resume only when this directory belongs to the {LEGACY_PRODUCT} node being resumed.")
                 add(name, writable, "Directory access checks pass (no write attempted)" if writable else "Unsafe path, ownership, or directory access",
                     "Create private application state" if name == "node-storage" else "Store and process admitted sources",
                     "Choose a dedicated absolute directory without symlinks or control characters, owned by the service account. Use an existing service-owned creation directory without group or other write access, beneath root-owned or service-owned protected parents. The service account needs read and search access to every ancestor; do not use a home directory or shared export root.")
@@ -2312,7 +2318,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                     add("matter-storage-layout", layout_ok,
                         "Managed storage initialization metadata is compatible" if layout_ok else "Managed storage initialization names conflict or existing metadata is invalid",
                         "Initialize or reopen the managed source boundary",
-                        "Choose an empty dedicated matter storage root, or an intact initialized RecordBench storage root. Without a valid marker, matters, .matter-purging and ingestion-staging must not exist; do not delete existing data to bypass this check.")
+                        f"Choose an empty dedicated matter storage root, or an intact initialized {LEGACY_PRODUCT} storage root. Without a valid marker, matters, .matter-purging and ingestion-staging must not exist; do not delete existing data to bypass this check.")
                 free = shutil.disk_usage(ancestor).free / (1024 ** 3) if safe else None
                 reserve_capability, reserve_remedy = _reserve_messages(storage_plan)
                 add(name + "-reserve", free is not None and free > storage_plan.reserve_gib,
@@ -2329,7 +2335,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                 add(name, False, "Directory metadata unavailable", "Inspect storage before installation",
                     "Ask the storage administrator to restore directory access, then rerun preflight.")
         try:
-            _valid_host(args.server_name or "recordbench.example.test")
+            _valid_host(args.server_name or f"{LEGACY_STEM}.example.test")
             server_name_ok = True
         except RuntimeError:
             server_name_ok = False
@@ -2537,7 +2543,7 @@ def _prepare_directories(
     if root.is_symlink():
         raise RuntimeError("installation root cannot be a symbolic link")
     if root.exists() and any(root.iterdir()) and not resume:
-        raise RuntimeError("installation root is not empty; use --resume only for this RecordBench node")
+        raise RuntimeError(f"installation root is not empty; use --resume only for this {LEGACY_PRODUCT} node")
     selected_storage = storage_root.expanduser() if storage_root else None
     for selected in (root, selected_storage):
         if selected is not None and any(part.is_symlink() for part in (selected, *selected.parents)):
@@ -2726,7 +2732,7 @@ def _configure(
 ) -> tuple[str, str, str, str | None, str | None]:
     console.phase(4, "IDENTITY + FRONT DOOR", "Sealing sessions, service credentials, and HTTPS coordinates")
     names = _select_names(args, root)
-    product = "Exculpata" if names == "exculpata" else "RecordBench"
+    product = "Exculpata" if names == "exculpata" else f"{LEGACY_PRODUCT}"
     auth = args.auth
     if auth not in IDENTITY_FIELDS:
         raise RuntimeError("identity choices must be collected and checked before configuration")
@@ -2746,7 +2752,7 @@ def _configure(
     args.review_model_profile = review_model.profile
     server_name = _valid_host(
         args.server_name
-        or _ask("RecordBench hostname", "recordbench.example.test", non_interactive=args.non_interactive)
+        or _ask(f"{LEGACY_PRODUCT} hostname", f"{LEGACY_STEM}.example.test", non_interactive=args.non_interactive)
     )
     bind = args.bind_address or _ask(
         "HTTPS bind address", "127.0.0.1", non_interactive=args.non_interactive
@@ -2762,7 +2768,7 @@ def _configure(
     postgres_password = "dry-run-secret" if args.dry_run else _secret(paths["secrets"] / "postgres-password")
     if not args.dry_run:
         _secret(paths["secrets"] / "transcription-token")
-        dsn = f"host=postgres port=5432 dbname=recordbench user=recordbench password={postgres_password}\n"
+        dsn = f"host=postgres port=5432 dbname={LEGACY_STEM} user={LEGACY_STEM} password={postgres_password}\n"
         dsn_path = paths["secrets"] / "postgres-dsn"
         if not dsn_path.exists():
             _private_write(dsn_path, dsn)
@@ -2792,24 +2798,24 @@ def _configure(
             raise RuntimeError("TLS material is unavailable or unsafe")
 
     compose_values = {
-        "RECORDBENCH_COMPOSE_PROJECT": f"{names}-{hashlib_short(root)}",
-        "RECORDBENCH_IMAGE_NAMESPACE": f"{names}-{hashlib_short(root)}",
-        "RECORDBENCH_RELEASE_ID": release_id,
-        "RECORDBENCH_UID": os.getuid(),
-        "RECORDBENCH_GID": os.getgid(),
-        "RECORDBENCH_CONFIG_ROOT": paths["config"],
-        "RECORDBENCH_SECRETS_ROOT": paths["secrets"],
-        "RECORDBENCH_RUNTIME_ROOT": paths["runtime"],
-        "RECORDBENCH_STORAGE_ROOT": paths["storage"],
-        "RECORDBENCH_TRANSCRIPTION_ROOT": paths["transcription"],
-        "RECORDBENCH_STATE_ROOT": paths["state"],
-        "RECORDBENCH_MODEL_ROOT": paths["models"],
-        "RECORDBENCH_BIND_ADDRESS": bind,
-        "RECORDBENCH_HTTPS_PORT": args.https_port,
-        "RECORDBENCH_SERVER_NAME": server_name,
-        "RECORDBENCH_TLS_CERT": tls_cert,
-        "RECORDBENCH_TLS_KEY": tls_key,
-        "RECORDBENCH_GATEWAY_UPSTREAM": "app:8786",
+        f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT": f"{names}-{hashlib_short(root)}",
+        f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE": f"{names}-{hashlib_short(root)}",
+        f"{LEGACY_ENV_PREFIX}RELEASE_ID": release_id,
+        f"{LEGACY_ENV_PREFIX}UID": os.getuid(),
+        f"{LEGACY_ENV_PREFIX}GID": os.getgid(),
+        f"{LEGACY_ENV_PREFIX}CONFIG_ROOT": paths["config"],
+        f"{LEGACY_ENV_PREFIX}SECRETS_ROOT": paths["secrets"],
+        f"{LEGACY_ENV_PREFIX}RUNTIME_ROOT": paths["runtime"],
+        f"{LEGACY_ENV_PREFIX}STORAGE_ROOT": paths["storage"],
+        f"{LEGACY_ENV_PREFIX}TRANSCRIPTION_ROOT": paths["transcription"],
+        f"{LEGACY_ENV_PREFIX}STATE_ROOT": paths["state"],
+        f"{LEGACY_ENV_PREFIX}MODEL_ROOT": paths["models"],
+        f"{LEGACY_ENV_PREFIX}BIND_ADDRESS": bind,
+        f"{LEGACY_ENV_PREFIX}HTTPS_PORT": args.https_port,
+        f"{LEGACY_ENV_PREFIX}SERVER_NAME": server_name,
+        f"{LEGACY_ENV_PREFIX}TLS_CERT": tls_cert,
+        f"{LEGACY_ENV_PREFIX}TLS_KEY": tls_key,
+        f"{LEGACY_ENV_PREFIX}GATEWAY_UPSTREAM": "app:8786",
         "COMPOSE_PROFILES": ",".join(profile_values),
         **gpu_plan.environment(),
         **review_model.environment(),
@@ -2819,8 +2825,8 @@ def _configure(
         compose_values["EXCULPATA_STORAGE_NAMES"] = "exculpata"
     if (root / "compose.env").is_file():
         saved = _dotenv(root / "compose.env")
-        for key in ("RECORDBENCH_COMPOSE_PROJECT", "RECORDBENCH_IMAGE_NAMESPACE"):
-            compose_values[key] = _env(key, "recordbench", environ=saved)
+        for key in (f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT", f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE"):
+            compose_values[key] = _env(key, f"{LEGACY_STEM}", environ=saved)
     app_values: dict[str, object] = {
         "CASE_INTELLIGENCE_AUTH_MODE": auth,
         "CASE_INTELLIGENCE_SECURE_COOKIE": 1,
@@ -2857,11 +2863,11 @@ def _configure(
     admin_username = admin_display = None
     if auth == "local":
         if args.enable_account_management:
-            compose_values["RECORDBENCH_LOCAL_ACCOUNT_ROOT"] = paths["accounts"]
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = "/var/lib/recordbench-accounts/local-accounts.json"
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT"] = "/var/lib/recordbench-accounts"
+            compose_values[f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT"] = paths["accounts"]
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json"
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT"] = f"/var/lib/{LEGACY_STEM}-accounts"
         else:
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = "/run/recordbench-secrets/local-accounts.json"
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"/run/{LEGACY_STEM}-secrets/local-accounts.json"
         admin_username, admin_display = _account_format()["normalized_account"](
             args.admin_username, args.admin_display_name)
     elif auth == "oidc":
@@ -2870,7 +2876,7 @@ def _configure(
                 "CASE_INTELLIGENCE_EXTERNAL_ORIGIN": f"https://{server_name}" + (f":{args.https_port}" if args.https_port != 443 else ""),
                 "CASE_INTELLIGENCE_OIDC_ISSUER": args.oidc_issuer,
                 "CASE_INTELLIGENCE_OIDC_CLIENT_ID": args.oidc_client_id,
-                "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": "/run/recordbench-secrets/oidc-client-secret",
+                "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/oidc-client-secret",
                 "CASE_INTELLIGENCE_OIDC_ALLOWED_GROUPS": args.oidc_allowed_groups,
                 "CASE_INTELLIGENCE_OIDC_ADMIN_GROUPS": args.oidc_admin_groups,
                 "CASE_INTELLIGENCE_OIDC_SCOPES": "openid profile email",
@@ -2894,18 +2900,18 @@ def _configure(
                 )
     else:
         realm = args.kerberos_realm.strip().upper()
-        compose_values["RECORDBENCH_KERBEROS_PRINCIPAL"] = f"HTTP/{server_name}@{realm}"
+        compose_values[f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL"] = f"HTTP/{server_name}@{realm}"
         app_values.update(
             {
                 "CASE_INTELLIGENCE_KERBEROS_REALM": realm,
                 "CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS": args.kerberos_allowed_groups,
                 "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS": args.kerberos_admin_groups,
-                "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": "/run/recordbench-secrets/kerberos-proxy-secret",
+                "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret",
             }
         )
         if not args.dry_run:
             _secret(paths["secrets"] / "kerberos-proxy-secret")
-            target_keytab = paths["secrets"] / "recordbench.keytab"
+            target_keytab = paths["secrets"] / f"{LEGACY_STEM}.keytab"
             if not target_keytab.exists():
                 source_keytab = args.kerberos_keytab
                 if source_keytab is None:
@@ -2917,7 +2923,7 @@ def _configure(
 
     transcription_values = {
         "TRANSCRIPTION_V2_PIPELINE": "mock",
-        "TRANSCRIPTION_V2_WORKER_ID": "recordbench-transcription-worker-1",
+        "TRANSCRIPTION_V2_WORKER_ID": f"{LEGACY_STEM}-transcription-worker-1",
         "TRANSCRIPTION_V2_WORKER_POLL_SECONDS": 1,
         "TRANSCRIPTION_V2_LANGUAGE_CODES": (
             "auto," + ",".join(transcription_languages)
@@ -2939,7 +2945,7 @@ def _configure(
         "TRANSCRIPTION_V2_MIN_FREE_VRAM_MB": (
             review_model.transcription_min_free_vram_mib
         ),
-        "TRANSCRIPTION_V2_GPU_LOCK_PATH": "/tmp/recordbench-transcription-gpu.lock",
+        "TRANSCRIPTION_V2_GPU_LOCK_PATH": f"/tmp/{LEGACY_STEM}-transcription-gpu.lock",
         "TRANSCRIPTION_V2_RETENTION_HOURS": 24,
         "TRANSCRIPTION_V2_MAX_RETENTION_HOURS": 24,
         "TRANSCRIPTION_V2_MAX_ACTIVE_JOB_HOURS": 48,
@@ -3058,10 +3064,10 @@ def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool 
     original = path.read_bytes().decode("utf-8")
     saved = _dotenv(path)
     keys = {key}
-    aliased = key.startswith(("RECORDBENCH_", "EXCULPATA_"))
+    aliased = key.startswith((f"{LEGACY_ENV_PREFIX}", "EXCULPATA_"))
     if aliased:
-        suffix = key.removeprefix("RECORDBENCH_").removeprefix("EXCULPATA_")
-        keys = {f"EXCULPATA_{suffix}", f"RECORDBENCH_{suffix}"}
+        suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix("EXCULPATA_")
+        keys = {f"EXCULPATA_{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"}
     output = []
     for line in original.splitlines(keepends=True):
         current = line.strip().partition("=")[0]
@@ -3074,7 +3080,7 @@ def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool 
     # but only when neither alias exists, using the node's current naming style.
     if (not aliased or add_missing_aliases) and keys.isdisjoint(saved):
         if aliased:
-            prefix = "EXCULPATA_" if any(name.startswith("EXCULPATA_") for name in saved) else "RECORDBENCH_"
+            prefix = "EXCULPATA_" if any(name.startswith("EXCULPATA_") for name in saved) else f"{LEGACY_ENV_PREFIX}"
             key = prefix + suffix
         if original and not original.endswith(("\r", "\n")):
             output.append("\n")
@@ -3141,7 +3147,7 @@ def _handoff(console: Console, root: Path, *, dry_run: bool = False) -> None:
     progress = _install_progress(root)["phases"]
     env = _dotenv(root / "compose.env")
     host = _valid_host(str(installation["server_name"]))
-    port = int(_env("RECORDBENCH_HTTPS_PORT", "8443", environ=env))
+    port = int(_env(f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "8443", environ=env))
     console.line("\n  INSTALLATION HANDOFF")
     console.ok(f"Open in your browser: https://{host}:{port}/auth/login")
     console.note(f"Sign-in mode: {installation['auth']}")
@@ -3189,7 +3195,7 @@ def _node_online(console: Console, root: Path, host: str, port: int, auth: objec
 
 
 def _gateway_probe_address(environment: Mapping[str, str]) -> str:
-    address = ipaddress.ip_address(_env("RECORDBENCH_BIND_ADDRESS", "127.0.0.1", environ=environment))
+    address = ipaddress.ip_address(_env(f"{LEGACY_ENV_PREFIX}BIND_ADDRESS", "127.0.0.1", environ=environment))
     if address.is_unspecified:
         return "127.0.0.1" if address.version == 4 else "::1"
     return str(address)
@@ -3198,7 +3204,7 @@ def _gateway_probe_address(environment: Mapping[str, str]) -> str:
 def _login_reachable(root: Path) -> bool:
     installation, _ = _installed_release(root)
     environment = _dotenv(root / "compose.env")
-    port = int(_env("RECORDBENCH_HTTPS_PORT", "8443", environ=environment))
+    port = int(_env(f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "8443", environ=environment))
     address = _gateway_probe_address(environment)
     host = _valid_host(str(installation["server_name"]))
     # Bounded probes of the configured bind never follow redirects. They do not
@@ -3216,7 +3222,7 @@ def _login_reachable(root: Path) -> bool:
         if installation.get("auth") == "kerberos":
             health_status, health_challenge, _ = probe("/health")
             return status == health_status == 401 and "Negotiate" in challenge and "Negotiate" in health_challenge
-        return status == 200 and (b"Exculpata" in body or b"RecordBench" in body)
+        return status == 200 and (b"Exculpata" in body or (f"{LEGACY_PRODUCT}").encode() in body)
     except (OSError, ValueError, http.client.HTTPException):
         return False
 
@@ -3305,16 +3311,16 @@ def _provision(
     if not any(marker.exists() or marker.is_symlink() for marker in markers):
         _run(
             console,
-            [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "init", "--root", "/var/lib/recordbench/matter-storage"],
+            [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "init", "--root", f"/var/lib/{LEGACY_STEM}/matter-storage"],
             dry_run=args.dry_run,
         )
     if not args.dry_run:
         # The storage tool validates the existing ownership marker without reset.
-        _run(console, [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "status", "--root", "/var/lib/recordbench/matter-storage"], capture=True)
+        _run(console, [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "status", "--root", f"/var/lib/{LEGACY_STEM}/matter-storage"], capture=True)
         _install_phase(root, "storage", "complete")
     account_directory = (getattr(args, "account_root", root / "accounts")
                          if args.enable_account_management else root / "secrets")
-    account_container_file = "/var/lib/recordbench-accounts/local-accounts.json" if args.enable_account_management else "/run/recordbench-secrets/local-accounts.json"
+    account_container_file = f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" if args.enable_account_management else f"/run/{LEGACY_STEM}-secrets/local-accounts.json"
     if not args.dry_run:
         _install_phase(root, "administrator", "checking" if auth == "local" else "not-selected")
     if auth == "local" and not (account_directory / "local-accounts.json").exists():
@@ -3436,7 +3442,7 @@ def _provision(
         raise RuntimeError("Service startup failed. " + _startup_remedy(root)) from exc
     if not args.dry_run:
         _wait_health(console, root)
-    console.ok("RecordBench node is online")
+    console.ok(f"{LEGACY_PRODUCT} node is online")
 
 
 def _selected_capabilities_ready(payload: Mapping[str, object], models: str) -> bool:
@@ -3488,22 +3494,22 @@ def _installed_auth_mode(root: Path, installation: Mapping[str, object]) -> str:
 
 # The proof never leaves the app container, enters argv, or appears in output.
 # A direct HTTP connection avoids proxy environment variables and redirects.
-_AUTH_MODE_PROBE = """import hashlib, hmac, http.client, json
+_AUTH_MODE_PROBE = f"""import hashlib, hmac, http.client, json
 try:
-    with open('/var/lib/recordbench/runtime/identity-session.key', 'rb') as stream:
+    with open('/var/lib/{LEGACY_STEM}/runtime/identity-session.key', 'rb') as stream:
         key = stream.read(33)
     if len(key) != 32:
         raise ValueError()
-    proof = hmac.new(key, b'recordbench/auth-mode-diagnostic/v1', hashlib.sha256).hexdigest()
+    proof = hmac.new(key, b'{LEGACY_STEM}/auth-mode-diagnostic/v1', hashlib.sha256).hexdigest()
     connection = http.client.HTTPConnection('127.0.0.1', 8786, timeout=5)
     try:
-        connection.request('GET', '/internal/auth-mode', headers={'X-RecordBench-Auth-Diagnostic': proof})
+        connection.request('GET', '/internal/auth-mode', headers={{'{LEGACY_HEADER_PREFIX}Auth-Diagnostic': proof}})
         response = connection.getresponse()
         content = response.read(4097)
         if response.status != 200 or len(content) > 4096:
             raise ValueError()
         payload = json.loads(content)
-        if not isinstance(payload, dict) or set(payload) != {'auth_mode'}:
+        if not isinstance(payload, dict) or set(payload) != {{'auth_mode'}}:
             raise ValueError()
         if payload['auth_mode'] not in ('local', 'oidc', 'kerberos', 'preview', 'test'):
             raise ValueError()
@@ -3537,7 +3543,7 @@ def _wait_health(console: Console, root: Path) -> None:
     expected_auth = _installed_auth_mode(root, settings)
     env = _dotenv(root / "compose.env")
     host = _valid_host(str(settings["server_name"]))
-    port = int(_env("RECORDBENCH_HTTPS_PORT", "8443", environ=env))
+    port = int(_env(f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "8443", environ=env))
     address = _gateway_probe_address(env)
     authority = f"[{address}]" if ":" in address else address
     url = f"https://{authority}:{port}/health"
@@ -3562,7 +3568,7 @@ def _wait_health(console: Console, root: Path) -> None:
                     payload = json.loads(response.read(262_144))
         except (OSError, ValueError, subprocess.CalledProcessError, http.client.HTTPException) as exc:
             last = exc.__class__.__name__
-        if isinstance(payload, dict) and payload.get("product") == "RecordBench":
+        if isinstance(payload, dict) and payload.get("product") == f"{LEGACY_PRODUCT}":
             effective_auth = _running_auth_mode(root, settings)
             if effective_auth is not None and effective_auth != expected_auth:
                 raise RuntimeError(
@@ -3659,13 +3665,13 @@ def _restore_model_options(
                 "TRANSCRIPTION_V2_DIARIZATION_BACKEND", "community-1") != args.diarization_backend)):
         raise RuntimeError("installed diarization selections disagree")
     args.review_model_profile = str(installation.get("review_model_profile", "portable"))
-    args.gpu_layout = _env("RECORDBENCH_GPU_LAYOUT", str(installation.get("gpu_layout", "shared")), environ=compose_env)
-    args.generator_gpus = _env("RECORDBENCH_GENERATOR_GPU", ",".join(generator), environ=compose_env) or None
+    args.gpu_layout = _env(f"{LEGACY_ENV_PREFIX}GPU_LAYOUT", str(installation.get("gpu_layout", "shared")), environ=compose_env)
+    args.generator_gpus = _env(f"{LEGACY_ENV_PREFIX}GENERATOR_GPU", ",".join(generator), environ=compose_env) or None
     # Match Compose's default when an older environment omits this setting.
-    args.generator_dtype = _env("RECORDBENCH_GENERATOR_DTYPE", environ=compose_env) or "bfloat16"
-    args.transcription_gpu = _env("RECORDBENCH_TRANSCRIPTION_GPU", topology.get("transcription"), environ=compose_env)
-    args.retrieval_device = _env("RECORDBENCH_RETRIEVAL_DEVICE", str(topology.get("retrieval_device", "cpu")), environ=compose_env)
-    args.retrieval_gpu = (_env("RECORDBENCH_RETRIEVAL_GPU", topology.get("retrieval_gpu"), environ=compose_env)
+    args.generator_dtype = _env(f"{LEGACY_ENV_PREFIX}GENERATOR_DTYPE", environ=compose_env) or "bfloat16"
+    args.transcription_gpu = _env(f"{LEGACY_ENV_PREFIX}TRANSCRIPTION_GPU", topology.get("transcription"), environ=compose_env)
+    args.retrieval_device = _env(f"{LEGACY_ENV_PREFIX}RETRIEVAL_DEVICE", str(topology.get("retrieval_device", "cpu")), environ=compose_env)
+    args.retrieval_gpu = (_env(f"{LEGACY_ENV_PREFIX}RETRIEVAL_GPU", topology.get("retrieval_gpu"), environ=compose_env)
                           if args.retrieval_device == "cuda" else None)
     models = str(installation.get("models", "none"))
     if (args.review_model_profile not in {"portable", "quality"}
@@ -3674,7 +3680,7 @@ def _restore_model_options(
             or (args.retrieval_device == "cuda" and not args.retrieval_gpu)):
         raise RuntimeError("installed model/GPU selections are incomplete")
     try:
-        utilization = _env("RECORDBENCH_GENERATOR_GPU_UTILIZATION", environ=compose_env)
+        utilization = _env(f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION", environ=compose_env)
         args.generator_gpu_utilization = float(utilization) if utilization is not None else None
         minimum_free = transcription_env.get("TRANSCRIPTION_V2_MIN_FREE_VRAM_MB")
         args.transcription_min_free_vram_mib = int(minimum_free) if minimum_free is not None else None
@@ -3709,7 +3715,7 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
     app_env = _dotenv(_app_env(root))
     transcription_env = _dotenv(root / "config/transcription.env")
     storage = installation.get("storage_root")
-    if not isinstance(storage, str) or _env("RECORDBENCH_STORAGE_ROOT", environ=compose_env) != storage:
+    if not isinstance(storage, str) or _env(f"{LEGACY_ENV_PREFIX}STORAGE_ROOT", environ=compose_env) != storage:
         raise RuntimeError("saved storage coordinates disagree with the Compose mount")
     args.root = canonical
     args.storage_root = _existing_storage_path(Path(storage))
@@ -3720,21 +3726,21 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
     mount_keys = {"config": "CONFIG", "secrets": "SECRETS", "runtime": "RUNTIME",
                   "storage": "STORAGE", "transcription": "TRANSCRIPTION", "state": "STATE", "models": "MODEL"}
     if account_management:
-        saved_accounts = _env("RECORDBENCH_LOCAL_ACCOUNT_ROOT", environ=compose_env)
+        saved_accounts = _env(f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT", environ=compose_env)
         if not isinstance(saved_accounts, str):
             raise RuntimeError("saved account storage mount is unavailable")
         args.account_root = _existing_storage_path(Path(saved_accounts))
     for name, key in mount_keys.items():
-        saved = _env(f"RECORDBENCH_{key}_ROOT", environ=compose_env)
+        saved = _env(f"{LEGACY_ENV_PREFIX}{key}_ROOT", environ=compose_env)
         if not isinstance(saved, str) or _existing_storage_path(Path(saved)) != paths[name]:
             raise RuntimeError("saved storage mount disagrees with the installed node layout")
     if app_env.get("CASE_INTELLIGENCE_AUTH_MODE") != auth:
         raise RuntimeError("saved authentication mode disagrees with application configuration")
     _assert_saved_storage_consistent(root, installation)
     if auth == "local":
-        expected_file = ("/var/lib/recordbench-accounts/local-accounts.json" if account_management
-                         else "/run/recordbench-secrets/local-accounts.json")
-        expected_management = "/var/lib/recordbench-accounts" if account_management else ""
+        expected_file = (f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" if account_management
+                         else f"/run/{LEGACY_STEM}-secrets/local-accounts.json")
+        expected_management = f"/var/lib/{LEGACY_STEM}-accounts" if account_management else ""
         if (app_env.get("CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE") != expected_file
                 or app_env.get("CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT", "") != expected_management):
             raise RuntimeError("saved local-account paths disagree with the installed application configuration")
@@ -3742,14 +3748,14 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
         if not (account_root / "local-accounts.json").exists():
             _assert_unfinished_account_bootstrap(root)
     server_name = installation.get("server_name")
-    if not isinstance(server_name, str) or _env("RECORDBENCH_SERVER_NAME", environ=compose_env) != server_name:
+    if not isinstance(server_name, str) or _env(f"{LEGACY_ENV_PREFIX}SERVER_NAME", environ=compose_env) != server_name:
         raise RuntimeError("saved HTTPS hostname coordinates disagree")
     args.server_name = _valid_host(server_name)
     try:
-        args.bind_address = _required_env("RECORDBENCH_BIND_ADDRESS", environ=compose_env)
-        args.https_port = int(_required_env("RECORDBENCH_HTTPS_PORT", environ=compose_env))
-        args.tls_cert = Path(_required_env("RECORDBENCH_TLS_CERT", environ=compose_env))
-        args.tls_key = Path(_required_env("RECORDBENCH_TLS_KEY", environ=compose_env))
+        args.bind_address = _required_env(f"{LEGACY_ENV_PREFIX}BIND_ADDRESS", environ=compose_env)
+        args.https_port = int(_required_env(f"{LEGACY_ENV_PREFIX}HTTPS_PORT", environ=compose_env))
+        args.tls_cert = Path(_required_env(f"{LEGACY_ENV_PREFIX}TLS_CERT", environ=compose_env))
+        args.tls_key = Path(_required_env(f"{LEGACY_ENV_PREFIX}TLS_KEY", environ=compose_env))
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError("saved HTTPS coordinates are invalid") from exc
     if not args.tls_cert.is_absolute() or not args.tls_key.is_absolute():
@@ -3763,7 +3769,7 @@ def _saved_models_verified(args: argparse.Namespace, root: Path, release: Path) 
     if args.models == "none":
         return True
     model_root = root / "models"
-    receipt = model_root / ".recordbench-stage-receipt.json"
+    receipt = model_root / f".{LEGACY_STEM}-stage-receipt.json"
     if receipt.is_symlink() or not receipt.is_file():
         return False
     # Use this reviewed launcher's verifier (including the current receipt
@@ -4046,7 +4052,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         }
     )
     if not args.dry_run:
-        _replace_env(root / "compose.env", "RECORDBENCH_RELEASE_ID", release_id)
+        _replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}RELEASE_ID", release_id)
         _atomic_private_write(
             root / "installation.json", json.dumps(updated, indent=2) + "\n"
         )
@@ -4098,7 +4104,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         raise RuntimeError(f"update failed and rollback was attempted: {update_error}") from update_error
 
 
-_PROJECT_NAME = re.compile(r"^(?:exculpata|recordbench)-[0-9a-f]{10}$")
+_PROJECT_NAME = re.compile(rf"^(?:exculpata|{LEGACY_STEM})-[0-9a-f]{{10}}$")
 _DOCKER_ID = re.compile(r"^[0-9a-f]{12,64}$")
 
 
@@ -4248,9 +4254,9 @@ def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
     env = _dotenv(compose_env)
     names = _node_names(root)
     expected = f"{names}-{hashlib_short(root)}"
-    # Fresh nodes store EXCULPATA_* names. Older nodes store RECORDBENCH_* names.
-    project = _env("RECORDBENCH_COMPOSE_PROJECT", "", environ=env) or ""
-    namespace = _env("RECORDBENCH_IMAGE_NAMESPACE", "", environ=env) or ""
+    # Fresh nodes store EXCULPATA_* names. Older nodes store EXCULPATA_* names.
+    project = _env(f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT", "", environ=env) or ""
+    namespace = _env(f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE", "", environ=env) or ""
     if project != expected or namespace != expected or not _PROJECT_NAME.fullmatch(project):
         raise RuntimeError("uninstall refused: the Compose project does not match this root. Nothing was removed.")
     installation = json.loads(installation_path.read_text(encoding="utf-8"))
@@ -4491,7 +4497,7 @@ def main() -> int:
             args.bind_address = _ask("HTTPS bind address", "127.0.0.1", non_interactive=False)
         if not args.server_name:
             args.server_name = _ask(
-                "RecordBench hostname", "recordbench.example.test", non_interactive=args.non_interactive
+                f"{LEGACY_PRODUCT} hostname", f"{LEGACY_STEM}.example.test", non_interactive=args.non_interactive
             )
         # Reject an invalid hostname before asking unrelated identity questions.
         _valid_host(args.server_name)

@@ -1,5 +1,12 @@
 """Provider-neutral principals, organization sign-in, and server-side sessions."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_STEM,
+)
 
 import base64
 import grp
@@ -32,7 +39,7 @@ from .workspace_store import PrincipalRecord, SessionRecord, WorkspaceProblem, W
 SESSION_COOKIE = "case_intelligence_session"
 LOGIN_CHALLENGE_COOKIE = "case_intelligence_login_challenge"
 OIDC_STATE_COOKIE = "case_intelligence_oidc_state"
-KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER = "X-RecordBench-Authenticated-User", "X-RecordBench-Proxy-Secret"
+KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER = f"{LEGACY_HEADER_PREFIX}Authenticated-User", f"{LEGACY_HEADER_PREFIX}Proxy-Secret"
 
 
 def resolve_auth_mode(auth_mode: str | None = None) -> str:
@@ -44,7 +51,7 @@ def resolve_auth_mode(auth_mode: str | None = None) -> str:
             "An explicit supported identity provider is required "
             "(CASE_INTELLIGENCE_AUTH_MODE)."
         )
-    if env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1" and selected in {"preview", "test"}:
+    if env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1" and selected in {"preview", "test"}:
         raise RuntimeError("An installed service requires local, OIDC or Kerberos authentication.")
     return selected
 
@@ -903,7 +910,7 @@ class IdentityService:
         if proof is None or not re.fullmatch(r"[0-9a-f]{64}", proof):
             return False
         expected = hmac.new(
-            self._secret, b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256
+            self._secret, (f"{LEGACY_STEM}/auth-mode-diagnostic/v1").encode(), hashlib.sha256
         ).hexdigest()
         return hmac.compare_digest(proof, expected)
 

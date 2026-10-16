@@ -6,7 +6,12 @@ the store API snapshot with:
     .venv/bin/python -m tests.test_api_snapshots --update store
 """
 
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import inspect
@@ -118,7 +123,7 @@ def _main() -> None:
     SNAPSHOTS.mkdir(exist_ok=True)
     if args.update in {"routes", "all"}:
         for acceptance_diagnostics, filename in ROUTE_SNAPSHOTS:
-            with TemporaryDirectory(prefix="recordbench-route-snapshot-") as directory:
+            with TemporaryDirectory(prefix=f"{LEGACY_STEM}-route-snapshot-") as directory:
                 snapshot = _route_snapshot(
                     Path(directory) / "runtime",
                     acceptance_diagnostics=acceptance_diagnostics,

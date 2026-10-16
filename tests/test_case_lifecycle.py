@@ -1,5 +1,9 @@
 """Synthetic lifecycle transitions, authorization and recoverable exit gates."""
 
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
 from tests.case_lifecycle_helpers import lifecycle_session
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -261,7 +265,7 @@ def test_concurrent_claims_have_one_winner_and_token_is_private(setup):
 def test_old_connection_cannot_write_lifecycle(setup):
     store, matter, _ = setup
     old = sqlite3.connect(store.path)
-    with pytest.raises(sqlite3.OperationalError, match='recordbench_case_lifecycle_writer'):
+    with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE matter_id=?", (matter.matter_id,))
     old.close()
     assert store.matter_lifecycle(matter.matter_id).state == 'active'

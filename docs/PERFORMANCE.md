@@ -11,21 +11,21 @@ does not change product behavior.
 Use the contributor Python environment prepared by `make bootstrap`:
 
 ```console
-.venv/bin/python scripts/benchmark-time-to-briefing.py --output /tmp/recordbench-time-to-briefing.json
+.venv/bin/python scripts/benchmark-time-to-briefing.py --output /tmp/exculpata-time-to-briefing.json
 ```
 
 The default sizes are 100, 1,000 and 5,000 files, with deterministic seed
 `20261009` and `--density sparse`. To choose a size or seed:
 
 ```console
-.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 20 --seed 20261009 --output /tmp/recordbench-time-to-briefing-small.json
+.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 20 --seed 20261009 --output /tmp/exculpata-time-to-briefing-small.json
 ```
 
 Use the denser 1,000-file workload to observe the existing automatic-discovery
 storage limit:
 
 ```console
-.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 1000 --density dense --output /tmp/recordbench-time-to-briefing-dense.json
+.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 1000 --density dense --output /tmp/exculpata-time-to-briefing-dense.json
 ```
 
 `--temp-root` changes the temporary parent directory from `/tmp`. Both that
@@ -179,7 +179,7 @@ budget; it must not be used as a capacity promise for ordinary discovery.
 ## Profile the 1,000-file run
 
 ```console
-.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 1000 --density sparse --profile --output /tmp/recordbench-time-to-briefing-profile.json
+.venv/bin/python scripts/benchmark-time-to-briefing.py --sizes 1000 --density sparse --profile --output /tmp/exculpata-time-to-briefing-profile.json
 ```
 
 `--profile` collects cProfile data from the foreground, request, ingestion and

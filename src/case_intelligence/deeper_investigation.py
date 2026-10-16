@@ -1,5 +1,10 @@
 """Optional explicit widening of a model's saved not-answerable response."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import os
 import uuid
@@ -30,7 +35,7 @@ def install_deeper_investigation(templates, *, bench, auth_context):
         reason = ("The original source scope is unavailable." if not basis.scope_available else
                   "Wait for the current review work to finish." if basis.has_active_work else
                   "Source preparation and local answering must be ready." if disabled else "")
-        key = uuid.uuid5(uuid.NAMESPACE_URL, f"recordbench:deeper:{matter.matter_id}:{message.message_id}:{actor}").hex
+        key = uuid.uuid5(uuid.NAMESPACE_URL, f"{LEGACY_STEM}:deeper:{matter.matter_id}:{message.message_id}:{actor}").hex
         return dict(question=basis.question, conversation=message.conversation_id, source_set=basis.source_set_id,
             request_key="answer-request-" + key, disabled=disabled, reason=reason,
             has_context=bool(message.payload.get("recorded_context_job") or message.payload.get("notebook_context")))

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+)
 from dataclasses import replace
 
 from fastapi.testclient import TestClient
@@ -157,12 +161,12 @@ def test_people_qa_clears_deployment_settings_before_runtime_import(monkeypatch,
     import os
     namespace = runpy.run_path(str(__import__('pathlib').Path(__file__).parents[1] / 'scripts/qa-people-browser.py'))
     monkeypatch.setattr(os, "environ", os.environ.copy())
-    for key in ("CASE_INTELLIGENCE_POSTGRES_DSN", "CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT", "CASE_INTELLIGENCE_SOURCE_REGISTRY", "CASE_INTELLIGENCE_TRANSCRIPTION_URL", "CASE_INTELLIGENCE_CLAMAV_HOST", "RECORDBENCH_LOCAL_ACCOUNT_ROOT"):
+    for key in ("CASE_INTELLIGENCE_POSTGRES_DSN", "CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT", "CASE_INTELLIGENCE_SOURCE_REGISTRY", "CASE_INTELLIGENCE_TRANSCRIPTION_URL", "CASE_INTELLIGENCE_CLAMAV_HOST", f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT"):
         monkeypatch.setenv(key, "synthetic-inherited-value")
     monkeypatch.setenv("PLAYWRIGHT_MODULE", "synthetic-browser-package")
-    monkeypatch.setenv("RECORDBENCH_QA_BROWSER_CHANNEL", "chrome")
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}QA_BROWSER_CHANNEL", "chrome")
     namespace["_isolate_environment"]()
     assert not any(key.startswith("CASE_INTELLIGENCE_") for key in os.environ)
-    assert "RECORDBENCH_LOCAL_ACCOUNT_ROOT" not in os.environ
+    assert f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT" not in os.environ
     assert os.environ["PLAYWRIGHT_MODULE"] == "synthetic-browser-package"
-    assert os.environ["RECORDBENCH_QA_BROWSER_CHANNEL"] == "chrome"
+    assert os.environ[f"{LEGACY_ENV_PREFIX}QA_BROWSER_CHANNEL"] == "chrome"

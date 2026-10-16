@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Computed contrast on real source controls, using only disposable synthetic data."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -90,7 +95,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'synthetic_only': True, 'passed': False, 'checks': []}
-    with tempfile.TemporaryDirectory(prefix='recordbench-dusk-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-dusk-") as temporary:
         app = create_workbench_app(Path(temporary) / 'runtime', generator=UnavailableGenerator(), auth_mode='test')
         bench = app.state.workbench
         matter = bench.create_matter('Synthetic theme acceptance', 'Generated readability fixtures', 'development-taylor-morgan')

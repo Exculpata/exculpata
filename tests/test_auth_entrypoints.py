@@ -1,5 +1,12 @@
 """Synthetic startup and peer-boundary regressions for explicit authentication."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_STEM,
+)
 
 import hashlib
 import hmac
@@ -37,7 +44,7 @@ def test_explicit_empty_mode_does_not_fall_back_to_environment(tmp_path, monkeyp
 
 @pytest.mark.parametrize("mode", [None, "", "preview", "test"])
 def test_installed_identity_refuses_bypass_before_seeding(tmp_path, monkeypatch, mode):
-    monkeypatch.setenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "1")
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "1")
     monkeypatch.delenv("CASE_INTELLIGENCE_AUTH_MODE", raising=False)
     store = WorkspaceStore(tmp_path / "workbench.sqlite")
     try:
@@ -52,9 +59,9 @@ def test_installed_identity_refuses_bypass_before_seeding(tmp_path, monkeypatch,
 @pytest.mark.parametrize("mode", [None, "", "invalid", "preview", "test"])
 def test_real_container_cli_exits_without_creating_runtime(tmp_path, mode):
     environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith(("CASE_INTELLIGENCE_", "RECORDBENCH_"))}
+                   if not key.startswith(("CASE_INTELLIGENCE_", f"{LEGACY_ENV_PREFIX}"))}
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
-    environment["RECORDBENCH_ALLOW_CONTAINER_BIND"] = "1"
+    environment[f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND"] = "1"
     if mode is not None:
         environment["CASE_INTELLIGENCE_AUTH_MODE"] = mode
     runtime = tmp_path / "runtime"
@@ -71,11 +78,11 @@ def test_real_container_cli_exits_without_creating_runtime(tmp_path, mode):
 @pytest.mark.parametrize("host", ["127.0.0.1", "0.0.0.0"])
 @pytest.mark.parametrize("mode", [None, "", "invalid", "preview", "test"])
 def test_container_cli_rejects_unsafe_modes_before_app_or_listener(tmp_path, monkeypatch, host, mode):
-    monkeypatch.setenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "1")
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "1")
     monkeypatch.delenv("CASE_INTELLIGENCE_AUTH_MODE", raising=False)
     if mode is not None:
         monkeypatch.setenv("CASE_INTELLIGENCE_AUTH_MODE", mode)
-    monkeypatch.setattr(sys, "argv", ["recordbench-workbench", "--host", host, "--runtime", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", [f"{LEGACY_STEM}-workbench", "--host", host, "--runtime", str(tmp_path)])
     monkeypatch.setattr(workbench, "create_workbench_app", lambda *a, **k: pytest.fail("created unsafe app"))
     monkeypatch.setattr(workbench.uvicorn, "run", lambda *a, **k: pytest.fail("opened unsafe listener"))
     with pytest.raises(SystemExit) as failure:
@@ -85,9 +92,9 @@ def test_container_cli_rejects_unsafe_modes_before_app_or_listener(tmp_path, mon
 
 @pytest.mark.parametrize("mode", ["local", "oidc", "kerberos"])
 def test_container_cli_passes_explicit_provider_and_keeps_peer_addresses(monkeypatch, mode):
-    monkeypatch.setenv("RECORDBENCH_ALLOW_CONTAINER_BIND", "1")
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "1")
     monkeypatch.setenv("CASE_INTELLIGENCE_AUTH_MODE", mode)
-    monkeypatch.setattr(sys, "argv", ["recordbench-workbench", "--host", "0.0.0.0"])
+    monkeypatch.setattr(sys, "argv", [f"{LEGACY_STEM}-workbench", "--host", "0.0.0.0"])
     app = object()
     calls = []
     monkeypatch.setattr(workbench, "create_workbench_app", lambda *a, **k: app)
@@ -99,9 +106,9 @@ def test_container_cli_passes_explicit_provider_and_keeps_peer_addresses(monkeyp
 
 @pytest.mark.parametrize("mode", ["preview", "test"])
 def test_loopback_cli_allows_deliberate_development_mode(monkeypatch, mode):
-    monkeypatch.delenv("RECORDBENCH_ALLOW_CONTAINER_BIND", raising=False)
+    monkeypatch.delenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_AUTH_MODE", mode)
-    monkeypatch.setattr(sys, "argv", ["recordbench-workbench"])
+    monkeypatch.setattr(sys, "argv", [f"{LEGACY_STEM}-workbench"])
     calls = []
     monkeypatch.setattr(workbench, "create_workbench_app", lambda *a, **k: k["auth_mode"])
     monkeypatch.setattr(workbench.uvicorn, "run", lambda *a, **k: calls.append((a, k)))
@@ -111,7 +118,7 @@ def test_loopback_cli_allows_deliberate_development_mode(monkeypatch, mode):
 
 @pytest.mark.parametrize("mode", ["preview", "test"])
 def test_explicit_development_mode_denies_remote_reads_identity_and_mutation(tmp_path, monkeypatch, mode):
-    monkeypatch.delenv("RECORDBENCH_ALLOW_CONTAINER_BIND", raising=False)
+    monkeypatch.delenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", raising=False)
     app = workbench.create_workbench_app(tmp_path / "runtime", auth_mode=mode,
                                        generator=UnavailableGenerator())
     with TestClient(app, client=("192.0.2.44", 4567)) as client:
@@ -125,15 +132,15 @@ def test_explicit_development_mode_denies_remote_reads_identity_and_mutation(tmp
 
 
 def test_auth_diagnostic_requires_loopback_and_operator_proof_and_keeps_health_unchanged(tmp_path, monkeypatch):
-    monkeypatch.delenv("RECORDBENCH_ALLOW_CONTAINER_BIND", raising=False)
+    monkeypatch.delenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", raising=False)
     runtime = tmp_path / "runtime"
     app = workbench.create_workbench_app(runtime, auth_mode="preview", generator=UnavailableGenerator())
     proof = hmac.new((runtime / "identity-session.key").read_bytes(),
-                     b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256).hexdigest()
+                     (f"{LEGACY_STEM}/auth-mode-diagnostic/v1").encode(), hashlib.sha256).hexdigest()
     with TestClient(app, client=("127.0.0.1", 4567)) as client:
         assert client.get("/internal/auth-mode").status_code == 404
-        assert client.get("/internal/auth-mode", headers={"X-RecordBench-Auth-Diagnostic": "invalid"}).status_code == 404
-        response = client.get("/internal/auth-mode", headers={"X-RecordBench-Auth-Diagnostic": proof})
+        assert client.get("/internal/auth-mode", headers={f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic": "invalid"}).status_code == 404
+        response = client.get("/internal/auth-mode", headers={f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic": proof})
         assert response.status_code == 200
         assert response.json() == {"auth_mode": "preview"}
         assert response.headers["cache-control"] == "no-store"
@@ -142,14 +149,14 @@ def test_auth_diagnostic_requires_loopback_and_operator_proof_and_keeps_health_u
 
 
 def test_remote_diagnostic_denies_even_valid_proof_and_forwarded_loopback(tmp_path, monkeypatch):
-    monkeypatch.delenv("RECORDBENCH_ALLOW_CONTAINER_BIND", raising=False)
+    monkeypatch.delenv(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", raising=False)
     runtime = tmp_path / "runtime"
     app = workbench.create_workbench_app(runtime, auth_mode="preview", generator=UnavailableGenerator())
     proof = hmac.new((runtime / "identity-session.key").read_bytes(),
-                     b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256).hexdigest()
+                     (f"{LEGACY_STEM}/auth-mode-diagnostic/v1").encode(), hashlib.sha256).hexdigest()
     with TestClient(app, client=("192.0.2.44", 4567)) as client:
         response = client.get("/internal/auth-mode", headers={
-            "X-RecordBench-Auth-Diagnostic": proof, "X-Forwarded-For": "127.0.0.1",
+            f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic": proof, "X-Forwarded-For": "127.0.0.1",
         })
         assert response.status_code == 404
         assert response.content == b""
@@ -160,12 +167,12 @@ def test_diagnostic_aliases_keep_loopback_and_proof_boundary(tmp_path, mode):
     runtime = tmp_path / "runtime"
     app = workbench.create_workbench_app(runtime, auth_mode="preview", generator=UnavailableGenerator())
     proof = hmac.new((runtime / "identity-session.key").read_bytes(),
-                     b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256).hexdigest()
+                     (f"{LEGACY_STEM}/auth-mode-diagnostic/v1").encode(), hashlib.sha256).hexdigest()
     headers = {}
     if mode != "old-only":
         headers["X-Exculpata-Auth-Diagnostic"] = proof
     if mode != "new-only":
-        headers["X-RecordBench-Auth-Diagnostic"] = "synthetic-invalid-proof" if mode == "both-different" else proof
+        headers[f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic"] = "synthetic-invalid-proof" if mode == "both-different" else proof
     with TestClient(app, client=("127.0.0.1", 4567)) as client:
         response = client.get("/internal/auth-mode", headers=headers)
         assert response.status_code == (404 if mode == "both-different" else 200)

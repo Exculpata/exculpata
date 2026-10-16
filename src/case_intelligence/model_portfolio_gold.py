@@ -4,7 +4,12 @@ This suite complements discovery gold v1. It deliberately bypasses retrieval so
 that model comparisons measure synthesis, ambiguity handling, abstention, and
 the application's independent grounding verifier on the exact same packets.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
@@ -13,7 +18,7 @@ from dataclasses import asdict, dataclass
 from .generation import EvidenceItem
 
 
-MODEL_PORTFOLIO_SUITE_ID = "recordbench-model-portfolio-gold-v1"
+MODEL_PORTFOLIO_SUITE_ID = f"{LEGACY_STEM}-model-portfolio-gold-v1"
 MODEL_PORTFOLIO_SCHEMA_VERSION = 1
 
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Stage pinned model snapshots and write the offline transcription manifest."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -326,7 +331,7 @@ def _stage_receipt(root: Path, catalog: Path, groups: frozenset[str], profile: s
             json.dump(payload, stream, sort_keys=True)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, root / ".recordbench-stage-receipt.json")
+        os.replace(temporary, root / f".{LEGACY_STEM}-stage-receipt.json")
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -335,7 +340,7 @@ def _verify_stage(root: Path, catalog: Path, groups: frozenset[str], profile: st
                   *, diarization_backend: str = "community-1") -> None:
     """Verify the last complete exact selection without network or filesystem writes."""
     root = root.resolve(strict=True)
-    receipt = root / ".recordbench-stage-receipt.json"
+    receipt = root / f".{LEGACY_STEM}-stage-receipt.json"
     if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 32 * 1024 * 1024:
         raise RuntimeError("Model staging receipt is unavailable; resume staging")
     value = json.loads(receipt.read_text())

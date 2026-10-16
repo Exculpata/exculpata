@@ -1,5 +1,10 @@
 """Synthetic legacy transcript export regressions; no media intake acceptance."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import csv
 import hashlib
@@ -119,7 +124,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
         for format_name in ("markdown", "csv", "txt", "srt", "vtt", "json"):
             response = client.get(f"/matters/{slug}/sources/{token}/transcript-export", params={"format": format_name})
             assert response.status_code == 200
-            assert response.headers["x-recordbench-export"] == "work-product"
+            assert response.headers[f"x-{LEGACY_STEM}-export"] == "work-product"
             if format_name == "json":
                 assert response.json()["segments"][0]["text"] == RAW_TEXT
                 continue

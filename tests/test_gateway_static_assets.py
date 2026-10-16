@@ -1,4 +1,10 @@
 """Synthetic regression for the installed HTTPS gateway's internal HTTP hop."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlsplit
 
@@ -53,11 +59,11 @@ def test_gateway_and_kerberos_templates_clear_both_names_before_trusted_assignme
 
     root = Path(__file__).parents[1]
     gateway = (root / "deploy/gateway/default.conf.template").read_text()
-    apache = (root / "deploy/kerberos-proxy/recordbench-auth.conf.template").read_text()
+    apache = (root / f"deploy/kerberos-proxy/{LEGACY_STEM}-auth.conf.template").read_text()
     entrypoint = (root / "deploy/kerberos-proxy/entrypoint").read_text()
     locations = re.findall(r"location\s+[^{}]+\{(.*?)^    \}", gateway, flags=re.M | re.S)
     assert len(locations) == 2
-    for brand in ("Exculpata", "RecordBench"):
+    for brand in ("Exculpata", f"{LEGACY_PRODUCT}"):
         for suffix in ("Authenticated-User", "Proxy-Secret", "Auth-Diagnostic"):
             name = f"X-{brand}-{suffix}"
             assert all(f'proxy_set_header {name} "";' in location for location in locations)
@@ -66,10 +72,10 @@ def test_gateway_and_kerberos_templates_clear_both_names_before_trusted_assignme
             if suffix == "Authenticated-User":
                 assert apache.index(unset) < apache.index(f'RequestHeader set {name} "expr=%{{REMOTE_USER}}"')
             elif suffix == "Proxy-Secret":
-                assert apache.index(unset) < apache.index("Include /run/recordbench-auth/proxy-secret.conf")
+                assert apache.index(unset) < apache.index(f"Include /run/{LEGACY_STEM}-auth/proxy-secret.conf")
                 assert f'RequestHeader set {name} "%s"' in entrypoint
     compose = (root / "compose.kerberos.yaml").read_text()
-    assert "RECORDBENCH_UPSTREAM: kerberos-proxy:8080" in compose
+    assert f"{LEGACY_ENV_PREFIX}UPSTREAM: kerberos-proxy:8080" in compose
     assert not re.search(r"^\s+ports:", compose, flags=re.M)
 
 
@@ -88,7 +94,7 @@ def test_gateway_contract_strips_forged_aliases_on_every_proxy_location(tmp_path
     app = create_workbench_app(tmp_path / "runtime", auth_mode="kerberos", secure_cookie=True,
                               generator=UnavailableGenerator(), kerberos_settings=_settings(),
                               kerberos_profile_resolver=_profile)
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         for _, location in locations:
             removed = {name.lower() for name in re.findall(r'proxy_set_header\s+(\S+)\s+"";', location)}
             for mode in ("old-only", "new-only", "both-equal", "both-different"):
@@ -97,7 +103,7 @@ def test_gateway_contract_strips_forged_aliases_on_every_proxy_location(tmp_path
                     if mode != "new-only":
                         forged[name.lower()] = value
                     if mode != "old-only":
-                        forged[name.replace("RecordBench", "Exculpata").lower()] = "synthetic-forged" if mode == "both-different" else value
+                        forged[name.replace(f"{LEGACY_PRODUCT}", "Exculpata").lower()] = "synthetic-forged" if mode == "both-different" else value
                 forwarded = {name: value for name, value in forged.items() if name not in removed}
                 assert forwarded == {}
                 assert client.get("/auth/login", headers=forwarded).status_code == 401

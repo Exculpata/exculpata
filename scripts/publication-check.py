@@ -333,12 +333,12 @@ def _scan_bytes(
             break
     for match in HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"recordbench", "user", "example"}:
+        if owner not in {"exculpata", "user", "example"}:
             findings.append(Finding(location, "personal-home-path"))
             break
     for match in WINDOWS_HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"default", "example", "public", "recordbench", "user"}:
+        if owner not in {"default", "example", "public", "exculpata", "user"}:
             findings.append(Finding(location, "personal-home-path"))
             break
     if INTERNAL_FQDN.search(data):
@@ -413,7 +413,7 @@ def _scan_media(
         return [Finding(location, "media-inspection-unavailable")]
     try:
         with tempfile.NamedTemporaryFile(
-            prefix="recordbench-publication-",
+            prefix="exculpata-publication-",
             suffix=Path(name).suffix.casefold(),
         ) as handle:
             handle.write(data)
@@ -938,6 +938,21 @@ def _baseline_public_git_identities(
     return tuple(result)
 
 
+def _legacy_product_name_findings(root: Path) -> list[Finding]:
+    """Working tree only. History still contains the previous product name."""
+    checker = Path(__file__).with_name("legacy_name_check.py")
+    if not checker.is_file():
+        return []
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_legacy_name_check", checker)
+    if spec is None or spec.loader is None:
+        return []
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [Finding(str(item.location), "legacy-product-name") for item in module.findings(root)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -975,6 +990,7 @@ def main() -> int:
     if any(re.fullmatch(r"[0-9a-f]{64}", value) is None for value in media_digests):
         raise RuntimeError("Reviewed media digest must be an exact SHA-256")
     findings = scan_tree(root, deny, public_clone_urls=clone_urls, reviewed_media_digests=media_digests)
+    findings.extend(_legacy_product_name_findings(root))
     if not args.skip_history:
         findings.extend(
             scan_history(

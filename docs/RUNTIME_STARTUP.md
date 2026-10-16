@@ -41,7 +41,7 @@ With the pinned generator image already available locally, run a model-free
 check against the actual Compose cache options:
 
 ```bash
-RECORDBENCH_GENERATOR_CONTAINER_TEST=1 python -m pytest tests/test_generator_cache_container.py -q
+EXCULPATA_GENERATOR_CONTAINER_TEST=1 python -m pytest tests/test_generator_cache_container.py -q
 ```
 
 The check uses no GPU, network, model cache, or image pull. It does not replace
@@ -51,7 +51,7 @@ The retrieval and worker toolchain/cache regression also runs without a GPU,
 network, model mount or image pull. Point it at already built local images:
 
 ```bash
-RECORDBENCH_RETRIEVAL_TEST_IMAGE=recordbench/retrieval:dev RECORDBENCH_WORKER_TEST_IMAGE=recordbench/transcription-worker:dev python -m pytest tests/test_generator_cache_container.py -q -k native_runtime
+EXCULPATA_RETRIEVAL_TEST_IMAGE=exculpata/retrieval:dev EXCULPATA_WORKER_TEST_IMAGE=exculpata/transcription-worker:dev python -m pytest tests/test_generator_cache_container.py -q -k native_runtime
 ```
 
 It compiles and loads an independently constructed constant-returning C library
@@ -70,7 +70,7 @@ actual reserved-device capacity before claiming each job. Work remains queued
 while GPU capacity is insufficient; an unavailable worker cannot finish queued
 work. Inspect worker status and job progress separately from API admission.
 The worker-local CLI readiness diagnostic retains its GPU/package/VAD checks
-and accepts only upstream WhisperX 3.8.6 or the qualified 3.8.6+recordbench.1
+and accepts only upstream WhisperX 3.8.6 or the qualified 3.8.6+exculpata.1
 build, with unknown patched versions rejected.
 
 WhisperX's packaged VAD initializes `TORCH_HOME` before opening its bundled

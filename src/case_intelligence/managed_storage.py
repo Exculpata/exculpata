@@ -1,5 +1,11 @@
 """Validated storage boundary and capacity policy for temporary matter bytes."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 
 import json
 import os
@@ -18,7 +24,7 @@ DEFAULT_MEDIA_FILE_BYTES = 100 * GIB
 DEFAULT_DOCUMENT_FILE_BYTES = 512 * MIB
 DEFAULT_STORAGE_RESERVE_BYTES = 100 * GIB
 MARKER_NAME = ".exculpata-managed-storage.json"
-LEGACY_MARKER_NAME = ".recordbench-managed-storage.json"
+LEGACY_MARKER_NAME = f".{LEGACY_STEM}-managed-storage.json"
 MARKER_VERSION = 1
 _OWNED_DIRECTORIES = ("matters", ".matter-purging", "ingestion-staging")
 
@@ -213,9 +219,9 @@ class ManagedMatterStorage:
         if target.is_symlink() or not target.is_dir():
             raise RuntimeError("the managed storage root is unsafe")
         names = os.environ.get("EXCULPATA_STORAGE_NAMES", "exculpata")
-        if names not in {"recordbench", "exculpata"}:
+        if names not in {f"{LEGACY_STEM}", "exculpata"}:
             raise RuntimeError("the managed storage naming generation is invalid")
-        marker_name = LEGACY_MARKER_NAME if names == "recordbench" else MARKER_NAME
+        marker_name = LEGACY_MARKER_NAME if names == f"{LEGACY_STEM}" else MARKER_NAME
         marker = target / marker_name
         if any((target / name).exists() or (target / name).is_symlink()
                for name in (MARKER_NAME, LEGACY_MARKER_NAME)):
@@ -227,7 +233,7 @@ class ManagedMatterStorage:
                 raise RuntimeError("a managed storage directory is unsafe")
         payload = {
             "format_version": MARKER_VERSION,
-            "product": "RecordBench" if names == "recordbench" else "Exculpata",
+            "product": f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata",
             "storage_id": f"{names}-storage-{uuid.uuid4().hex}",
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
         }
@@ -273,7 +279,7 @@ class ManagedMatterStorage:
         if len(markers) != 1:
             raise RuntimeError("the Exculpata managed storage marker is unavailable or ambiguous")
         marker = markers[0]
-        names = "recordbench" if marker.name == LEGACY_MARKER_NAME else "exculpata"
+        names = f"{LEGACY_STEM}" if marker.name == LEGACY_MARKER_NAME else "exculpata"
         if marker.is_symlink() or not marker.is_file():
             raise RuntimeError("the Exculpata managed storage marker is unavailable")
         try:
@@ -286,7 +292,7 @@ class ManagedMatterStorage:
         if (
             not isinstance(payload, dict)
             or payload.get("format_version") != MARKER_VERSION
-            or payload.get("product") != ("RecordBench" if names == "recordbench" else "Exculpata")
+            or payload.get("product") != (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
             or not isinstance(payload.get("storage_id"), str)
             or not payload["storage_id"].startswith(f"{names}-storage-")
         ):
@@ -311,7 +317,7 @@ class ManagedMatterStorage:
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                 0o600,
             )
-            os.write(descriptor, b"recordbench-storage-probe")
+            os.write(descriptor, (f"{LEGACY_STEM}-storage-probe").encode())
             os.fsync(descriptor)
             os.close(descriptor)
             descriptor = -1

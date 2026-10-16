@@ -1,4 +1,8 @@
 """Exercise the real hook against isolated repositories; never contact a remote."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from pathlib import Path
 import shutil
 import subprocess
@@ -62,12 +66,12 @@ def test_all_outgoing_refs_are_checked(tmp_path):
 
 def test_required_private_deny_file_fails_closed(tmp_path):
     root = repository(tmp_path)
-    command(root, "git", "config", "recordbench.requirePrivatePublicationCheck", "true")
+    command(root, "git", "config", f"{LEGACY_STEM}.requirePrivatePublicationCheck", "true")
     assert inspect(root).returncode != 0
     deny = tmp_path / "deny.txt"
     deny.write_text("synthetic-disallowed-marker\n")
     deny.chmod(0o600)
-    command(root, "git", "config", "recordbench.publicationDenyFile", str(deny))
+    command(root, "git", "config", f"{LEGACY_STEM}.publicationDenyFile", str(deny))
     assert inspect(root).returncode == 0
     (root / "private.txt").write_text("synthetic-disallowed-marker")
     commit(root)
@@ -102,15 +106,15 @@ def test_nested_tag_metadata_is_checked_even_without_inner_ref(tmp_path):
 def test_sha256_repository_uses_matching_inspection_format(tmp_path):
     root = repository(tmp_path, "sha256")
     boundary = command(root, "git", "rev-parse", "HEAD").stdout.strip()
-    command(root, "git", "config", "recordbench.publicBaselineIdentity",
+    command(root, "git", "config", f"{LEGACY_STEM}.publicBaselineIdentity",
             boundary + "\tSynthetic Author\t12345+fixture@users.noreply.github.com")
-    command(root, "git", "config", "recordbench.publicMergeCommit", boundary)
+    command(root, "git", "config", f"{LEGACY_STEM}.publicMergeCommit", boundary)
     assert inspect(root).returncode == 0
 
 
 def test_malformed_required_private_check_setting_blocks(tmp_path):
     root = repository(tmp_path)
-    command(root, "git", "config", "recordbench.requirePrivatePublicationCheck", "invalid-setting")
+    command(root, "git", "config", f"{LEGACY_STEM}.requirePrivatePublicationCheck", "invalid-setting")
     assert inspect(root).returncode != 0
 
 
@@ -118,7 +122,7 @@ def test_unrelated_baseline_does_not_fetch_or_block_orphan_history(tmp_path):
     root = repository(tmp_path)
     (root / "private.txt").write_text("host." + "internal")
     boundary = commit(root)
-    command(root, "git", "config", "recordbench.publicBaselineIdentity",
+    command(root, "git", "config", f"{LEGACY_STEM}.publicBaselineIdentity",
             boundary + "\tSynthetic Author\t12345+fixture@users.noreply.github.com")
     command(root, "git", "checkout", "--orphan", "public-other")
     (root / "private.txt").unlink()
@@ -137,7 +141,7 @@ def test_tag_target_hash_is_structural_but_tag_message_still_scans(tmp_path):
     deny = tmp_path / "deny.txt"
     deny.write_text(term + "\n")
     deny.chmod(0o600)
-    command(root, "git", "config", "recordbench.publicationDenyFile", str(deny))
+    command(root, "git", "config", f"{LEGACY_STEM}.publicationDenyFile", str(deny))
     tag_oid = command(root, "git", "rev-parse", "v-test").stdout.strip()
     assert inspect(root, tag_oid, "refs/tags/v-test").returncode == 0
     command(root, "git", "tag", "-f", "-a", "v-test", "-m", term)

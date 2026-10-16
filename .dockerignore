@@ -48,6 +48,8 @@ services/transcription/data
 **/backups/**
 **/recordbench-node
 **/recordbench-node/**
+**/exculpata-node
+**/exculpata-node/**
 **/runtime
 **/runtime/**
 **/state

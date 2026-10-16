@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Check shared alignment and independent scrolling using synthetic records."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -89,7 +94,7 @@ def main(argv=None):
         "measurements": measurements, "viewports": viewports,
         "unrun_checks": ["native browser zoom", "OS text scaling", "WebKit", "physical mobile", "screen reader", "authenticated sign-out"]}
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-layout-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-layout-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / "runtime", auth_mode="test",
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))
@@ -458,7 +463,7 @@ def main(argv=None):
             viewport(1024, 768)
             open_page(paths["notes"])
             expanded_panels()
-            preference = "recordbench:assistant:display:v2"
+            preference = f"{LEGACY_STEM}:assistant:display:v2"
             js("localStorage.setItem(arguments[0], 'open')", preference + ":compact")
             question = find("#assistant-question")
             question.send_keys("Synthetic unsent question")

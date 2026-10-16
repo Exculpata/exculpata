@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import re
 from pathlib import Path
 
@@ -17,7 +24,7 @@ from case_intelligence.identity import (
 from case_intelligence.workbench import create_workbench_app
 
 
-PROXY_SECRET = "synthetic_recordbench_proxy_secret_0000000000000000"
+PROXY_SECRET = f"synthetic_{LEGACY_STEM}_proxy_secret_0000000000000000"
 REVIEWER_PRINCIPAL = "alice.reviewer@EXAMPLE.TEST"
 
 
@@ -53,7 +60,7 @@ def test_kerberos_login_binds_windows_identity_to_server_session(tmp_path):
         kerberos_profile_resolver=_profile,
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         no_proxy_identity = client.get("/auth/login")
         assert no_proxy_identity.status_code == 401
         assert "Windows sign-in could not be verified" in no_proxy_identity.text
@@ -156,7 +163,7 @@ def test_kerberos_rejects_unapproved_principal_without_provisioning(tmp_path):
         kerberos_profile_resolver=_profile,
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         denied = client.get(
             "/auth/login",
             headers=_headers("not.approved@EXAMPLE.TEST"),
@@ -185,14 +192,14 @@ def test_kerberos_env_requires_owner_only_secret_and_secure_cookie(
     )
     monkeypatch.setenv(
         "CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS",
-        "RecordBench_Users@EXAMPLE.TEST",
+        f"{LEGACY_PRODUCT}_Users@EXAMPLE.TEST",
     )
     monkeypatch.setenv(
         "CASE_INTELLIGENCE_KERBEROS_ADMIN_PRINCIPALS", REVIEWER_PRINCIPAL
     )
     monkeypatch.setenv(
         "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS",
-        "RecordBench_Administrators@EXAMPLE.TEST",
+        f"{LEGACY_PRODUCT}_Administrators@EXAMPLE.TEST",
     )
     monkeypatch.setenv(
         "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", str(secret_file)
@@ -216,13 +223,13 @@ def test_kerberos_env_requires_owner_only_secret_and_secure_cookie(
         {REVIEWER_PRINCIPAL}
     )
     assert app.state.identity.kerberos_settings.allowed_groups == frozenset(
-        {"recordbench_users@example.test"}
+        {f"{LEGACY_STEM}_users@example.test"}
     )
     assert app.state.identity.kerberos_settings.administrator_principals == frozenset(
         {REVIEWER_PRINCIPAL}
     )
     assert app.state.identity.kerberos_settings.administrator_groups == frozenset(
-        {"recordbench_administrators@example.test"}
+        {f"{LEGACY_STEM}_administrators@example.test"}
     )
     assert PROXY_SECRET not in repr(app.state.identity.kerberos_settings)
     app.state.workbench.close()
@@ -255,7 +262,7 @@ def test_kerberos_principal_parser_fails_closed(principal):
 def test_kerberos_proxy_deployment_strips_spoofable_headers_and_has_no_host_port():
     root = Path(__file__).parents[1]
     deploy = root / "deploy/kerberos-proxy"
-    apache = (deploy / "recordbench-auth.conf.template").read_text(encoding="utf-8")
+    apache = (deploy / f"{LEGACY_STEM}-auth.conf.template").read_text(encoding="utf-8")
     compose = (root / "compose.kerberos.yaml").read_text(encoding="utf-8")
     entrypoint = (deploy / "entrypoint").read_text(encoding="utf-8")
     dockerfile = (deploy / "Dockerfile").read_text(encoding="utf-8")
@@ -263,22 +270,22 @@ def test_kerberos_proxy_deployment_strips_spoofable_headers_and_has_no_host_port
     assert "GssapiAllowedMech krb5" in apache
     assert "GssapiBasicAuth Off" in apache
     assert "GssapiLocalName Off" in apache
-    assert "RequestHeader unset X-RecordBench-Authenticated-User early" in apache
-    assert "RequestHeader unset X-RecordBench-Proxy-Secret early" in apache
+    assert f"RequestHeader unset {LEGACY_HEADER_PREFIX}Authenticated-User early" in apache
+    assert f"RequestHeader unset {LEGACY_HEADER_PREFIX}Proxy-Secret early" in apache
     assert "RequestHeader unset Authorization" in apache
     assert '"expr=%{REMOTE_USER}"' in apache
-    assert "recordbench_minimal" in apache
+    assert f"{LEGACY_STEM}_minimal" in apache
     assert "CustomLog /proc/self/fd/1 combined" not in apache
     assert "read_only: true" in compose
     assert "no-new-privileges:true" in compose
     assert not re.search(r"^\s+ports:\s*$", compose, flags=re.MULTILINE)
-    assert "KRB5RCACHEDIR: /run/recordbench-auth/rcache" in compose
+    assert f"KRB5RCACHEDIR: /run/{LEGACY_STEM}-auth/rcache" in compose
     assert "/var/lib/sss/pipes:/var/lib/sss/pipes:ro" in compose
     assert "/etc/krb5.conf:/etc/krb5.conf:ro" in compose
-    assert "recordbench.keytab" in entrypoint
+    assert f"{LEGACY_STEM}.keytab" in entrypoint
     assert "klist -k" in entrypoint
     assert 'install -d -m 0700 -o www-data -g www-data "$runtime/rcache"' in entrypoint
-    assert "RECORDBENCH_KERBEROS_PRINCIPAL" in entrypoint
+    assert f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL" in entrypoint
     assert "KRB5RCACHETYPE=none" not in compose + entrypoint
     assert "EXPOSE 8080" in dockerfile
     assert PROXY_SECRET not in apache + compose + entrypoint + dockerfile
@@ -298,9 +305,9 @@ def test_kerberos_header_aliases_at_login_and_session_boundary(tmp_path, user_mo
         if mode != "old-only":
             headers[f"X-Exculpata-{suffix}"] = value
         if mode != "new-only":
-            headers[f"X-RecordBench-{suffix}"] = "synthetic-conflict" if mode == "both-different" else value
+            headers[f"{LEGACY_HEADER_PREFIX}{suffix}"] = "synthetic-conflict" if mode == "both-different" else value
     conflict = "both-different" in (user_mode, secret_mode)
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         result = client.get("/auth/login", headers=headers, follow_redirects=False)
         assert result.status_code == (401 if conflict else 303)
         if conflict:
@@ -315,7 +322,7 @@ def test_kerberos_header_aliases_at_login_and_session_boundary(tmp_path, user_mo
         assert client.get("/matters/new", headers=_headers()).status_code == 200
 
 
-@pytest.mark.parametrize("brand", ["Exculpata", "RecordBench"])
+@pytest.mark.parametrize("brand", ["Exculpata", f"{LEGACY_PRODUCT}"])
 @pytest.mark.parametrize("proof", [None, "synthetic-invalid-proof", ""])
 def test_each_identity_alias_still_requires_correct_proxy_proof(tmp_path, brand, proof):
     app = create_workbench_app(
@@ -325,6 +332,6 @@ def test_each_identity_alias_still_requires_correct_proxy_proof(tmp_path, brand,
     headers = {f"X-{brand}-Authenticated-User": REVIEWER_PRINCIPAL}
     if proof is not None:
         headers[f"X-{brand}-Proxy-Secret"] = proof
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get("/auth/login", headers=headers).status_code == 401
         assert client.cookies.get(SESSION_COOKIE) is None

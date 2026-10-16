@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import io
 import json
 import re
@@ -642,7 +646,7 @@ def test_video_playback_survives_transcription_failure_with_browser_copy(tmp_pat
         head = client.head(f"/matters/{slug}/sources/{token}/content")
         assert head.status_code == 200
         assert head.headers["content-type"].startswith("video/mp4")
-        assert head.headers["x-recordbench-playback"] == "compatible-copy"
+        assert head.headers[f"x-{LEGACY_STEM}-playback"] == "compatible-copy"
         assert int(head.headers["content-length"]) == document.playback_size
         prefix = client.get(
             f"/matters/{slug}/sources/{token}/content",
@@ -1049,7 +1053,7 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
             assert overview_export.status_code == 200
             assert marker in overview_export.content
             assert (
-                overview_export.headers["x-recordbench-export"]
+                overview_export.headers[f"x-{LEGACY_STEM}-export"]
                 == "work-product"
             )
             assert document.document_id[:12] not in overview_export.headers[
@@ -1071,7 +1075,7 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
             )
             assert exported.status_code == 200
             assert marker in exported.content
-            assert exported.headers["x-recordbench-export"] == "work-product"
+            assert exported.headers[f"x-{LEGACY_STEM}-export"] == "work-product"
             assert document.document_id[:12] not in exported.headers[
                 "content-disposition"
             ]

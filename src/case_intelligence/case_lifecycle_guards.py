@@ -1,4 +1,8 @@
 """Database fences for frozen content, including writers with stale UI reads."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import re
 
 # These records describe authority or the exit itself; permission revocation and
@@ -53,7 +57,7 @@ def install_content_guards(connection):
         for operation, prefixes in [('INSERT', ('NEW',)), ('DELETE', ('OLD',)), ('UPDATE', ('OLD', 'NEW'))]:
             conditions = [
                 'EXISTS (SELECT 1 FROM workbench_matter_lifecycle WHERE matter_id=' + scope(prefix)
-                + " AND state<>'active' AND recordbench_case_content_cleanup(matter_id)<>1)"
+                + f" AND state<>'active' AND {LEGACY_STEM}_case_content_cleanup(matter_id)<>1)"
                 for prefix in prefixes]
             name = f'case_fence_{table}_{operation.lower()}'
             connection.execute(

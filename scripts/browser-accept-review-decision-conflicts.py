@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic shared source-validation conflicts, support, export and revocation in Chrome."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -54,7 +59,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
-    with tempfile.TemporaryDirectory(prefix='recordbench-decision-conflicts-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-decision-conflicts-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()

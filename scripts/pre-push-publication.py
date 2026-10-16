@@ -20,11 +20,32 @@ def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
     )
 
 
-def settings(root: Path) -> list[str]:
-    required = git(root, "config", "--bool", "--get", "recordbench.requirePrivatePublicationCheck", check=False)
-    deny = git(root, "config", "--path", "--get", "recordbench.publicationDenyFile", check=False)
-    if required.returncode not in (0, 1) or deny.returncode not in (0, 1):
+_CURRENT_GIT_PREFIX = "exculpata."
+_LEGACY_GIT_PREFIX = "recordbench."
+
+
+def _config(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return git(root, "config", *args, check=False)
+
+
+def _prefer_current(root: Path, suffix: str, *options: str) -> subprocess.CompletedProcess:
+    current = _config(root, *options, _CURRENT_GIT_PREFIX + suffix)
+    legacy = _config(root, *options, _LEGACY_GIT_PREFIX + suffix)
+    if current.returncode not in (0, 1) or legacy.returncode not in (0, 1):
         raise ValueError("Publication configuration could not be read.")
+    if legacy.returncode == 0 and legacy.stdout.strip() and current.returncode != 0:
+        print(
+            "Deprecation notice: git config "
+            f"{_LEGACY_GIT_PREFIX}{suffix} is deprecated; use {_CURRENT_GIT_PREFIX}{suffix}.",
+            file=sys.stderr,
+        )
+        return legacy
+    return current
+
+
+def settings(root: Path) -> list[str]:
+    required = _prefer_current(root, "requirePrivatePublicationCheck", "--bool", "--get")
+    deny = _prefer_current(root, "publicationDenyFile", "--path", "--get")
     arguments: list[str] = []
     if required.returncode == 0 and required.stdout.strip() == "true" and not deny.stdout.strip():
         raise ValueError("This checkout requires a private publication deny file.")
@@ -35,16 +56,14 @@ def settings(root: Path) -> list[str]:
         if path.stat().st_mode & 0o077:
             raise ValueError("Publication deny file must be owner-only.")
         arguments += ["--deny-file", str(path)]
-    for key, flag, width in (
-        ("recordbench.publicCloneUrl", "--allow-public-clone-url", 1),
-        ("recordbench.publicGitIdentity", "--allow-public-git-identity", 2),
-        ("recordbench.publicBaselineIdentity", "--allow-public-baseline-git-identity", 3),
-        ("recordbench.reviewedMediaDigest", "--allow-reviewed-media-digest", 1),
-        ("recordbench.publicMergeCommit", "--allow-public-merge-commit", 1),
+    for suffix, flag, width in (
+        ("publicCloneUrl", "--allow-public-clone-url", 1),
+        ("publicGitIdentity", "--allow-public-git-identity", 2),
+        ("publicBaselineIdentity", "--allow-public-baseline-git-identity", 3),
+        ("reviewedMediaDigest", "--allow-reviewed-media-digest", 1),
+        ("publicMergeCommit", "--allow-public-merge-commit", 1),
     ):
-        result = git(root, "config", "--get-all", key, check=False)
-        if result.returncode not in (0, 1):
-            raise ValueError("Publication configuration could not be read.")
+        result = _prefer_current(root, suffix, "--get-all")
         for value in result.stdout.splitlines():
             fields = value.split("\t")
             if len(fields) != width:
@@ -74,7 +93,7 @@ def main() -> int:
     scanner = Path(__file__).with_name("publication-check.py")
     if scanner.is_symlink() or not scanner.is_file():
         raise ValueError("Publication scanner is unavailable.")
-    with tempfile.TemporaryDirectory(prefix="recordbench-push-check-") as directory:
+    with tempfile.TemporaryDirectory(prefix="exculpata-push-check-") as directory:
         temporary = Path(directory)
         object_format = git(root, "rev-parse", "--show-object-format").stdout.strip()
         if object_format not in {"sha1", "sha256"}:

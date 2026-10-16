@@ -21,7 +21,7 @@ After building the acquisition image, contributors can exercise this boundary
 without downloading models or allowing network access:
 
 ```sh
-RECORDBENCH_STAGER_TEST_IMAGE=recordbench/model-stager:dev \
+EXCULPATA_STAGER_TEST_IMAGE=exculpata/model-stager:dev \
   python -m pytest tests/test_model_stager_container.py -q
 ```
 
@@ -61,7 +61,7 @@ Punkt archive can replace that resource download:
 
 ```sh
 python3 scripts/stage-models.py stage --catalog config/models.json \
-  --model-root /srv/recordbench/models \
+  --model-root /srv/exculpata/models \
   --groups transcription-asr,transcription-alignment-en,transcription-alignment-es,transcription-diarization \
   --diarization-backend nemotron --accept-model-terms \
   --punkt-archive /path/to/punkt_tab.zip

@@ -1,12 +1,13 @@
 # Release readiness
 
-Exculpata is currently alpha. The next community beta should make it easier
-to install, try with synthetic material, and contribute using public instructions.
+Exculpata v0.1.0-beta.1 is the current community beta prerelease. It should be
+easier to install, try with synthetic material, and contribute using public
+instructions.
 The full supported-deployment requirements below remain a separate acceptance
 target; they should not prevent publishing reviewed source improvements.
 
-The [GPU beta reference journey](BETA_REFERENCE_INSTALL.md) gives the candidate
-commands, concrete acceptance steps and the evidence still pending.
+The [GPU beta reference journey](BETA_REFERENCE_INSTALL.md) gives the v0.1.0-beta.1
+commands, concrete acceptance steps, and the evidence still pending.
 
 ## Community beta exit criteria
 

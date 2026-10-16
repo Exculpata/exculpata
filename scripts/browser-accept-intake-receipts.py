@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic receipt recovery through real Chrome and disposable loopback state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -78,7 +83,7 @@ def main():
         report['checks'].append(message)
         print(message, flush=True)
     driver = server = thread = sock = None
-    with tempfile.TemporaryDirectory(prefix='recordbench-intake-browser-') as d:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-intake-browser-") as d:
         root = Path(d)
         folder = root / 'Generated-selection'
         fixtures = {

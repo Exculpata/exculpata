@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic original-source/event review in a disposable app with no model."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -53,7 +58,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-assertions-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-assertions-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()

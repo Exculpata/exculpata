@@ -1,4 +1,8 @@
 """Synthetic source-backed briefing, including provenance and complete pagination."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import FrozenInstanceError, replace
 import sqlite3
 import time
@@ -328,7 +332,7 @@ def test_legacy_upload_review_checks_membership_matter_session_and_item(tmp_path
     from tests.test_matter_management import ADMIN, OWNER, OTHER, _app, _csrf, _headers, _principal_id
     from tests.test_matter_management import _create_matter as create_authorized
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized(client, principal=OWNER, csrf_token=csrf, name='Synthetic upload review')
         bench = client.app.state.workbench
@@ -389,7 +393,7 @@ def test_external_change_and_short_receipt_page_refuse_partial_briefing(workbenc
     def changed(*args, **kwargs):
         result = date_draft(*args, **kwargs)
         with sqlite3.connect(bench.workspace.path) as other:
-            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
             other.execute("UPDATE workbench_matter SET descriptor='Synthetic concurrent edit' WHERE matter_id=?", (matter.matter_id,))
         return result
     monkeypatch.setattr(service, 'date_draft', changed)

@@ -5,7 +5,7 @@ Exculpata ownership marker. The application will not delete outside that
 boundary. A local filesystem or host-mounted NAS path is supported; the
 installer does not mount network shares or store NAS credentials.
 
-Both `.recordbench-managed-storage.json` and `.exculpata-managed-storage.json`
+Both `.exculpata-managed-storage.json` and `.exculpata-managed-storage.json`
 are supported, with each generation's original product/storage-ID validation.
 Opening or restoring a marker never rewrites it. Conflicting markers are refused.
 Fresh installs use the Exculpata marker; existing nodes retain the legacy marker.
@@ -58,15 +58,15 @@ must not live inside the node or inside each other. Scheduling is opt-in.
 
 The examples below are for new Exculpata nodes. Existing nodes must keep their
 original root, service account, repository and recovery-key locations. Backups
-retain the `recordbench` restic tag and `recordbench-backup-<hash>` units on legacy
+retain the `exculpata` restic tag and `exculpata-backup-<hash>` units on legacy
 nodes. New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
 replaces legacy units with new names. Status and restore accept either restic tag;
 retention remains scoped to the node's existing generation. PostgreSQL dumps and
-imports continue to use the `recordbench` user/database.
+imports continue to use the `exculpata` user/database.
 
 `scripts/exculpata-backup.sh`, `scripts/exculpata-backup-status.sh`,
 `scripts/exculpata-restore-drill.sh` and `scripts/exculpata_backup.py` expose the
-same operations as the retained `recordbench` entry points. Either spelling can
+same operations as the retained `exculpata` entry points. Either spelling can
 read either generation. A verified restore preserves the archived config and
 marker bytes; it does not perform a naming migration.
 
@@ -215,7 +215,7 @@ repository and a real PostgreSQL dump/import using only synthetic state:
 
 ```bash
 # Requires restic, Docker and an already installed pgvector/pgvector:pg17 image.
-RECORDBENCH_BACKUP_INTEGRATION=1 python -m pytest tests/test_backup_consistency.py -q
+EXCULPATA_BACKUP_INTEGRATION=1 python -m pytest tests/test_backup_consistency.py -q
 ```
 
 This opt-in test uses an image already on the host, a disposable database with
@@ -435,7 +435,7 @@ mixed-version writers or remove the new table in a live upgraded database.
 
 The required `deployment-contract` encrypted restic/PostgreSQL restore test
 (`test_encrypted_split_snapshot_and_postgres_restore`) checks C1 fields and audit
-bytes on both `recordbench` and `exculpata` naming generations after opening clean
+bytes on both `exculpata` and `exculpata` naming generations after opening clean
 application stores. The normal mocked-backup test covers the same assertions
 without external services; it does not replace the encrypted drill or installed
 node acceptance. Use synthetic fixtures only.

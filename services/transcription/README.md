@@ -1,6 +1,6 @@
-# RecordBench Transcription Service
+# Exculpata Transcription Service
 
-This bundled service provides RecordBench's durable media queue, WhisperX
+This bundled service provides Exculpata's durable media queue, WhisperX
 transcription, forced alignment, optional Nemotron or Community-1 speaker diarization,
 review exports, and short-lived delivery lifecycle. It can also run the
 optional Transcript Studio UI.

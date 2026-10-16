@@ -41,11 +41,11 @@ step selected the unpublished candidate, not additional node prerequisites.
 As the dedicated service account, in its checkout:
 
 ```console
-./install preflight --root /srv/recordbench --models none --auth local \
+./install preflight --root /srv/exculpata --models none --auth local \
   --enable-account-management --server-name localhost --bind-address 127.0.0.1
-COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/recordbench --models none --auth local \
+COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models none --auth local \
   --enable-account-management --server-name localhost --bind-address 127.0.0.1
-./install doctor --root /srv/recordbench
+./install doctor --root /srv/exculpata
 ```
 
 The harness supplied the documented default matter-storage path and first-admin
@@ -76,7 +76,7 @@ NSS commands. `acceptInsecureCerts` stayed false; no insecure-certificate switch
 was used. Browser automation scrolled to and clicked the real controls.
 
 1. The HTTPS sign-in page loaded with certificate validation enabled.
-2. The installer-created `recordbench.admin` signed in and reached `/admin/setup`.
+2. The installer-created `exculpata.admin` signed in and reached `/admin/setup`.
 3. The authenticated session cookie was Secure and HttpOnly.
 4. **Create matter** created `Synthetic CPU practice` through its browser form.
 5. **Sources → Upload sources**, collection `Synthetic practice sources`, file
@@ -128,7 +128,7 @@ branding assertion tied to the old favicon template expression: **3,171 passed,
 asset correction; no additional runtime or visual change was needed. Hosted
 Quality on that corrected candidate passed on 2026-09-20 UTC.
 
-All six jobs passed in [Quality run 35478490846](https://github.com/neilofneils404/recordbench-oss/actions/runs/35478490846)
+All six jobs passed in [Quality run 35478490846](https://github.com/neilofneils404/exculpata-oss/actions/runs/35478490846)
 for `d232e1ec66ddcfd38d38ff4a553bb80d3f639d02`: application, PostgreSQL
 integration, synthetic-browser, transcription, deployment-contract and
 secret-scan. The full application suite passed with **3,172 passed and 9

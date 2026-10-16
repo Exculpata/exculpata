@@ -84,9 +84,9 @@ Version 1 files remain readable for sign-in and listing. Mutation refuses them
 until the operator makes an explicit verified recovery copy:
 
 ```bash
-recordbench accounts migrate \
-  --file /srv/recordbench/secrets/local-accounts.json \
-  --backup-file /mnt/recovery/recordbench/accounts-before-v2.json
+exculpata accounts migrate \
+  --file /srv/exculpata/secrets/local-accounts.json \
+  --backup-file /mnt/recovery/exculpata/accounts-before-v2.json
 ```
 
 Run this in the approved operator environment with the correct mounted paths.
@@ -112,10 +112,10 @@ consistent current backup, then use this release's operator command while the
 node remains stopped:
 
 ```bash
-recordbench accounts rollback \
-  --file /srv/recordbench/secrets/local-accounts.json \
-  --backup-file /mnt/recovery/recordbench/accounts-before-v2.json \
-  --workspace-file /srv/recordbench/runtime/workbench.sqlite \
+exculpata accounts rollback \
+  --file /srv/exculpata/secrets/local-accounts.json \
+  --backup-file /mnt/recovery/exculpata/accounts-before-v2.json \
+  --workspace-file /srv/exculpata/runtime/workbench.sqlite \
   --confirm-stopped
 ```
 

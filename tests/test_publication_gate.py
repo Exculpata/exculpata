@@ -15,7 +15,7 @@ from pypdf import PdfWriter
 
 ROOT = Path(__file__).parents[1]
 SPEC = importlib.util.spec_from_file_location(
-    "recordbench_publication_check", ROOT / "scripts" / "publication-check.py"
+    "publication_check", ROOT / "scripts" / "publication-check.py"
 )
 assert SPEC is not None and SPEC.loader is not None
 publication = importlib.util.module_from_spec(SPEC)
@@ -40,7 +40,7 @@ def test_publication_gate_flags_private_networks_keys_and_personal_paths() -> No
 def test_publication_gate_allows_loopback_and_documentation_addresses() -> None:
     data = (
         b"127.0.0.1 ::1 192.0.2.10 198.51.100.8 203.0.113.4 2001:db8::8 "
-        b"reviewer@example.test /home/recordbench/runtime"
+        b"reviewer@example.test /home/exculpata/runtime"
     )
     assert publication._scan_bytes(data, location="fixture", deny=()) == []
 
@@ -68,7 +68,7 @@ def test_publication_gate_flags_generic_identity_and_secret_shapes() -> None:
 def test_publication_gate_allows_placeholders_and_code_references() -> None:
     data = (
         b"token=placeholder-token-value-123456789\n"
-        b"secret=/run/recordbench-secrets/proxy-secret\n"
+        b"secret=/run/exculpata-secrets/proxy-secret\n"
         b"secret = self.settings.proxy_secret\n"
     )
     assert publication._scan_bytes(data, location="fixture", deny=()) == []
@@ -132,7 +132,7 @@ def test_public_repository_identity_adjudication_is_exact_and_context_bound(
 ) -> None:
     public_name = "fixture-maintainer"
     public_email = "12345+fixture-maintainer@users.noreply.github.com"
-    clone_url = "https://github.com/fixture-maintainer/recordbench-fixture.git"
+    clone_url = "https://github.com/fixture-maintainer/exculpata-fixture.git"
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(
         ["git", "config", "user.name", public_name], cwd=tmp_path, check=True
@@ -141,7 +141,7 @@ def test_public_repository_identity_adjudication_is_exact_and_context_bound(
         ["git", "config", "user.email", public_email], cwd=tmp_path, check=True
     )
     readme = tmp_path / "README.md"
-    readme.write_text(f"git clone {clone_url} recordbench\n", encoding="utf-8")
+    readme.write_text(f"git clone {clone_url} exculpata\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=tmp_path, check=True)
     subprocess.run(
         ["git", "commit", "-q", "-m", "synthetic public baseline"],
@@ -183,7 +183,7 @@ def test_public_repository_identity_adjudication_is_exact_and_context_bound(
     )
     private_context.unlink()
     readme.write_text(
-        f"git clone {clone_url}.lookalike recordbench\n", encoding="utf-8"
+        f"git clone {clone_url}.lookalike exculpata\n", encoding="utf-8"
     )
     assert publication.Finding(
         "README.md", "operator-deny-term"

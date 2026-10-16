@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Walk all automatic report types using synthetic saved work in real Chrome."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import json
 from pathlib import Path
@@ -32,7 +37,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-compiled-report-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-compiled-report-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'; downloads.mkdir()
         app = create_workbench_app(root / 'runtime', generator=SourceEchoClient(), auth_mode='test')

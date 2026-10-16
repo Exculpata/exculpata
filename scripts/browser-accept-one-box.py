@@ -4,7 +4,12 @@
 The deterministic answer client checks routing and cited-answer presentation;
 it does not measure model quality. Every action uses the existing product UI.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -96,7 +101,7 @@ def main(argv=None):
     os.environ["CASE_INTELLIGENCE_DEEPER_INVESTIGATION"] = "1"
     report = {"synthetic_only": True, "passed": False, "checks": []}
     checks = report["checks"]
-    with tempfile.TemporaryDirectory(prefix="recordbench-one-box-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-one-box-") as temporary:
         generator = SyntheticAnswerGenerator()
         app = create_workbench_app(Path(temporary) / "runtime", generator=generator,
             auth_mode="test", learned_retrieval=False, background_ingestion=False)

@@ -18,7 +18,7 @@ install -d -m 0700 \
   "$scratch/state" \
   "$scratch/models" \
   "$scratch/tls"
-install -m 0600 "$project_root/config/recordbench.env.example" "$scratch/config/recordbench.env"
+install -m 0600 "$project_root/config/exculpata.env.example" "$scratch/config/recordbench.env"
 install -m 0600 "$project_root/config/transcription.env.example" "$scratch/config/transcription.env"
 for name in postgres-password postgres-dsn transcription-token kerberos-proxy-secret recordbench.keytab; do
   install -m 0600 /dev/null "$scratch/secrets/$name"

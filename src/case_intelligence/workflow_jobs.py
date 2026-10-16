@@ -1,5 +1,10 @@
 """Durable coordinators for multi-pass research and every-source review."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
@@ -72,7 +77,7 @@ class ResearchCoordinator:
         for ordinal in range(1, self.worker_count + 1):
             thread = threading.Thread(
                 target=self._run,
-                name=f"recordbench-research-{ordinal}",
+                name=f"{LEGACY_STEM}-research-{ordinal}",
                 args=(f"research-worker-{ordinal}",),
                 daemon=True,
             )
@@ -162,7 +167,7 @@ class ReviewCoordinator:
         for ordinal in range(1, self.worker_count + 1):
             thread = threading.Thread(
                 target=self._run,
-                name=f"recordbench-full-review-{ordinal}",
+                name=f"{LEGACY_STEM}-full-review-{ordinal}",
                 args=(f"review-worker-{ordinal}",),
                 daemon=True,
             )
@@ -195,7 +200,7 @@ class ReviewCoordinator:
         try:
             with ThreadPoolExecutor(
                 max_workers=self.source_concurrency,
-                thread_name_prefix=f"recordbench-source-{run.run_id[-8:]}",
+                thread_name_prefix=f"{LEGACY_STEM}-source-{run.run_id[-8:]}",
             ) as executor:
                 while not self._stop.is_set():
                     if cancelled():

@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic C workflow and dispatch invariants; mock output is not model quality."""
 import hashlib
@@ -124,7 +128,7 @@ def test_new_conversation_complete_context_citations_receipts_and_exports(case):
         markdown = '\n'.join(archive.read(n).decode() for n in archive.namelist() if n.endswith('.md'))
         assert 'Context supplied for this answer' in markdown
     notes = client.get(f'/matters/{slug}/notebook/export?format=markdown')
-    assert notes.status_code == 200 and 'recordbench-dispatch' not in notes.text
+    assert notes.status_code == 200 and f"{LEGACY_STEM}-dispatch" not in notes.text
     assert 'Use my saved matter context' in page.text
 
 
@@ -539,7 +543,7 @@ def test_off_mode_dispatch_omits_selection_but_retains_old_chat(case):
     assert all(kind == 'completions' for kind, _ in case['calls'])
     prompt = case['calls'][0][1]['messages'][1]['content']
     assert 'Synthetic old-chat orientation' in prompt
-    assert 'Unsourced hypothesis' not in prompt and 'recordbench-answer-context-v1' not in prompt
+    assert 'Unsourced hypothesis' not in prompt and f"{LEGACY_STEM}-answer-context-v1" not in prompt
 
 
 def test_oversized_support_group_never_admits_one_side(case):

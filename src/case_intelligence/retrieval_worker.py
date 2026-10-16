@@ -1,6 +1,11 @@
 """Localhost-only compact embedding and reranking worker for the V2 demo."""
 
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+)
 
 import argparse
 from contextlib import asynccontextmanager
@@ -168,7 +173,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1" and not (
         args.host == "0.0.0.0"
-        and env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
+        and env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1"
     ):
         parser.error(
             "non-loopback binding is allowed only in the isolated container profile"

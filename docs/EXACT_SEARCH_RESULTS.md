@@ -1,7 +1,7 @@
 # Exact document search
 
 The matter's **Find sources** route enumerates documents using
-`recordbench-exact-v2`. The existing **Semantic passage search** continues to
+`exculpata-exact-v2`. The existing **Semantic passage search** continues to
 select ranked passages for discovery and answering; its candidate limit does
 not constrain exact results. Exact search requires no embedding service,
 reranker, model, or PostgreSQL retrieval index.

@@ -3,12 +3,16 @@
 All repository operations use the caller's source guard and control transaction.
 No selection is consulted again when executing an accepted job.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 
 from .matter_context_repository import serialized
 from .workspace_store import WorkspaceProblem
 
-FORMAT = 'recordbench-answer-context-v1'
+FORMAT = f"{LEGACY_STEM}-answer-context-v1"
 MAX_SNAPSHOT_BYTES = 512 * 1024
 MAX_ATTEMPTS = 16
 

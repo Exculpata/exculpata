@@ -36,7 +36,7 @@ all inputs. The upstream advisory remains the authority on the affected code.
 
 The later isolated synthetic trial **did exercise the patched runtime**. Its
 retained runtime image identities were matched to checksum-verified image SBOMs.
-Those inventories identify WhisperX `3.8.6+recordbench.1`, Torch `2.14.0+cu126`,
+Those inventories identify WhisperX `3.8.6+exculpata.1`, Torch `2.14.0+cu126`,
 TorchAudio `2.11.0+cpu`, TorchVision `0.29.0+cu126`, TorchCodec `0.16.0+cpu` and
 Transformers `5.17.0` in the worker. The separate Nemotron environment identifies
 Torch `2.14.0+cu126` and Transformers `5.18.0.dev0`.

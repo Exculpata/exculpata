@@ -1,5 +1,10 @@
 """Durable compilation queue with lease-fenced, transactional report completion."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import json
 import re
@@ -212,9 +217,9 @@ class ReportCompilationJobs:
         # mode=rw avoids creating a replacement database after removal.
         with closing(sqlite3.connect(self.workspace.path.resolve().as_uri() + "?mode=rw", uri=True,
                                      timeout=min(5.0, self.policy.lease_seconds / 3))) as connection, connection:
-            connection.create_function("recordbench_principal_enabled", 2,
+            connection.create_function(f"{LEGACY_STEM}_principal_enabled", 2,
                                        lambda provider, subject: int(self.workspace.principal_enabled(provider, subject)))
-            connection.create_function("recordbench_case_content_cleanup", 1, lambda matter_id: 0)
+            connection.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda matter_id: 0)
             connection.row_factory = sqlite3.Row
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -231,7 +236,7 @@ class ReportCompilationJobs:
         """Read the durable lease independently while a WAL writer is busy."""
         with closing(sqlite3.connect(self.workspace.path.resolve().as_uri() + "?mode=ro", uri=True,
                                      timeout=min(0.25, self.policy.lease_seconds / 12))) as connection:
-            connection.create_function("recordbench_principal_enabled", 2,
+            connection.create_function(f"{LEGACY_STEM}_principal_enabled", 2,
                                        lambda provider, subject: int(self.workspace.principal_enabled(provider, subject)))
             connection.row_factory = sqlite3.Row
             try:

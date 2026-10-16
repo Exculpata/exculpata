@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic browser acceptance for explicit all-text review and coverage."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 from dataclasses import asdict
 import hashlib
@@ -73,7 +78,7 @@ def main():
     parser.add_argument('--ledger-contrast-only', action='store_true', help='Stop after measuring the populated synthetic text ledger in both themes.')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-full-text-browser-') as temp:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-full-text-browser-") as temp:
         root = Path(temp).resolve()
         downloads = root / 'downloads'; downloads.mkdir()
         app = create_workbench_app(root / 'runtime', generator=SyntheticGenerator(), auth_mode='test')

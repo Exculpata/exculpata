@@ -6,7 +6,12 @@ passages. Version 2 targets three questions and requires at least one useful
 grounded question per usable case. Empty source text is explicit, not a pass
 obtained by dropping every candidate. Historical v1 receipts are unchanged.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
@@ -97,7 +102,7 @@ def write_new_receipt(path: Path, result: dict) -> str:
 def load_cases(path: Path = DEFAULT_CASES) -> tuple[dict, str]:
     raw = Path(path).read_bytes()
     data = json.loads(raw)
-    if data.get("format") != "recordbench-question-draft-set-v1" or data.get("synthetic_only") is not True:
+    if data.get("format") != f"{LEGACY_STEM}-question-draft-set-v1" or data.get("synthetic_only") is not True:
         raise ValueError("Not a synthetic question-draft set.")
     for case in data["cases"]:
         if case["purpose"] not in PURPOSES or not set(case["relevant"]) <= {p["id"] for p in case["passages"]}:

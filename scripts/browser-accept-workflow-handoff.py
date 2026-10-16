@@ -4,7 +4,12 @@
 Uses generated speech, controlled transcription/ranking, and a source-echo client.
 This verifies workflow and provenance boundaries, not ASR or model quality.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -154,7 +159,7 @@ def main():
         return original_popen(command(args), *pos, **kwargs)
     receipt["host_tool_mapping"] = sorted(Path(name).name for name in mapped)
     receipt["native_pdf_address_space_limit_omitted"] = sys.platform == "darwin"
-    with tempfile.TemporaryDirectory(prefix="recordbench-cedar-browser-") as temporary, \
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-cedar-browser-") as temporary, \
             patch("subprocess.run", run), patch("subprocess.Popen", popen):
         root = Path(temporary).resolve()
         audio, segments = speech(root)

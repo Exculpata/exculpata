@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import json
 import os
 from pathlib import Path
@@ -43,7 +48,7 @@ def test_external_storage_requires_valid_marker_and_owned_directories(tmp_path):
 
     marker = root / MARKER_NAME
     payload = json.loads(marker.read_text(encoding="utf-8"))
-    payload["product"] = "Not RecordBench"
+    payload["product"] = f"Not {LEGACY_PRODUCT}"
     marker.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(RuntimeError, match="marker"):
         ManagedMatterStorage(root, policy=policy, require_marker=True)
@@ -245,7 +250,7 @@ def test_managed_storage_activation_refuses_unmigrated_legacy_matter_bytes(tmp_p
         )
 
 
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_both_marker_generations_open_without_rewriting(tmp_path, monkeypatch, names):
     monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", names)
     root = tmp_path / "managed"
@@ -254,9 +259,9 @@ def test_both_marker_generations_open_without_rewriting(tmp_path, monkeypatch, n
     marker = root / f".{names}-managed-storage.json"
     original = marker.read_bytes()
     payload = json.loads(original)
-    assert payload["product"] == ("RecordBench" if names == "recordbench" else "Exculpata")
+    assert payload["product"] == (f"{LEGACY_PRODUCT}" if names == f"{LEGACY_STEM}" else "Exculpata")
     assert payload["storage_id"].startswith(f"{names}-storage-")
-    monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", "exculpata" if names == "recordbench" else "recordbench")
+    monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", "exculpata" if names == f"{LEGACY_STEM}" else f"{LEGACY_STEM}")
     assert ManagedMatterStorage(root, policy=policy, require_marker=True).capacity().ready
     assert marker.read_bytes() == original
     with pytest.raises(RuntimeError, match="already initialized"):
@@ -265,7 +270,7 @@ def test_both_marker_generations_open_without_rewriting(tmp_path, monkeypatch, n
 
 
 @pytest.mark.parametrize("damage", ["symlink", "oversized", "wrong-product", "wrong-prefix", "two-markers"])
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_marker_generation_does_not_weaken_validation(tmp_path, monkeypatch, names, damage):
     monkeypatch.setenv("EXCULPATA_STORAGE_NAMES", names)
     root = tmp_path / "managed"
@@ -273,7 +278,7 @@ def test_marker_generation_does_not_weaken_validation(tmp_path, monkeypatch, nam
     ManagedMatterStorage.initialize(root, policy=policy)
     marker = root / f".{names}-managed-storage.json"
     payload = json.loads(marker.read_text())
-    other = "recordbench" if names == "exculpata" else "exculpata"
+    other = f"{LEGACY_STEM}" if names == "exculpata" else "exculpata"
     if damage == "symlink":
         copied = tmp_path / "synthetic-marker"
         marker.rename(copied)

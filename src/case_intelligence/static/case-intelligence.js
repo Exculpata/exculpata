@@ -2152,7 +2152,7 @@
     if (askButtonLabel) askButtonLabel.textContent = working ? "In progress" : "Answer";
   };
 
-  window.addEventListener("recordbench:readiness", (event) => {
+  window.addEventListener("exculpata:readiness", (event) => {
     const readiness = event.detail || {};
     sourcesReady = readiness.can_query === true;
     if (questionForm) questionForm.dataset.sourcesReady = sourcesReady ? "true" : "false";
@@ -2252,7 +2252,7 @@
         // The result route is a distinct request target. Navigating through it
         // forces fresh server-rendered conversation HTML even when the final
         // workspace URL differs only by a fragment.
-        const completion = new CustomEvent("recordbench:answer-complete", { detail: job, cancelable: true });
+        const completion = new CustomEvent("exculpata:answer-complete", { detail: job, cancelable: true });
         if (window.dispatchEvent(completion)) window.location.assign(job.result_url || job.workspace_url);
         return;
       }
@@ -3114,7 +3114,7 @@
       if (action && payload.sources_url) action.href = payload.sources_url;
       conversationCoverage.hidden = !partial;
     }
-    window.dispatchEvent(new CustomEvent("recordbench:readiness", { detail: payload }));
+    window.dispatchEvent(new CustomEvent("exculpata:readiness", { detail: payload }));
   };
 
   const pollReadiness = async () => {
@@ -3393,7 +3393,7 @@
       }
     }
   }, true);
-  window.addEventListener("recordbench:readiness", () => scheduleActivity(400));
+  window.addEventListener("exculpata:readiness", () => scheduleActivity(400));
   window.addEventListener("pagehide", () => {
     pageHidden = true;
     window.clearTimeout(activityTimer);
@@ -3435,7 +3435,7 @@
     });
   });
 
-  const assistantPreferenceKey = "recordbench:assistant:display:v2";
+  const assistantPreferenceKey = "exculpata:assistant:display:v2";
   const compactAssistant = window.matchMedia("(max-width: 900px)");
   const assistantDisplayKey = () => compactAssistant.matches
     ? `${assistantPreferenceKey}:compact` : assistantPreferenceKey;
@@ -3493,7 +3493,7 @@
 
   const assistantConversationPreferenceKey = () => {
     const matterId = assistantDock?.dataset.matterId || "";
-    return matterId ? `recordbench:assistant:conversation:${matterId}` : "";
+    return matterId ? `exculpata:assistant:conversation:${matterId}` : "";
   };
 
   const readAssistantPreference = () => {
@@ -4492,7 +4492,7 @@
     if (["queued", "running"].includes(status?.dataset.state || "")) pollAssistant();
   }
 
-  window.addEventListener("recordbench:readiness", (event) => {
+  window.addEventListener("exculpata:readiness", (event) => {
     if (!assistantDock) return;
     const readiness = event.detail || {};
     const ready = readiness.can_query === true;
@@ -4580,7 +4580,7 @@
   const reviewWorkspace = document.querySelector("[data-review-workspace]");
   if (reviewWorkspace) {
     body.classList.add("review-enhanced");
-    const preference = `recordbench:review-layout:${reviewWorkspace.dataset.reviewMatter}`;
+    const preference = `exculpata:review-layout:${reviewWorkspace.dataset.reviewMatter}`;
     const queueToggle = reviewWorkspace.querySelector("[data-review-queue-toggle]");
     const paneWidth = reviewWorkspace.querySelector("[data-review-pane-width]");
     const notePanel = reviewWorkspace.querySelector("[data-source-note-panel]");
@@ -4592,7 +4592,7 @@
     let noteRetryMetadata = null;
     let noteRestoreProblem = "";
     const restoreNoteAttempt = () => {
-      const metadata = window.history.state?.recordbenchSourceNote;
+      const metadata = window.history.state?.exculpataSourceNote;
       if (!metadata || !noteForm) return;
       // Only retry identity and source coordinates enter browser history. The
       // prose is never stored here; the server checks it against any saved key.
@@ -4626,7 +4626,7 @@
     const persistNoteAttempt = () => {
       const metadata = { action: noteForm.action };
       ["request_key", "source_version_id", "source_basis", "unit", "start_ms"].forEach((name) => { metadata[name] = noteSubmission.get(name) || ""; });
-      window.history.replaceState({ ...(window.history.state || {}), recordbenchSourceNote: metadata }, "");
+      window.history.replaceState({ ...(window.history.state || {}), exculpataSourceNote: metadata }, "");
       noteRetryMetadata = metadata;
     };
     let layout = {};
@@ -4775,7 +4775,7 @@
       if (noteForm.getAttribute("aria-busy") === "true") return;
       try {
         const state = { ...(window.history.state || {}) };
-        delete state.recordbenchSourceNote;
+        delete state.exculpataSourceNote;
         window.history.replaceState(state, "");
       } catch (_error) {
         noteForm.querySelector("[data-source-note-status]").textContent = "The earlier retry identity could not be cleared. Inspect saved case notes before starting another note.";

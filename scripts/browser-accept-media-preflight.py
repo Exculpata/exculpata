@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic browser acceptance for recording checks; localhost preview only."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -37,7 +42,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
-    with tempfile.TemporaryDirectory(prefix="recordbench-preflight-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-preflight-browser-") as temporary:
         root = Path(temporary)
         quiet = root / "Generated quiet recording.wav"
         silence(quiet, 8)

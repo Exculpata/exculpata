@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Prove a specified previous checkout can read stopped synthetic preflight state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -47,7 +52,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--previous-source", type=Path, required=True)
     args = parser.parse_args()
-    with tempfile.TemporaryDirectory(prefix="recordbench-preflight-rollback-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-preflight-rollback-") as temporary:
         root = Path(temporary)
         quiet = root / "generated-silence.wav"
         silence(quiet, 8)

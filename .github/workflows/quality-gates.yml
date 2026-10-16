@@ -148,7 +148,7 @@ jobs:
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         env:
           # Hosted runners are intentionally smaller than supported review nodes.
-          # Production keeps the 100 GiB default from recordbench.env.example.
+          # Production keeps the 100 GiB default from config/exculpata.env.example.
           # Reserve 0 starts only with the explicit test switch.
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: "0"
           CASE_INTELLIGENCE_TEST_MODE: "1"
@@ -185,18 +185,18 @@ jobs:
         # PostgreSQL 17 + pgvector, pinned independently of deployment updates.
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
-          POSTGRES_USER: recordbench
-          POSTGRES_DB: recordbench_test
+          POSTGRES_USER: exculpata
+          POSTGRES_DB: exculpata_test
           POSTGRES_PASSWORD: synthetic-ci-only
         ports:
           - 127.0.0.1:5432:5432
         options: >-
-          --health-cmd "pg_isready -U recordbench -d recordbench_test"
+          --health-cmd "pg_isready -U exculpata -d exculpata_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      CASE_REVIEW_POSTGRES_TEST_DSN: postgresql://recordbench:synthetic-ci-only@127.0.0.1:5432/recordbench_test
+      CASE_REVIEW_POSTGRES_TEST_DSN: postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test
     steps:
       - name: Require successful classification
         env:
@@ -292,7 +292,7 @@ jobs:
           docker tag "$image" pgvector/pgvector:pg17
       - name: Run both encrypted restore naming generations without skips
         env:
-          RECORDBENCH_BACKUP_INTEGRATION: "1"
+          EXCULPATA_BACKUP_INTEGRATION: "1"
         run: |
           python -m pytest -q -o addopts='' \
             tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore \
@@ -373,12 +373,12 @@ jobs:
       - name: Verify browser runner failure contracts
         run: python -m pytest -q tests/test_browser_acceptance_runner.py
       - name: Run pinned synthetic intake and Report journeys
-        run: python scripts/run-browser-acceptance.py --output "$RUNNER_TEMP/recordbench-browser-artifacts"
+        run: python scripts/run-browser-acceptance.py --output "$RUNNER_TEMP/exculpata-browser-artifacts"
       - name: Retain bounded synthetic diagnostics
         if: ${{ always() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: synthetic-browser-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/recordbench-browser-artifacts
+          path: ${{ runner.temp }}/exculpata-browser-artifacts
           if-no-files-found: warn
           retention-days: 5

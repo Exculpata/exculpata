@@ -1,4 +1,4 @@
-# RecordBench contributor guide
+# Exculpata contributor guide
 
 Build toward a small defense team dropping in discovery and getting cited
 understanding without choosing an engine, configuring anything, or letting
@@ -40,7 +40,7 @@ Refresh the virtualenv with `python3.12 scripts/bootstrap-dev.py`. `make bootstr
 For a loopback UI check:
 
 ```console
-CASE_INTELLIGENCE_AUTH_MODE=preview .venv/bin/recordbench-workbench --host 127.0.0.1
+CASE_INTELLIGENCE_AUTH_MODE=preview .venv/bin/exculpata-workbench --host 127.0.0.1
 ```
 
 Sign in with a synthetic preview identity and create a synthetic matter. Keep this mode on loopback.

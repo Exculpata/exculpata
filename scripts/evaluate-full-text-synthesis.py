@@ -6,7 +6,12 @@ endpoint. Classification is a controlled fixture; synthesis uses the pinned
 local model and application verifier. The optional thinking switch is an
 evaluation wire setting, not an application default or portfolio qualification.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 from dataclasses import asdict
@@ -200,7 +205,7 @@ def main():
         fixture_classification='controlled; synthesis uses actual local model',
         scope='One synthetic terminal full-text run through the production adapter and hierarchy; no production quality or portfolio qualification.')
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix='recordbench-full-text-model-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-full-text-model-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / 'runtime', generator=SourceEcho(),
             auth_mode='test', storage_policy=StoragePolicy(reserve_bytes=0))
         with TestClient(app):

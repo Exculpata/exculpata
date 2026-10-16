@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import copy
 import json
 import re
@@ -42,7 +46,7 @@ EXPECTED_CATEGORIES = {
 def test_review_acceptance_pack_is_frozen_synthetic_and_executable():
     payload = json.loads(PACK.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 2
-    assert payload["pack_id"] == "recordbench-review-acceptance-v1"
+    assert payload["pack_id"] == f"{LEGACY_STEM}-review-acceptance-v1"
     assert payload["provenance"] == "synthetic"
     assert payload["confidential_data"] is False
     assert payload["requires_network"] is False

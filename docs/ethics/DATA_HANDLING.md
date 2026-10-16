@@ -138,6 +138,6 @@ of the actual topology before making stronger claims.
 [fonts]: https://github.com/Exculpata/exculpata/blob/6ebc292/src/case_intelligence/static/theme-tokens.css#L1-L5
 [studio-client]: https://github.com/Exculpata/exculpata/blob/6ebc292/services/transcription/ui/api_client.py#L425-L460
 [studio]: https://github.com/Exculpata/exculpata/blob/6ebc292/services/transcription/ui/streamlit_app.py#L532-L545
-[backup]: https://github.com/Exculpata/exculpata/blob/6ebc292/scripts/recordbench_backup.py#L256-L305
+[backup]: https://github.com/Exculpata/exculpata/blob/6ebc292/scripts/exculpata_backup.py#L256-L305
 
 [retrieval-worker]: https://github.com/Exculpata/exculpata/blob/6ebc292/src/case_intelligence/retrieval_worker.py#L111-L168

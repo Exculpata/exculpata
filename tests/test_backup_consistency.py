@@ -1,5 +1,12 @@
 """Synthetic split-filesystem backup boundaries; no running services needed."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -15,7 +22,7 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import recordbench_backup as backup  # noqa: E402
+import exculpata_backup as backup  # noqa: E402
 
 
 def _private_json(path: Path, value: dict) -> None:
@@ -34,7 +41,7 @@ def _version(path: Path) -> str:
 
 class SyntheticNode:
     def __init__(self, root: Path, monkeypatch, *, wal: bool = False,
-                 node_path: Path | None = None, storage_path: Path | None = None, names: str = "recordbench"):
+                 node_path: Path | None = None, storage_path: Path | None = None, names: str = f"{LEGACY_STEM}"):
         self.root = root
         self.names = names
         self.restic_arguments = []
@@ -66,12 +73,12 @@ class SyntheticNode:
             "recovery_key_output": str(root / "recovery-key"), "retention": "14d",
         })
         environment = {
-            "RECORDBENCH_RUNTIME_ROOT": str(self.node / "runtime"),
-            "RECORDBENCH_CONFIG_ROOT": str(self.node / "config"),
-            "RECORDBENCH_SECRETS_ROOT": str(self.node / "secrets"),
-            "RECORDBENCH_STORAGE_ROOT": str(self.storage),
+            f"{LEGACY_ENV_PREFIX}RUNTIME_ROOT": str(self.node / "runtime"),
+            f"{LEGACY_ENV_PREFIX}CONFIG_ROOT": str(self.node / "config"),
+            f"{LEGACY_ENV_PREFIX}SECRETS_ROOT": str(self.node / "secrets"),
+            f"{LEGACY_ENV_PREFIX}STORAGE_ROOT": str(self.storage),
         }
-        environment = {key.replace("RECORDBENCH_", names.upper() + "_"): value for key, value in environment.items()}
+        environment = {key.replace(f"{LEGACY_ENV_PREFIX}", names.upper() + "_"): value for key, value in environment.items()}
         env = self.node / "compose.env"
         env.write_text("".join(f"{key}={json.dumps(value)}\n" for key, value in environment.items()))
         env.chmod(0o600)
@@ -95,7 +102,7 @@ class SyntheticNode:
         monkeypatch.setattr(backup, "_restic", self.restic)
         monkeypatch.setattr(backup, "_running_services", lambda _: frozenset({"app", "gateway"}))
         monkeypatch.setattr(backup, "_health", lambda _: {
-            "product": "RecordBench",
+            "product": f"{LEGACY_PRODUCT}",
             **{key: {"queued": 0, "running": 0} for key in backup.ACTIVE_JOB_KEYS},
         })
 
@@ -182,7 +189,7 @@ def test_browser_accounts_are_in_snapshot_and_clean_restore(node_factory, monkey
     record["local_account_management"] = True
     _private_json(node.node / "installation.json", record)
     with (node.node / "compose.env").open("a") as stream:
-        stream.write(f"RECORDBENCH_LOCAL_ACCOUNT_ROOT={json.dumps(str(repository.path.parent))}\n")
+        stream.write(f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT={json.dumps(str(repository.path.parent))}\n")
     before = repository.path.read_bytes()
     same_filesystem = backup._same_filesystem
     def reject_account_hardlink_boundary(roots):
@@ -204,8 +211,8 @@ def test_managed_registry_is_frozen_before_restart(node_factory):
     assert _version(node.registry) == "live"
     assert _version(restored_registry) == "frozen"
     assert node.events.index("restart") < node.events.index("transfer")
-    assert not list(node.node.glob(".recordbench-backup-snapshot-*"))
-    assert not list(node.storage.parent.glob(".recordbench-storage-snapshot-*"))
+    assert not list(node.node.glob(f".{LEGACY_STEM}-backup-snapshot-*"))
+    assert not list(node.storage.parent.glob(f".{LEGACY_STEM}-storage-snapshot-*"))
 
 
 def test_wal_control_is_consolidated_before_restart(node_factory):
@@ -233,8 +240,8 @@ def test_corrupt_managed_registry_refuses_backup_and_restarts_app(node_factory):
     assert node.events.count("restart") == 1
     assert "transfer" not in node.events
     assert json.loads((node.node / "state/backup-status.json").read_text())["state"] == "failed"
-    assert not list(node.node.glob(".recordbench-backup-snapshot-*"))
-    assert not list(node.storage.parent.glob(".recordbench-storage-snapshot-*"))
+    assert not list(node.node.glob(f".{LEGACY_STEM}-backup-snapshot-*"))
+    assert not list(node.storage.parent.glob(f".{LEGACY_STEM}-storage-snapshot-*"))
 
 
 def test_restore_validates_the_managed_registry(node_factory):
@@ -283,7 +290,7 @@ def test_restore_receipt_counts_control_and_managed_stores(node_factory):
 def test_active_work_still_defers_without_stopping_services(node_factory, monkeypatch, active_key, state):
     node = node_factory()
     monkeypatch.setattr(backup, "_health", lambda _: {
-        "product": "RecordBench",
+        "product": f"{LEGACY_PRODUCT}",
         **{key: {"queued": int(key == active_key and state == "queued"), "running": int(key == active_key and state == "running")} for key in backup.ACTIVE_JOB_KEYS},
     })
     assert node.backup() == 0
@@ -297,8 +304,8 @@ def test_stopped_projection_failure_restarts_and_cleans_up(node_factory):
     with pytest.raises(backup.BackupError, match="synthetic projection failure"):
         node.backup()
     assert node.events == ["stop", "dump", "restart"]
-    assert not list(node.node.glob(".recordbench-backup-snapshot-*"))
-    assert not list(node.storage.parent.glob(".recordbench-storage-snapshot-*"))
+    assert not list(node.node.glob(f".{LEGACY_STEM}-backup-snapshot-*"))
+    assert not list(node.storage.parent.glob(f".{LEGACY_STEM}-storage-snapshot-*"))
 
 
 def test_snapshot_does_not_follow_managed_symlinks(node_factory):
@@ -314,10 +321,10 @@ def test_snapshot_does_not_follow_managed_symlinks(node_factory):
 
 
 @pytest.mark.skipif(
-    os.environ.get("RECORDBENCH_BACKUP_INTEGRATION") != "1",
+    os.environ.get("EXCULPATA_BACKUP_INTEGRATION") != "1",
     reason="opt-in synthetic restic/PostgreSQL drill",
 )
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch, names):
     """Real repository and dump/import; simulated app stop/restart only.
 
@@ -344,8 +351,8 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         "--tmpfs", "/var/lib/postgresql/data:rw,nosuid,nodev,size=256m",
         "--tmpfs", "/var/run/postgresql:rw,nosuid,nodev,size=16m",
         "--tmpfs", "/tmp:rw,nosuid,nodev,size=16m",
-        "-e", "POSTGRES_HOST_AUTH_METHOD=trust", "-e", "POSTGRES_USER=recordbench",
-        "-e", "POSTGRES_DB=recordbench", image, "postgres", "-c", "listen_addresses=",
+        "-e", "POSTGRES_HOST_AUTH_METHOD=trust", "-e", f"POSTGRES_USER={LEGACY_STEM}",
+        "-e", f"POSTGRES_DB={LEGACY_STEM}", image, "postgres", "-c", "listen_addresses=",
     ], capture_output=True, check=True, text=True).stdout.strip()
 
     def execute(*command, input_bytes=None):
@@ -354,16 +361,16 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
             capture_output=True, check=True, timeout=30,
         )
 
-    def sql(statement, database="recordbench"):
+    def sql(statement, database=f"{LEGACY_STEM}"):
         return execute(
-            "psql", "-X", "-U", "recordbench", "-d", database, "-v", "ON_ERROR_STOP=1", "-At",
+            "psql", "-X", "-U", f"{LEGACY_STEM}", "-d", database, "-v", "ON_ERROR_STOP=1", "-At",
             input_bytes=statement.encode(),
         ).stdout.decode().strip()
 
     try:
         for attempt in range(60):
             ready = subprocess.run(
-                ["docker", "exec", container, "pg_isready", "-U", "recordbench"],
+                ["docker", "exec", container, "pg_isready", "-U", f"{LEGACY_STEM}"],
                 capture_output=True, timeout=10,
             )
             main_process = subprocess.run(
@@ -380,7 +387,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         def commands(command, **kwargs):
             if "pg_dump" in command:
                 node.events.append("dump")
-                return execute("pg_dump", "-U", "recordbench", "-d", "recordbench", "--format=custom")
+                return execute("pg_dump", "-U", f"{LEGACY_STEM}", "-d", f"{LEGACY_STEM}", "--format=custom")
             if "pg_restore" in command:
                 return execute("pg_restore", "--list", input_bytes=kwargs["input_bytes"])
             result = node.run(command, **kwargs)
@@ -397,7 +404,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         snapshots = json.loads(original_restic(config, password, ("snapshots", "--json"), stdout=subprocess.PIPE).stdout)
         assert len(snapshots) == 1
         assert names in snapshots[0]["tags"]
-        other = "recordbench" if names == "exculpata" else "exculpata"
+        other = f"{LEGACY_STEM}" if names == "exculpata" else "exculpata"
         assert other not in snapshots[0]["tags"]
         target = node.root / "restored"
         assert backup.restore(argparse.Namespace(
@@ -411,15 +418,15 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         _assert_matter_purpose_restore(restored_control, purpose_matter_id, purpose_before)
         _assert_source_role_restore(restored_control, role_matter_id, role_before)
         dump, = [path for path in files if path.name == "review-index.dump"]
-        sql("CREATE DATABASE restored_recordbench;")
+        sql(f"CREATE DATABASE restored_{LEGACY_STEM};")
         execute(
             "pg_restore", "--exit-on-error", "--no-owner", "--no-privileges",
-            "-U", "recordbench", "-d", "restored_recordbench", input_bytes=dump.read_bytes(),
+            "-U", f"{LEGACY_STEM}", "-d", f"restored_{LEGACY_STEM}", input_bytes=dump.read_bytes(),
         )
-        assert sql("SELECT version FROM synthetic_state;", "restored_recordbench") == "frozen"
+        assert sql("SELECT version FROM synthetic_state;", f"restored_{LEGACY_STEM}") == "frozen"
         assert sql("SELECT version FROM synthetic_state;") == "live"
         assert _version(node.control) == _version(node.registry) == "live"
-        execute("pg_amcheck", "-U", "recordbench", "-d", "restored_recordbench", "--install-missing")
+        execute("pg_amcheck", "-U", f"{LEGACY_STEM}", "-d", f"restored_{LEGACY_STEM}", "--install-missing")
     finally:
         subprocess.run(["docker", "rm", "--force", container], capture_output=True, check=True)
 
@@ -563,7 +570,7 @@ def test_exact_byte_comparisons_restore_and_rebuild_from_received_registry(node_
 
 def test_installer_prepared_nested_storage_round_trips_to_clean_target(tmp_path, node_factory):
     import stat
-    import recordbench_install as installer
+    import exculpata_install as installer
 
     base = tmp_path.resolve()
     node_path = base / "created-node-parent" / "nested" / "node"
@@ -602,7 +609,7 @@ def _enable_browser_accounts(node):
     record["local_account_management"] = True
     _private_json(node.node / "installation.json", record)
     with (node.node / "compose.env").open("a") as stream:
-        stream.write(f"RECORDBENCH_LOCAL_ACCOUNT_ROOT={json.dumps(str(repo.path.parent))}\n")
+        stream.write(f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT={json.dumps(str(repo.path.parent))}\n")
     return repo
 
 
@@ -634,7 +641,7 @@ def test_invalid_browser_account_store_blocks_backup_before_transfer(node_factor
         node.backup()
     assert "restart" in node.events and "transfer" not in node.events
     assert not node.archive.exists()
-    assert not list(node.node.glob(".recordbench-backup-snapshot-*"))
+    assert not list(node.node.glob(f".{LEGACY_STEM}-backup-snapshot-*"))
     assert json.loads((node.node / "state/backup-status.json").read_text())["state"] == "failed"
 
 
@@ -713,7 +720,7 @@ def test_full_text_ledger_and_budget_survive_normal_backup_restore(node_factory)
         restored.close()
 
 
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_backup_and_restore_preserve_generation_and_accept_both_tags(node_factory, names):
     node = node_factory(names=names)
     before = (node.node / "compose.env").read_bytes()
@@ -728,7 +735,7 @@ def test_backup_and_restore_preserve_generation_and_accept_both_tags(node_factor
     restore = next(args for args in node.restic_arguments if args[0] == "restore")
     assert transfer[transfer.index("--tag") + 1] == names
     assert retention[retention.index("--tag") + 1] == names
-    assert restore[restore.index("--tag"):restore.index("--tag") + 4] == ("--tag", "recordbench", "--tag", "exculpata")
+    assert restore[restore.index("--tag"):restore.index("--tag") + 4] == ("--tag", f"{LEGACY_STEM}", "--tag", "exculpata")
     assert not list(node.node.glob(f".{names}-backup-snapshot-*"))
     assert not list(node.storage.parent.glob(f".{names}-storage-snapshot-*"))
 
@@ -762,7 +769,7 @@ def _assert_matter_purpose_restore(path, matter_id, expected):
             restored.close()
 
 
-@pytest.mark.parametrize('names', ['recordbench', 'exculpata'])
+@pytest.mark.parametrize('names', [f"{LEGACY_STEM}", 'exculpata'])
 def test_matter_purpose_round_trip_through_normal_backup_restore(node_factory, names):
     node = node_factory(wal=True, names=names)
     matter_id, expected = _seed_matter_purpose(node.control)
@@ -803,7 +810,7 @@ def _assert_source_role_restore(path, matter_id, expected):
             restored.close()
 
 
-@pytest.mark.parametrize('names', ['recordbench', 'exculpata'])
+@pytest.mark.parametrize('names', [f"{LEGACY_STEM}", 'exculpata'])
 def test_source_role_round_trip_through_normal_backup_restore(node_factory, names):
     node = node_factory(wal=True, names=names)
     matter_id, expected = _seed_source_role(node.control)

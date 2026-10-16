@@ -1,4 +1,8 @@
 """Synthetic explicit widening of persisted model abstentions."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import replace
 from html.parser import HTMLParser
 import io
@@ -313,7 +317,7 @@ def test_offer_submission_preserves_real_csrf_membership_and_admin_boundaries(tm
     bench.research.close()
     bench.research = None
     bench.generator = GroundedGenerationService(FakeGenerator(RAW_FALSE))
-    with TestClient(app, base_url='https://recordbench.example.test') as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized(client, principal=OWNER, csrf_token=csrf, name='Synthetic protected offer')
         actor = _principal_id(client, OWNER)

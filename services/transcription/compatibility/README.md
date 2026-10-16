@@ -1,6 +1,6 @@
 # WhisperX compatibility wheel
 
-This recipe builds `whisperx==3.8.6+recordbench.1` from upstream revision
+This recipe builds `whisperx==3.8.6+exculpata.1` from upstream revision
 `3ccc17b8de34f305300f8a3fd3c9f76ba820c0d0`. It verifies the upstream archive
 SHA-256 before bounded extraction, verifies the original `pyproject.toml`, and
 changes dependency metadata only. All 16 `whisperx/*.py` modules remain unchanged.
@@ -19,9 +19,9 @@ repository root, in a new Python 3.11 virtual environment:
 ```sh
 python -m pip install --require-hashes --no-build-isolation \
   -r services/transcription/requirements-api-build.lock
-python services/transcription/compatibility/build_whisperx.py --output /tmp/recordbench-whisperx-wheels
+python services/transcription/compatibility/build_whisperx.py --output /tmp/exculpata-whisperx-wheels
 python -m pip install --require-hashes --no-build-isolation \
-  --find-links=/tmp/recordbench-whisperx-wheels \
+  --find-links=/tmp/exculpata-whisperx-wheels \
   -r services/transcription/requirements-worker.lock
 python -m pip check
 ```

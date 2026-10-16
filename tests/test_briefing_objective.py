@@ -1,4 +1,8 @@
 """Synthetic C3 question-only steering, fidelity and authorized snapshot checks."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import asdict, replace
 import json
 import re
@@ -183,7 +187,7 @@ def test_concurrent_objective_edit_and_late_membership_loss_refuse_output(workbe
     def changed(*args, **kwargs):
         result = original(*args, **kwargs)
         with bench.workspace._lock, sqlite3.connect(bench.workspace.path) as other:
-            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
             other.execute('UPDATE workbench_matter_purpose SET objective=? WHERE matter_id=?',
                           ('2024-05-06', matter.matter_id))
         return result

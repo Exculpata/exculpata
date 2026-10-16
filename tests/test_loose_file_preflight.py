@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import asyncio
 import re
 import threading
@@ -139,7 +143,7 @@ def _raw_preflight_request(
 
     path = f"/matters/{slug}/upload-preflight"
     headers = [
-        (b"host", b"recordbench.example.test"),
+        (b"host", (f"{LEGACY_STEM}.example.test").encode()),
         (b"accept", b"application/json"),
         (b"content-type", b"application/json"),
         (b"x-csrf-token", b"test-csrf"),
@@ -158,7 +162,7 @@ def _raw_preflight_request(
         "root_path": "",
         "headers": headers,
         "client": ("127.0.0.1", 43110),
-        "server": ("recordbench.example.test", 443),
+        "server": (f"{LEGACY_STEM}.example.test", 443),
         "state": {
             "auth": app.state.identity.resolve(None),
             "request_id": "synthetic-preflight-stream-limit",

@@ -1,5 +1,10 @@
 """Readable and machine-readable selection receipts without source bytes."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import csv
 import io
@@ -37,7 +42,7 @@ def export_intake_receipt(receipt: Mapping, format_name: str) -> ExportArtifact:
     portable = portable_receipt(receipt)
     counts = portable['counts']
     if format_name == 'json':
-        body = json.dumps({'schema': 'recordbench-intake-receipt-v1', **portable}, ensure_ascii=False, indent=2).encode('utf-8')
+        body = json.dumps({'schema': f"{LEGACY_STEM}-intake-receipt-v1", **portable}, ensure_ascii=False, indent=2).encode('utf-8')
         media_type = 'application/json; charset=utf-8'
     elif format_name == 'csv':
         stream = io.StringIO(newline='')

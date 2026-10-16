@@ -10,7 +10,12 @@ Zoom level is log(factor) / log(1.2). Every run proves the preference took effec
 using the unchanged outer window, inverse layout viewport and scaled DPR.
 No viewport, deviceScaleFactor, pinch/page scale or CSS zoom override is used.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -77,7 +82,7 @@ def main():
         'method': 'Native Chrome default zoom in a new temporary profile per factor; fixed 1280x1200 outer window; no emulation or CSS zoom.',
         'unrun_checks': ['OS display scaling', 'Safari/WebKit native zoom', 'physical mobile', 'screen reader']}
     driver = None
-    with tempfile.TemporaryDirectory(prefix='recordbench-zoom-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-zoom-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / 'runtime', auth_mode='test',
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))

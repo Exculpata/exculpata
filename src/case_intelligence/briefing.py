@@ -1,5 +1,10 @@
 """Deterministic, source-linked discovery briefing; no generation or saved state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+)
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -25,10 +30,10 @@ MAX_QUESTION_CHARS = 2_000
 
 @dataclass(frozen=True)
 class RecordedDocumentDate:
-    """Semantic document-date metadata from an inventory, bound to its version.
+    f"""Semantic document-date metadata from an inventory, bound to its version.
 
     Arrival times, filesystem mtimes and dates mentioned in text are not this
-    metadata. Current RecordBench inventories do not record semantic dates;
+    metadata. Current {LEGACY_PRODUCT} inventories do not record semantic dates;
     callers must leave this empty unless their inventory explicitly provides it.
     """
 

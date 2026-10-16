@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Check optional Home briefings using disposable synthetic processing and sources."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 from contextlib import contextmanager
@@ -192,7 +197,7 @@ def main(argv=None):
             assert urlsplit(driver.current_url).path == f"/matters/{matter.slug}/home"
             return text
 
-        with tempfile.TemporaryDirectory(prefix="recordbench-briefing-") as temporary:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-briefing-") as temporary:
             runtime = Path(temporary).resolve() / "runtime"
             app = configured_app(runtime)
             bench = app.state.workbench
@@ -358,11 +363,11 @@ def main(argv=None):
                 processing = {**readiness, "state": "preparing", "processing_count": 1,
                               "overview_processing_count": 1, "can_query": False}
                 for payload in (processing, readiness):
-                    js("window.dispatchEvent(new CustomEvent('recordbench:readiness',{detail:arguments[0]}))", payload)
+                    js(f"window.dispatchEvent(new CustomEvent('{LEGACY_STEM}:readiness',{{detail:arguments[0]}}))", payload)
                 wait.until(lambda _: js("return !!window.syntheticBriefingRace.pending[1]"))
                 assert find("[data-briefing-region]").get_attribute("hidden")
                 for payload in (processing, readiness):
-                    js("window.dispatchEvent(new CustomEvent('recordbench:readiness',{detail:arguments[0]}))", payload)
+                    js(f"window.dispatchEvent(new CustomEvent('{LEGACY_STEM}:readiness',{{detail:arguments[0]}}))", payload)
                 js("window.syntheticBriefingRace.pending[1]()")
                 wait.until(lambda _: js("return !!window.syntheticBriefingRace.pending[2]"))
                 assert js("return document.querySelector('[data-briefing-region]').dataset.syntheticBriefingFetch") == "original"

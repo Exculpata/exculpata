@@ -28,7 +28,7 @@ For local accounts, explicitly enable the narrow writable account profile:
 
 The installer creates one canonical `accounts/local-accounts.json`, mode `0600`,
 inside an owner-only `0700` directory. `compose.local-accounts.yaml` mounts that
-directory at `/var/lib/recordbench-accounts` in the app and operator account tool.
+directory at `/var/lib/exculpata-accounts` in the app and operator account tool.
 The original secrets mount remains read-only in both the app and operator
 account tool. No duplicate account database or writable session-key, provider-secret or database-credential mount
 is introduced. Installer resume and updates retain this profile in
@@ -56,10 +56,10 @@ environment. Do not perform this through an HTTP request.
 3. Relocate the same version 2 account file with a new recovery destination:
 
    ```bash
-   recordbench accounts relocate \
-     --file /srv/recordbench/secrets/local-accounts.json \
-     --destination /srv/recordbench/accounts/local-accounts.json \
-     --backup-file /mnt/recovery/recordbench/accounts-before-browser.json \
+   exculpata accounts relocate \
+     --file /srv/exculpata/secrets/local-accounts.json \
+     --destination /srv/exculpata/accounts/local-accounts.json \
+     --backup-file /mnt/recovery/exculpata/accounts-before-browser.json \
      --confirm-stopped
    ```
 
@@ -70,10 +70,10 @@ environment. Do not perform this through an HTTP request.
    the new file with independently rotated session revisions, then
    removes and syncs the old canonical file. If interrupted after writing the
    destination, keep writers stopped and inspect both paths before resuming.
-4. Set `RECORDBENCH_LOCAL_ACCOUNT_ROOT=/srv/recordbench/accounts` in `compose.env`.
-   Set `CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE=/var/lib/recordbench-accounts/local-accounts.json`
-   and `CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT=/var/lib/recordbench-accounts`
-   in `config/recordbench.env`. Set `local_account_management` to `true` in
+4. Set `EXCULPATA_LOCAL_ACCOUNT_ROOT=/srv/exculpata/accounts` in `compose.env`.
+   Set `CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE=/var/lib/exculpata-accounts/local-accounts.json`
+   and `CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT=/var/lib/exculpata-accounts`
+   in `config/exculpata.env`. Set `local_account_management` to `true` in
    `installation.json`. Preserve the other configuration fields and owner-only
    permissions. Include `compose.local-accounts.yaml` after `compose.yaml` for
    direct Compose operations; installer operations load it from node metadata.
@@ -141,7 +141,7 @@ session revisions or submitted form bodies.
 With the checkout's Python dependencies, Node, OpenSSL and Playwright Chromium
 available, run `python scripts/qa-people-browser.py`. Set `PLAYWRIGHT_MODULE` to
 an installed `playwright` package if Node cannot resolve it. For installed Chrome,
-set `RECORDBENCH_QA_BROWSER_CHANNEL=chrome`. Optional `--artifacts` retains desktop
+set `EXCULPATA_QA_BROWSER_CHANNEL=chrome`. Optional `--artifacts` retains desktop
 and narrow screenshots in a directory outside the checkout.
 
 The runner creates a temporary loopback HTTPS node with synthetic accounts and

@@ -1,4 +1,8 @@
 """Synthetic authorization and response-lifecycle checks for rendered clips."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import asyncio
 import io
 import threading
@@ -40,7 +44,7 @@ def seed_clip(bench, matter, actor, monkeypatch):
 @pytest.mark.parametrize("revocation", ["membership", "session", "principal", "administrator"])
 def test_clip_rechecks_authority_after_render(tmp_path, monkeypatch, revocation):
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         client.get("/auth/login", headers=_headers(OWNER))
         bench = client.app.state.workbench
         owner = _principal_id(client, OWNER)

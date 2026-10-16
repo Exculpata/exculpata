@@ -33,7 +33,7 @@ For the reference profile, the prepare command has this form (set real new paths
 and available resources deliberately):
 
 ```sh
-./install --root /srv/recordbench-recovered --prepare-only \
+./install --root /srv/exculpata-recovered --prepare-only \
   --models all --auth local --enable-account-management \
   --gpu-layout shared --review-model-profile portable --retrieval-device cuda \
   --transcription-languages en,es --enable-diarization --diarization-backend nemotron \
@@ -49,7 +49,7 @@ recovery procedure. Do not overwrite any node that has admitted user work.
 
 The verified restic restore retains original path prefixes. Under the drill
 root, identify the unique `payload/CONTROL_SHA256SUMS` and the unique
-`managed-storage/.recordbench-managed-storage.json`; fail if either is missing
+`managed-storage/.exculpata-managed-storage.json`; fail if either is missing
 or ambiguous. The payload contains `runtime/`, `accounts/`, `secrets/`,
 `configuration/`, `control/`, and `postgres/review-index.dump`.
 
@@ -74,7 +74,7 @@ and service secrets; inspect any custom endpoint before enabling it.
 
 Set `CASE_INTELLIGENCE_MAINTENANCE_ENABLED=0` and
 `CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY=0` in the replacement's effective
-`config/recordbench.env` before the first app process starts. Follow
+`config/exculpata.env` before the first app process starts. Follow
 [expired-matter recovery](EXPIRED_MATTER_RECOVERY.md); a five-minute maintenance
 interval is not a safety hold. Do not edit stored deadlines or SQLite data.
 
@@ -100,7 +100,7 @@ docker compose --env-file "$RECOVERED_ROOT/compose.env" \
   -f "$RECOVERED_RELEASE/compose.yaml" \
   -f "$RECOVERED_RELEASE/compose.local-accounts.yaml" \
   exec -T postgres pg_restore --exit-on-error --no-owner \
-  -U recordbench -d recordbench < "$VERIFIED_PAYLOAD/postgres/review-index.dump"
+  -U exculpata -d exculpata < "$VERIFIED_PAYLOAD/postgres/review-index.dump"
 ```
 
 Stop on any import error. Compare schema and representative row counts with the

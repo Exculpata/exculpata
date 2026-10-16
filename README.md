@@ -24,10 +24,11 @@ tools can support other legal and investigation teams.
 Exculpata is designed to run on infrastructure you control. Its bundled AI
 workflows use local models for retrieval, answers, and media transcription.
 
-> **Community beta candidate:** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
-> with synthetic material. The beta has not been released yet; final reference
-> acceptance and maintainer approval are pending. This is not production
-> certification for confidential casework. See the [candidate release notes](docs/BETA_RELEASE_NOTES.md).
+> **Community beta v0.1.0-beta.1.** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
+> with synthetic material. This prerelease is for evaluation and contribution.
+> It is not production certification for confidential casework. See the
+> [beta release notes](docs/BETA_RELEASE_NOTES.md). Checksummed source artifacts
+> and recorded image and model identities are follow-ups for a later beta.
 
 The beta ethics kit provides an evidence-linked [data-handling statement](docs/ethics/DATA_HANDLING.md),
 [vendor-vetting checklist](docs/ethics/VENDOR_VETTING_CHECKLIST.md), and
@@ -87,7 +88,7 @@ See the [corpus provenance](demo_data/README.md).
 
 ## Help build Exculpata
 
-This is a maintainer-led community beta candidate. It does not publish any
+This is the maintainer-led community beta, v0.1.0-beta.1. It does not publish any
 organization's private deployment, records, or endorsement. Contributions use
 synthetic examples only, including issue descriptions, screenshots, and logs.
 
@@ -275,17 +276,23 @@ Limits and the remaining keys are in
 
 ## Hardware planning targets
 
-These are starting targets for prerelease evaluation, not validated minimums or
-collection-size and concurrency guarantees. Larger matters, longer recordings,
-and more simultaneous users need additional storage and capacity. Consult
+These are evaluation configurations, not guaranteed minimums or collection-size
+and concurrency limits. Larger matters, longer recordings, and more simultaneous
+users need additional storage and capacity. Cited answers with the portable
+model are admitted from 16 GB of NVIDIA VRAM. The reference GPU journey
+(portable answers, English and Spanish transcription, and Nemotron speaker
+labels) ran on 24 GB. A separate 16 GB reference run is not recorded. Driver
+and CUDA versions for the 24 GB run were not recorded. File another result on
+the [hardware report](https://github.com/Exculpata/exculpata/issues/new?template=hardware_report.yml)
+form. Collected rows live in [compatibility](docs/COMPATIBILITY.md). Consult
 [release readiness](docs/RELEASE_READINESS.md) before treating a configuration
 as supported.
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
 | **CPU evaluation** — intake, OCR, word search, source review, and exports | 8 cores | 16 GB | None | 150 GB production, or 13 GB with `--storage-profile evaluation` |
-| **Local document review** — evaluation features plus semantic retrieval, reranking, and local answers | 12 cores | 32 GB | 1 GPU with 16 GB VRAM | 200 GB |
-| **Every-source checks and media** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM | 300 GB |
+| **Local document review and cited answers** — evaluation features plus semantic retrieval, reranking, and local answers with the portable model | 12 cores | 32 GB | 1 GPU with 16 GB VRAM minimum | 200 GB |
+| **Transcription and speaker labels** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM, tested reference | 300 GB |
 
 Use a modern x86-64 Linux host with Docker Engine and Docker Compose v2. GPU
 profiles require an NVIDIA card with compute capability 7.5 or newer and the
@@ -354,12 +361,12 @@ and the evidence already in this repository. It is not a security certification
 and it does not promise a result.
 
 ```bash
-./install doctor --root /srv/recordbench
-./install backup --root /srv/recordbench --repository /mnt/backup/recordbench \
-  --recovery-key-output /mnt/recovery/recordbench-password
-./install restore --root /srv/recordbench \
-  --restore-target /srv/recordbench-restore-test
-./install update --root /srv/recordbench
+./install doctor --root /srv/exculpata
+./install backup --root /srv/exculpata --repository /mnt/backup/exculpata \
+  --recovery-key-output /mnt/recovery/exculpata-password
+./install restore --root /srv/exculpata \
+  --restore-target /srv/exculpata-restore-test
+./install update --root /srv/exculpata
 ```
 
 ## Data and repository boundaries
@@ -424,10 +431,12 @@ details out of issues, pull requests, and screenshots.
 
 ## Project status
 
-Exculpata is preparing its first community beta. The reviewed source is
-available for evaluation and contribution; the beta tag and final reference
-acceptance remain pending. Supported production-release requirements remain open. Sharing the source and supporting confidential casework each require the evidence described
-in [release readiness](docs/RELEASE_READINESS.md) and the
+Exculpata v0.1.0-beta.1 is the current community beta prerelease. The reviewed
+source is available for evaluation and contribution. The maintainer applies the
+git tag. Checksummed source artifacts and recorded image and model identities
+are follow-ups for a later beta. Supported production-release requirements remain
+open. Sharing the source and supporting confidential casework each require the
+evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 [publication checklist](docs/PUBLICATION_CHECKLIST.md).
 
 ## Documentation

@@ -1,6 +1,6 @@
 PYTHON ?= .venv/bin/python
 SYSTEM_PYTHON ?= python3.12
-PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/recordbench-publication-guard
+PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/exculpata-publication-guard
 GITLEAKS ?= gitleaks
 .DEFAULT_GOAL := test
 

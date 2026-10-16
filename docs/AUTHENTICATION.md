@@ -15,14 +15,14 @@ The app factory, identity service and workbench CLI require an explicit
 `CASE_INTELLIGENCE_AUTH_MODE` (or the factory's `auth_mode` argument). Missing,
 empty and unknown modes stop startup before the app initializes runtime state.
 An explicitly empty argument does not fall back to the environment. Installed
-Compose operation sets `EXCULPATA_ALLOW_CONTAINER_BIND=1` (deprecated alias: `RECORDBENCH_ALLOW_CONTAINER_BIND=1`) and accepts only
+Compose operation sets `EXCULPATA_ALLOW_CONTAINER_BIND=1` (deprecated alias: `EXCULPATA_ALLOW_CONTAINER_BIND=1`) and accepts only
 `local`, `oidc` or `kerberos`, including when manually restarted on loopback.
 The existing secure-cookie and provider configuration checks still apply.
 
 For deliberate synthetic development only, use:
 
 ```console
-CASE_INTELLIGENCE_AUTH_MODE=preview recordbench-workbench --host 127.0.0.1
+CASE_INTELLIGENCE_AUTH_MODE=preview exculpata-workbench --host 127.0.0.1
 ```
 
 `test` is also an explicit isolated test mode. Both development modes deny
@@ -50,7 +50,7 @@ Manage accounts inside the tools container; do not edit hashes by hand:
 
 ```bash
 docker compose --profile tools run --rm --no-deps account-admin \
-  accounts list --file /run/recordbench-secrets/local-accounts.json
+  accounts list --file /run/exculpata-secrets/local-accounts.json
 ```
 
 Use the same `accounts` CLI for `add`, `password`, `display-name`, `enable`,
@@ -108,7 +108,7 @@ revocation, provider boundaries, migration 0031 and backup/rollback constraints.
 ## Compatible HTTP headers
 
 Trusted proxies may send `X-Exculpata-Authenticated-User` and
-`X-Exculpata-Proxy-Secret`, or their existing `X-RecordBench-*` aliases.
+`X-Exculpata-Proxy-Secret`, or their existing `X-Exculpata-*` aliases.
 Either identity spelling still requires the configured proxy secret. Each
 field may use either family independently. Equal copies are accepted; differing
 identity or secret copies return HTTP 401 before login or session processing,
@@ -122,10 +122,10 @@ names from its protected secret file. Do not forward browser-supplied copies or
 expose either internal service directly.
 
 The loopback-only operator diagnostic accepts `X-Exculpata-Auth-Diagnostic`
-and the deprecated `X-RecordBench-Auth-Diagnostic`. Missing, invalid or conflicting
+and the deprecated `X-Exculpata-Auth-Diagnostic`. Missing, invalid or conflicting
 proof retains its HTTP 404 response; valid proof cannot bypass the peer check.
 
 Export, Playback and Theme responses emit equal values under both
-`X-Exculpata-*` and `X-RecordBench-*`. Incoming copies of these response headers
+`X-Exculpata-*` and `X-Exculpata-*`. Incoming copies of these response headers
 do not control the emitted values. Existing clients can continue reading the
 old names while new clients adopt the Exculpata names.

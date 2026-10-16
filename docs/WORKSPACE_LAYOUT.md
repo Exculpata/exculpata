@@ -84,7 +84,7 @@ keyboard submission and the absence of a review run before confirmation:
 python scripts/browser-accept-one-box.py \
   --chrome-binary /path/to/chrome \
   --chromedriver /path/to/chromedriver \
-  --output /tmp/recordbench-one-box-acceptance
+  --output /tmp/exculpata-one-box-acceptance
 ```
 
 ## Follow-up question retrieval
@@ -218,7 +218,7 @@ Run the bounded synthetic browser acceptance with a matching Chrome and driver:
 python scripts/browser-accept-workspace-layout.py \
   --chrome-binary /path/to/chrome \
   --chromedriver /path/to/chromedriver \
-  --output /tmp/recordbench-layout-acceptance
+  --output /tmp/exculpata-layout-acceptance
 ```
 
 The script uses temporary invented matters, conversations and notes, an
