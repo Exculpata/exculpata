@@ -1,6 +1,6 @@
 {% extends "workbench_base.html" %}
 {% block title %}Production summary · {{ matter.display_name }} · {{ product_name }}{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="/static/production-summary.css">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ asset_url('production-summary.css') }}">{% endblock %}
 {% block content %}
 <main id="main-content" tabindex="-1" class="setup-main production-summary">
   <header><p class="eyebrow">{{ matter.display_name }}</p><h1>Production summary</h1></header>
