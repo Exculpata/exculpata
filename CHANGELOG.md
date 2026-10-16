@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The supporting-source drawer no longer highlights OCR noise, such as a line
+  reading `=3s .`, as cited text. Low-content runs stay visible but unmarked,
+  readable sentences in the same cited section keep their highlight, and the
+  citation is never removed. A section with no readable text shows a short
+  notice instead of a highlight.
+
 - Disabled buttons outside the source library keep their Light borders when
   Dusk is selected. Disabled controls inside the source library still use the
   Dusk treatment.
