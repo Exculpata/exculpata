@@ -14,7 +14,7 @@ Accuracy and resource requirements depend on the selected models and inputs.
 
 | Component | Existing integration | Current limit |
 |---|---|---|
-| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model | The endpoint/model must satisfy the adapter's request, structured-response and citation contracts. The installer supplies a reference local configuration; an arbitrary compatible-looking API is not automatically qualified. |
+| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. It does not select an external server. A compatible-looking API is not automatically qualified. |
 | Embeddings | `CASE_REVIEW_EMBEDDING_MODEL` and `CASE_REVIEW_EMBEDDING_REVISION` configure the SentenceTransformer worker | Local files are required; remote model code is disabled. Embedding dimensions, index compatibility and reindexing must be checked before changing a populated deployment. |
 | Reranking | `CASE_REVIEW_RERANKER_MODEL` and `CASE_REVIEW_RERANKER_REVISION` configure the CrossEncoder worker | Local files are required; remote model code is disabled. Ranking/output behavior still needs evaluation. |
 | Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
@@ -31,6 +31,58 @@ can use the versioned ASR inventory when it satisfies the existing adapter contr
 The current model-portfolio display also assumes reference generator IDs and
 retrieval metadata. Configurability of the underlying adapters does not yet
 provide complete custom-model installation, readiness reporting or migration.
+
+## Existing answer endpoints
+
+The answer client is selected in `generator_from_environment`
+([`src/case_intelligence/generation.py`](../src/case_intelligence/generation.py),
+lines 771–792). An empty `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects the
+unavailable generator: search and source review still work, and answering does
+not. The two configured backends are:
+
+| Backend | Contract the code calls | Required settings |
+|---|---|---|
+| `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` ([lines 536–576](../src/case_intelligence/generation.py)) | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL` |
+| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with `response_format.type` `json_schema` and `strict` true ([lines 642–696](../src/case_intelligence/generation.py)) | The same URL and model keys. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY` sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` sends `chat_template_kwargs.enable_thinking` false. |
+
+`{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
+The URL is an origin or path prefix. It is not a URL that already ends in
+`/v1/chat/completions` or `/api/chat`. The host must be loopback
+(`127.0.0.1`, `localhost`, or `::1`) or an exact name in
+`CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS`
+([`src/case_intelligence/service_endpoints.py`](../src/case_intelligence/service_endpoints.py),
+lines 16–49 and 53–77). Usernames, passwords, queries, and fragments are
+rejected. The model name must be non-empty and at most 200 characters, and it
+must appear in the service's tag or model list before `available` is true.
+
+Request limits from the same module and
+[`src/case_intelligence/review_budget.py`](../src/case_intelligence/review_budget.py)
+lines 14–17:
+
+- Timeout defaults to 90 seconds (`CASE_INTELLIGENCE_GENERATOR_TIMEOUT`) and is clamped to 1–300 seconds.
+- Ordinary answers request at most 1,200 output tokens. Ollama also sends `num_ctx` 8192.
+- Each cited passage is capped at 6,000 characters, with at most 12 synthesis inputs and 48,000 evidence characters.
+- A response larger than 1 MiB is rejected.
+- Question drafting uses `CASE_INTELLIGENCE_GENERATOR_QUESTION_PROFILE` and is a separate policy. See [question drafts](QUESTION_DRAFTS.md).
+
+The bundled installer does not point this client at an existing server.
+[`scripts/exculpata_install.py`](../scripts/exculpata_install.py) accepts
+`--models none|review|transcription|all` (line 265). `none` writes an empty
+backend. `review` and `all` write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
+`CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
+name, thinking disabled, and a 180-second timeout (lines 2601–2605). That URL
+is the vLLM service in [`compose.yaml`](../compose.yaml) (the `generator`
+service). Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to
+`generator` (line 352), which overrides the application env file. A
+non-loopback host is refused until that allowlist is changed. Changing Compose
+is not an installer flag. Inside the app container, loopback is the container
+itself, so a service on the host is not reached by `127.0.0.1`.
+
+There is no Open WebUI setting, adapter, or test. An Open WebUI process is
+usable only if it serves the `openai` contract above at `{URL}/v1/...` and the
+host is allowed. This repository does not establish that. A tested Open WebUI
+integration, and an installer flag that replaces bundled vLLM with an operator
+endpoint, are not in this version.
 
 ## What Exculpata distributes or acquires
 

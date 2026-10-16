@@ -194,9 +194,11 @@ egress only for a configured OIDC provider. Companion-service URLs require an
 exact operator allowlist.
 
 Matter storage is configurable and may be a dedicated host-mounted NAS path.
-Exculpata remains a temporary review workspace: exports leave the system,
-matters can be closed and purged, and the independent Transcript Studio queue
-has a short expiry.
+Matter bytes stay until an owner or administrator closes the matter and
+confirms deletion after the cancellation window. A stored date does not
+authorize deletion, and maintenance does not purge a matter. Exports leave the
+system. The independent Transcript Studio queue has its own short expiry,
+separate from retained matter transcripts. See [matter lifecycle](CASE_LIFECYCLE.md).
 
 [Export readiness](EXPORT_READINESS.md) and complete-matter download share one
 bounded preparation helper, including source verification, saved-work limits,

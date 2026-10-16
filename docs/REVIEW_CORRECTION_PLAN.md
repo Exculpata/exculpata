@@ -52,7 +52,10 @@ into this plan, fixtures, or handoffs.
 ## Triage ledger
 
 The code observations below were checked at the planning baseline. None substitutes
-for a current-candidate end-to-end reproduction.
+for a current-candidate end-to-end reproduction. Retention rows in this ledger
+describe that baseline. The current deletion contract is
+[matter lifecycle](CASE_LIFECYCLE.md): maintenance does not purge a matter, and
+a stored date does not authorize deletion.
 
 | Track | External finding and planning-baseline evidence | Disposition / initial priority | Completion state |
 | --- | --- | --- | --- |
@@ -60,7 +63,7 @@ for a current-candidate end-to-end reproduction.
 | R2 / F2 | A stamped scan reportedly skips OCR and misses a known term. `PilotStore` PDF extraction still selects expanded OCR using a text-strength threshold of 20 and counts nonempty units as searchable pages. | High: reproduce; correct OCR selection and coverage reporting. | Portable correction included; broader acceptance remains below |
 | R3 / F4 | Unset auth reportedly allows passwordless preview access over a container network. Identity and app factories still default to preview; CLI container binding does not check auth mode. Installer doctor does not compare effective auth mode. | Prompt security hardening: verify entry points and impact, then fail closed for installed service operation. | Portable correction included; broader acceptance remains below |
 | R4 / revised F5 | Source control characters reportedly cause a case-note 500, report rejection, and repeated answer failure. `_safe_text` rejects controls; `save_support_notebook` catches `KeyError` but not `WorkspaceProblem`; DOCX serialization only XML-escapes text. | Medium: reproduce save failures; define provenance-preserving text handling and serializer defense. Reachable DOCX corruption is not established. | Portable correction included; broader acceptance remains below |
-| R5 / F3 | Scheduled purge is deliberate. Current maintenance calls `purge_due_matters`; architecture documents a temporary workspace. The review corrected its lifetime claim: the extension horizon rolls forward. | Policy decision plus recovery investigation. Missing automatic export is not itself a defect. | Portable correction included; broader acceptance remains below |
+| R5 / F3 | At the planning baseline, scheduled purge was deliberate. Maintenance called `purge_due_matters`, and architecture documented a temporary workspace. The review corrected its lifetime claim: the extension horizon rolls forward. The current application does not purge on maintenance. | Policy decision plus recovery investigation. Missing automatic export is not itself a defect. | Portable correction included; broader acceptance remains below |
 | R6 | A reported account-cache timestamp test fails on overlayfs but passes on tmpfs. | Security-relevant investigation: determine whether stale authorization is reachable on a supported filesystem. | Actual-writer regressions included; filesystem comparison and impact remain open |
 
 ## Included corrections and review records
@@ -76,10 +79,11 @@ for a current-candidate end-to-end reproduction.
 - **[#111](https://github.com/Exculpata/exculpata/pull/111) — R5 retention/recovery.**
   Serializes purge, work admission, extension and retry checks, with synthetic
   clean-restore regressions and an [expired-matter recovery runbook](EXPIRED_MATTER_RECOVERY.md).
-  The default 30-day retention and seven-day grace period are unchanged. Restore
-  preserves deadlines; enabled maintenance, including startup maintenance, can
-  immediately purge an expired restored matter. Broader retention-policy and
-  installed recovery decisions remain open.
+  At that pull request, the default 30-day retention and seven-day grace period
+  were unchanged, and enabled maintenance could purge an expired restored matter.
+  That description is the pre-0040 record. The current application preserves
+  those stored dates for review and does not purge them on maintenance.
+  See [matter lifecycle](CASE_LIFECYCLE.md).
 
 - **[#112](https://github.com/Exculpata/exculpata/pull/112) — R3/R6 authentication/cache.**
   Requires an explicit auth mode, restricts preview/test access, checks effective
@@ -332,9 +336,11 @@ Confirm unmanaged originals stay outside deletion. Test extension versus purge,
 work finishing during purge, restart, and late workers attempting to save.
 Restore an expired synthetic matter into an isolated target with maintenance held
 until inspection; then deliberately test maintenance activation and document the
-outcome. The #111 synthetic drill confirms that restore preserves expired
-deadlines and the first enabled maintenance pass can purge them immediately;
-this is existing retention behavior, not a new policy choice. Include current
+outcome. The #111 synthetic drill recorded that restore preserves expired
+deadlines and that the first enabled maintenance pass of that pre-0040 build
+could purge them immediately. The current application does not. Maintenance
+returns no purged matters, and deletion still requires the explicit confirmation
+in [matter lifecycle](CASE_LIFECYCLE.md). Include current
 Continuity B/C selection and request-receipt state (migrations
 0035/0036) in complete-runtime restore and purge checks. Use the matching reader;
 never validate rollback by opening upgraded stores with the older local checkout.

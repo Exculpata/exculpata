@@ -25,10 +25,11 @@ of switching back to direct links.
 The readiness status keeps its polling, actions and focus behavior. A ready matter
 shows one line; its extraction caveat stays in the document and opens with
 **Extraction limits**. Other states, and pages without scripts, show the full
-guidance. The bar renders the retention notice itself: the full notice on Home,
-and on every page with the bar whenever deletion is due or in its grace period.
-Other pages show a small link back to it while a warning applies; the matter list
-keeps its days-remaining chip. A matter that is closing or recovering from a
+guidance. The bar renders the check-in notice: the full notice on Home when a
+check-in warning applies. Other pages with the bar show a link back to that
+notice. The matter list keeps a short status chip. An overdue check-in is a
+reminder. It is not a deletion warning and it does not start a grace period.
+See [matter lifecycle](CASE_LIFECYCLE.md). A matter that is closing or recovering from a
 failed close keeps its own pages without the bar, so they offer no edit links.
 
 Stylesheets and scripts load through content-versioned URLs

@@ -258,6 +258,23 @@ Models are run locally after a one-time staging step. Runtime model containers
 are configured for offline operation. Diarization is optional because its
 upstream model terms require separate acceptance.
 
+The application can also call an operator-configured answer service instead of
+the bundled vLLM container. Set `CASE_INTELLIGENCE_GENERATOR_BACKEND` to
+`ollama` or `openai`, `CASE_INTELLIGENCE_GENERATOR_URL` to that service's
+origin, and `CASE_INTELLIGENCE_GENERATOR_MODEL` to a model the service lists.
+`ollama` uses the native `/api/tags` and `/api/chat` contract.
+`openai` uses `/v1/models` and `/v1/chat/completions` with a strict JSON schema.
+There is no Open WebUI adapter, installer flag, or test. Pointing the `openai`
+backend at another product works only when that product implements this exact
+contract; that compatibility is not established here.
+The installer flag `--models none` leaves the backend empty, so answering stays
+unavailable. `--models review` and `--models all` write the bundled vLLM origin
+`http://generator:8000`. No installer flag selects an external server.
+Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator`.
+Loopback is always allowed; any other host must be on that allowlist.
+Limits and the remaining keys are in
+[model configuration](docs/MODEL_CONFIGURATION.md#existing-answer-endpoints).
+
 ## Hardware planning targets
 
 These are starting targets for prerelease evaluation, not validated minimums or
@@ -333,7 +350,10 @@ backup, isolated restore testing, and versioned updates. Operators can use
 their existing backup system or the bundled restic method with a destination
 available through their host filesystem; Exculpata does not mount shares or
 choose a storage provider. Follow the [consistency and recovery requirements](docs/STORAGE_AND_BACKUP.md)
-for either method.
+for either method. An office evaluating this prerelease can follow
+[pilot acceptance](docs/PILOT_ACCEPTANCE.md). That guide lists synthetic checks
+and the evidence already in this repository. It is not a security certification
+and it does not promise a result.
 
 ```bash
 ./install doctor --root /srv/recordbench
@@ -346,11 +366,11 @@ for either method.
 
 ## Data and repository boundaries
 
-Exculpata uses temporary review workspaces. Matter bytes live under the
-operator-selected managed storage path. Manual closure or scheduled expiry can
-permanently remove that workspace, so users should export and verify anything
-they need to retain. The complete matter bundle includes saved Reports, preserving their
-edits, order, draft/final state, and source appendices in Word and Markdown.
+Matter bytes live under the operator-selected managed storage path. A stored
+date or an elapsed check-in does not remove a workspace. Export and verify
+anything that must be kept outside the workbench. The complete matter bundle
+includes saved Reports, preserving their edits, order, draft/final state, and
+source appendices in Word and Markdown.
 If saved work exceeds export limits or Report sources cannot be verified,
 no complete bundle is returned. Use **Check export** from Work product or the
 final-export step to inspect current saved work and open Reports that need
