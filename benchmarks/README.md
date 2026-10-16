@@ -130,3 +130,11 @@ original media bytes, transcript and speaker revisions, and retained metadata
 in the full archive. Only that media test-node/file and aggregate content digests
 were refreshed. Case definitions, fixture bytes and their fingerprints remain
 unchanged; the integrity checks still reject undeclared changes.
+
+## Defense-workflow scorecard
+
+`benchmarks/defense-workflow/v1/suite.json` is a separate, versioned synthetic
+discovery set for grading answer correctness, citation support, abstention, and
+latency. It reuses the Harbor Street demo records. Stub mode runs without a
+model and is covered by `tests/test_defense_eval.py`. A perfect stub score is a
+harness check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).
