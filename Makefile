@@ -4,7 +4,7 @@ PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/exculpata-publication-guard
 GITLEAKS ?= gitleaks
 .DEFAULT_GOAL := test
 
-.PHONY: bootstrap hooks check check-fast compile compose-check demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
+.PHONY: compatibility-check bootstrap hooks check check-fast compile compose-check demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
 
 bootstrap:
 	"$(SYSTEM_PYTHON)" scripts/bootstrap-dev.py
@@ -90,6 +90,10 @@ deployment-check: compose-check
 # Ignore inherited test selections. PostgreSQL runs separately with its checked report,
 # as in CI, rather than accidentally enabling database tests in every xdist worker.
 check-fast: export PYTEST_ADDOPTS :=
-check-fast: compile deployment-check publication-check publication-candidate-check secret-check test-fast test-transcription test-postgres
+check-fast: compatibility-check compile deployment-check publication-check publication-candidate-check secret-check test-fast test-transcription test-postgres
 
 check: compile compose-check publication-check test test-transcription
+
+compatibility-check:
+	"$(PYTHON)" scripts/check-compatibility-table.py
+	"$(PYTHON)" scripts/check-tester-doc-links.py
