@@ -55,6 +55,14 @@ REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES = frozenset(
         "4fda816440a2b260c0f98662327e8ad67c3e2351a39e0300deb8d8e778ecccb5",
     }
 )
+# Exact media blobs whose raw bytes were reviewed. Local
+# --allow-reviewed-media-digest values are added to this set at scan time.
+# docs/assets/exculpata-launch-16x9.mp4 and site/assets/exculpata-launch-16x9.mp4.
+# docs/assets/exculpata-launch-9x16.mp4 and site/assets/exculpata-launch-9x16.mp4.
+REVIEWED_MEDIA_DIGESTS = (
+    "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
+    "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
+)
 COAUTHOR_TRAILER = re.compile(
     rb"(?m)^Co-authored-by: ([^<>\r\n\0]+) <([^<>\s\0]+)>\r?$"
 )
@@ -497,43 +505,16 @@ def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> lis
     return findings
 
 
-# A one- or two-character local part plus a four-character domain is six or
-# seven bytes. Compressed sample bytes collide with that floor; longer runs do not.
-_COINCIDENTAL_SAMPLE_EMAIL_BYTES = 8
+# One- or two-character local parts plus a four-character domain are six or
+# seven bytes. Only an exact reviewed media blob may ignore that collision.
+_SHORT_REVIEWED_EMAIL_COLLISION_BYTES = 8
 
 
-def _mdat_payload_ranges(data: bytes) -> tuple[tuple[int, int], ...]:
-    ranges: list[tuple[int, int]] = []
-    offset = 0
-    limit = len(data)
-    while offset + 8 <= limit:
-        size = int.from_bytes(data[offset:offset + 4], "big")
-        header = 8
-        if size == 1:
-            if offset + 16 > limit:
-                break
-            size = int.from_bytes(data[offset + 8:offset + 16], "big")
-            header = 16
-        elif size == 0:
-            size = limit - offset
-        if size < header or offset + size > limit:
-            break
-        if data[offset + 4:offset + 8] == b"mdat":
-            ranges.append((offset + header, offset + size))
-        offset += size
-    return tuple(ranges)
-
-
-def _without_coincidental_sample_emails(data: bytes) -> bytes:
-    ranges = _mdat_payload_ranges(data)
-    if not ranges:
-        return data
+def _without_short_email_collisions(data: bytes) -> bytes:
     masked = bytearray(data)
     changed = False
     for match in EMAIL.finditer(data):
-        if match.end() - match.start() >= _COINCIDENTAL_SAMPLE_EMAIL_BYTES:
-            continue
-        if not any(start <= match.start() and match.end() <= end for start, end in ranges):
+        if match.end() - match.start() >= _SHORT_REVIEWED_EMAIL_COLLISION_BYTES:
             continue
         at = data.find(b"@", match.start(), match.end())
         if at < 0:
@@ -553,15 +534,14 @@ def _scan_content(
     reviewed_media_digests: tuple[str, ...] = (),
 ) -> list[Finding]:
     # Only a manually reviewed, exact media blob may adjudicate accidental
-    # three-byte matches in compressed bytes. Decoded metadata retains all terms.
-    # Sample data may also contain a sub-8-byte email-shaped collision. Longer
-    # email-shaped runs, values outside the sample, and metadata stay checked.
+    # three-byte deny terms and sub-8-byte email-shaped runs in its raw bytes.
+    # Longer matches, other files, and decoded metadata retain every check.
     raw_deny = deny
     scanned = data
-    if Path(name).suffix.casefold() in MEDIA_SUFFIXES:
-        scanned = _without_coincidental_sample_emails(data)
-        if hashlib.sha256(data).hexdigest() in reviewed_media_digests:
-            raw_deny = tuple(term for term in deny if len(term) != 3)
+    if (Path(name).suffix.casefold() in MEDIA_SUFFIXES
+            and hashlib.sha256(data).hexdigest() in reviewed_media_digests):
+        raw_deny = tuple(term for term in deny if len(term) != 3)
+        scanned = _without_short_email_collisions(data)
     findings = _scan_bytes(
         scanned,
         location=location,
@@ -988,7 +968,7 @@ def main() -> int:
     baseline_identities = _baseline_public_git_identities(
         args.allow_public_baseline_git_identity
     )
-    media_digests = tuple(args.allow_reviewed_media_digest)
+    media_digests = tuple(dict.fromkeys((*REVIEWED_MEDIA_DIGESTS, *args.allow_reviewed_media_digest)))
     merge_commits = tuple(args.allow_public_merge_commit)
     if any(re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) is None for value in merge_commits):
         raise RuntimeError("Public merge must be an exact commit")
