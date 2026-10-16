@@ -243,6 +243,30 @@ def _safe_example_ip(
     return any(address in network for network in ALLOWED_DOCUMENTATION_NETWORKS)
 
 
+def _previous_fixture_home_owners() -> frozenset[str]:
+    """Load retained fixture owners from the sibling file when it is present.
+
+    The isolated pre-push copy of this scanner omits that file. Synthetic hook
+    tests do not need the historical owner.
+    """
+    path = Path(__file__).with_name("publication_home_owners.py")
+    if not path.is_file():
+        return frozenset()
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_publication_home_owners", path)
+    if spec is None or spec.loader is None:
+        return frozenset()
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    values = getattr(module, "PREVIOUS_FIXTURE_HOME_OWNERS", ())
+    return frozenset(item.casefold() for item in values if isinstance(item, str))
+
+
+_UNIX_HOME_OWNERS = frozenset({"exculpata", "user", "example", *_previous_fixture_home_owners()})
+_WINDOWS_HOME_OWNERS = frozenset({"default", "example", "public", "exculpata", "user", *_previous_fixture_home_owners()})
+
+
 def _recognized_public_automation_email(data: bytes, match: re.Match[bytes]) -> bool:
     """True only for exact public automation addresses or Dependabot's sign-off line."""
     address = match.group(0).lower()
@@ -335,12 +359,12 @@ def _scan_bytes(
             break
     for match in HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"exculpata", "user", "example"}:
+        if owner not in _UNIX_HOME_OWNERS:
             findings.append(Finding(location, "personal-home-path"))
             break
     for match in WINDOWS_HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"default", "example", "public", "exculpata", "user"}:
+        if owner not in _WINDOWS_HOME_OWNERS:
             findings.append(Finding(location, "personal-home-path"))
             break
     if INTERNAL_FQDN.search(data):

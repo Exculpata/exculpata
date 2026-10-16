@@ -24,6 +24,7 @@ ALLOWLIST: dict[str, str] = {
     "docs/BRANDING.md": "States that the previous product name is now Exculpata.",
     "pyproject.toml": "Legacy console scripts remain installed and print a deprecation notice.",
     "scripts/pre-push-publication.py": "Reads both the current and previous git-config prefixes.",
+    "scripts/publication_home_owners.py": "Retains the previous fixture home-directory owner so published history stays valid.",
     "scripts/recordbench_install.py": "Installer shim. Existing commands keep working.",
     "scripts/recordbench_backup.py": "Backup shim. Existing commands keep working.",
     "scripts/recordbench-backup.sh": "Shell shim for existing backup units.",

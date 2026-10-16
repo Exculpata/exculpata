@@ -37,6 +37,14 @@ def test_publication_gate_flags_private_networks_keys_and_personal_paths() -> No
     }
 
 
+def test_publication_gate_keeps_the_previous_fixture_home_owner() -> None:
+    from case_intelligence.legacy_names import LEGACY_STEM
+
+    retained = b"/home/" + LEGACY_STEM.encode() + b"/runtime"
+    assert publication._scan_bytes(retained, location="fixture", deny=()) == []
+    assert publication._scan_bytes(b"/home/" + b"specific.operator/runtime", location="fixture", deny=())
+
+
 def test_publication_gate_allows_loopback_and_documentation_addresses() -> None:
     data = (
         b"127.0.0.1 ::1 192.0.2.10 198.51.100.8 203.0.113.4 2001:db8::8 "
