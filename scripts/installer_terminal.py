@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 import threading
 import time
+import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
@@ -18,14 +20,11 @@ BRAND = {
 
 def nearest_xterm(hex_color: str) -> int:
     rgb = tuple(bytes.fromhex(hex_color))
-    basic = (0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080,
-             0x008080, 0xC0C0C0, 0x808080, 0xFF0000, 0x00FF00, 0xFFFF00,
-             0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF)
-    palette = [tuple(value.to_bytes(3, "big")) for value in basic]
+    # Slots 0–15 are theme-configurable ANSI colors, not fixed xterm RGBs.
     levels = (0, 95, 135, 175, 215, 255)
-    palette += [(r, g, b) for r in levels for g in levels for b in levels]
+    palette = [(r, g, b) for r in levels for g in levels for b in levels]
     palette += [(value,) * 3 for value in range(8, 239, 10)]
-    return min(range(256), key=lambda index: sum((a - b) ** 2 for a, b in zip(rgb, palette[index])))
+    return 16 + min(range(240), key=lambda index: sum((a - b) ** 2 for a, b in zip(rgb, palette[index])))
 
 
 class C:
@@ -63,6 +62,25 @@ def terminal_text(value: str) -> str:
     return "".join(char if char == "\t" or char.isprintable() else " " for char in value)
 
 
+def terminal_width() -> int:
+    try:
+        return max(1, os.get_terminal_size(sys.stdout.fileno()).columns)
+    except (OSError, ValueError, AttributeError):
+        return max(1, shutil.get_terminal_size(fallback=(80, 24)).columns)
+
+
+def clip_cells(value: str, width: int) -> str:
+    result = []
+    remaining = max(0, width)
+    for char in terminal_text(value).replace("\t", " "):
+        cells = 0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+        if cells > remaining:
+            break
+        result.append(char)
+        remaining -= cells
+    return "".join(result)
+
+
 @dataclass
 class Console:
     color: bool
@@ -73,7 +91,9 @@ class Console:
 
     def __post_init__(self) -> None:
         # Enforce this at the console boundary, including direct/tooling callers.
-        self.color = self.color and sys.stdout.isatty() and "NO_COLOR" not in os.environ and "CI" not in os.environ
+        self.color = (self.color and sys.stdout.isatty()
+                      and "NO_COLOR" not in os.environ and "CI" not in os.environ
+                      and os.getenv("TERM", "").lower() != "dumb")
         self.animation = self.animation and self.color and not self.quiet
 
     def paint(self, value: str, color: str) -> str:
@@ -85,8 +105,8 @@ class Console:
                 color = color.replace(getattr(C, name), f"\033[38;2;{rgb}m")
         return f"{color}{value}{C.reset}"
 
-    def line(self, value: str = "") -> None:
-        if not self.quiet:
+    def line(self, value: str = "", *, force: bool = False) -> None:
+        if force or not self.quiet:
             print(value, flush=True)
 
     def typed(self, value: str) -> None:
@@ -110,34 +130,43 @@ class Console:
         self.typed(f"  PHASE {number:02d} / {title}")
         self.line(f"             {self.paint(detail, C.muted)}")
 
-    def status(self, marker: str, value: str) -> None:
+    def status(self, marker: str, value: str, *, force: bool = False) -> None:
         color = C.green if marker == "OK" else C.amber if marker in {"WARN", "BLOCK"} else C.cyan
-        self.line(f"  {self.paint(f'[{marker:^6}]', color + C.bold)} {value}")
+        self.line(f"  {self.paint(f'[{marker:^6}]', color + C.bold)} {value}", force=force)
 
     def ok(self, value: str) -> None:
         self.status("OK", value)
 
-    def note(self, value: str) -> None:
-        self.status("NOTE", value)
+    def note(self, value: str, *, force: bool = False) -> None:
+        self.status("NOTE", value, force=force)
 
-    def warn(self, value: str) -> None:
-        self.status("WARN", value)
+    def warn(self, value: str, *, force: bool = False) -> None:
+        self.status("WARN", value, force=force)
 
     def banner(self, mode: str, version: str = "0.1.0-beta.1") -> None:
-        self.line(self.paint("\n" + WORDMARK, C.cyan + C.bold))
+        width = terminal_width()
+        mark = WORDMARK if width >= 73 else clip_cells("  EXCULPATA" if width >= 11 else "EXCULPATA", width)
+        self.line(self.paint("\n" + mark, C.cyan + C.bold))
         self.typed(f"  EVIDENCE NODE PROVISIONER // {mode.upper()} // BUILD {version}")
         self.line(self.paint("  +-- LOCAL MODELS. PRIVATE RECORD. OPERATOR CONTROL. --+", C.muted))
 
     @contextmanager
     def progress(self, title: str):
+        title = terminal_text(title).replace("\t", " ")
         self.note(title)
         stop = threading.Event()
         worker = None
+        redrawn = False
         if self.animation:
             def redraw():
+                nonlocal redrawn
                 index = 0
                 while not stop.wait(0.1):
-                    print(f"\r  {self.paint('[' + '|/-\\'[index % 4] + ' WORK]', C.cyan)} {title}", end="", flush=True)
+                    # Leave the final cell unused to avoid terminal auto-wrap.
+                    indicator = "|/-\\"[index % 4]
+                    frame = clip_cells(f"  [{indicator} WORK] {title}", terminal_width() - 1)
+                    print("\r" + self.paint(frame, C.cyan) + "\033[K", end="", flush=True)
+                    redrawn = True
                     index += 1
             worker = threading.Thread(target=redraw, daemon=True)
             worker.start()
@@ -147,5 +176,6 @@ class Console:
             stop.set()
             if worker is not None:
                 worker.join()
-                # Always terminate the progress line, including exceptions.
-                self.line("\r" + " " * (len(title) + 12) + "\r")
+                if redrawn:
+                    # Clear the transient row; the next event owns its newline.
+                    print("\r\033[2K", end="", flush=True)

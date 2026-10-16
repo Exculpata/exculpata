@@ -26,7 +26,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -447,22 +447,39 @@ def _build_log(root: Path, action: str):
 def _run_logged(console: Console, command: Sequence[str], action: str,
                 environment: Mapping[str, str] | None, check: bool) -> subprocess.CompletedProcess[str]:
     root = Path(command[command.index("--env-file") + 1]).parent
-    with _build_log(root, action) as (path, stream):
+    with ExitStack() as cleanup:
+        try:
+            path, stream = cleanup.enter_context(_build_log(root, action))
+        except (OSError, RuntimeError) as exc:
+            # Only setup is guarded: never retry a child that has already run.
+            # Keep the old inherited-FD contract; no pipe or insecure log file.
+            reason = exc.strerror if isinstance(exc, OSError) else str(exc)
+            console.note(f"Private Docker log unavailable ({terminal_text(reason or 'filesystem error')}); "
+                         "streaming output directly without a retained log", force=True)
+            result = subprocess.run(command, cwd=PROJECT, env=environment, text=True, check=False)
+            if result.returncode:
+                console.warn(f"Docker {action} failed (exit {result.returncode}); "
+                             "output streamed above; no log was retained", force=True)
+                if check:
+                    raise subprocess.CalledProcessError(result.returncode, command)
+            return result
         console.note(f"Full Docker output :: {path}")
         with console.progress(f"Docker {action} :: output spooling to private log"):
             result = subprocess.run(command, cwd=PROJECT, env=environment,
                                     stdout=stream, stderr=subprocess.STDOUT, text=True, check=False)
-        stream.flush()
         if result.returncode:
-            console.warn(f"Docker {action} failed (exit {result.returncode}); log tail :: {path}")
-            # Bound memory even when a tool emits an enormous unterminated line.
-            stream.seek(0, os.SEEK_END)
-            length = stream.tell()
-            stream.seek(max(0, length - 65536))
-            tail = stream.read().decode("utf-8", errors="replace").splitlines()[-40:]
-            for line in tail:
-                console.line("    " + terminal_text(line))
-            console.note(f"Full Docker output :: {path}")
+            console.warn(f"Docker {action} failed (exit {result.returncode}); log tail :: {path}", force=True)
+            try:
+                # Bound memory even when a tool emits an enormous unterminated line.
+                stream.seek(0, os.SEEK_END)
+                length = stream.tell()
+                stream.seek(max(0, length - 65536))
+                tail = stream.read().decode("utf-8", errors="replace").splitlines()[-40:]
+                for line in tail:
+                    console.line("    " + terminal_text(line), force=True)
+            except OSError:
+                console.warn("Could not read the retained log tail; inspect the private log directly", force=True)
+            console.note(f"Full Docker output :: {path}", force=True)
             if check:
                 raise subprocess.CalledProcessError(result.returncode, command)
         else:

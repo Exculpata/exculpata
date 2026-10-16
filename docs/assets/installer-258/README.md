@@ -10,11 +10,17 @@ claim a supported Linux installation or doctor acceptance.
   The dark canvas belongs to the
   preview; the installer does not set a terminal background. The cast contains
   no environment dump, host identity, password, or token.
+- [Narrow progress](narrow-progress.png), [failure](narrow-failure.png), and
+  [40-column cast](narrow-terminal.cast) record the actual console running a
+  bounded synthetic child, not a Docker engine. The wordmark falls back to one
+  line, each spinner frame leaves the final column unused, and cleanup adds no
+  blank line. The child exits 17; its complete output is retained at mode 0600
+  during capture, and the temporary fixtures are removed afterwards.
 - [Plain preview](plain-preview.txt) is the same real invocation with `--plain`,
   with trailing blank cells trimmed in the text artifact.
 - [Animation timing](animation-timing.json) measures three actual PTY runs each
   with and without animation, rendering the banner and eight synthetic phase
-  titles. Median added time was 0.456 seconds. The shared typing-delay budget is
+  titles. Median added time was 0.452 seconds. The shared typing-delay budget is
   0.45 seconds; progress runs concurrently with the child and adds no sleep to it.
 - [Forced failure capture](synthetic-failure.txt) executes a synthetic child
   named `docker`, emitting 56 lines and exiting 17. The real logger retains the

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import io
+import errno
+from contextlib import contextmanager
+from types import SimpleNamespace
 import json
 import os
 from pathlib import Path
@@ -23,16 +26,19 @@ def tty(monkeypatch):
     monkeypatch.setattr(sys, "stdout", output)
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
     return output
 
 
-@pytest.mark.parametrize("mode", ["NO_COLOR", "CI", "non-tty", "--no-color", "--plain"])
+@pytest.mark.parametrize("mode", ["NO_COLOR", "CI", "non-tty", "--no-color", "--plain", "TERM=dumb"])
 @pytest.mark.parametrize("env_value", ["", "1", "0"])
 def test_plain_cli_has_no_escapes_redraws_or_sleep(tmp_path, monkeypatch, tty, mode, env_value):
     monkeypatch.setattr(sys, "stdout", tty)
     flags = []
     if mode.startswith("--"):
         flags.append(mode)
+    elif mode == "TERM=dumb":
+        monkeypatch.setenv("TERM", "dumb")
     elif mode == "non-tty":
         monkeypatch.setattr(tty, "isatty", lambda: False)
     else:
@@ -75,7 +81,7 @@ def test_palette_selection(monkeypatch, tty, colorterm, truecolor):
 
 def test_nearest_xterm_all_brand_colors():
     assert {name: terminal.nearest_xterm(value) for name, value in terminal.BRAND.items()} == {
-        "cyan": 45, "green": 84, "amber": 214, "black": 233, "white": 254, "muted": 8,
+        "cyan": 45, "green": 84, "amber": 214, "black": 233, "white": 254, "muted": 244,
     }
 
 
@@ -171,13 +177,18 @@ def test_nonchecking_failure_and_success_preserve_return_codes(synthetic_docker,
     assert len(list((root / "state").glob("*.log"))) == 2
 
 
-def test_failed_build_main_still_exits_one(synthetic_docker, monkeypatch, capsys):
+@pytest.mark.parametrize("quiet", [False, True])
+def test_failed_build_main_still_exits_one(synthetic_docker, monkeypatch, capsys, quiet):
     root, command = synthetic_docker
     monkeypatch.setattr(installer, "_legacy_account", lambda: False)
     monkeypatch.setattr(installer, "_doctor", lambda console, *_: installer._run(console, command))
-    monkeypatch.setattr(sys, "argv", ["install", "doctor", "--root", str(root), "--plain"])
+    monkeypatch.setattr(sys, "argv", ["install", "doctor", "--root", str(root), "--plain", *(["--quiet"] if quiet else [])])
     assert installer.main() == 1
-    assert "BOOT SEQUENCE HALTED" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Docker build failed (exit 17)" in output
+    assert "synthetic final diagnostic" in output and "Full Docker output" in output
+    if not quiet:
+        assert "BOOT SEQUENCE HALTED" in output
 
 
 @pytest.mark.parametrize("mode", ["dry-run", "capture", "credential", "license-plan"])
@@ -203,7 +214,7 @@ def test_nonlogged_commands_preserve_contract(synthetic_docker, monkeypatch, cap
 
 
 @pytest.mark.parametrize("unsafe", ["state-symlink", "parent-symlink", "permissions", "checkout"])
-def test_unsafe_logs_refuse_before_child(synthetic_docker, monkeypatch, unsafe):
+def test_unsafe_log_creation_remains_refused(synthetic_docker, monkeypatch, unsafe):
     root, command = synthetic_docker
     if unsafe == "state-symlink":
         (root / "state").rmdir()
@@ -220,7 +231,8 @@ def test_unsafe_logs_refuse_before_child(synthetic_docker, monkeypatch, unsafe):
         monkeypatch.setattr(installer, "PROJECT", root)
     monkeypatch.setattr(installer.subprocess, "run", lambda *a, **k: pytest.fail("unsafe logger ran child"))
     with pytest.raises((RuntimeError, OSError)):
-        installer._run(installer.Console(color=False), command)
+        with installer._build_log(Path(command[3]).parent, "build"):
+            pytest.fail("unsafe logger yielded")
     assert not list((root / "state").iterdir())
 
 
@@ -287,3 +299,182 @@ def test_logged_child_controls_are_removed_from_failure_tail(synthetic_docker, m
     assert "synthetic error" in output
     assert "\x1b" not in output and "\r" not in output
     assert "https://example.test" not in output
+
+
+@pytest.mark.parametrize("check", [True, False])
+def test_quiet_failure_still_prints_warning_tail_and_private_log(synthetic_docker, capsys, check):
+    root, command = synthetic_docker
+    console = installer.Console(color=False, quiet=True)
+    if check:
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            installer._run(console, command)
+        assert error.value.returncode == 17
+    else:
+        assert installer._run(console, command, check=False).returncode == 17
+    output = capsys.readouterr().out
+    log = next((root / "state").glob("*.log"))
+    assert "WARN" in output and "exit 17" in output
+    assert "synthetic final diagnostic" in output and str(log) in output
+    assert "synthetic build line 00" not in output
+    assert stat.S_IMODE(log.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("action", ["build", "up", "start", "stop"])
+@pytest.mark.parametrize("error_number", [errno.ENOSPC, errno.EDQUOT, errno.EACCES, errno.EROFS])
+def test_log_creation_failure_does_not_block_recovery(synthetic_docker, monkeypatch, capfd, action, error_number):
+    root, command = synthetic_docker
+    command[-2] = action
+    monkeypatch.setenv("SYNTHETIC_EXIT", "0")
+    original_open = installer.os.open
+    def no_log(path, flags, *args, **kwargs):
+        if flags & os.O_CREAT and str(path).startswith("installer-"):
+            raise OSError(error_number, os.strerror(error_number))
+        return original_open(path, flags, *args, **kwargs)
+    monkeypatch.setattr(installer.os, "open", no_log)
+    assert installer._run(installer.Console(color=False, quiet=True), command).returncode == 0
+    output = capfd.readouterr()
+    assert "NOTE" in output.out and "without a retained log" in output.out
+    assert output.out.count("synthetic build line 00") == 1
+    assert "synthetic final diagnostic" in output.err
+    assert not list((root / "state").iterdir())
+
+
+@pytest.mark.parametrize("unsafe", ["permissions", "owner", "state-symlink", "parent-symlink", "checkout"])
+def test_unsafe_log_falls_back_without_changing_filesystem(synthetic_docker, monkeypatch, capfd, unsafe):
+    root, command = synthetic_docker
+    state = root / "state"
+    if unsafe == "permissions":
+        state.chmod(0o755)
+    elif unsafe == "owner":
+        inode = state.stat().st_ino
+        original_fstat = installer.os.fstat
+        def other_owner(fd):
+            result = original_fstat(fd)
+            if result.st_ino == inode:
+                return SimpleNamespace(st_uid=os.geteuid() + 1, st_mode=result.st_mode)
+            return result
+        monkeypatch.setattr(installer.os, "fstat", other_owner)
+    elif unsafe == "state-symlink":
+        state.rmdir()
+        target = root / "other"
+        target.mkdir(mode=0o700)
+        state.symlink_to(target, target_is_directory=True)
+    elif unsafe == "parent-symlink":
+        alias = root.parent / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+        command[3] = str(alias / "compose.env")
+    else:
+        monkeypatch.setattr(installer, "PROJECT", root)
+    before = state.lstat()
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        installer._run(installer.Console(color=False, quiet=True), command)
+    assert error.value.returncode == 17
+    output = capfd.readouterr()
+    assert "NOTE" in output.out and "WARN" in output.out and "exit 17" in output.out
+    assert "synthetic build line 00" in output.out and "synthetic final diagnostic" in output.err
+    assert not list(state.iterdir())
+    assert (state.lstat().st_mode, state.lstat().st_uid) == (before.st_mode, before.st_uid)
+
+
+def test_started_child_oserror_is_never_retried(synthetic_docker, monkeypatch, capsys):
+    _, command = synthetic_docker
+    calls = []
+    def child(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise OSError(errno.EIO, "synthetic child launch failure")
+    monkeypatch.setattr(installer.subprocess, "run", child)
+    with pytest.raises(OSError):
+        installer._run(installer.Console(color=False), command)
+    assert len(calls) == 1
+    assert "streaming output directly" not in capsys.readouterr().out
+
+
+def test_log_read_failure_keeps_original_child_exit(synthetic_docker, monkeypatch, capsys):
+    _, command = synthetic_docker
+    original = installer._build_log
+    @contextmanager
+    def unreadable(*args):
+        with original(*args) as (path, stream):
+            class Unreadable:
+                def fileno(self):
+                    return stream.fileno()
+                def seek(self, *args):
+                    raise OSError(errno.EIO, "synthetic read failure")
+            yield path, Unreadable()
+    monkeypatch.setattr(installer, "_build_log", unreadable)
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        installer._run(installer.Console(color=False, quiet=True), command)
+    assert error.value.returncode == 17
+    output = capsys.readouterr().out
+    assert "Could not read" in output and "Full Docker output" in output
+
+
+@pytest.mark.parametrize("width", [1, 8, 9, 10, 12, 20, 40, 72, 73, 80])
+def test_banner_falls_back_below_wordmark_width(monkeypatch, tty, width):
+    monkeypatch.setattr(sys, "stdout", tty)
+    monkeypatch.setattr(terminal, "terminal_width", lambda: width)
+    terminal.Console(color=False).banner("install")
+    output = tty.getvalue()
+    if width < 73:
+        assert output.splitlines()[1] == ("  EXCULPATA" if width >= 11 else "EXCULPATA"[:width])
+        assert len(output.splitlines()[1]) <= width
+        assert terminal.WORDMARK not in output
+    else:
+        assert terminal.WORDMARK in output
+
+
+@pytest.mark.parametrize("width", [1, 12, 20, 40, 80, (80, 40, 12), (12, 40, 80)])
+def test_spinner_frames_fit_cells_and_clear_without_blank_line(monkeypatch, tty, width):
+    monkeypatch.setattr(sys, "stdout", tty)
+    widths = (width,) * 3 if isinstance(width, int) else width
+    sizes = iter(widths)
+    monkeypatch.setattr(terminal, "terminal_width", lambda: next(sizes))
+    class ClockedEvent:
+        calls = 0
+        def wait(self, _):
+            self.calls += 1
+            return self.calls > 3
+        def set(self):
+            pass
+    class ImmediateThread:
+        def __init__(self, target, **_):
+            self.target = target
+        def start(self):
+            self.target()
+        def join(self):
+            pass
+    monkeypatch.setattr(terminal.threading, "Event", ClockedEvent)
+    monkeypatch.setattr(terminal.threading, "Thread", ImmediateThread)
+    with terminal.Console(color=True, animation=True).progress("synthetic\t界e\u0301\x1b[31m" * 20):
+        pass
+    frames = tty.getvalue().split("\r")[1:]
+    assert len(frames) == 4
+    for frame, width in zip(frames[:-1], widths):
+        assert "\n" not in frame
+        visible = terminal.terminal_text(frame)
+        cells = sum(0 if terminal.unicodedata.combining(c) else 2 if terminal.unicodedata.east_asian_width(c) in {"W", "F"} else 1 for c in visible)
+        assert cells < width
+    assert frames[-1] == "\x1b[2K"
+
+
+def test_width_uses_real_stdout_instead_of_stale_columns(monkeypatch, tty):
+    monkeypatch.setattr(sys, "stdout", tty)
+    monkeypatch.setattr(tty, "fileno", lambda: 123)
+    monkeypatch.setenv("COLUMNS", "200")
+    monkeypatch.setattr(terminal.os, "get_terminal_size", lambda fd: os.terminal_size((40, 24)) if fd == 123 else pytest.fail("wrong fd"))
+    assert terminal.terminal_width() == 40
+
+
+def test_large_child_output_has_no_pipe_deadlock_and_bounded_tail(synthetic_docker, monkeypatch, capsys):
+    root, command = synthetic_docker
+    docker = Path(os.environ["PATH"].split(os.pathsep)[0]) / "docker"
+    docker.write_text(f"#!{sys.executable}\nimport sys\nsys.stdout.write('x' * (2 * 1024 * 1024))\nprint('synthetic final diagnostic')\nsys.exit(17)\n")
+    original_run = installer.subprocess.run
+    def bounded_run(*args, **kwargs):
+        assert kwargs["stdout"] != subprocess.PIPE
+        return original_run(*args, **kwargs, timeout=5)
+    monkeypatch.setattr(installer.subprocess, "run", bounded_run)
+    assert installer._run(installer.Console(color=False, quiet=True), command, check=False).returncode == 17
+    output = capsys.readouterr().out
+    assert "synthetic final diagnostic" in output and len(output) < 67000
+    assert next((root / "state").glob("*.log")).stat().st_size > 2 * 1024 * 1024
