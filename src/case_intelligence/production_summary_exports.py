@@ -45,6 +45,8 @@ def export_summary(summary, format, name='production'):
             else:
                 lines.append('- ' + markdown_text(f"{row.get('prefix', '')} {row.get('start', row.get('bates_start', ''))}–{row.get('end', '')}"))
                 lines.extend('  - ' + link('Source', href) for href in row.get('links', [row.get('link', '')]))
+                if row.get('links_omitted'):
+                    lines.append(f"  - {row['links_omitted']} support references omitted.")
     lines += ['', '## Caps and limits', '']
     lines.extend('- ' + markdown_text(value) for value in summary.limits)
     lines.extend(f"- {kind}: {cap['shown']} shown, {cap['omitted']} omitted of {cap['total']}." for kind, cap in summary.capped.items())

@@ -255,3 +255,110 @@ def test_email_attachment_reference_uses_extraction_metadata(workbench, monkeypa
     result = summarize(bench, matter)
     assert [row['reference_text'] for row in result.gaps['referenced_absent']] == ['exhibit-12.txt']
     assert client.get(result.gaps['referenced_absent'][0]['citation']['link']).status_code == 200
+
+
+def test_repeated_labels_do_not_invent_duplicates_and_reference_case_is_preserved(workbench):
+    client, bench, matter, _ = workbench
+    upload(client, matter.slug, 'first.txt', b'Bates: ABC0001. Bates: ABC0001.\nBates: abc-0001.\nSee Record 12. Refer to Record 13. See exhibit 14. ATTACHED AS attachment 15.')
+    ready(bench, matter)
+    result = summarize(bench, matter)
+    assert result.gaps['bates_duplicates'] == []
+    references = result.gaps['referenced_absent']
+    assert {row['reference_text'] for row in references} == {'Record 12', 'Record 13', 'exhibit 14', 'attachment 15'}
+    assert all(client.get(row['citation']['link']).status_code == 200 for row in references)
+    upload(client, matter.slug, 'second.txt', b'Bates: ABC0001.')
+    ready(bench, matter)
+    [duplicate] = summarize(bench, matter).gaps['bates_duplicates']
+    assert duplicate['occurrences'] == 2
+    assert len(duplicate['links']) == 2
+
+
+def metadata_pdf(labels, text=b'Synthetic source with labels recorded only in PDF metadata.'):
+    from io import BytesIO
+    from pypdf import PdfWriter
+    from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, TextStringObject, DecodedStreamObject
+    writer = PdfWriter()
+    entries = ArrayObject()
+    for index, label in enumerate(labels):
+        page = writer.add_blank_page(width=612, height=792)
+        font = DictionaryObject({NameObject('/Type'): NameObject('/Font'), NameObject('/Subtype'): NameObject('/Type1'), NameObject('/BaseFont'): NameObject('/Helvetica')})
+        page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'): DictionaryObject({NameObject('/F1'): writer._add_object(font)})})
+        content = DecodedStreamObject()
+        content.set_data(b'BT /F1 12 Tf 50 740 Td (' + text + b') Tj ET')
+        page[NameObject('/Contents')] = writer._add_object(content)
+        entries.extend([NumberObject(index), DictionaryObject({NameObject('/P'): TextStringObject(label)})])
+    writer._root_object[NameObject('/PageLabels')] = DictionaryObject({NameObject('/Nums'): entries})
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def test_uploaded_pdf_metadata_reaches_summary_and_original_page_links(workbench):
+    client, bench, matter, _ = workbench
+    for name, labels in [('first.pdf', ['SYN0001', 'SYN0004']), ('second.pdf', ['SYN0004'])]:
+        response = client.post(f'/matters/{matter.slug}/uploads', files=[('files', (name, metadata_pdf(labels), 'application/pdf'))])
+        assert response.status_code in (200, 303)
+    ready(bench, matter)
+    assert all('Bates:' not in unit.text for doc in bench.source_store(matter).documents.values() for unit in doc.parsed_units())
+    response = client.get(f'/matters/{matter.slug}/production-summary/export?format=json')
+    assert response.status_code == 200
+    result = response.json()
+    [gap] = result['gaps']['bates_missing']
+    assert (gap['start'], gap['end']) == ('0002', '0003')
+    [duplicate] = result['gaps']['bates_duplicates']
+    assert duplicate['occurrences'] == 2
+    assert {link.rsplit('#page=', 1)[1] for link in duplicate['links']} == {'1', '2'}
+    for link in gap['links'] + duplicate['links']:
+        source = client.get(link)
+        assert source.status_code == 200
+        assert source.content.startswith(b'%PDF')
+    markdown = client.get(f'/matters/{matter.slug}/production-summary/export?format=markdown').text
+    assert '/content#page=2' in markdown
+
+
+def test_pdf_metadata_cannot_be_read_from_changed_original(workbench):
+    client, bench, matter, _ = workbench
+    response = client.post(f'/matters/{matter.slug}/uploads', files=[('files', ('source.pdf', metadata_pdf(['SYN0001']), 'application/pdf'))])
+    assert response.status_code in (200, 303)
+    ready(bench, matter)
+    store = bench.source_store(matter)
+    [document] = store.documents.values()
+    path = store.source_path(document.document_id)
+    path.write_bytes(path.read_bytes().replace(b'SYN0001', b'SYN9999'))
+    result = summarize(bench, matter)
+    assert not result.gaps['bates_missing']
+    assert any('Bates coverage is incomplete' in row['reason'] for row in result.gaps['unreadable'])
+
+
+def test_pdf_metadata_budget_refuses_partial_summary(workbench, monkeypatch):
+    from case_intelligence import production_summary as module
+    from case_intelligence.workspace_store import WorkspaceProblem
+    client, bench, matter, _ = workbench
+    response = client.post(f'/matters/{matter.slug}/uploads', files=[('files', ('source.pdf', metadata_pdf(['SYN0001', 'SYN0004']), 'application/pdf'))])
+    assert response.status_code in (200, 303)
+    ready(bench, matter)
+    monkeypatch.setattr(module, 'MAX_METADATA_BYTES', 1)
+    with pytest.raises(WorkspaceProblem, match='no partial summary'):
+        summarize(bench, matter)
+
+
+def test_bates_cap_disclosures_survive_service_and_exports(workbench, monkeypatch):
+    from case_intelligence import production_summary as module
+    client, bench, matter, _ = workbench
+    upload(client, matter.slug, 'ranges.txt', b'Bates: A1 to A100. Bates: A2 to A99. Bates: A3 to A98. Bates: A4 to A97.')
+    ready(bench, matter)
+    monkeypatch.setattr(module, 'MAX_DISPLAY', 1)
+    result = summarize(bench, matter)
+    assert len(result.gaps['bates_duplicates']) == 1
+    assert result.capped['bates_duplicates'] == dict(total=5, shown=1, omitted=4)
+    assert '4 omitted of 5' in export_summary(result, 'markdown').body.decode()
+
+
+def test_pdf_text_and_metadata_share_physical_page_identity(workbench):
+    client, bench, matter, _ = workbench
+    response = client.post(f'/matters/{matter.slug}/uploads', files=[('files', ('source.pdf', metadata_pdf(['SYN0001', 'SYN0001'], b'Synthetic record. Bates: SYN0001. Bates: SYN0001.'), 'application/pdf'))])
+    assert response.status_code in (200, 303)
+    ready(bench, matter)
+    [duplicate] = summarize(bench, matter).gaps['bates_duplicates']
+    assert duplicate['occurrences'] == 2  # Two physical pages, not six label observations.
+    assert len(duplicate['links']) == 2

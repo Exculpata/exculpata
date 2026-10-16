@@ -32,7 +32,7 @@
           {% elif category == 'unreadable' %}<a href="{{ row.link }}">{{ row.reason }}</a>
           {% elif category == 'bates_invalid' %}<a href="{{ row.link }}">Bates label could not be ordered: {{ row.bates_start }}</a>
           {% elif category in ('bates_missing', 'bates_duplicates') %}
-            {% for link in row.links %}<a href="{{ link }}">{{ row.prefix }} {{ row.start }}–{{ row.end }}{% if row.occurrences %} ({{ row.occurrences }} occurrences){% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+            {% for link in row.links %}<a href="{{ link }}">{{ row.prefix }} {{ row.start }}–{{ row.end }}{% if row.occurrences %} ({{ row.occurrences }} occurrences){% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}{% if row.links_omitted %} — {{ row.links_omitted }} support references omitted{% endif %}
           {% elif category == 'source' %}<a href="{{ row.link }}">{{ row.name }} — {{ row.pages }} PDF pages, {{ row.bytes }} bytes</a>
           {% endif %}
           </li>

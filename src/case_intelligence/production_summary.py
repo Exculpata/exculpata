@@ -4,10 +4,12 @@ from datetime import date, datetime, timezone
 from pathlib import PurePosixPath
 import re
 from urllib.parse import urlencode
+from pypdf.errors import PyPdfError
 
 from . import production_accounting as accounting
 from .intake_receipts import IntakeReceipts
 from .production_bates import bates_gaps
+from .production_metadata import pdf_bates_locators, locator_record, MAX_METADATA_BYTES
 from .workspace_store import WorkspaceProblem
 
 FORMAT = 'exculpata-production-summary-v1'
@@ -18,7 +20,7 @@ MAX_CHARACTERS = 20_000_000
 MAX_UNITS = 20_000
 MAX_DISPLAY = 100
 _DATE = re.compile(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)')
-_REFERENCE = re.compile(r'\b(?:see|refer to|referenced in|attached as)\s+((?:Exhibit|Attachment|Record)\s+(?:[A-Za-z]|\d{1,8}))\b|\b((?:Exhibit|Attachment)\s+(?:[A-Z]|\d{1,8}))\b')
+_REFERENCE = re.compile(r'\b(?:see|refer to|referenced in|attached as)\s+((?:Exhibit|Attachment|Record)\s+(?:[A-Za-z]|\d{1,8}))\b|\b((?:Exhibit|Attachment)\s+(?:[A-Z]|\d{1,8}))\b', re.I)
 _ATTACHMENT = re.compile(r'(?im)\b(?:attachment|attached file)\s*:\s*([^\n;]{1,240}\.[a-z0-9]{1,8})(?:[ \t]+\([^\n)]{1,100}\))?[ \t]*$')
 _BATES = re.compile(r'\bBates\s*:\s*([A-Za-z][A-Za-z_-]*\d{1,12})(?:\s*(?:to|–|—|-)\s*([A-Za-z][A-Za-z_-]*\d{1,12}))?', re.I)
 
@@ -131,7 +133,15 @@ class ProductionSummaryService:
             raise WorkspaceProblem('Readability accounting exceeds the read limit; no partial summary was returned.')
         url = base + '/production-summary?' + urlencode({'scope': scope})
         rows, dates, references, bates, failures = [], [], [], [], []
-        characters = units = 0
+        characters = units = metadata_bytes = metadata_pages = 0
+        def charge_metadata(amount, pages):
+            nonlocal metadata_bytes, metadata_pages
+            metadata_bytes += amount
+            metadata_pages += pages
+            if metadata_pages > MAX_UNITS:
+                raise WorkspaceProblem('PDF metadata page limit reached; no partial summary was returned.')
+            if metadata_bytes > MAX_METADATA_BYTES:
+                raise WorkspaceProblem('PDF metadata byte limit reached; no partial summary was returned.')
         def charge(amount=0):
             nonlocal characters
             characters += amount
@@ -165,16 +175,22 @@ class ProductionSummaryService:
                             references.append(dict(reference_text=reference, citation=citation))
                             _bound(len(references))
                     for match in _BATES.finditer(unit.text):
-                        bates.append(dict(bates_start=match[1], bates_end=match[2], link=citation['link']))
+                        bates.append(dict(bates_start=match[1], bates_end=match[2], link=citation['link'], identity=(document_id, unit.number if kind == 'pdf' else None)))
                         _bound(len(bates))
-                    # Extracted source adapters may supply validated locator metadata.
-                    for page in getattr(getattr(document, 'locator_metadata', None), 'pages', ()) if ordinal == 1 else ():
-                        if page.bates:
-                            bates.append(dict(bates_start=page.bates, link=citation['link']))
             except WorkspaceProblem:
                 raise
             except (OSError, RuntimeError, ValueError, TypeError):
                 failures.append(dict(source_id=document_id, name=source['name'], reason='Extracted text could not be read.', link=source['link'].href, count=1))
+            if kind == 'pdf':
+                try:
+                    for locator in pdf_bates_locators(store, document, charge=charge_metadata, page_limit=MAX_UNITS):
+                        bates.append(locator_record(locator, document_id, source['link'].href))
+                        _bound(len(bates))
+                except WorkspaceProblem:
+                    raise
+                except (OSError, RuntimeError, ValueError, TypeError, KeyError, PyPdfError):
+                    failures.append(dict(source_id=document_id, name=source['name'],
+                        reason='PDF page-label metadata could not be read; Bates coverage is incomplete.', link=source['link'].href, count=1))
             row['dates'] = sorted(set(row['dates']))
         # The briefing and summary use the same provenance/version validation.
         row_by_id = {row['source_id']: row for row in rows}
@@ -190,16 +206,17 @@ class ProductionSummaryService:
             if identifier not in existing and key not in seen:
                 absent.append(dict(ref, reason='referenced, not located in this production'))
                 seen.add(key)
-        gaps = bates_gaps(bates)
+        bates_caps = {}
+        gaps = bates_gaps(bates, row_limit=MAX_DISPLAY, caps=bates_caps)
         gaps['referenced_absent'] = absent
         gaps['unreadable'] = [dict(source_id=line.value, name=sources.get(line.value, {}).get('name', line.text),
             reason=line.text, count=line.count, link=line.links[0].href) for line in unread.lines if line.kind != 'empty']
-        known_failed = {row['source_id'] for row in gaps['unreadable']}
-        gaps['unreadable'].extend(row for row in failures if row['source_id'] not in known_failed)
+        gaps['unreadable'].extend(failures)
         people, organizations, excluded_mentions = self._entities(entities, sources, base)
         caps = {}
         for key, values in [('people', people), ('organizations', organizations), *gaps.items()]:
             caps[key] = dict(total=len(values), shown=min(len(values), MAX_DISPLAY), omitted=max(0, len(values) - MAX_DISPLAY))
+        caps.update(bates_caps)
         date_links = sorted({d['link'] for d in dates})
         caps['date_links'] = dict(total=len(date_links), shown=min(len(date_links), MAX_DISPLAY), omitted=max(0, len(date_links) - MAX_DISPLAY))
         by_type = []
@@ -210,8 +227,9 @@ class ProductionSummaryService:
                   'Page totals count recorded PDF pages only. Text lines, email sections, table rows and media segments are not pages.',
                   'Date ranges combine valid ISO calendar dates stated in extracted text and available semantic document dates; ambiguous dates are not ordered.',
                   'People and organizations count current, non-dismissed recorded mentions. Extraction may not recognize every name.',
-                  'Bates checks use explicit Bates labels and available locator metadata. References match exact source filename stems; unmatched references need human review.',
+                  'Bates checks use explicit text labels and verified original PDF page-label metadata with decimal/prefix labels. References match exact source filename stems; unmatched references need human review.',
                   f'Read limits: {MAX_DOCUMENTS} documents, {MAX_UNITS} units, {MAX_CHARACTERS} charged characters. Lists display at most {MAX_DISPLAY} rows; caps are reported.',
+                  f'PDF metadata reads are capped at {MAX_METADATA_BYTES} bytes and {MAX_UNITS} pages total; Bates output is capped during computation to {MAX_DISPLAY} intervals per category and 20 support references per interval.',
                   f'{rejected_dates} invalid, stale, conflicting or non-document date records were excluded.',
                   f'{excluded_mentions} retained mentions lacked current source support and were excluded.']
         if receipt:
