@@ -1825,7 +1825,9 @@ html[data-theme="dark"] .setup-page .setup-heading h1 {
 .workspace-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  height: calc(100vh - var(--topbar-height));
+  /* The banner is a grid row above this shell. Subtract it or the sticky
+     composer ends that far below the viewport-fixed support drawer. */
+  height: calc(100vh - var(--topbar-height) - var(--evaluation-banner-offset));
   overflow: hidden;
 }
 
@@ -3151,7 +3153,7 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
-  height: calc(100vh - var(--topbar-height));
+  height: calc(100vh - var(--topbar-height) - var(--evaluation-banner-offset));
   overflow: hidden;
   border-left: 1px solid var(--line);
   background: var(--canvas);
@@ -4668,7 +4670,7 @@ select.source-scope {
     bottom: 0;
     left: 0;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(43vh, 430px);
+    height: max(0px, calc(min(43vh, 430px) - var(--evaluation-banner-offset)));
     border: 1px solid var(--line-strong);
     border-radius: 18px 18px 0 0;
     background: var(--canvas);
@@ -4677,7 +4679,7 @@ select.source-scope {
   }
 
   body.support-is-open .composer-wrap {
-    bottom: min(43vh, 430px);
+    bottom: max(0px, calc(min(43vh, 430px) - var(--evaluation-banner-offset)));
   }
 
   .drawer-handle {
@@ -5144,11 +5146,11 @@ select.source-scope {
   }
 
   .support-pane {
-    height: clamp(260px, 32vh, 320px);
+    height: max(0px, calc(clamp(260px, 32vh, 320px) - var(--evaluation-banner-offset)));
   }
 
   body.support-is-open .composer-wrap {
-    bottom: clamp(260px, 32vh, 320px);
+    bottom: max(0px, calc(clamp(260px, 32vh, 320px) - var(--evaluation-banner-offset)));
   }
 
   .support-header h2 {
@@ -5952,11 +5954,11 @@ select.source-scope {
 
 @media (max-width: 900px) {
   body.support-media-is-open .support-pane {
-    height: min(78vh, 720px);
+    height: max(0px, calc(min(78vh, 720px) - var(--evaluation-banner-offset)));
   }
 
   body.support-media-is-open .composer-wrap {
-    bottom: min(78vh, 720px);
+    bottom: max(0px, calc(min(78vh, 720px) - var(--evaluation-banner-offset)));
   }
 }
 

@@ -49,7 +49,7 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    max-height: max(0px, calc(var(--review-pane-height, calc(100dvh - var(--topbar-height))) - var(--workspace-top) - var(--review-composer-height, 160px) - var(--review-composer-offset, 0px) - 24px));
+    max-height: max(0px, calc(var(--review-pane-height, calc(100dvh - var(--topbar-height) - var(--evaluation-banner-offset))) - var(--workspace-top) - var(--review-composer-height, 160px) - var(--review-composer-offset, 0px) - 24px));
   }
 
   .conversation-history > :not(nav) { flex-shrink: 0; }
