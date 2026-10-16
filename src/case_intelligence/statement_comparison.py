@@ -17,7 +17,10 @@ _TIME = re.compile(r'\b(\d{1,2}):(\d{2})(?:\s*([ap])\.?m\.?)?', re.I)
 _DATE = re.compile(r'\b\d{4}-\d{2}-\d{2}\b')
 _LOCATION = re.compile(r'\b(?:at|inside|outside|near|to)\s+(?:the\s+)?([A-Z][\w-]+(?:\s+[A-Z][\w-]+){0,3}|(?:north|south|east|west)\s+(?:entrance|gate|passage))\b')
 _COUNT = re.compile(r'\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(cases?|parcels?|boxes|people|vehicles?|cars?|bags?)\b', re.I)
-_DESCRIPTION = re.compile(r'\b(red|blue|green|teal|black|white|yellow|sealed|empty|open|closed|damaged|intact)\s+(?:(?:red|blue|green|teal|black|white|yellow)\s+)?(case|parcel|box|car|bag)\b', re.I)
+_DESCRIPTION = re.compile(r'\b(red|blue|green|teal|black|white|yellow|sealed|empty|full|open|closed|damaged|intact)\s+(?:(?:red|blue|green|teal|black|white|yellow)\s+)?(case|parcel|box|car|bag)\b', re.I)
+_ORDINALS = dict(zip('first second third fourth fifth sixth seventh eighth ninth tenth'.split(), map(str, range(1, 11))))
+_EVENT_QUALIFIER = re.compile(r'\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|\d+(?:st|nd|rd|th))\s+(delivery|trip|visit|occasion|meeting|journey|arrival)\b', re.I)
+_IDENTITY_UNCERTAINTY = re.compile(r'\b(?:could|can)\s+not\s+distinguish\b', re.I)
 
 
 @dataclass(frozen=True)
@@ -107,7 +110,11 @@ def attribute_statements(units, entities):
             # Metadata dates and document IDs cannot become event differences.
             if len(text) < 15 or re.search(r'^(?:Record date|Person|ID|Matter reference):', text, re.M):
                 continue
-            quoted = re.search(r'\b([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+){0,2})\s+(?:said|stated|told|recalled|remembered|reported)\b', text)
+            quotes = list(re.finditer(r'\b([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+){0,2})\s+(?:said|stated|told|recalled|remembered|reported)\b', text))
+            # Do not assign another speaker's embedded clause to the first name.
+            if len({match[1].casefold() for match in quotes}) > 1:
+                continue
+            quoted = quotes[0] if quotes else None
             name = quoted.group(1) if quoted else document_name
             ids = names.get(name.casefold(), set())
             speaker = (next(iter(ids)) if len(ids) == 1 else
@@ -138,12 +145,43 @@ def _slots(statement):
         noun = match[2].lower().rstrip('s')
         slots.setdefault(('quantity_count', noun), []).append((_NUMBERS.get(match[1].lower(), match[1]), match.group()))
     for match in _DESCRIPTION.finditer(text):
-        group = 'condition' if match[1].lower() in ('sealed', 'empty', 'open', 'closed', 'damaged', 'intact') else 'color'
-        slots.setdefault(('object_description', match[2].lower() + ':' + group), []).append((match[1].lower(), match.group()))
+        value = match[1].lower()
+        group = ('closure' if value in ('sealed', 'open', 'closed') else
+                 'contents' if value in ('empty', 'full') else
+                 'integrity' if value in ('damaged', 'intact') else 'color')
+        slots.setdefault(('object_description', match[2].lower() + ':' + group), []).append(
+            ('closed' if value == 'sealed' else value, match.group()))
     for match in re.finditer(r'\b([A-Z][a-zA-Z-]+(?:\s+[A-Z][a-zA-Z-]+){0,2})\s+(?:was|is|were)\s+(not\s+)?(present|absent|there)\b', text):
-        value = 'absent' if match[2] or match[3] == 'absent' else 'present'
+        absent = match[3] == 'absent'
+        if match[2]:
+            absent = not absent
+        value = 'absent' if absent else 'present'
         slots.setdefault(('people_present', match[1].casefold()), []).append((value, match.group()))
     return slots
+
+
+def _event_qualifiers(text):
+    return {(match[2].lower(), _ORDINALS.get(match[1].lower(), re.sub(r'\D', '', match[1])))
+            for match in _EVENT_QUALIFIER.finditer(text)}
+
+
+def _identity_pair(left, right, ls, rs, document_terms):
+    """An explicit inability to identify an object qualifies an earlier description.
+
+    This is an identification question, never a claim that compatible properties
+    such as sealed and empty are inconsistent.
+    """
+    if left.speaker_entity_id != right.speaker_entity_id or len(document_terms[left.source_id] & document_terms[right.source_id]) < 3:
+        return None
+    for uncertain, described, slots, reverse in ((left, right, rs, False), (right, left, ls, True)):
+        if not _IDENTITY_UNCERTAINTY.search(uncertain.text):
+            continue
+        for (kind, dimension), values in slots.items():
+            noun = dimension.split(':')[0]
+            if kind == 'object_description' and len(values) == 1 and re.search(r'\b' + re.escape(noun) + r'\b', uncertain.text, re.I):
+                pair = (uncertain.text, values[0][1])
+                return tuple(reversed(pair)) if reverse else pair
+    return None
 
 
 def compare(statements):
@@ -160,33 +198,42 @@ def compare(statements):
             break
         if left.source_id == right.source_id or not left.speaker_entity_id or not right.speaker_entity_id:
             continue
+        left_events, right_events = _event_qualifiers(left.text), _event_qualifiers(right.text)
+        if left_events and right_events and left_events != right_events:
+            continue
         shared = set(left.event_terms) & set(right.event_terms)
         ls, rs = statement_slots[left.statement_id], statement_slots[right.statement_id]
+        identity_pair = _identity_pair(left, right, ls, rs, document_terms)
         object_context = (left.speaker_entity_id == right.speaker_entity_id
             and any(key[0] == 'object_description' for key in ls.keys() & rs.keys())
             and len(document_terms[left.source_id] & document_terms[right.source_id]) >= 3)
-        if len(shared) < 3 and not object_context:
+        if len(shared) < 3 and not object_context and not identity_pair:
             continue
         differences = []
+        if identity_pair:
+            differences.append(('object_description', *identity_pair))
         for key in sorted(ls.keys() & rs.keys()):
             a, b = ls[key], rs[key]
             # Multiple alternatives and overlap are not treated as disagreement.
             if len(a) == len(b) == 1 and a[0][0] != b[0][0]:
                 differences.append((key[0], a[0][1], b[0][1]))
         lw, rw = set(_WORD.findall(left.text.casefold())), set(_WORD.findall(right.text.casefold()))
-        if bool(lw & _NEGATION) != bool(rw & _NEGATION):
+        if bool(lw & _NEGATION) != bool(rw & _NEGATION) and not re.search(r'\b(?:present|absent|there)\b', left.text + ' ' + right.text, re.I):
             base_l, base_r = lw - _FILLER, rw - _FILLER
             if len(base_l & base_r) / max(len(base_l | base_r), 1) >= .75:
-                kind = 'people_present' if re.search(r'\b(?:present|absent|there)\b', left.text + ' ' + right.text, re.I) else 'observed_action'
+                kind = 'observed_action'
                 if not any(difference[0] == kind for difference in differences):
                     differences.append((kind, left.text, right.text))
         for kind, a, b in differences:
             if len(found) >= MAX_CANDIDATES:
                 break
-            signature = _signature('possible_inconsistency', kind, left.statement_id, right.statement_id, a, b)
+            signature = _signature('possible_inconsistency', kind, left.statement_id, right.statement_id,
+                left.speaker_entity_id, left.attribution, right.speaker_entity_id, right.attribution, a, b)
+            note = ('Object identification needs review: one account describes an object; the other explicitly cannot distinguish it from another. Check the original passages and whether they refer to the same object.'
+                    if identity_pair and (a, b) == identity_pair else NOTE_TEMPLATES[kind].format(left=a, right=b))
             found[signature] = InconsistencyCandidate(signature,
                 'same_witness' if left.speaker_entity_id == right.speaker_entity_id else 'cross_witness',
-                kind, NOTE_TEMPLATES[kind].format(left=a, right=b),
+                kind, note,
                 dict(left.citation, highlight=a), dict(right.citation, highlight=b),
                 tuple(sorted({left.speaker_entity_id, right.speaker_entity_id})))
     return list(found.values())

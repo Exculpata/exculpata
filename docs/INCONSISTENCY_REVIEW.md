@@ -12,7 +12,12 @@ with explicit speakers or interview subject metadata and compares clock/ISO date
 named locations, counts, presence/action polarity and object colors/conditions.
 Original wording, including uncertainty, is retained. Object description differences
 can refer to different objects; the note explicitly asks reviewers to check identity.
-Ambiguous curated aliases and unattributed statements abstain. It does not score
+Ambiguous curated aliases, multi-speaker spans and unattributed statements abstain.
+Explicitly distinct numbered events are not paired. Object closure, contents and
+integrity are separate dimensions; compatible properties such as sealed and empty
+do not produce a conflict. An explicit inability to distinguish objects can instead
+produce a labeled object-identification question with both original passages.
+It does not score
 credibility, resolve event identity or decide which account is correct.
 
 The scan considers at most 2,500 extracted units, 6,000 characters per unit, 1,200
@@ -23,7 +28,8 @@ Each displayed/exported pair must retain two exact validated original windows.
 Missing, changed or out-of-window citations are dropped and counted.
 
 Review state lives in the control SQLite database, including with PostgreSQL search.
-It is keyed by matter, workflow namespace and source-version/extracted-unit-sensitive signature.
+It is keyed by matter, workflow namespace and a signature that binds source version,
+extracted-unit content, resolved speaker identity and attribution basis.
 Changed sources cannot inherit an old decision. The equivalent PostgreSQL migration
 provides a portable schema; the application does not dual-write review decisions.
 Complete stopped-runtime backups retain the control database, session state, source

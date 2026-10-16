@@ -83,7 +83,7 @@ def main():
             driver.execute_script('arguments[0].scrollIntoView({behavior: "instant", block: "center"})', link)
             link.click()
             wait.until(lambda d: 'support=' in d.current_url)
-            assert 'red parcel' in driver.find_element(By.TAG_NAME, 'body').text
+            wait.until(lambda d: 'red parcel' in d.find_element(By.TAG_NAME, 'body').text)
             checks.append('Both citations provided; first cited-context link opens original text')
             driver.get(base+path)
             button = driver.find_element(By.CSS_SELECTOR, 'button[value="reviewed"]')

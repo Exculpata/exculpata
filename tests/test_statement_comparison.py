@@ -3,6 +3,7 @@ from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
+import pytest
 
 from case_intelligence.review_bench_v2 import Candidate
 from case_intelligence.statement_comparison import attribute_statements, compare, validate_candidates
@@ -68,6 +69,9 @@ def test_harbor_vela_golden():
     results = compare(attribute_statements([unit(p.read_text(), p.stem) for p in paths], []))
     assert results and any(c.scope == 'same_witness' for c in results)
     assert all(c.difference_type == 'object_description' for c in results)
+    assert all(c.note.startswith('Object identification needs review:') for c in results)
+    from case_intelligence.review_wording import prohibited_phrases
+    assert all(not prohibited_phrases(c.note) for c in results)
 
 
 def test_eval_loader_expected_pairs():
@@ -109,3 +113,61 @@ def test_extraction_context_change_cannot_reuse_a_review_signature():
     after = compare(attribute_statements([changed, right], []))
     assert before and after
     assert {c.signature for c in before}.isdisjoint(c.signature for c in after)
+
+
+def test_curated_speaker_merge_and_attribution_change_invalidate_review_signature():
+    units = [unit(PAIRS[0]['left'], 'left'),
+             unit(PAIRS[0]['right'].replace('Alex Example', 'Riley Demo'), 'right')]
+    separate = [dict(entity_id='person-a', display_name='Alex Example'),
+                dict(entity_id='person-b', display_name='Riley Demo')]
+    merged = [dict(entity_id='person-a', display_name='Alex Example', aliases=['Riley Demo'])]
+    before = compare(attribute_statements(units, separate))
+    statements = attribute_statements(units, merged)
+    after = compare(statements)
+    assert before and after
+    assert all(c.scope == 'cross_witness' for c in before)
+    assert all(c.scope == 'same_witness' for c in after)
+    assert {c.signature for c in before}.isdisjoint(c.signature for c in after)
+    changed_basis = compare([replace(s, attribution='document') for s in statements])
+    assert {c.signature for c in after}.isdisjoint(c.signature for c in changed_basis)
+    # Exercise actual persisted review application, not just hash inequality.
+    import sqlite3
+    from types import SimpleNamespace
+    from case_intelligence.candidate_review import CandidateReviewRepository
+    connection = sqlite3.connect(':memory:')
+    connection.row_factory = sqlite3.Row
+    connection.executescript((ROOT / 'migrations/sqlite/0044_candidate_review.sql').read_text())
+    repository = CandidateReviewRepository(SimpleNamespace(connection=connection, now=lambda: '2034-04-19T10:00:00Z'))
+    try:
+        old = repository.save('synthetic', 'synthetic-reviewer', before[0], 'dismiss', 0)
+        assert old.status == 'dismissed' and old.revision == 1
+        current = repository.apply('synthetic', after[0])
+        assert current.status == 'open' and current.revision == 0
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize('left,right', [
+    ('Alex Example said he could not remember the arrival time, but Riley Demo said the parcel arrived at Cedar Depot at 14:10.',
+     'Alex Example said the parcel arrived at Cedar Depot at 14:40.'),
+    ('Alex Example said the red parcel arrived at Cedar Depot at 14:10 on the first delivery.',
+     'Alex Example said the red parcel arrived at Cedar Depot at 14:40 on the second delivery.'),
+    ('Alex Example said the sealed parcel arrived at Cedar Depot.',
+     'Alex Example said the intact parcel arrived at Cedar Depot.'),
+    ('Alex Example said the empty parcel arrived at Cedar Depot.',
+     'Alex Example said the sealed parcel arrived at Cedar Depot.'),
+    ('Alex Example said the sealed parcel arrived at Cedar Depot.',
+     'Alex Example said the closed parcel arrived at Cedar Depot.'),
+    ('Alex Example said Jordan Sample was not absent at Cedar Depot during delivery.',
+     'Alex Example said Jordan Sample was present at Cedar Depot during delivery.'),
+])
+def test_adversarial_compatible_or_uncertain_accounts_abstain(left, right):
+    assert not comparisons(dict(id='adversarial', left=left, right=right))
+
+
+@pytest.mark.parametrize('left,right', [('open', 'sealed'), ('damaged', 'intact'), ('empty', 'full')])
+def test_different_values_within_same_object_property_remain_candidates(left, right):
+    results = comparisons(dict(id='property',
+        left=f'Alex Example said the {left} parcel arrived at Cedar Depot.',
+        right=f'Alex Example said the {right} parcel arrived at Cedar Depot.'))
+    assert results and all(c.difference_type == 'object_description' for c in results)
