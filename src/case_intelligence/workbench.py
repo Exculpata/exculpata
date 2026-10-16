@@ -13947,6 +13947,10 @@ def create_workbench_app(
                           transfer_response_lease=transfer_matter_response_lease,
                           automatic_progress=bench.automatic_discovery_progress,
                           wake_automatic=bench.wake_automatic_discovery)
+    from .production_summary_routes import install_production_summary_routes
+    install_production_summary_routes(app, bench=bench, authorized_matter=authorized_matter,
+        auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context,
+        require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .assertion_routes import install_assertion_routes
     install_assertion_routes(app, service_for=bench.assertion_service, entities_for=bench.entity_service,
                              authorized_matter=authorized_matter, auth_context=auth_context,

@@ -1,0 +1,71 @@
+{% extends "workbench_base.html" %}
+{% block title %}Production summary · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="/static/production-summary.css">{% endblock %}
+{% block content %}
+<main id="main-content" tabindex="-1" class="setup-main production-summary">
+  <header><p class="eyebrow">{{ matter.display_name }}</p><h1>Production summary</h1></header>
+  {% with active='sources' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  <form method="post" action="/matters/{{ matter.slug }}/production-summary">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="scope" value="{{ scope }}">
+    <button class="button button-secondary" type="submit">Summarize production</button>
+  </form>
+  {% if summary_job %}
+  <p role="status" data-summary-job="{{ summary_job.state }}">Summary {{ summary_job.state }}. {{ summary_job.message }} {% if summary_job.state in ('queued','running') %}<a href="">Refresh status</a>{% endif %}</p>
+  {% endif %}
+  <p>Generated from current sources. Download to keep a copy.</p>
+  {% if summary %}
+  <p class="notice notice-neutral">{{ summary.notice }}</p>
+  <p>Scope: {% if scope == 'whole_matter' %}whole matter{% else %}<a href="/matters/{{ matter.slug }}/intake/{{ scope }}">selected-file receipt</a>{% endif %}. Generated {{ summary.generated_at }}.</p>
+  <p><a href="/matters/{{ matter.slug }}/production-summary/export?{{ export_query }}&amp;format=markdown" data-download>Download Markdown</a> · <a href="/matters/{{ matter.slug }}/production-summary/export?{{ export_query }}&amp;format=json" data-download>Download JSON</a></p>
+  {% macro row_list(rows, category) %}
+    {% for part in [rows[:10], rows[10:]] %}
+      {% if part %}
+        {% if loop.index == 2 %}<details><summary>Show all</summary>{% endif %}
+        <ul>
+        {% for row in part %}
+          <li>
+          {% if category == 'entity' %}
+            <a href="{{ row.link }}">{{ row.name }} — {{ row.mentions }} recorded mentions</a>
+            <details><summary>Passages</summary><ul>{% for link in row.links %}<li><a href="{{ link }}">Open original passage</a></li>{% endfor %}</ul></details>
+          {% elif category == 'referenced_absent' %}
+            <a href="{{ row.citation.link }}">{{ row.reference_text }}</a> — referenced, not located in this production
+          {% elif category == 'unreadable' %}<a href="{{ row.link }}">{{ row.reason }}</a>
+          {% elif category == 'bates_invalid' %}<a href="{{ row.link }}">Bates label could not be ordered: {{ row.bates_start }}</a>
+          {% elif category in ('bates_missing', 'bates_duplicates') %}
+            {% for link in row.links %}<a href="{{ link }}">{{ row.prefix }} {{ row.start }}–{{ row.end }}{% if row.occurrences %} ({{ row.occurrences }} occurrences){% endif %}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+          {% elif category == 'source' %}<a href="{{ row.link }}">{{ row.name }} — {{ row.pages }} PDF pages, {{ row.bytes }} bytes</a>
+          {% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+        {% if loop.index == 2 %}</details>{% endif %}
+      {% endif %}
+    {% endfor %}
+    {% if not rows %}<p>No items recorded in this scope.</p>{% endif %}
+  {% endmacro %}
+  <div class="production-summary-grid">
+    <section class="summary-card summary-gaps" aria-labelledby="summary-gaps-heading">
+      <h2 id="summary-gaps-heading">Gaps</h2>
+      {% for kind, rows in summary.gaps.items() if rows %}
+      <h3>{{ 'Readability and coverage notices' if kind == 'unreadable' else kind.replace('_', ' ').title() }}</h3>{{ row_list(rows, kind) }}
+      {% else %}<p>No gap items recorded in this scope.</p>{% endfor %}
+    </section>
+    <section class="summary-card"><h2>Totals</h2><ul>
+      {% for kind in ['documents', 'pages', 'bytes'] %}<li><a href="{{ summary.totals.link }}">{{ summary.totals[kind] }} {{ 'PDF pages' if kind == 'pages' else kind }}</a></li>{% endfor %}
+    </ul></section>
+    <section class="summary-card"><h2>Types</h2><ul>{% for row in summary.by_type %}<li><a href="{{ row.link }}">{{ row.type }} — {{ row.documents }} documents, {{ row.pages }} PDF pages</a></li>{% endfor %}</ul></section>
+    <section class="summary-card"><h2>Dates</h2>
+      <p><a href="{{ summary.date_range.earliest_link }}">Earliest: {{ summary.date_range.earliest or 'Not recorded' }}</a> · <a href="{{ summary.date_range.latest_link }}">Latest: {{ summary.date_range.latest or 'Not recorded' }}</a></p>
+      <p><a href="{{ summary.date_range.link }}">{{ summary.date_range.undated_count }} documents with no ordered date</a></p>
+      <details><summary>Date sources</summary><ul>{% for link in summary.date_range.links %}<li><a href="{{ link }}">Open dated source passage</a></li>{% endfor %}</ul></details>
+    </section>
+    <section class="summary-card"><h2>People</h2>{{ row_list(summary.people, 'entity') }}</section>
+    <section class="summary-card"><h2>Organizations</h2>{{ row_list(summary.organizations, 'entity') }}</section>
+  </div>
+  <section class="summary-card"><h2>Caps and limits</h2><ul>{% for limit in summary.limits %}<li>{{ limit }}</li>{% endfor %}</ul>
+    <ul>{% for kind, cap in summary.capped.items() %}<li>{{ kind.replace('_', ' ') }}: {{ cap.shown }} shown, {{ cap.omitted }} omitted of {{ cap.total }}.</li>{% endfor %}</ul>
+  </section>
+  <section id="summary-sources" class="summary-card"><h2>Underlying sources</h2>{{ row_list(summary_sources, 'source') }}</section>
+  {% endif %}
+</main>
+{% endblock %}
