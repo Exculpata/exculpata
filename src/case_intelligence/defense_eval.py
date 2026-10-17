@@ -468,6 +468,8 @@ class PostgresHybridRetriever:
         self._connection = None
         self._delete = None
         self._retriever = None
+        self._trace: dict[str, tuple] = {}
+        self._last_search: tuple[str, str, int, dict[str, tuple]] | None = None
         self.record = {
             "name": "postgres-hybrid",
             "index": "postgresql-fts-pgvector",
@@ -514,8 +516,12 @@ class PostgresHybridRetriever:
             for database_id in self._database_ids.values():
                 delete_postgres_matter(connection, matter_id=database_id)
             self._index(connection, PilotUnit, upsert_postgres_document, embedder)
+            from .defense_eval_lanes import _RecordingBackend, _RecordingReranker
             self._retriever = HybridRetriever(
-                PostgresHybridBackend(connection), embedder, reranker, **floors,
+                _RecordingBackend(PostgresHybridBackend(connection), self._trace),
+                embedder,
+                _RecordingReranker(reranker, self._trace),
+                **floors,
             )
         except Exception as exc:
             self.close()
@@ -585,10 +591,12 @@ class PostgresHybridRetriever:
         if not 1 <= top_k <= MAX_TOP_K:
             raise DefenseEvalError(f"top_k must be from 1 to {MAX_TOP_K}")
         by_id = {passage.passage_id: passage for passage in passages}
+        self._trace.clear()
         try:
             hits = self._retriever.search(self._database_ids[matter_id], query, top_k)
         except Exception as exc:
             raise DefenseEvalError("PostgreSQL retrieval search failed") from exc
+        self._last_search = (matter_id, query, top_k, dict(self._trace))
         selected: list[Passage] = []
         for hit in hits:
             passage = by_id.get(hit.document_id)
@@ -598,6 +606,62 @@ class PostgresHybridRetriever:
                 )
             selected.append(passage)
         return tuple(selected)
+
+    def lane_diagnostics(
+        self, question: Question, retrieved: Sequence[Passage], top_k: int,
+    ) -> dict[str, Any] | None:
+        """Rank every reference passage in each lane of the search that was just scored.
+
+        A passage missing from the scored top set gets one more search at the
+        production depth limit, so its final rank after the floors and the
+        exact-record and temporal ordering is measured, not inferred.
+        """
+        last = self._last_search
+        if (
+            self._retriever is None
+            or last is None
+            or not question.required_facts
+            or last[0] != question.matter_id
+            or last[1] != question.text
+        ):
+            return None
+        _matter_id, query, _searched, trace = last
+        final_ids = [passage.passage_id for passage in retrieved]
+        support_ids = {
+            support.passage_id for fact in question.required_facts for support in fact.supports
+        }
+        deep_ids = list(final_ids)
+        deep_prefix_matches = True
+        if not support_ids <= set(final_ids):
+            from .defense_eval_lanes import _unique_documents
+            from .review_budget import DEFAULT_REVIEW_BUDGET
+            self._trace.clear()
+            try:
+                deep = self._retriever.search(
+                    self._database_ids[question.matter_id], query,
+                    DEFAULT_REVIEW_BUDGET.primary_candidates,
+                )
+            except Exception as exc:
+                raise DefenseEvalError("PostgreSQL diagnostic search failed") from exc
+            finally:
+                self._trace.clear()
+            deep_ids = _unique_documents(deep)
+            deep_prefix_matches = deep_ids[:top_k] == final_ids
+        from .defense_eval_lanes import lane_diagnostics_from_trace
+        retriever = self._retriever
+        floors = None
+        if retriever.minimum_dense_score is not None:
+            floors = (retriever.minimum_dense_score, retriever.minimum_rerank_score)
+        return lane_diagnostics_from_trace(
+            question, trace,
+            top_k=top_k,
+            rrf_k=retriever.rrf_k,
+            rerank_limit=retriever.rerank_limit,
+            final_ids=deep_ids,
+            deep_prefix_matches=deep_prefix_matches,
+            floors=floors,
+            passages={passage.passage_id: passage for passage in self.suite.passages},
+        )
 
 
 def _contains(haystack: str, needle: str) -> bool:
@@ -776,6 +840,9 @@ def run_eval(
             answer = ModelAnswer(False, "", (), error=exc.__class__.__name__)
         latency_ms = max(0, round((time.perf_counter() - started) * 1000))
         row = score_question(question, answer, retrieved, by_id, latency_ms)
+        diagnose = getattr(retriever, "lane_diagnostics", None)
+        if callable(diagnose):  # measured after latency so diagnostics do not inflate it
+            row["lane_diagnostics"] = diagnose(question, retrieved, top_k)
         if judge is not None:
             try:
                 judgment = dict(judge(question, answer))
@@ -808,7 +875,7 @@ def _scorecard(
     retrieval_rows = [row for row in rows if row["retrieval_hit"] is not None]
     retrieval_hits = sum(row["retrieval_hit"] is True for row in retrieval_rows)
     latencies = [int(row["latency_ms"]) for row in rows]
-    return {
+    card = {
         "suite_id": suite.suite_id,
         "suite_version": suite.suite_version,
         "fingerprint": suite.fingerprint,
@@ -845,6 +912,10 @@ def _scorecard(
         },
         "questions": list(rows),
     }
+    if any("lane_diagnostics" in row for row in rows):
+        from .defense_eval_lanes import summarize_lane_diagnostics
+        card["lane_diagnostics"] = summarize_lane_diagnostics(rows)
+    return card
 
 
 def render_markdown(scorecard: Mapping[str, Any]) -> str:
@@ -931,6 +1002,9 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
             f"error `{row['error'] or 'none'}`."
         )
     lines.append("")
+    if scorecard.get("lane_diagnostics"):
+        from .defense_eval_lanes import render_lane_diagnostics
+        lines.extend(render_lane_diagnostics(scorecard["lane_diagnostics"]))
     return "\n".join(lines)
 
 

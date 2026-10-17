@@ -62,6 +62,29 @@ def test_postgres_hybrid_path_scores_every_question_and_removes_rows(tmp_path, m
         assert os.environ["CASE_REVIEW_POSTGRES_TEST_DSN"] not in rendered
         assert totals["retrieval_hit"] == 29
         assert totals["answer_correct"] == totals["citation_support"] == totals["abstention_correct"] == 37
+        lanes = scorecard["lane_diagnostics"]
+        assert lanes["questions_diagnosed"] == 34
+        assert lanes["fused_matches_rerank_input"] is True
+        assert lanes["deep_prefix_matches"] is True
+        # Every miss is absent from the full-text lane and reaches the reranker
+        # through the dense lane, so on this path each one is a ranking miss.
+        assert {(entry["question_id"], entry["passage_id"]) for entry in lanes["misses"]} == {
+            ("dw-dispatch-arrival", "hs-report-04"),
+            ("dw-dispatch-arrival", "hs-report-05"),
+            ("dw-inspection-plan", "hs-report-02"),
+            ("dw-inspection-plan", "hs-report-03"),
+            ("dw-passage-observation", "hs-note-21"),
+            ("dw-platform-contents", "hs-report-06"),
+            ("dw-screen-then-transfer", "hs-report-04"),
+        }
+        assert lanes["by_lane_status"]["lexical"] == {"hit": 0, "ranking": 0, "recall": 7}
+        assert lanes["by_class"] == {"ranking": 7}
+        assert lanes["by_deciding_lane"] == {"post_rerank": 3, "rerank": 4}
+        hit_rows = [row for row in scorecard["questions"] if row["retrieval_hit"] is True]
+        assert all(
+            not entry["missed"]
+            for row in hit_rows for entry in row["lane_diagnostics"]["passages"]
+        )
     finally:
         retriever.close()
 

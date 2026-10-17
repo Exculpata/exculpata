@@ -111,6 +111,48 @@ python -m case_intelligence.defense_eval --mode stub --retriever postgres \
   --output-dir /tmp/defense-eval-postgres
 ```
 
+### Per-lane rank diagnostics
+
+`--retriever postgres` also writes `lane_diagnostics` to every question row and
+a summary to the card. The Markdown card adds a "Per-lane rank diagnostics"
+section. The harness wraps the backend and reranker it passes to
+`HybridRetriever`, so it records each lane's real output without changing the
+search. For each reference passage it records the rank and score in these lanes:
+
+- `lexical`: PostgreSQL full-text search (`ts_rank_cd`)
+- `vector`: pgvector cosine search
+- `fused`: reciprocal rank fusion. Ranks past the rerank limit are recomputed
+  with the retriever's own formula, and the card checks that the recomputed
+  order matches the recorded rerank input.
+- `rerank`: reranker order, before score floors
+
+It also records the final rank, which comes after the floors and the
+exact-record and temporal reorder. Final rank needs one more search at the
+production depth limit of 20. The harness runs that search only when a
+reference passage is missing from the scored top set, and it does so after
+latency is measured. `beyond depth` means the passage was not in those 20.
+
+A lane's status is `hit` (inside the top set), `ranking` (returned but below
+the top set) or `recall` (not returned). Each reference passage behind a
+missed fact gets one reason, checked in this order:
+
+1. `not_retrieved` (recall). Neither the full-text lane nor the vector lane
+   returned the passage.
+2. `ranked_out` at `fused` (ranking). Fusion placed the passage past the
+   rerank limit.
+3. `score_floor` (ranking). The production floors removed a dense-only
+   candidate. Floors apply only with a healthy worker.
+4. `crowded_by_near_duplicates` (ranking). Taking out the near duplicates
+   ranked ahead of the passage would bring it into the top set. A near
+   duplicate is a named suite near miss, or a passage with token Jaccard of
+   0.5 or more against the reference passage.
+5. `ranked_out` (ranking). The deciding lane is `rerank` when the reranker
+   ranked the passage below the top set. It is `post_rerank` when the reranker
+   placed it in the top set and the exact-record or temporal reorder moved it
+   out.
+
+Every number in this section is measured in that run. Nothing is estimated.
+
 ## Configured model
 
 Configured mode uses the same environment as the workbench answer path. Set
