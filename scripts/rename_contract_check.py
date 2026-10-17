@@ -109,7 +109,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
     found = []
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink():
             continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in relative.parts):
             continue
@@ -117,6 +117,11 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             continue
         if relative.as_posix() == "src/case_intelligence/legacy_names.py":
             continue  # The authority is validated above, rather than scanning itself.
+        # rglob visits each directory and file, so every relative-path component
+        # is checked once, independently of its descendants or content type.
+        found.extend(scan_text(relative.as_posix(), path.name, contracts))
+        if not path.is_file():
+            continue
         if path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_NAMES:
             continue
         data = path.read_bytes()
@@ -126,7 +131,6 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        found.extend(scan_text(relative.as_posix(), path.name, contracts))
         found.extend(scan_text(relative.as_posix(), text, contracts))
     return found
 

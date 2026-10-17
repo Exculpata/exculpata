@@ -158,6 +158,11 @@ name. The README uses the Exculpata wordmark. The earlier banner remains at
 [assets/exculpata-banner.svg](assets/exculpata-banner.svg), and the original
 banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg).
 
+The rename contract check inspects repository file and directory names before
+filtering file contents by type. Extensionless tools and binary filenames must
+also use declared names. Historical fixtures, cached dependencies, and historical
+assets keep their existing exclusions.
+
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
 

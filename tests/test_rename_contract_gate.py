@@ -36,6 +36,55 @@ def test_unknown_legacy_filename_fails_even_with_empty_contents(tmp_path):
     assert checker.findings(tmp_path) == [checker.Finding(path.name + ":1", "recordbench-unknown-tool.py")]
 
 
+@pytest.mark.parametrize("filename,data", [
+    ("recordbench-unknown-tool", b""),
+    ("recordbench-unknown-tool.bin", b"\0synthetic"),
+    ("recordbench-unknown-tool.py", b"\0synthetic"),
+    ("recordbench-unknown-tool.sh", b"\xffsynthetic"),
+])
+def test_legacy_filenames_are_checked_before_content_filters(tmp_path, filename, data):
+    path = tmp_path / "scripts" / filename
+    path.parent.mkdir()
+    path.write_bytes(data)
+    assert checker.findings(tmp_path) == [checker.Finding(f"scripts/{filename}:1", filename)]
+
+
+@pytest.mark.parametrize("child", [None, "config.py", "config", "config.bin"])
+def test_legacy_directory_names_are_checked_independently_of_children(tmp_path, child):
+    directory = tmp_path / "services" / "recordbench-unknown-service"
+    directory.mkdir(parents=True)
+    if child is not None:
+        (directory / child).touch()
+    assert checker.findings(tmp_path) == [
+        checker.Finding("services/recordbench-unknown-service:1", "recordbench-unknown-service")
+    ]
+
+
+def test_registered_parent_does_not_hide_undeclared_path_components(tmp_path):
+    directory = tmp_path / "recordbench-node" / "recordbench-unknown-service"
+    directory.mkdir(parents=True)
+    (directory / "recordbench-unknown-tool").touch()
+    assert checker.findings(tmp_path) == [
+        checker.Finding("recordbench-node/recordbench-unknown-service:1", "recordbench-unknown-service"),
+        checker.Finding("recordbench-node/recordbench-unknown-service/recordbench-unknown-tool:1", "recordbench-unknown-tool"),
+    ]
+
+
+@pytest.mark.parametrize("relative", [
+    "config/recordbench.env",
+    "recordbench-node/config.py",
+    "docs/assets/recordbench-historical/image.bin",
+    "tests/recordbench-historical/tool",
+    ".venv/recordbench-dependency/tool",
+    "node_modules/recordbench-dependency/tool",
+])
+def test_declared_and_excluded_legacy_paths_remain_allowed(tmp_path, relative):
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.touch()
+    assert checker.findings(tmp_path) == []
+
+
 @pytest.mark.parametrize("identifier", [
     "RECORDBENCH_SYNTHETIC_SETTING",
     "X-RecordBench-Synthetic-Header",
