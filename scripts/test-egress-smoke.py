@@ -19,7 +19,6 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,7 +74,7 @@ def main():
             }, "networks": {"app": {"internal": True}, "upstream": {"internal": True,
                 "ipam": {"config": [{"subnet": str(network)}]}}}}
         compose_file = root / "compose.yaml"
-        compose_file.write_text(yaml.safe_dump(data))
+        compose_file.write_text(json.dumps(data))
         compose = [*docker, "compose", "-p", project, "-f", str(compose_file)]
         def run(argv, *, timeout=600, filename=None):
             completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
@@ -105,7 +104,7 @@ def main():
             results.update(json.loads(run([*compose, "exec", "-T", "app", "python", "/fixture/probe.py"], filename="probe.log")))
             # Prove local/Kerberos's healthy deny-all configuration, then clean up.
             data["services"]["proxy"]["environment"] = {"OIDC_ISSUER": "", "OIDC_ISSUER_PINS": ""}
-            compose_file.write_text(yaml.safe_dump(data))
+            compose_file.write_text(json.dumps(data))
             run([*compose, "up", "-d", "--wait", "--wait-timeout", "60", "proxy"], filename="deny-all-up.log")
             results.update(json.loads(run([*compose, "exec", "-T", "app", "python", "/fixture/probe.py", "deny-all"], filename="deny-all.log")))
             results.update({"no_mounts_or_published_ports": True, "internal_test_networks": True, "passed": True})

@@ -19,11 +19,14 @@ each connection; every answer must pass validation before any connection is
 made, and the proxy dials that validated numeric address without resolving it
 again. Empty issuer configuration starts in deny-all mode for local and Kerberos
 sign-in. Requests, destinations and tunneled bytes are not logged. Concurrency,
-header size/time, tunnel duration and transferred bytes are bounded. Eight
-connection slots each allow five seconds for headers and one five-second budget
-shared by DNS and all connection attempts. DNS runs in a killable subprocess;
-timeout kills/reaps it before releasing the slot. Tunnels last at most 60 seconds
-and carry at most 8 MiB.
+header size/time, tunnel duration and transferred bytes are bounded by eight
+connection slots, operation timeouts and byte limits. DNS and all connection
+attempts share one five-second budget. DNS runs in a killable subprocess;
+timeout kills/reaps it before releasing the slot. Header parsing checks a
+five-second deadline between reads; relaying checks a 60-second deadline between
+iterations. In-flight reads/writes retain five-second socket timeouts, so those
+loop deadlines permit bounded overshoot rather than hard elapsed-time limits.
+Tunnels carry at most 8 MiB.
 
 This is a destination control, not TLS inspection: CONNECT can carry other
 protocols or paths to the approved authority. The application still validates
@@ -147,6 +150,9 @@ denials. It cleans up only its unique Compose project and images. The caller
 must provide an approved disposable Docker runtime and remove that runtime
 after retaining evidence. This exercises a fresh synthetic graph; it is not a
 full node installation, external identity-provider validation or browser sign-in.
+The empty-issuer probe checks only healthy deny-all proxy behavior; it is not a
+complete local-account or Kerberos sign-in journey. The fixture uses a separate
+four-container graph, not the production Compose graph.
 The separate `Network isolation smoke` workflow runs for PRs carrying the
 `network-smoke` label (including label events), or on explicit manual dispatch.
 It uses a disposable hosted Linux runner and publishes only its content-free
