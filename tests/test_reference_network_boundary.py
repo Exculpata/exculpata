@@ -104,11 +104,12 @@ def test_network_contract_rejects_new_outbound_host(contract_tree):
     assert "example.invalid" in result.stderr and "outbound client" in result.stderr
 
 
-def test_network_contract_rejects_bare_host_literal(contract_tree):
-    (contract_tree / "src/synthetic_probe.py").write_text('TARGET = "outbound.example.invalid"\n')
+@pytest.mark.parametrize("host", ["outbound.example.invalid", "203.0.113.25", "2001:db8::25"])
+def test_network_contract_rejects_bare_host_literal(contract_tree, host):
+    (contract_tree / "src/synthetic_probe.py").write_text(f'TARGET = "{host}"\n')
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert "src/synthetic_probe.py:1: unreviewed outbound host: outbound.example.invalid" in result.stderr
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr
 
 
 @pytest.mark.parametrize("change", [
