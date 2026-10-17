@@ -171,7 +171,8 @@ downstream is private.
 
 ## Standalone browser journeys
 
-On PRs changing `scripts/browser-accept-*` or the quality workflow itself, and on
+On PRs changing browser journeys or their shared harness dependencies
+(see [CI scope](QUALITY_GATES.md#ci-scope)), and on
 merge groups, schedules and manual dispatch, the quality workflow also runs the synthetic intake and Report/export-readiness
 journeys with a checksum-pinned browser and driver. See
 [browser acceptance](BROWSER_ACCEPTANCE.md) for local commands, bounded

@@ -15,6 +15,18 @@ ROOT_DOCUMENTS = {
     "SECURITY.md", "CODE_OF_CONDUCT.md",
 }
 MAX_DIFF_BYTES = 8 * 1024 * 1024
+BROWSER_DEPENDENCIES = {
+    b".github/workflows/quality-gates.yml",
+    b"scripts/classify-quality-change.py",
+    b"scripts/run-browser-acceptance.py",
+    b"scripts/synthetic_browser_environment.py",
+    b"scripts/install-ci-browser-deps.py",
+    b"scripts/demo.py",
+    b"scripts/exculpata_theme_contrast.py",
+    b"config/browser-testing.json",
+    b"pyproject.toml",
+    b"tests/test_browser_acceptance_runner.py",
+}
 
 
 def git(*args: str) -> bytes:
@@ -101,8 +113,8 @@ def browser_changed(event_name: str, event: dict, expected: str) -> bool:
     if not raw or len(raw) > MAX_DIFF_BYTES or not raw.endswith(b"\0"):
         return True
     return any(
-        path.startswith(b"scripts/browser-accept-")
-        or path == b".github/workflows/quality-gates.yml"
+        path.startswith((b"scripts/browser-accept-", b"scripts/browser_"))
+        or path in BROWSER_DEPENDENCIES
         for path in raw[:-1].split(b"\0")
     )
 

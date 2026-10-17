@@ -179,14 +179,24 @@ def test_required_application_check_cannot_succeed_after_classification_or_publi
 
 
 @pytest.mark.parametrize("change", ["added", "modified", "deleted", "renamed-in", "renamed-out"])
-def test_browser_pr_uses_complete_diff_after_documentation_followup(history, change):
-    path = Path("scripts/browser-accept-synthetic.py")
+@pytest.mark.parametrize("path", [
+    "scripts/browser-accept-synthetic.py", "scripts/run-browser-acceptance.py",
+    "scripts/synthetic_browser_environment.py", "scripts/browser_appearance.py",
+    "scripts/browser_case_exit.py", "scripts/install-ci-browser-deps.py",
+    "scripts/demo.py", "scripts/exculpata_theme_contrast.py",
+    "config/browser-testing.json", "pyproject.toml",
+    "tests/test_browser_acceptance_runner.py", "scripts/classify-quality-change.py",
+])
+def test_browser_pr_uses_complete_diff_after_documentation_followup(history, change, path):
+    path = Path(path)
     source = Path("scripts/other.py")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    source.parent.mkdir(parents=True, exist_ok=True)
     if change in {"modified", "deleted", "renamed-out"}:
         save(path, "# Synthetic journey\n")
     elif change == "renamed-in":
         save(source, "# Synthetic journey\n")
-    base = commit()
+    commit()
     git("checkout", "-qb", "browser-change")
     if change in {"added", "modified"}:
         save(path, "# Changed synthetic journey\n")
@@ -214,7 +224,22 @@ def test_browser_pr_uses_complete_diff_after_documentation_followup(history, cha
     ("scripts/browser-accept-new-journey.py", True),
     ("scripts/browser-accept-name with spaces\nand newline.sh", True),
     (".github/workflows/quality-gates.yml", True),
+    ("scripts/run-browser-acceptance.py", True),
+    ("scripts/synthetic_browser_environment.py", True),
+    ("scripts/browser_appearance.py", True),
+    ("scripts/browser_case_exit.py", True),
+    ("scripts/browser_new_helper.py", True),
+    ("scripts/install-ci-browser-deps.py", True),
+    ("scripts/demo.py", True),
+    ("scripts/exculpata_theme_contrast.py", True),
+    ("config/browser-testing.json", True),
+    ("pyproject.toml", True),
+    ("tests/test_browser_acceptance_runner.py", True),
+    ("scripts/classify-quality-change.py", True),
     ("docs/browser-accept-guide.md", False),
+    ("docs/browser_appearance.py", False),
+    ("config/unrelated.json", False),
+    ("scripts/run-browser-acceptance.py.example", False),
     ("scripts/other.py", False),
     ("src/browser-accept-synthetic.py", False),
 ])

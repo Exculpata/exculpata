@@ -42,7 +42,10 @@ The [Quality workflow](../.github/workflows/quality-gates.yml) runs on PRs,
 `main` pushes, merge groups, a daily schedule and manual dispatch. Ordinary
 feature-branch pushes do not duplicate PR runs. Synthetic browser journeys run
 on merge groups, schedules and manual dispatch, and on PRs changing
-`scripts/browser-accept-*` or the quality workflow itself. The complete PR diff
+`scripts/browser-accept-*`, shared `scripts/browser_*` helpers, or the browser
+harness dependencies: the runner, synthetic environment, dependency installer,
+demo and theme-contrast helpers, `config/browser-testing.json`, `pyproject.toml`,
+runner contract tests, scope classifier, and the quality workflow itself. The complete PR diff
 includes added and modified scripts, deletions and both sides of renames;
 unavailable comparisons conservatively require browser coverage. A skipped PR
 browser job is not a browser test pass. Fork PRs use the upstream PR run; forks
