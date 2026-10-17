@@ -26,6 +26,14 @@ MAX_CONNECTIONS = 8
 def pinnable(ip):
     # Only ordinary unicast public addresses, RFC1918 or IPv6 ULA may be pinned.
     # Explicit pins never authorize metadata/link-local/loopback/transition IPs.
+    # Published AWS and Google IPv6 metadata endpoints are ULA; ordinary
+    # private-address classification does not exclude these host services.
+    metadata = (
+        ipaddress.IPv6Address((0xfd00 << 112) | (0xec2 << 96) | 0x254),
+        ipaddress.IPv6Address((0xfd20 << 112) | (0xce << 96) | 0x254),
+    )
+    if ip in metadata:
+        return False
     private = (
         ipaddress.ip_network((int.from_bytes(bytes((10, 0, 0, 0))), 8)),
         ipaddress.ip_network((int.from_bytes(bytes((172, 16, 0, 0))), 12)),
@@ -127,7 +135,7 @@ def public_addresses(host: str, port: int, pins=frozenset(), deadline=None):
     for family, socktype, proto, _, address in answers:
         ip = ipaddress.ip_address(address[0])
         if (family not in (socket.AF_INET, socket.AF_INET6)
-                or (ip not in pins if pins else not public_ip(ip))):
+                or (ip not in pins or not pinnable(ip) if pins else not public_ip(ip))):
             raise Denied("destination address denied")
     return answers
 

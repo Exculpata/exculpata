@@ -18,6 +18,7 @@ sys.path.pop(0)
     ("26.0.0", True), ("28.5.1", True), ("29.5.2", True),
     ("29.5.2+package1", True), ("29.5.2-rc1", False), ("unknown", False),
     ("30.0.0-dev", False), ("29.5", False), ("29.5.2\nprivate-data", False),
+    ("26.0.0~rc1", False), ("30.0.0~dev", False), ("29.5.2+vendor~rc1", False),
 ])
 def test_engine_floor_is_conservative_and_value_free(monkeypatch, version, allowed):
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, version, ""))
