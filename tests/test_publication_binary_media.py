@@ -46,6 +46,7 @@ def test_real_compressed_gif_collision_is_reviewed_and_decodable(tmp_path, monke
     data = FIXTURE.read_bytes()
     assert EMAIL in data
     assert SCAN._scan_bytes(data, location="synthetic", deny=())
+    review(tmp_path, monkeypatch, data, status="pending", approver=None, approved_on=None)
     assert SCAN.Finding("synthetic", "non-example-email-address") in inspect(data)
     review(tmp_path, monkeypatch, data)
     assert inspect(data) == []
@@ -141,11 +142,15 @@ def test_installed_hook_pins_policy_and_checks_removed_metadata(tmp_path, monkey
     def hook():
         return command(root, str(destination / "pre-push"),
                        input=f"HEAD {head} refs/heads/main {'0' * 40}\n")
-    assert hook().returncode != 0  # Actual pending policy grants no exception.
-    # A synthetic test-only trusted bundle exercises the approved path.
-    fixture_policy = review(tmp_path, monkeypatch, FIXTURE.read_bytes())
+    # Synthetic test-only bundles exercise both pending and approved paths;
+    # neither bundle is used for actual repository publication.
+    fixture_policy = review(tmp_path, monkeypatch, FIXTURE.read_bytes(),
+                            status="pending", approver=None, approved_on=None)
     shutil.copyfile(fixture_policy, policy)
     shutil.copyfile(tmp_path / "approvers.json", destination / "publication-approvers.json")
+    assert hook().returncode != 0
+    fixture_policy = review(tmp_path, monkeypatch, FIXTURE.read_bytes())
+    shutil.copyfile(fixture_policy, policy)
     assert hook().returncode == 0
     changed = commented(FIXTURE.read_bytes(), b"Synthetic changed media")
     (root / "synthetic.gif").write_bytes(changed)
@@ -250,7 +255,9 @@ def test_unapproved_or_overlong_reviews_do_not_exempt(tmp_path, monkeypatch, ove
     assert inspect(data)
 
 
-def test_repository_fixture_remains_pending_without_named_approver():
+def test_repository_fixture_records_exact_maintainer_authorization():
     entry = json.loads((ROOT / "scripts/publication-media-reviews.json").read_text())["reviews"][0]
-    assert entry["status"] == "pending"
-    assert entry["approver"] is None and entry["approved_on"] is None
+    assert entry["sha256"] == hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
+    assert entry["suffix"] == ".gif" and entry["status"] == "approved"
+    assert entry["approver"] == "neilofneils404"
+    assert entry["approved_on"] == "2026-10-17" and entry["expires"] == "2026-11-16"

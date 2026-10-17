@@ -172,9 +172,11 @@ name a maintainer from the trusted sibling `publication-approvers.json`, have an
 approval date no later than today, and expire within 180 days of that date.
 Duplicate digest/suffix entries are invalid. Expired entries grant no exception.
 A pending entry has null `approver` and `approved_on` and grants no exception.
-The committed synthetic GIF is pending maintainer approval and therefore blocks
-publication until that review is completed. Agents must not approve it or fill
-in a maintainer's identity on their behalf.
+The committed synthetic GIF has explicit maintainer authorization dated
+2026-10-17 through 2026-11-16 for its exact digest and GIF suffix. This records
+the maintainer's decision; it is not an agent approval or evidence of a hosted
+GitHub review. Agents must never originate exemption approvals. The separate
+final-head GitHub review and trusted CI activation requirements below remain.
 
 Review must cover rendered media, complete metadata and embedded payloads.
 A name in a JSON file is not evidence of approval. The read-only trusted
