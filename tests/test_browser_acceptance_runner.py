@@ -300,6 +300,15 @@ def test_receipt_validation_fails_closed(runner, tmp_path, kind):
         runner.check_receipt(path, 11)
 
 
+def test_dusk_receipt_requires_expanded_contrast_coverage(runner, tmp_path):
+    minimum = next(row[3] for row in runner.JOURNEYS if row[0] == 'dusk')
+    path = tmp_path / 'receipt.json'
+    # The complete preceding journey had 73 checks, without the new palette coverage.
+    receipt(path, checks=['Synthetic preceding check'] * 73)
+    with pytest.raises(ValueError, match='missing required checks'):
+        runner.check_receipt(path, minimum)
+
+
 def test_artifacts_are_bounded_allowlisted_and_exclude_runtime_and_downloads(runner, tmp_path, monkeypatch):
     raw = tmp_path / 'raw'
     raw.mkdir()
@@ -371,7 +380,8 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
         name = 'receipt-browser-result.json' if len(commands) == 1 else 'receipt.json'
         failing_journey = len(commands) == failure_position
         if failure != 'missing' or not failing_journey:
-            values = {'passed': failure != 'failed' or not failing_journey}
+            values = {'passed': failure != 'failed' or not failing_journey,
+                      'checks': ['Generated check'] * runner.JOURNEYS[len(commands) - 1][3]}
             if failure == 'truncated' and failing_journey:
                 values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 14, 15: 5, 16: 19, 17: 5, 18: 12}[failure_position]
             receipt(raw / name, **values)
