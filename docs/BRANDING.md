@@ -157,3 +157,78 @@ one-line deprecation notice. Historical changelog entries use the previous
 name. The README uses the Exculpata wordmark. The earlier banner remains at
 [assets/exculpata-banner.svg](assets/exculpata-banner.svg), and the original
 banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg).
+
+<!-- BEGIN GENERATED RENAME CONTRACT -->
+### Rename contract
+
+Generated from `src/case_intelligence/legacy_names.py`. Run
+`python scripts/rename_contract_artifacts.py --write` after an intentional contract change;
+`python scripts/rename_contract_artifacts.py --check` verifies these artifacts in CI.
+
+Aliases accept the previous name. Generation-specific names preserve an existing
+node's coordinates. Retained names stay the same for both generations; they are
+not migration targets. Environment aliases prefer a nonempty current value,
+while conflicting authentication headers fail closed.
+
+| Contract | Previous name | Current name | Behavior |
+| --- | --- | --- | --- |
+| administrator | `recordbench.admin` | `exculpata.admin` | generation |
+| app_env | `recordbench.env` | `exculpata.env` | generation |
+| backup_shim | `recordbench-backup.sh` | `exculpata-backup.sh` | alias |
+| backup_status_shim | `recordbench-backup-status.sh` | `exculpata-backup-status.sh` | alias |
+| backup_template | `recordbench-backup.{kind}.in` | `exculpata-backup.{kind}.in` | generation |
+| backup_tool | `recordbench_backup.py` | `exculpata_backup.py` | generation |
+| backup_unit | `recordbench-backup-{node_id}.{kind}` | `exculpata-backup-{node_id}.{kind}` | generation |
+| browser_name | `recordbench:{suffix}` | `exculpata:{suffix}` | alias |
+| browser_source_note | `recordbenchSourceNote` | `exculpataSourceNote` | alias |
+| container_accounts | `/var/lib/recordbench-accounts` | `/var/lib/recordbench-accounts` | retained |
+| container_auth | `/run/recordbench-auth` | `/run/recordbench-auth` | retained |
+| container_data | `/var/lib/recordbench` | `/var/lib/recordbench` | retained |
+| container_secrets | `/run/recordbench-secrets` | `/run/recordbench-secrets` | retained |
+| database | `recordbench` | `recordbench` | retained |
+| environment | `RECORDBENCH_{suffix}` | `EXCULPATA_{suffix}` | alias |
+| exact_v1 | `recordbench-exact-v1` | `recordbench-exact-v1` | retained |
+| exact_v2 | `recordbench-exact-v2` | `recordbench-exact-v2` | retained |
+| git_config | `recordbench.{suffix}` | `exculpata.{suffix}` | alias |
+| gpu_lock | `/tmp/recordbench-transcription-gpu.lock` | `/tmp/recordbench-transcription-gpu.lock` | retained |
+| header | `X-RecordBench-{suffix}` | `X-Exculpata-{suffix}` | alias |
+| host_root | `/srv/recordbench` | `/srv/exculpata` | generation |
+| hostname | `recordbench.example.test` | `exculpata.example.test` | generation |
+| ignored_node_directory | `recordbench-node` | `recordbench-node` | retained |
+| image_workdir | `/opt/recordbench` | `/opt/recordbench` | retained |
+| installer_shim | `recordbench_install.py` | `exculpata_install.py` | alias |
+| keytab | `recordbench.keytab` | `recordbench.keytab` | retained |
+| legacy_generator_9b | `recordbench-qwen35-9b` | `recordbench-qwen35-9b` | retained |
+| local_admin_group | `recordbench_administrators` | `recordbench_administrators` | retained |
+| local_users_group | `recordbench_users` | `recordbench_users` | retained |
+| login_rate_zone | `recordbench_login` | `recordbench_login` | retained |
+| nemotron_schema | `recordbench-nemotron-v1` | `recordbench-nemotron-v1` | retained |
+| nemotron_temporary | `recordbench-nemotron-` | `recordbench-nemotron-` | retained |
+| ocr_limit | `recordbench-ocr-limit` | `recordbench-ocr-limit` | retained |
+| oidc_admin_group | `RecordBench_Administrators` | `RecordBench_Administrators` | retained |
+| oidc_users_group | `RecordBench_Users` | `RecordBench_Users` | retained |
+| portable_generator | `recordbench-qwen35-4b` | `exculpata-qwen35-4b` | alias |
+| product | `RecordBench` | `Exculpata` | alias |
+| proxy_entrypoint | `/usr/local/sbin/recordbench-auth-entrypoint` | `/usr/local/sbin/recordbench-auth-entrypoint` | retained |
+| proxy_server_config | `/etc/apache2/conf-available/recordbench-server-name.conf` | `/etc/apache2/conf-available/recordbench-server-name.conf` | retained |
+| proxy_server_id | `recordbench-server-name` | `recordbench-server-name` | retained |
+| proxy_site | `/etc/apache2/sites-available/recordbench-auth.conf` | `/etc/apache2/sites-available/recordbench-auth.conf` | retained |
+| proxy_site_id | `recordbench-auth` | `recordbench-auth` | retained |
+| proxy_template | `recordbench-auth.conf.template` | `recordbench-auth.conf.template` | retained |
+| question_draft_set | `recordbench-question-draft-set-v1` | `recordbench-question-draft-set-v1` | retained |
+| question_draft_v1 | `recordbench-question-draft-evaluation-v1` | `recordbench-question-draft-evaluation-v1` | retained |
+| question_draft_v2 | `recordbench-question-draft-evaluation-v2` | `recordbench-question-draft-evaluation-v2` | retained |
+| restore_shim | `recordbench-restore-drill.sh` | `exculpata-restore-drill.sh` | alias |
+| retrieval_cli | `recordbench-retrieval-worker` | `exculpata-retrieval-worker` | alias |
+| review_acceptance | `recordbench-review-acceptance-v1` | `recordbench-review-acceptance-v1` | retained |
+| sql_function | `recordbench_{suffix}` | `recordbench_{suffix}` | retained |
+| stage_receipt | `.recordbench-stage-receipt.json` | `.recordbench-stage-receipt.json` | retained |
+| stem | `recordbench` | `exculpata` | generation |
+| storage_marker | `.recordbench-managed-storage.json` | `.exculpata-managed-storage.json` | generation |
+| transcription_notice | `/usr/share/licenses/recordbench-transcription` | `/usr/share/licenses/recordbench-transcription` | retained |
+| whisperx_build | `3.8.6+recordbench.1` | `3.8.6+recordbench.1` | retained |
+| words_v1 | `recordbench-words-v1` | `recordbench-words-v1` | retained |
+| workbench_cli | `recordbench-workbench` | `exculpata-workbench` | alias |
+| worker_gpu_lock | `/run/lock/recordbench-transcription-gpu.lock` | `/run/lock/recordbench-transcription-gpu.lock` | retained |
+| worker_name | `recordbench-transcription-worker-1` | `recordbench-transcription-worker-1` | retained |
+<!-- END GENERATED RENAME CONTRACT -->

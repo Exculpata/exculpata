@@ -6,6 +6,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
     accepts_product,
+    name_value,
 )
 
 import json
@@ -24,8 +25,8 @@ DEFAULT_UPLOAD_SESSION_BYTES = 100 * GIB
 DEFAULT_MEDIA_FILE_BYTES = 100 * GIB
 DEFAULT_DOCUMENT_FILE_BYTES = 512 * MIB
 DEFAULT_STORAGE_RESERVE_BYTES = 100 * GIB
-MARKER_NAME = ".exculpata-managed-storage.json"
-LEGACY_MARKER_NAME = f".{LEGACY_STEM}-managed-storage.json"
+MARKER_NAME = name_value("storage_marker")
+LEGACY_MARKER_NAME = name_value("storage_marker", LEGACY_STEM)
 MARKER_VERSION = 1
 _OWNED_DIRECTORIES = ("matters", ".matter-purging", "ingestion-staging")
 

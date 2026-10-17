@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const qa = (name) => process.env[`EXCULPATA_QA_${name}`] || process.env[`RECORDBENCH_QA_${name}`];
+const qa = require('./qa-env.cjs');
 const origin = qa('ORIGIN');
 assert.match(origin || '', /^https:\/\/127\.0\.0\.1:\d+$/);
 const password = 'synthetic-browser-password';
