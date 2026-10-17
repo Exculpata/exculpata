@@ -3,6 +3,9 @@ name: Network isolation smoke
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
+  merge_group:
+  schedule:
+    - cron: "43 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -14,7 +17,7 @@ concurrency:
 
 jobs:
   network-smoke:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'network-smoke')
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:

@@ -7,10 +7,12 @@ from urllib.parse import parse_qs
 
 from joserfc import jwt
 from joserfc.jwk import RSAKey
+from dns_trap import Trap
 
 ISSUER = "https://issuer.example.test:8443/realm"
 KEY = RSAKey.generate_key(2048, parameters={"kid": "synthetic-smoke"})
 EVENTS = []
+DNS = Trap("0.0.0.0")
 
 
 class Endpoint(BaseHTTPRequestHandler):
@@ -26,6 +28,8 @@ class Endpoint(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/dns-count":
+            return self.reply({"queries": DNS.count})
         if self.path.endswith("/.well-known/openid-configuration"):
             EVENTS.append("discovery")
             return self.reply({"issuer": ISSUER, "authorization_endpoint": ISSUER + "/authorize",

@@ -1585,6 +1585,53 @@ def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=20, check=False)
 
 
+def _dns_engine_supported() -> bool:
+    """Conservative stable Engine floor; old/backported/unknown runtimes need review."""
+    try:
+        result = _probe(["docker", "info", "--format", "{{.ServerVersion}}"])
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[+~][0-9A-Za-z.+~_-]+)?", result.stdout.strip())
+        return result.returncode == 0 and bool(match) and tuple(map(int, match.groups())) >= (26, 0, 0)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _verify_installed_dns(root: Path) -> None:
+    """Inspect only network fields, then probe synthetic DNS as the normal app UID."""
+    remedy = "DNS isolation is unverified: use stable Docker Engine 26.0.0 or newer, recreate the restricted services with container-local upstream DNS, and rerun doctor. See docs/NETWORK_EGRESS.md."
+    if not _dns_engine_supported():
+        raise RuntimeError(remedy)
+    try:
+        installation, _ = _installed_release(root)
+        compose = _compose(root, list(installation.get("profiles", [])))
+        identifiers = _probe([*compose, "ps", "--format", "json"])
+        if identifiers.returncode:
+            raise ValueError("service inventory unavailable")
+        # Compose emits JSON Lines in current versions, an array in older ones.
+        raw = identifiers.stdout.strip()
+        rows = json.loads(raw) if raw.startswith("[") else [json.loads(line) for line in raw.splitlines()]
+        restricted = {"app", "postgres", "clamav", "retrieval", "generator", "transcription-api"}
+        present = {row["Service"]: row["ID"] for row in rows if row.get("Service") in restricted}
+        if not {"app", "postgres", "clamav"} <= present.keys():
+            raise ValueError("required services missing")
+        for identifier in present.values():
+            result = _probe(["docker", "inspect", "--format",
+                '{"dns":{{json .HostConfig.Dns}},"search":{{json .HostConfig.DnsSearch}},"networks":{{json .NetworkSettings.Networks}}}', identifier])
+            config = json.loads(result.stdout)
+            if result.returncode or config["dns"] != ["127.0.0.1"] or config["search"] != ["."] or not config["networks"]:
+                raise ValueError("unexpected DNS configuration")
+            for network in config["networks"]:
+                result = _probe(["docker", "network", "inspect", "--format", "{{.Internal}}", network])
+                if result.returncode or result.stdout.strip() != "true":
+                    raise ValueError("non-internal membership")
+        command = [*compose, "exec", "-T", "app", "python", "-I", "-", "postgres", "clamav", "egress-proxy"]
+        result = subprocess.run(command, input=(PROJECT / "scripts/dns_boundary_probe.py").read_text(),
+            env=_compose_environment(command), text=True, capture_output=True, timeout=50, check=False)
+        if result.returncode:
+            raise ValueError("DNS probe failed")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(remedy) from exc
+
+
 def _storage_ancestors_safe(ancestor: Path) -> bool:
     """Require a private creation point and a non-replaceable parent chain."""
     uid = os.geteuid()
@@ -2223,6 +2270,11 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         except (OSError, subprocess.TimeoutExpired):
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
+    dns_engine = docker and _dns_engine_supported()
+    add("docker-dns-version", dns_engine,
+        "Supported stable Engine; live DNS is not tested by preflight" if dns_engine else "Unsupported or unrecognized Engine DNS behavior",
+        "Use an Engine version with the internal-network DNS forwarding fix",
+        "Use stable Docker Engine 26.0.0 or newer. Unknown, prerelease and older/backported runtimes are unsupported by this installer; see docs/NETWORK_EGRESS.md. Run doctor after startup for runtime DNS checks.")
     storage_plan = _storage_plan(models, args)
     if docker:
         try:
@@ -3730,9 +3782,11 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
     _run(console, [*compose, "ps"], dry_run=args.dry_run)
     if not args.dry_run:
+        _verify_installed_dns(root)
+        console.ok("DNS boundary :: supported Engine; internal-only memberships and container-local upstream; internal UDP/TCP lookup and outside A/AAAA/TXT rejection passed")
         _wait_health(console, root)
     else:
-        console.note("Dry run: running authentication mode and live health are not verified")
+        console.note("Dry run: running authentication mode, DNS boundary and live health are not verified")
     if not args.dry_run:
         installation, _ = _installed_release(root)
         _record_prepared_phases(root, installation)

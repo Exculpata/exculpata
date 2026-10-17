@@ -231,7 +231,7 @@ def check(root):
                 continue
             network_fields = {key: definition[key] for key in (
                 "networks", "network_mode", "ports", "privileged", "cap_add", "devices",
-                "sysctls", "extra_hosts", "dns", "dns_search", "extends", "cap_drop",
+                "sysctls", "extra_hosts", "dns", "dns_search", "dns_opt", "extends", "cap_drop",
                 "security_opt", "volumes", "volumes_from", "use_api_socket") if key in definition}
             expected = approved["services"].get(service)
             if expected is None or network_fields != expected:
