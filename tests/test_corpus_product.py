@@ -114,3 +114,18 @@ def test_real_dispatcher_wrong_route_cannot_be_masked_by_direct_answer(tmp_path,
     assert result['answer']['answerable'] is True
     assert result['answer']['route'] == 'exact'
     assert result['answer']['dispatched'] is False
+
+
+def test_corpus_citations_accept_observed_spoken_numeral_without_inference_from_gold():
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    transcripts = copy.deepcopy(manifest['fast_transcripts'])
+    transcripts['audio-parcel'] = [
+        {'start':0, 'end':2.04, 'text':'This is a synthetic recording.', 'speaker':'SPEAKER_00'},
+        {'start':2.04, 'end':4.48, 'text':'The orange parcel was stored in Locker 7.', 'speaker':'SPEAKER_00'},
+    ]
+    actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    results = gate.compare(manifest, expected, actual)
+    assert all(row['passed'] for row in results), results
