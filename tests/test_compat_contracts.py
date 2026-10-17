@@ -1,17 +1,27 @@
-"""Product markers fail closed on malformed JSON values."""
+"""Docs and drivers stay aligned with the retained compatibility names."""
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 
 from case_intelligence.legacy_names import (
+    CURRENT_ENV_PREFIX,
+    CURRENT_HEADER_PREFIX,
     CURRENT_PRODUCT,
     CURRENT_STEM,
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
     LEGACY_PRODUCT,
     LEGACY_STEM,
     accepts_product,
 )
-from tests.test_oss_installer import installer
+from tests.test_oss_installer import ROOT, installer
+
+
+def _read(relative: str) -> str:
+    return (ROOT / relative).read_text()
 
 
 def test_accepts_product_rejects_non_strings_without_raising():
@@ -40,3 +50,77 @@ def test_storage_marker_with_array_product_fails_closed(tmp_path):
         assert installer._matter_storage_layout_valid(storage) is False
 
 
+def test_authentication_docs_keep_legacy_headers_and_secrets_mount():
+    text = _read("docs/AUTHENTICATION.md")
+    secrets = f"/run/{LEGACY_STEM}-secrets/local-accounts.json"
+    assert secrets in text
+    assert f"/run/{CURRENT_STEM}-secrets/local-accounts.json" not in text
+    for suffix in ("Authenticated-User", "Proxy-Secret", "Auth-Diagnostic"):
+        assert f"{CURRENT_HEADER_PREFIX}{suffix}" in text
+        assert f"{LEGACY_HEADER_PREFIX}{suffix}" in text
+    assert f"{LEGACY_HEADER_PREFIX}*" in text
+    assert f"{CURRENT_HEADER_PREFIX}*" in text
+
+
+def test_local_account_docs_keep_mounted_container_paths():
+    text = _read("docs/LOCAL_ACCOUNT_BROWSER.md")
+    mounted = f"/var/lib/{LEGACY_STEM}-accounts"
+    assert mounted in text
+    assert f"{mounted}/local-accounts.json" in text
+    assert f"/var/lib/{CURRENT_STEM}-accounts" not in text
+
+
+def test_backup_docs_keep_legacy_coordinates_and_database():
+    text = _read("docs/STORAGE_AND_BACKUP.md")
+    assert f"`{LEGACY_STEM}`" in text
+    assert f"`{LEGACY_STEM}-backup-<hash>`" in text
+    assert f"`{CURRENT_STEM}-backup-<hash>`" in text
+    assert f"the `{LEGACY_STEM}` user and database" in text
+
+
+def test_configuration_docs_show_the_deployed_fallback():
+    text = _read("docs/CONFIGURATION.md")
+    expression = "${" + CURRENT_ENV_PREFIX + "X:-${" + LEGACY_ENV_PREFIX + "X:-default}}"
+    swapped = "${" + CURRENT_ENV_PREFIX + "X:-${" + CURRENT_ENV_PREFIX + "X:-default}}"
+    assert f"`{LEGACY_ENV_PREFIX}*`" in text
+    assert expression in text
+    assert swapped not in text
+    install = _read("docs/INSTALL.md")
+    assert f"unset image namespace to `{CURRENT_STEM}`" in install
+    assert f"an unset project name to\n`{LEGACY_STEM}`" in install
+
+
+def test_qa_launchers_and_drivers_share_environment_names():
+    helper = (
+        "const qa = (name) => process.env[`" + CURRENT_ENV_PREFIX
+        + "QA_${name}`] || process.env[`" + LEGACY_ENV_PREFIX + "QA_${name}`];"
+    )
+    direct = "process.env." + LEGACY_ENV_PREFIX + "QA_"
+    for name in ("qa-people-browser.cjs", "qa-team-groups-browser.cjs"):
+        text = _read("scripts/" + name)
+        assert helper in text
+        assert direct not in text
+        assert "qa('ORIGIN')" in text
+        assert "qa('ARTIFACTS')" in text
+        assert "qa('BROWSER_CHANNEL')" in text
+    for name in ("qa-people-browser.py", "qa-team-groups-browser.py"):
+        text = _read("scripts/" + name)
+        assert CURRENT_ENV_PREFIX + "QA_ORIGIN" in text
+        assert CURRENT_ENV_PREFIX + "QA_ARTIFACTS" in text
+    node = shutil.which("node")
+    if node is None:
+        return
+    script = "\n".join((
+        helper,
+        "const current = " + repr(CURRENT_ENV_PREFIX) + ";",
+        "const legacy = " + repr(LEGACY_ENV_PREFIX) + ";",
+        "process.env[current + 'QA_ORIGIN'] = 'https://current.example';",
+        "process.env[legacy + 'QA_ORIGIN'] = 'https://legacy.example';",
+        "if (qa('ORIGIN') !== 'https://current.example') process.exit(2);",
+        "delete process.env[current + 'QA_ORIGIN'];",
+        "if (qa('ORIGIN') !== 'https://legacy.example') process.exit(3);",
+        "delete process.env[legacy + 'QA_ORIGIN'];",
+        "if (qa('ORIGIN')) process.exit(4);",
+    ))
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
