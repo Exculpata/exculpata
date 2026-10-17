@@ -89,7 +89,8 @@ def load_corpus(root: Path):
 def matches_span(citation, required):
     spans = [required['span'], *required.get('alternative_spans', [])]
     return (citation.get('document_id') == required['document_id']
-            and any(normalize(span) in normalize(citation.get('excerpt', '')) for span in spans))
+            and any((' ' + normalize(span) + ' ') in
+                    (' ' + normalize(citation.get('excerpt', '')) + ' ') for span in spans))
 
 
 def compare(manifest, expected, actual, *, full=False):

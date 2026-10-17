@@ -147,6 +147,8 @@ def test_receipt_records_measured_recognition_error_rates():
     ('The parcel is in locker seven.', True, True),
     ('The parcel is in Locker 7.', True, True),
     ('The parcel is in Locker 8.', True, False),
+    ('The parcel is in Locker 70.', True, False),
+    ('The parcel is in Locker 71.', True, False),
     ('The parcel is in Locker 7.', False, False),
 ])
 def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, valid, passes):
