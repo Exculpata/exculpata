@@ -83,7 +83,7 @@ def main():
             driver.execute_script('arguments[0].scrollIntoView({behavior: "instant", block: "center"})', link)
             link.click()
             wait.until(lambda d: 'support=' in d.current_url)
-            assert 'no deal was offered' in driver.find_element(By.TAG_NAME, 'body').text
+            wait.until(lambda d: 'no deal was offered' in d.find_element(By.ID, 'support-pane').text)
             checks.append('Cited-context link opens the original passage')
             driver.get(base+path)
             button = driver.find_element(By.CSS_SELECTOR, 'button[value="reviewed"]')
