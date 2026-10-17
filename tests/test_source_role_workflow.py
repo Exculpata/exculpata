@@ -1,3 +1,5 @@
+
+from tests.fixture_write import fixture_write
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """C2 through HTTP, actual intake retries and a stopped-runtime recovery drill."""
 import io
@@ -168,7 +170,7 @@ def test_csrf_admin_read_only_foreign_source_revoked_and_disabled(tmp_path, monk
                 assert 'source-role-form' not in client.get(path, headers=_headers(principal)).text
         other = bench.create_matter('Synthetic other roles', '', actor)
         assert owner.get(f'/matters/{other.slug}/sources/{token}/role', headers=_headers(OWNER)).status_code == 404
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (actor,))
         assert owner.get(path, headers=_headers(OWNER), follow_redirects=False).status_code in (302, 303, 401, 403, 404)
 

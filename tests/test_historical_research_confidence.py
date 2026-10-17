@@ -1,6 +1,8 @@
 """Historical research presentation must preserve its stored source basis."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import copy
 import io
 import json
@@ -41,7 +43,7 @@ def test_historical_research_view_exports_and_report_keep_original_basis(workspa
     result["passes"][0]["answer"]["introduction"] = introduction
     result["passes"][0]["text"] = introduction + "\n" + result["passes"][0]["text"]
     encoded = json.dumps(result)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (encoded, job.job_id),
         )
@@ -124,7 +126,7 @@ def test_mismatched_historical_summary_is_rejected_before_presentation(workspace
         result["passes"][0]["text"] = "Synthetic incompatible finding."
     encoded = json.dumps(result)
     original_units = document.parsed_units()
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
             (encoded, job.job_id),

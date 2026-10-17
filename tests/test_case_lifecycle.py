@@ -1,5 +1,7 @@
 """Synthetic lifecycle transitions, authorization and recoverable exit gates."""
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -165,7 +167,7 @@ def test_fresh_claim_rechecks_each_authorization_boundary(setup, invalid):
     elif invalid == 'session':
         store.revoke_session(sess.session_id)
     elif invalid == 'principal':
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (OWNER,))
     elif invalid == 'nonce':
         overrides['token'] = 'invalid-' + 'x' * 32
@@ -191,7 +193,7 @@ def test_member_cannot_exit_and_admin_requires_current_session_role(setup):
     with pytest.raises(WorkspaceProblem, match='administrator authority'):
         store.case_lifecycle.issue_confirmation(matter.slug, ADMIN, sess.session_id, EXPORT,
                                                administrator_override=True)
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_session SET application_roles='[\"administrator\"]' WHERE session_id=?",
                                  (sess.session_id,))
     from tests.case_lifecycle_helpers import record_synthetic_delivery
@@ -222,7 +224,7 @@ def test_confirmed_interrupted_purge_retries_but_legacy_failed_never_does(setup)
     assert completed.state == 'deleted'
     assert store.case_lifecycle.current_exit(matter.matter_id) is None
     legacy = store.create_matter('Synthetic legacy interrupted', '', OWNER)
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_matter_lifecycle SET state='purge_failed',purge_id=? WHERE matter_id=?",
                                  ('matter-purge-' + 'f' * 32, legacy.matter_id))
     with pytest.raises(WorkspaceProblem, match='Start an explicit exit'):
@@ -266,6 +268,7 @@ def test_old_connection_cannot_write_lifecycle(setup):
     store, matter, _ = setup
     old = sqlite3.connect(store.path)
     with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
+        # fixture-write: An independent old writer must exercise the lifecycle SQL fence.
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE matter_id=?", (matter.matter_id,))
     old.close()
     assert store.matter_lifecycle(matter.matter_id).state == 'active'
@@ -292,7 +295,7 @@ def test_nonce_binds_displayed_name_and_repeated_cancel_is_harmless(setup):
     sess = session(store)
     nonce = store.case_lifecycle.issue_confirmation(matter.slug, OWNER, sess.session_id, EXPORT)
     with pytest.raises(sqlite3.IntegrityError, match='frozen'):
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute('UPDATE workbench_matter SET display_name=? WHERE matter_id=?',
                                      ('Synthetic renamed matter', matter.matter_id))
     with store._lock:
@@ -390,7 +393,7 @@ def test_confirmation_uses_live_owner_session_export_and_provider(setup, invalid
     elif invalid == 'different_export':
         options['export_id'] = 'full-export-' + 'd' * 32
     elif invalid == 'revoked_owner':
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' "
                                      'WHERE matter_id=? AND principal_id=?', (matter.matter_id, OWNER))
     else:

@@ -1,4 +1,6 @@
 """Compile historical generated coverage without changing raw saved-work receipts."""
+
+from tests.fixture_write import fixture_write
 import copy
 import json
 
@@ -16,7 +18,7 @@ def saved_selection(bench, matter, surface, mode, notice):
     result['answer']['modality_coverage'] = coverage(mode, notice)
     if surface == 'research':
         encoded = json.dumps(result)
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('UPDATE workbench_research_job SET result_json=? WHERE job_id=?',
                 (encoded, job.job_id))
         return f'research:{job.job_id}', document, 'workbench_research_job', 'result_json', 'job_id', job.job_id, encoded
@@ -75,7 +77,7 @@ def test_normalization_equivalent_raw_coverage_change_still_blocks_compilation_f
     payload = updated['answer'] if surface == 'research' else updated
     payload['modality_coverage']['notice'] = expected
     # Simulate changed saved work without changing any revision/locator/metric.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(f'UPDATE {table} SET {column}=? WHERE {key}=?',
             (json.dumps(updated), identifier))
     with pytest.raises(CompilationProblem, match='selected work changed'):
@@ -150,7 +152,7 @@ def test_other_projected_boilerplate_keeps_original_snapshot_binding(workspace, 
                     'synthetic-other-confidence-fingerprint')
     claimed = flow.jobs.claim('synthetic-confidence-worker')
     draft = flow.process(claimed, lambda: False)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_message SET payload_json=? WHERE message_id=?',
             (json.dumps({**payload, field: new}), message.message_id))
     with pytest.raises(CompilationProblem, match='selected work changed'):
@@ -171,7 +173,7 @@ def test_malformed_saved_research_text_still_refuses_compilation(workspace, surf
         result['gaps'][0]['note'] = {'malformed': 'synthetic'}
     else:
         result['passes'][1]['text'] = {'malformed': 'synthetic'}
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET result_json=? WHERE job_id=?',
             (json.dumps(result), job.job_id))
     with bench.source_store(matter).mutation_guard(), bench.workspace._lock:

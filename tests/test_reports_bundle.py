@@ -1,4 +1,6 @@
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -154,7 +156,7 @@ def test_bundle_resolves_report_citations_once_for_both_formats(workspace, monke
 def test_bad_citation_never_returns_a_complete_bundle(workspace, column, value):
     client, bench, matter = workspace
     report, _ = cited_report(bench, matter)
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             f"UPDATE workbench_report_citation SET {column}=? WHERE report_id=?",
             (value, report.report_id),
@@ -185,10 +187,13 @@ def test_snapshot_does_not_mix_concurrent_report_edits(workspace, monkeypatch):
     report = saved_report(bench, matter)
     original_sections = bench.workspace.report_sections
     def edit_between_reads(matter_id, report_id):
+        # fixture-write: Independent writer deliberately edits reports during the snapshot transaction.
         with sqlite3.connect(bench.workspace.path) as other:
             other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
+            # fixture-write: Independent writer deliberately edits reports during the snapshot transaction.
             other.execute("UPDATE workbench_report SET title='Concurrent title' WHERE report_id=?",
                           (report_id,))
+            # fixture-write: Independent writer deliberately edits reports during the snapshot transaction.
             other.execute("UPDATE workbench_report_section SET body='Concurrent body' WHERE report_id=?",
                           (report_id,))
         return original_sections(matter_id, report_id)
@@ -254,7 +259,7 @@ def test_orphaned_report_citation_refuses_complete_bundle(workspace):
     report, _ = cited_report(bench, matter)
     other_report = saved_report(bench, matter, "Different saved Report")
     other_section = bench.workspace.report_sections(matter.matter_id, other_report.report_id)[0]
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_report_citation SET section_id=? WHERE report_id=?",
             (other_section.section_id, report.report_id),
@@ -315,7 +320,7 @@ def test_timestamped_clip_and_transcript_support_survive_bundle(tmp_path):
             text = archive.read(item["markdown"]).decode()
             assert "Interview.wav — 00:00–00:02" in text
             assert unit.text in text
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_report_citation SET source_name='FOREIGN CLIP CANARY' WHERE report_id=? AND kind='media_clip'",
                 (report.report_id,),

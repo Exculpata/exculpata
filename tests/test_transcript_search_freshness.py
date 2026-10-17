@@ -6,6 +6,8 @@ import wave
 from urllib.parse import unquote_plus
 
 import pytest
+
+from tests.fixture_write import fixture_write
 from fastapi.testclient import TestClient
 
 from case_intelligence import workbench as module
@@ -90,19 +92,21 @@ def seed(client, *, with_transcript=True):
     with store.mutation_guard():
         store.documents[document.document_id] = document
         store._save((document.document_id,))
-    job = bench.workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, ACTOR,
-        source_sha256=document.digest, byte_size=document.size, media_type=document.media_type, duration_ms=1000)
+    with fixture_write(bench.workspace):
+        job = bench.workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, ACTOR,
+            source_sha256=document.digest, byte_size=document.size, media_type=document.media_type, duration_ms=1000)
+        if with_transcript:
+            assert bench.workspace.claim_media_job("synthetic-freshness-worker").media_job_id == job.media_job_id
+            bench.workspace.import_media_transcript(job.media_job_id, segments=[{
+                "external_segment_id": "synthetic-segment", "start_ms": 0, "end_ms": 1000,
+                "speaker_cluster": "SPEAKER_00", "model_text": "Synthetic blue bicycle.",
+            }], warnings=[], quality={}, provenance={})
+            bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="")
     if not with_transcript:
         with store.mutation_guard():
             document.state = "queued"
             store._save((document.document_id,))
         return bench, matter, document, f"/matters/{matter.slug}/sources/{store.action_token(document)}"
-    assert bench.workspace.claim_media_job("synthetic-freshness-worker").media_job_id == job.media_job_id
-    bench.workspace.import_media_transcript(job.media_job_id, segments=[{
-        "external_segment_id": "synthetic-segment", "start_ms": 0, "end_ms": 1000,
-        "speaker_cluster": "SPEAKER_00", "model_text": "Synthetic blue bicycle.",
-    }], warnings=[], quality={}, provenance={})
-    bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="")
     bench.refresh_media_projection(matter, document)
     return bench, matter, document, f"/matters/{matter.slug}/sources/{store.action_token(document)}"
 
@@ -218,6 +222,7 @@ def test_old_registry_without_receipt_is_backfilled_once(tmp_path, projection):
         payload = store._document_payload(document)
         payload.pop("transcript_index_basis", None)
         with store.mutation_guard(), store._registry:
+            # fixture-write: Source registry fixture mutation holds its dedicated source mutation guard.
             store._registry.execute("UPDATE source_document SET payload=? WHERE document_id=?",
                 (json.dumps(payload), document.document_id))
     before = projection.writes

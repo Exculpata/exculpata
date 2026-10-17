@@ -1,6 +1,8 @@
 """Synthetic regression: suggestions appear after processing, without a model or a person."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import re
 import shutil
 import sqlite3
@@ -88,10 +90,12 @@ def test_new_version_supersedes_without_touching_human_decisions(workbench):
     current = dict(document_id=document.document_id, source_version_id="synthetic-newer-version",
                    content_basis_digest="")
     with repo.transaction(matter.matter_id, AUTOMATIC_DISCOVERY_PRINCIPAL):
-        repo.connection.execute(
-            "INSERT INTO workbench_entity_auto_discovery_unit (matter_id,document_id,source_version_id,"
-            "content_basis_digest,unit_ordinal,unit_digest,extractor_version,state) VALUES (?,?,?,?,?,?,?,?)",
-            (matter.matter_id, document.document_id, old_version, "", 9, "0" * 64, "synthetic-older", "pending"))
+        with fixture_write(bench.workspace) as connection:
+            connection.execute(
+                "INSERT INTO workbench_entity_auto_discovery_unit (matter_id,document_id,source_version_id,"
+                "content_basis_digest,unit_ordinal,unit_digest,extractor_version,state) VALUES (?,?,?,?,?,?,?,?)",
+                (matter.matter_id, document.document_id, old_version, "", 9, "0" * 64, "synthetic-older", "pending"))
+        assert repo.connection.in_transaction
         assert repo.seal_auto_discovery(matter.matter_id, current, "synthetic-older", [(1, "1" * 64)])
         assert not repo.seal_auto_discovery(matter.matter_id, current, "synthetic-older", [(1, "1" * 64)])
         remaining = repo.connection.execute(
@@ -178,8 +182,10 @@ def test_restore_export_purge_and_idempotent_migration(workbench, tmp_path):
         assert count == 0
     # Re-running every migration on the restored store changes nothing.
     database = restored / "workbench.sqlite"
+    # fixture-write: Stopped restored database schema is inspected before and after reopening.
     before_schema = sqlite3.connect(database).execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall()
     WorkspaceStore(database).connection.close()
+    # fixture-write: Stopped restored database schema is inspected before and after reopening.
     after_schema = sqlite3.connect(database).execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall()
     assert before_schema == after_schema
 
@@ -274,7 +280,7 @@ def test_changed_extracted_text_is_rediscovered(workbench):
     assert bench.run_automatic_discovery_once() == 1
     document = next(iter(bench.source_store(matter).documents.values()))
     # Same source version, new extracted basis (for example an OCR retry).
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_source_catalog SET content_basis_digest=? WHERE matter_id=? AND document_id=?",
             ("9" * 64, matter.matter_id, document.document_id))
@@ -419,7 +425,7 @@ def test_attention_is_shown_while_other_units_are_still_pending(workbench, monke
     upload(client, matter.slug, "Synthetic long log.txt", long_text(30, "Alex"))
     assert bench.run_automatic_discovery_once(unit_limit=25) == 25
     # One processed unit later failed; five units are still pending.
-    with bench.workspace._lock, bench.workspace.connection as connection:  # Shared with background readers.
+    with fixture_write(bench.workspace) as connection:  # Shared with background readers.
         connection.execute(
             "UPDATE workbench_entity_auto_discovery_unit SET state='failed' WHERE matter_id=? AND unit_ordinal=1",
             (matter.matter_id,))
@@ -646,7 +652,7 @@ def test_a_colliding_principal_is_never_trusted(workbench):
         bench.workspace.upsert_principal("local", "impostor", "Impostor", "impostor",
                                          preferred_principal_id=AUTOMATIC_DISCOVERY_PRINCIPAL)
     # A pre-existing row that is not exactly the inactive internal principal is refused.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "INSERT INTO workbench_principal(principal_id,provider,provider_subject,display_name,login_name,"
             "active,created_at,last_seen_at) VALUES (?,?,?,?,?,1,?,?)",
@@ -721,7 +727,7 @@ def test_grants_held_by_the_inactive_principal_are_refused(workbench):
     values = {"matter_id": matter.matter_id, "principal_id": AUTOMATIC_DISCOVERY_PRINCIPAL, "role": "member",
               "state": "active", "granted_by": WEB_ACTOR, "created_at": "2026-01-01T00:00:00Z",
               "updated_at": "2026-01-01T00:00:00Z", "revoked_at": None}
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             f"INSERT INTO workbench_matter_membership({','.join(columns)}) VALUES ({','.join('?' * len(columns))})",
             [values.get(column) for column in columns])
@@ -733,7 +739,7 @@ def test_grants_held_by_the_inactive_principal_are_refused(workbench):
 def test_a_refused_principal_is_reported_not_ignored(workbench):
     client, bench, matter, _runtime = workbench
     upload(client, matter.slug, "Synthetic memo.txt", FIRST)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "INSERT INTO workbench_principal(principal_id,provider,provider_subject,display_name,login_name,"
             "active,created_at,last_seen_at) VALUES (?,?,?,?,?,1,?,?)",

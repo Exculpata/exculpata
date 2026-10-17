@@ -1,4 +1,6 @@
 """Synthetic terminal-ledger synthesis, provenance, recovery and authorization."""
+
+from tests.fixture_write import fixture_write
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
@@ -153,7 +155,7 @@ def test_admission_limit_counts_late_omissions_without_loading_ledger(workspace,
 def test_active_review_is_rejected_before_any_synthesis_job(workspace, state):
     _, bench, matter, _ = workspace
     run, _, _ = seed_terminal_review(bench, matter, count=1)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_review_run SET state=? WHERE run_id=?', (state, run.run_id))
     with pytest.raises(REFUSAL):
         bench.queue_full_text_synthesis(matter, ACTOR, run.run_id, 'research-request-' + 'a' * 32)
@@ -166,7 +168,7 @@ def test_foreign_matter_and_non_full_text_run_are_rejected(workspace):
     other = bench.create_matter('Synthetic foreign matter', '', ACTOR)
     with pytest.raises(REFUSAL):
         bench.queue_full_text_synthesis(other, ACTOR, run.run_id, 'research-request-' + 'a' * 32)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_text_review WHERE run_id=?', (run.run_id,))
     with pytest.raises(REFUSAL):
         bench.queue_full_text_synthesis(matter, ACTOR, run.run_id, 'research-request-' + 'a' * 32)
@@ -188,7 +190,7 @@ def test_stale_input_rejected_without_spend(workspace, change):
         value['units'][0]['text'] += ' Changed without updating the saved digest.'
         path.write_text(json.dumps(value))
     else:
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_review_run SET updated_at='2099-01-01T00:00:00Z' WHERE run_id=?", (run.run_id,))
     with pytest.raises(REFUSAL):
         bench._process_research_job(job, lambda: False)
@@ -285,7 +287,7 @@ def test_exhausted_hierarchy_retains_explicit_partial(workspace, monkeypatch, re
         hierarchy['requests_spent'] = POLICY['generation_requests']
     else:
         hierarchy['started_at'] = 1
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET result_json=? WHERE job_id=?', (json.dumps(payload), job.job_id))
     completed = finish(bench, bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id))
     result = completed.result['hierarchical_synthesis']
@@ -303,14 +305,14 @@ def test_generation_boundary_refuses_late_save(workspace, monkeypatch, change):
         if change == 'cancel':
             bench.workspace.cancel_research_job(matter.matter_id, ACTOR, job.job_id)
         elif change == 'membership':
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
         elif change == 'source':
             bench.source_store(matter).remove(documents[0].document_id)
         elif change == 'source_set':
             bench.workspace.remove_source_organization(matter.matter_id, documents[0].document_id)
         else:
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute('UPDATE workbench_research_job SET attempts=attempts+1 WHERE job_id=?', (job.job_id,))
         return result
     monkeypatch.setattr(bench.generator, 'answer', answer)
@@ -339,7 +341,7 @@ def test_final_transaction_and_export_revalidate_sources_and_access(workspace, c
     elif change == 'source':
         bench.source_store(matter).remove(documents[0].document_id)
     else:
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
     # Observe the rejected save and its rollback before another live worker can
     # open an unrelated transaction. Preserve the source-cache/source/workspace
@@ -409,7 +411,7 @@ def test_completed_synthesis_export_refuses_revoked_originals_or_access(workspac
     elif change == 'source_set':
         bench.workspace.remove_source_organization(matter.matter_id, documents[0].document_id)
     else:
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
     response = client.get(f'/matters/{matter.slug}/research/{completed.job_id}/export?format=json')
     assert response.status_code in (403, 404, 409)

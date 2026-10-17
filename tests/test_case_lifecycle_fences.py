@@ -1,5 +1,7 @@
 """Frozen content is protected even when a stale writer skips route checks."""
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 import sqlite3
 
@@ -26,7 +28,7 @@ def test_content_fence_blocks_direct_and_indirect_mutations_and_survives_restart
          ('message-' + 'f' * 32, conversation.conversation_id, 2, 'user', 'Generated late message', '{}', store._now())),
     ]:
         with pytest.raises(sqlite3.IntegrityError, match='frozen'):
-            with store._lock, store.connection:
+            with fixture_write(store):
                 store.connection.execute(statement, parameters)
     reopened = WorkspaceStore(store.path, clock=clock)
     try:
@@ -50,7 +52,7 @@ def test_migration_restores_deleted_media_cleanup_trigger_immediately(setup):
 
 def test_recovery_reads_are_owner_only_for_failed_legacy_state(setup):
     store, matter, _ = setup
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_matter_lifecycle SET state='purge_failed' WHERE matter_id=?",
                                  (matter.matter_id,))
     with pytest.raises(KeyError):

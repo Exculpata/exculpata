@@ -109,9 +109,31 @@ workspace transaction lock. Prefer public workflow transitions over direct SQL
 to establish retry states. If a fixture manually claims and completes a job,
 stop and join that job's coordinator before queueing it; retain live workers in
 tests that exercise automatic processing. A passing rerun alone does not fix a
-fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
-entering the connection transaction; stopping one coordinator does not stop the
-other workers that share that connection.
+fixture race. Use `tests.fixture_write.fixture_write(workspace)` for direct SQL
+fixture writes and hold it across a complete manual media seed sequence
+(queue, claim, import, finish). The helper acquires the current workspace lock
+before entering the connection transaction and keeps it through commit or
+rollback. Nested SQL fixtures use a savepoint without committing their caller's
+transaction. Public media methods may commit individually; the outer helper
+serializes the sequence rather than making those methods one atomic operation.
+Use the yielded handle for scripts and explicit transaction control. A nested
+handle rejects `executescript`, commit/rollback, transaction-control SQL and
+transaction-mode changes before they can end the caller's transaction. The same
+restriction applies to a retained outer handle or cursor during the nested
+boundary. Use ordinary `execute`/`executemany` statements for nested SQL fixtures;
+the helper preserves any existing SQLite authorizer.
+Do not retain the yielded connection for later writes or wait for workers/HTTP
+while holding the helper. Keep source mutation guards outside it.
+
+`tests/test_fixture_write_policy.py` checks test modules in the normal application
+CI suite and names `fixture_write` when a write bypasses the boundary. Deliberate
+independent-connection contention, caller-owned transaction assertions, and
+stopped-database migration/restore tests require a narrowly documented exception
+at the specific statement; ordinary fixture setup must use the helper.
+Generator bodies are deferred work even when created inside the helper. Put
+their writes in a function that acquires its own fixture boundary, or use an
+eager operation while holding the helper. Unannotated SQL callback parameters
+and direct connection commit/rollback calls are checked conservatively too.
 The same lock must cover direct reads, backups and transaction-state assertions.
 For a rollback check, hold it across the rejected operation and the assertion so
 an idle report worker's claim transaction cannot be mistaken for a leaked one.

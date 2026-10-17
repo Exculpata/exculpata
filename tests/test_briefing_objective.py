@@ -186,8 +186,10 @@ def test_concurrent_objective_edit_and_late_membership_loss_refuse_output(workbe
     original = service.date_draft
     def changed(*args, **kwargs):
         result = original(*args, **kwargs)
+        # fixture-write: Independent writer deliberately changes the objective during briefing reads.
         with bench.workspace._lock, sqlite3.connect(bench.workspace.path) as other:
             other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
+            # fixture-write: Independent writer deliberately changes the objective during briefing reads.
             other.execute('UPDATE workbench_matter_purpose SET objective=? WHERE matter_id=?',
                           ('2024-05-06', matter.matter_id))
         return result

@@ -1,4 +1,6 @@
 """Synthetic live group authorization and storage recovery contracts."""
+
+from tests.fixture_write import fixture_write
 from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 
@@ -51,12 +53,12 @@ def test_two_groups_mixed_grants_and_last_revocation(tmp_path):
 
 def test_disabled_principal_and_live_account_eligibility(tmp_path):
     store, a, _, first, _ = seed(tmp_path / 'control.sqlite')
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_principal SET active=0 WHERE principal_id='principal-reviewer'")
     assert store.list_matters('principal-reviewer') == ()
     with pytest.raises(WorkspaceProblem):
         store.set_team_group_member(first, 'principal-reviewer', 'principal-administrator', present=True, administrator_override=True)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_principal SET active=1 WHERE principal_id='principal-reviewer'")
     enabled = {'principal-reviewer', 'principal-owner', 'principal-administrator', 'principal-other'}
     store.principal_enabled = lambda provider, subject: subject in enabled

@@ -1,4 +1,6 @@
 """Synthetic finding survival, independent of source-unit citation coverage."""
+
+from tests.fixture_write import fixture_write
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
@@ -267,7 +269,7 @@ def test_saved_investigation_discloses_shared_unit_omission_in_page_and_exports(
         result["summary"] = answer.text
         result["answer"] = bench._answer_payload(answer, {"S1": citation})
         completed = replace(completed, result=result)
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                                                (json.dumps(result), job.job_id))
         notice = "Historical checkpoint: finding-level retention was not measured."

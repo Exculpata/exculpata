@@ -3,6 +3,8 @@
 Deletion still requires a fresh confirmation after the seven-day window.
 """
 
+from tests.fixture_write import fixture_write
+
 from datetime import datetime, timedelta, timezone
 import threading
 import time
@@ -36,12 +38,11 @@ def test_expired_matter_survives_scheduler_and_jobs_until_explicit_confirmation(
         matter = bench.create_matter(NAME, "Generated fixture", OWNER, retention_days=1)
         expires_at = bench.workspace._timestamp(FIXED - timedelta(days=40))
         purge_after = bench.workspace._timestamp(FIXED - timedelta(days=30))
-        with bench.workspace._lock:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "INSERT INTO workbench_matter_retention VALUES (?,?,?,?,?,?)",
                 (matter.matter_id, expires_at, purge_after, OWNER, expires_at, expires_at),
             )
-            bench.workspace.connection.commit()
         conversation = bench.workspace.get_conversation(matter.matter_id)
         job, created = bench.workspace.queue_answer_job(
             matter.matter_id,

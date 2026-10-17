@@ -1,4 +1,6 @@
 """Synthetic live identity changes at lifecycle service and purge boundaries."""
+
+from tests.fixture_write import fixture_write
 from datetime import datetime, timedelta, timezone
 import hashlib
 import sqlite3
@@ -157,7 +159,7 @@ def test_claim_does_not_authorize_execution_after_authority_is_lost(repository, 
     elif invalid == 'expired':
         now[0] += timedelta(days=31)
     else:
-        with store._lock, store.connection:
+        with fixture_write(store):
             if invalid == 'principal_disabled':
                 store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (actor,))
             elif invalid == 'owner_grant_removed':
@@ -296,7 +298,7 @@ def test_legacy_local_session_requires_fresh_login_for_lifecycle(local_identity)
     identity, _, _ = local_identity
     context, token = identity.login_local('synthetic.admin', PASSWORD)
     store = identity.store
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('DELETE FROM workbench_case_session_binding WHERE session_id=?',
                                  (context.session.session_id,))
     assert identity.resolve(token, read_only=True) is not None
@@ -316,7 +318,7 @@ def test_local_session_and_binding_are_atomic_and_do_not_store_cookie_binding(lo
     assert row['binding_digest'] == hashlib.sha256(binding.encode('ascii')).hexdigest()
     assert row['binding_digest'] != binding and row['binding_digest'] not in token
     before = store.connection.execute('SELECT COUNT(*) FROM workbench_session').fetchone()[0]
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('CREATE TEMP TRIGGER synthetic_binding_failure '
             'BEFORE INSERT ON workbench_case_session_binding BEGIN '
             "SELECT RAISE(ABORT, 'synthetic binding failure'); END")

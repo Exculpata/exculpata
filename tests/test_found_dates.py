@@ -1,6 +1,8 @@
 """Synthetic regression: found dates form a read-only draft on the timeline."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import html
 import re
@@ -81,7 +83,7 @@ def test_a_changed_source_is_shown_as_retained_history(workbench):  # noqa: F811
     client, bench, matter, _runtime = workbench
     prepare(client, bench, matter, SOURCES[:2])
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # The inspection passage now cites an earlier source version.
+    with fixture_write(bench.workspace):  # The inspection passage now cites an earlier source version.
         connection.execute("UPDATE workbench_entity_mention SET source_version_id='superseded-version' "
                            "WHERE matter_id=? AND source_name='Synthetic inspection.txt'", (matter.matter_id,))
     draft = section(client.get(f"/matters/{matter.slug}/chronology").text)
@@ -105,7 +107,7 @@ def test_a_renamed_date_keeps_the_date_as_stated(workbench):  # noqa: F811
 
 def _add_dates(bench, matter, sample, count, start):
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         for index in range(start, start + count):
             day = f"2025-{1 + index // 28 % 12:02d}-{1 + index % 28:02d}"
             entity_id = f"synthetic-date-{index:06d}"
@@ -320,7 +322,7 @@ def test_only_a_date_or_a_stated_time_after_it_is_placed_in_order(workbench):  #
     stated_forms = ["2025-01-02 draft", "2025-01-03T09", "2025-01-04T09:30Zed",
                     "2025-01-05 09:30", "2025-01-06T09:30:15+01:00", "2025-01-07T09:30Z"]
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # A replacement extractor may emit other date-shaped labels.
+    with fixture_write(bench.workspace):  # A replacement extractor may emit other date-shaped labels.
         for index, value in enumerate(stated_forms):
             connection.execute("UPDATE workbench_entity_mention SET surface_text=? WHERE mention_id=?",
                                (value, f"synthetic-date-mention-{index:06d}"))

@@ -1,6 +1,8 @@
 """Synthetic regressions: answers read first, cite with numbers, and caveat once."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import html
 import re
 
@@ -61,7 +63,7 @@ def test_same_named_passages_from_different_sources_keep_separate_numbers(cedar,
     # Two sources can share a display name and location yet cite different passages.
     second.update(source_name=first["source_name"], location=first["location"])
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         connection.execute("UPDATE workbench_message SET payload_json=? WHERE message_id=?",
                            (json.dumps(dict(payload, claims=claims)), message.message_id))
     page = client.get(f"/matters/{matter.slug}", params={"conversation": conversation.conversation_id})
@@ -80,7 +82,7 @@ def test_a_passage_cited_twice_in_one_statement_is_numbered_once(cedar, monkeypa
     claims = [dict(claim, citations=[dict(citation) for citation in claim["citations"]]) for claim in payload["claims"]]
     claims[0]["citations"].append(dict(claims[0]["citations"][0]))
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         connection.execute("UPDATE workbench_message SET payload_json=? WHERE message_id=?",
                            (json.dumps(dict(payload, claims=claims)), message.message_id))
     page = client.get(f"/matters/{matter.slug}", params={"conversation": conversation.conversation_id})
@@ -112,7 +114,7 @@ def test_a_sourced_limitation_is_numbered_with_the_statements(cedar, monkeypatch
     limitation.setdefault("text", "The recording does not say who opened the door.")
     payload = dict(payload, claims=claims[:1], limitation=limitation)
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         connection.execute("UPDATE workbench_message SET payload_json=? WHERE message_id=?",
                            (json.dumps(payload), message.message_id))
     page = client.get(f"/matters/{matter.slug}", params={"conversation": conversation.conversation_id})
