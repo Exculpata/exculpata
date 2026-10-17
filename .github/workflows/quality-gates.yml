@@ -166,12 +166,15 @@ jobs:
           .venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no
           -ra --durations=25 -o junit_logging=no
           --junitxml="${{ runner.temp }}/application-results.xml"
+          --worker-diagnostics-dir="${{ runner.temp }}/application-workers"
       - name: Retain application test report
         if: ${{ always() && needs.change-scope.outputs.docs_only != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: application-results-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/application-results.xml
+          path: |
+            ${{ runner.temp }}/application-results.xml
+            ${{ runner.temp }}/application-workers/*.json
           if-no-files-found: warn
           retention-days: 5
 

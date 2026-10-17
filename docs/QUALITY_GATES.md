@@ -105,7 +105,12 @@ the job log and exits; the disabled worker restart then fails the run. The limit
 is above the suite's longest in-test subprocess budget and below a merge-queue
 wait, so a silent hang shows its stacks instead of stalling the queue.
 
-CI retains only `application-results.xml` for five days, with the run ID and attempt
-in its artifact name. Hard cancellation can prevent report creation or upload;
+CI retains `application-results.xml` and bounded `application-workers/*.json`
+diagnostics for five days, with the run ID and attempt in the artifact name.
+The JSON records worker exits/signals, current test phases, sampled process
+metrics, runner limits and cgroup-v2 OOM deltas. Missing or partial measurements
+are explicit; SIGKILL alone does not establish OOM. See
+[parallel worker diagnostics](DEVELOPMENT.md#parallel-worker-diagnostics).
+Hard cancellation can prevent report creation or upload;
 use the streamed log for incomplete runs. Missing XML is not evidence of success.
 No workspace, database, media or environment dump is uploaded by this step.

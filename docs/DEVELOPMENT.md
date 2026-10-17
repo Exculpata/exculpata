@@ -113,6 +113,11 @@ fixture race. Direct SQL fixture writes must acquire `workspace._lock` before
 entering the connection transaction; stopping one coordinator does not stop the
 other workers that share that connection.
 The same lock must cover direct reads, backups and transaction-state assertions.
+It must also cover installing/removing SQLite trace callbacks, authorizers and
+progress handlers. Keep cursor consumption inside the lock. Release the lock
+before HTTP calls: the request runs in a different thread and needs that lock.
+The live-worker regressions in `tests/test_worker_sqlite_boundaries.py` enforce
+these boundaries for the status/readiness polls and resumed intake upload.
 For a rollback check, hold it across the rejected operation and the assertion so
 an idle report worker's claim transaction cannot be mistaken for a leaked one.
 The event-controlled regressions in `tests/test_full_text_synthesis_transactions.py`
@@ -174,6 +179,39 @@ Downstream-specific identity mappings, certificates, storage coordinates,
 capacity policy, secrets, and service wiring belong in an external deployment
 overlay. They are not acceptable additions to this repository even when the
 downstream is private.
+
+## Parallel worker diagnostics
+
+The application job keeps six workers, the 360-second per-test faulthandler
+deadline and disabled worker restarts. It retains bounded JSON resource snapshots
+beside its JUnit report. For a local parallel run, add
+`--worker-diagnostics-dir=/tmp/synthetic-worker-diagnostics` with a fresh directory.
+The diagnostics record the active test function (without parameter values), test
+phase, raw local-worker return code, signal, sampled process-tree RSS/thread/file
+descriptor peaks, runner limits and cgroup v2 memory/OOM counters where available.
+They do not read environment values, process arguments or fixture contents.
+Sampling is once per second, so peaks are lower bounds; missing process/cgroup
+data is unavailable, not zero. Incomplete process metrics are null, with per-metric
+partial flags and separately labeled observed lower bounds. Missing task/child
+access or the 512-thread/128-process collection caps mark the tree incomplete.
+Peaks use only complete measurements and retain counts of partial/unavailable
+samples; gaps never become zero measurements. Cgroup counters cover the group and its ancestors,
+not an individual PID. A positive OOM delta is group evidence; SIGKILL alone does
+not establish OOM. Exit code 1 alone does not establish a timeout: correlate it
+with the existing `Timeout (0:06:00)!` thread dump in the job log.
+
+`python -m pytest -q tests/test_worker_diagnostics.py` includes bounded child
+suites for explicit exit, SIGTERM, a one-second faulthandler deadline, an ordinary
+assertion failure and success. Each child uses one worker with no restart and a
+30-second outer deadline. The first four must return failure; the parent verifies
+their exact diagnostics. It does not force OOM or turn a real application failure
+into a pass. These checks also run in the full application suite.
+Additional proofs kill a worker during teardown and after its last test has
+completed. A completed protocol clears its active marker. A worker crash during
+session shutdown still fails the overall run even if xdist has no remaining test
+item to fail; the diagnostics plugin changes only a would-be success to failure.
+The observer retains its own clock callable so finite application-test clocks
+are not consumed by phase reporting; the hosted-command regression covers this.
 
 ## Standalone browser journeys
 
