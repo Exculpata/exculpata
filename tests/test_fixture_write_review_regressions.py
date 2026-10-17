@@ -303,3 +303,55 @@ def test_nested_fixture_rejects_existing_transaction_rollback_schema(tmp_path, r
 @pytest.mark.parametrize('sql', ['PRAGMA optimize', 'PRAGMA main.wal_checkpoint', 'PRAGMA incremental_vacuum'])
 def test_guard_rejects_action_pragmas_without_arguments(sql):
     assert check_fixture_writes(f'bench.workspace.connection.execute({sql!r})')
+
+
+def test_nested_fixture_checks_schema_attached_after_entry(tmp_path):
+    external = tmp_path / 'synthetic-attached.sqlite'
+    with sqlite3.connect(external) as independent:
+        independent.execute('CREATE TABLE synthetic_conflict (value TEXT UNIQUE ON CONFLICT ROLLBACK)')
+        independent.execute("INSERT INTO synthetic_conflict VALUES ('duplicate')")
+    store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
+    try:
+        with fixture_write(store) as connection:
+            connection.execute('CREATE TABLE synthetic_fixture (value TEXT)')
+        with pytest.raises(ValueError, match='caller rollback'):
+            with fixture_write(store) as connection:
+                connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
+                with fixture_write(store) as nested:
+                    nested.execute('ATTACH ? AS synthetic_external', (str(external),))
+                    with pytest.raises(RuntimeError, match='fixture_write'):
+                        nested.execute("INSERT INTO synthetic_external.synthetic_conflict VALUES ('duplicate')")
+                    assert connection.in_transaction
+                    # The fixture lock still protects this direct state read.
+                    assert store.connection.execute('SELECT value FROM synthetic_fixture').fetchone()[0] == 'caller'
+                raise ValueError('caller rollback')
+        with fixture_write(store) as connection:
+            assert connection.execute('SELECT * FROM synthetic_fixture').fetchall() == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('source', [
+    "@decorate(bench.workspace.connection.execute('DELETE FROM segment'))\ndef seed():\n    pass",
+    "@decorate(bench.workspace.connection.execute('DELETE FROM segment'))\nasync def seed():\n    pass",
+    "def seed(value: bench.workspace.connection.execute('DELETE FROM segment')):\n    pass",
+    "def seed() -> bench.workspace.connection.execute('DELETE FROM segment'):\n    pass",
+])
+def test_guard_checks_eager_function_expressions(source):
+    assert check_fixture_writes(source)
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n' + '\n'.join('    ' + line for line in source.splitlines())) == []
+
+
+def test_guard_preserves_postponed_function_annotations():
+    source = "from __future__ import annotations\ndef seed(value: bench.workspace.connection.execute('DELETE FROM segment')):\n    pass"
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('expression', [
+    "[connection.execute('DELETE FROM segment') for connection in connections]",
+    "{connection.execute('DELETE FROM segment') for connection in connections}",
+    "{index: connection.execute('DELETE FROM segment') for index, connection in connections}",
+])
+def test_guard_does_not_inherit_independent_alias_for_comprehension_target(expression):
+    source = "import sqlite3\nconnection = sqlite3.connect(':memory:')\n" + expression
+    assert check_fixture_writes(source)

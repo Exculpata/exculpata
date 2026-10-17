@@ -79,6 +79,8 @@ class _FixtureConnection:
     def _check_sql(self, sql):
         if self._owns_caller_transaction():
             _check_nested_sql(sql)
+            # ATTACH or caller APIs may change schemas after nested entry.
+            _check_nested_schema(self._connection)
 
     def __getattr__(self, name):
         return getattr(self._connection, name)

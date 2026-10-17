@@ -61,6 +61,11 @@ class _Check(ast.NodeVisitor):
         self.aliases: dict[str, _Value] = {}
         self.protected: set[str] = set()
         self.violations: list[Violation] = []
+        self.postponed_annotations = any(
+            isinstance(node, ast.ImportFrom) and node.module == "__future__"
+            and any(alias.name == "annotations" for alias in node.names)
+            for node in getattr(tree, "body", [])
+        )
         self.exempt: set[ast.AST] = set()
         self.parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
         statements = [node for node in ast.walk(tree) if isinstance(node, ast.stmt)]
@@ -266,6 +271,8 @@ class _Check(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Closures retain aliases, but can run after the defining lock is gone.
+        for decorator in node.decorator_list:
+            self.visit(decorator)
         positional = [*node.args.posonlyargs, *node.args.args]
         defaults = dict(zip((argument.arg for argument in positional[-len(node.args.defaults):]), node.args.defaults))
         defaults.update((argument.arg, default) for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults) if default is not None)
@@ -273,6 +280,12 @@ class _Check(ast.NodeVisitor):
             # Defaults execute now, outside the deferred function's scope.
             self.visit(default)
         default_values = {name: self.value(default) for name, default in defaults.items()}
+        if not self.postponed_annotations:
+            for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
+                if argument.annotation is not None:
+                    self.visit(argument.annotation)
+            if node.returns is not None:
+                self.visit(node.returns)
         annotated = {argument.arg: self.value(argument.annotation).symbol for argument in [*positional, *node.args.kwonlyargs]}
         aliases, protected = self.aliases, self.protected
         self.aliases, self.protected = aliases.copy(), set()
@@ -306,18 +319,32 @@ class _Check(ast.NodeVisitor):
         self.aliases, self.protected = aliases, protected
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self.visit_comprehension_scope(node, deferred=True)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self.visit_comprehension_scope(node, deferred=False)
+
+    visit_SetComp = visit_ListComp
+    visit_DictComp = visit_ListComp
+
+    def visit_comprehension_scope(self, node, *, deferred):
         # Python evaluates only the first iterable at generator creation. The
         # remaining clauses and result expression execute when it is consumed.
+        # Eager comprehensions keep protection but bind their own loop names.
         self.visit(node.generators[0].iter)
         aliases, protected = self.aliases, self.protected
-        self.aliases, self.protected = aliases.copy(), set()
+        self.aliases, self.protected = aliases.copy(), set() if deferred else protected.copy()
         for index, generator in enumerate(node.generators):
             if index:
                 self.visit(generator.iter)
             self.bind(generator.target, _Value())
             for condition in generator.ifs:
                 self.visit(condition)
-        self.visit(node.elt)
+        if isinstance(node, ast.DictComp):
+            self.visit(node.key)
+            self.visit(node.value)
+        else:
+            self.visit(node.elt)
         self.aliases, self.protected = aliases, protected
 
 
