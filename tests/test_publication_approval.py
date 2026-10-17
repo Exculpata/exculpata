@@ -192,7 +192,9 @@ def test_candidate_authority_and_verifier_are_never_fetched_or_executed(trusted_
         VERIFY.verify_current(client, 1, HEAD, trusted_root, BASE)
 
 
-@pytest.mark.parametrize("failure", ["head", "base", "closed", "stale-base", "race", "base-race"])
+@pytest.mark.parametrize("failure", [
+    "head", "base", "closed", "stale-base", "race", "base-race", "base-ref-race", "base-repo-race",
+])
 def test_live_target_changes_or_incomplete_api_data_fail(trusted_root, failure):
     client = FakeGitHub(policy())
     if failure == "head":
@@ -206,11 +208,25 @@ def test_live_target_changes_or_incomplete_api_data_fail(trusted_root, failure):
     elif failure == "base-race":
         client.after = deepcopy(client.pr)
         client.after["base"]["sha"] = "e" * 40
+    elif failure == "base-ref-race":
+        client.after = deepcopy(client.pr)
+        client.after["base"]["ref"] = "other"
+    elif failure == "base-repo-race":
+        client.after = deepcopy(client.pr)
+        client.after["base"]["repo"]["full_name"] = "synthetic/other"
     else:
         client.after = deepcopy(client.pr)
         client.after["head"]["sha"] = "f" * 40
     with pytest.raises(VERIFY.ApprovalError):
         VERIFY.verify_current(client, 1, HEAD, trusted_root, BASE)
+
+
+def test_unrelated_repository_metadata_change_does_not_revoke_exact_base(trusted_root):
+    client = FakeGitHub(policy())
+    client.after = deepcopy(client.pr)
+    client.after["base"]["repo"]["pushed_at"] = "2026-10-17T12:00:00Z"
+    client.after["base"]["repo"]["open_issues_count"] = 7
+    VERIFY.verify_current(client, 1, HEAD, trusted_root, BASE)
 
 
 def test_api_pagination_exhaustion_and_bad_responses_fail(monkeypatch):

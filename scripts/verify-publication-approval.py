@@ -256,7 +256,9 @@ def verify_current(client, number, expected_head, root, trusted_base):
     verify_policy(base_policy, policy, maintainers, expected_head, reviews, files)
     current = client.get(path)
     if (current.get("head", {}).get("sha") != expected_head or current.get("state") != "open"
-            or current.get("base") != pr.get("base")):
+            or current.get("base", {}).get("ref") != "main"
+            or current.get("base", {}).get("sha") != trusted_base
+            or current.get("base", {}).get("repo", {}).get("full_name") != REPOSITORY):
         raise ApprovalError("pull-request-changed-during-verification")
     if client.pages(path + "/reviews") != reviews:
         raise ApprovalError("reviews-changed-during-verification")
