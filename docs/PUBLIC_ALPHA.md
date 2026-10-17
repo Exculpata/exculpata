@@ -100,8 +100,8 @@ branch-owned `.githooks` directory.
 
 The hook scans every outgoing branch/tag and its reachable history in an
 isolated temporary repository before Git transmits objects, including every
-reachable annotated tag object. CI also runs on tag pushes. Install `pypdf`
-and `ffprobe` as described in the publication checklist; missing inspection
+reachable annotated tag object. CI also runs on tag pushes. Install `pypdf`,
+`ffprobe`, and `exiftool` as described in the publication checklist; missing inspection
 dependencies block publication. The exact public GitHub web-flow merge-service
 address and Dependabot's public no-reply identity
 `49699333+dependabot[bot]@users.noreply.github.com` are recognized. Dependabot's
@@ -153,3 +153,39 @@ actions are pinned to full commits. Keep force pushes and branch deletion blocke
 Release tags, including historical protected tags, remain immutable.
 
 Publication identity dispositions support SHA-1 and SHA-256 repository object IDs.
+
+## Reviewed binary media
+
+Compressed bytes can resemble text by coincidence. The trusted scanner's
+`scripts/publication-media-reviews.json` records exact SHA-256 dispositions.
+Only an unexpired matching digest **and suffix** skips raw text-pattern checks;
+all extracted metadata and filenames still receive every check, including
+operator deny terms. Unreviewed and changed bytes keep raw scanning. Missing,
+unsafe or malformed policy and unavailable or failed metadata inspection block
+publication. Existing narrow historical video dispositions remain unchanged.
+
+The version-1 JSON object has `version: 1` and a `reviews` array. Each entry must
+contain exactly `sha256` (64 lowercase hex characters), `suffix` (a supported
+lowercase image/audio/video extension), `reason` (what was inspected and why the
+raw match is harmless), `approver` (the public reviewer identifier), and `expires`
+(an inclusive ISO date, `YYYY-MM-DD`, evaluated on the scanner host). Duplicate
+digest/suffix entries are invalid. Expired entries grant no exception. A review
+must cover the rendered media, complete metadata, and any embedded payloads;
+an entry is not permission to publish private material. The committed synthetic
+GIF is an explicitly labeled automated fixture review, not a claim of human
+approval. Production assets require a maintainer's review.
+
+The hook installer copies this policy alongside its trusted scanner outside the
+checkout. Editing the candidate policy cannot change an already installed hook;
+review and reinstall into a fresh directory to adopt an update. The existing
+bare-digest CLI option retains only its older narrow collision behavior, and
+cannot grant the broader reviewed-media exception. Never bypass the hook.
+
+Image inspection requires ExifTool (`libimage-exiftool-perl` on Ubuntu,
+`exiftool` on Homebrew) for GIF, PNG, JPEG and WebP. Audio/video inspection uses
+ffprobe and includes format, stream and chapter tags. Metadata values are
+inspected after JSON decoding; image binary metadata values are decoded too.
+ExifTool configuration loading is disabled so candidate files cannot execute
+Perl configuration during inspection. Missing tools, parser errors, warnings
+and image type mismatches fail closed.
+PDFs, archives and other files retain their existing inspection requirements.

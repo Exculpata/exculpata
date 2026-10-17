@@ -20,7 +20,8 @@ def main():
     destination.mkdir(parents=True, mode=0o700)
     source = Path(__file__).resolve().parent
     for name in ('pre-push-publication.py', 'publication-check.py',
-                 'publication_home_owners.py', 'legacy_name_check.py'):
+                 'publication_home_owners.py', 'legacy_name_check.py',
+                 'publication-media-reviews.json'):
         shutil.copyfile(source / name, destination / name)
     hook = destination / 'pre-push'
     hook.write_text('#!/bin/sh\nset -eu\nexec ' + shlex.quote(str(interpreter)) + ' -I ' +

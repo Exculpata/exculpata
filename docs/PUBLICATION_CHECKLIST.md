@@ -69,7 +69,7 @@ make test
 make test-transcription
 ```
 
-The scanner depends on `ffprobe` for media metadata and `pypdf` for PDF
+The scanner depends on `ffprobe` for audio/video metadata, `exiftool` for image metadata, and `pypdf` for PDF
 inspection. Missing inspection tooling blocks rather than silently skipping the
 artifact.
 
