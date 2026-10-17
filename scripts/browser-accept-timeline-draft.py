@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Desktop/mobile timeline acceptance against a disposable synthetic app."""
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -64,7 +66,7 @@ def main():
             for width in (1440,390):
                 driver.set_window_size(width,1000)
                 driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width':width,'height':1000,'deviceScaleFactor':1,'mobile':width<=480})
-                driver.get(base+f'/matters/{slug}/timeline/draft')
+                navigate_to(driver, base+f'/matters/{slug}/timeline/draft', diagnostics=args.output)
                 wait.until(lambda d:d.find_element(By.TAG_NAME,'h1').text=='Draft timeline')
                 assert 'for attorney review' in driver.find_element(By.TAG_NAME,'body').text
                 checks.append(f'{width}: review banner visible')
@@ -89,7 +91,7 @@ def main():
                 link.click()
                 wait.until(lambda d:'support=' in d.current_url)
                 checks.append(f'{width}: original passage opens')
-            driver.get(base+f'/matters/{slug}/timeline/draft')
+            navigate_to(driver, base+f'/matters/{slug}/timeline/draft', diagnostics=args.output)
             form=driver.find_element(By.CSS_SELECTOR,'.timeline-promote')
             Select(form.find_element(By.NAME,'entity_selection')).select_by_index(1)
             button=form.find_element(By.TAG_NAME,'button')

@@ -54,7 +54,7 @@ JOURNEYS = (
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
     ('timeline-draft', 'browser-accept-timeline-draft.py', 'receipt.json', 13, ()),
 )
-ARTIFACT_NAMES = tuple(
+ARTIFACT_NAMES = ('navigation-timeouts.json',) + tuple(
     name
     for mode in ('dark', 'light') for accent in ('cyan', 'green', 'amber')
     for name in (f'ask-heading-{mode}-{accent}-1440.png', f'ask-heading-{mode}-{accent}-390.png',

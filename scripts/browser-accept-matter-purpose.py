@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic optional orientation: native keyboard edits, conflict and reload."""
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -83,7 +85,7 @@ def main():
                 focus(button)
                 button.send_keys(Keys.ENTER)
                 wait.until(lambda _: '/home' in driver.current_url and not driver.find_elements(By.CSS_SELECTOR, '#matter-purpose details[open]'))
-            driver.get(home)
+            navigate_to(driver, home, diagnostics=args.output)
             assert 'Add an objective.' in find('#matter-purpose').text
             driver.save_screenshot(str(args.output / 'purpose-empty-1440.png'))
             print('Empty Home rendered', flush=True)
@@ -108,7 +110,7 @@ def main():
                 focus(find('#matter-objective'))
                 assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
                 driver.save_screenshot(str(args.output / f'purpose-edit-{width}.png'))
-                driver.get(home)
+                navigate_to(driver, home, diagnostics=args.output)
             report['checks'].append('Saved values survive reload; desktop and 390/320 pixel editors have no overflow')
             open_editor()
             find('#matter-objective').clear()
@@ -124,7 +126,7 @@ def main():
             assert 'Synthetic competing tab edit' in find('main').text
             driver.save_screenshot(str(args.output / 'purpose-conflict-320.png'))
             report['checks'].append('Stale save shows current values and retains unsaved draft without overwrite')
-            driver.get(home)
+            navigate_to(driver, home, diagnostics=args.output)
             open_editor()
             find('#matter-objective').clear()
             find('#matter-background').clear()

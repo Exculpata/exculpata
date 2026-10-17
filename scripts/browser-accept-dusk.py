@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -127,7 +129,7 @@ def main():
             driver.set_script_timeout(30)
             wait = WebDriverWait(driver, 30)
             wait.until(lambda _: server.started)
-            driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic', diagnostics=args.output)
             def one(selector):
                 return driver.find_element(By.CSS_SELECTOR, selector)
 
@@ -196,17 +198,17 @@ def main():
                              '[data-source-bulk-submit]:disabled', '.source-pagination .disabled'):
                 check(selector)
             check('.source-library-filters input[type=search]', '::placeholder')
-            driver.get(base + f'/matters/{matter.slug}/setup')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup', diagnostics=args.output)
             check('.source-chip span')
             check('.source-chip small')
-            driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic', diagnostics=args.output)
             card = one('.source-stat-card.ready')
             ActionChains(driver).move_to_element(card).perform()
             check('.source-stat-card.ready span')
             card.click()
             wait.until(lambda _: one('.source-stat-card.ready').get_attribute('class').endswith('selected'))
             check('.source-stat-card.ready.selected span')
-            driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic', diagnostics=args.output)
             # Keyboard focus must be visible on links, inputs, selects and buttons.
             for selector in ('.source-stat-card', '.source-library-filters input[type=search]', '.source-library-filters select', '.source-library-filters button'):
                 target = one(selector)
@@ -241,7 +243,7 @@ def main():
             driver.save_screenshot(str(output / 'accent-mobile.png'))
             check('.source-library-filters input[type=search]')
             driver.set_window_size(1440, 1100)
-            driver.get(base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup?view=list&page_size=25&q=synthetic', diagnostics=args.output)
             select_appearance(driver, wait, 'light', 'cyan')
             wait_for_light_snapshot(wait, snapshot, light)
             report['checks'].append('Light computed styles preserved after theme round trip')

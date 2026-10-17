@@ -94,6 +94,17 @@ navigating again can leave the editor request pending until its page-load timeou
 The wait uses the existing deadline, never repeats navigation, and propagates
 unexpected driver errors. A stalled old or replacement document still fails.
 
+All `browser-accept-*.py` journeys use `browser_navigation.navigate_to` for
+URL navigation. It applies the existing 30-second page-load bound (20 seconds
+for loose-file preflight) and explicitly waits for a complete document. Only a
+Selenium `TimeoutException` identifying a renderer timeout permits one retry.
+Each such failure writes a bounded, content-free `navigation-timeouts.json`
+artifact before recovery; a second failure propagates. Other errors and readiness
+stalls fail immediately without retrying navigation. The runner retains this
+artifact within its existing limits. Its CI contract tests cover recovery,
+exhaustion, unrelated errors, readiness, artifact retention and raw-call rejection.
+The source-role reload synchronization above remains required independently.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background

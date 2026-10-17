@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -100,7 +102,7 @@ def main():
                     return ''
 
             def go(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
 
             def detached(element):
                 def check(current):
@@ -330,7 +332,7 @@ def main():
             record('A separate assertion can be corrected and removed from chronology')
             go(event_path)
             other = browser()
-            other.get(base + event_path)
+            navigate_to(other, base + event_path, diagnostics=args.output)
             fill('title', 'Another reviewer saved title', action='update', current=other)
             submit('update', current=other)
             fill('title', 'Unsaved reviewer correction', action='update')

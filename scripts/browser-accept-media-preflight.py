@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import hashlib
 import json
@@ -76,7 +78,7 @@ def main():
             wait.until(lambda _: server.started)
 
             def go(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
 
             def click(selector):
                 element = driver.find_element(By.CSS_SELECTOR, selector)

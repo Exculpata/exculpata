@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 from datetime import datetime, timedelta
 import io
@@ -107,7 +109,7 @@ def main():
             wait.until(lambda _: server.started)
 
             def go(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
 
             def detached(element):
                 try:

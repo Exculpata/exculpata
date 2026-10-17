@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -134,14 +136,9 @@ def main():
                         raise
                     return False
 
-            original_get = driver.get
-            def navigate(url):
-                original_get(url)
-                wait.until(lambda current: current.execute_script('return document.readyState') in {'interactive', 'complete'})
-            driver.get = navigate
 
             def create_matter(name):
-                driver.get(base + '/matters/new')
+                navigate_to(driver, base + '/matters/new', diagnostics=args.output, readiness_timeout=25)
                 driver.find_element(By.ID, 'matter-name').send_keys(name)
                 driver.find_element(By.ID, 'matter-descriptor').send_keys('Generated receipt acceptance')
                 driver.find_element(By.CSS_SELECTOR, '.matter-form button[type=submit]').click()
@@ -175,7 +172,7 @@ def main():
 
             refresh_page_fixture = root / 'synthetic-refresh.html'
             refresh_page_fixture.write_text('<body data-ingestion-active><form data-upload-form><label>Collection name<input data-upload-collection-name></label></form><script>window.syntheticLoadToken=Math.random();</script><script>' + (ROOT / 'src/case_intelligence/static/case-intelligence.js').read_text() + '</script></body>')
-            driver.get(refresh_page_fixture.as_uri())
+            navigate_to(driver, refresh_page_fixture.as_uri(), diagnostics=args.output, readiness_timeout=25)
             original_load = driver.execute_script('return window.syntheticLoadToken')
             name = driver.find_element(By.CSS_SELECTOR, '[data-upload-collection-name]')
             name.send_keys('Synthetic name before selection')
@@ -266,15 +263,15 @@ def main():
             require(len(source_links) == 3, 'Exact source links missing')
             receipt_url = driver.current_url
             for source_url in source_links:
-                driver.get(source_url)
+                navigate_to(driver, source_url, diagnostics=args.output, readiness_timeout=25)
                 require('journal passage' in driver.find_element(By.TAG_NAME, 'body').text, 'Source link opened wrong content')
             record_check('Reload retains skipped reasons; receipt opens all three exact source passages')
-            driver.get(receipt_url)
+            navigate_to(driver, receipt_url, diagnostics=args.output, readiness_timeout=25)
             driver.find_element(By.LINK_TEXT, 'Structured version').click()
             receipt_file = until(lambda: next(downloads.glob('selected-file-receipt*.json'), None), 'Browser receipt download did not finish')
             data = json.loads(receipt_file.read_text())
             require(len(data['items']) == 7 and data['counts']['received'] == 4, 'Downloaded receipt is incomplete')
-            driver.get(base + f'/matters/{matter.slug}/work-product')
+            navigate_to(driver, base + f'/matters/{matter.slug}/work-product', diagnostics=args.output, readiness_timeout=25)
             export_link = driver.find_element(By.CSS_SELECTOR, f'a[href="/matters/{matter.slug}/export"]')
             export_link.click()
             bundle_file = until(lambda: next(downloads.glob('*.zip'), None), 'Browser bundle download did not finish')
@@ -285,7 +282,7 @@ def main():
                 require(exported == data, 'Bundle and individual receipt differ')
             record_check('Normal browser receipt and work-product bundle downloads contain a coherent complete selection')
 
-            driver.get(base + f'/matters/{matter.slug}/setup')
+            navigate_to(driver, base + f'/matters/{matter.slug}/setup', diagnostics=args.output, readiness_timeout=25)
             driver.find_element(By.CSS_SELECTOR, '[data-file-input]').send_keys(str(folder/'Unsupported/opaque.bin'))
             wait.until(lambda x: x.find_element(By.CSS_SELECTOR, '[data-upload-preflight-confirm]').text == 'Save selection receipt')
             confirm()
@@ -395,7 +392,7 @@ def main():
             require(len(bench.workspace.recent_upload_sessions(capacity_matter.matter_id, ACTOR)) == len(reserved_sessions),
                 'Capacity-excluded selection unexpectedly created an upload session')
             receipt_path = f"/matters/{capacity_matter.slug}/intake/{capacity_receipt['receipt_id']}"
-            driver.get(base + receipt_path)
+            navigate_to(driver, base + receipt_path, diagnostics=args.output, readiness_timeout=25)
             require('capacity-limited upload plan' in driver.find_element(By.TAG_NAME, 'body').text,
                 'Reloaded receipt lost the reviewed capacity reason')
             before = set(downloads.glob('*.csv'))
@@ -503,7 +500,7 @@ def main():
             require(full_receipt_count() == 1_000, 'Rejected selection exceeded receipt capacity')
             removable = receipts.recent(full_matter.matter_id, ACTOR)[0]
             def discard_from_browser(receipt_id):
-                driver.get(base + f"/matters/{full_matter.slug}/intake/{receipt_id}")
+                navigate_to(driver, base + f"/matters/{full_matter.slug}/intake/{receipt_id}", diagnostics=args.output, readiness_timeout=25)
                 toggle = driver.find_element(By.CSS_SELECTOR, '.intake-receipt-discard summary')
                 driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"});', toggle)
                 toggle.click()

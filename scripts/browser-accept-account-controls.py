@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -80,7 +82,7 @@ def main():
             js = driver.execute_script
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
                 {'width': 320, 'height': 568, 'deviceScaleFactor': 1, 'mobile': False})
-            driver.get(base + '/auth/login?next=/matters/new')
+            navigate_to(driver, base + '/auth/login?next=/matters/new', diagnostics=args.output)
             find('[name=username]').send_keys('synthetic.reviewer')
             find('[name=password]').send_keys('synthetic-account-password')
             login = find('.local-login-form button')
@@ -97,7 +99,7 @@ def main():
             wait.until(lambda _: '/matters/m-' in driver.current_url)
             prefix = '/'.join(driver.current_url[len(base):].split('/')[:3])
             protected = base + prefix + '/notebook'
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: js('return document.documentElement.scrollWidth <= innerWidth'))
             report['checks'].append('Authenticated long-name header fits 320px without horizontal overflow')
             from browser_appearance import select_appearance
@@ -120,12 +122,12 @@ def main():
             wait.until(lambda _: '/auth/login' in driver.current_url)
             assert driver.get_cookie(SESSION_COOKIE) is None
             report['checks'].append('Keyboard sign-out clears the authenticated browser session')
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: '/auth/login' in driver.current_url)
             # A replayed pre-logout token must also fail, proving server revocation.
             driver.add_cookie({'name': SESSION_COOKIE, 'value': session['value'],
                 'path': '/', 'secure': True, 'httpOnly': True})
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: '/auth/login' in driver.current_url)
             report['checks'].append('Protected matter rejects both signed-out access and the revoked session')
             report['passed'] = True

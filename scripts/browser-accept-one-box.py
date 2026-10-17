@@ -11,6 +11,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -191,7 +193,7 @@ def main(argv=None):
                 raise AssertionError("The requested control is absent from the native keyboard tab order")
 
             def home_submit(text, *, keyboard=False):
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 field = find("#one-box-question")
                 assert field.is_enabled()
                 if keyboard:
@@ -227,7 +229,7 @@ def main(argv=None):
                 assert bench.workspace.review_runs(matter.matter_id, ACTOR) == ()
                 assert bench.workspace.review_criteria(matter.matter_id, ACTOR) == ()
 
-            driver.get(base + prefix + "/home")
+            navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
             field = find("#one-box-question")
             assert field.accessible_name == "Ask, search or find records"
             assert js("return Array.from(arguments[0].labels).some(e=>e.getClientRects().length)", field)
@@ -254,7 +256,7 @@ def main(argv=None):
             assert SOURCE_TEXT in find("main").text
             checks.append("Exact search opens the original synthetic source")
 
-            driver.get(exact_url)
+            navigate_to(driver, exact_url, diagnostics=args.output)
             controls = alternatives("exact")
             checks.append("The route switch exposes exactly the other two choices through a native keyboard disclosure")
             choose = next(item for item in controls if item.get_attribute("data-one-box-kind") == "every_source")
@@ -280,7 +282,7 @@ def main(argv=None):
 
             driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
                 "width": 430, "height": 932, "deviceScaleFactor": 1, "mobile": False})
-            driver.get(base + prefix + "/home")
+            navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
             no_overflow()
             field = find("#one-box-question")
             keyboard_to(field)
@@ -309,7 +311,7 @@ def main(argv=None):
             assert SOURCE_TEXT in find(".support-pane").text
             checks.append("The generated answer citation opens the original supporting passage")
 
-            driver.get(base + f"/matters/{empty.slug}/home")
+            navigate_to(driver, base + f"/matters/{empty.slug}/home", diagnostics=args.output)
             assert not find("#one-box-question").is_enabled()
             assert not find("[data-one-box-form] button[type=submit]").is_enabled()
             described = find("#one-box-question").get_attribute("aria-describedby").split()

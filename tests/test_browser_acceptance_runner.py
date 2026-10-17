@@ -508,7 +508,8 @@ def test_main_requires_all_journeys_to_pass(runner, tmp_path, monkeypatch, outco
 
 
 @pytest.mark.parametrize("suffix", [".zip", ".docx"])
-def test_report_download_waits_for_completed_archive(tmp_path, suffix):
+def test_report_download_waits_for_completed_archive(tmp_path, suffix, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
     spec = importlib.util.spec_from_file_location("browser_reports", ROOT / "scripts/browser-accept-reports-bundle.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -762,3 +763,109 @@ def test_failure_summary_omits_macos_driver_frames_and_names_receipt_errors(runn
     assert zoom[0] == '  Journey exited with status 1.'
     assert '  selenium.common.exceptions.NoSuchElementException: generated' in zoom
     assert not any('chromedriver' in line for line in zoom)
+
+
+@pytest.fixture
+def navigation(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    import browser_navigation
+    return browser_navigation
+
+
+def test_navigation_recovers_one_renderer_timeout_with_diagnostic(navigation, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    driver = Mock()
+    driver.get.side_effect = [TimeoutException('Timed out receiving message from renderer: 30.000'), None]
+    driver.execute_script.return_value = 'complete'
+    navigation.navigate_to(driver, 'http://example.invalid/reader/role', diagnostics=tmp_path)
+    assert driver.get.call_count == 2
+    driver.set_page_load_timeout.assert_called_once_with(30)
+    driver.execute_script.assert_called_once_with('return document.readyState')
+    artifact = tmp_path / navigation.DIAGNOSTIC_NAME
+    payload = json.loads(artifact.read_text())
+    assert payload['synthetic_only'] is True
+    assert len(payload['events']) == 1
+    assert payload['events'][0]['retry'] is True
+    assert payload['events'][0]['phase'] == 'navigation'
+    assert 'example.invalid' not in artifact.read_text()
+
+
+def test_navigation_second_renderer_timeout_fails_with_both_attempts(navigation, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    driver = Mock()
+    driver.get.side_effect = TimeoutException('Timed out receiving message from renderer')
+    with pytest.raises(TimeoutException):
+        navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=tmp_path)
+    assert driver.get.call_count == 2
+    driver.execute_script.assert_not_called()
+    events = json.loads((tmp_path / navigation.DIAGNOSTIC_NAME).read_text())['events']
+    assert [(event['attempt'], event['retry']) for event in events] == [(1, True), (2, False)]
+
+
+@pytest.mark.parametrize('renderer_text', [False, True, None])
+def test_navigation_never_retries_unrelated_errors(navigation, tmp_path, renderer_text):
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    driver = Mock()
+    error = (WebDriverException('Timed out receiving message from renderer') if renderer_text else
+             TimeoutException(None if renderer_text is None else 'Another navigation deadline'))
+    driver.get.side_effect = error
+    with pytest.raises(type(error)):
+        navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=tmp_path)
+    driver.get.assert_called_once()
+    assert not (tmp_path / navigation.DIAGNOSTIC_NAME).exists()
+
+
+def test_navigation_readiness_stall_fails_without_repeating_get(navigation, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    driver = Mock()
+    driver.execute_script.return_value = 'loading'
+    with pytest.raises(TimeoutException):
+        navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=tmp_path, readiness_timeout=.001)
+    driver.get.assert_called_once()
+    assert not (tmp_path / navigation.DIAGNOSTIC_NAME).exists()
+
+
+def test_navigation_waits_for_complete_document(navigation, tmp_path):
+    driver = Mock()
+    driver.execute_script.side_effect = ['interactive', 'complete']
+    navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=tmp_path)
+    driver.get.assert_called_once()
+    assert driver.execute_script.call_count == 2
+
+
+def test_navigation_diagnostic_failure_prevents_retry(navigation, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    driver = Mock()
+    driver.get.side_effect = TimeoutException('Timed out receiving message from renderer')
+    output = tmp_path / 'not-a-directory'
+    output.write_text('synthetic')
+    with pytest.raises(FileExistsError):
+        navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=output)
+    driver.get.assert_called_once()
+
+
+def test_navigation_diagnostic_is_retained_by_runner(navigation, runner, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    raw, output = tmp_path / 'raw', tmp_path / 'collected'
+    driver = Mock()
+    driver.get.side_effect = [TimeoutException('Timed out receiving message from renderer'), None]
+    driver.execute_script.return_value = 'complete'
+    navigation.navigate_to(driver, 'http://example.invalid/', diagnostics=raw)
+    runner.collect_artifacts(raw, output, tmp_path / 'absent.log', 10000)
+    assert (output / navigation.DIAGNOSTIC_NAME).read_bytes() == (raw / navigation.DIAGNOSTIC_NAME).read_bytes()
+
+
+def test_browser_journeys_use_supported_navigation_helper():
+    import ast
+    import re
+    violations = []
+    for path in sorted((ROOT / 'scripts').glob('browser-accept-*.py')):
+        source = path.read_text()
+        # Also reject aliases/assignments that could hide a raw navigation call.
+        for node in ast.walk(ast.parse(source)):
+            if (isinstance(node, ast.Attribute) and node.attr == 'get'
+                    and isinstance(node.value, ast.Name) and node.value.id in {'driver', 'other'}):
+                violations.append(f'{path.name}:{node.lineno}')
+        assert not re.search(r'\bdriver\s*\.\s*get\s*\(', source), (
+            f'{path.name}: use browser_navigation.navigate_to for browser navigation')
+    assert not violations, 'Use browser_navigation.navigate_to: ' + ', '.join(violations)

@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 import socket
@@ -107,7 +109,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, 'html')
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 wait.until(lambda _: detached(old))
                 ready()
 

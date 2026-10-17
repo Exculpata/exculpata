@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic C2 reader navigation, keyboard editing and conflict recovery."""
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -112,7 +114,7 @@ def main():
             def check(message):
                 report['checks'].append(message)
                 print(message, flush=True)
-            driver.get(reader)
+            navigate_to(driver, reader, diagnostics=args.output)
             details = find('.review-source-details summary')
             focus(details)
             details.send_keys(Keys.ENTER)
@@ -130,7 +132,7 @@ def main():
             assert service.read(matter.matter_id, ACTOR, token)['source_role'] == 'background'
             check('Native keyboard reaches editor from source details and marks background')
             refresh_page(driver, wait)
-            driver.get(reader + '/role')
+            navigate_to(driver, reader + '/role', diagnostics=args.output)
             assert find('#source-role').get_attribute('value') == 'background'
             check('Designation survives reader navigation and reload')
             for width in (1440, 390, 320):
@@ -149,7 +151,7 @@ def main():
             check('Stale save retains the proposed choice and shows the competing saved role')
             submit()
             wait.until(lambda _: driver.current_url == reader)
-            driver.get(reader + '/role')
+            navigate_to(driver, reader + '/role', diagnostics=args.output)
             choice = find('#source-role')
             focus(choice)
             choice.send_keys('u')
