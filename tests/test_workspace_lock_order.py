@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from case_intelligence.workbench import create_workbench_app
+from case_intelligence import case_lifecycle_support
 from tests.test_matter_notebook import WEB_ACTOR, _create_matter
 
 
@@ -37,27 +38,38 @@ def _overlap(runtime, action):
     expected = service.detail(matter.matter_id, WEB_ACTOR, entity["entity_id"])
     assert expected[1][0]["available"]
 
-    creation_at_catalog = threading.Event()
+    creation_before_cache = threading.Event()
+    creation_at_cache = threading.Event()
     entity_in_transaction = threading.Event()
-    sync_catalog = bench._sync_source_catalog
+    source_store = bench.source_store
+    cache_guard = case_lifecycle_support.source_cache_guard
     transaction = service.repository.transaction
 
-    def paused_catalog(created_matter, documents):
+    def paused_store(created_matter):
         assert created_matter.matter_id != matter.matter_id
-        # source_store owns its real cache lock at this point. The other
-        # action will own the real workspace transaction before we continue.
-        creation_at_catalog.set()
+        creation_before_cache.set()
         assert entity_in_transaction.wait(5), "entity did not enter its transaction"
-        return sync_catalog(created_matter, documents)
+        return source_store(created_matter)
+
+    @contextmanager
+    def observed_cache_guard(current):
+        # The entity transaction owns the workspace when creation requests the
+        # cache. Creation must wait without holding the shared cache lock.
+        assert not current._store_lock._is_owned()
+        creation_at_cache.set()
+        with cache_guard(current):
+            assert current.workspace._lock._is_owned()
+            yield
 
     @contextmanager
     def paused_transaction(*args, **kwargs):
         with transaction(*args, **kwargs) as repo:
             entity_in_transaction.set()
-            assert creation_at_catalog.wait(5), "creation did not reach catalog sync"
+            assert creation_at_cache.wait(5), "creation did not request the cache"
             yield repo
 
-    bench._sync_source_catalog = paused_catalog
+    bench.source_store = paused_store
+    case_lifecycle_support.source_cache_guard = observed_cache_guard
     service.repository.transaction = paused_transaction
     results, errors = {}, []
 
@@ -78,7 +90,7 @@ def _overlap(runtime, action):
         "Synthetic concurrent matter", "Synthetic", WEB_ACTOR)), daemon=True)
     reader = threading.Thread(target=run, args=("entity", actions[action]), daemon=True)
     creator.start()
-    assert creation_at_catalog.wait(5), "creation did not reach catalog sync"
+    assert creation_before_cache.wait(5), "creation did not reach source storage"
     reader.start()
     reader.join(5)
     creator.join(5)
@@ -88,7 +100,8 @@ def _overlap(runtime, action):
     assert not reader.is_alive() and not creator.is_alive(), (
         "concurrent matter creation and entity action deadlocked on source-cache/workspace locks")
     assert not errors, errors
-    bench._sync_source_catalog = sync_catalog
+    bench.source_store = source_store
+    case_lifecycle_support.source_cache_guard = cache_guard
     service.repository.transaction = transaction
     assert bench.matter(results["matter"].slug, WEB_ACTOR) == results["matter"]
     assert service.detail(matter.matter_id, WEB_ACTOR, entity["entity_id"]) == expected
