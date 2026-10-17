@@ -10,9 +10,11 @@ import argparse
 import copy
 from datetime import datetime, timedelta, timezone
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 
@@ -25,6 +27,20 @@ from cryptography.x509.oid import NameOID
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def failure_diagnostic(value):
+    """Bounded fixture diagnostics; never print auth values, URLs or local paths."""
+    lines = []
+    for line in value.splitlines()[-20:]:
+        if re.search(r"(?i)password|secret|token|authorization|bearer|private.key", line):
+            lines.append("[sensitive diagnostic line omitted]")
+            continue
+        line = re.sub(r"https?://[^\s]+", "<url>", line)
+        line = re.sub(r"(?<![A-Za-z0-9])/(?:[^\s'\"]+)", "<path>", line)
+        line = re.sub(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "<address>", line)
+        lines.append(line)
+    return "\n".join(lines)[-3000:]
+
+
 def production_graph(project, proxy_context):
     source = yaml.safe_load((ROOT / "compose.yaml").read_text())
     services = {name: copy.deepcopy(source['services'][name]) for name in ('app', 'egress-proxy')}
@@ -33,6 +49,7 @@ def production_graph(project, proxy_context):
     for name, service in services.items():
         service['image'] = project + '-' + name
         service['restart'] = 'no'
+        service['pull_policy'] = 'never'  # Unique images were built in this runtime.
         service['build']['context'] = str(ROOT if name == 'app' else proxy_context)
     app = services['app']
     for key in ('volumes', 'env_file', 'depends_on'):
@@ -79,7 +96,7 @@ def main():
         original_dns=copy.deepcopy(data['services']['app']['dns'])
         limits={'cpus':.5,'mem_limit':'128m','pids_limit':64,'read_only':True,
                 'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'user':'65532:65532',
-                'image':project+'-endpoint','healthcheck':{'disable':True}}
+                'image':project+'-endpoint','pull_policy':'never','healthcheck':{'disable':True}}
         data['services'].update({
             'issuer':{**limits,'networks':{'front':{'aliases':['issuer.example.test']}}},
             'foreign':{**limits,'networks':{'front':{'aliases':['foreign.example.test']}}},
@@ -97,6 +114,15 @@ def main():
             if filename:
                 (args.output/filename).write_text(completed.stdout+completed.stderr)
             if completed.returncode != expected:
+                results['failed_step'] = filename or 'runtime diagnostics'
+                results['failed_exit'] = completed.returncode
+                print('Smoke failure: ' + results['failed_step'] + '; exit ' + str(completed.returncode), file=sys.stderr)
+                print(failure_diagnostic(completed.stdout + completed.stderr), file=sys.stderr)
+                if filename and filename.endswith('up.log'):
+                    diagnostic = subprocess.run([*compose,'logs','--no-color','--tail','12'],
+                        capture_output=True,text=True,timeout=20)
+                    (args.output/(filename+'.runtime.log')).write_text(diagnostic.stdout+diagnostic.stderr)
+                    print(failure_diagnostic(diagnostic.stdout+diagnostic.stderr),file=sys.stderr)
                 raise RuntimeError('smoke command failed; see '+(filename or 'runtime diagnostics'))
             return completed.stdout
         def stream():
@@ -107,6 +133,8 @@ def main():
             identifier=run([*compose,'ps','-q',name]).strip()
             return run([*docker,'inspect','--format','{{(index .NetworkSettings.Networks "'+project+'_'+network+'").IPAddress}}',identifier]).strip()
         try:
+            results['engine_version'] = run([*docker,'version','--format','{{.Server.Version}}']).strip()[:80]
+            results['compose_version'] = run([*docker,'compose','version','--short']).strip()[:80]
             graph=json.loads(run([*compose,'config','--format','json']))
             for service in graph['services'].values():
                 assert not any(service.get(field) for field in ('ports','volumes','secrets','devices'))
@@ -130,6 +158,9 @@ def main():
                      '-e','DNS_RECORDER_ADDRESS='+recorder_address,'app','python']
             run([*compose,'exec','-T','app','python','-c',
                  "import httpx,ssl,time; c=ssl.create_default_context(cafile='/tmp/issue319-fixture/issuer.pem'); exec(\"for attempt in range(30):\\n try:\\n  httpx.get('https://issuer.example.test:8443/',verify=c,timeout=3).raise_for_status(); break\\n except httpx.HTTPError:\\n  time.sleep(.2)\\nelse: raise RuntimeError('issuer unavailable')\")"],filename='readiness.log')
+            # A live foreign TLS port is required before accepting app denials.
+            results.update(json.loads(run([*compose,'exec','-T','egress-proxy','python','-I','-',foreign_address],
+                input_value=(ROOT/'tests/network_smoke/front_control.py').read_text(),filename='foreign-tls-control.log')))
             results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py'],filename='probe.log')))
             for mode in ('controls','production'):
                 results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py',mode],filename='dns-'+mode+'.log')))

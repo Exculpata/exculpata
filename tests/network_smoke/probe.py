@@ -47,6 +47,15 @@ async def main():
             pass
         else:
             raise AssertionError('Authlib accepted redirect')
+    async with httpx.AsyncClient(verify=CA, timeout=5) as client:
+        events = set((await client.get(ISSUER.replace('/realm', '/events'))).json())
+    for mode, stages in {
+        'discovery-redirect': ('discovery',),
+        'token-redirect': ('discovery', 'token'),
+        'jwks-redirect': ('discovery', 'token', 'jwks'),
+        'metadata-redirect': ('discovery', 'token'),
+    }.items():
+        assert {mode + ':' + stage for stage in stages} <= events, 'redirect stage was never reached'
     without_ca = AuthlibOidcClient(replace(settings, ca_file=None))
     try:
         await without_ca.authenticate(code='synthetic-code', nonce='synthetic-nonce', code_verifier='v'*64)
@@ -106,7 +115,7 @@ async def main():
         except httpx.ConnectError as exc:
             assert "CERTIFICATE" in str(exc).upper()
     print(json.dumps({"authlib_discovery_token_jwks": True, "custom_ca_required": True, "authlib_custom_ca_required": True,
-        "authlib_redirects_not_followed": True, "metadata_transport_override_ignored": True,
+        "authlib_redirects_not_followed": True, "authlib_redirect_stages_observed": True, "metadata_transport_override_ignored": True,
         "plain_http_relay_denied": True, "suffix_hosts_relay_denied": True, "exact_internal_service_reachable": True, "direct_numeric_tcp_denied": True,
         "trust_env_false_denied": True, "foreign_and_wrong_port_denied": True}))
 

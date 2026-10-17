@@ -221,7 +221,9 @@ use the production app/relay networks; none publishes ports or mounts host data.
 A directly reachable internal canary makes cleartext/suffix denial assertions
 independent of routing failure. The actual Authlib adapter performs signed-token
 success, missing-CA denial, same-authority discovery/token/JWKS redirect denial,
-and malicious-metadata transport checks. Numeric direct TCP/HTTPX denials, causal
+and malicious-metadata transport checks. Each redirect stage must be observed,
+and the foreign TLS endpoint must answer from the relay network before its app
+denials count. Numeric direct TCP/HTTPX denials, causal
 DNS challenges and the known-forwarding negative control are independent checks.
 The harness cleans up only its unique project and images. The caller must supply
 an approved disposable runtime and remove it after retaining evidence.

@@ -91,6 +91,7 @@ def test_real_authlib_rejects_redirects_even_with_transport_metadata(stage):
         client.remote.client_kwargs['transport']=httpx.MockTransport(handler)
         with pytest.raises(OidcAuthenticationError):
             await client.authenticate(code='synthetic',nonce='synthetic-nonce',code_verifier='v'*64)
+        assert {'discovery':'/.well-known/openid-configuration','token':'/token','jwks':'/jwks'}[stage] in events
         assert '/redirect-target' not in events
     asyncio.run(exercise())
 
@@ -172,3 +173,16 @@ def test_authlib_uses_explicit_proxy_and_ignores_environment(monkeypatch):
     options=client.remote.client_kwargs
     assert options['trust_env'] is False and options['proxy'] == 'http://egress-proxy:3128'
     assert options['follow_redirects'] is False and options['verify'] is True
+
+
+def test_smoke_failure_diagnostics_are_bounded_and_remove_sensitive_values():
+    spec=importlib.util.spec_from_file_location('smoke_diagnostic',ROOT/'scripts/test-egress-smoke.py')
+    smoke=importlib.util.module_from_spec(spec);spec.loader.exec_module(smoke)
+    raw=('permission denied: /tmp/synthetic-fixture/file at https://issuer.example.test/path 192.0.2.9\n'
+         'Authorization: Bearer synthetic-private-value\n')
+    diagnostic=smoke.failure_diagnostic(raw)
+    assert all(marker in diagnostic for marker in ('<path>', '<url>', '<address>', '[sensitive diagnostic line omitted]'))
+    assert len(smoke.failure_diagnostic('x'*6000))<=3000
+    assert 'synthetic-private-value' not in diagnostic
+    assert '/tmp/synthetic-fixture' not in diagnostic and 'https://' not in diagnostic and '192.0.2.9' not in diagnostic
+    assert 'permission denied' in smoke.failure_diagnostic('permission denied')
