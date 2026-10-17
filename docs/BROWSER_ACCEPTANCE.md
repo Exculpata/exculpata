@@ -119,8 +119,11 @@ constructors, aliases, helper parameters, annotated drivers, and wait callbacks;
 it rejects raw `get` and `refresh` references regardless of the driver's variable
 name while permitting mapping, HTTP-client, and source-store `get` calls.
 
-Outside pull-request CI, the runner prints a warning when a journey records a
-renderer retry. The diagnostic remains in the existing bounded artifact set.
+Outside pull-request CI, the runner emits a GitHub warning annotation when a
+journey records a renderer retry:
+`::warning title=Renderer navigation retry::<journey> recorded N renderer navigation retry event(s); inspect navigation-timeouts.json`.
+Dynamic message text escapes percent signs, carriage returns and newlines using
+GitHub workflow-command data escaping. The diagnostic remains in the existing bounded artifact set.
 This warning does not change acceptance: process, receipt, and existing PR CI
 checks retain their failure behavior. Snapshot, navigation, and readiness renderer
 timeouts share the same two-attempt bound; other errors still propagate. The

@@ -974,7 +974,7 @@ def test_navigation_lint_rejects_renamed_driver(tmp_path, monkeypatch, operation
         test_browser_journeys_use_supported_navigation_helper()
 
 
-@pytest.mark.parametrize('event', ['', 'push', 'schedule', 'merge_group', 'pull_request'])
+@pytest.mark.parametrize('event', ['', 'push', 'schedule', 'merge_group', 'pull_request', 'pull_request_target'])
 def test_runner_warns_about_renderer_retry_outside_pr_ci(runner, navigation, tmp_path, monkeypatch, capsys, event):
     from selenium.common.exceptions import TimeoutException
     monkeypatch.setenv('GITHUB_EVENT_NAME', event)
@@ -994,8 +994,31 @@ def test_runner_warns_about_renderer_retry_outside_pr_ci(runner, navigation, tmp
     result = runner.run_journeys(Path('/generated/chrome'), Path('/generated/driver'), scratch, output, 1)
     assert result[0]['passed'] is True
     printed = capsys.readouterr().out
-    assert ('WARNING: generated recorded 1 renderer navigation retry' in printed) is (event != 'pull_request')
+    warnings = [line for line in printed.splitlines() if line.startswith('::warning')]
+    expected = ('::warning title=Renderer navigation retry::generated recorded 1 '
+                'renderer navigation retry event(s); inspect navigation-timeouts.json')
+    assert warnings == ([] if event in {'pull_request', 'pull_request_target'} else [expected])
+    assert 'WARNING:' not in printed
     assert (output / 'generated' / navigation.DIAGNOSTIC_NAME).exists()
+
+
+@pytest.mark.parametrize(('journey', 'escaped'), [
+    ('generated%0A', 'generated%250A'),
+    ('generated\r\n::error title=Synthetic::message',
+     'generated%0D%0A::error title=Synthetic::message'),
+    ('generated\n::stop-commands::synthetic', 'generated%0A::stop-commands::synthetic'),
+    ('generated:part,one', 'generated:part,one'),
+])
+def test_retry_warning_escapes_workflow_command_data(runner, tmp_path, monkeypatch, capsys, journey, escaped):
+    monkeypatch.setenv('GITHUB_EVENT_NAME', 'push')
+    diagnostic = tmp_path / 'navigation-timeouts.json'
+    payload = json.dumps({'events': [{'retry': True}, {'retry': False}, {'retry': True}]})
+    diagnostic.write_text(payload)
+    assert runner.warn_navigation_retries(tmp_path, journey) is None
+    assert capsys.readouterr().out == (
+        f'::warning title=Renderer navigation retry::{escaped} recorded 2 '
+        'renderer navigation retry event(s); inspect navigation-timeouts.json\n')
+    assert diagnostic.read_text() == payload
 
 
 @pytest.mark.parametrize('source', [

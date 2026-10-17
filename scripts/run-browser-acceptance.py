@@ -323,8 +323,11 @@ def warn_navigation_retries(raw: Path, journey: str) -> None:
     except (OSError, ValueError):
         return
     if retries:
-        print(f'WARNING: {journey} recorded {retries} renderer navigation retry event(s); '
-              'inspect navigation-timeouts.json. This warning does not change acceptance.', flush=True)
+        message = (f'{journey} recorded {retries} renderer navigation retry event(s); '
+                   'inspect navigation-timeouts.json')
+        # GitHub workflow-command data escaping; the title is a fixed property.
+        message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f'::warning title=Renderer navigation retry::{message}', flush=True)
 
 
 def run_journeys(chrome: Path, driver: Path, scratch: Path, output: Path, timeout: float) -> list[dict]:
