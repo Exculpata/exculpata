@@ -129,6 +129,18 @@
       "id": "search-spoken",
       "query": "synthetic recording",
       "top_k": 2
+    },
+    {
+      "id": "search-scan-en",
+      "query": "green lantern",
+      "top_k": 1,
+      "full_only": true
+    },
+    {
+      "id": "search-scan-es",
+      "query": "bicicleta roja",
+      "top_k": 1,
+      "full_only": true
     }
   ],
   "answers": [

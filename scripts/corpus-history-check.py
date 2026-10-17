@@ -31,7 +31,9 @@ CASES = (
      "failure_marker": "DID NOT RAISE"},
     {"id": "ask-routing", "fix": "b0cae56bac07b3e6c5ec47afa02397ee567f6ea4",
      "test": "test_router_benchmark_accuracy", "file": "tests/test_ask_router_benchmark.py",
-     "expected_tests": 4, "historical_failures": 3, "failure_marker": "expected question, got exact"},
+     "expected_tests": 4, "historical_failures": 3, "failure_marker": "expected question, got exact",
+     "failure_marker_by_test": {
+         "test_router_benchmark_accuracy[every_source]": "expected every_source, got question"}},
 )
 
 
@@ -106,7 +108,14 @@ def evaluate_report(report: Path, case: dict, returncode: int, historical: bool)
     errors = list(suite.iter("error"))
     skips = list(suite.iter("skipped"))
     failures = list(suite.iter("failure"))
-    failure_text = "\n".join((node.get("message", "") + "\n" + (node.text or "")) for node in failures)
+    # A marker in one failure cannot justify another failure in the same run.
+    # The routing benchmark's question and every-source populations have
+    # different known defects, so bind the latter marker to its exact test name.
+    markers = {node: case.get("failure_marker_by_test", {}).get(test.get("name"), case["failure_marker"])
+               for test in tests for node in test.findall("failure")}
+    intended_failures = all(node in markers and markers[node] in
+                            (node.get("message", "") + "\n" + (node.text or ""))
+                            for node in failures)
     only_assertions = all(node.get("message", "").startswith(("AssertionError", "Failed: DID NOT RAISE"))
                           for node in failures)
     correct_tests = (len(tests) == case["expected_tests"] and
@@ -114,7 +123,7 @@ def evaluate_report(report: Path, case: dict, returncode: int, historical: bool)
     accepted = correct_tests and not errors and not skips
     if historical:
         accepted = accepted and returncode == 1 and len(failures) == case["historical_failures"] and only_assertions
-        accepted = accepted and case["failure_marker"] in failure_text
+        accepted = accepted and intended_failures
     else:
         accepted = accepted and returncode == 0 and not failures
     return {"accepted": bool(accepted), "tests": len(tests), "failures": len(failures),

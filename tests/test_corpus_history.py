@@ -50,6 +50,46 @@ def test_historical_evidence_requires_specific_behavioral_failure(tmp_path, case
     assert not history.evaluate_report(path, case, 0, True)["accepted"]
 
 
+@pytest.mark.parametrize("case, intended_position", [
+    pytest.param(case, position, id=f"{case['id']}-intended-{position}")
+    for case in history.CASES if case["historical_failures"] > 1
+    for position in range(case["historical_failures"])
+])
+def test_every_historical_failure_needs_its_own_behavioral_marker(tmp_path, case, intended_position):
+    path = report(tmp_path, case, failure="AssertionError: unrelated mismatch")
+    tree = ET.parse(path)
+    intended = list(tree.getroot().iter("failure"))[intended_position]
+    message = "AssertionError: " + case["failure_marker"]
+    intended.set("message", message)
+    intended.text = message
+    tree.write(path)
+    outcome = history.evaluate_report(path, case, 1, True)
+    assert outcome["failures"] == case["historical_failures"]
+    assert not outcome["accepted"]
+
+
+@pytest.mark.parametrize("wrong_parameter", [None, "question", "every_source", "overall"])
+def test_routing_failure_markers_are_bound_to_their_population(tmp_path, wrong_parameter):
+    case = history.CASES[2]
+    path = report(tmp_path, case)
+    tree = ET.parse(path)
+    for test, parameter in zip(tree.getroot().iter("testcase"), ("exact", "question", "every_source", "overall")):
+        name = f'{case["test"]}[{parameter}]'
+        test.set("name", name)
+        if parameter == "exact":
+            continue
+        marker = case.get("failure_marker_by_test", {}).get(name, case["failure_marker"])
+        if parameter == wrong_parameter:
+            marker = (case["failure_marker"] if parameter == "every_source"
+                      else "expected every_source, got question")
+        message = "AssertionError: " + marker
+        ET.SubElement(test, "failure", message=message).text = message
+    tree.write(path)
+    outcome = history.evaluate_report(path, case, 1, True)
+    assert outcome["failures"] == 3
+    assert outcome["accepted"] is (wrong_parameter is None)
+
+
 @pytest.mark.parametrize("mutation", [
     {"error": "ImportError: synthetic dependency missing"},
     {"skipped": True},

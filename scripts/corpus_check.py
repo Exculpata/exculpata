@@ -69,8 +69,14 @@ def load_corpus(root: Path):
             if not normalize(case['text']) or not isinstance(case[metric], (int, float)) or not math.isfinite(case[metric]) or not 0 <= case[metric] <= 0.15:
                 raise ValueError(f'{group}: invalid expected text or tolerance')
     sources = {row['id'] for row in manifest['documents'] + manifest['audio']}
+    ocr_sources = {row['id'] for row in manifest['documents'] if row['ocr']}
+    discovery_sources = set()
     for case in manifest['search']:
         hits = expected['search'][case['id']]['document_ids']
+        if (type(case.get('full_only', False)) is not bool
+                or ocr_sources.intersection(hits) and not case.get('full_only', False)):
+            raise ValueError('OCR search cases require an explicit full-only lane')
+        discovery_sources.update(hits)
         if (type(case['top_k']) is not int or not 0 < case['top_k'] <= len(sources)
                 or not hits or len(hits) != len(set(hits)) or not set(hits) <= sources
                 or len(hits) > case['top_k']):
@@ -83,6 +89,9 @@ def load_corpus(root: Path):
                 or any(not isinstance(span, str) or not normalize(span) for span in c.get('alternative_spans', []))
                 for c in case['citations'])):
             raise ValueError('Answers require nonempty facts and known source spans')
+        discovery_sources.update(c['document_id'] for c in case['citations'])
+    if not ocr_sources <= discovery_sources:
+        raise ValueError('Every OCR source requires a discovery expectation')
     return manifest, expected
 
 
@@ -99,7 +108,8 @@ def compare(manifest, expected, actual, *, full=False):
     for group in ('documents', 'audio', 'search', 'answers'):
         for case in manifest[group]:
             key = case['id']
-            if not full and (group == 'audio' or group == 'documents' and case['ocr']):
+            if not full and (group == 'audio' or group == 'documents' and case['ocr']
+                             or group == 'search' and case.get('full_only', False)):
                 continue
             want = expected[group][key]
             got = actual.get(key)

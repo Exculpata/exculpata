@@ -127,5 +127,7 @@ def test_corpus_citations_accept_observed_spoken_numeral_without_inference_from_
         {'start':2.04, 'end':4.48, 'text':'The orange parcel was stored in Locker 7.', 'speaker':'SPEAKER_00'},
     ]
     actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    assert 'Locker 7.' in actual['audio-parcel']['text']
+    assert 'search-scan-en' not in actual and 'search-scan-es' not in actual
     results = gate.compare(manifest, expected, actual)
     assert all(row['passed'] for row in results), results

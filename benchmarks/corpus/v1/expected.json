@@ -57,6 +57,16 @@
         "audio-bicycle",
         "audio-parcel"
       ]
+    },
+    "search-scan-en": {
+      "document_ids": [
+        "scan-en"
+      ]
+    },
+    "search-scan-es": {
+      "document_ids": [
+        "scan-es"
+      ]
     }
   },
   "answers": {

@@ -210,7 +210,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
         raise ValueError("Full observation requires independently observed transcripts")
     dispatch = dispatch_questions(Path(root), manifest)
     results, aliases = {}, {}
-    transcripts = observed_transcripts if full else manifest.get("fast_transcripts", {})
+    transcripts = observed_transcripts if observed_transcripts is not None else manifest.get("fast_transcripts", {})
     root = Path(root)
     with tempfile.TemporaryDirectory(prefix="synthetic-corpus-") as temporary, _environment(
         CASE_INTELLIGENCE_TEST_MODE="1", CASE_INTELLIGENCE_MAINTENANCE_ENABLED="0",
@@ -262,6 +262,8 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                                        "mode": "observed-asr" if full else "prepared-transcript-fixture"}
             bench._sync_source_catalog(matter, tuple(store.documents.values()))
             for item in manifest.get("search", []):
+                if item.get("full_only", False) and not full:
+                    continue
                 citations = [_citation(bench, matter, row, aliases)
                              for row in bench.search(matter, item["query"], limit=item.get("top_k", 5))]
                 results[item["id"]] = {"document_ids": list(dict.fromkeys(row["document_id"] for row in citations)),
