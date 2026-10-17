@@ -99,11 +99,6 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         path = root / "config" / f"{names}.env"
         if path.exists() or path.is_symlink():
             config_generations.add(names)
-    # When both candidate files exist, their filenames do not establish two
-    # storage generations. Keep the durable metadata/markers authoritative and
-    # let the application-file selector choose which configuration is read.
-    if len(config_generations) == 1:
-        generations.update(config_generations)
     storage = storage_root or root / "matter-storage"
     if (root / "compose.env").is_symlink():
         raise NamingError("Saved Compose configuration cannot be a symbolic link.")
@@ -119,6 +114,10 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         raise NamingError("Conflicting naming markers or installation metadata; restore the node's original marker/configuration set. No migration was performed.")
     if generations:
         return generations.pop()
+    # Filenames are fallback evidence only. A saved storage generation does not
+    # change when an operator selects a different application env filename.
+    if len(config_generations) == 1:
+        return config_generations.pop()
     # P2 may already use EXCULPATA environment keys; those are not a migration.
     if config_generations or installation.exists() or (root / "compose.env").exists() or _legacy_account():
         return f"{LEGACY_STEM}"

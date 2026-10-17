@@ -226,7 +226,8 @@ def test_installation_metadata_must_agree_with_markers(tmp_path, names, signal, 
         marker = directory / f".{marker_names}-managed-storage.json"
     marker.write_text("{}")
     before = {p: p.read_bytes() for p in (record, marker)}
-    if matches:
+    if matches or signal == "config":
+        # Application filenames select configuration, not a storage migration.
         assert installer._detected_names(root, storage) == names
     else:
         with pytest.raises(installer.NamingError, match="Conflicting naming"):
@@ -499,14 +500,39 @@ def test_cli_with_both_app_files_uses_selection_without_renaming_node(tmp_path, 
 def test_cli_with_both_app_files_still_rejects_storage_generation_conflict(tmp_path, monkeypatch, marker_names):
     names = CURRENT_STEM if marker_names == LEGACY_STEM else LEGACY_STEM
     root, _, paths = configured_node(tmp_path, names=names)
-    # Explicit durable naming evidence for both legacy and current nodes.
-    record = root / "installation.json"
-    metadata = json.loads(record.read_text())
-    metadata["names"] = names
-    record.write_text(json.dumps(metadata))
+    # Older legacy records without a naming field are durable evidence too.
     other = paths["config"] / f"{marker_names}.env"
     other.write_bytes((paths["config"] / f"{names}.env").read_bytes())
     (paths["storage"] / f".{marker_names}-managed-storage.json").write_text("{}")
     monkeypatch.setattr(installer, "_doctor", lambda *a: pytest.fail("conflict reached doctor"))
     monkeypatch.setattr(sys, "argv", ["install", "doctor", "--root", str(root), "--dry-run", "--non-interactive"])
     assert installer.main() == 1
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_cli_single_app_filename_cannot_override_saved_generation(tmp_path, monkeypatch, names, explicit):
+    root, _, paths = configured_node(tmp_path, names=names)
+    filename = f"{CURRENT_STEM if names == LEGACY_STEM else LEGACY_STEM}.env"
+    (paths["config"] / f"{names}.env").rename(paths["config"] / filename)
+    compose = root / "compose.env"
+    compose.write_text("\n".join(line for line in compose.read_text().splitlines()
+                                 if "APP_ENV_FILE=" not in line) + "\n")
+    if explicit:
+        installer._replace_env(compose, "EXCULPATA_APP_ENV_FILE", filename, add_missing_aliases=True)
+    before = {path: path.read_bytes() for path in (compose, root / "installation.json", paths["config"] / filename)}
+    args = installer._parser().parse_args(["update", "--root", str(root)])
+    installer._saved_node_arguments(args, root)
+    calls = []
+    def run(console, command, **kwargs):
+        env = installer._compose_environment(command)
+        assert env["EXCULPATA_APP_ENV_FILE"] == filename
+        assert env["EXCULPATA_COMPOSE_PROJECT"].startswith(names + "-")
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(installer, "_run", run)
+    monkeypatch.setattr(sys, "argv", ["install", "doctor", "--root", str(root), "--dry-run", "--non-interactive"])
+    assert installer.main() == 0
+    assert calls
+    assert installer._node_names(root) == names
+    assert {path: path.read_bytes() for path in before} == before
