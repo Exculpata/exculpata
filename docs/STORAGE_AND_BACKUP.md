@@ -57,16 +57,16 @@ copied to a separate protected location. The repository and recovery credential
 must not live inside the node or inside each other. Scheduling is opt-in.
 
 The examples below are for new Exculpata nodes. Existing nodes must keep their
-original root, service account, repository and recovery-key locations. Backups
-retain the `exculpata` restic tag and `exculpata-backup-<hash>` units on legacy
-nodes. New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
+original root, service account, repository and recovery-key locations. Legacy
+nodes retain the `recordbench` restic tag and `recordbench-backup-<hash>` units.
+New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
 replaces legacy units with new names. Status and restore accept either restic tag;
 retention remains scoped to the node's existing generation. PostgreSQL dumps and
-imports continue to use the `exculpata` user/database.
+imports continue to use the `recordbench` user and database on every node.
 
 `scripts/exculpata-backup.sh`, `scripts/exculpata-backup-status.sh`,
 `scripts/exculpata-restore-drill.sh` and `scripts/exculpata_backup.py` expose the
-same operations as the retained `exculpata` entry points. Either spelling can
+same operations as the retained `recordbench` entry points. Either spelling can
 read either generation. A verified restore preserves the archived config and
 marker bytes; it does not perform a naming migration.
 

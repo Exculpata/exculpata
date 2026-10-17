@@ -29,18 +29,18 @@ Do not edit generated files while services run. Back up, validate changes with
 
 ## Compatible environment names
 
-Use `EXCULPATA_*` for settings previously named `EXCULPATA_*`. Every old
+Use `EXCULPATA_*` for settings previously named `RECORDBENCH_*`. Every old
 name remains accepted as a deprecated alias; no new setting is required for
 an existing installation. `CASE_INTELLIGENCE_*`, `CASE_REVIEW_*` and
 `TRANSCRIPTION_V2_*` names and Python import packages are unchanged.
 
 Application and node-tool reads prefer an explicitly set `EXCULPATA_*` value,
-including an empty value, then fall back to `EXCULPATA_*` and the existing
+including an empty value, then fall back to `RECORDBENCH_*` and the existing
 default. A legacy name logs one deprecation warning per process. If both names
 are set differently, the new name wins and a separate warning is logged once
 per setting per process. Warnings contain setting names, never values.
 
-Compose uses `${EXCULPATA_X:-${EXCULPATA_X:-default}}`: as usual for Compose's
+Compose uses `${EXCULPATA_X:-${RECORDBENCH_X:-default}}`: as usual for Compose's
 `:-` operator, an empty value falls back as well as an unset value. Required
 storage and secret mounts still need valid paths; the Kerberos entrypoint
 validates its required service identity before starting. `make compose-check`
