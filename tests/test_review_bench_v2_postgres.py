@@ -317,3 +317,9 @@ def test_live_learned_dense_only_paraphrase_and_unsupported_abstention():
         assert semantic and semantic[0].page_number == 2
         assert retriever.search("matter-alpha", "unfindable zephyr term") == ()
         assert retriever.search("matter-alpha", "blood alcohol level") == ()
+
+# Include the review-state schema contract in the existing PostgreSQL CI target.
+from tests.test_candidate_review_postgres import (
+    test_candidate_review_postgres_migration_and_restore,
+    test_candidate_review_postgres_mode_purge,
+)

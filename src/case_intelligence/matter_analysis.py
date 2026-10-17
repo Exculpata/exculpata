@@ -217,3 +217,14 @@ def analyze_candidates(
         capped=capped,
         findings=tuple(findings),
     )
+
+
+def possible_inconsistencies(units, entities, resolve):
+    """New typed comparisons share the legacy analysis polarity vocabulary.
+
+    Legacy contradiction findings and their stored review decisions are unchanged.
+    """
+    from .statement_comparison import attribute_statements, compare, validate_candidates
+    statements = attribute_statements(units, entities)
+    candidates, dropped = validate_candidates(compare(statements), resolve)
+    return statements, candidates, dropped

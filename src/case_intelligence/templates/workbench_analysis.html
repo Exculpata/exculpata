@@ -21,6 +21,7 @@
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
   {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
 
+  <p><a href="/matters/{{ matter.slug }}/inconsistencies">Possible inconsistencies: compare cited passages and review decisions</a></p>
   <section class="analysis-caution">
     <strong>Review candidates, not established facts.</strong>
     <span>Names and dates come from extracted text; transcript errors, OCR errors, context, and differing source quality can change their meaning. Confirm or dismiss findings only after opening the cited passages.</span>

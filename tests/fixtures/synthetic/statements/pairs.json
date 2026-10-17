@@ -1,0 +1,11 @@
+[
+ {"id":"time", "type":"time_date", "left":"Alex Example said the red parcel arrived at Cedar Depot at 2:10 p.m.", "right":"Alex Example said the red parcel arrived at Cedar Depot at 2:40 p.m."},
+ {"id":"location", "type":"location", "left":"Alex Example said the red parcel arrived at Cedar Depot.", "right":"Alex Example said the red parcel arrived at Birch Depot."},
+ {"id":"count", "type":"quantity_count", "left":"Alex Example said two parcels arrived at Cedar Depot.", "right":"Alex Example said three parcels arrived at Cedar Depot."},
+ {"id":"presence", "type":"people_present", "left":"Alex Example said Jordan Sample was present at Cedar Depot during delivery.", "right":"Alex Example said Jordan Sample was not present at Cedar Depot during delivery."},
+ {"id":"paraphrase", "type":null, "left":"Alex Example said the red parcel arrived at Cedar Depot.", "right":"Alex Example stated the red parcel was delivered at Cedar Depot."},
+ {"id":"same-time", "type":null, "left":"Alex Example said the red parcel arrived at Cedar Depot at 14:10.", "right":"Alex Example said the red parcel arrived at Cedar Depot at 2:10 p.m."},
+ {"id":"added-detail", "type":null, "left":"Alex Example said the red parcel arrived at Cedar Depot.", "right":"Alex Example said the red parcel arrived at Cedar Depot with a striped cover."},
+ {"id":"action", "type":"observed_action", "left":"Alex Example said Jordan Sample delivered the red parcel at Cedar Depot.", "right":"Alex Example said Jordan Sample never delivered the red parcel at Cedar Depot."},
+ {"id":"color", "type":"object_description", "left":"Alex Example said the red parcel arrived at Cedar Depot.", "right":"Alex Example said the blue parcel arrived at Cedar Depot."}
+]
