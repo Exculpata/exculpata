@@ -1,46 +1,48 @@
-# Exculpata contributor guide
+# Exculpata contributor judgment rules
 
-Build toward a small defense team dropping in discovery and getting cited
-understanding without choosing an engine, configuring anything, or letting
-material leave the building. Read the [product north star](docs/PRODUCT_NORTH_STAR.md).
-GitHub issues and milestones are the work queue. Verify the checkout, branch and
-upstream PR state before acting; respect the selected scope and existing holds.
+Follow [coding standards](CODING_STANDARDS.md) for development, synthetic data,
+publication safeguards and validation. The [review policy](docs/QUALITY_GATES.md#review-policy)
+remains the merge gate. Keep work aligned with the [product north star](docs/PRODUCT_NORTH_STAR.md).
+The planned `docs/IDEAL.md` is tracked in [#305](https://github.com/Exculpata/exculpata/issues/305);
+do not start that document before its stated dependency gate.
 
-Treat this repository and every GitHub interaction as public. Before any push,
-run the installed pre-push publication check; never bypass it. Separately inspect
-PR text, comments, attachments and release assets, including metadata. Hosted CI
-cannot prevent the initial disclosure. Follow [publication rules](docs/PUBLIC_ALPHA.md)
-and the single [review policy](docs/QUALITY_GATES.md#review-policy).
+## Restate the goal before coding
 
-Use synthetic fixtures only. Never add real case material, private identities,
-hostnames, addresses, credentials, certificates, database files, runtime state,
-or deployment overlays. Reproduce downstream defects with content-free descriptions
-and synthetic inputs; never copy private history, logs or configuration.
+Read the issue, current comments, assignees, claims and related PRs. Respect
+existing work and holds. In your first kickoff comment, restate the goal and
+user-visible outcome in your own words. Compare it with the issue's scope and
+acceptance criteria; code starts only after they match. Resolve any mismatch
+with the issue author before proceeding. Keep changes focused on that outcome.
 
-Model changes require an exact revision, license record, local/offline readiness
-test and representative evaluation. Schema or storage changes require backup
-and a clean restore drill with evidence. Before changing deployment behavior,
-read [architecture](docs/ARCHITECTURE.md), [security](docs/SECURITY_MODEL.md) and the
-relevant runbook; keep services private and preserve the trusted-proxy boundary.
+## Correct the environment, not the agent
 
-Keep changes focused. Behavioral changes need a synthetic regression, relevant
-docs and a clear user outcome. Run applicable validation and the publication
-sanitizer before committing. Keep deployment overlays external and release tags
-immutable; corrections get new commits and releases. See [Contributing](CONTRIBUTING.md)
-and [development guidance](docs/DEVELOPMENT.md).
+When a mistake happens a second time, change the repo so the next contributor
+can't repeat it. Fix it at the highest level that works:
 
-## Cursor Cloud specific instructions
+1. Code: types, invariants, one owner per piece of state, boundaries that make the wrong call fail.
+2. A static check or CI test whose error names the file or function to use instead.
+3. A rule in this file, only for judgment calls that nothing can check.
+4. Human review, as a last resort.
 
-Python 3.12, ffmpeg, ImageMagick, poppler, English and Spanish Tesseract, the Docker CLI with Compose v2, and Gitleaks 8.30.1 are installed for contributor checks. PostgreSQL 17 with pgvector is installed as a disposable loopback database. The environment start command brings that cluster up; it is not left running by install.
+Every fix comes with a small synthetic regression test that fails on the commit
+that had the mistake. Name that commit in the PR description. If you fix at a
+lower level, say in one line why a higher level didn't work.
 
-Refresh the virtualenv with `python3.12 scripts/bootstrap-dev.py`. `make bootstrap` also runs `make hooks`, which fails while Cursor owns `core.hooksPath`. Before pushing, run `.venv/bin/python scripts/publication-check.py`. That scan uses `git rev-list --all`, so a full clone can report historical findings that are only reachable from other remote branches.
+## Encode intent in the implementation
 
-`make test-postgres` and `make check-fast` need `CASE_REVIEW_POSTGRES_TEST_DSN` set to the synthetic value in `.github/workflows/quality-gates.yml`. On this smaller VM also export `CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0` and `CASE_INTELLIGENCE_TEST_MODE=1`, as that workflow does. `docker compose config` validates the Compose files without a running Docker engine.
+Express intent in names, types, invariants or tests rather than comments.
+A comment that explains a workaround needs a linked issue and an expiry
+(date or explicit removal condition). Delete stale comments; convert missing
+behavioral guarantees into tests or track the remaining work in an issue.
 
-For a loopback UI check:
+## Rule enforcement
 
-```console
-CASE_INTELLIGENCE_AUTH_MODE=preview .venv/bin/exculpata-workbench --host 127.0.0.1
-```
+| Rule | Enforced by |
+| --- | --- |
+| Match the kickoff goal and user-visible outcome to the issue before coding. | Required `restate_goal` in `.github/ISSUE_TEMPLATE/agent_task.yml`; `tests/test_issue_templates.py` checks the form; kickoff review checks meaning because scope alignment requires judgment. |
+| Fix repeated mistakes at the highest effective level and explain lower-level choices. | Required fix-level field; PR review checks the choice because effectiveness depends on the failure. |
+| Supply a synthetic regression and name the failing commit. | Required regression field; the application CI suite runs tests; PR review verifies the historical failure evidence. |
+| Encode intent in implementation; give workaround comments an issue and expiry. | Code review checks intent, workaround relevance and expiry because syntax alone cannot establish them. |
+| Follow the linked coding, publication and validation standards. | `make check-fast`, the installed pre-push publication guard and the linked review policy; review covers public text outside Git. |
 
-Sign in with a synthetic preview identity and create a synthetic matter. Keep this mode on loopback.
+Add a row for each new judgment rule; delete its row once the mistake cannot happen.
