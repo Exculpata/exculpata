@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import io
 import ipaddress
@@ -15,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from datetime import date
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -217,6 +219,8 @@ MEDIA_SUFFIXES = {
     ".wma",
     ".wmv",
 }
+IMAGE_TYPES = {".gif": "GIF", ".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}
+MEDIA_REVIEW_FILE = Path(__file__).with_name("publication-media-reviews.json")
 MAX_DERIVED_SCAN_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 5_000
 
@@ -423,6 +427,19 @@ def _scan_pdf(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> list[Fi
     )
 
 
+def _metadata_content(value) -> bytes:
+    """Inspect decoded values, including nested and binary ExifTool metadata."""
+    if isinstance(value, dict):
+        return b"\n".join(_metadata_content(part) for pair in value.items() for part in pair)
+    if isinstance(value, list):
+        return b"\n".join(_metadata_content(part) for part in value)
+    if isinstance(value, str):
+        if value.startswith("base64:"):
+            return base64.b64decode(value[7:], validate=True)
+        return value.encode("utf-8", errors="replace")
+    return str(value).encode("utf-8")
+
+
 def _scan_media(
     data: bytes,
     *,
@@ -446,7 +463,7 @@ def _scan_media(
                     "-v",
                     "error",
                     "-show_entries",
-                    "format_tags:stream_tags",
+                    "format_tags:stream_tags:chapter_tags",
                     "-of",
                     "json",
                     handle.name,
@@ -461,14 +478,98 @@ def _scan_media(
     if result.returncode != 0 or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
         return [Finding(location, "media-inspection-failed")]
     try:
-        json.loads(result.stdout)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        tags = json.loads(result.stdout)
+        if not isinstance(tags, dict):
+            raise ValueError
+        content = _metadata_content(tags)
+    except (UnicodeDecodeError, ValueError):
         return [Finding(location, "media-inspection-failed")]
     return _scan_bytes(
-        result.stdout,
+        content,
         location=f"{location}#media-metadata",
         deny=deny,
     )
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _reviewed_binary_media(data: bytes, suffix: str) -> bool:
+    """Policy lives beside the trusted scanner, never in the candidate tree."""
+    try:
+        metadata = MEDIA_REVIEW_FILE.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 512 * 1024:
+            raise ValueError
+        policy = json.loads(MEDIA_REVIEW_FILE.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
+        if (not isinstance(policy, dict) or set(policy) != {"version", "reviews"}
+                or type(policy["version"]) is not int or policy["version"] != 1):
+            raise ValueError
+        if not isinstance(policy["reviews"], list):
+            raise ValueError
+        seen = set()
+        digest = hashlib.sha256(data).hexdigest()
+        approved = False
+        for entry in policy["reviews"]:
+            if not isinstance(entry, dict) or set(entry) != {"sha256", "suffix", "reason", "approver", "expires"}:
+                raise ValueError
+            if any(not isinstance(value, str) or not value.strip() for value in entry.values()):
+                raise ValueError
+            if re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is None:
+                raise ValueError
+            if entry["suffix"] not in MEDIA_SUFFIXES | IMAGE_TYPES.keys():
+                raise ValueError
+            key = (entry["sha256"], entry["suffix"])
+            if key in seen or re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["expires"]) is None:
+                raise ValueError
+            seen.add(key)
+            expiry = date.fromisoformat(entry["expires"])
+            if key == (digest, suffix) and expiry >= date.today():
+                approved = True
+        return approved
+    except (OSError, ValueError, TypeError):
+        raise ValueError("Media review policy is unavailable or invalid") from None
+
+
+def _scan_image(data: bytes, *, name: str, location: str, deny: tuple[bytes, ...]) -> list[Finding]:
+    exiftool = shutil.which("exiftool")
+    if exiftool is None:
+        return [Finding(location, "media-inspection-unavailable")]
+    try:
+        with tempfile.NamedTemporaryFile(prefix="exculpata-publication-", suffix=Path(name).suffix) as handle:
+            handle.write(data)
+            handle.flush()
+            result = subprocess.run(
+                [exiftool, "-j", "-a", "-G1:4", "-u", "-U", "-ee", "-b", handle.name],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30,
+            )
+        if result.returncode or result.stderr or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
+            raise ValueError
+        entries = json.loads(result.stdout)
+        if not isinstance(entries, list) or len(entries) != 1 or not isinstance(entries[0], dict):
+            raise ValueError
+        tags = entries[0]
+        if tags.get("File:FileType") != IMAGE_TYPES[Path(name).suffix.casefold()]:
+            raise ValueError
+        if any(key.rsplit(":", 1)[-1] in {"Warning", "Error"} for key in tags):
+            raise ValueError
+        # These fields describe the temporary inspection file, not asset metadata.
+        for key in tuple(tags):
+            if key == "SourceFile" or key.startswith("System:"):
+                del tags[key]
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        return [Finding(location, "media-inspection-failed")]
+    try:
+        content = _metadata_content(tags)
+    except ValueError:
+        return [Finding(location, "media-inspection-failed")]
+    return _scan_bytes(content, location=f"{location}#media-metadata", deny=deny)
+
 
 
 def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> list[Finding]:
@@ -564,20 +665,28 @@ def _scan_content(
             and hashlib.sha256(data).hexdigest() in reviewed_media_digests):
         raw_deny = tuple(term for term in deny if len(term) != 3)
         scanned = _without_short_email_collisions(data)
-    findings = _scan_bytes(
+    suffix = Path(name).suffix.casefold()
+    approved = False
+    policy_findings = []
+    if suffix in MEDIA_SUFFIXES | IMAGE_TYPES.keys():
+        try:
+            approved = _reviewed_binary_media(data, suffix)
+        except ValueError:
+            policy_findings.append(Finding(location, "media-review-policy-invalid"))
+    findings = policy_findings + ([] if approved else _scan_bytes(
         scanned,
         location=location,
         deny=raw_deny,
         allowed_deny_literals=allowed_deny_literals,
-    )
-    if Path(name).suffix.casefold() == ".pdf":
+    ))
+    if suffix == ".pdf":
         findings.extend(_scan_pdf(data, location=location, deny=deny))
     elif zipfile.is_zipfile(io.BytesIO(data)):
         findings.extend(_scan_archive(data, location=location, deny=deny))
-    elif Path(name).suffix.casefold() in MEDIA_SUFFIXES:
-        findings.extend(
-            _scan_media(data, name=name, location=location, deny=deny)
-        )
+    if suffix in IMAGE_TYPES:
+        findings.extend(_scan_image(data, name=name, location=location, deny=deny))
+    elif suffix in MEDIA_SUFFIXES:
+        findings.extend(_scan_media(data, name=name, location=location, deny=deny))
     return findings
 
 

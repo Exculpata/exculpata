@@ -29,7 +29,7 @@ Ubuntu 24.04 development machine:
 ```console
 sudo apt-get update
 sudo apt-get install --yes git make python3.12 python3.12-venv \
-  ffmpeg imagemagick poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
+  ffmpeg libimage-exiftool-perl imagemagick poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
 ```
 
 Install Docker Engine with the Compose v2 plugin using Docker's instructions
