@@ -139,7 +139,7 @@ no GPU with a count of 0 and VRAM marked not applicable.
 | Isolated restore and replacement-node boot | Encrypted snapshot/data verification, fresh PostgreSQL import, restored sign-in/access and identical EN/ES exports passed; new-job result belongs to the exact candidate acceptance receipt |
 | Actual image identities/SBOM and advisory dispositions | Initial image set inventoried and audited; available companion-service fixes are being qualified. Remaining native-parser and dependency findings require explicit release disposition |
 | Independent unfamiliar operator and human language-quality review | Not yet available; explicit beta limitation |
-| Tag `v0.1.0-beta.1` | Current prerelease. The maintainer applies the tag. Checksummed source artifacts and recorded image identities are follow-ups |
+| Tag `v0.1.0-beta.1` | Published [community beta prerelease](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1). Checksummed source artifacts and recorded image identities are follow-ups |
 
 A completed reference trial plus reviewed final code/CI and release approval
 allows a community beta decision. Broad hardware support, universal model
