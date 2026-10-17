@@ -833,6 +833,100 @@ def test_navigation_waits_for_complete_document(navigation, tmp_path):
     assert driver.execute_script.call_count == 2
 
 
+def test_navigation_none_waits_past_old_complete_document(navigation, tmp_path, monkeypatch):
+    from selenium.common.exceptions import StaleElementReferenceException
+    from selenium.webdriver.support.ui import WebDriverWait
+    monkeypatch.setattr(navigation, 'WebDriverWait',
+                        lambda driver, timeout: WebDriverWait(driver, timeout, poll_frequency=.001))
+    driver, old_document = Mock(), Mock()
+    driver.capabilities = {'pageLoadStrategy': 'none'}
+    old_document.is_enabled.side_effect = [True, True, StaleElementReferenceException()]
+    readiness = iter(['loading', 'complete'])
+    reads = []
+    def execute(script, *args):
+        if args:
+            return [old_document, 'http://example.invalid/old', args[0]]
+        # The old page is already complete; the helper must not accept it.
+        state = 'complete' if old_document.is_enabled.call_count < 3 else next(readiness)
+        reads.append(state)
+        return state
+    driver.execute_script.side_effect = execute
+    navigation.navigate_to(driver, 'http://example.invalid/new', diagnostics=tmp_path)
+    assert old_document.is_enabled.call_count == 3
+    assert reads == ['loading', 'complete']
+    driver.get.assert_called_once()
+
+
+@pytest.mark.parametrize('target', ['http://example.invalid/page#next',
+                                    'http://example.invalid/page#old',
+                                    'http://example.invalid/page#'])
+def test_navigation_none_preserves_same_document_fragments(navigation, tmp_path, monkeypatch, target):
+    from unittest.mock import PropertyMock
+    from selenium.webdriver.support.ui import WebDriverWait
+    monkeypatch.setattr(navigation, 'WebDriverWait',
+                        lambda driver, timeout: WebDriverWait(driver, timeout, poll_frequency=.001))
+    driver, old_document = Mock(), Mock()
+    driver.capabilities = {'pageLoadStrategy': 'none'}
+    old_document.is_enabled.return_value = True
+    previous = 'http://example.invalid/page#old'
+    driver.execute_script.side_effect = lambda script, *args: (
+        [old_document, previous, target] if args else 'complete')
+    type(driver).current_url = PropertyMock(side_effect=[previous, target])
+    navigation.navigate_to(driver, target, diagnostics=tmp_path)
+    assert old_document.is_enabled.call_count == (1 if target == previous else 2)
+    driver.get.assert_called_once_with(target)
+
+
+@pytest.mark.parametrize('target', ['http://example.invalid/page',
+                                    'http://example.invalid/page?new=1#anchor',
+                                    'http://example.invalid/other#anchor'])
+def test_navigation_none_stalled_document_fails_without_retry(navigation, tmp_path, target):
+    from selenium.common.exceptions import TimeoutException
+    driver, old_document = Mock(), Mock()
+    driver.capabilities = {'pageLoadStrategy': 'none'}
+    old_document.is_enabled.return_value = True
+    driver.current_url = target  # A changed URL alone cannot prove replacement.
+    driver.execute_script.side_effect = lambda script, *args: (
+        [old_document, 'http://example.invalid/page', target] if args else 'complete')
+    with pytest.raises(TimeoutException):
+        navigation.navigate_to(driver, target, diagnostics=tmp_path, readiness_timeout=.001)
+    driver.get.assert_called_once()
+    assert not (tmp_path / navigation.DIAGNOSTIC_NAME).exists()
+
+
+@pytest.mark.parametrize('error', ['Node with given id does not belong to the document',
+                                  'Unexpected inspector failure'])
+def test_navigation_none_handles_only_known_detachment_error(navigation, tmp_path, error):
+    from selenium.common.exceptions import WebDriverException
+    driver, old_document = Mock(), Mock()
+    driver.capabilities = {'pageLoadStrategy': 'none'}
+    old_document.is_enabled.side_effect = WebDriverException(error)
+    driver.execute_script.side_effect = lambda script, *args: (
+        [old_document, 'http://example.invalid/old', args[0]] if args else 'complete')
+    if error.startswith('Node with given id'):
+        navigation.navigate_to(driver, 'http://example.invalid/new', diagnostics=tmp_path)
+    else:
+        with pytest.raises(WebDriverException, match=error):
+            navigation.navigate_to(driver, 'http://example.invalid/new', diagnostics=tmp_path)
+    driver.get.assert_called_once()
+
+
+def test_navigation_none_resnapshots_document_before_renderer_retry(navigation, tmp_path):
+    from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+    driver, first_document, retry_document = Mock(), Mock(), Mock()
+    driver.capabilities = {'pageLoadStrategy': 'none'}
+    driver.get.side_effect = [TimeoutException('Timed out receiving message from renderer'), None]
+    retry_document.is_enabled.side_effect = StaleElementReferenceException()
+    driver.execute_script.side_effect = [
+        [first_document, 'http://example.invalid/old', 'http://example.invalid/new'],
+        [retry_document, 'http://example.invalid/new', 'http://example.invalid/new'],
+        'complete']
+    navigation.navigate_to(driver, 'http://example.invalid/new', diagnostics=tmp_path)
+    first_document.is_enabled.assert_not_called()
+    retry_document.is_enabled.assert_called_once()
+    assert driver.get.call_count == 2
+
+
 def test_navigation_diagnostic_failure_prevents_retry(navigation, tmp_path):
     from selenium.common.exceptions import TimeoutException
     driver = Mock()

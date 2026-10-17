@@ -97,10 +97,16 @@ unexpected driver errors. A stalled old or replacement document still fails.
 All `browser-accept-*.py` journeys use `browser_navigation.navigate_to` for
 URL navigation. It applies the existing 30-second page-load bound (20 seconds
 for loose-file preflight) and explicitly waits for a complete document. Only a
+nonblocking (`page_load_strategy='none'`) driver needs an additional transition
+check: the previous document must detach before its replacement can be accepted.
+Same-document fragment navigation instead waits for the canonical target URL;
+navigating to the same URL without a fragment still requires replacement. Both
+transition and readiness share the existing readiness deadline. Each permitted
+retry captures its own previous document. Only a
 Selenium `TimeoutException` identifying a renderer timeout permits one retry.
 Each such failure writes a bounded, content-free `navigation-timeouts.json`
 artifact before recovery; a second failure propagates. Other errors and readiness
-stalls fail immediately without retrying navigation. The runner retains this
+stalls fail without retrying navigation. The runner retains this
 artifact within its existing limits. Its CI contract tests cover recovery,
 exhaustion, unrelated errors, readiness, artifact retention and raw-call rejection.
 The source-role reload synchronization above remains required independently.

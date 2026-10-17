@@ -4,13 +4,45 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urldefrag
 
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 DIAGNOSTIC_NAME = 'navigation-timeouts.json'
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
 MAX_EVENTS = 64
+
+
+def _readiness_condition(driver, url):
+    """With nonblocking navigation, distinguish the old complete document."""
+    previous_document = None
+    same_document_target = None
+    if driver.capabilities.get('pageLoadStrategy') == 'none':
+        previous_document, previous_url, target = driver.execute_script(
+            'return [document.documentElement, location.href, '
+            'new URL(arguments[0], location.href).href]', url)
+        # Fragment navigations may retain the document, including an unchanged
+        # fragment. A same-URL navigation without a fragment must still reload.
+        if '#' in target and urldefrag(previous_url)[0] == urldefrag(target)[0]:
+            same_document_target = target
+    transitioned = previous_document is None
+
+    def ready(current):
+        nonlocal transitioned
+        if not transitioned:
+            try:
+                transitioned = EC.staleness_of(previous_document)(current)
+            except WebDriverException as exc:
+                if 'Node with given id does not belong to the document' not in (exc.msg or ''):
+                    raise
+                transitioned = True
+            if not transitioned and not (
+                    same_document_target is not None and current.current_url == same_document_target):
+                return False
+        return current.execute_script('return document.readyState') == 'complete'
+    return ready
 
 
 def _record_timeout(output, url, attempt, phase, page_load_timeout, readiness_timeout):
@@ -41,12 +73,14 @@ def navigate_to(driver, url, *, diagnostics, page_load_timeout=30, readiness_tim
         raise ValueError('Navigation timeouts must be positive')
     driver.set_page_load_timeout(page_load_timeout)
     for attempt in (1, 2):
+        # Snapshot each attempt separately: a timed-out attempt may have
+        # replaced the document before the one permitted recovery navigation.
+        ready = _readiness_condition(driver, url)
         phase = 'navigation'
         try:
             driver.get(url)
             phase = 'readiness'
-            WebDriverWait(driver, readiness_timeout).until(
-                lambda current: current.execute_script('return document.readyState') == 'complete')
+            WebDriverWait(driver, readiness_timeout).until(ready)
             return
         except TimeoutException as exc:
             if 'timed out receiving message from renderer' not in (exc.msg or '').casefold():
