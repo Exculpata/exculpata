@@ -19,6 +19,12 @@ sys.path.insert(0, str(ROOT / "src"))
 from case_intelligence.legacy_names import (  # noqa: E402
     LEGACY_STEM, NAME_CONTRACTS, NameContract, contract_errors,
 )
+from case_intelligence import legacy_names as naming  # noqa: E402
+
+KNOWN_VALUES = {key: item for key, item in vars(naming).items()
+                if key.startswith(("LEGACY_", "CURRENT_")) and isinstance(item, str)}
+STRING_METHODS = {"format", "format_map", "join", "replace", "lower", "upper", "casefold",
+                  "capitalize", "title", "swapcase", "strip", "lstrip", "rstrip", "removeprefix", "removesuffix"}
 
 SKIP_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
@@ -34,7 +40,7 @@ _TOKENS = re.compile(
     rf"(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
-    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.)?{_STEM}[A-Za-z0-9_.-]*)",
+    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.-]*)",
     re.IGNORECASE,
 )
 
@@ -112,7 +118,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         tree = ast.parse(text)
     except SyntaxError:
         return []  # Compilation is enforced separately.
-    env = {"LEGACY_STEM": LEGACY_STEM}
+    env = dict(KNOWN_VALUES)
     unresolved_stems: set[str] = set()
     found = []
 
@@ -132,6 +138,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             return env.get(node.id)
         if isinstance(node, ast.Attribute):
             return env.get(ast.unparse(node))
+        if isinstance(node, ast.IfExp):
+            choices = [value(node.body), value(node.orelse)]
+            if choices[0] == choices[1]:
+                return choices[0]
+            legacy = [item for item in choices if item is not None and LEGACY_STEM in item.casefold()]
+            if len(legacy) == 1:
+                return legacy[0]  # Check the legacy branch of a generation choice.
         if isinstance(node, ast.JoinedStr):
             parts = []
             for part in node.values:
@@ -153,9 +166,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             return joined(parts)
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             left, right = value(node.left), value(node.right)
-            if left is not None and LEGACY_STEM in left and right is None:
+            if left is not None and LEGACY_STEM in left.casefold() and right is None and not contains_stem(node.right):
                 right = "CONTRACTDYNAMIC"
-            if right is not None and LEGACY_STEM in right and left is None:
+            if right is not None and LEGACY_STEM in right.casefold() and left is None and not contains_stem(node.left):
                 left = "CONTRACTDYNAMIC"
             if left is not None and right is not None:
                 return joined([left, right])
@@ -206,7 +219,58 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                 except ValueError:
                     return None
                 return joined(parts)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id == "str" and len(node.args) == 1 and not node.keywords:
+                return value(node.args[0])
+            if node.func.id == "name_value" and node.args:
+                key = value(node.args[0])
+                if key in contracts:
+                    keywords = {arg.arg: value(arg.value) for arg in node.keywords if arg.arg}
+                    names = value(node.args[1]) if len(node.args) > 1 else keywords.get("names", naming.CURRENT_STEM)
+                    pair = contracts[key]
+                    template = pair.current if names == naming.CURRENT_STEM else pair.legacy
+                    parts = {field: (keywords[field] if keywords.get(field) is not None else "CONTRACTDYNAMIC")
+                             for _, field, _, _ in Formatter().parse(template) if field}
+                    return joined([template.format(**parts)])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            receiver = value(node.func.value)
+            arguments = [value(arg) for arg in node.args]
+            if receiver is not None and node.func.attr in STRING_METHODS - {"format", "format_map", "join"}:
+                if not node.keywords and all(arg is not None for arg in arguments):
+                    try:
+                        if node.func.attr == "replace" and len(arguments) >= 2:
+                            if len(receiver) + (len(receiver) + 1) * len(arguments[1]) > 65536:
+                                return None
+                        return joined([getattr(str, node.func.attr)(receiver, *arguments)])
+                    except TypeError:
+                        return None
+            if ast.unparse(node.func) == "re.escape" and len(arguments) == 1 and arguments[0] is not None:
+                return re.escape(arguments[0])
         return None
+
+    def call_inputs(node: ast.Call) -> list[ast.AST]:
+        """Only arguments contributing output text carry string provenance.
+
+        Search patterns and characters removed by stripping do not contribute
+        their contents to an unknown receiver. Reader/parser objects likewise
+        do not become strings just because their inputs mention a name.
+        """
+        if isinstance(node.func, ast.Attribute):
+            method = node.func.attr
+            receiver = [node.func.value]
+            if method == "join" and (separator := value(node.func.value)) and separator.isspace():
+                return []  # A whitespace separator preserves identifier boundaries.
+            if method in {"format", "format_map", "join"}:
+                return [*receiver, *node.args, *(arg.value for arg in node.keywords)]
+            if method == "get":
+                return [*receiver, *node.args[1:2]]
+            if method == "replace":
+                return [*receiver, *node.args[1:2]]
+            if method in STRING_METHODS:
+                return receiver
+        if isinstance(node.func, ast.Name) and node.func.id in {"str", "repr", "ascii", "name_value", "dict", "list", "tuple", "set"}:
+            return [*node.args, *(arg.value for arg in node.keywords)]
+        return []
 
     def contains_stem(piece: ast.AST) -> bool:
         if isinstance(piece, ast.Name) and piece.id in unresolved_stems:
@@ -215,7 +279,34 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             return any(contains_stem(item) for item in piece.values)
         if isinstance(piece, (ast.List, ast.Tuple, ast.Set)):
             return any(contains_stem(item) for item in piece.elts)
-        return LEGACY_STEM in (value(piece) or "")
+        if LEGACY_STEM in (value(piece) or "").casefold():
+            return True
+        if isinstance(piece, ast.Attribute):
+            return contains_stem(piece.value)
+        if isinstance(piece, ast.Subscript):
+            return contains_stem(piece.value)
+        if isinstance(piece, ast.Call):
+            return any(contains_stem(item) for item in call_inputs(piece))
+        if isinstance(piece, ast.IfExp):
+            return contains_stem(piece.body) or contains_stem(piece.orelse)
+        return False
+
+    def bind(target: ast.AST, expression: ast.AST | None) -> None:
+        if isinstance(target, ast.Name):
+            resolved = value(expression) if expression is not None else None
+            unresolved = expression is not None and resolved is None and contains_stem(expression)
+            unbind(target.id)
+            if resolved is not None:
+                env[target.id] = resolved
+            elif unresolved:
+                unresolved_stems.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            if isinstance(expression, (ast.Tuple, ast.List)) and len(target.elts) == len(expression.elts):
+                for item, source in zip(target.elts, expression.elts):
+                    bind(item, source)
+            else:
+                for item in target.elts:
+                    bind(item, expression)
 
     class Visitor(ast.NodeVisitor):
         def __init__(self) -> None:
@@ -224,40 +315,65 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
                 if alias.name == "case_intelligence.legacy_names":
-                    env[f"{alias.asname or alias.name}.LEGACY_STEM"] = LEGACY_STEM
+                    env.update({f"{alias.asname or alias.name}.{key}": item for key, item in KNOWN_VALUES.items()})
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
             if node.module and node.module.rsplit(".", 1)[-1] == "legacy_names":
                 for alias in node.names:
-                    if alias.name == "LEGACY_STEM":
-                        env[alias.asname or alias.name] = LEGACY_STEM
+                    if alias.name in KNOWN_VALUES:
+                        env[alias.asname or alias.name] = KNOWN_VALUES[alias.name]
             elif node.module == "case_intelligence":
                 for alias in node.names:
                     if alias.name == "legacy_names":
-                        env[f"{alias.asname or alias.name}.LEGACY_STEM"] = LEGACY_STEM
+                        env.update({f"{alias.asname or alias.name}.{key}": item for key, item in KNOWN_VALUES.items()})
 
         def visit_Assign(self, node: ast.Assign) -> None:
             self.generic_visit(node)
-            resolved = value(node.value)
-            unresolved = resolved is None and contains_stem(node.value)
             for target in node.targets:
-                if isinstance(target, ast.Name):
-                    unbind(target.id)
-                    if resolved is not None:
-                        env[target.id] = resolved
-                    elif unresolved:
-                        unresolved_stems.add(target.id)
+                bind(target, node.value)
 
         def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
             self.generic_visit(node)
-            if isinstance(node.target, ast.Name):
-                resolved = value(node.value) if node.value is not None else None
-                unresolved = node.value is not None and resolved is None and contains_stem(node.value)
-                unbind(node.target.id)
-                if resolved is not None:
-                    env[node.target.id] = resolved
-                elif unresolved:
-                    unresolved_stems.add(node.target.id)
+            bind(node.target, node.value)
+
+        def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
+            self.visit(node.iter)
+            bind(node.target, None)
+            for statement in (*node.body, *node.orelse):
+                self.visit(statement)
+
+        visit_AsyncFor = visit_For
+
+        def visit_AugAssign(self, node: ast.AugAssign) -> None:
+            expression = ast.copy_location(ast.BinOp(left=node.target, op=node.op, right=node.value), node)
+            self.visit(expression)
+            bind(node.target, expression)
+
+        def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+            self.visit(node.value)
+            bind(node.target, node.value)
+
+        def visit_If(self, node: ast.If) -> None:
+            nonlocal env, unresolved_stems
+            self.visit(node.test)
+            outer, outer_unresolved = dict(env), set(unresolved_stems)
+            branches = []
+            for statements in (node.body, node.orelse):
+                env, unresolved_stems = dict(outer), set(outer_unresolved)
+                for statement in statements:
+                    self.visit(statement)
+                branches.append((env, unresolved_stems))
+            left, right = branches
+            env = {key: item for key, item in left[0].items() if item == right[0].get(key)}
+            unresolved_stems = left[1] | right[1]
+            for key in left[0].keys() | right[0].keys():
+                legacy = {bindings[key] for bindings, _ in branches
+                          if key in bindings and LEGACY_STEM in bindings[key].casefold()}
+                if key not in env and key not in unresolved_stems and len(legacy) == 1:
+                    env[key] = legacy.pop()
+                    unresolved_stems.discard(key)
+                elif key not in env and legacy:
+                    unresolved_stems.add(key)
 
         def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
@@ -325,9 +441,17 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                 if isinstance(node, ast.JoinedStr):
                     pieces = [part.value if isinstance(part, ast.FormattedValue) else part for part in node.values]
                 elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
-                    pieces = [node.left, node.right]
-                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-                    pieces = [node.func.value, *node.args, *(arg.value for arg in node.keywords)]
+                    # Whitespace around a serialized value cannot create a new
+                    # identifier; its inner expressions are still inspected.
+                    whitespace = isinstance(node.op, ast.Add) and any(
+                        isinstance(part, ast.Constant) and isinstance(part.value, str) and not part.value.strip()
+                        for part in (node.left, node.right)
+                    )
+                    if not whitespace:
+                        pieces = [node.left, node.right]
+                elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    if node.func.attr in STRING_METHODS:
+                        pieces = call_inputs(node)
                 if any(contains_stem(piece) for piece in pieces):
                     found.append(Finding(f"{location}:{node.lineno}", "unsupported legacy composition; use a contract key"))
                     return

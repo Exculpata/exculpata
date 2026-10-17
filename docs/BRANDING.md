@@ -169,7 +169,12 @@ must still fit a declared naming family. Existing persisted formats, runtime lab
 and exact temporary-directory prefixes are retained explicitly in the table.
 Function bodies use the containing scope's completed bindings, including later
 module and closure aliases. Unsupported stem compositions, including mapping-style
-interpolation, must use a contract key instead.
+interpolation, must use a contract key instead. String methods, container lookups,
+conditional aliases and tuple assignments preserve known legacy origins. Search
+patterns and parser inputs do not become generated identifiers. This is a bounded
+syntax check, not whole-program execution: arbitrary function return values and
+runtime loop values are not inferred. Use contract keys for generated operational
+names, including names assembled through helpers; review still checks that usage.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
@@ -264,7 +269,9 @@ while conflicting authentication headers fail closed.
 | sql_function | `recordbench_{suffix}` | `recordbench_{suffix}` | retained |
 | stage_receipt | `.recordbench-stage-receipt.json` | `.recordbench-stage-receipt.json` | retained |
 | stem | `recordbench` | `exculpata` | generation |
+| storage_id | `recordbench-storage-{suffix}` | `exculpata-storage-{suffix}` | generation |
 | storage_marker | `.recordbench-managed-storage.json` | `.exculpata-managed-storage.json` | generation |
+| storage_marker_temporary | `..recordbench-managed-storage.json-{suffix}.tmp` | `..exculpata-managed-storage.json-{suffix}.tmp` | generation |
 | temporary_account_browser | `recordbench-account-browser-` | `recordbench-account-browser-` | retained |
 | temporary_activity | `recordbench-activity-` | `recordbench-activity-` | retained |
 | temporary_ask_heading | `recordbench-ask-heading-` | `recordbench-ask-heading-` | retained |

@@ -368,3 +368,44 @@ def test_unknown_operational_json_identifier_fails(tmp_path):
     assert checker.findings(tmp_path) == [
         checker.Finding("config/models.json:1", "recordbench-unregistered-format-v99")
     ]
+
+
+@pytest.mark.parametrize("source", [
+    'FORMAT = f"{str(LEGACY_STEM)}-unregistered-v99"',
+    'FORMAT = f"{LEGACY_STEM.lower()}-unregistered-v99"',
+    'FORMAT = f"{LEGACY_STEM.upper()}-unregistered-v99"',
+    'values = {"stem": LEGACY_STEM}\nFORMAT = f"{values["stem"]}-unregistered-v99"',
+    'values = {"stem": LEGACY_STEM}\nFORMAT = f"{values.get("stem")}-unregistered-v99"',
+    'stem, other = LEGACY_STEM, "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'if condition:\n stem = LEGACY_STEM\nelse:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'FORMAT = "".join([LEGACY_STEM, "-unregistered-v99"])',
+    'FORMAT = "{stem}-unregistered-v99".format_map({"stem": LEGACY_STEM})',
+    'stem = LEGACY_STEM\nstem += "-unregistered-v99"',
+    'if (stem := LEGACY_STEM):\n FORMAT = f"{stem}-unregistered-v99"',
+    'FORMAT = f"{name_value("stem", LEGACY_STEM)}-unregistered-v99"',
+    'FORMAT = f"{text.replace("synthetic", LEGACY_STEM)}-unregistered-v99"',
+])
+def test_string_provenance_survives_expression_and_binding_forms(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM, name_value\n' + source + '\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'FORMAT = f"{LEGACY_STEM.lower()}-exact-v1"',
+    'FORMAT = name_value("environment", LEGACY_STEM, suffix="")',
+    'FORMAT = f"{name_value("stem", LEGACY_STEM)}-exact-v1"',
+    'value = reader(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'parser = Parser(prog=LEGACY_STEM)\nFORMAT = f"{parser.read()}-synthetic"',
+    'value = text.removeprefix(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'value = text.replace(LEGACY_STEM, "synthetic")\nFORMAT = f"{value}-synthetic"',
+    'value = mapping.get(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'key = "synthetic"\nif condition:\n key = name_value("environment", LEGACY_STEM, suffix="TEST")\nFORMAT = f"{key}=value"',
+    'value = json.dumps({"format": f"{LEGACY_STEM}-exact-v1"}) + "\\n"',
+])
+def test_string_provenance_preserves_declared_names_and_non_output_inputs(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM, name_value\n' + source + '\n'
+    )
+    assert checker.findings(tmp_path) == []

@@ -34,6 +34,8 @@ NAME_CONTRACTS = MappingProxyType({
     "host_root": NameContract("/srv/recordbench", "/srv/exculpata", "generation"),
     "app_env": NameContract("recordbench.env", "exculpata.env", "generation"),
     "storage_marker": NameContract(".recordbench-managed-storage.json", ".exculpata-managed-storage.json", "generation"),
+    "storage_id": NameContract("recordbench-storage-{suffix}", "exculpata-storage-{suffix}", "generation"),
+    "storage_marker_temporary": NameContract("..recordbench-managed-storage.json-{suffix}.tmp", "..exculpata-managed-storage.json-{suffix}.tmp", "generation"),
     "hostname": NameContract("recordbench.example.test", "exculpata.example.test", "generation"),
     "administrator": NameContract("recordbench.admin", "exculpata.admin", "generation"),
     "backup_unit": NameContract("recordbench-backup-{node_id}.{kind}", "exculpata-backup-{node_id}.{kind}", "generation"),
