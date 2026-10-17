@@ -20,7 +20,7 @@ import time
 from jsonschema import Draft202012Validator
 
 from .generation import (
-    ANSWER_SCHEMA, EvidenceItem, GenerationRejected, GenerationUnavailable,
+    ANSWER_SCHEMA, EvidenceItem, GenerationRejected, GenerationUnavailable, GenerationSchemaRejected,
     GroundedGenerationService, OllamaGenerator, OpenAICompatibleGenerator,
     _exact_original_span, _prompt, verify_original_claim,
 )
@@ -508,7 +508,14 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
             start = time.monotonic()
             try:
                 try:
-                    raw = client.generate(question=case["question"], evidence=evidence)
+                    from .generator_completion import single_schema_attempt
+                    with single_schema_attempt():
+                        try:
+                            raw = client.generate(question=case["question"], evidence=evidence)
+                        except GenerationSchemaRejected as exc:
+                            # Evaluation retains invalid objects for grading; production
+                            # callers still receive an unavailable response, never this data.
+                            raw = exc.payload
                 except ValueError as exc:
                     # An adapter parse failure is one failed attempt, not a
                     # reason to discard earlier samples. Identity/transport

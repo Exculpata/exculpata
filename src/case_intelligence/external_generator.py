@@ -4,6 +4,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import socket
+import threading
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -14,14 +15,24 @@ _BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai"}
 # one internal hostname token.
 HOST_GATEWAY_NAME = "host.docker." + "internal"
 _COMPLETION_SUFFIXES = ("/v1/chat/completions", "/api/chat", "/v1/models", "/api/tags")
-# These documentation ranges are not office networks. Python's is_private flag
-# includes them, which would skip the off-network confirmation.
-_DOCUMENTATION_NETWORKS = (
-    ipaddress.ip_network("192.0.2.0/24"),
-    ipaddress.ip_network("198.51.100.0/24"),
-    ipaddress.ip_network("203.0.113.0/24"),
-    ipaddress.ip_network("2001:db8::/32"),
+# Exact RFC1918 ranges, loopback, and RFC4193 ULA; no broad is_private shortcut.
+_LOCAL_NETWORKS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.IPv4Network((10 << 24, 8)),
+    ipaddress.IPv4Network(((172 << 24) | (16 << 16), 12)),
+    ipaddress.IPv4Network(((192 << 24) | (168 << 16), 16)),
+    ipaddress.ip_network("::1/128"), ipaddress.IPv6Network((0xFC << 120, 7)),
 )
+# EC2's documented IPv6 metadata endpoint, rejected even with remote consent.
+_METADATA = ipaddress.IPv6Address((0xFD00 << 112) | (0xEC2 << 96) | 0x254)
+_DNS_SLOTS = threading.BoundedSemaphore(4)
+_DNS_TIMEOUT = 2.0
+
+
+def _blocked_address(address):
+    concrete = _concrete(address)
+    return (concrete.is_unspecified or concrete.is_link_local or concrete.is_multicast
+            or concrete == _METADATA)
 
 
 class EndpointRejected(ValueError):
@@ -87,7 +98,7 @@ def parse_generator_endpoint(
     if any(part == ".." for part in path.split("/")):
         raise EndpointRejected("The URL path cannot contain '..'. Enter the server origin.")
     host = parsed.hostname.casefold()
-    local = host_is_local(host)
+    local = host == HOST_GATEWAY_NAME or host_is_local(host)
     loopback = _container_loopback(host)
     origin = f"{parsed.scheme}://{parsed.netloc}{path}".rstrip("/")
     return GeneratorEndpoint(
@@ -111,9 +122,9 @@ REMOTE_CONFIRMATION = (
 
 def _unsafe_literal(hostname: str) -> str:
     concrete = tuple(_concrete(address) for address in addresses_for(hostname))
-    if any(address.is_unspecified or address.is_link_local for address in concrete):
+    if any(_blocked_address(address) for address in concrete):
         return (
-            "That address is link-local or unspecified. "
+            "That address is metadata, multicast, link-local or unspecified. "
             "Enter a loopback, RFC1918, or IPv6 ULA address."
         )
     return ""
@@ -137,23 +148,27 @@ def _office_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> b
     """Loopback, RFC1918, or IPv6 ULA. Link-local and unspecified addresses are not."""
 
     concrete = _concrete(address)
-    if any(concrete in network for network in _DOCUMENTATION_NETWORKS):
-        return False
-    if concrete.is_unspecified or concrete.is_link_local or concrete.is_multicast:
-        return False
-    return bool(concrete.is_loopback or concrete.is_private)
+    return not _blocked_address(concrete) and any(concrete in network for network in _LOCAL_NETWORKS)
 
 
 def _resolve_addresses(hostname: str) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]:
-    previous = socket.getdefaulttimeout()
-    socket.setdefaulttimeout(2)
-    try:
+    # getaddrinfo has no per-call timeout. Bound caller latency and the number of
+    # outstanding daemon lookups without changing process-wide socket defaults.
+    if not _DNS_SLOTS.acquire(blocking=False):
+        return ()
+    infos = []
+    def resolve():
         try:
-            infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
-        except socket.gaierror:
-            return ()
-    finally:
-        socket.setdefaulttimeout(previous)
+            infos.extend(socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM))
+        except OSError:
+            pass
+        finally:
+            _DNS_SLOTS.release()
+    worker = threading.Thread(target=resolve, daemon=True, name="generator-dns")
+    worker.start()
+    worker.join(_DNS_TIMEOUT)
+    if worker.is_alive():
+        return ()
     found: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     seen: set[str] = set()
     for info in infos:
@@ -186,32 +201,30 @@ def host_is_local(hostname: str) -> bool:
 
 
 def destination_block_reason(hostname: str, *, remote_confirmed: bool) -> str:
-    """Re-check a connection so a name cannot rebind to a public or metadata address."""
+    return _destination_reason(addresses_for(hostname), remote_confirmed=remote_confirmed)
 
-    addresses = addresses_for(hostname)
+
+def _destination_reason(addresses, *, remote_confirmed):
     if not addresses:
         return "The answer server name did not resolve. The request was not sent."
-    concrete = tuple(_concrete(address) for address in addresses)
-    if any(address.is_unspecified or address.is_link_local for address in concrete):
-        return (
-            "The answer server resolved to a link-local or unspecified address. "
-            "The request was not sent."
-        )
+    if any(_blocked_address(address) for address in addresses):
+        return "The answer server resolved to a metadata, multicast, link-local or unspecified address. The request was not sent."
     if not remote_confirmed and not all(_office_address(address) for address in addresses):
-        return (
-            "The answer server resolved outside the local network. The request was not sent."
-        )
+        return "The answer server resolved outside the local network. The request was not sent."
     return ""
 
 
-def require_resolved_destination(url: str) -> None:
+def require_resolved_destination(url: str):
+    """Return exactly the addresses approved for this connection."""
     host = urlparse(url).hostname
     if not host:
         raise DestinationRejected("The answer server URL has no host. The request was not sent.")
+    addresses = addresses_for(host)
     confirmed = os.environ.get("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED") == "1"
-    reason = destination_block_reason(host, remote_confirmed=confirmed)
+    reason = _destination_reason(addresses, remote_confirmed=confirmed)
     if reason:
         raise DestinationRejected(reason)
+    return addresses
 
 
 def _container_loopback(hostname: str) -> bool:

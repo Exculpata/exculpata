@@ -22,10 +22,10 @@ from .question_generation import (
     QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
 )
 from .review_quality import answer_advances_objective, classify_question
+from .external_generator import DestinationRejected
 from .generator_completion import (
     complete_structured as _complete_structured,
     generator_api_key as _generator_api_key,
-    guard_generator_destination as _guard_generator_destination,
     probe_generator as _probe_generator,
     refresh_generator_schema,
     repair_message as _repair_message,
@@ -88,6 +88,14 @@ MEDIA_TRANSCRIPT_NOTICE = (
 
 class GenerationUnavailable(RuntimeError):
     """The configured local generator cannot currently answer."""
+
+
+class GenerationSchemaRejected(GenerationUnavailable):
+    """A parsed object failed local validation; only explicit evaluation retains it."""
+
+    def __init__(self, payload):
+        super().__init__("The reply did not match the JSON schema. Answering is unavailable for this request.")
+        self.payload = payload
 
 
 class GenerationRejected(RuntimeError):
@@ -267,15 +275,14 @@ def _bounded_json_request(
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    _guard_generator_destination(url)
     request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
-        with open_request(request, timeout=timeout) as response:
+        from .generator_transport import open_generator_request
+        with open_generator_request(request, timeout=timeout, opener=opener) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
-    except (OSError, urllib.error.URLError, TimeoutError) as exc:
+    except (DestinationRejected, OSError, urllib.error.URLError, TimeoutError) as exc:
         raise GenerationUnavailable("The answer service is temporarily unavailable.") from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise GenerationUnavailable("The answer service returned too much data.")
@@ -292,17 +299,16 @@ def _bounded_json_get(
     url: str, *, timeout: float, headers: Mapping[str, str] | None = None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
-    _guard_generator_destination(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json", **dict(headers or {})})
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
-        with open_request(request, timeout=timeout) as response:
+        from .generator_transport import open_generator_request
+        with open_generator_request(request, timeout=timeout, opener=opener) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
             return {}
         value = json.loads(raw.decode("utf-8"))
         return value if isinstance(value, dict) else {}
-    except (OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError):
+    except (DestinationRejected, OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
 
 
@@ -751,14 +757,10 @@ class OpenAICompatibleGenerator:
         if recorded_dispatch is not None:
             if self._opener is not None:
                 raise ValueError("Recorded dispatch does not support an injected HTTP opener.")
-            response = recorded_dispatch.send(self, build(0), grounding_repair)
-            choices = response.get("choices")
-            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-                raise GenerationUnavailable("The answer service returned an invalid response.")
-            message = choices[0].get("message")
-            if not isinstance(message, dict):
-                raise GenerationUnavailable("The answer service returned an invalid response.")
-            return _parse_model_content(message.get("content"))
+            return _complete_structured(
+                self, lambda attempt: recorded_dispatch.send(self, build(attempt), grounding_repair or attempt > 0),
+                _openai_message, ANSWER_SCHEMA,
+            )
 
         def send(attempt: int) -> Mapping[str, object]:
             return _bounded_json_request(

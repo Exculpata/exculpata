@@ -577,8 +577,7 @@ def _apply_external_generator(
     compose_values["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
     if endpoint.host == HOST_GATEWAY_NAME:
         compose_values["EXCULPATA_HOST_GATEWAY_ALIAS"] = HOST_GATEWAY_NAME
-    if not endpoint.local_network:
-        app_values["CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"] = "1"
+    app_values["CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"] = "1" if endpoint.remote_confirmed else "0"
     return endpoint
 
 
@@ -3919,7 +3918,16 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             return
         if token:
             headers["Authorization"] = f"Bearer {token}"
-    result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15)
+    consent_key = "CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"
+    previous_consent = os.environ.get(consent_key)
+    os.environ[consent_key] = app_env.get(consent_key, "0")
+    try:
+        result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15)
+    finally:
+        if previous_consent is None:
+            os.environ.pop(consent_key, None)
+        else:
+            os.environ[consent_key] = previous_consent
     console.note(f"schema enforcement :: {result.label}")
     console.note(result.detail)
     if result.fix:
@@ -4807,7 +4815,8 @@ def main() -> int:
             _resume_node(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             return 0
-        if args.models is None:
+        choose_models = args.models is None
+        if choose_models:
             _print_hardware_suggestion(console)
             args.models = _choose(
                 "Capability profile",
@@ -4815,7 +4824,8 @@ def main() -> int:
                 "none",
                 non_interactive=args.non_interactive,
             )
-        _collect_external_generator(console, args)
+        if choose_models or any((args.external_generator, args.external_generator_url, args.external_generator_model)):
+            _collect_external_generator(console, args)
         models = args.models
         if args.storage_root is None and not args.non_interactive:
             args.storage_root = Path(

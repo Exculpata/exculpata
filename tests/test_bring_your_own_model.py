@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from case_intelligence.legacy_names import LEGACY_STEM, LEGACY_ENV_PREFIX
+
 from case_intelligence.external_generator import (
     HOST_GATEWAY_NAME,
     DestinationRejected,
@@ -270,7 +272,7 @@ def _answer(extra=False):
     return json.dumps(payload)
 
 
-def test_validate_and_retry_checks_locally_and_unprobed_does_not(monkeypatch):
+def test_validate_and_retry_checks_locally_including_unprobed_clients(monkeypatch):
     import case_intelligence.generation as generation
 
     calls = []
@@ -307,7 +309,7 @@ def test_validate_and_retry_checks_locally_and_unprobed_does_not(monkeypatch):
     )
     calls.clear()
     lmstudio.generate(question="What does the synthetic report say?", evidence=evidence)
-    assert len(calls) == 1
+    assert len(calls) == 2
 
     calls.clear()
 
@@ -343,49 +345,56 @@ def test_environment_labels_unvalidated_models_and_can_skip_the_probe(monkeypatc
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "openai")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SERVER", "llamacpp")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "http://127.0.0.1:8080")
-    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "recordbench-qwen35-9b")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", f"{LEGACY_STEM}-qwen35-9b")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "0")
     client = generator_from_environment()
     assert client.schema_server == "llamacpp"
     assert client.schema_mode == "unprobed"
     assert client.model_notice == UNVALIDATED_MODEL_LABEL
-    assert qualification_label("recordbench-qwen35-4b") == UNVALIDATED_MODEL_LABEL
+    assert qualification_label(f"{LEGACY_STEM}-qwen35-4b") == UNVALIDATED_MODEL_LABEL
 
 
 def test_schema_refresh_is_bounded(monkeypatch):
     import case_intelligence.generator_completion as completion
 
+    import threading
+    done = threading.Event()
     calls = []
-    monkeypatch.setattr(completion, "probe_generator", lambda client: calls.append(client.schema_mode))
+    def probe(client):
+        calls.append(client.schema_mode)
+        done.set()
+    monkeypatch.setattr(completion, "probe_generator", probe)
     current = OllamaGenerator("http://127.0.0.1:11434", "synthetic-model", schema_mode="verified")
     current._schema_checked_at = 1_000
     refresh_generator_schema(current, now=1_030)
     refresh_generator_schema(current, now=1_061)
     untouched = OllamaGenerator("http://127.0.0.1:11434", "synthetic-model")
     refresh_generator_schema(untouched, now=10_000)
+    assert done.wait(2)
     assert calls == ["verified"]
 
 
 def test_qualification_registry_and_harness_seam(monkeypatch):
+    revision = "sha256:" + "a" * 64
     assert qualification_label("synthetic-model") == UNVALIDATED_MODEL_LABEL
     assert qualification_label("") == ""
     passed = apply_harness_result(
         {"schema_version": 1, "qualifications": []},
         model_id="synthetic-model",
         harness="defense-workflow",
-        passed=True,
+        passed=True, revision=revision,
         evidence="synthetic-scorecard",
     )
-    assert qualification_label("synthetic-model", registry=passed) == ""
+    assert qualification_label("synthetic-model", registry=passed, revision=revision) == ""
     failed = apply_harness_result(
         passed, model_id="synthetic-model", harness="defense-workflow", passed=False,
     )
     assert failed["qualifications"] == []
-    assert qualification_label("synthetic-model", registry=failed) == UNVALIDATED_MODEL_LABEL
+    assert qualification_label("synthetic-model", registry=failed, revision=revision) == UNVALIDATED_MODEL_LABEL
 
     module = type(sys)("case_intelligence.defense_workflow_eval")
 
-    def qualification_for(model_id):
+    def qualification_for(model_id, *, revision):
         if model_id == "synthetic-pass":
             return ""
         if model_id == "synthetic-defer":
@@ -398,11 +407,11 @@ def test_qualification_registry_and_harness_seam(monkeypatch):
         {"schema_version": 1, "qualifications": []},
         model_id="synthetic-defer",
         harness="defense-workflow",
-        passed=True,
+        passed=True, revision=revision,
     )
-    assert qualification_label("synthetic-pass", registry=failed) == ""
-    assert qualification_label("synthetic-model", registry=passed) == UNVALIDATED_MODEL_LABEL
-    assert qualification_label("synthetic-defer", registry=deferred) == ""
+    assert qualification_label("synthetic-pass", registry=failed, revision=revision) == ""
+    assert qualification_label("synthetic-model", registry=passed, revision=revision) == UNVALIDATED_MODEL_LABEL
+    assert qualification_label("synthetic-defer", registry=deferred, revision=revision) == ""
     monkeypatch.delitem(sys.modules, "case_intelligence.defense_workflow_eval")
     assert qualification_label("synthetic-model") == UNVALIDATED_MODEL_LABEL
 
@@ -479,7 +488,7 @@ def _configure_node(tmp_path, extra, monkeypatch=None):
     root = tmp_path / "Synthetic Node"
     console = installer.Console(color=False, quiet=True)
     args = installer._parser().parse_args([
-        "install", "--names", "recordbench", "--auth", "local", "--enable-account-management",
+        "install", "--names", LEGACY_STEM, "--auth", "local", "--enable-account-management",
         "--models", "none", "--non-interactive", "--prepare-only",
         "--admin-username", "alice.admin", "--admin-display-name", "Alice Administrator",
         *extra,
@@ -503,7 +512,7 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
         "--external-generator-model", "synthetic-model",
         "--external-generator-api-key-stdin",
     ])
-    application = installer._dotenv(root / "config" / "recordbench.env")
+    application = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     compose = installer._dotenv(root / "compose.env")
     record = json.loads((root / "installation.json").read_text())
     assert application["CASE_INTELLIGENCE_GENERATOR_BACKEND"] == "ollama"
@@ -582,7 +591,7 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     resumed.admin_username = record["initial_administrator"]
     resumed.admin_display_name = record["initial_administrator_display_name"]
     installer._configure(installer.Console(color=False, quiet=True), resumed, root, paths, "synthetic-release", ROOT, ())
-    kept = installer._dotenv(root / "config" / "recordbench.env")
+    kept = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     kept_compose = installer._dotenv(root / "compose.env")
     assert kept["CASE_INTELLIGENCE_GENERATOR_URL"] == "http://synthetic-answers:11434"
     assert kept_compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"

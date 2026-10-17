@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
 
-from jsonschema import Draft202012Validator
 
 
 _CATALOG = Path(__file__).resolve().parents[2] / "config" / "model_profiles.json"
@@ -67,6 +66,8 @@ def load_profiles(path: Path | None = None) -> dict[str, object]:
 
 
 def profile_schema(path: Path | None = None) -> dict[str, object]:
+    from jsonschema import Draft202012Validator
+
     schema = json.loads((path or _SCHEMA).read_text(encoding="utf-8"))
     if not isinstance(schema, dict):
         raise ValueError("model profile schema is invalid")
@@ -75,6 +76,8 @@ def profile_schema(path: Path | None = None) -> dict[str, object]:
 
 
 def validate_profiles(catalog: Mapping[str, object] | None = None, schema: Mapping[str, object] | None = None) -> None:
+    from jsonschema import Draft202012Validator
+
     document = dict(catalog or load_profiles())
     Draft202012Validator(dict(schema or profile_schema())).validate(document)
     profiles = document["profiles"]

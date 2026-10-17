@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import os
 import time
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -64,7 +67,21 @@ def refresh_generator_schema(client: object, *, now: float | None = None) -> Non
     moment = time.monotonic() if now is None else now
     if moment - float(getattr(client, "_schema_checked_at", 0.0)) < 60:
         return
-    probe_generator(client)
+    with _REFRESH_LOCK:
+        if (getattr(client, "_schema_refreshing", False)
+                or moment - float(getattr(client, "_schema_checked_at", 0.0)) < 60):
+            return
+        client._schema_refreshing = True
+    def refresh():
+        try:
+            probe_generator(client)
+        finally:
+            with _REFRESH_LOCK:
+                client._schema_refreshing = False
+    threading.Thread(target=refresh, daemon=True, name="generator-schema").start()
+
+
+_REFRESH_LOCK = threading.Lock()
 
 
 def schema_refused(client: object) -> None:
@@ -78,45 +95,45 @@ def schema_refused(client: object) -> None:
     )
 
 
+_SINGLE_SCHEMA_ATTEMPT = ContextVar("single_schema_attempt", default=False)
+
+
+@contextmanager
+def single_schema_attempt():
+    """Capture the first synthetic evaluation response without concealing repairs."""
+    token = _SINGLE_SCHEMA_ATTEMPT.set(True)
+    try:
+        yield
+    finally:
+        _SINGLE_SCHEMA_ATTEMPT.reset(token)
+
+
 def complete_structured(
     client: object,
     send: Callable[[int], Mapping[str, object]],
     parse: Callable[[Mapping[str, object]], Mapping[str, object]],
     schema: Mapping[str, object],
 ) -> Mapping[str, object]:
-    """Trust a verified server. Otherwise validate locally and retry, then refuse."""
+    """Validate every reply locally, with bounded repair attempts for probed servers."""
 
-    from .generation import GenerationUnavailable
+    from .generation import GenerationUnavailable, GenerationSchemaRejected
 
     schema_refused(client)
-    checking = getattr(client, "schema_mode", "unprobed") in {"validate_and_retry", "unreachable"}
-    attempts = PROBE_ATTEMPTS if checking else 1
-    last = "The answer service did not return the required JSON schema."
+    attempts = 1 if _SINGLE_SCHEMA_ATTEMPT.get() else PROBE_ATTEMPTS
     for attempt in range(attempts):
-        response = send(attempt)
+        boundary = getattr(client, "structured_request_boundary", None)
+        response = boundary(lambda: send(attempt)) if callable(boundary) else send(attempt)
         try:
             payload = parse(response)
-        except GenerationUnavailable as exc:
-            last = str(exc)
-            if not checking or attempt + 1 == attempts:
+        except GenerationUnavailable:
+            if attempt + 1 == attempts:
                 raise
             continue
-        if not checking or schema_error(payload, schema) is None:
+        if schema_error(payload, schema) is None:
             return payload
-        last = "The reply did not match the JSON schema."
-    raise GenerationUnavailable(last + " Answering is unavailable for this request.")
-
-
-def guard_generator_destination(url: str) -> None:
-    """Refuse the connection when the name resolves outside the allowed set."""
-
-    from .external_generator import DestinationRejected, require_resolved_destination
-    from .generation import GenerationUnavailable
-
-    try:
-        require_resolved_destination(url)
-    except DestinationRejected as exc:
-        raise GenerationUnavailable(str(exc)) from exc
+        if attempt + 1 == attempts:
+            raise GenerationSchemaRejected(payload)
+    raise GenerationUnavailable("The answer service did not return the required JSON schema.")
 
 
 def repair_message(messages: list[dict[str, str]], attempt: int) -> list[dict[str, str]]:

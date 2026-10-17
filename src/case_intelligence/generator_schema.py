@@ -13,7 +13,6 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
-from jsonschema import Draft202012Validator
 
 
 PROBE_NAME = "exculpata_schema_probe"
@@ -103,6 +102,8 @@ def schema_chat_request(
 
 
 def schema_error(instance: object, schema: Mapping[str, object]) -> str | None:
+    from jsonschema import Draft202012Validator
+
     validator = Draft202012Validator(dict(schema))
     if next(validator.iter_errors(instance), None) is None:
         return None
@@ -187,7 +188,8 @@ def _matches_probe(payload: Mapping[str, object], server: str) -> bool:
             content = json.loads(text)
         except json.JSONDecodeError:
             return False
-    return schema_error(content, PROBE_SCHEMA) is None
+    # This fixed one-field probe also runs in the stdlib-only installer.
+    return isinstance(content, dict) and content == {"marker": PROBE_MARKER}
 
 
 def _message_content(payload: Mapping[str, object], server: str) -> object:
@@ -220,7 +222,6 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 def _urllib_transport(
     timeout: float,
 ) -> Callable[[str, Mapping[str, object], Mapping[str, str]], Mapping[str, object]]:
-    opener = urllib.request.build_opener(_NoRedirect)
 
     def send(
         url: str,
@@ -231,23 +232,25 @@ def _urllib_transport(
         request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         request_headers.update(dict(headers))
         request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
+        from .external_generator import DestinationRejected
+        from .generator_transport import open_generator_request
         try:
-            from .external_generator import DestinationRejected, require_resolved_destination
-
-            require_resolved_destination(url)
-        except DestinationRejected as exc:
-            raise SchemaTransportError(str(exc)) from exc
-        try:
-            with opener.open(request, timeout=timeout) as response:
-                raw = response.read(65_536)
-        except (OSError, urllib.error.URLError, TimeoutError) as exc:
+            with open_generator_request(request, timeout=timeout) as response:
+                raw = response.read(65_537)
+        except urllib.error.HTTPError as exc:
+            # A reachable server rejected the request; do not call this a DNS/network failure.
+            exc.close()
+            return {}
+        except (DestinationRejected, OSError, urllib.error.URLError, TimeoutError) as exc:
             raise SchemaTransportError("unreachable") from exc
+        if len(raw) > 65_536:
+            return {}
         try:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise SchemaTransportError("unreadable") from exc
+            return {}
         if not isinstance(value, dict):
-            raise SchemaTransportError("unreadable")
+            return {}
         return value
 
     return send

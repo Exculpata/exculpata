@@ -8,6 +8,7 @@ This module does not score answers and does not download a model.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Mapping
 
@@ -35,13 +36,17 @@ def load_qualifications(path: Path | None = None) -> dict[str, object]:
     return document
 
 
-def qualification_label(model_id: str, *, registry: Mapping[str, object] | None = None) -> str:
+def qualification_label(model_id: str, *, revision: str = "", registry: Mapping[str, object] | None = None) -> str:
     """Return an empty string when a recorded pass covers this exact model id."""
 
     model = model_id.strip()
     if not model:
         return ""
-    harness_label = _harness_label(model)
+    # Only a runtime-attested immutable digest can inherit a qualification.
+    # Current BYOM adapters do not attest revisions, so they retain the warning.
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", revision) is None:
+        return UNVALIDATED_MODEL_LABEL
+    harness_label = _harness_label(model, revision)
     if harness_label is not None:
         return harness_label
     document = dict(registry) if registry is not None else load_qualifications()
@@ -51,6 +56,7 @@ def qualification_label(model_id: str, *, registry: Mapping[str, object] | None 
             if (
                 isinstance(row, dict)
                 and row.get("model_id") == model
+                and row.get("revision") == revision
                 and row.get("passed") is True
             ):
                 return ""
@@ -64,6 +70,7 @@ def apply_harness_result(
     harness: str,
     passed: bool,
     evidence: str = "",
+    revision: str = "",
 ) -> dict[str, object]:
     """Return a new registry. A failed result removes any pass for that model.
 
@@ -85,8 +92,10 @@ def apply_harness_result(
         for row in rows:
             if isinstance(row, dict) and row.get("model_id") != model:
                 kept.append(dict(row))
+    if passed and re.fullmatch(r"sha256:[0-9a-f]{64}", revision) is None:
+        raise ValueError("A passing qualification requires an immutable model digest")
     if passed:
-        record: dict[str, object] = {"model_id": model, "harness": suite, "passed": True}
+        record: dict[str, object] = {"model_id": model, "harness": suite, "passed": True, "revision": revision}
         if evidence:
             record["evidence"] = evidence
         kept.append(record)
@@ -95,7 +104,7 @@ def apply_harness_result(
     return document
 
 
-def _harness_label(model_id: str) -> str | None:
+def _harness_label(model_id: str, revision: str) -> str | None:
     """Use issue #267 when that module is installed. Absence is not an error."""
 
     try:
@@ -105,7 +114,7 @@ def _harness_label(model_id: str) -> str | None:
     record = getattr(harness, "qualification_for", None)
     if not callable(record):
         return None
-    label = record(model_id)
+    label = record(model_id, revision=revision)
     if label is None:
         return None
     if not isinstance(label, str):

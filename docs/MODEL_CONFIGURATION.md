@@ -94,10 +94,13 @@ alias when the chosen host is the gateway name. The default alias is
 A name is local only when every address it resolves to is loopback, RFC1918, or
 IPv6 ULA. A public address requires explicit confirmation before it is saved.
 Link-local addresses, including the cloud metadata address, and unspecified
-addresses are rejected instead of confirmed. The resolved addresses are checked
-again when the generator connects, so a name cannot rebind to a public,
-link-local, or unspecified address. One-word names and `*.local` names are not
-trusted from the spelling alone. Invalid URLs are asked again. Non-interactive
+addresses are rejected instead of confirmed. Each connection uses the exact vetted numeric addresses, with the original
+host retained for HTTP and TLS certificate verification. Redirects and environment
+proxies are disabled. IPv6 cloud metadata and multicast addresses are rejected
+even with consent. DNS lookup deadlines do not change global socket settings. One-word names and `*.local` names are not
+trusted from the spelling alone. The installer recognizes its controlled Docker
+host-gateway alias before Docker creates it; runtime requests still resolve and
+validate that alias. Invalid URLs are asked again. Non-interactive
 invalid input stops with the same explanation. `--confirm-remote-generator`
 supplies the confirmation for a public host when input is not interactive. It
 does not allow a link-local or unspecified address.
@@ -109,7 +112,11 @@ does not match, generation validates locally and retries, then refuses the
 answer. The first probe asks for a value the schema rejects, so a model that
 only follows the prompt is not reported as enforced. The doctor line and the
 administrator page say `verified`, `not enforced / validated locally`,
-`refused`, or `not checked`.
+`refused`, or `not checked`. Every response is also validated locally, including
+recorded-context dispatches and replies from a verified server. Each recorded
+repair has its own admission and dispatch receipts. Periodic schema refreshes
+run once in the background and return cached status to pages and health checks.
+HTTP rejection or malformed response bodies report refusal, not network failure.
 
 `doctor` and the installer also print CPU cores, RAM, GPU VRAM when a tool
 reports it, and Apple Silicon when the host is Darwin arm64. The suggestion
@@ -123,12 +130,20 @@ that existing indexes must be rebuilt. Exculpata does not rebuild them
 automatically. An API key for the answer server is read from
 `/run/exculpata-secrets/generator-api-key`.
 
-Answers whose model id has no passing row in
-[`config/model_qualifications.json`](../config/model_qualifications.json) are
-labeled `unvalidated model` in the workspace and in exports. Issue #267's
-harness can supply `qualification_for(model_id)` or call
-`apply_harness_result`. This repository does not treat a pinned catalog id as
-a measured pass by itself.
+Qualification requires a passing record for both the model ID and a runtime-attested
+immutable SHA-256 revision. A mutable name or tag cannot inherit a pass. Current
+BYOM adapters do not attest the served revision, so their answers remain labeled
+`unvalidated model` in the workspace and exports, including rejected answers.
+Every-source review records also lack immutable model attestation: all their
+CSV, JSON, Markdown and Word exports conservatively retain that label, independent
+of the currently configured model. This does not claim historical qualification
+that was never recorded. No storage migration is introduced.
+
+[`config/model_qualifications.json`](../config/model_qualifications.json) retains
+revision-scoped records. A future attested adapter may supply the exact revision
+to `qualification_for(model_id, revision=...)` or `qualification_label`; the harness
+records passes through `apply_harness_result` with the same digest. A pinned
+catalog ID alone is not a measured pass.
 
 There is no Open WebUI setting or adapter. An Open WebUI process is usable
 only if it serves the `openai` contract above at `{URL}/v1/...` and the host
@@ -198,3 +213,10 @@ Changing embeddings may require a new index; changing a transcription model
 must not relabel historical transcripts as if the new model produced them.
 See [installation](INSTALL.md), [release readiness](RELEASE_READINESS.md) and
 the [contribution guide](../CONTRIBUTING.md).
+
+Evaluation capture remains distinct from accepting an answer. The fixed synthetic
+claim-evaluation harness records a schema-rejected JSON object for independent
+grading after the normal validator rejects it. That capture performs one attempt
+and does not hide repair drafts. Ordinary generation validates and bounds repair
+attempts, and the workflow evaluator checks model identity around each actual
+request, including schema repairs.
