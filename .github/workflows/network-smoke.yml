@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install locked smoke harness dependencies
-        run: python -m pip install --require-hashes -r requirements/application-test.lock
+        run: python -m pip install --require-hashes -r requirements/network-smoke.lock
       - name: Exercise isolated synthetic OIDC and direct-egress denials
         env:
           RUN_NETWORK_SMOKE: "1"
