@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.scope.outputs.docs_only }}
+      browser_changed: ${{ steps.scope.outputs.browser_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -336,7 +337,13 @@ jobs:
 
   synthetic-browser:
     needs: change-scope
-    if: ${{ always() && contains(fromJSON('["merge_group", "schedule", "workflow_dispatch"]'), github.event_name) && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}
+    if: >-
+      ${{ always() && (
+        (contains(fromJSON('["merge_group", "schedule", "workflow_dispatch"]'), github.event_name) &&
+          (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true')) ||
+        (github.event_name == 'pull_request' &&
+          (needs.change-scope.result != 'success' || needs.change-scope.outputs.browser_changed != 'false'))
+      ) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

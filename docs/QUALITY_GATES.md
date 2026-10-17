@@ -41,8 +41,12 @@ No GPU or model weights are required for the contributor suites.
 The [Quality workflow](../.github/workflows/quality-gates.yml) runs on PRs,
 `main` pushes, merge groups, a daily schedule and manual dispatch. Ordinary
 feature-branch pushes do not duplicate PR runs. Synthetic browser journeys run
-on merge groups, schedules and manual dispatch; a skipped PR browser job is not
-a browser test pass. Fork PRs use the upstream PR run; forks need not enable Actions.
+on merge groups, schedules and manual dispatch, and on PRs changing
+`scripts/browser-accept-*` or the quality workflow itself. The complete PR diff
+includes added and modified scripts, deletions and both sides of renames;
+unavailable comparisons conservatively require browser coverage. A skipped PR
+browser job is not a browser test pass. Fork PRs use the upstream PR run; forks
+need not enable Actions.
 
 Plain documentation changes use a bounded fast path. The `application` check runs
 lightweight documentation and scope contracts with pytest. PostgreSQL,

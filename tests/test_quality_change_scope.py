@@ -145,7 +145,7 @@ def test_cli_falls_back_to_full_when_comparison_is_unavailable(history, tmp_path
         "GITHUB_SHA": head, "GITHUB_REF": ref, "GITHUB_OUTPUT": str(output)},
         capture_output=True, text=True)
     assert result.returncode == 0
-    assert output.read_text() == "docs_only=false\n"
+    assert output.read_text() == "docs_only=false\nbrowser_changed=true\n"
     assert "full gates required" in result.stdout
 
 
@@ -169,8 +169,118 @@ def test_required_application_check_cannot_succeed_after_classification_or_publi
         block = workflow.split(f"\n  {job}:\n", 1)[1]
         assert block.startswith("    needs: change-scope\n    if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}\n")
     browser = workflow.split("\n  synthetic-browser:\n", 1)[1]
-    assert browser.startswith("    needs: change-scope\n    if: ${{ always() && contains(fromJSON('[\"merge_group\", \"schedule\", \"workflow_dispatch\"]'), github.event_name) && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}\n")
+    assert browser.startswith("    needs: change-scope\n    if: >-\n")
+    assert "browser_changed: ${{ steps.scope.outputs.browser_changed }}" in workflow
+    assert "continue-on-error:" not in browser
     assert 'run: test "$SCOPE_RESULT" = success' in browser
     assert "  push:\n    branches: [main]\n" in workflow
     assert "  pull_request:\n  merge_group:\n  schedule:\n    - cron: '17 7 * * *'\n  workflow_dispatch:\n" in workflow
     assert "paths-ignore:" not in workflow and "paths:" not in workflow
+
+
+@pytest.mark.parametrize("change", ["added", "modified", "deleted", "renamed-in", "renamed-out"])
+def test_browser_pr_uses_complete_diff_after_documentation_followup(history, change):
+    path = Path("scripts/browser-accept-synthetic.py")
+    source = Path("scripts/other.py")
+    if change in {"modified", "deleted", "renamed-out"}:
+        save(path, "# Synthetic journey\n")
+    elif change == "renamed-in":
+        save(source, "# Synthetic journey\n")
+    base = commit()
+    git("checkout", "-qb", "browser-change")
+    if change in {"added", "modified"}:
+        save(path, "# Changed synthetic journey\n")
+    elif change == "deleted":
+        path.unlink()
+    elif change == "renamed-in":
+        source.rename(path)
+    else:
+        path.rename(source)
+    commit()
+    save("docs/followup.md")
+    head = commit()
+    # Target-branch changes must not hide a script added by the PR.
+    git("checkout", "main")
+    save("docs/target.md")
+    target = commit()
+    git("merge", "--no-ff", "browser-change", "-m", "Synthetic integration")
+    integration = git("rev-parse", "HEAD")
+    event = {"pull_request": {"base": {"sha": target}, "head": {"sha": head}}}
+    assert scope.browser_changed("pull_request", event, integration)
+    assert not scope.classify("pull_request", event, integration, "refs/pull/1/merge")
+
+
+@pytest.mark.parametrize("path,expected", [
+    ("scripts/browser-accept-new-journey.py", True),
+    ("scripts/browser-accept-name with spaces\nand newline.sh", True),
+    (".github/workflows/quality-gates.yml", True),
+    ("docs/browser-accept-guide.md", False),
+    ("scripts/other.py", False),
+    ("src/browser-accept-synthetic.py", False),
+])
+def test_browser_scope_cli_outputs(history, tmp_path, path, expected):
+    save(path)
+    head = commit()
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"pull_request": {
+        "base": {"sha": history}, "head": {"sha": head},
+    }}))
+    output = tmp_path / "outputs"
+    subprocess.run([sys.executable, str(SCRIPT)], env={**os.environ,
+        "GITHUB_EVENT_PATH": str(event), "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_SHA": head, "GITHUB_REF": "refs/pull/1/merge",
+        "GITHUB_OUTPUT": str(output)}, check=True, capture_output=True)
+    assert f"browser_changed={str(expected).lower()}\n" in output.read_text()
+
+
+@pytest.mark.parametrize("raw", [b"", b"unterminated", b"x" * (scope.MAX_DIFF_BYTES + 1)],
+                         ids=["empty", "unterminated", "oversized"])
+def test_browser_unknown_diff_requires_coverage(history, monkeypatch, raw):
+    real_git = scope.git
+    monkeypatch.setattr(scope, "git", lambda *args: raw if args[0] == "diff" else real_git(*args))
+    event = {"pull_request": {"base": {"sha": history}, "head": {"sha": history}}}
+    assert scope.browser_changed("pull_request", event, history)
+
+
+@pytest.mark.parametrize("problem", ["missing-base", "wrong-checkout", "invalid-json"])
+def test_browser_pr_cli_requires_coverage_when_comparison_unavailable(history, tmp_path, problem):
+    save("docs/new.md")
+    head = commit()
+    event = {"pull_request": {"base": {"sha": history}, "head": {"sha": head}}}
+    if problem == "missing-base":
+        event["pull_request"]["base"]["sha"] = "f" * 40
+    event_path = tmp_path / "event.json"
+    event_path.write_text("{" if problem == "invalid-json" else json.dumps(event))
+    output = tmp_path / "outputs"
+    subprocess.run([sys.executable, str(SCRIPT)], env={**os.environ,
+        "GITHUB_EVENT_PATH": str(event_path), "GITHUB_EVENT_NAME": "pull_request",
+        "GITHUB_SHA": history if problem == "wrong-checkout" else head,
+        "GITHUB_REF": "refs/pull/1/merge", "GITHUB_OUTPUT": str(output)},
+        check=True, capture_output=True)
+    assert output.read_text() == "docs_only=false\nbrowser_changed=true\n"
+
+
+@pytest.mark.parametrize("event", ["pull_request", "merge_group", "schedule", "workflow_dispatch", "push"])
+@pytest.mark.parametrize("result", ["success", "failure", "cancelled"])
+@pytest.mark.parametrize("docs", ["true", "false", ""])
+@pytest.mark.parametrize("browser", ["true", "false", ""])
+def test_browser_workflow_event_and_scope_decisions(event, result, docs, browser):
+    workflow = (ROOT / ".github/workflows/quality-gates.yml").read_text()
+    block = workflow.split("\n  synthetic-browser:\n", 1)[1]
+    condition = block.split("${{", 1)[1].split("}}", 1)[0]
+    for name, value in {
+        "github.event_name": event, "needs.change-scope.result": result,
+        "needs.change-scope.outputs.docs_only": docs,
+        "needs.change-scope.outputs.browser_changed": browser,
+    }.items():
+        condition = condition.replace(name, repr(value))
+    condition = " ".join(condition.replace("&&", " and ").replace("||", " or ").split())
+    actual = eval(condition, {"__builtins__": {}}, {
+        "always": lambda: True, "fromJSON": json.loads,
+        "contains": lambda values, value: value in values,
+    })
+    expected = (
+        event in {"merge_group", "schedule", "workflow_dispatch"}
+        and (result != "success" or docs != "true")
+    ) or (event == "pull_request" and (result != "success" or browser != "false"))
+    assert actual is expected
