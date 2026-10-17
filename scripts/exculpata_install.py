@@ -1844,6 +1844,9 @@ _EVALUATION_IMAGE_BYTES = {
     "gateway": 106_216_980,
     "postgres": 638_421_012,
     "clamav": 406_589_383,
+    # Shares the application's pinned Python base; incremental relay layers
+    # remain unmeasured until controlled image-build acceptance.
+    "egress-proxy": 0,
     "retrieval": 0,
     "vllm": 0,
     "transcription-api": 0,
@@ -1867,7 +1870,7 @@ def _ceil_gib(amount: int) -> int:
 
 def _evaluation_payload_bytes(models: str, args: argparse.Namespace | None) -> int:
     """Bytes of images and pinned models the selected profile actually stages."""
-    total = sum(_EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav"))
+    total = sum(_EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav", "egress-proxy"))
     review_profile = getattr(args, "review_model_profile", "auto") if args is not None else "auto"
     languages: tuple[str, ...] = ("en",)
     if args is not None:
@@ -4058,7 +4061,7 @@ def _restore(console: Console, args: argparse.Namespace, root: Path) -> None:
 
 
 def _build_targets(auth: str, models: str) -> list[str]:
-    targets = ["app", "account-admin", "gateway", "clamav", "postgres"]
+    targets = ["app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"]
     if auth == "kerberos":
         targets.append("kerberos-proxy")
     if models in {"all", "review"}:
