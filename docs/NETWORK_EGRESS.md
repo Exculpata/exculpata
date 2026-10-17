@@ -216,7 +216,10 @@ The opt-in `scripts/test-egress-smoke.py --docker-context CONTEXT --output DIR`
 builds the actual production application and relay targets. It derives their
 network memberships, DNS, proxy environment, user and hardening from `compose.yaml`.
 Fixture changes remove app data mounts, env files and dependencies, replace startup
-with a probe process, and add three bounded synthetic endpoints. Five containers
+with a probe process, and add three bounded synthetic endpoints. Fixture health
+checks require the app identity module to load and each endpoint to answer its
+loopback HTTP probe before Compose startup succeeds; the relay retains its
+production health check. Five containers
 use the production app/relay networks; none publishes ports or mounts host data.
 A directly reachable internal canary makes cleartext/suffix denial assertions
 independent of routing failure. The actual Authlib adapter performs signed-token

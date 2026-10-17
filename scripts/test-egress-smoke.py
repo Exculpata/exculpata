@@ -55,7 +55,9 @@ def production_graph(project, proxy_context):
     for key in ('volumes', 'env_file', 'depends_on'):
         app.pop(key, None)
     app.update(command=['python','-c','import time; time.sleep(1800)'],
-               healthcheck={'disable': True}, cpus=1, mem_limit='512m')
+               healthcheck={'test': ['CMD', 'python', '-c', 'import case_intelligence.identity'],
+                            'interval': '2s', 'timeout': '5s', 'retries': 30},
+               cpus=1, mem_limit='512m')
     # Nothing overrides production proxy environment, network membership or DNS.
     for key in ('environment', 'networks', 'dns', 'dns_search', 'user', 'read_only', 'cap_drop', 'security_opt'):
         assert app[key] == source['services']['app'][key]
@@ -96,7 +98,10 @@ def main():
         original_dns=copy.deepcopy(data['services']['app']['dns'])
         limits={'cpus':.5,'mem_limit':'128m','pids_limit':64,'read_only':True,
                 'cap_drop':['ALL'],'security_opt':['no-new-privileges:true'],'user':'65532:65532',
-                'image':project+'-endpoint','pull_policy':'never','healthcheck':{'disable':True}}
+                'image':project+'-endpoint','pull_policy':'never',
+                'healthcheck':{'test':['CMD','python','-c',
+                    "import json,urllib.request; r=urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:8080/',timeout=2); assert json.load(r)=={'synthetic':True}"],
+                    'interval':'2s','timeout':'5s','retries':30}}
         data['services'].update({
             'issuer':{**limits,'networks':{'front':{'aliases':['issuer.example.test']}}},
             'foreign':{**limits,'networks':{'front':{'aliases':['foreign.example.test']}}},
