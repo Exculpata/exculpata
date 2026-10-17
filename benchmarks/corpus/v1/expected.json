@@ -102,7 +102,10 @@
         },
         {
           "document_id": "audio-parcel",
-          "span": "The orange parcel was stored in locker seven."
+          "span": "The orange parcel was stored in locker seven.",
+          "alternative_spans": [
+            "The orange parcel was stored in Locker 7."
+          ]
         }
       ]
     },
@@ -117,7 +120,10 @@
         },
         {
           "document_id": "audio-parcel",
-          "span": "The orange parcel was stored in locker seven."
+          "span": "The orange parcel was stored in locker seven.",
+          "alternative_spans": [
+            "The orange parcel was stored in Locker 7."
+          ]
         }
       ]
     },

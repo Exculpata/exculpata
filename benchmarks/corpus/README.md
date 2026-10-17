@@ -14,6 +14,9 @@ allows WER <= 0.15. Insertions, deletions, and substitutions all count. Search
 requires the named sources within top-k. Each answer requires its facts, the
 question route, all named source spans, and valid product citation resolution.
 Missing, unrelated, or invalid citations fail without a citation tolerance.
+The audio parcel gold explicitly permits the equivalent written forms “locker
+seven” and “Locker 7”; other numbers do not match. This is a reviewed span
+alternative, not number substitution in recognition scoring or source validation.
 
 ```sh
 make corpus-check
@@ -24,7 +27,8 @@ make corpus-check-full
 The fast lane ingests native PDFs and prepared transcript fixtures through the
 application's source store, durable media-job/import/projection path, search,
 the answer service, and citation validation. A separate HTTP probe uses the
-real one-box dispatcher and Ask handler, requiring a durable answer job for each
+real one-box dispatcher and Ask handler in synthetic test authentication mode,
+requiring a durable answer job for each
 question. It stops before job execution; answer completion is evaluated separately. It seeds the original WAV bytes without
 acoustic preflight. It does not run OCR or ASR and cannot establish recognition
 quality. Retrieval uses deterministic test adapters with lexical behavior;
@@ -34,7 +38,7 @@ this corpus and from the diagnostics/scale work in issues #285 and #287.
 
 The full lane additionally ingests the two image PDFs and the original WAVs,
 using real OCR and local pinned ASR. This requires the Linux product dependencies
-(`/usr/bin/pdftoppm`, Tesseract, ffprobe), exact English/Spanish OCR data hashes
+(`/usr/bin/pdftoppm`, Tesseract, ffprobe), exact English/Spanish and orientation OCR data hashes
 from the manifest at `/usr/share/tesseract-ocr/5/tessdata`, and the existing
 approved large-v3 snapshot. Install `faster-whisper==1.2.1`,
 `ctranslate2==4.8.2`, `huggingface-hub==1.33.0`, and `av==18.1.0`, then explicitly stage:

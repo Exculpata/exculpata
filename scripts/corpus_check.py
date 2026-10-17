@@ -78,9 +78,18 @@ def load_corpus(root: Path):
     for case in expected['answers'].values():
         if (not case['facts'] or not all(isinstance(fact, str) and normalize(fact) for fact in case['facts'])
                 or not case['citations'] or any(c['document_id'] not in sources
-                or not isinstance(c['span'], str) or not normalize(c['span']) for c in case['citations'])):
+                or not isinstance(c['span'], str) or not normalize(c['span'])
+                or not isinstance(c.get('alternative_spans', []), list)
+                or any(not isinstance(span, str) or not normalize(span) for span in c.get('alternative_spans', []))
+                for c in case['citations'])):
             raise ValueError('Answers require nonempty facts and known source spans')
     return manifest, expected
+
+
+def matches_span(citation, required):
+    spans = [required['span'], *required.get('alternative_spans', [])]
+    return (citation.get('document_id') == required['document_id']
+            and any(normalize(span) in normalize(citation.get('excerpt', '')) for span in spans))
 
 
 def compare(manifest, expected, actual, *, full=False):
@@ -134,10 +143,10 @@ def compare(manifest, expected, actual, *, full=False):
                 for citation in citations:
                     if citation.get('source_valid') is not True:
                         errors.append(f'invalid source span: {citation}')
-                    if not any(citation.get('document_id') == item['document_id'] and normalize(item['span']) in normalize(citation.get('excerpt', '')) for item in want['citations']):
+                    if not any(matches_span(citation, item) for item in want['citations']):
                         errors.append(f'unexpected citation: {citation}')
                 for required in want['citations']:
-                    if not any(c.get('document_id') == required['document_id'] and normalize(required['span']) in normalize(c.get('excerpt', '')) and c.get('source_valid') is True for c in citations):
+                    if not any(matches_span(c, required) and c.get('source_valid') is True for c in citations):
                         errors.append(f'missing required citation: {required}')
             results.append({'id': key, 'passed': not errors, 'diff': errors, **measurement})
     return results
