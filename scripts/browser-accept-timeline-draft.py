@@ -28,7 +28,9 @@ def main():
     parser.add_argument('--chromedriver',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args()
-    args.output.mkdir(parents=True,exist_ok=False)
+    if args.output.exists() and any(args.output.iterdir()):
+        raise ValueError('Choose a new or empty output directory.')
+    args.output.mkdir(parents=True, exist_ok=True)
     isolate_environment()
     checks=[]
     driver=None
