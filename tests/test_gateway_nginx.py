@@ -4,9 +4,6 @@ Requires Docker and OpenSSL; also runs directly with the standard library in
 CI's deployment-contract job so a missing runtime cannot silently skip it.
 """
 
-from case_intelligence.legacy_names import (
-    LEGACY_PRODUCT,
-)
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,8 +25,14 @@ class GatewayHeaderContract(unittest.TestCase):
                      (ROOT / "deploy/gateway/Dockerfile").read_text().splitlines()
                      if line.startswith("FROM "))
         container = f"synthetic-gateway-{uuid.uuid4().hex}"
-        names = [f"X-{brand}-{suffix}" for brand in ("Exculpata", f"{LEGACY_PRODUCT}")
-                 for suffix in ("Authenticated-User", "Proxy-Secret", "Auth-Diagnostic")]
+        names = (
+            "X-Exculpata-Authenticated-User",
+            "X-Exculpata-Proxy-Secret",
+            "X-Exculpata-Auth-Diagnostic",
+            "X-RecordBench-Authenticated-User",
+            "X-RecordBench-Proxy-Secret",
+            "X-RecordBench-Auth-Diagnostic",
+        )
         absent = "|".join("" for _ in names)
         with tempfile.TemporaryDirectory(prefix="synthetic-gateway-") as temporary:
             scratch = Path(temporary)
@@ -70,12 +73,13 @@ class GatewayHeaderContract(unittest.TestCase):
                         with self.subTest(path=path, mode=mode):
                             forged = {}
                             for name in names:
-                                if mode == "new-only" and f"{LEGACY_PRODUCT}" in name:
+                                previous = name.startswith("X-RecordBench-")
+                                if mode == "new-only" and previous:
                                     continue
-                                if mode == "old-only" and "Exculpata" in name:
+                                if mode == "old-only" and name.startswith("X-Exculpata-"):
                                     continue
                                 forged[name] = ("synthetic-different" if mode == "both-different"
-                                                and f"{LEGACY_PRODUCT}" in name else "synthetic-forged")
+                                                and previous else "synthetic-forged")
                             # A control for every case proves the observer sees
                             # supplied headers when the gateway is bypassed.
                             self.assertEqual(request(path, forged, direct=True),
