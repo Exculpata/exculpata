@@ -14,6 +14,9 @@ services:
       - postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U recordbench -d recordbench"]
@@ -55,6 +58,9 @@ services:
       - clamav-signatures:/var/lib/clamav
     depends_on:
       clamav-updater: {condition: service_healthy}
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
@@ -126,6 +132,9 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/retrieval-native:rw,exec,nosuid,nodev,size=512m
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
 
   generator:
@@ -150,6 +159,9 @@ services:
         read_only: true
     tmpfs:
       - /tmp/vllm-cache:rw,exec,nosuid,nodev,size=8g
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
     command:
       - --model
@@ -221,6 +233,9 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/transcription-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
 
   transcription-worker:
@@ -386,6 +401,9 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [app-egress, services, models]
 
   egress-proxy:

@@ -664,6 +664,7 @@ def ready_host(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(installer.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(installer.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(installer.shutil, "disk_usage", lambda path: type("Disk", (), {"free": 400 * 1024**3})())
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0", ""))
@@ -3567,3 +3568,11 @@ def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, re
     assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
     installer._apply_storage_profile(args, root, dry_run=False)
     assert _control_bytes(root) == before
+
+
+def test_preflight_blocks_unsupported_dns_engine(tmp_path, ready_host, monkeypatch):
+    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: False)
+    result = installer._collect_preflight("none", preflight_args(tmp_path))
+    check = checks_by_name(result)["docker-dns-version"]
+    assert not result.ready and check.blocking and check.state == "fail"
+    assert "26.0.0" in check.remedy

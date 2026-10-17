@@ -6,6 +6,51 @@ blocked by that topology, including clients that ignore proxy settings. The
 gateway continues reaching the app and optional Kerberos proxy through
 `services`; the proxy alone bridges `app-egress` to `front`.
 
+## DNS boundary and supported runtime
+
+An internal network flag is not sufficient evidence of DNS isolation. Docker's
+embedded resolver (`127.0.0.11`) answers service names and can forward unknown
+names upstream. [CVE-2024-29018](https://github.com/moby/moby/security/advisories/GHSA-mq39-4gv4-mvpx)
+describes older Engines forwarding from internal networks through a host-loopback
+resolver. Fixed Moby versions suppress that host-namespace forwarding. No leak
+was observed on the previously tested Engine; its missing DNS proof was not a
+demonstration of exfiltration.
+
+The app, PostgreSQL, ClamAV parser, retrieval, generator and transcription API
+explicitly set `dns: [127.0.0.1]` and `dns_search: ["."]`. On supported Docker
+Engine user-defined networks, embedded service discovery remains at `127.0.0.11`;
+the explicit upstream is the **container's own loopback**, with no resolver
+listening there in the deployed services. This follows the advisory's explicit
+upstream workaround and prevents fallback to host resolvers. It is not
+`dns: [127.0.0.11]`, which would point the embedded resolver at itself. The search
+setting prevents inherited host search suffixes. OIDC issuer resolution happens
+in the constrained relay; its DNS settings are unchanged. Existing gateway,
+model-stager, updater and Kerberos proxy DNS settings are unchanged.
+
+The installer conservatively requires stable Docker Engine **26.0.0 or newer**.
+Older patched/backported releases, prereleases and unrecognized version formats
+are not accepted by this policy; this does not assert they are all vulnerable.
+Preflight is read-only and checks the version, not live forwarding. Live doctor
+also inspects each running restricted service's exact DNS/search settings and
+internal-only network memberships. From the actual app it requires positive
+internal service lookup and negative outside A/AAAA/TXT responses over UDP and
+TCP. Unsupported configuration, missing positive controls, timeouts and unexpected
+answers block doctor; dry-run explicitly reports DNS unverified.
+
+Doctor's negative response alone does not prove no forwarding occurred. The live
+smoke separately observes controlled resolver counters, including positive outside
+controls, zero app queries at the outside recorder, and all six synthetic
+outside-name queries arriving at a temporary resolver on the app's own loopback.
+The temporary recorder is a test fixture, never part of the deployed application.
+Host-root/runtime compromise, additional network attachments, private overrides
+and deliberately running a resolver in a restricted container are outside this
+guarantee. Docker internal bridges can still reach appropriately bound services
+on their host gateway. An operator must not expose a DNS forwarder or general
+proxy there to these networks; this change is not a firewall for host services.
+No host firewall or system DNS configuration is installed by the product.
+
+## OIDC relay
+
 `HTTPS_PROXY` directs OIDC HTTPS connections to `egress-proxy:3128`. Both upper
 and lower case proxy variables are fixed in Compose; HTTP and catch-all proxy
 variables are empty. Exact internal service names are in `NO_PROXY`. Existing
@@ -97,7 +142,7 @@ controlled build acceptance. Model-selection build targets are unchanged.
 * `clamav-updater` remains on `updates` and writes only the shared signature
   volume. It needs signature update egress; `clamav`, which parses evidence,
   remains internal. The updater has no uploaded-evidence mount.
-* Host package/image acquisition, Docker DNS/control-plane behavior, host-root
+* Host package/image acquisition, Docker control-plane behavior, host-root
   access and private deployment overlays are outside the proxy's boundary.
 
 An operator may separately review a host DOCKER-USER/nftables policy for their
@@ -145,7 +190,7 @@ builds the pinned Python image and locked app dependencies, then creates four
 limited synthetic containers and two internal networks with no host mounts or
 published ports. It runs the actual Authlib adapter against a temporary TLS OIDC
 endpoint, checks custom CA and redirects, proves numeric direct TCP/HTTPX bypass
-denials separately, and checks foreign/port/malformed and healthy no-issuer
+denials and UDP/TCP DNS behavior separately, and checks foreign/port/malformed and healthy no-issuer
 denials. It cleans up only its unique Compose project and images. The caller
 must provide an approved disposable Docker runtime and remove that runtime
 after retaining evidence. This exercises a fresh synthetic graph; it is not a
@@ -154,7 +199,9 @@ The empty-issuer probe checks only healthy deny-all proxy behavior; it is not a
 complete local-account or Kerberos sign-in journey. The fixture uses a separate
 four-container graph, not the production Compose graph.
 The separate `Network isolation smoke` workflow runs for PRs carrying the
-`network-smoke` label (including label events), or on explicit manual dispatch.
+`network-smoke` label (including label events), merge groups, a weekly Monday
+06:43 UTC schedule, or explicit manual dispatch. Scheduled runs use the default
+branch, so the new schedule takes effect only after this workflow is merged.
 It uses a disposable hosted Linux runner and publishes only its content-free
 summary. The six existing required quality checks are unchanged. A skipped
 smoke job is not a live test pass.

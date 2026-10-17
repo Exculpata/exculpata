@@ -469,7 +469,7 @@ passwords and staging tokens are never passed to the build logger.
 
 ## Hardware and capability profiles
 
-Exculpata targets a modern x86-64 Linux host with Docker Engine and Docker
+Exculpata targets a modern x86-64 Linux host with stable Docker Engine 26.0.0 or newer and Docker
 Compose v2. The figures below are starting targets for alpha evaluation, not
 validated minimums:
 

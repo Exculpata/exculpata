@@ -55,6 +55,13 @@ unavailable comparisons conservatively require browser coverage. A skipped PR
 browser job is not a browser test pass. Fork PRs use the upstream PR run; forks
 need not enable Actions.
 
+The separate network isolation smoke runs on labeled `network-smoke` PRs,
+merge groups, weekly on Monday at 06:43 UTC, and manual dispatch. It tests
+synthetic OIDC and independent TCP/DNS boundaries, including internal DNS
+controls, UDP/TCP A/AAAA/TXT requests and observed non-forwarding. It retains a
+content-free summary. A skipped run is not acceptance; the weekly schedule uses
+the default branch once the workflow is merged.
+
 Plain documentation changes use a bounded fast path. The `application` check runs
 lightweight documentation and scope contracts with pytest. PostgreSQL,
 transcription and deployment suites are explicitly not applicable; publication

@@ -36,6 +36,7 @@ def main():
         root = Path(temporary)
         fixture = root / "fixture"
         shutil.copytree(ROOT / "tests/network_smoke", fixture)
+        shutil.copy(ROOT / "scripts/dns_boundary_probe.py", fixture / "dns_boundary_probe.py")
         shutil.copytree(ROOT / "src", fixture / "src", ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
         shutil.copy(ROOT / "requirements/application.lock", fixture / "requirements.lock")
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -72,6 +73,7 @@ def main():
                 "networks": ["app", "upstream"], "environment": {"OIDC_ISSUER": issuer,
                     "OIDC_ISSUER_PINS": json.dumps({"issuer": issuer, "addresses": [issuer_address]})}},
             "app": {**limits, "build": {"context": str(fixture), "target": "probe"}, "image": project + "-app",
+                "dns": ["127.0.0.1"], "dns_search": ["."],
                 "networks": ["app"], "command": ["python", "-c", "import time; time.sleep(1200)"],
                 "environment": {"HTTPS_PROXY": "http://proxy:3128", "https_proxy": "http://proxy:3128",
                     "HTTP_PROXY": "", "http_proxy": "", "ALL_PROXY": "", "all_proxy": "", "NO_PROXY": "", "no_proxy": "",
@@ -81,8 +83,8 @@ def main():
         compose_file = root / "compose.yaml"
         compose_file.write_text(json.dumps(data))
         compose = [*docker, "compose", "-p", project, "-f", str(compose_file)]
-        def run(argv, *, timeout=600, filename=None):
-            completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        def run(argv, *, timeout=600, filename=None, input_value=None):
+            completed = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, input=input_value)
             if filename:
                 (args.output / filename).write_text(completed.stdout + completed.stderr)
             if completed.returncode:
@@ -102,11 +104,19 @@ def main():
                 assert not container["Mounts"] and not container["HostConfig"]["PortBindings"]
                 assert not container["HostConfig"]["Privileged"]
                 assert container["HostConfig"]["Memory"] == 128 * 1024 * 1024
+                if container["Config"]["Labels"]["com.docker.compose.service"] == "app":
+                    assert container["HostConfig"]["Dns"] == ["127.0.0.1"]
+                    assert container["HostConfig"]["DnsSearch"] == ["."]
             # Require TLS readiness from the allowed endpoint before denial checks.
             run([*compose, "exec", "-T", "app", "python", "-c",
                  "import httpx,ssl,time; c=ssl.create_default_context(cafile='/fixture/issuer.pem'); "
                  "exec(\"for attempt in range(20):\\n try:\\n  httpx.get('https://issuer.example.test:8443/',verify=c,timeout=3).raise_for_status(); break\\n except httpx.HTTPError:\\n  time.sleep(.2)\\nelse: raise RuntimeError('issuer unavailable')\")"], filename="readiness.log")
             results.update(json.loads(run([*compose, "exec", "-T", "app", "python", "/fixture/probe.py"], filename="probe.log")))
+            # Positive outside DNS controls originate in the upstream network.
+            control = (ROOT / "scripts/dns_boundary_probe.py").read_text().split('if __name__ == "__main__":')[0]
+            control += "\nfor protocol in ('udp', 'tcp'):\n for kind in (1, 28, 16):\n  assert query('synthetic-control.example.invalid', kind, protocol, " + repr(issuer_address) + ") == (3, 0)\nprint('six outside DNS controls passed')\n"
+            run([*compose, "exec", "-T", "proxy", "python", "-I", "-"], input_value=control, filename="dns-controls.log")
+            results.update(json.loads(run([*compose, "exec", "-T", "app", "python", "/fixture/dns_probe.py"], filename="dns-probe.log")))
             # Prove local/Kerberos's healthy deny-all configuration, then clean up.
             data["services"]["proxy"]["environment"] = {"OIDC_ISSUER": "", "OIDC_ISSUER_PINS": ""}
             compose_file.write_text(json.dumps(data))

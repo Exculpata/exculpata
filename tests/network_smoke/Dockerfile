@@ -3,7 +3,7 @@ COPY requirements.lock /fixture/requirements.lock
 RUN pip install --no-cache-dir --require-hashes -r /fixture/requirements.lock
 COPY src /fixture/src
 ENV PYTHONPATH=/fixture/src PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-COPY issuer.pem probe.py endpoint.py /fixture/
+COPY issuer.pem probe.py endpoint.py dns_probe.py dns_trap.py dns_boundary_probe.py /fixture/
 USER 65532:65532
 FROM runtime AS probe
 CMD ["python", "/fixture/probe.py"]

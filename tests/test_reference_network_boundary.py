@@ -68,6 +68,28 @@ def test_app_has_no_direct_egress():
     assert all((compose["networks"][name] or {}).get("internal") is True for name in app["networks"])
 
 
+def test_internal_services_use_container_local_dns_upstream():
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    restricted = {"app", "postgres", "clamav", "retrieval", "generator", "transcription-api"}
+    for name in restricted:
+        service = compose["services"][name]
+        assert service.get("dns") == ["127.0.0.1"], name
+        assert service.get("dns_search") == ["."], name
+        assert all(compose["networks"][network]["internal"] for network in service["networks"])
+    for name in {"egress-proxy", "gateway", "model-stager", "clamav-updater"}:
+        assert "dns" not in compose["services"][name]
+
+
+def test_network_smoke_runs_for_merge_groups_and_weekly():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/network-smoke.yml").read_text())
+    events = workflow[True]  # PyYAML's YAML 1.1 spelling of `on`.
+    assert "merge_group" in events
+    assert events["schedule"] == [{"cron": "43 6 * * 1"}]
+    assert workflow["jobs"]["network-smoke"]["if"] == (
+        "github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke')"
+    )
+
+
 @pytest.fixture
 def contract_tree(tmp_path):
     for name in ("src", "services", "deploy", "config"):
@@ -96,6 +118,15 @@ def test_network_contract_rejects_loosening(contract_tree):
     result = run_contract(contract_tree)
     assert result.returncode == 1
     assert "compose.yaml:" in result.stderr and "network definitions changed" in result.stderr
+
+
+@pytest.mark.parametrize("replacement", ["dns: [127.0.0.11]", "dns: []", "dns: [192.0.2.53]"])
+def test_network_contract_rejects_dns_upstream_changes(contract_tree, replacement):
+    path = contract_tree / "compose.yaml"
+    path.write_text(path.read_text().replace("dns: [127.0.0.1]", replacement))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "network membership" in result.stderr
 
 
 def test_network_contract_rejects_new_outbound_host(contract_tree):
