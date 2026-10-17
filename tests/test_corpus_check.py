@@ -141,3 +141,31 @@ def test_receipt_records_measured_recognition_error_rates():
     assert records[1]['metric'] == 'wer'
     assert records[0]['error_rate'] == records[1]['error_rate'] == 0
     assert records[1]['tolerance'] == .15
+
+
+@pytest.mark.parametrize('excerpt,valid,passes', [
+    ('The parcel is in locker seven.', True, True),
+    ('The parcel is in Locker 7.', True, True),
+    ('The parcel is in Locker 8.', True, False),
+    ('The parcel is in Locker 7.', False, False),
+])
+def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, valid, passes):
+    manifest, expected, actual = sample()
+    expected['answers']['answer']['facts'] = ['parcel is in']
+    expected['answers']['answer']['citations'] = [{
+        'document_id': 'pdf', 'span': 'parcel is in locker seven',
+        'alternative_spans': ['parcel is in locker 7'],
+    }]
+    actual['answer']['text'] = excerpt
+    actual['answer']['citations'] = [{'document_id':'pdf', 'excerpt':excerpt, 'source_valid':valid}]
+    result = next(r for r in gate.compare(manifest, expected, actual) if r['id'] == 'answer')
+    assert result['passed'] is passes
+
+
+@pytest.mark.parametrize('alternatives', [[' '], [None], 'locker 7'])
+def test_malformed_span_alternatives_are_rejected(tmp_path, alternatives):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'expected.json'; expected = json.loads(path.read_text())
+    expected['answers']['answer-parcel']['citations'][1]['alternative_spans'] = alternatives
+    path.write_text(json.dumps(expected))
+    with pytest.raises(ValueError): gate.load_corpus(root)
