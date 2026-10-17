@@ -70,6 +70,11 @@ def collect_timeline_units(documents, candidate, *, limits=CoverageLimits(), clo
                     if len(units) < 2501:
                         units.append(candidate(document, unit, ordinal))
                     check()
+            except _CoverageLimit:
+                # The footer has not been validated when a budget interrupts
+                # this iterator. Retain only earlier, fully read sources.
+                del units[start:]
+                raise
             except (OSError, ValueError, TypeError, RuntimeError):
                 # A malformed container may have yielded a valid-looking prefix.
                 # Do not offer entries from that unreadable source as usable.

@@ -35,7 +35,8 @@ bounded at 2,501 and date extraction at 2,500. If a ceiling is reached or source
 text is missing, corrupt, or too large, the usable draft remains available with
 an explicit unavailable-total warning and `capped` set. No partial count is
 presented as an exact total. Entries from a source whose container fails validation
-are discarded; earlier readable sources remain usable. These reads retain the
+or cannot finish within the budget are discarded: its footer has not been validated.
+Earlier fully read sources remain usable. These reads retain the
 existing source/authorization snapshot, with bounded work while its locks are held.
 A failed citation window is omitted and counted. Drafts recompute
 on demand and are not persisted; pure results have a null generation timestamp while

@@ -32,7 +32,7 @@ def test_unit_and_document_limits_do_not_pull_an_unbounded_tail():
             yield PilotUnit(len(pulled), 'Synthetic')
     units, total, complete = collect([SimpleNamespace(iter_parsed_units=endless)],
                                      limits=replace(CoverageLimits(), units=3))
-    assert len(pulled) == len(units) == 3
+    assert len(pulled) == 3 and units == []
     assert total is None and not complete
     opened = []
     def sources():
@@ -88,3 +88,32 @@ def test_exact_count_requires_validated_end_of_all_sources():
     source = document(stream=io.StringIO('{"version":1,"units":[{"number":1,"text":"Synthetic"}]}'))
     units, total, complete = collect([source, document()])
     assert len(units) == total == 1 and complete
+
+@pytest.mark.parametrize('footer', ['"version":2}', 'broken'])
+def test_passage_limit_discards_source_before_invalid_footer(footer):
+    first = document([{'number': 1, 'text': 'Synthetic validated source'}])
+    tail = document(stream=io.StringIO(
+        '{"units":[{"number":1,"text":"2034-04-18"},'
+        '{"number":2,"text":"2034-04-19"}],' + footer))
+    units, total, complete = collect([first, tail], limits=replace(CoverageLimits(), units=3))
+    assert [unit.text for unit in units] == ['Synthetic validated source']
+    assert total is None and not complete
+
+@pytest.mark.parametrize('kind', ['input', 'deadline'])
+def test_read_limits_discard_source_before_unvalidated_footer(kind):
+    now = [0]
+    reads = []
+    class Reads(io.StringIO):
+        def read(self, count=-1):
+            reads.append(1)
+            if kind == 'deadline' and len(reads) == 2:
+                now[0] = 3
+            return super().read(count)
+    first = document([{'number': 1, 'text': 'Synthetic validated source'}])
+    tail = document(stream=Reads('{"units":[{"number":1,"text":"2034-04-18"}]'
+                                 + ' ' * 100000 + ',"version":2}'))
+    limits = replace(CoverageLimits(), input_chars=65536 if kind == 'input' else 200000)
+    units, total, complete = collect([first, tail], limits=limits, clock=lambda: now[0])
+    assert len(reads) == 2
+    assert [unit.text for unit in units] == ['Synthetic validated source']
+    assert total is None and not complete
