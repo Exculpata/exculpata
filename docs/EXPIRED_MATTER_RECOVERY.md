@@ -64,6 +64,7 @@ the interval does not provide an inspection window.
    `CASE_INTELLIGENCE_MAINTENANCE_ENABLED=0` and
    `CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY=0` in the **isolated target's effective
    app environment**. For Compose this is the target's `config/exculpata.env`
+   or `config/recordbench.env`
    loaded by the app service; a shell export alone does not override `env_file`.
    Recreate any already-created isolated app container to apply the hold;
    a plain Compose restart preserves that container's previous environment.

@@ -8,11 +8,11 @@ for complete, scoped document enumeration with bounded scans.
 
 ## Grammar versions
 
-The current default is `exculpata-exact-v2`, adding [word proximity](EXACT_SEARCH_PROXIMITY.md).
-Explicit `parse_query(..., grammar_version="exculpata-exact-v1")` retains the
+The current default is `recordbench-exact-v2`, adding [word proximity](EXACT_SEARCH_PROXIMITY.md).
+Explicit `parse_query(..., grammar_version="recordbench-exact-v1")` retains the
 original grammar and rejects proximity.
 
-`exculpata-exact-v1` supports words, quoted phrases, `AND`, `OR`, `NOT`, and
+`recordbench-exact-v1` supports words, quoted phrases, `AND`, `OR`, `NOT`, and
 parentheses. Operators are case-insensitive; quote a literal operator word such
 as `"and"`. Adjacent operands imply AND. Precedence is NOT, AND, then OR.
 
@@ -46,7 +46,7 @@ backslash may be escaped. Control/hidden-format characters are rejected.
 Limits are 512 query characters before and after normalization, 128 grammar tokens, and 16 nested parentheses
 or NOT levels. Parse errors contain an explanation and character location,
 without echoing matter query text. The serialized plan records original text,
-normalized expression, grammar version, tokenizer version (`exculpata-words-v1`),
+normalized expression, grammar version, tokenizer version (`recordbench-words-v1`),
 and a typed operator tree. This is a
 backend contract, not executable SQL and not permission to access a source.
 Normalized expressions omit redundant grouping and use implicit AND so

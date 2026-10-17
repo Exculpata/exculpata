@@ -48,9 +48,10 @@ recovery procedure. Do not overwrite any node that has admitted user work.
 ## Map verified snapshot data
 
 The verified restic restore retains original path prefixes. Under the drill
-root, identify the unique `payload/CONTROL_SHA256SUMS` and the unique
-`managed-storage/.exculpata-managed-storage.json`; fail if either is missing
-or ambiguous. The payload contains `runtime/`, `accounts/`, `secrets/`,
+root, identify the unique `payload/CONTROL_SHA256SUMS` and the one
+ownership marker, either `managed-storage/.recordbench-managed-storage.json`
+or `managed-storage/.exculpata-managed-storage.json`. Fail if that marker is
+missing or ambiguous. The payload contains `runtime/`, `accounts/`, `secrets/`,
 `configuration/`, `control/`, and `postgres/review-index.dump`.
 
 While **all replacement application services are stopped**, copy these verified
@@ -100,7 +101,7 @@ docker compose --env-file "$RECOVERED_ROOT/compose.env" \
   -f "$RECOVERED_RELEASE/compose.yaml" \
   -f "$RECOVERED_RELEASE/compose.local-accounts.yaml" \
   exec -T postgres pg_restore --exit-on-error --no-owner \
-  -U exculpata -d exculpata < "$VERIFIED_PAYLOAD/postgres/review-index.dump"
+  -U recordbench -d recordbench < "$VERIFIED_PAYLOAD/postgres/review-index.dump"
 ```
 
 Stop on any import error. Compare schema and representative row counts with the

@@ -14,11 +14,16 @@ import uuid
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-IMAGE = os.environ.get(f"{LEGACY_ENV_PREFIX}STAGER_TEST_IMAGE")
 
 
-@pytest.mark.skipif(not IMAGE, reason=f"Set {LEGACY_ENV_PREFIX}STAGER_TEST_IMAGE to an already built model-stager image")
+def _either(suffix: str, default: str | None = None) -> str | None:
+    """Prefer the current probe variable and accept the previous name."""
+    return os.environ.get("EXCULPATA_" + suffix) or os.environ.get(LEGACY_ENV_PREFIX + suffix) or default
+
+
+@pytest.mark.skipif(not _either("STAGER_TEST_IMAGE"), reason="Set EXCULPATA_STAGER_TEST_IMAGE or the previous name to an already built model-stager image")
 def test_hub_auxiliary_cache_is_writable_inside_model_mount(tmp_path):
+    image = _either("STAGER_TEST_IMAGE")
     environment = os.environ.copy()
     compose = ROOT / 'compose.yaml'
     for key in set(re.findall(r'\$\{([A-Z_]+):\?', compose.read_text())):
@@ -36,7 +41,7 @@ def test_hub_auxiliary_cache_is_writable_inside_model_mount(tmp_path):
     model_root.mkdir(mode=0o700)
     name = f"{LEGACY_STEM}-cache-probe-" + uuid.uuid4().hex
     command = ['docker', 'run', '--rm', '--name', name, '--pull', 'never',
-        '--label', 'com.docker.compose.project=' + os.environ.get(f"{LEGACY_ENV_PREFIX}TEST_PROJECT", name),
+        '--label', 'com.docker.compose.project=' + _either("TEST_PROJECT", name),
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--user', f'{os.getuid()}:{os.getgid()}',
         '--cpus', '0.5', '--memory', '256m', '--memory-swap', '256m', '--pids-limit', '64',
@@ -62,7 +67,7 @@ for value in (HF_HUB_CACHE, HF_XET_CACHE):
 print(json.dumps({'hub_cache_writable': True, 'xet_cache_writable': True, 'xet_transport_enabled': False}))
 '''
     try:
-        result = subprocess.run([*command, '--entrypoint', 'python', IMAGE, '-c', probe],
+        result = subprocess.run([*command, '--entrypoint', 'python', image, '-c', probe],
             capture_output=True, text=True, timeout=120)
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout) == {'hub_cache_writable': True, 'xet_cache_writable': True, 'xet_transport_enabled': False}

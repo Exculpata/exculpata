@@ -5,7 +5,7 @@ Exculpata ownership marker. The application will not delete outside that
 boundary. A local filesystem or host-mounted NAS path is supported; the
 installer does not mount network shares or store NAS credentials.
 
-Both `.exculpata-managed-storage.json` and `.exculpata-managed-storage.json`
+Both `.exculpata-managed-storage.json` and `.recordbench-managed-storage.json`
 are supported, with each generation's original product/storage-ID validation.
 Opening or restoring a marker never rewrites it. Conflicting markers are refused.
 Fresh installs use the Exculpata marker; existing nodes retain the legacy marker.
@@ -435,7 +435,7 @@ mixed-version writers or remove the new table in a live upgraded database.
 
 The required `deployment-contract` encrypted restic/PostgreSQL restore test
 (`test_encrypted_split_snapshot_and_postgres_restore`) checks C1 fields and audit
-bytes on both `exculpata` and `exculpata` naming generations after opening clean
+bytes on both `recordbench` and `exculpata` naming generations after opening clean
 application stores. The normal mocked-backup test covers the same assertions
 without external services; it does not replace the encrypted drill or installed
 node acceptance. Use synthetic fixtures only.

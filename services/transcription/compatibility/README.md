@@ -1,6 +1,6 @@
 # WhisperX compatibility wheel
 
-This recipe builds `whisperx==3.8.6+exculpata.1` from upstream revision
+This recipe builds `whisperx==3.8.6+recordbench.1` from upstream revision
 `3ccc17b8de34f305300f8a3fd3c9f76ba820c0d0`. It verifies the upstream archive
 SHA-256 before bounded extraction, verifies the original `pyproject.toml`, and
 changes dependency metadata only. All 16 `whisperx/*.py` modules remain unchanged.

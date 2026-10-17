@@ -67,7 +67,7 @@ matches the published LFS object in
 The model repository's MIT license is Copyright (c) 2022 CNRS; the complete
 [notice is retained here](services/transcription/licenses/pyannote-segmentation-MIT.txt).
 The service wheel includes the notice in its license metadata, and service
-images copy it to `/usr/share/licenses/exculpata-transcription/`.
+images copy it to `/usr/share/licenses/recordbench-transcription/`.
 
 This checkpoint detects speech activity; it is separate from the selected
 Nemotron speaker diarizer. Its upstream repository has a download gate, but
@@ -76,7 +76,7 @@ No runtime model-hub access or additional end-user token step is introduced.
 This exact-artifact attribution does not approve different model revisions or
 resolve the separate NLTK tokenizer-data terms.
 
-The Exculpata compatibility distribution `whisperx==3.8.6+exculpata.1` builds
+The Exculpata compatibility distribution `whisperx==3.8.6+recordbench.1` builds
 from pinned upstream source with dependency metadata changes. Its wheel preserves
 the upstream BSD text and CNRS MIT notice, including the same VAD checkpoint.
 The [build recipe](services/transcription/compatibility/README.md) records the

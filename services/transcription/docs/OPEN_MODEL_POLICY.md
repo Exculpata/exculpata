@@ -22,7 +22,7 @@ The model cache is configured with `TRANSCRIPTION_V2_MODEL_CACHE`. It must not
 point at another application's environment or a writable shared cache whose
 contents can change without release control. Set it to the same Hugging Face hub cache
 selected by `HF_HOME` (the example uses
-`/var/lib/exculpata/model-cache/huggingface/hub`) so every offline loader
+`/var/lib/recordbench/model-cache/huggingface/hub`) so every offline loader
 resolves the same staged snapshots.
 
 ## Approved initial components

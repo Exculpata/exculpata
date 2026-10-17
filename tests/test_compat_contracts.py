@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -124,3 +125,78 @@ def test_qa_launchers_and_drivers_share_environment_names():
     ))
     result = subprocess.run([node, "-e", script], capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
+
+
+def _module(relative: str, name: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_fresh_sample_selects_the_current_app_env_file():
+    sample = _read(".env.example")
+    assert f"{CURRENT_ENV_PREFIX}APP_ENV_FILE={CURRENT_STEM}.env" in sample
+    compose = _read("compose.yaml")
+    default = (
+        "${" + CURRENT_ENV_PREFIX + "APP_ENV_FILE:-${"
+        + LEGACY_ENV_PREFIX + "APP_ENV_FILE:-" + LEGACY_STEM + ".env}}"
+    )
+    assert default in compose
+
+
+def test_recovery_database_role_stays_on_the_legacy_name():
+    text = _read("docs/ISOLATED_NODE_RECOVERY.md")
+    assert f"-U {LEGACY_STEM} -d {LEGACY_STEM}" in text
+    assert f"-U {CURRENT_STEM} -d {CURRENT_STEM}" not in text
+
+
+def test_upgraded_nodes_keep_their_root_account_and_admin():
+    text = _read("docs/FIRST_RUN.md")
+    assert f"/srv/{LEGACY_STEM}" in text
+    assert f"`{LEGACY_STEM}`" in text
+    assert f"`{LEGACY_STEM}.admin`" in text
+
+
+def test_authentication_names_the_legacy_container_bind_setting():
+    assert f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND" in _read("docs/AUTHENTICATION.md")
+
+
+def test_storage_docs_name_both_marker_files():
+    text = _read("docs/STORAGE_AND_BACKUP.md")
+    assert f".{LEGACY_STEM}-managed-storage.json" in text
+    assert f".{CURRENT_STEM}-managed-storage.json" in text
+
+
+def test_exact_search_docs_keep_the_parser_ids():
+    text = _read("docs/EXACT_SEARCH.md")
+    assert f"{LEGACY_STEM}-exact-v1" in text
+    assert f"{LEGACY_STEM}-exact-v2" in text
+    assert f"{CURRENT_STEM}-exact-v1" not in text
+    assert f"{CURRENT_STEM}-exact-v2" not in text
+
+
+def test_whisperx_pin_keeps_the_built_local_version():
+    pin = "3.8.6+" + LEGACY_STEM + ".1"
+    assert pin in _read("services/transcription/compatibility/README.md")
+    assert pin in _read("services/transcription/src/transcription_v2/resources.py")
+    assert "3.8.6+" + CURRENT_STEM + ".1" not in _read("docs/BRANDING.md")
+
+
+def test_container_probes_read_either_environment_prefix(monkeypatch):
+    suffix = "GENERATOR_CONTAINER_TEST"
+    current = CURRENT_ENV_PREFIX + suffix
+    legacy = LEGACY_ENV_PREFIX + suffix
+    for relative, name in (
+        ("tests/test_generator_cache_container.py", "generator_cache_container"),
+        ("tests/test_model_stager_container.py", "model_stager_container"),
+    ):
+        module = _module(relative, name)
+        monkeypatch.delenv(current, raising=False)
+        monkeypatch.delenv(legacy, raising=False)
+        assert module._either(suffix) is None
+        monkeypatch.setenv(legacy, "legacy-probe")
+        assert module._either(suffix) == "legacy-probe"
+        monkeypatch.setenv(current, "current-probe")
+        assert module._either(suffix) == "current-probe"

@@ -139,7 +139,18 @@ functions keep `recordbench_principal_enabled`,
 `/var/lib/recordbench`, `/run/recordbench-secrets`, and
 `/var/lib/recordbench-accounts` stay because existing volumes already use them.
 Legacy nodes keep `recordbench.admin` / `RecordBench Administrator`,
-`config/recordbench.env`, and `.recordbench-managed-storage.json`.
+`config/recordbench.env`, `.recordbench-managed-storage.json`, and host root
+`/srv/recordbench`. Grammar and receipt identifiers stay
+`recordbench-exact-v1`, `recordbench-exact-v2`, `recordbench-words-v1`,
+`recordbench-question-draft-evaluation-v1`, and
+`recordbench-question-draft-evaluation-v2`. The qualified WhisperX build is
+`3.8.6+recordbench.1`. Images copy the VAD notice to
+`/usr/share/licenses/recordbench-transcription/`. The transcription cache
+default is `/var/lib/recordbench/model-cache/huggingface/hub`. Git settings
+`recordbench.publicCloneUrl`, `recordbench.publicGitIdentity`,
+`recordbench.publicBaselineIdentity`, `recordbench.reviewedMediaDigest`,
+`recordbench.publicMergeCommit`, `recordbench.requirePrivatePublicationCheck`,
+and `recordbench.publicationDenyFile` are still read.
 
 The previous installer and backup commands remain as shims and print a
 one-line deprecation notice. Historical changelog entries use the previous

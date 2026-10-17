@@ -15,7 +15,7 @@ The app factory, identity service and workbench CLI require an explicit
 `CASE_INTELLIGENCE_AUTH_MODE` (or the factory's `auth_mode` argument). Missing,
 empty and unknown modes stop startup before the app initializes runtime state.
 An explicitly empty argument does not fall back to the environment. Installed
-Compose operation sets `EXCULPATA_ALLOW_CONTAINER_BIND=1` (deprecated alias: `EXCULPATA_ALLOW_CONTAINER_BIND=1`) and accepts only
+Compose operation sets `EXCULPATA_ALLOW_CONTAINER_BIND=1` (deprecated alias: `RECORDBENCH_ALLOW_CONTAINER_BIND=1`) and accepts only
 `local`, `oidc` or `kerberos`, including when manually restarted on loopback.
 The existing secure-cookie and provider configuration checks still apply.
 

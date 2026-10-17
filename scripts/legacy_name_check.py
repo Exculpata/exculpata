@@ -78,6 +78,10 @@ KEPT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r'\("recordbench", "exculpata"\)'), "CI and tests exercise both naming generations."),
     (re.compile(r"recordbench-backup-@NODE_ID@"), "Systemd instance name for an existing legacy timer."),
     (re.compile(r"`recordbench`"), "Quoted previous identifier in operator documentation."),
+    (re.compile(r"-[Ud] recordbench\b"), "PostgreSQL role and database created for every naming generation."),
+    (re.compile(r"/srv/recordbench"), "Default host root for a node created under the previous generation."),
+    (re.compile(r"recordbench\.admin"), "Default administrator username for a node created under the previous generation."),
+    (re.compile(r"recordbench\."), "Previous git-config prefix. The publication hook still reads it."),
 )
 
 

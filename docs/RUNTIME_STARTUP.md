@@ -70,7 +70,7 @@ actual reserved-device capacity before claiming each job. Work remains queued
 while GPU capacity is insufficient; an unavailable worker cannot finish queued
 work. Inspect worker status and job progress separately from API admission.
 The worker-local CLI readiness diagnostic retains its GPU/package/VAD checks
-and accepts only upstream WhisperX 3.8.6 or the qualified 3.8.6+exculpata.1
+and accepts only upstream WhisperX 3.8.6 or the qualified 3.8.6+recordbench.1
 build, with unknown patched versions rejected.
 
 WhisperX's packaged VAD initializes `TORCH_HOME` before opening its bundled

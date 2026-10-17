@@ -123,6 +123,8 @@ Exact public clone URL and author-identity exceptions use the scanner's
 documented adjudication options. The hook reads `exculpata.publicCloneUrl`,
 `exculpata.publicGitIdentity` (tab-separated name/email), and
 `exculpata.publicBaselineIdentity` (tab-separated commit/name/email).
+The same suffixes under `recordbench.` are still read when the `exculpata.`
+entry is absent.
 Do not add general exceptions for private names or paths.
 
 Hooks are local safeguards, not a security sandbox: another client, an API

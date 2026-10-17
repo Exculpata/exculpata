@@ -813,8 +813,7 @@ account contents.
 OIDC and Kerberos resume likewise validate the retained provider choices before
 Compose builds or service changes, including in a dry run. New provider flags do
 not override the saved application environment (`config/exculpata.env` on a
-fresh node, or the previous generation's config file named in
-[brand compatibility](BRANDING.md)) or replace canonical credentials.
+fresh node, or `config/recordbench.env` on a legacy node) or replace canonical credentials.
 OIDC checks the saved issuer, client, groups, scopes, claim names, token method,
 matching external origin and canonical secret reference, then validates the
 owned mode-0600 `secrets/oidc-client-secret` using the same UTF-8 rules as a fresh

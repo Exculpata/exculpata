@@ -253,7 +253,7 @@ This explicit empty state is not useful output; an entirely empty set cannot pas
 Every case in the unchanged frozen set has usable text, so zero survivors in any
 frozen case still fails. Filtering does not establish lack of usable source content.
 
-New receipts use `exculpata-question-draft-evaluation-v2` and include
+New receipts use `recordbench-question-draft-evaluation-v2` and include
 `acceptance_policy` with the decision, rationale, failure rule and superseded
 format. `pass_bar.target_questions_per_case` is 3 and
 `minimum_questions_per_usable_case` is 1; the old

@@ -11,7 +11,7 @@ Advanced search accepts `NEAR/n` in either order and `BEFORE/n` in the written
 order. For example, `"red bicycle" BEFORE/4 depot` finds that phrase before
 `depot`, with at most four intervening word tokens. With `NEAR/4`, the depot can
 appear on either side. The v2 plan records the original and normalized query,
-`exculpata-exact-v2` grammar, `exculpata-words-v1` tokenizer, direction,
+`recordbench-exact-v2` grammar, `recordbench-words-v1` tokenizer, direction,
 maximum intervening words, operand phrases, and extracted-unit boundary.
 
 ## Exact positional meaning

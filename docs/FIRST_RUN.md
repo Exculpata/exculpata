@@ -12,8 +12,8 @@ Start with the [Ubuntu CPU node quick start](INSTALL.md#cpu-node-quick-start-ubu
 and a successful `./install doctor --root /srv/exculpata`. This first journey
 uses just the installer-created administrator and one synthetic text file.
 Team setup, additional accounts and adoption checks come later.
-Legacy nodes retain `/srv/exculpata`, the `exculpata` service account, and
-`exculpata.admin` (or their saved custom paths and administrator).
+Legacy nodes retain `/srv/recordbench`, the `recordbench` service account, and
+`recordbench.admin` (or their saved custom paths and administrator).
 
 1. **Reach loopback HTTPS.** On the node itself, use
    `https://localhost:8443`. For a remote node, run this on your browser computer

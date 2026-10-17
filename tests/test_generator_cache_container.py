@@ -16,8 +16,13 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.skipif(os.environ.get(f"{LEGACY_ENV_PREFIX}GENERATOR_CONTAINER_TEST") != '1',
-                   reason='Enable explicitly with the pinned generator image already available')
+def _either(suffix: str, default: str | None = None) -> str | None:
+    """Prefer the current probe variable and accept the previous name."""
+    return os.environ.get("EXCULPATA_" + suffix) or os.environ.get(LEGACY_ENV_PREFIX + suffix) or default
+
+
+@pytest.mark.skipif(_either("GENERATOR_CONTAINER_TEST") != "1",
+                   reason="Enable explicitly with the pinned generator image already available")
 def test_generator_cache_can_load_native_compiler_output(tmp_path):
     compose = ROOT / 'compose.yaml'
     environment = os.environ.copy()
@@ -33,7 +38,7 @@ def test_generator_cache_can_load_native_compiler_output(tmp_path):
     service = config['services']['generator']
     name = f"{LEGACY_STEM}-native-cache-probe-" + uuid.uuid4().hex
     command = ['docker', 'run', '--rm', '--name', name, '--pull', 'never',
-        '--label', 'com.docker.compose.project=' + os.environ.get(f"{LEGACY_ENV_PREFIX}TEST_PROJECT", name),
+        '--label', 'com.docker.compose.project=' + _either("TEST_PROJECT", name),
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--cpus', '0.25',
         '--memory', '256m', '--memory-swap', '256m', '--pids-limit', '64']
@@ -60,14 +65,14 @@ print(json.dumps({'native_cache_load': True}))
         subprocess.run(['docker', 'rm', '--force', name], capture_output=True, check=False)
 
 
-@pytest.mark.parametrize('service_name,image_variable', [
-    ('retrieval', f"{LEGACY_ENV_PREFIX}RETRIEVAL_TEST_IMAGE"),
-    ('transcription-worker', f"{LEGACY_ENV_PREFIX}WORKER_TEST_IMAGE"),
+@pytest.mark.parametrize('service_name,suffix', [
+    ('retrieval', 'RETRIEVAL_TEST_IMAGE'),
+    ('transcription-worker', 'WORKER_TEST_IMAGE'),
 ])
-def test_native_runtime_can_compile_and_load_local_launcher(tmp_path, service_name, image_variable):
-    image = os.environ.get(image_variable)
+def test_native_runtime_can_compile_and_load_local_launcher(tmp_path, service_name, suffix):
+    image = _either(suffix)
     if not image:
-        pytest.skip('Set ' + image_variable + ' to an already built image')
+        pytest.skip('Set EXCULPATA_' + suffix + ' or the previous name to an already built image')
     compose = ROOT / 'compose.yaml'
     environment = os.environ.copy()
     for key in set(re.findall(r'\$\{([A-Z_]+):\?', compose.read_text())):
@@ -82,7 +87,7 @@ def test_native_runtime_can_compile_and_load_local_launcher(tmp_path, service_na
     service = config['services'][service_name]
     name = f"{LEGACY_STEM}-compiler-probe-" + uuid.uuid4().hex
     command = ['docker', 'run', '--rm', '--name', name, '--pull', 'never',
-        '--label', 'com.docker.compose.project=' + os.environ.get(f"{LEGACY_ENV_PREFIX}TEST_PROJECT", name),
+        '--label', 'com.docker.compose.project=' + _either("TEST_PROJECT", name),
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--user', f'{os.getuid()}:{os.getgid()}',
         '--cpus', '0.5', '--memory', '512m', '--memory-swap', '512m', '--pids-limit', '64']
@@ -114,9 +119,9 @@ print('native launcher compilation and loading verified')
 
 
 def test_worker_packaged_vad_loads_with_read_only_staged_cache(tmp_path):
-    image = os.environ.get(f"{LEGACY_ENV_PREFIX}WORKER_TEST_IMAGE")
+    image = _either("WORKER_TEST_IMAGE")
     if not image:
-        pytest.skip(f"Set {LEGACY_ENV_PREFIX}WORKER_TEST_IMAGE to an already built image")
+        pytest.skip("Set EXCULPATA_WORKER_TEST_IMAGE or the previous name to an already built image")
     compose = ROOT / 'compose.yaml'
     environment = os.environ.copy()
     for key in set(re.findall(r'\$\{([A-Z_]+):\?', compose.read_text())):
@@ -133,7 +138,7 @@ def test_worker_packaged_vad_loads_with_read_only_staged_cache(tmp_path):
     (model_root / 'huggingface/hub').mkdir(parents=True)
     name = f"{LEGACY_STEM}-vad-cache-probe-" + uuid.uuid4().hex
     command = ['docker', 'run', '--rm', '--name', name, '--pull', 'never',
-        '--label', 'com.docker.compose.project=' + os.environ.get(f"{LEGACY_ENV_PREFIX}TEST_PROJECT", name),
+        '--label', 'com.docker.compose.project=' + _either("TEST_PROJECT", name),
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--user', f'{os.getuid()}:{os.getgid()}',
         '--cpus', '1', '--memory', '3g', '--memory-swap', '3g', '--pids-limit', '128',
