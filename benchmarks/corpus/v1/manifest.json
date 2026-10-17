@@ -77,7 +77,7 @@
       }
     },
     "answer": {
-      "provider": "ExtractiveAnswerProvider",
+      "provider": "CorpusExtractiveGenerator + ExtractiveAnswerProvider",
       "model": null
     },
     "retrieval": {

@@ -68,9 +68,18 @@ def load_corpus(root: Path):
         for case in expected[group].values():
             if not normalize(case['text']) or not isinstance(case[metric], (int, float)) or not math.isfinite(case[metric]) or not 0 <= case[metric] <= 0.15:
                 raise ValueError(f'{group}: invalid expected text or tolerance')
+    sources = {row['id'] for row in manifest['documents'] + manifest['audio']}
+    for case in manifest['search']:
+        hits = expected['search'][case['id']]['document_ids']
+        if (type(case['top_k']) is not int or not 0 < case['top_k'] <= len(sources)
+                or not hits or len(hits) != len(set(hits)) or not set(hits) <= sources
+                or len(hits) > case['top_k']):
+            raise ValueError('Search requires nonempty known hits within a positive top-k')
     for case in expected['answers'].values():
-        if not case['facts'] or not case['citations']:
-            raise ValueError('Answers require facts and source spans')
+        if (not case['facts'] or not all(isinstance(fact, str) and normalize(fact) for fact in case['facts'])
+                or not case['citations'] or any(c['document_id'] not in sources
+                or not isinstance(c['span'], str) or not normalize(c['span']) for c in case['citations'])):
+            raise ValueError('Answers require nonempty facts and known source spans')
     return manifest, expected
 
 
@@ -88,7 +97,13 @@ def compare(manifest, expected, actual, *, full=False):
             if not isinstance(got, dict):
                 errors.append('missing observed case')
             elif group in ('documents', 'audio'):
-                before, after = normalize(want['text']), normalize(got.get('text', ''))
+                before = normalize(want['text'])
+                after = normalize(got.get('asr_text', '') if group == 'audio' else got.get('text', ''))
+                if group == 'audio':
+                    # The product adds display speaker labels to projected units.
+                    projected = re.sub(r'(?m)^Speaker [0-9]+:\s*', '', got.get('text', ''))
+                    if normalize(projected) != after:
+                        errors.append('projected transcript differs from observed ASR text')
                 metric = 'cer' if group == 'documents' else 'wer'
                 score = error_rate(before if metric == 'cer' else before.split(), after if metric == 'cer' else after.split())
                 if score > want[metric]:
@@ -100,6 +115,13 @@ def compare(manifest, expected, actual, *, full=False):
                 hits = got.get('document_ids', [])[:case['top_k']]
                 if not set(want['document_ids']).issubset(hits):
                     errors.append(f"expected top-{case['top_k']} sources {want['document_ids']}; observed {hits}")
+                citations = got.get('citations', [])
+                if any(c.get('source_valid') is not True for c in citations):
+                    errors.append('invalid search citation')
+                for source in want['document_ids']:
+                    if not any(c.get('document_id') == source and c.get('source_valid') is True
+                               and normalize(c.get('excerpt', '')) for c in citations):
+                        errors.append(f'missing validated search support: {source}')
             else:
                 if got.get('route') != 'question':
                     errors.append(f"expected question route; observed {got.get('route')}")
@@ -143,7 +165,8 @@ def main(argv=None):
             from corpus_recognition import recognize
             audio, transcripts = recognize(args.corpus, manifest)
         actual = observe(args.corpus, manifest, full=args.full, observed_transcripts=transcripts)
-        actual.update(audio)
+        for key, observation in audio.items():
+            actual[key]['asr_text'] = observation['text']
         results = compare(manifest, expected, actual, full=args.full)
         receipt = {'schema_version': 1, 'corpus': manifest['id'], 'manifest_sha256': hashlib.sha256((args.corpus/'manifest.json').read_bytes()).hexdigest(), 'expected_sha256': hashlib.sha256((args.corpus/'expected.json').read_bytes()).hexdigest(), 'head': subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(), 'mode': 'full' if args.full else 'fast-contract', 'models': manifest['models'], 'cases': results, 'passed': all(r['passed'] for r in results)}
         if args.report:
