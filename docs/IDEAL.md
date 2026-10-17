@@ -94,7 +94,7 @@ Review-only entries identify gaps, not permission to skip existing checks.
 | E4 | [Report conflicts](../tests/test_report_conflicts.py), [note conflicts](../tests/test_notebook_conflicts.py), [human decision conflicts](../tests/test_review_decision_conflicts.py). |
 
 This document's links, rule coverage and size are checked by
-[its executable contract](../tests/test_ideal_documentation.py).
+[its executable contract](../tests/test_documentation.py).
 The draft requires maintainer review and approval before merge; the
 [review policy](QUALITY_GATES.md#review-policy) and [publication safeguards](PUBLIC_ALPHA.md#prevent-disclosure-before-publishing)
 still apply. This document grants no merge, enqueue or release authority.
