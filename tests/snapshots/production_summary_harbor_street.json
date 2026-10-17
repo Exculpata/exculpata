@@ -1,0 +1,467 @@
+{
+  "format": "exculpata-production-summary-v1",
+  "totals": {
+    "documents": 40,
+    "pages": 2,
+    "bytes": 28210
+  },
+  "by_type": [
+    {
+      "type": "pdf",
+      "documents": 2,
+      "pages": 2
+    },
+    {
+      "type": "email",
+      "documents": 11,
+      "pages": 0
+    },
+    {
+      "type": "docx",
+      "documents": 0,
+      "pages": 0
+    },
+    {
+      "type": "text",
+      "documents": 26,
+      "pages": 0
+    },
+    {
+      "type": "table",
+      "documents": 1,
+      "pages": 0
+    },
+    {
+      "type": "media",
+      "documents": 0,
+      "pages": 0
+    },
+    {
+      "type": "other",
+      "documents": 0,
+      "pages": 0
+    }
+  ],
+  "date_range": {
+    "earliest": "2034-04-16",
+    "latest": "2034-04-20",
+    "undated_count": 1
+  },
+  "people": [
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Ilex Rovanni",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Nerin Talvex",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    },
+    {
+      "name": "Sovi Pellune",
+      "mentions": 1
+    }
+  ],
+  "organizations": [],
+  "unreadable": [
+    {
+      "name": "exhibits/38-planned-route-sheet.pdf",
+      "reason": "exhibits/38-planned-route-sheet.pdf \u2014 coverage notice: 1 of 1 pages with searchable text; native text on 1; OCR attempted on 0; Complete page reading is not established."
+    },
+    {
+      "name": "exhibits/39-follow-up-count-sheet.pdf",
+      "reason": "exhibits/39-follow-up-count-sheet.pdf \u2014 coverage notice: 1 of 1 pages with searchable text; native text on 1; OCR attempted on 0; Complete page reading is not established."
+    },
+    {
+      "name": "unreadable/40-damaged-transfer-note.txt",
+      "reason": "unreadable/40-damaged-transfer-note.txt \u2014 failed: TXT files cannot contain NUL or binary content."
+    }
+  ]
+}

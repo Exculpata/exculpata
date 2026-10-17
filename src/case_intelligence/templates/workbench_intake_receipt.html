@@ -25,6 +25,11 @@
     <p>Received files may still be processing. Searchable text can still have missing OCR, transcription or other extraction gaps. Check the statuses above, then <a href="/matters/{{ matter.slug }}/entities?return_to={{ ('/matters/' + matter.slug + '/intake/' + receipt.receipt_id)|urlencode }}">check readiness for suggested people, things and dates</a>. Choose a frozen matter review and inspect its source coverage; it is not automatically limited to this collection. Discovery runs only on your request and suggestions need human acceptance.</p>
   </section>
   <div class="intake-receipt-actions">
+  <form method="post" action="/matters/{{ matter.slug }}/production-summary">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="scope" value="{{ receipt.receipt_id }}">
+    <button class="button button-secondary" type="submit">Summarize production</button>
+  </form>
     <a class="button button-primary" href="/matters/{{ matter.slug }}/intake/{{ receipt.receipt_id }}/export?format=csv" data-download>Download receipt</a>
     <a href="/matters/{{ matter.slug }}/intake/{{ receipt.receipt_id }}/export?format=markdown" data-download>Text version</a>
     <a href="/matters/{{ matter.slug }}/intake/{{ receipt.receipt_id }}/export?format=json" data-download>Structured version</a>

@@ -1,0 +1,10 @@
+{
+  "format": "exculpata-workflow-eval-questions-v1",
+  "integration": "TODO #267: adapt these independent questions to the workflow scorecard when its harness merges.",
+  "fixture": "demo_data/harbor-street",
+  "questions": [
+    {"question": "How many emails are in the production?", "expected": 11, "field": "by_type.email.documents"},
+    {"question": "How many current source records are in the production?", "expected": 40, "field": "totals.documents"},
+    {"question": "Which source needs attention?", "expected": "unreadable/40-damaged-transfer-note.txt", "field": "gaps.unreadable"}
+  ]
+}

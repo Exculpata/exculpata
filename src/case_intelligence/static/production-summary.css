@@ -1,0 +1,11 @@
+.setup-main.production-summary { display: block; max-width: 1200px; margin-inline: auto; padding: 1.5rem; }
+.production-summary-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; margin-block: 1rem; }
+.production-summary .summary-card { border: 1px solid var(--border, #727986); border-radius: .65rem; padding: 1rem; min-width: 0; margin-block: .5rem; }
+.production-summary .summary-gaps { grid-column: 1 / -1; }
+.production-summary li { margin-block: .65rem; overflow-wrap: anywhere; }
+.production-summary summary { cursor: pointer; padding: .65rem 0; }
+.production-summary a { overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .production-summary { padding: .75rem; }
+  .production-summary-grid { grid-template-columns: minmax(0,1fr); }
+}

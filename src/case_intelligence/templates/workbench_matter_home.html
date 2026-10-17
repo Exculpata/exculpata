@@ -23,6 +23,11 @@
       <span>{{ status_line or 'Ready for sources' }}</span>
     </div>
   </header>
+  <form method="post" action="/matters/{{ matter.slug }}/production-summary">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="scope" value="whole_matter">
+    <button class="button button-secondary" type="submit">Summarize production</button>
+  </form>
   {% with active='home' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
 
   {% if notice %}<div class="notice notice-success" role="status">{{ notice }}</div>{% endif %}
