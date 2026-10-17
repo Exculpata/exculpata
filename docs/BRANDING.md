@@ -158,14 +158,18 @@ name. The README uses the Exculpata wordmark. The earlier banner remains at
 [assets/exculpata-banner.svg](assets/exculpata-banner.svg), and the original
 banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg).
 
-The rename contract check inspects repository file and directory names before
-filtering file contents by type. Extensionless tools and binary filenames must
-also use declared names. Historical fixtures, cached dependencies, and historical
-assets keep their existing exclusions.
+The rename contract check inspects complete repository file and directory names,
+including symlink names without following their targets. It checks all decoded
+UTF-8 text, including CSS, configuration files and extensionless tools; binary
+filenames must also use declared names. Historical fixtures, cached dependencies,
+and historical assets keep their existing exclusions.
 Python f-strings and string concatenations are inspected without executing source;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
+Function bodies use the containing scope's completed bindings, including later
+module and closure aliases. Unsupported stem compositions, including mapping-style
+interpolation, must use a contract key instead.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract

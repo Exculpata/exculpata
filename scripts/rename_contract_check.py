@@ -24,14 +24,9 @@ SKIP_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
     ".ruff_cache", "node_modules", "artifacts", ".tmp", "tests",
 }
-SOURCE_SUFFIXES = {
-    ".py", ".md", ".js", ".cjs", ".mjs", ".html", ".toml", ".yaml", ".yml", ".json",
-    ".sh", ".sql", ".conf", ".template", ".example", ".in", ".service", ".timer",
-}
 # The existing independently reviewed guard contains literal matching rules,
 # not operational names. Neither its implementation nor its policy is changed.
 SKIP_FILES = {"CHANGELOG.md", "scripts/legacy_name_check.py"}
-SOURCE_NAMES = {"Dockerfile", "Makefile", "install", ".gitignore", ".dockerignore"}
 HISTORICAL_ASSET = f"{LEGACY_STEM}-banner.svg"
 
 _STEM = re.escape(LEGACY_STEM)
@@ -39,7 +34,7 @@ _TOKENS = re.compile(
     rf"(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
-    rf"|(?P<name>(?:X-|\.)?{_STEM}[A-Za-z0-9_.-]*)",
+    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.)?{_STEM}[A-Za-z0-9_.-]*)",
     re.IGNORECASE,
 )
 
@@ -118,6 +113,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
     except SyntaxError:
         return []  # Compilation is enforced separately.
     env = {"LEGACY_STEM": LEGACY_STEM}
+    unresolved_stems: set[str] = set()
     found = []
 
     def joined(parts: list[str]) -> str | None:
@@ -127,6 +123,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         for key in list(env):
             if key == name or key.startswith(name + "."):
                 env.pop(key)
+        unresolved_stems.discard(name)
 
     def value(node: ast.AST) -> str | None:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -145,6 +142,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                     # fragments must still fit a declared contract family.
                     resolved = value(part.value)
                     if resolved is None:
+                        if contains_stem(part.value):
+                            return None
                         resolved = "CONTRACTDYNAMIC"
                 else:
                     resolved = value(part)
@@ -168,6 +167,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                     return None  # Do not interpret widths or arbitrary formatting.
                 try:
                     values = [value(arg) for arg in args]
+                    if any(resolved is None and contains_stem(arg) for arg, resolved in zip(args, values)):
+                        return None
                     values = [arg if arg is not None else "CONTRACTDYNAMIC" for arg in values]
                     if joined([template, *values]) is None:
                         return None
@@ -179,6 +180,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             if template is not None:
                 args = [value(arg) for arg in node.args]
                 kwargs = {arg.arg: value(arg.value) for arg in node.keywords if arg.arg}
+                if any(resolved is None and contains_stem(arg) for arg, resolved in zip(node.args, args)):
+                    return None
+                if any(kwargs.get(arg.arg) is None and contains_stem(arg.value) for arg in node.keywords):
+                    return None
                 parts = []
                 automatic = 0
                 try:
@@ -203,7 +208,19 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                 return joined(parts)
         return None
 
+    def contains_stem(piece: ast.AST) -> bool:
+        if isinstance(piece, ast.Name) and piece.id in unresolved_stems:
+            return True
+        if isinstance(piece, ast.Dict):
+            return any(contains_stem(item) for item in piece.values)
+        if isinstance(piece, (ast.List, ast.Tuple, ast.Set)):
+            return any(contains_stem(item) for item in piece.elts)
+        return LEGACY_STEM in (value(piece) or "")
+
     class Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.deferred = []
+
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
                 if alias.name == "case_intelligence.legacy_names":
@@ -222,40 +239,70 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         def visit_Assign(self, node: ast.Assign) -> None:
             self.generic_visit(node)
             resolved = value(node.value)
+            unresolved = resolved is None and contains_stem(node.value)
             for target in node.targets:
                 if isinstance(target, ast.Name):
                     unbind(target.id)
                     if resolved is not None:
                         env[target.id] = resolved
+                    elif unresolved:
+                        unresolved_stems.add(target.id)
 
         def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
             self.generic_visit(node)
             if isinstance(node.target, ast.Name):
                 resolved = value(node.value) if node.value is not None else None
+                unresolved = node.value is not None and resolved is None and contains_stem(node.value)
                 unbind(node.target.id)
                 if resolved is not None:
                     env[node.target.id] = resolved
+                elif unresolved:
+                    unresolved_stems.add(node.target.id)
 
         def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-            nonlocal env
-            outer = env
-            env = dict(env)
-            for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
-                unbind(arg.arg)
-            for arg in (node.args.vararg, node.args.kwarg):
-                if arg is not None:
-                    unbind(arg.arg)
-            self.generic_visit(node)
-            env = outer
+            for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
+                if expression is not None:
+                    self.visit(expression)
+            self.deferred.append(node)
 
         visit_AsyncFunctionDef = visit_FunctionDef
 
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            for expression in (*node.args.defaults, *node.args.kw_defaults):
+                if expression is not None:
+                    self.visit(expression)
+            self.deferred.append(node)
+
+        def finish(self) -> None:
+            nonlocal env, unresolved_stems
+            # Function globals and closure aliases resolve when called, after
+            # the containing scope has established its constant bindings.
+            for node in self.deferred:
+                outer = env
+                outer_unresolved = unresolved_stems
+                env = dict(env)
+                unresolved_stems = set(unresolved_stems)
+                for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+                    unbind(arg.arg)
+                for arg in (node.args.vararg, node.args.kwarg):
+                    if arg is not None:
+                        unbind(arg.arg)
+                visitor = Visitor()
+                for statement in [node.body] if isinstance(node, ast.Lambda) else node.body:
+                    visitor.visit(statement)
+                visitor.finish()
+                env = outer
+                unresolved_stems = outer_unresolved
+
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            nonlocal env
+            nonlocal env, unresolved_stems
             outer = env
+            outer_unresolved = unresolved_stems
             env = dict(env)
+            unresolved_stems = set(unresolved_stems)
             self.generic_visit(node)
             env = outer
+            unresolved_stems = outer_unresolved
 
         def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
             self.composition(node)
@@ -281,12 +328,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                     pieces = [node.left, node.right]
                 elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
                     pieces = [node.func.value, *node.args, *(arg.value for arg in node.keywords)]
-                if any(LEGACY_STEM in (value(piece) or "") for piece in pieces):
+                if any(contains_stem(piece) for piece in pieces):
                     found.append(Finding(f"{location}:{node.lineno}", "unsupported legacy composition; use a contract key"))
                     return
                 self.generic_visit(node)
 
-    Visitor().visit(tree)
+    visitor = Visitor()
+    visitor.visit(tree)
+    visitor.finish()
     return found
 
 
@@ -297,8 +346,6 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
     found = []
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
-        if path.is_symlink():
-            continue
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in relative.parts):
             continue
         if relative.as_posix() in SKIP_FILES or relative.as_posix().startswith("docs/assets/"):
@@ -308,9 +355,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         # rglob visits each directory and file, so every relative-path component
         # is checked once, independently of its descendants or content type.
         found.extend(scan_component(relative.as_posix(), path.name, contracts))
-        if not path.is_file():
-            continue
-        if path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_NAMES:
+        if path.is_symlink() or not path.is_file():
             continue
         data = path.read_bytes()
         if b"\0" in data:

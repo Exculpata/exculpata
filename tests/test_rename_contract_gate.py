@@ -184,6 +184,100 @@ def test_dynamic_composition_must_match_a_declared_family(tmp_path):
     assert checker.findings(tmp_path) == []
 
 
+def test_mapping_interpolation_with_a_stem_requires_a_contract_key(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'FORMAT = "%(stem)s-unregistered-v99" % {"stem": LEGACY_STEM}\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("expression", [
+    '"%(stem)s-unregistered-v99" % aliases',
+    '"%s-unregistered-v99" % aliases',
+    '"{}-unregistered-v99".format(aliases)',
+    'f"{aliases}-unregistered-v99"',
+])
+def test_mapping_aliases_cannot_hide_a_stem_composition(tmp_path, expression):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'original = {"stem": LEGACY_STEM}\n'
+        'aliases: dict = original\n'
+        'FORMAT = ' + expression + '\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+def test_nested_functions_resolve_later_closure_aliases(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'def outer():\n'
+        '    def build():\n'
+        '        return f"{stem}-unregistered-v99"\n'
+        '    stem = LEGACY_STEM\n'
+        '    return build\n'
+    )
+    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", "recordbench-unregistered-v99")]
+
+
+def test_deferred_functions_keep_declared_names_and_parameter_shadowing(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'class Reader:\n'
+        '    def format(self):\n'
+        '        return f"{stem}-exact-v1"\n'
+        'def local(stem):\n'
+        '    return f"{stem}-unregistered-v99"\n'
+        'stem = LEGACY_STEM\n'
+    )
+    assert checker.findings(tmp_path) == []
+
+
+def test_css_selectors_are_checked_as_text(tmp_path):
+    (tmp_path / "synthetic.css").write_text(".recordbench-unregistered-v99 { display: block; }\n")
+    assert checker.findings(tmp_path) == [checker.Finding("synthetic.css:1", ".recordbench-unregistered-v99")]
+
+
+@pytest.mark.parametrize("definition", [
+    'def build():\n    return f"{stem}-unregistered-v99"\n',
+    'async def build():\n    return f"{stem}-unregistered-v99"\n',
+    'build = lambda: f"{stem}-unregistered-v99"\n',
+])
+def test_function_bodies_resolve_later_module_aliases(tmp_path, definition):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n' + definition + 'stem = LEGACY_STEM\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("prefix", ["old-", "my"])
+def test_literal_source_tokens_include_identifier_prefixes(tmp_path, prefix):
+    identifier = prefix + "record" + "bench"
+    (tmp_path / "synthetic.py").write_text(f'FORMAT = "{identifier}"\n')
+    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:1", identifier)]
+
+
+@pytest.mark.parametrize("filename", ["synthetic.css", "settings.ini", "tool.cfg", "config.txt", "install-tool"])
+def test_operational_text_contents_are_checked_independently_of_suffix(tmp_path, filename):
+    (tmp_path / filename).write_text("recordbench-unregistered-v99\n")
+    assert checker.findings(tmp_path) == [checker.Finding(filename + ":1", "recordbench-unregistered-v99")]
+
+
+@pytest.mark.parametrize("target_kind", ["file", "directory", "missing"])
+def test_symlink_names_are_checked_without_following_targets(tmp_path, target_kind):
+    hidden = tmp_path / "tests"
+    hidden.mkdir()
+    target = hidden / "target"
+    if target_kind == "file":
+        target.write_text("recordbench-unregistered-target\n")
+    elif target_kind == "directory":
+        target.mkdir()
+        (target / "child.py").write_text("recordbench-unregistered-target\n")
+    link = tmp_path / "recordbench-unregistered-link"
+    link.symlink_to(target, target_is_directory=target_kind == "directory")
+    assert checker.findings(tmp_path) == [checker.Finding(link.name + ":1", link.name)]
+
+
 @pytest.mark.parametrize("identifier", [
     "RECORDBENCH_SYNTHETIC_SETTING",
     "X-RecordBench-Synthetic-Header",
@@ -258,7 +352,7 @@ def test_independent_historical_fixtures_and_caches_are_not_rewritten(tmp_path, 
 
 def test_binary_assets_and_symlinks_are_not_followed(tmp_path):
     (tmp_path / "binary.py").write_bytes(b"\0recordbench-binary-fixture")
-    (tmp_path / "image.png").write_bytes(b"recordbench-binary-fixture")
+    (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\nrecordbench-binary-fixture")
     hidden = tmp_path / "tests"
     hidden.mkdir()
     fixture = hidden / "historical.py"
