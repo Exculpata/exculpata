@@ -148,10 +148,42 @@ def test_adapter_signature_binds_the_same_person_identity():
     assert adapted(row).signature!=adapted(dict(row,speaker_ids=['person-b'])).signature
 
 
-@pytest.mark.parametrize('boundary',[', but ', '; ', ', however '])
+@pytest.mark.parametrize('boundary',[', but ', '; ', ' but '])
 def test_negated_physical_trigger_does_not_hide_separate_mismatch(boundary):
     text='The DNA source could not be conclusively excluded'+boundary+'the fingerprint excluded the comparison source.'
     rows=[c for c in detect([unit(text)]) if c.category=='favorable_physical_evidence']
     assert len(rows)==1 and rows[0].citation['highlight']=='excluded'
     assert rows[0].citation['excerpt']==text
     assert rows[0].citation['highlight_start']==text.rindex('excluded')
+
+
+def test_physical_negation_family_with_intervening_modifiers():
+    auxiliaries=('was not','is not','has not been','had not been','could not be','cannot be',
+        "couldn't be","can't be","wasn't","isn't","hasn't been","hadn't been",
+        'never was','was never',"wasn't ever",'couldn’t be','was not yet','has not yet been',
+        'could not, however, be','could not, based on the available analysis, be',
+        'was neither','was unable to be','failed to be','was without being',
+        "wouldn't be","shouldn't be","won't be","mustn't be","weren't","aren't",
+        'isn’t',"doesn't appear to be","didn't appear to be")
+    modifiers=('', 'conclusively ', 'reliably ', 'definitively ', 'independently ',
+        'clearly and reliably ', 'conclusively, according to the laboratory report, ')
+    predicates=('excluded','incompatible with the comparison','different from the comparison')
+    for auxiliary in auxiliaries:
+        for modifier in modifiers:
+            for predicate in predicates:
+                text=f'The DNA source {auxiliary} {modifier}{predicate}.'
+                assert not any(c.category=='favorable_physical_evidence' for c in detect([unit(text)])),text
+
+
+def test_physical_mismatch_family_preserves_trigger_internal_negation():
+    passages=('The DNA source was conclusively excluded.',
+        'The DNA source was reliably excluded.',
+        'The DNA result did not match the comparison.',
+        'The DNA result does not match the comparison.',
+        "The DNA result didn't match the comparison.",
+        'The DNA result was not consistent with the comparison.',
+        'The DNA report recorded no match for the comparison.',
+        'The DNA result was incompatible with the comparison.',
+        'The DNA result was different from the comparison.')
+    for text in passages:
+        assert any(c.category=='favorable_physical_evidence' for c in detect([unit(text)])),text

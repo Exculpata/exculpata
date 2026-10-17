@@ -340,5 +340,41 @@
     "category": "favorable_physical_evidence",
     "expected": false,
     "text": "The DNA source couldn\u2019t be conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source has not yet been excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not, however, be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source has not yet been conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was neither excluded nor included by the comparison."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA comparison failed to exclude the source, which could not be excluded on the available results."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was unable to be excluded."
   }
 ]

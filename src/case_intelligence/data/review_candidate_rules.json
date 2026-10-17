@@ -90,7 +90,7 @@
     "exclude": [
       "\\bexcluded\\s+from\\b"
     ],
-    "negation_before": "\\b(?:no|not|never|cannot|can['\u2019]t|couldn['\u2019]t|wasn['\u2019]t|isn['\u2019]t|weren['\u2019]t|hasn['\u2019]t|hadn['\u2019]t|doesn['\u2019]t|didn['\u2019]t)\\b",
-    "clause_boundary": ";|\\b(?:but|yet|however)\\b"
+    "negation_before": "\\b(?:no|not|never|neither|nor|without|unable|fail(?:ed|s)?|failure|lack(?:s|ed|ing)?|cannot|\\w+n['\u2019\u02bc]t)\\b",
+    "clause_boundary": ";|\\bbut\\b"
   }
 ]

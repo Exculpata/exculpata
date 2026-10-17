@@ -29,7 +29,8 @@ not be excluded” and “not incompatible with”; those phrases do not describ
 result differing from the comparison.
 Earlier negation in the same clause also causes abstention regardless of
 intervening modifiers. This conservative rule can omit ambiguous passages;
-an explicit contrasting clause or semicolon starts a new comparison context.
+a contrast introduced by “but” or a semicolon starts a new comparison context.
+Modifiers such as “not yet” and “could not, however” keep their negation.
 Requests are matched to a lead, test, record or related investigative object;
 an interview's mention of a request for water is not a candidate for review.
 
