@@ -43,13 +43,13 @@ preview, not production validation.
 
 ### Launch video · 1:00 · 16:9
 
-<!-- USER-ATTACHMENTS URL: 16x9 -->
+https://github.com/user-attachments/assets/aac555ae-8c88-4deb-9719-69a5d646e279
 
 [Watch or download the 16:9 launch video](docs/assets/exculpata-launch-16x9.mp4?raw=true)
 
 ### Launch video · 1:00 · 9:16
 
-<!-- USER-ATTACHMENTS URL: 9x16 -->
+https://github.com/user-attachments/assets/1a71e2e1-eee5-4c60-8055-c647edc7e11f
 
 [Watch or download the 9:16 launch video](docs/assets/exculpata-launch-9x16.mp4?raw=true)
 
