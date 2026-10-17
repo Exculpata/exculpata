@@ -27,6 +27,9 @@ a benefit was offered.” The tool does not infer that a benefit occurred.
 Physical-result triggers with a negated mismatch are omitted, including “could
 not be excluded” and “not incompatible with”; those phrases do not describe a
 result differing from the comparison.
+Earlier negation in the same clause also causes abstention regardless of
+intervening modifiers. This conservative rule can omit ambiguous passages;
+an explicit contrasting clause or semicolon starts a new comparison context.
 Requests are matched to a lead, test, record or related investigative object;
 an interview's mention of a request for water is not a candidate for review.
 

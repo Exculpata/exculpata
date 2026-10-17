@@ -25,7 +25,7 @@
       <p>{{ candidate.reason }}</p>{% if candidate.additional_reason %}<p>Additional cited reason: {{ candidate.additional_reason }}</p>{% endif %}
       {% for citation in [candidate.citation, candidate.related_citation] if citation %}
       <section class="review-candidate-passage" aria-label="Original passage">
-        {% set parts=citation.excerpt.split(citation.highlight,1) %}<blockquote>{{ parts[0] }}<mark>{{ citation.highlight }}</mark>{{ parts[1] }}</blockquote>
+        {% set start=citation.get('highlight_start',citation.excerpt.find(citation.highlight)) %}{% set end=start+(citation.highlight|length) %}<blockquote>{{ citation.excerpt[:start] }}<mark>{{ citation.highlight }}</mark>{{ citation.excerpt[end:] }}</blockquote>
         <a class="open-support-link" href="/matters/{{ matter.slug }}?support={{ citation.support_token }}#support-pane">{{ citation.source_name }} · {{ citation.location }}</a>
       </section>{% endfor %}
       <footer><p>{% if candidate.reviewed_at %}Decision by {{ candidate.reviewed_by }} · {{ candidate.reviewed_at }}{% else %}Awaiting review{% endif %}</p>

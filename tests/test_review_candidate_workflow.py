@@ -215,3 +215,12 @@ def test_streaming_record_and_serialized_limits_report_partial_scan(tmp_path,mon
                 monkeypatch.setattr(module,'MAX_SERIALIZED_CHARS',10)
             payload=service.payload(WEB_ACTOR)
             assert payload['capped'] and payload['unit_count']==0 and not decoded
+
+
+def test_repeated_trigger_highlights_the_nonnegated_occurrence(tmp_path):
+    text='The DNA source could not be conclusively excluded, but the fingerprint excluded the comparison source.'
+    with TestClient(app(tmp_path)) as client:
+        slug=_create_matter(client,'Synthetic comparison review')
+        assert client.post(f'/matters/{slug}/uploads',files=[('files',('Synthetic-comparison.txt',text.encode(),'text/plain'))]).status_code==200
+        response=client.get(f'/matters/{slug}/review-candidates')
+        assert 'conclusively excluded, but the fingerprint <mark>excluded</mark>' in response.text

@@ -49,7 +49,7 @@ def test_no_citation_changed_source_and_outside_trigger_dropped():
     u=unit(PASSAGES[0]['text'])
     candidate=detect([u])[0]
     resolve=resolve_for([u])
-    for changed in ({},dict(candidate.citation, highlight='outside'),dict(candidate.citation, source_version_id='v2'),
+    for changed in ({},dict(candidate.citation, highlight='outside'),dict(candidate.citation, highlight_start=9999),dict(candidate.citation, source_version_id='v2'),
                     dict(candidate.citation,window=dict(start=0,end=9999,original_chars=1,omitted_chars=0))):
         rows,dropped=validate([replace(candidate,citation=changed)],resolve)
         assert rows==[] and dropped==1
@@ -148,7 +148,10 @@ def test_adapter_signature_binds_the_same_person_identity():
     assert adapted(row).signature!=adapted(dict(row,speaker_ids=['person-b'])).signature
 
 
-def test_negated_physical_trigger_does_not_hide_separate_mismatch():
-    text='The DNA source could not be excluded, but the fingerprint did not match the comparison sample.'
+@pytest.mark.parametrize('boundary',[', but ', '; ', ', however '])
+def test_negated_physical_trigger_does_not_hide_separate_mismatch(boundary):
+    text='The DNA source could not be conclusively excluded'+boundary+'the fingerprint excluded the comparison source.'
     rows=[c for c in detect([unit(text)]) if c.category=='favorable_physical_evidence']
-    assert len(rows)==1 and rows[0].citation['highlight']=='did not match'
+    assert len(rows)==1 and rows[0].citation['highlight']=='excluded'
+    assert rows[0].citation['excerpt']==text
+    assert rows[0].citation['highlight_start']==text.rindex('excluded')

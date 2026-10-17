@@ -66,8 +66,16 @@ def _matches(rule, text):
     excluded = [m.span() for p in rule['exclude'] for m in re.finditer(p, text, re.I)]
     for pattern in rule['patterns']:
         for match in re.finditer(pattern, text, re.I | re.S):
-            if not any(a <= match.start() < b for a,b in excluded):
-                return match
+            if any(a <= match.start() < b for a,b in excluded):
+                continue
+            if rule.get('negation_before'):
+                # Negation inside the trigger (e.g. "did not match") describes
+                # a mismatch. Earlier negation in its clause can reverse that
+                # meaning regardless of intervening modifiers: abstain.
+                prefix = re.split(rule['clause_boundary'], text[:match.start()], flags=re.I)[-1]
+                if re.search(rule['negation_before'], prefix, re.I):
+                    continue
+            return match
     return None
 
 
@@ -87,7 +95,7 @@ def detect(units):
                 citation = dict(document_id=unit.document_id, source_version_id=unit.source_version_id,
                     chunk_id=unit.chunk_id, source_name=unit.source_name, location=unit.citation,
                     unit_number=unit.page_number, excerpt_digest=unit.excerpt_digest, excerpt=excerpt,
-                    highlight=match.group(), window=dict(start=start, end=end,
+                    highlight=match.group(), highlight_start=match.start(), window=dict(start=start, end=end,
                         original_chars=len(unit.text), omitted_chars=len(unit.text)-(end-start)))
                 signature = _signature('review-candidates-v1', json.dumps(rule, sort_keys=True), unit.document_id,
                     unit.source_version_id, unit.chunk_id, unit.excerpt_digest, str(start), excerpt)
@@ -111,7 +119,10 @@ def validate(candidates, resolve):
                     if not citation[key] or current[key] != citation[key]:
                         raise ValueError('Citation identity changed')
                 excerpt = validated_window_text(current['excerpt'], citation['window'])
-                if excerpt != citation['excerpt'] or not citation['highlight'] or citation['highlight'] not in excerpt:
+                highlight_start = citation.get('highlight_start', excerpt.find(citation['highlight']))
+                if (excerpt != citation['excerpt'] or not citation['highlight']
+                        or type(highlight_start) is not int or highlight_start < 0
+                        or excerpt[highlight_start:highlight_start+len(citation['highlight'])] != citation['highlight']):
                     raise ValueError('Citation window changed')
                 citations.append(dict(citation, support_token=current['support_token']))
         except (KeyError, TypeError, ValueError, WorkspaceProblem):

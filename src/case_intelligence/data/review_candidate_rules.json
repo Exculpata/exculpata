@@ -88,8 +88,9 @@
       "\\b(?:DNA|fingerprint\\w*|forensic|blood|laboratory|lab result|ballistic\\w*|shoeprint\\w*|physical evidence)\\b"
     ],
     "exclude": [
-      "\\bexcluded\\s+from\\b",
-      "\\b(?:not|never|cannot|can't|couldn't|wasn't|isn't|weren't)\\s+(?:(?:be|been|being|found|considered|reported|deemed|shown|clearly|necessarily|directly|entirely|wholly)\\s+){0,4}(?:excluded|excludes|incompatible with|different from|not consistent with|no match|did not match|does not match|didn't match)\\b"
-    ]
+      "\\bexcluded\\s+from\\b"
+    ],
+    "negation_before": "\\b(?:no|not|never|cannot|can['\u2019]t|couldn['\u2019]t|wasn['\u2019]t|isn['\u2019]t|weren['\u2019]t|hasn['\u2019]t|hadn['\u2019]t|doesn['\u2019]t|didn['\u2019]t)\\b",
+    "clause_boundary": ";|\\b(?:but|yet|however)\\b"
   }
 ]

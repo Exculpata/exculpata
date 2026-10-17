@@ -304,5 +304,41 @@
     "category": "investigation_gap",
     "expected": true,
     "text": "The investigator requested a witness interview."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be reliably excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not, based on the available laboratory analysis, be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-4",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be conclusively and reliably excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-5",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The forensic result was not, according to the laboratory report, incompatible with the stated account."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-6",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source couldn\u2019t be conclusively excluded."
   }
 ]
