@@ -1,0 +1,2 @@
+# PDF fixtures are binary artifacts, even when streams use ASCII encoding.
+benchmarks/corpus/v1/media/*.pdf binary

@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "id": "synthetic-discovery-v1",
+  "synthetic": true,
+  "max_file_bytes": 10000000,
+  "documents": [
+    {
+      "id": "bicycle",
+      "path": "media/bicycle.pdf",
+      "language": "eng",
+      "ocr": false,
+      "sha256": "f1668a3987787174b901f49d28d6ee9b98766d541f4c8f90ba49105f9e5587cd",
+      "bytes": 1453
+    },
+    {
+      "id": "parcel",
+      "path": "media/parcel.pdf",
+      "language": "eng",
+      "ocr": false,
+      "sha256": "8e8fef370aa178df2284d17c8c1f1584c796a23c32ad6b049f65570fd34e93ea",
+      "bytes": 1449
+    },
+    {
+      "id": "scan-en",
+      "path": "media/scan-en.pdf",
+      "language": "eng",
+      "ocr": true,
+      "sha256": "c1a5592cf0a0ae4e025f80ccd492c67a3488c5a3ca97ca147955b78f1d6402be",
+      "bytes": 3878895
+    },
+    {
+      "id": "scan-es",
+      "path": "media/scan-es.pdf",
+      "language": "spa",
+      "ocr": true,
+      "sha256": "a2b0319fa8027593135534bb284b5481bf3d72285a98ae32dad0fc4c4175865c",
+      "bytes": 3878895
+    }
+  ],
+  "audio": [
+    {
+      "id": "audio-bicycle",
+      "path": "media/bicycle.wav",
+      "language": "en",
+      "sha256": "527f92a83a7a4364e1f6d02cba6111f142c0522649bfff3b00741adfb4d86eca",
+      "bytes": 179770,
+      "diarization": false
+    },
+    {
+      "id": "audio-parcel",
+      "path": "media/parcel.wav",
+      "language": "en",
+      "sha256": "789271ca83ac4e3f2bb63a4d78f2468b24a13e353aa57c64f1887b06d3b2cbba",
+      "bytes": 155624,
+      "diarization": false
+    }
+  ],
+  "models": {
+    "asr": {
+      "model_id": "Systran/faster-whisper-large-v3",
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "license": "MIT",
+      "runtime": "faster-whisper==1.2.1",
+      "compute_type": "int8"
+    },
+    "ocr": {
+      "model_id": "tesseract-ocr/tessdata_fast",
+      "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+      "license": "Apache-2.0",
+      "languages": [
+        "eng",
+        "spa"
+      ],
+      "sha256": {
+        "eng": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2",
+        "spa": "6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464"
+      }
+    },
+    "answer": {
+      "provider": "ExtractiveAnswerProvider",
+      "model": null
+    },
+    "retrieval": {
+      "provider": "product lexical",
+      "model": null
+    }
+  },
+  "fast_transcripts": {
+    "audio-bicycle": [
+      {
+        "start": 0,
+        "end": 5.615,
+        "text": "This is a synthetic recording. The blue bicycle arrived at Cedar Gate at nine fifteen.",
+        "speaker": "SPEAKER_00"
+      }
+    ],
+    "audio-parcel": [
+      {
+        "start": 0,
+        "end": 4.861,
+        "text": "This is a synthetic recording. The orange parcel was stored in locker seven.",
+        "speaker": "SPEAKER_00"
+      }
+    ]
+  },
+  "search": [
+    {
+      "id": "search-bicycle",
+      "query": "blue bicycle",
+      "top_k": 2
+    },
+    {
+      "id": "search-parcel",
+      "query": "orange parcel",
+      "top_k": 2
+    },
+    {
+      "id": "search-gate",
+      "query": "Cedar Gate",
+      "top_k": 2
+    },
+    {
+      "id": "search-locker",
+      "query": "locker seven",
+      "top_k": 2
+    },
+    {
+      "id": "search-spoken",
+      "query": "synthetic recording",
+      "top_k": 2
+    }
+  ],
+  "answers": [
+    {
+      "id": "answer-bicycle",
+      "question": "What arrived at \"Cedar Gate\"?"
+    },
+    {
+      "id": "answer-time",
+      "question": "When did the blue bicycle arrive?"
+    },
+    {
+      "id": "answer-parcel",
+      "question": "Where was the orange parcel stored?"
+    },
+    {
+      "id": "answer-locker",
+      "question": "What was stored in \"locker seven\"?"
+    },
+    {
+      "id": "answer-spoken",
+      "question": "What does the recording say about \"blue bicycle\"? Do not use written documents."
+    }
+  ],
+  "provenance": {
+    "documents": "Original synthetic sentences; ReportLab 5.0.1; image-only pages rasterized with PDFium. No real source material.",
+    "audio": "Original synthetic sentences synthesized with macOS Samantha at 130 words/minute; converted to mono 16 kHz PCM by ffmpeg; metadata removed. One synthetic voice per clip; no diarization claim.",
+    "license": "Repository fixture content: Apache-2.0. No model weights or voice assets are distributed."
+  }
+}
