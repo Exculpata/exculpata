@@ -44,26 +44,29 @@ def test_short_email_collision_requires_exact_reviewed_digest(monkeypatch):
     assert email in inspect(sample, digests=(hashlib.sha256(sample).hexdigest(),))
 
 
-def test_launch_video_review_is_exact_blob_only(monkeypatch):
-    monkeypatch.setattr(SCAN, "_scan_media", lambda *args, **kwargs: [])
+def test_historical_launch_dispositions_are_preserved():
+    # These original blobs remain in published history, even after compression.
+    assert set(SCAN.REVIEWED_MEDIA_DIGESTS) == {
+        "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
+        "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
+    }
+
+
+def test_compressed_launch_videos_need_no_disposition():
     root = Path(__file__).resolve().parents[1]
     expected = {
-        "docs/assets/exculpata-launch-16x9.mp4":
-            "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
-        "site/assets/exculpata-launch-16x9.mp4":
-            "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
-        "docs/assets/exculpata-launch-9x16.mp4":
-            "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
-        "site/assets/exculpata-launch-9x16.mp4":
-            "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
+        "16x9": "96649404d4e396ed5281237f4a739c59c34500c897597377e6ba843a3fb1b1f8",
+        "9x16": "e5d8ef83157756883bd92784d7afa5f44c2a6fd7585eec08a871363f788f4efc",
     }
-    assert set(SCAN.REVIEWED_MEDIA_DIGESTS) == set(expected.values())
-    email = SCAN.Finding("synthetic", "non-example-email-address")
-    for rel, digest in expected.items():
+    for cut, digest in expected.items():
+        rel = f"docs/assets/exculpata-launch-{cut}.mp4"
         data = (root / rel).read_bytes()
         assert hashlib.sha256(data).hexdigest() == digest
-        assert email in inspect(data, name=rel)
-        assert email not in inspect(data, name=rel, digests=(digest,))
+        assert 0 < len(data) < 10_000_000
+        assert data == (root / f"site/assets/exculpata-launch-{cut}.mp4").read_bytes()
+        assert digest not in SCAN.REVIEWED_MEDIA_DIGESTS
+        # Inspect real metadata and raw bytes, with no allowlisted digest.
+        assert not inspect(data, name=rel, deny=())
 
 
 def test_decoded_metadata_and_other_secret_checks_still_block(monkeypatch):
