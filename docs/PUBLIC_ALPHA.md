@@ -191,6 +191,11 @@ trusted checkout SHA. Changed paths come from complete immutable base/head Git
 trees, including deleted paths and mode changes. Mutable PR file lists are not
 used. API errors, pagination limits and oversized or truncated trees fail closed. Changes to policy, approval authority, scanner, hooks,
 workflows, Makefile, CODEOWNERS or agent instructions require review, including renames.
+An unchanged trusted pending request grants no authority and does not block an
+unrelated change in this verifier. Its schema is still validated. Introducing
+or modifying pending policy, or changing protected files while requests remain
+pending, fails verification; activation requires exact-head maintainer approval.
+The scanner continues raw-byte inspection for all pending entries.
 
 The allowlisted maintainer must submit a GitHub PR review on the current head
 with this exact standalone line, substituting the SHA-256 of the complete policy

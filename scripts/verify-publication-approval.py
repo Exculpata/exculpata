@@ -63,7 +63,7 @@ def maintainers_from(data):
     return result
 
 
-def policy_approvers(data, maintainers):
+def policy_approvers(data, maintainers, *, allow_pending=False):
     policy = decode(data)
     if (not isinstance(policy, dict) or set(policy) != {"version", "reviews"}
             or type(policy["version"]) is not int or policy["version"] != 2
@@ -75,11 +75,18 @@ def policy_approvers(data, maintainers):
         if (not isinstance(entry, dict) or set(entry) != {
                 "sha256", "suffix", "reason", "approver", "expires", "status", "approved_on"}):
             raise ApprovalError("invalid-media-policy")
-        if entry["status"] != "approved":
-            raise ApprovalError("publication-exemption-pending")
-        if not isinstance(entry["approver"], str) or entry["approver"] not in maintainers:
-            raise ApprovalError("unauthorized-publication-approver")
-        if any(not isinstance(value, str) or not value.strip() for value in entry.values()):
+        if any(not isinstance(entry[key], str) or not entry[key].strip()
+               for key in ("sha256", "suffix", "reason", "expires", "status")):
+            raise ApprovalError("invalid-media-policy")
+        if entry["status"] == "pending":
+            if entry["approver"] is not None or entry["approved_on"] is not None:
+                raise ApprovalError("invalid-media-policy")
+        elif entry["status"] == "approved":
+            if not isinstance(entry["approver"], str) or entry["approver"] not in maintainers:
+                raise ApprovalError("unauthorized-publication-approver")
+            if not isinstance(entry["approved_on"], str):
+                raise ApprovalError("invalid-media-review-date")
+        else:
             raise ApprovalError("invalid-media-policy")
         if (re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is None
                 or entry["suffix"] not in {".gif", ".png", ".jpg", ".jpeg", ".webp", ".avi", ".flac",
@@ -89,11 +96,16 @@ def policy_approvers(data, maintainers):
         if key in seen:
             raise ApprovalError("duplicate-media-review")
         seen.add(key)
-        if any(re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry[key]) is None
-               for key in ("approved_on", "expires")):
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["expires"]) is None:
+            raise ApprovalError("invalid-media-review-date")
+        expiry = date.fromisoformat(entry["expires"])
+        if entry["status"] == "pending":
+            if not allow_pending:
+                raise ApprovalError("publication-exemption-pending")
+            continue
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["approved_on"]) is None:
             raise ApprovalError("invalid-media-review-date")
         approved = date.fromisoformat(entry["approved_on"])
-        expiry = date.fromisoformat(entry["expires"])
         if approved > date.today() or not 0 < (expiry - approved).days <= 180:
             raise ApprovalError("invalid-media-review-lifetime")
         if expiry >= date.today():
@@ -135,11 +147,13 @@ def protected(path):
 
 
 def verify_policy(base_policy, candidate_policy, maintainers, head, reviews, changed_files):
-    approvers = policy_approvers(candidate_policy, maintainers)
     changed = base_policy != candidate_policy or any(
         protected(item.get("filename", "")) or protected(item.get("previous_filename", ""))
         for item in changed_files
     )
+    # A byte-identical trusted pending request grants nothing and need not
+    # prevent unrelated work. New policy or protected changes remain strict.
+    approvers = policy_approvers(candidate_policy, maintainers, allow_pending=not changed)
     if not changed:
         return
     authorized = authorized_reviews(reviews, maintainers, head, hashlib.sha256(candidate_policy).hexdigest())

@@ -100,6 +100,50 @@ def test_unrelated_change_reuses_already_trusted_policy():
     VERIFY.verify_policy(data, data, MAINTAINERS, HEAD, [], [{"filename": "ordinary.txt"}])
 
 
+def test_unrelated_change_reuses_unchanged_trusted_pending_request(trusted_root):
+    data = policy(status="pending", approver=None, approved_on=None)
+    assert VERIFY.policy_approvers(data, MAINTAINERS, allow_pending=True) == set()
+    (trusted_root / VERIFY.POLICY).write_bytes(data)
+    client = FakeGitHub(data)
+    client.files = [{"filename": "ordinary.txt"}]
+    client.reviews = []
+    VERIFY.verify_current(client, 1, HEAD, trusted_root, BASE)
+
+
+@pytest.mark.parametrize("changed,path", [
+    (False, VERIFY.POLICY), (True, VERIFY.POLICY), (True, "ordinary.txt"),
+])
+def test_pending_request_cannot_authorize_protected_or_new_policy(changed, path):
+    data = policy(status="pending", approver=None, approved_on=None)
+    base = policy() if changed else data
+    with pytest.raises(VERIFY.ApprovalError, match="publication-exemption-pending"):
+        VERIFY.verify_policy(base, data, MAINTAINERS, HEAD, [review(data)],
+                             [{"filename": path}])
+
+
+def test_activating_pending_request_requires_exact_head_approval():
+    pending = policy(status="pending", approver=None, approved_on=None)
+    approved = policy()
+    # Content equality is checked independently of the reported path list.
+    with pytest.raises(VERIFY.ApprovalError, match="maintainer-review-required"):
+        VERIFY.verify_policy(pending, approved, MAINTAINERS, HEAD, [],
+                             [{"filename": "ordinary.txt"}])
+    VERIFY.verify_policy(pending, approved, MAINTAINERS, HEAD, [review(approved)],
+                         [{"filename": VERIFY.POLICY}])
+
+
+@pytest.mark.parametrize("changes", [
+    {"approver": "synthetic-maintainer"}, {"approved_on": date.today().isoformat()},
+    {"expires": "2026-99-99"}, {"sha256": "invalid"}, {"status": "unknown"},
+])
+def test_unrelated_change_does_not_skip_pending_schema_validation(changes):
+    entry = dict(status="pending", approver=None, approved_on=None)
+    entry.update(changes)
+    data = policy(**entry)
+    with pytest.raises(ValueError):
+        VERIFY.verify_policy(data, data, MAINTAINERS, HEAD, [], [{"filename": "ordinary.txt"}])
+
+
 class FakeGitHub:
     def __init__(self, data):
         self.data = data
