@@ -109,6 +109,10 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             services/transcription/pyproject.toml
+      - name: Validate compatibility table and tester documentation links
+        run: |
+          python scripts/check-compatibility-table.py
+          python scripts/check-tester-doc-links.py
       - name: Install lightweight documentation test dependencies
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
