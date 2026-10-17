@@ -21,14 +21,16 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
         service = bench.assertion_service(matter)
         with service.entities.source_guard(), service.repository.transaction(matter.matter_id, actor):
             units = []
+            total_unit_count = 0
             for document in store.ready_documents():
-                for ordinal, unit in enumerate(document.parsed_units(), 1):
-                    units.append(bench._candidate(matter, document, unit, ordinal))
-                    if len(units) >= 2501:
-                        break
-                if len(units) >= 2501:
-                    break
-            payload = build_timeline(units, support_token=bench._support_token).payload()
+                # Count the live population without retaining all passage text or
+                # constructing candidates beyond the existing collection ceiling.
+                for ordinal, unit in enumerate(document.iter_parsed_units(), 1):
+                    total_unit_count += 1
+                    if len(units) < 2501:
+                        units.append(bench._candidate(matter, document, unit, ordinal))
+            payload = build_timeline(units, support_token=bench._support_token,
+                                     total_unit_count=total_unit_count).payload()
             payload['generated_at'] = datetime.now(timezone.utc).isoformat()
             return payload
 

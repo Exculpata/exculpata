@@ -22,7 +22,13 @@ explicit alternative arrival times. Its golden snapshot therefore does not inven
 such a conflict. Dedicated synthetic regression records exercise side-by-side dates.
 
 Limits are 2,500 units, 6,000 characters per unit and 150 entries. A capped banner
-reports truncation. A failed citation window is omitted and counted. Drafts recompute
+reports truncation in the workbench and every export, including drafts with no
+date entries. Coverage reports passages included in the date scan and the total
+passages in current ready sources. Counts include passages read for document-local
+anchors; entry or text limits can still truncate a draft even when all passages
+were scanned. Sources that are not ready are outside this population. Counting
+streams all ready passages while candidate collection remains bounded at 2,501
+and date extraction at 2,500. A failed citation window is omitted and counted. Drafts recompute
 on demand and are not persisted; pure results have a null generation timestamp while
 HTTP results carry the recomputation time. No migration or backup format changes are
 needed. A 2,500-unit regression exercises the bounded scan budget.
@@ -33,7 +39,11 @@ status; opening the page still recomputes from current sources. Existing durable
 research and ingestion job coordinators are specific to different workflows and are
 not repurposed. No saved timeline is silently presented as current.
 
-CSV exports have one row per citation; JSON and Markdown retain all citations.
+CSV exports begin with a metadata row carrying the review notice, coverage notice,
+capped flag, included `unit_count`, and `total_unit_count`, followed by one row per
+citation. The appended `row_type` column distinguishes `metadata` from `citation`.
+JSON includes these counts and `coverage_notice`; Markdown prints the same coverage
+notice. JSON and Markdown retain all citations.
 The export response requires the existing matter response lease. CSV neutralizes
 spreadsheet formula prefixes. Promotion rechecks current source support and requires
 an explicitly selected entity/revision and role, following AssertionService's existing

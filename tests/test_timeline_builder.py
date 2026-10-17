@@ -1,5 +1,7 @@
 """Synthetic deterministic extraction, source grounding and bounded behavior."""
 from dataclasses import replace
+import csv
+import io
 import hashlib
 import json
 from pathlib import Path
@@ -86,6 +88,39 @@ def test_2500_unit_budget():
     started=time.monotonic()
     assert build_timeline(units).capped
     assert time.monotonic()-started < 10
+
+@pytest.mark.parametrize('total', [0, 2499, 2500, 2501, 2700])
+def test_passage_coverage_at_cutoff_in_every_export(total):
+    units = [unit('No dated event in this synthetic passage.', 'a', page=i+1) for i in range(total)]
+    payload = build_timeline(units).payload()
+    included = min(total, 2500)
+    assert payload['unit_count'] == included
+    assert payload['total_unit_count'] == total
+    assert payload['capped'] is (total > 2500)
+    notice = f'Included {included:,} of {total:,} passages from ready sources in the date scan.'
+    assert payload['coverage_notice'].startswith(notice)
+    assert ('not a complete chronology' in payload['coverage_notice']) is payload['capped']
+    for format in ('csv', 'markdown', 'json'):
+        assert payload['coverage_notice'] in export_timeline(payload, format)
+    metadata, = list(csv.DictReader(io.StringIO(export_timeline(payload, 'csv'))))
+    assert metadata['row_type'] == 'metadata'
+    assert metadata['unit_count'] == str(included)
+    assert metadata['total_unit_count'] == str(total)
+    assert metadata['capped'] == str(payload['capped'])
+    assert metadata['notice'] == payload['notice']
+
+def test_coverage_counts_scanned_passages_when_entry_limit_stops_early():
+    units = [unit('Alex delivered the parcel on April 18, 2034.', f'{i:04}') for i in range(200)]
+    result = build_timeline(units)
+    assert result.unit_count == 150 and result.total_unit_count == 200
+    assert result.capped and 'Included 150 of 200 passages' in result.coverage_notice
+
+def test_explicit_population_count_and_invalid_count():
+    result = build_timeline([unit('No dates.')], total_unit_count=3000)
+    assert result.capped and result.total_unit_count == 3000
+    assert 'Included 1 of 3,000 passages' in result.coverage_notice
+    with pytest.raises(ValueError, match='Total passage count'):
+        build_timeline([unit('No dates.')], total_unit_count=0)
 
 def test_eval_questions_and_no_header_conflicts():
     data=json.loads((ROOT/'tests/fixtures/synthetic/workflow_eval/chronology.json').read_text())

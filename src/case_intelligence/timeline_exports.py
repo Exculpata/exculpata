@@ -11,14 +11,18 @@ def export_timeline(payload, format_name):
     if format_name == 'csv':
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
-        writer.writerow(('date_label', 'precision', 'uncertainty', 'description', 'source', 'locator', 'excerpt', 'conflict_group'))
+        writer.writerow(('date_label', 'precision', 'uncertainty', 'description', 'source', 'locator', 'excerpt', 'conflict_group',
+                         'row_type', 'notice', 'coverage_notice', 'capped', 'unit_count', 'total_unit_count'))
         def safe(value):
             text = str(value or '')
             return "'" + text if text.lstrip().startswith(('=', '+', '-', '@', '\t', '\r')) else text
+        # A metadata row preserves disclosure even when no date entries exist.
+        writer.writerow([''] * 8 + ['metadata', safe(payload['notice']), safe(payload['coverage_notice']),
+                                   str(payload['capped']), payload['unit_count'], payload['total_unit_count']])
         for entry in entries:
             for citation in entry['citations']:
                 writer.writerow([safe(v) for v in (entry['date_label'], entry['precision'], entry['uncertainty'], entry['description'],
-                    citation['source_id'] + ' · ' + citation['document_title'], json.dumps(citation['locator']), citation['excerpt'], entry['conflict_group'])])
+                    citation['source_id'] + ' · ' + citation['document_title'], json.dumps(citation['locator']), citation['excerpt'], entry['conflict_group'])] + ['citation'] + [''] * 5)
         return stream.getvalue()
     def escape(text):
         import html
@@ -27,7 +31,7 @@ def export_timeline(payload, format_name):
             value = value.replace(character, '\\' + character)
         return value
 
-    lines = ['# Draft timeline', '', payload['notice'], '', 'Capped: ' + str(payload['capped']), '']
+    lines = ['# Draft timeline', '', payload['notice'], '', payload['coverage_notice'], '', 'Capped: ' + str(payload['capped']), '']
     for entry in entries:
         lines += ['## ' + escape(entry['date_label']), '', escape(entry['description']), '',
                   'Date uncertainty: ' + escape(entry['uncertainty']), 'Conflict group: ' + str(entry['conflict_group'] or 'None')]

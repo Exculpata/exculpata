@@ -23,6 +23,8 @@ class TimelineResult:
     generated_at: str | None
     source_count: int
     unit_count: int
+    total_unit_count: int
+    coverage_notice: str
     capped: bool
     entries: list
     conflicts: list
@@ -54,13 +56,16 @@ def _citation(unit, start, end, token):
                 excerpt_digest=unit.excerpt_digest, support_token=token(unit), window=window)
 
 
-def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit: ''):
+def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit: '', total_unit_count=None):
     if not (1 <= limits.units <= 2500 and 1 <= limits.entries <= 150 and 1 <= limits.unit_chars <= 6000):
         raise ValueError('Timeline limits must remain within the bounded scan ceilings')
+    total_unit_count = len(units) if total_unit_count is None else total_unit_count
+    if total_unit_count < len(units):
+        raise ValueError('Total passage count cannot be less than the supplied passages')
     selected = sorted(units, key=lambda u: (u.document_id, u.page_number, u.chunk_id))[:limits.units]
     if len({u.matter_id for u in selected}) > 1:
         raise ValueError('A draft timeline belongs to one matter')
-    capped = len(units) > len(selected)
+    capped = total_unit_count > len(selected)
     anchors = defaultdict(list)
     scanned = []
     def parsed_documents():
@@ -148,5 +153,8 @@ def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit:
     undated.sort(key=lambda e: e['entry_id'])
     # Pure output deliberately has no wall-clock dependency. HTTP supplies the
     # time of recomputation; the same extracted inputs serialize byte-identically.
-    return TimelineResult('exculpata-timeline-draft-v1', None, len({u.document_id for u in scanned}), len(scanned),
+    coverage = f'Included {len(scanned):,} of {total_unit_count:,} passages from ready sources in the date scan.'
+    if capped:
+        coverage += ' This draft is capped by passage, text, or entry limits. It is not a complete chronology.'
+    return TimelineResult('exculpata-timeline-draft-v1', None, len({u.document_id for u in scanned}), len(scanned), total_unit_count, coverage,
                           capped, entries, conflicts, undated, NOTICE, rejected)

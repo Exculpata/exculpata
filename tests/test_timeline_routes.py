@@ -140,3 +140,37 @@ def test_source_version_change_rejects_stale_promotion(timeline_client):
         store._save()
     assert client.post(prefix+'/'+entry['entry_id']+'/promote',data={'entity_selection':'missing:1'}).status_code==404
     assert bench.assertion_service(matter).list(matter.matter_id,WEB_ACTOR)[1]==0
+
+@pytest.mark.parametrize('total', [2500, 2501, 2700])
+def test_live_cutoff_counts_all_ready_passages_and_exports(timeline_client, monkeypatch, total):
+    from dataclasses import replace
+    client, slug = timeline_client
+    bench = client.app.state.workbench
+    store = bench.source_store(bench.matter(slug, WEB_ACTOR))
+    originals = list(store.ready_documents())
+    # Split across documents: the population count must continue after the
+    # collection ceiling, without constructing more than 2,501 candidates.
+    documents = []
+    for original, count in zip(originals, (2501 if total > 2500 else 2500, max(0, total-2501))):
+        document = replace(original, units=[{'number': i+1, 'text': 'No dated event here.'} for i in range(count)], units_file='')
+        documents.append(document)
+    monkeypatch.setattr(store, 'ready_documents', lambda: tuple(documents))
+    original_candidate = bench._candidate
+    calls = []
+    def candidate(*args):
+        calls.append(1)
+        return original_candidate(*args)
+    monkeypatch.setattr(bench, '_candidate', candidate)
+    prefix = f'/matters/{slug}/timeline/draft'
+    notice = f'Included 2,500 of {total:,} passages from ready sources in the date scan.'
+    for endpoint in ('', '/export?format=csv', '/export?format=markdown', '/export?format=json'):
+        calls.clear()
+        response = client.get(prefix + endpoint)
+        assert response.status_code == 200
+        assert notice in response.text
+        assert ('not a complete chronology' in response.text) is (total > 2500)
+        assert len(calls) == min(total, 2501)
+        if endpoint.endswith('json'):
+            assert response.json()['total_unit_count'] == total
+            assert response.json()['unit_count'] == 2500
+            assert response.json()['capped'] is (total > 2500)

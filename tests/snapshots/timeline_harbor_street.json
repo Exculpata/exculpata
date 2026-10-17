@@ -2906,5 +2906,7 @@
     }
   ],
   "notice": "Draft timeline generated from the records for attorney review. Entries are not findings.",
-  "rejected_count": 0
+  "rejected_count": 0,
+  "total_unit_count": 40,
+  "coverage_notice": "Included 40 of 40 passages from ready sources in the date scan."
 }
