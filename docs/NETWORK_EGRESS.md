@@ -82,6 +82,10 @@ loopback health probes also disable ambient proxies. The relay has no host ports
 volumes, application environment file or secrets.
 
 The proxy permits CONNECT only to the configured issuer's exact host and port.
+Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
+does not authorize similar-looking names or change the issuer string used for
+token/discovery validation or explicit pin binding. The relay's IDNA dependency
+is version- and hash-locked to the application's version.
 It rejects all other destinations, plain HTTP forwarding, malformed authorities,
 userinfo, paths, body headers and conflicting Host headers. Noncanonical numeric
 IPv4 authorities (octal, hexadecimal, shortened and integer forms) are rejected
@@ -92,7 +96,9 @@ again. Empty issuer configuration starts in deny-all mode for local and Kerberos
 sign-in. Requests, destinations and tunneled bytes are not logged. Concurrency,
 header size/time, tunnel duration and transferred bytes are bounded by eight
 connection slots, operation timeouts and byte limits. DNS and all connection
-attempts share one five-second budget. DNS runs in a killable subprocess;
+attempts share one five-second budget. Each address receives an equal share of
+the remaining budget for the remaining validated addresses, so a stalled first
+endpoint leaves time for fallback addresses. DNS runs in a killable subprocess;
 timeout kills/reaps it before releasing the slot. Header parsing checks a
 five-second deadline between reads; relaying checks a 60-second deadline between
 iterations. In-flight reads/writes retain five-second socket timeouts, so those

@@ -176,7 +176,10 @@ def source_inventory(root):
                     parent = parents[parent]
                     if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                         scope.append(parent.name)
-                signature = ".".join(reversed(scope)) + ":" + ast.dump(node, include_attributes=False)
+                # Python 3.13 changed dump's default to omit empty lists. Keep
+                # the reviewed 3.12 representation, including argument lists.
+                dump_options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
+                signature = ".".join(reversed(scope)) + ":" + ast.dump(node, include_attributes=False, **dump_options)
                 found.append((relative, node.lineno, kind, fingerprint(signature), detail))
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 hosts = set(URL.findall(node.value))

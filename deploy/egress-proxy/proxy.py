@@ -14,6 +14,8 @@ import threading
 import time
 from urllib.parse import urlsplit
 
+import idna
+
 
 class Denied(ValueError):
     pass
@@ -121,13 +123,20 @@ def authority(value: str) -> tuple[str, int]:
 def issuer_authority(value: str) -> tuple[str, int] | None:
     if not value:
         return None  # Local/Kerberos mode remains healthy and denies all CONNECTs.
-    if len(value) > 1024 or any(ord(c) <= 32 or ord(c) >= 127 for c in value):
+    if len(value) > 1024 or any(ord(c) <= 32 or ord(c) == 127 for c in value):
         raise Denied("invalid issuer")
     parsed = urlsplit(value)
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
             or parsed.password is not None or parsed.query or parsed.fragment or '\\' in value):
         raise Denied("invalid issuer")
     host = parsed.hostname
+    if not host.isascii():
+        try:
+            # Match HTTPX's IDNA2008 encoding, not the stdlib's older mapping
+            # (which, for example, changes sharp-s into a different hostname).
+            host = idna.encode(host.lower()).decode("ascii")
+        except idna.IDNAError:
+            raise Denied("invalid issuer hostname") from None
     return authority(f"{'[' + host + ']' if ':' in host else host}:{parsed.port or 443}")
 
 
@@ -151,8 +160,10 @@ def public_addresses(host: str, port: int, pins=frozenset(), deadline=None):
 def dial(host: str, port: int, pins=frozenset()):
     deadline = time.monotonic() + SETUP_SECONDS
     answers = public_addresses(host, port, pins, deadline)
-    for family, socktype, proto, _, address in answers:
-        timeout = remaining(deadline)
+    for index, (family, socktype, proto, _, address) in enumerate(answers):
+        # Share the remaining budget so one dropped endpoint cannot starve
+        # every validated fallback. DNS and all attempts retain one deadline.
+        timeout = remaining(deadline) / (len(answers) - index)
         connection = socket.socket(family, socktype, proto)
         try:
             connection.settimeout(timeout)

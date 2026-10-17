@@ -1,5 +1,7 @@
 FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+COPY requirements.lock /opt/egress/requirements.lock
+RUN pip install --no-cache-dir --require-hashes -r /opt/egress/requirements.lock
 # Installer release capsules can originate from an owner-only checkout (umask
 # 077). Make the public program readable by the fixed non-root runtime user.
 COPY proxy.py /opt/egress/proxy.py
