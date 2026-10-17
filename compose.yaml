@@ -403,7 +403,7 @@ services:
     environment:
       # The installer derives this one value from the selected app env_file.
       # Empty configuration keeps local/Kerberos startup healthy and denies all.
-      OIDC_ISSUER: ${EXCULPATA_EGRESS_ISSUER:-}
+      OIDC_ISSUER: ${OIDC_EGRESS_ISSUER:-}
     networks: [app-egress, front]
 
   gateway:
