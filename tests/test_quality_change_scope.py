@@ -186,6 +186,11 @@ def test_required_application_check_cannot_succeed_after_classification_or_publi
     "scripts/demo.py", "scripts/exculpata_theme_contrast.py",
     "config/browser-testing.json", "pyproject.toml",
     "tests/test_browser_acceptance_runner.py", "scripts/classify-quality-change.py",
+    "scripts/qa-people-browser.py", "scripts/nested/new-browser-tool.sh",
+    "scripts/browser-fixtures/setup.txt", "scripts/run-browser-acceptance.py.example",
+    "src/synthetic/static/scripts/new asset.js",
+    "src/synthetic/nested/static/icons/new.svg",
+    "src/synthetic/templates/components/new.html", "src/templates/new.html",
 ])
 def test_browser_pr_uses_complete_diff_after_documentation_followup(history, change, path):
     path = Path(path)
@@ -239,7 +244,19 @@ def test_browser_pr_uses_complete_diff_after_documentation_followup(history, cha
     ("docs/browser-accept-guide.md", False),
     ("docs/browser_appearance.py", False),
     ("config/unrelated.json", False),
-    ("scripts/run-browser-acceptance.py.example", False),
+    ("scripts/run-browser-acceptance.py.example", True),
+    ("scripts/qa-people-browser.py", True),
+    ("scripts/nested/new-browser-tool.sh", True),
+    ("scripts/browser-fixtures/setup.txt", True),
+    ("src/case_intelligence/static/workbench.js", True),
+    ("src/case_intelligence/templates/workbench.html", True),
+    ("src/synthetic/nested/static/new.css", True),
+    ("src/static/new.txt", True),
+    ("src/templates/new.html", True),
+    ("src/synthetic/statics/helper.py", False),
+    ("src/synthetic/static_helper.py", False),
+    ("docs/templates/guide.md", False),
+    ("docs/static/diagram.svg", False),
     ("scripts/other.py", False),
     ("src/browser-accept-synthetic.py", False),
 ])
@@ -309,3 +326,55 @@ def test_browser_workflow_event_and_scope_decisions(event, result, docs, browser
         and (result != "success" or docs != "true")
     ) or (event == "pull_request" and (result != "success" or browser != "false"))
     assert actual is expected
+
+
+# Exact changed paths from PR #280; no source contents are copied.
+PR_280_PATHS = (
+    'docs/TIMELINE_DRAFT.md',
+    'scripts/browser-accept-timeline-draft.py',
+    'scripts/run-browser-acceptance.py',
+    'src/case_intelligence/static/timeline-draft.css',
+    'src/case_intelligence/templates/workbench_matter_tabs.html',
+    'src/case_intelligence/templates/workbench_timeline_draft.html',
+    'src/case_intelligence/templates/workbench_work_product_tabs.html',
+    'src/case_intelligence/timeline_builder.py',
+    'src/case_intelligence/timeline_dates.py',
+    'src/case_intelligence/timeline_exports.py',
+    'src/case_intelligence/timeline_jobs.py',
+    'src/case_intelligence/timeline_promotion.py',
+    'src/case_intelligence/timeline_routes.py',
+    'src/case_intelligence/workbench.py',
+    'tests/fixtures/synthetic/workflow_eval/chronology.json',
+    'tests/snapshots/timeline_harbor_street.json',
+    'tests/snapshots/workbench_routes.json',
+    'tests/snapshots/workbench_routes_acceptance.json',
+    'tests/test_browser_acceptance_runner.py',
+    'tests/test_compact_matter_navigation.py',
+    'tests/test_timeline_builder.py',
+    'tests/test_timeline_dates.py',
+    'tests/test_timeline_jobs.py',
+    'tests/test_timeline_routes.py',
+)
+
+
+@pytest.mark.parametrize("paths,expected", [
+    (PR_280_PATHS, True),
+    (("scripts/run-browser-acceptance.py",), True),
+    (("src/case_intelligence/static/workbench.js",), True),
+    (("src/case_intelligence/templates/workbench.html",), True),
+    (("scripts/qa-people-browser.py",), True),
+    (("docs/guide.md",), False),
+], ids=["pr-280", "harness-only", "static-js", "workbench-template",
+        "new-browser-name", "docs-only"])
+def test_browser_regression_file_lists(history, monkeypatch, paths, expected):
+    real_git = scope.git
+
+    def complete_diff(*args):
+        if args[:3] == ("diff", "--name-only", "-z"):
+            assert args[3:] == ("--no-renames", history, history, "--")
+            return b"\0".join(path.encode() for path in paths) + b"\0"
+        return real_git(*args)
+
+    monkeypatch.setattr(scope, "git", complete_diff)
+    event = {"pull_request": {"base": {"sha": history}, "head": {"sha": history}}}
+    assert scope.browser_changed("pull_request", event, history) is expected

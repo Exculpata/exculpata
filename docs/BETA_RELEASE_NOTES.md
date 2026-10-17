@@ -1,9 +1,9 @@
 # Exculpata 0.1.0-beta.1
 
-**Current community beta prerelease.** Install from the `v0.1.0-beta.1` tag.
-The maintainer applies that tag. Checksummed source artifacts and recorded
-image and model identities are follow-ups for a later beta, not prerequisites
-for this prerelease.
+**Published community beta prerelease.** Install from the
+[`v0.1.0-beta.1` release](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1).
+Checksummed source artifacts and recorded image and model identities are
+follow-ups for a later beta, not prerequisites for this prerelease.
 
 This milestone targets a reproducible Linux GPU installation for evaluation and
 contribution. The reference journey covers local accounts, document review with

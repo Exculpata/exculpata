@@ -101,6 +101,17 @@ def classify(event_name: str, event: dict, expected: str, ref: str) -> bool:
     return bool(before.strip("0"))
 
 
+def browser_path(path: bytes) -> bool:
+    parts = path.split(b"/")
+    return (
+        path in BROWSER_DEPENDENCIES
+        or (parts[0] == b"scripts" and b"browser" in path)
+        or (parts[0] == b"src" and any(
+            part in {b"static", b"templates"} for part in parts[1:-1]
+        ))
+    )
+
+
 def browser_changed(event_name: str, event: dict, expected: str) -> bool:
     """Fail open to browser coverage unless a complete PR diff rules it out."""
     if event_name != "pull_request" or git("rev-parse", "HEAD").decode() != oid(expected):
@@ -112,11 +123,7 @@ def browser_changed(event_name: str, event: dict, expected: str) -> bool:
     raw = git("diff", "--name-only", "-z", "--no-renames", ancestor, head, "--")
     if not raw or len(raw) > MAX_DIFF_BYTES or not raw.endswith(b"\0"):
         return True
-    return any(
-        path.startswith((b"scripts/browser-accept-", b"scripts/browser_"))
-        or path in BROWSER_DEPENDENCIES
-        for path in raw[:-1].split(b"\0")
-    )
+    return any(browser_path(path) for path in raw[:-1].split(b"\0"))
 
 
 def main() -> None:

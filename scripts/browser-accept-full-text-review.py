@@ -6,6 +6,8 @@ from __future__ import annotations
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
+
+from browser_navigation import navigate_to
 import argparse
 from dataclasses import asdict
 import hashlib
@@ -94,7 +96,7 @@ def main():
         try:
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             wait = WebDriverWait(driver, 30); wait.until(lambda _: server.started)
-            driver.get(base + '/')
+            navigate_to(driver, base + '/', diagnostics=args.output)
             bench = app.state.workbench
             actor = 'development-taylor-morgan'
             matter = bench.create_matter('Synthetic all-text review', 'Browser acceptance', actor)
@@ -114,14 +116,14 @@ def main():
                 included = 'amber bicycle' in text
                 return VerifiedReviewDecision('include' if included else 'not_identified', text if included else 'No bicycle mentioned.', ('S1',) if included else (), True, 1)
             bench.generator.classify_source = classify
-            driver.get(base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}', diagnostics=args.output)
             assert 'Check selected passages' in driver.page_source
             button = driver.find_element(By.CSS_SELECTOR, 'button[value="full_text"]')
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", button); button.click()
             wait.until(lambda d: 'run=' in d.current_url)
             run = bench.workspace.review_runs(matter.matter_id, actor)[0]
             wait.until(lambda _: bench.workspace.review_run(matter.matter_id, actor, run.run_id).state == 'succeeded')
-            driver.get(base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}&run={run.run_id}&source={document.document_id}')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}&run={run.run_id}&source={document.document_id}', diagnostics=args.output)
             assert 'Coverage gaps remain' in driver.find_element(By.ID, 'review-coverage').text
             assert '1 unit with failed ranges' in driver.find_element(By.ID, 'review-coverage').text
             for width in (1440, 390):
@@ -145,7 +147,7 @@ def main():
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", support)
                 driver.save_screenshot(str(args.output / f'full-text-inspector-{label}.png'))
             driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride', {})
-            driver.get(base + f'/matters/{matter.slug}/full-review/{run.run_id}/text')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review/{run.run_id}/text', diagnostics=args.output)
             assert '14</strong> units fully processed' in driver.page_source and '1</strong> unit with failed ranges' in driver.page_source
             assert 'The amber bicycle arrived at noon.' in driver.page_source
             collapse = driver.find_elements(By.CSS_SELECTOR, '[data-assistant-collapse]')
@@ -168,7 +170,7 @@ def main():
             wait.until(lambda _: bool(list(downloads.glob('*.json'))))
             records = json.loads(next(downloads.glob('*.json')).read_text())['records']
             assert len([row for row in records if row['record_type'] == 'range']) == 15
-            driver.get(base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}&run={run.run_id}')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review?criterion={criterion.criterion_id}&run={run.run_id}', diagnostics=args.output)
             copy_form = driver.find_element(By.CSS_SELECTOR, f'form[action$="/{run.run_id}/report"]')
             details = copy_form.find_element(By.XPATH, 'ancestor::details')
             summary = details.find_element(By.TAG_NAME, 'summary')
@@ -185,7 +187,7 @@ def main():
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", source_link)
             source_link.click()
             wait.until(lambda d: 'The amber bicycle arrived at noon.' in d.find_element(By.TAG_NAME, 'body').text)
-            driver.get(report_url)
+            navigate_to(driver, report_url, diagnostics=args.output)
             wait.until(lambda d: bool(d.find_elements(By.CSS_SELECTOR, '.report-reading-page')))
             for width, label in ((1440, 'desktop'), (390, 'mobile')):
                 driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
@@ -205,12 +207,12 @@ def main():
             # Stop the worker so cancellation/resume state is deterministic.
             saved = bench.workspace.review_run(matter.matter_id, actor, run.run_id)
             queued = bench.workspace.queue_review_run(matter.matter_id, actor, saved.criterion_version_id, run_kind='full', review_mode='full_text')
-            driver.get(base + f'/matters/{matter.slug}/full-review/{queued.run_id}/text')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review/{queued.run_id}/text', diagnostics=args.output)
             cancel = driver.find_element(By.CSS_SELECTOR, f'form[action$="/{queued.run_id}/cancel"] button')
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", cancel)
             cancel.click()
             wait.until(lambda _: bench.workspace.review_run(matter.matter_id, actor, queued.run_id).state == 'cancelled')
-            driver.get(base + f'/matters/{matter.slug}/full-review/{queued.run_id}/text')
+            navigate_to(driver, base + f'/matters/{matter.slug}/full-review/{queued.run_id}/text', diagnostics=args.output)
             resume = driver.find_element(By.CSS_SELECTOR, f'form[action$="/{queued.run_id}/retry"] button')
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", resume)
             driver.save_screenshot(str(args.output / 'full-review-resume.png'))
