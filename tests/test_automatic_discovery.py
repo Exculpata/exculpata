@@ -90,11 +90,12 @@ def test_new_version_supersedes_without_touching_human_decisions(workbench):
     current = dict(document_id=document.document_id, source_version_id="synthetic-newer-version",
                    content_basis_digest="")
     with repo.transaction(matter.matter_id, AUTOMATIC_DISCOVERY_PRINCIPAL):
-        with fixture_write(repo):
-            repo.connection.execute(
+        with fixture_write(bench.workspace) as connection:
+            connection.execute(
                 "INSERT INTO workbench_entity_auto_discovery_unit (matter_id,document_id,source_version_id,"
                 "content_basis_digest,unit_ordinal,unit_digest,extractor_version,state) VALUES (?,?,?,?,?,?,?,?)",
                 (matter.matter_id, document.document_id, old_version, "", 9, "0" * 64, "synthetic-older", "pending"))
+        assert repo.connection.in_transaction
         assert repo.seal_auto_discovery(matter.matter_id, current, "synthetic-older", [(1, "1" * 64)])
         assert not repo.seal_auto_discovery(matter.matter_id, current, "synthetic-older", [(1, "1" * 64)])
         remaining = repo.connection.execute(
