@@ -3,8 +3,8 @@
 Follow [coding standards](CODING_STANDARDS.md) for development, synthetic data,
 publication safeguards and validation. The [review policy](docs/QUALITY_GATES.md#review-policy)
 remains the merge gate. Keep work aligned with the [product north star](docs/PRODUCT_NORTH_STAR.md).
-The planned `docs/IDEAL.md` is tracked in [#305](https://github.com/Exculpata/exculpata/issues/305);
-do not start that document before its stated dependency gate.
+Use the [ideal architecture contract](docs/IDEAL.md) to review supported paths,
+evidence integrity and the rules that still require human judgment.
 
 ## Restate the goal before coding
 

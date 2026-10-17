@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 import pytest
 import yaml
@@ -65,7 +66,25 @@ def test_agent_task_preserves_fix_hierarchy_and_kickoff_process() -> None:
     assert 'synthetic test' in regression and 'commit it must fail on' in regression
 
 
-def test_agent_guidance_links_standards_and_gated_ideal_plan() -> None:
+@pytest.mark.parametrize('path,target', [
+    ('AGENTS.md', 'docs/IDEAL.md'),
+    ('.github/ISSUE_TEMPLATE/agent_task.yml',
+     'https://github.com/Exculpata/exculpata/blob/main/docs/IDEAL.md'),
+])
+def test_agent_guidance_links_existing_ideal_contract(path: str, target: str) -> None:
+    text = (ROOT / path).read_text(encoding='utf-8')
+    if path.endswith('.yml'):
+        form = yaml.safe_load(text)
+        text = '\n'.join(field['attributes']['value'] for field in form['body']
+                         if field['type'] == 'markdown')
+    links = re.findall(r'\[[^\]]+\]\(([^)]+)\)', text)
+    assert target in links, f'{path} must link directly to docs/IDEAL.md'
+    assert (ROOT / 'docs' / 'IDEAL.md').is_file(), 'The linked contract must exist'
+    assert 'https://github.com/Exculpata/exculpata/issues/305' not in links
+    assert 'dependency gate' not in text
+
+
+def test_agent_guidance_links_standards_and_preserves_safeguards() -> None:
     guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
     assert guide.startswith('# Exculpata contributor judgment rules\n')
     assert '## Correct the environment, not the agent' in guide
@@ -79,9 +98,6 @@ def test_agent_guidance_links_standards_and_gated_ideal_plan() -> None:
     form_text = (TEMPLATES / 'agent_task.yml').read_text(encoding='utf-8')
     for text in (guide, form_text):
         assert 'CODING_STANDARDS.md' in text
-        assert 'docs/IDEAL.md' in text
-        assert 'https://github.com/Exculpata/exculpata/issues/305' in text
-        assert 'dependency gate' in text
     detailed = standards.read_text(encoding='utf-8')
     assert '.venv/bin/exculpata-workbench --host 127.0.0.1' in detailed
     for safeguard in ('synthetic fixtures only', 'pre-push publication check',

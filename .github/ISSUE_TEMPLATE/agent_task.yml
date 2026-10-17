@@ -6,8 +6,8 @@ body:
     attributes:
       value: |
         Follow [coding standards](https://github.com/Exculpata/exculpata/blob/main/CODING_STANDARDS.md).
-        The planned `docs/IDEAL.md` is tracked in [#305](https://github.com/Exculpata/exculpata/issues/305)
-        and remains subject to that issue's dependency gate.
+        Review the [ideal architecture contract](https://github.com/Exculpata/exculpata/blob/main/docs/IDEAL.md)
+        for supported paths, evidence integrity and rules that require human judgment.
   - type: textarea
     id: problem
     attributes:
