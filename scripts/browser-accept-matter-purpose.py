@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Synthetic optional orientation: native keyboard edits, conflict and reload."""
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -100,7 +100,7 @@ def main():
             submit()
             assert bench.workspace.matter_purpose(matter.matter_id, ACTOR)['revision'] == 1
             report['checks'].append('Native keyboard edits both optional fields and saves one revision')
-            driver.refresh()
+            refresh_page(driver, wait)
             assert 'Understand the synthetic arrival timeline.' in find('#matter-purpose').text
             for width in (1440, 390, 320):
                 driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',

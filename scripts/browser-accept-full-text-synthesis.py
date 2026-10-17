@@ -124,7 +124,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
-                navigate_to(driver, base + path, diagnostics=args.output)
+                navigate_to(driver, base + path, diagnostics=args.output, readiness_timeout=45)
                 wait.until(lambda _: detached(old))
                 ready()
 

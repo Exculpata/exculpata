@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -186,7 +186,7 @@ def main():
                 assert all(d.digest not in driver.page_source for d in documents)
                 comparison_url = driver.current_url
                 old = driver.find_element(By.TAG_NAME, 'html')
-                driver.refresh()
+                refresh_page(driver, wait)
                 wait.until(lambda _: detached(old))
                 ready()
                 assert len(rows()) == 2

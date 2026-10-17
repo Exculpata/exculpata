@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 from collections import deque
@@ -347,7 +347,7 @@ def main():
             navigate_to(driver, base + path, diagnostics=args.output)
             click(driver.find_element(By.LINK_TEXT, 'Next identities'))
             assert 'Showing 2 of 10 identities' in body()
-            driver.refresh()
+            refresh_page(driver, wait)
             assert 'Showing 2 of 10 identities' in body() and 'Page 2 of 2' in body()
             click(driver.find_element(By.LINK_TEXT, 'Next records'))
             assert 'Showing 1 of 7 records' in body()

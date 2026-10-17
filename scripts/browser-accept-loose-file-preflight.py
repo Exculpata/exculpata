@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import base64
@@ -382,7 +382,7 @@ def main() -> int:
                 "Emulation.setScriptExecutionDisabled", {"value": True}
             )
             try:
-                driver.refresh()
+                refresh_page(driver, wait)
                 no_script_folder_input = driver.find_element(By.ID, "source-folder")
                 no_script_folder_chooser = driver.find_element(
                     By.CSS_SELECTOR, "[data-folder-chooser]"
@@ -401,7 +401,7 @@ def main() -> int:
                 driver.execute_cdp_cmd(
                     "Emulation.setScriptExecutionDisabled", {"value": False}
                 )
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-folder-chooser]"
@@ -1630,7 +1630,7 @@ def main() -> int:
             # The following fixture represents a checkpoint created before
             # receipts existed; discard only the modern bootstrap's browser key.
             driver.execute_script("window.localStorage.removeItem(arguments[0] + ':selection-receipt');", capacity_resume_key)
-            driver.refresh()
+            refresh_page(driver, wait)
             capacity_resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2409,7 +2409,7 @@ def main() -> int:
             )
 
             terminal_new_state = json.loads(terminal_saved)
-            driver.refresh()
+            refresh_page(driver, wait)
             bench.workspace.cancel_upload_session(
                 terminal_matter.matter_id,
                 ACTOR,
@@ -2643,7 +2643,7 @@ def main() -> int:
                         ),
                     )
                     new_session_id = json.loads(checkpoint_after)["session_id"]
-                    driver.refresh()
+                    refresh_page(driver, wait)
                     bench.workspace.cancel_upload_session(
                         terminal_matter.matter_id, ACTOR, new_session_id
                     )
@@ -2759,7 +2759,7 @@ def main() -> int:
             original_resume_session = saved_resume_state["session_id"]
             original_resume_collection = saved_resume_state["collection_id"]
 
-            driver.refresh()
+            refresh_page(driver, wait)
             resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2827,7 +2827,7 @@ def main() -> int:
                 "exact resume created a second upload session",
             )
 
-            driver.refresh()
+            refresh_page(driver, wait)
             missing_resume_state = {
                 **saved_resume_state,
                 "session_id": "upload-session-ffffffffffffffffffffffffffffffff",
@@ -2907,7 +2907,7 @@ def main() -> int:
                 "v4 resume mismatch did not fail closed with its checkpoint preserved",
             )
 
-            driver.refresh()
+            refresh_page(driver, wait)
             driver.execute_script(
                 "window.localStorage.setItem(arguments[0], arguments[1]);",
                 resume_key,

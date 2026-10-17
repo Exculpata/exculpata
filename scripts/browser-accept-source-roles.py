@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Synthetic C2 reader navigation, keyboard editing and conflict recovery."""
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 import io
@@ -32,17 +32,6 @@ from case_intelligence.workbench import create_workbench_app
 ACTOR = 'development-taylor-morgan'
 
 
-def wait_for_replacement(driver, wait, element):
-    """Observe the retiring document before checking its replacement's readiness."""
-    def detached(current):
-        try:
-            return EC.staleness_of(element)(current)
-        except WebDriverException as exc:
-            if 'Node with given id does not belong to the document' not in exc.msg:
-                raise
-            return True
-    wait.until(detached)
-    wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
 
 
 def activate_role_action(driver, wait, element):
@@ -51,11 +40,6 @@ def activate_role_action(driver, wait, element):
     wait_for_replacement(driver, wait, element)
 
 
-def refresh_page(driver, wait):
-    # Chrome can acknowledge reload before the replacement document commits.
-    previous_document = driver.find_element(By.TAG_NAME, 'html')
-    driver.refresh()
-    wait_for_replacement(driver, wait, previous_document)
 
 
 def main():

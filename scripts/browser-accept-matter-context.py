@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import importlib.util
@@ -127,7 +127,7 @@ def main():
             activate(button('Clear selection'))
             assert 'Your unsaved choice' in body() and 'another tab' in body()
             assert len(driver.find_elements(By.CSS_SELECTOR,'article[id^="selected-"]')) == 3
-            driver.refresh()
+            refresh_page(driver, wait)
             assert len(driver.find_elements(By.CSS_SELECTOR,'article[id^="selected-"]')) == 3
             record('Concurrent tabs cannot overwrite a reorder; conflict retains the unsaved choice and current selection')
             bench = app.state.workbench
@@ -140,7 +140,7 @@ def main():
             assert 'Alex Corrected' in body()
             current = driver.find_element(By.ID,'selected-'+context['person'])
             activate(button('Remove from context',current))
-            driver.refresh()
+            refresh_page(driver, wait)
             assert not driver.find_elements(By.ID,'selected-'+context['person'])
             record('Source-record edits require explicit reapproval; explicit removal survives reload without re-add')
             inspect('entity',context['person'])

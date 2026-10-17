@@ -7,12 +7,33 @@ from pathlib import Path
 from urllib.parse import urldefrag
 
 from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 DIAGNOSTIC_NAME = 'navigation-timeouts.json'
 MAX_DIAGNOSTIC_BYTES = 64 * 1024
 MAX_EVENTS = 64
+
+
+def wait_for_replacement(driver, wait, element):
+    """Observe the retiring document before checking its replacement's readiness."""
+    def detached(current):
+        try:
+            return EC.staleness_of(element)(current)
+        except WebDriverException as exc:
+            if 'Node with given id does not belong to the document' not in (exc.msg or ''):
+                raise
+            return True
+    wait.until(detached)
+    wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
+
+
+def refresh_page(driver, wait):
+    """Reload once and wait for replacement before observing readiness."""
+    previous_document = driver.find_element(By.TAG_NAME, 'html')
+    driver.refresh()
+    wait_for_replacement(driver, wait, previous_document)
 
 
 def _readiness_condition(driver, url):
@@ -75,9 +96,10 @@ def navigate_to(driver, url, *, diagnostics, page_load_timeout=30, readiness_tim
     for attempt in (1, 2):
         # Snapshot each attempt separately: a timed-out attempt may have
         # replaced the document before the one permitted recovery navigation.
-        ready = _readiness_condition(driver, url)
-        phase = 'navigation'
+        phase = 'snapshot'
         try:
+            ready = _readiness_condition(driver, url)
+            phase = 'navigation'
             driver.get(url)
             phase = 'readiness'
             WebDriverWait(driver, readiness_timeout).until(ready)

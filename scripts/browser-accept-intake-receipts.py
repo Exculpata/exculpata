@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import io
@@ -55,19 +55,6 @@ def until(predicate, message, seconds=25):
     raise AssertionError(message)
 
 
-def refresh_page(driver, wait):
-    # page_load_strategy='none' can return while the old document is present.
-    previous_document = driver.find_element(By.TAG_NAME, 'html')
-    driver.refresh()
-    def detached(current):
-        try:
-            return EC.staleness_of(previous_document)(current)
-        except WebDriverException as exc:
-            if 'Node with given id does not belong to the document' not in exc.msg:
-                raise
-            return True
-    wait.until(detached)
-    wait.until(lambda current: current.execute_script('return document.readyState') == 'complete')
 
 
 def main():

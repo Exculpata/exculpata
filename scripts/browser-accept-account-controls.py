@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -105,7 +105,7 @@ def main():
             from browser_appearance import select_appearance
             select_appearance(driver, wait, 'light', 'cyan')
             select_appearance(driver, wait, 'dark', 'amber')
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js('return document.documentElement.dataset.theme') == 'dark'
                        and js('return document.documentElement.dataset.accent') == 'amber')
             report['checks'].append('Compact account appearance controls persist Dark and Amber across reload')

@@ -633,7 +633,8 @@ def test_standalone_workspace_layout_clears_deployment_settings_before_app(works
 
 
 @pytest.fixture
-def zoom_script():
+def zoom_script(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
     spec = importlib.util.spec_from_file_location('browser_zoom', ROOT / 'scripts/browser-accept-zoom.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -663,7 +664,8 @@ def test_zoom_preserves_unexpected_driver_failures(zoom_script):
 
 
 @pytest.fixture
-def entities_script():
+def entities_script(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
     spec = importlib.util.spec_from_file_location('browser_entities', ROOT / 'scripts/browser-accept-entities.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -950,16 +952,153 @@ def test_navigation_diagnostic_is_retained_by_runner(navigation, runner, tmp_pat
 
 
 def test_browser_journeys_use_supported_navigation_helper():
-    import ast
-    import re
+    spec = importlib.util.spec_from_file_location('navigation_lint', Path(__file__).resolve().parents[1] / 'scripts/browser_navigation_lint.py')
+    lint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lint)
     violations = []
     for path in sorted((ROOT / 'scripts').glob('browser-accept-*.py')):
-        source = path.read_text()
-        # Also reject aliases/assignments that could hide a raw navigation call.
-        for node in ast.walk(ast.parse(source)):
-            if (isinstance(node, ast.Attribute) and node.attr == 'get'
-                    and isinstance(node.value, ast.Name) and node.value.id in {'driver', 'other'}):
-                violations.append(f'{path.name}:{node.lineno}')
-        assert not re.search(r'\bdriver\s*\.\s*get\s*\(', source), (
-            f'{path.name}: use browser_navigation.navigate_to for browser navigation')
-    assert not violations, 'Use browser_navigation.navigate_to: ' + ', '.join(violations)
+        violations.extend(f'{path.name}:{line} .{method}' for line, method in lint.navigation_violations(path.read_text()))
+    assert not violations, 'Use browser_navigation.navigate_to / browser_navigation.refresh_page: ' + ', '.join(violations)
+
+
+@pytest.mark.parametrize('operation', ['get("http://example.invalid/")', 'refresh()'])
+def test_navigation_lint_rejects_renamed_driver(tmp_path, monkeypatch, operation):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    (scripts / 'browser-accept-generated.py').write_text(
+        'from selenium import webdriver\n'
+        'session = webdriver.Chrome()\n'
+        f'session.{operation}\n')
+    monkeypatch.setitem(globals(), 'ROOT', tmp_path)
+    with pytest.raises(AssertionError, match='browser_navigation'):
+        test_browser_journeys_use_supported_navigation_helper()
+
+
+@pytest.mark.parametrize('event', ['', 'push', 'schedule', 'merge_group', 'pull_request'])
+def test_runner_warns_about_renderer_retry_outside_pr_ci(runner, navigation, tmp_path, monkeypatch, capsys, event):
+    from selenium.common.exceptions import TimeoutException
+    monkeypatch.setenv('GITHUB_EVENT_NAME', event)
+    monkeypatch.setattr(runner, 'JOURNEYS', (('generated', 'generated.py', 'receipt.json', 1, ()),))
+    scratch, output = tmp_path / 'scratch', tmp_path / 'output'
+    scratch.mkdir(); output.mkdir()
+    def run(command, log, environment, timeout):
+        raw = Path(command[command.index('--output') + 1])
+        browser = Mock()
+        browser.get.side_effect = [TimeoutException('Timed out receiving message from renderer'), None]
+        browser.execute_script.return_value = 'complete'
+        navigation.navigate_to(browser, 'http://example.invalid/', diagnostics=raw)
+        receipt(raw / 'receipt.json')
+        log.write_text('Synthetic recovery')
+        return 0
+    monkeypatch.setattr(runner, 'run_process', run)
+    result = runner.run_journeys(Path('/generated/chrome'), Path('/generated/driver'), scratch, output, 1)
+    assert result[0]['passed'] is True
+    printed = capsys.readouterr().out
+    assert ('WARNING: generated recorded 1 renderer navigation retry' in printed) is (event != 'pull_request')
+    assert (output / 'generated' / navigation.DIAGNOSTIC_NAME).exists()
+
+
+@pytest.mark.parametrize('source', [
+    'from selenium import webdriver as wd\nrenamed = wd.Chrome()\nrenamed.get("url")',
+    'from selenium import webdriver\nwebdriver = webdriver.Chrome\nrenamed = webdriver()\nrenamed.refresh()',
+    'from selenium.webdriver import Chrome as Browser\nBrowser().refresh()',
+    'from selenium import webdriver\none = webdriver.Chrome()\ntwo = one\ntwo.get("url")',
+    'from selenium import webdriver\nholder.browser = webdriver.Chrome()\nholder.browser.refresh()',
+    'from selenium import webdriver\nsessions[0] = webdriver.Chrome()\nsessions[0].get("url")',
+    'from selenium import webdriver\nsessions = [webdriver.Chrome()]\nsessions[0].refresh()',
+    'from selenium import webdriver\nsessions = {"active": webdriver.Chrome()}\nsessions["active"].get("url")',
+    'from selenium import webdriver\ndef visit(session=webdriver.Chrome()):\n session.refresh()',
+    'from selenium import webdriver\nsession = webdriver.Chrome()\ndef visit(session=session):\n session.refresh()',
+    'from selenium import webdriver\nclass BrowserPage:\n def __init__(self):\n  self.browser = webdriver.Chrome()\n def load(self):\n  self.browser.get("url")',
+    'from selenium import webdriver\nmake_browser = lambda: webdriver.Chrome()\nmake_browser().get("url")',
+    'from selenium import webdriver\nfirst, second = webdriver.Chrome(), webdriver.Chrome()\nsecond.refresh()',
+    'from selenium import webdriver\ndef make_browser():\n return webdriver.Chrome()\nmake_browser().get("url")',
+    'from selenium import webdriver\ndef visit(session):\n session.get("url")\nvisit(webdriver.Chrome())',
+    'from selenium import webdriver\ndef visit(*, session):\n session.refresh()\nvisit(session=webdriver.Chrome())',
+    'from selenium.webdriver.remote.webdriver import WebDriver\ndef visit(session: WebDriver):\n session.get("url")',
+    'from selenium import webdriver\nload = webdriver.Chrome().get\nload("url")',
+    'from selenium import webdriver\ngetattr(webdriver.Chrome(), "refresh")()',
+    'from selenium import webdriver\nfrom selenium.webdriver.support.ui import WebDriverWait\nwait = WebDriverWait(webdriver.Chrome(), 10)\nwait.until(lambda current: current.get("url"))',
+])
+def test_navigation_lint_follows_driver_origins(tmp_path, monkeypatch, source):
+    scripts = tmp_path / 'scripts'; scripts.mkdir()
+    (scripts / 'browser-accept-generated.py').write_text(source + '\n')
+    monkeypatch.setitem(globals(), 'ROOT', tmp_path)
+    with pytest.raises(AssertionError, match='browser_navigation'):
+        test_browser_journeys_use_supported_navigation_helper()
+
+
+def test_navigation_lint_preserves_non_driver_get_calls(tmp_path, monkeypatch):
+    scripts = tmp_path / 'scripts'; scripts.mkdir()
+    (scripts / 'browser-accept-generated.py').write_text('''
+from selenium import webdriver
+from httpx import Client
+browser = webdriver.Chrome()
+browser.capabilities.get('browserVersion')
+client = Client()
+client.get('http://example.invalid/')
+settings = {'get': 'synthetic'}
+settings.get('get')
+store.get('synthetic-document')
+def unrelated():
+    browser = {}
+    return browser.get('value')
+# browser.get('comment')
+text = "browser.refresh()"
+''')
+    monkeypatch.setitem(globals(), 'ROOT', tmp_path)
+    test_browser_journeys_use_supported_navigation_helper()
+
+
+def test_navigation_recovers_renderer_timeout_during_snapshot(navigation, tmp_path):
+    from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+    browser, document = Mock(), Mock()
+    browser.capabilities = {'pageLoadStrategy': 'none'}
+    document.is_enabled.side_effect = StaleElementReferenceException()
+    browser.execute_script.side_effect = [TimeoutException('Timed out receiving message from renderer'),
+        [document, 'http://example.invalid/old', 'http://example.invalid/new'], 'complete']
+    navigation.navigate_to(browser, 'http://example.invalid/new', diagnostics=tmp_path)
+    browser.get.assert_called_once()
+    events = json.loads((tmp_path / navigation.DIAGNOSTIC_NAME).read_text())['events']
+    assert [(event['attempt'], event['phase'], event['retry']) for event in events] == [(1, 'snapshot', True)]
+
+
+def test_navigation_retry_snapshot_failure_exhausts_the_same_bound(navigation, tmp_path):
+    from selenium.common.exceptions import TimeoutException
+    browser = Mock()
+    browser.capabilities = {'pageLoadStrategy': 'none'}
+    browser.execute_script.side_effect = [[Mock(), 'http://example.invalid/old', 'http://example.invalid/new'],
+        TimeoutException('Timed out receiving message from renderer')]
+    browser.get.side_effect = TimeoutException('Timed out receiving message from renderer')
+    with pytest.raises(TimeoutException):
+        navigation.navigate_to(browser, 'http://example.invalid/new', diagnostics=tmp_path)
+    browser.get.assert_called_once()
+    events = json.loads((tmp_path / navigation.DIAGNOSTIC_NAME).read_text())['events']
+    assert [(event['attempt'], event['phase'], event['retry']) for event in events] == [
+        (1, 'navigation', True), (2, 'snapshot', False)]
+
+
+@pytest.mark.parametrize('journey', ['full-text-synthesis', 'workflow-handoff'])
+def test_navigation_preserves_existing_45_second_readiness_budget(journey):
+    import ast
+    tree = ast.parse((ROOT / 'scripts' / f'browser-accept-{journey}.py').read_text())
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == 'navigate_to']
+    assert calls
+    assert all(any(keyword.arg == 'readiness_timeout' and isinstance(keyword.value, ast.Constant)
+                   and keyword.value.value == 45 for keyword in node.keywords) for node in calls)
+
+
+@pytest.mark.parametrize('kind', ['other-timeout', 'other-driver-error'])
+def test_snapshot_recovery_preserves_error_classification(navigation, tmp_path, kind):
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    browser = Mock()
+    browser.capabilities = {'pageLoadStrategy': 'none'}
+    error = (TimeoutException('Unrelated deadline') if kind == 'other-timeout' else
+             WebDriverException('Timed out receiving message from renderer'))
+    browser.execute_script.side_effect = error
+    with pytest.raises(type(error)):
+        navigation.navigate_to(browser, 'http://example.invalid/', diagnostics=tmp_path)
+    browser.execute_script.assert_called_once()
+    browser.get.assert_not_called()
+    assert not (tmp_path / navigation.DIAGNOSTIC_NAME).exists()

@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 from contextlib import contextmanager
@@ -315,7 +315,7 @@ def main(argv=None):
                 assert question_snapshot() == expected
                 assert unchanged_sections() == original_sections
                 assert work_counts(bench, matter) == (0, 0, 0)
-                driver.refresh()
+                refresh_page(driver, wait)
                 wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
                 assert question_snapshot() == expected
                 checks.append("Native Home objective editing and reload stably promote only existing matching questions with identical text, Suggested labels, links, sections and coverage")

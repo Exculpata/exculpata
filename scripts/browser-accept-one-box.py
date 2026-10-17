@@ -11,7 +11,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import io
@@ -338,7 +338,7 @@ def main(argv=None):
             messages = bench.workspace.messages(matter.matter_id, conversation_id)
             assert any(message.role == "user" and message.content == UNSUPPORTED_QUESTION for message in messages)
             assert any(message.role == "assistant" and message.payload.get("kind") == "not-supported" for message in messages)
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js("return !!document.querySelector('[data-deeper-investigation]')"))
             offers = driver.find_elements(By.CSS_SELECTOR, "[data-deeper-investigation]")
             assert len(offers) == 1
@@ -365,7 +365,7 @@ def main(argv=None):
             assert job.state == "queued" and job.actor_id == ACTOR
             assert job.idempotency_key.startswith("research-request-")
             assert UNSUPPORTED_QUESTION in find(".conversation-research-progress").text
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js("return !!document.querySelector('.conversation-research-progress')"))
             assert len(bench.workspace.research_jobs(matter.matter_id, ACTOR)) == 1
             assert generator.calls == 2

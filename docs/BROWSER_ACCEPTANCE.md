@@ -111,6 +111,22 @@ artifact within its existing limits. Its CI contract tests cover recovery,
 exhaustion, unrelated errors, readiness, artifact retention and raw-call rejection.
 The source-role reload synchronization above remains required independently.
 
+Journey reloads use `browser_navigation.refresh_page(driver, wait)`: one refresh,
+then detachment of the previous document and completion of the replacement,
+using the caller's existing wait. The intake and source-role journeys share this
+implementation. Reloads are never retried. The navigation lint follows Selenium
+constructors, aliases, helper parameters, annotated drivers, and wait callbacks;
+it rejects raw `get` and `refresh` references regardless of the driver's variable
+name while permitting mapping, HTTP-client, and source-store `get` calls.
+
+Outside pull-request CI, the runner prints a warning when a journey records a
+renderer retry. The diagnostic remains in the existing bounded artifact set.
+This warning does not change acceptance: process, receipt, and existing PR CI
+checks retain their failure behavior. Snapshot, navigation, and readiness renderer
+timeouts share the same two-attempt bound; other errors still propagate. The
+full-text-synthesis and workflow-handoff journeys retain their original 45-second
+readiness budgets.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background

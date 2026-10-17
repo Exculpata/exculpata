@@ -306,6 +306,27 @@ def failure_summary(log: Path) -> list[str]:
     return [line[:300] for line in lines[-MAX_SUMMARY_LINES:]]
 
 
+def warn_navigation_retries(raw: Path, journey: str) -> None:
+    """Surface recovery outside PR CI without changing journey acceptance."""
+    if os.environ.get('GITHUB_EVENT_NAME') in {'pull_request', 'pull_request_target'}:
+        return
+    path = raw / 'navigation-timeouts.json'
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_RECEIPT_BYTES:
+            return
+        payload = json.loads(path.read_text())
+        events = payload.get('events', []) if isinstance(payload, dict) else []
+        if not isinstance(events, list):
+            return
+        retries = sum(isinstance(event, dict) and event.get('retry') is True for event in events)
+    except (OSError, ValueError):
+        return
+    if retries:
+        print(f'WARNING: {journey} recorded {retries} renderer navigation retry event(s); '
+              'inspect navigation-timeouts.json. This warning does not change acceptance.', flush=True)
+
+
 def run_journeys(chrome: Path, driver: Path, scratch: Path, output: Path, timeout: float) -> list[dict]:
     results = []
     remaining = MAX_ARTIFACT_BYTES
@@ -336,6 +357,7 @@ def run_journeys(chrome: Path, driver: Path, scratch: Path, output: Path, timeou
             results.append(result)
             (output / 'journeys.json').write_text(json.dumps(results, indent=2) + '\n')
         print(f"{name}: {'passed' if result['passed'] else 'FAILED'}", flush=True)
+        warn_navigation_retries(raw, name)
         if not result['passed']:
             if result.get('error'):
                 print(f"  {result['error'][:300]}", flush=True)

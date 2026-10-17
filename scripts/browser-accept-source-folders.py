@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -165,7 +165,7 @@ def main():
             child('Sub')
             assert len(rows()) == 1 and 'notes.txt' in rows()[0].text
             old = driver.find_element(By.TAG_NAME, 'html')
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: detached(old))
             ready()
             assert len(rows()) == 1

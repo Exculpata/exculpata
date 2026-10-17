@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import hashlib
@@ -149,7 +149,7 @@ def main():
             assert processor.submissions == 0
             click("[data-recording-check] button[value=retry]")
             wait.until(lambda d: "No speech detected" in d.find_element(By.CSS_SELECTOR, "[data-recording-check]").text)
-            driver.refresh()
+            refresh_page(driver, wait)
             assert "No speech detected" in driver.find_element(By.CSS_SELECTOR, "[data-recording-check]").text
             assert processor.submissions == 0
             checks.append("Failed inspection has a working retry; a no-speech decision survives navigation/reload without submission")
@@ -196,7 +196,7 @@ def main():
             driver.execute_script("document.querySelector('[data-media-player]').pause()")
             assert processor.submissions == 2
             assert processor.input_digest == original_digests[late]
-            driver.refresh()
+            refresh_page(driver, wait)
             assert "00:30" in driver.find_element(By.CSS_SELECTOR, "[data-recording-check]").text
             driver.save_screenshot(str(args.output / "original-time-speech.png"))
             checks.append("Later speech retains original 30-second offset; jump-to-speech seeks the player and saved findings survive reload")
