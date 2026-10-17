@@ -58,7 +58,10 @@ need not enable Actions.
 The separate network isolation smoke runs on labeled `network-smoke` PRs,
 merge groups, weekly on Monday at 06:43 UTC, and manual dispatch. It tests
 synthetic OIDC and independent TCP/DNS boundaries, including internal DNS
-controls, UDP/TCP A/AAAA/TXT requests and observed non-forwarding. It retains a
+controls, six causal container-loopback DNS challenges, a reachable recorder and
+a deliberately forwarding negative control. It builds the production application
+and relay images with production network and routing settings, and tests real
+Authlib redirect/TLS behavior and cleartext/suffix proxy denials. It retains a
 content-free summary. A skipped run is not acceptance; the weekly schedule uses
 the default branch once the workflow is merged.
 

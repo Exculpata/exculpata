@@ -255,11 +255,21 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
     with httpx.Client() as client:
         issuer = client._transport_for_url(httpx.URL("https://issuer.example.test"))
         assert isinstance(issuer._pool, __import__('httpcore').HTTPProxy)
-        assert client._transport_for_url(httpx.URL("http://retrieval:8787")) is client._transport
-        assert client._transport_for_url(httpx.URL("https://generator:8000")) is client._transport
+        assert isinstance(client._transport_for_url(httpx.URL("http://retrieval:8787"))._pool, __import__("httpcore").HTTPProxy)
+        assert isinstance(client._transport_for_url(httpx.URL("https://generator:8000"))._pool, __import__("httpcore").HTTPProxy)
     proxy = compose["services"]["egress-proxy"]
     assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
     assert not any(key in proxy for key in ("volumes", "secrets", "env_file", "ports"))
     assert compose["services"]["gateway"]["networks"] == ["front", "services"]
     overlay = yaml.safe_load((ROOT / "compose.kerberos.yaml").read_text())
     assert "services" in overlay["services"]["kerberos-proxy"]["networks"]
+
+
+@pytest.mark.parametrize('key,value', [('HTTP_PROXY',''),('NO_PROXY','postgres'),('CASE_INTELLIGENCE_OIDC_PROXY','http://foreign.example.test:3128')])
+def test_contract_rejects_proxy_routing_overrides(contract_tree, key, value):
+    path = contract_tree / 'compose.local-accounts.yaml'
+    data = yaml.safe_load(path.read_text())
+    data['services']['app'].setdefault('environment', {})[key] = value
+    path.write_text(yaml.safe_dump(data))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1 and 'compose.local-accounts.yaml:' in result.stderr

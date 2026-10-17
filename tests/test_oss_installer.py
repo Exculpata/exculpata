@@ -664,7 +664,7 @@ def ready_host(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(installer.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(installer.os, "getegid", lambda: 1000)
-    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: True)
+    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(installer.shutil, "disk_usage", lambda path: type("Disk", (), {"free": 400 * 1024**3})())
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0", ""))
@@ -2487,6 +2487,7 @@ def test_saved_account_preflight_allows_missing_leaf_with_initial_password_input
 @pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("product_name", ["Exculpata", f"{LEGACY_PRODUCT}"])
 def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, monkeypatch, bind, target, auth, product_name):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
@@ -2565,6 +2566,7 @@ def test_installed_auth_drift_is_rejected_before_runtime_probe(tmp_path, monkeyp
 @pytest.mark.parametrize("expected", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("effective", ["preview", "test", "local", "oidc", "kerberos"])
 def test_health_checks_running_auth_mode_before_accepting_healthy_node(tmp_path, monkeypatch, expected, effective):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
@@ -2680,6 +2682,7 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
 
 @pytest.mark.parametrize("rollback_auth", ["local", "preview", None])
 def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, request, monkeypatch, capsys, rollback_auth):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     wait_health = installer._wait_health
     root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request)
@@ -3570,9 +3573,9 @@ def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, re
     assert _control_bytes(root) == before
 
 
-def test_preflight_blocks_unsupported_dns_engine(tmp_path, ready_host, monkeypatch):
-    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: False)
+def test_preflight_warns_about_unknown_dns_engine_without_version_veto(tmp_path, ready_host, monkeypatch):
+    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: False)
     result = installer._collect_preflight("none", preflight_args(tmp_path))
     check = checks_by_name(result)["docker-dns-version"]
-    assert not result.ready and check.blocking and check.state == "fail"
-    assert "26.0.0" in check.remedy
+    assert result.ready and not check.blocking and check.state == "warn"
+    assert "challenge" in check.remedy

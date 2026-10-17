@@ -107,6 +107,14 @@ def authority(value: str) -> tuple[str, int]:
     host, port = parsed.hostname, parsed.port
     if not host or not port or host.endswith('.') or '..' in host:
         raise Denied("invalid authority")
+    # libc accepts historical integer/short/octal/hex IPv4 spellings. Never
+    # interpret a numeric-looking parse failure as an ordinary DNS hostname.
+    if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", host):
+        try:
+            if str(ipaddress.IPv4Address(host)) != host:
+                raise ValueError()
+        except ValueError:
+            raise Denied("noncanonical numeric authority") from None
     return host.lower(), port
 
 

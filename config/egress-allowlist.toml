@@ -75,7 +75,6 @@
 }
 '''
 "compose.yaml" = '''
-
 {
   "networks": {
     "app-egress": {
@@ -127,6 +126,17 @@
         "services",
         "models"
       ],
+      "proxy_environment": {
+        "ALL_PROXY": "http://egress-proxy:3128",
+        "CASE_INTELLIGENCE_OIDC_PROXY": "http://egress-proxy:3128",
+        "HTTPS_PROXY": "http://egress-proxy:3128",
+        "HTTP_PROXY": "http://egress-proxy:3128",
+        "NO_PROXY": "",
+        "all_proxy": "http://egress-proxy:3128",
+        "http_proxy": "http://egress-proxy:3128",
+        "https_proxy": "http://egress-proxy:3128",
+        "no_proxy": ""
+      },
       "security_opt": [
         "no-new-privileges:true"
       ],
@@ -883,32 +893,20 @@ detail = "urllib.request.OpenerDirector"
 [[source]]
 path = "src/case_intelligence/generation.py"
 kind = "client"
-digest = "b328055ed1942c231ff6e48a4b805c4bce03bfaa0176dcd8be44016c9fd99df9"
-detail = "urllib.request.urlopen"
-
-[[source]]
-path = "src/case_intelligence/generation.py"
-kind = "client"
-digest = "fb76f1638222735c71266938cff71483c35fee40d10d631549feaca1192793b9"
-detail = "urllib.request.urlopen"
-
-[[source]]
-path = "src/case_intelligence/generation.py"
-kind = "client"
 digest = "a4071e002b5b8f7306d0539b4bdc374bc1b62403cef64037609cf7f3fade5ecb"
 detail = "urllib.request.OpenerDirector"
 
 [[source]]
 path = "src/case_intelligence/generation.py"
 kind = "client"
-digest = "c61d67fcf3589653bcb5dd1793ef2a875f2e7f05352839cc3d5eb93bb8a7199f"
-detail = "urllib.request.urlopen"
+digest = "d0327dd635b319e366532d54a2c27713f9cae8dfe62702b647f21685a38bcc04"
+detail = "service_endpoints.open_service_request"
 
 [[source]]
 path = "src/case_intelligence/generation.py"
 kind = "client"
-digest = "83ad5162b696ce506651450f593d967559e96142b66d355c0ccea0dd3acfacf4"
-detail = "urllib.request.urlopen"
+digest = "21f30cddb43874207f2dfbe03b2835e4892aabfbfd6a4b3cd6bb22a5f0a5b4da"
+detail = "service_endpoints.open_service_request"
 
 [[source]]
 path = "src/case_intelligence/generation.py"
@@ -949,7 +947,7 @@ detail = "authlib.integrations.starlette_client.OAuth"
 [[source]]
 path = "src/case_intelligence/identity.py"
 kind = "client"
-digest = "db6d320243e9acce6a19a4d86aac3f3f1e7cb530acd419d8368fcafe3ac3204c"
+digest = "e6a2fa4ee6e187c3909690eca250b7fdbb7b174832ec47987356d54dce8ddbe4"
 detail = "authlib.integrations.starlette_client.OAuth.register"
 
 [[source]]
@@ -1201,7 +1199,7 @@ detail = "httpx.Timeout"
 [[source]]
 path = "src/case_intelligence/media_evidence.py"
 kind = "client"
-digest = "a9758f05cc31dda9a2abb5990c8e7fdc4cbf801a312e5be668b643575ec5f22b"
+digest = "fa3883f610c22784db022f3887719e32c23778ffd0b93c4d34c9af4ff70c1d06"
 detail = "httpx.Client"
 
 [[source]]
@@ -1405,8 +1403,26 @@ detail = "urllib.request.Request"
 [[source]]
 path = "src/case_intelligence/review_bench_v2.py"
 kind = "client"
-digest = "8407c03f90cc02d2b887bef96dc920fe733e8fec49ebdb28ee2e43cbeba7f3f9"
-detail = "urllib.request.urlopen"
+digest = "278c0b8915c9066cfec713ef4627d17554ea77adf03f7ca69cf89091d476a783"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "50ab09c8c57f728c2d0d0cf5966d429219f464273bbbec8bba93cfe8900da77f"
+detail = "urllib.request.HTTPRedirectHandler"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "3c9564287ba269cdf1e4ecd8da41cd0f6e374edd05737449e4b7088f70c2c4a7"
+detail = "urllib.request.build_opener.open"
 
 [[source]]
 path = "src/case_intelligence/service_endpoints.py"
@@ -1419,6 +1435,18 @@ path = "src/case_intelligence/service_endpoints.py"
 kind = "host"
 digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
 detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "4351d1e3a7ce40d90a7f401d69b68f26b87c8a6f43f40abd158d19939fa40878"
+detail = "urllib.request.build_opener"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "614752cbb48c443bb4d935108a71fd92fe1d748164bdc5addc4e7a3309445d25"
+detail = "urllib.request.ProxyHandler"
 
 [[source]]
 path = "src/case_intelligence/slice1_evaluation.py"
@@ -1855,8 +1883,8 @@ detail = "workbench.sqlite"
 [[source]]
 path = "src/case_intelligence/workbench.py"
 kind = "client"
-digest = "03bf0ca2cfeb158e0d04d9667b3c144bc72103c52a11d7c8d175f2fc66a4020c"
-detail = "urllib.request.urlopen"
+digest = "1e36c28904dbe84da1d510f84128608aa627fbb13e71fa8c23fcc446c8c4e809"
+detail = "service_endpoints.open_service_request"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"

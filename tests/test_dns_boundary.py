@@ -14,24 +14,24 @@ sys.path.pop(0)
 
 
 @pytest.mark.parametrize("version,allowed", [
-    ("25.0.5", False), ("23.0.11", False), ("24.0.9", False),
+    ("25.0.5", True), ("23.0.11", True), ("24.0.9", False),
     ("26.0.0", True), ("28.5.1", True), ("29.5.2", True),
     ("29.5.2+package1", True), ("29.5.2-rc1", False), ("unknown", False),
     ("30.0.0-dev", False), ("29.5", False), ("29.5.2\nprivate-data", False),
     ("26.0.0~rc1", False), ("30.0.0~dev", False), ("29.5.2+vendor~rc1", False),
 ])
-def test_engine_floor_is_conservative_and_value_free(monkeypatch, version, allowed):
+def test_engine_version_is_only_a_conservative_hint(monkeypatch, version, allowed):
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, version, ""))
-    assert installer._dns_engine_supported() is allowed
+    assert installer._dns_engine_known_fix() is allowed
 
 
 def test_engine_probe_failure_is_not_supported(monkeypatch):
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 1, "29.5.2", ""))
-    assert not installer._dns_engine_supported()
+    assert not installer._dns_engine_known_fix()
 
 
 def test_doctor_accepts_only_verified_runtime_and_streams_public_probe(monkeypatch, tmp_path):
-    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: True)
+    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: True)
     monkeypatch.setattr(installer, "_installed_release", lambda root: ({"profiles": []}, ROOT))
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     calls = []
@@ -50,15 +50,15 @@ def test_doctor_accepts_only_verified_runtime_and_streams_public_probe(monkeypat
         assert command[-6:] == ["python", "-I", "-", "postgres", "clamav", "egress-proxy"]
         assert kwargs["input"] == (ROOT / "scripts/dns_boundary_probe.py").read_text()
         assert kwargs["timeout"] == 50 and kwargs["capture_output"]
-        return subprocess.CompletedProcess(command, 0, "{}", "")
+        return subprocess.CompletedProcess(command, 0, json.dumps({"internal_dns_udp_tcp": True, "container_loopback_challenges": 6, "dns_behavior_verified": True}), "")
     monkeypatch.setattr(installer.subprocess, "run", streamed)
     installer._verify_installed_dns(tmp_path)
     assert all(".Config.Env" not in " ".join(command) for command in calls)
 
 
-@pytest.mark.parametrize("failure", ["version", "dns", "search", "network", "services", "probe"])
+@pytest.mark.parametrize("failure", ["dns", "search", "network", "services", "probe"])
 def test_doctor_blocks_unknown_dns_runtime(monkeypatch, failure, tmp_path):
-    monkeypatch.setattr(installer, "_dns_engine_supported", lambda: failure != "version")
+    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: failure != "version")
     monkeypatch.setattr(installer, "_installed_release", lambda root: ({"profiles": []}, ROOT))
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     def run(command):
@@ -85,21 +85,61 @@ def test_negative_dns_requires_live_positive_control(monkeypatch):
         probe.verify(["postgres"])
 
 
-@pytest.mark.parametrize("answer", [(0, 1), (0, 0), (3, 1)])
-def test_external_answer_is_not_denial(monkeypatch, answer):
+class FakeChallenge:
+    def __init__(self, names):
+        self.names, self.seen = names, set()
+    def close(self): pass
+
+
+@pytest.mark.parametrize("answer", [(0, 0), (3, 0), (2, 0), (5, 0), (3, 1)])
+def test_negative_answers_are_not_behavioral_acceptance(monkeypatch, answer):
+    monkeypatch.setattr(probe, "LoopbackChallenge", FakeChallenge)
     monkeypatch.setattr(probe, "query", lambda name, *args: (0, 1) if name == "postgres" else answer)
-    with pytest.raises(ValueError, match="outside DNS"):
+    with pytest.raises(ValueError, match="challenge"):
         probe.verify(["postgres"])
 
 
-def test_udp_tcp_a_aaaa_txt_are_all_probed(monkeypatch):
-    calls = []
+def test_positive_answer_without_local_observation_also_fails(monkeypatch):
+    monkeypatch.setattr(probe, "LoopbackChallenge", FakeChallenge)
+    monkeypatch.setattr(probe, "query", lambda *args: (0, 1))
+    with pytest.raises(ValueError, match="not observed locally"):
+        probe.verify(["postgres"])
+
+
+def test_udp_tcp_a_aaaa_txt_are_observed_locally(monkeypatch):
+    challenges = []
+    def factory(names):
+        challenge = FakeChallenge(names); challenges.append(challenge); return challenge
+    monkeypatch.setattr(probe, "LoopbackChallenge", factory)
     def query(name, kind, protocol):
-        calls.append((name, kind, protocol))
-        return (0, 1) if name == "postgres" else (2, 0)
+        if name != "postgres":
+            assert challenges[0].names[(protocol, kind)] == name
+            challenges[0].seen.add((protocol, kind, name))
+        return (0, 1)
     monkeypatch.setattr(probe, "query", query)
     result = probe.verify(["postgres"])
-    assert result["internal_dns_udp_tcp"]
-    assert {(kind, protocol) for name, kind, protocol in calls if name != "postgres"} == {
-        (kind, protocol) for kind in (1, 28, 16) for protocol in ("udp", "tcp")}
-    assert all(name.endswith(".example.invalid") for name, _, _ in calls if name != "postgres")
+    assert result == {"internal_dns_udp_tcp": True, "container_loopback_challenges": 6, "dns_behavior_verified": True}
+    assert len(challenges[0].seen) == 6
+
+
+def test_challenge_listener_unavailable_fails_closed(monkeypatch):
+    monkeypatch.setattr(probe, "query", lambda *a: (0, 1))
+    def unavailable(names): raise OSError("synthetic unavailable listener")
+    monkeypatch.setattr(probe, "LoopbackChallenge", unavailable)
+    with pytest.raises(OSError): probe.verify(["postgres"])
+
+
+def test_responder_only_records_its_exact_nonce_and_question_type():
+    import threading, struct
+    challenge = object.__new__(probe.LoopbackChallenge)
+    challenge.names = {(protocol, kind): "synthetic-" + str(kind) + ".example.invalid"
+                       for protocol in ("udp", "tcp") for kind in (1, 28, 16)}
+    challenge.seen, challenge.lock = set(), threading.Lock()
+    for (protocol, kind), name in challenge.names.items():
+        response = challenge.answer(probe.question(name, kind), protocol)
+        assert struct.unpack("!6H", response[:12])[3] == 1
+    assert len(challenge.seen) == 6
+    challenge.seen.clear()
+    assert challenge.answer(b"bad", "udp") is None
+    challenge.answer(probe.question("synthetic-foreign.example.invalid", 1), "udp")
+    assert not challenge.seen

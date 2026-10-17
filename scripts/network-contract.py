@@ -18,7 +18,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
-                   "socket", "http.client", "authlib.integrations")
+                   "socket", "http.client", "authlib.integrations", "service_endpoints.open_service_request")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
 
@@ -233,6 +233,14 @@ def check(root):
                 "networks", "network_mode", "ports", "privileged", "cap_add", "devices",
                 "sysctls", "extra_hosts", "dns", "dns_search", "dns_opt", "extends", "cap_drop",
                 "security_opt", "volumes", "volumes_from", "use_api_socket") if key in definition}
+            environment = definition.get("environment", {})
+            if not isinstance(environment, dict):
+                raise ValueError("transport environment must be a mapping")
+            routing = {key: value for key, value in environment.items()
+                       if key.lower() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
+                       or key == "CASE_INTELLIGENCE_OIDC_PROXY"}
+            if routing:
+                network_fields["proxy_environment"] = routing
             expected = approved["services"].get(service)
             if expected is None or network_fields != expected:
                 reject(path, f"{service}: network membership, published ports, mounts or escape capability changed", service + ":")
