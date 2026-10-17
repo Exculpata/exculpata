@@ -67,7 +67,7 @@ review media, organize findings, and build work product. Development alpha.
 
 Discovery arrives in folders. Understanding a case takes more.
 
-Exculpata is a self-hosted workspace being built for the work of federal
+Exculpata is a self-hosted workspace being built for the work of
 criminal defense. It brings documents, images, email, spreadsheets, audio,
 and video into one place to search, review, ask questions, and develop work
 product with the source material close at hand. Its bundled AI workflows use
