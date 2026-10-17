@@ -105,3 +105,19 @@ CI retains only `application-results.xml` for five days, with the run ID and att
 in its artifact name. Hard cancellation can prevent report creation or upload;
 use the streamed log for incomplete runs. Missing XML is not evidence of success.
 No workspace, database, media or environment dump is uploaded by this step.
+
+## Known-good discovery corpus
+
+For issue and PR claims, **proof required** means `make corpus-check` passes on
+that PR head and the PR links its `Synthetic discovery corpus` CI run. State
+whether the evidence is the fast application-contract subset or the full
+recognition run; a fast pass does not establish OCR/ASR accuracy. Full corpus
+coverage runs nightly, on workflow dispatch, and when corpus inputs or runners
+change. A missing or failed full run remains an open recognition-quality gap.
+
+The [corpus guide](../benchmarks/corpus/README.md) records file-size/publication
+requirements, pinned models, expected outputs, tolerances, historical regression
+proofs, and the explicit `--update-expected --proposal` review workflow. Ordinary
+runs cannot rewrite expectations. Fixture and expected-output changes need a
+reviewed diff and a passing new run. This gate supplements all existing security,
+publication, application, PostgreSQL, transcription, deployment and review gates.

@@ -93,3 +93,14 @@ check-fast: export PYTEST_ADDOPTS :=
 check-fast: compile deployment-check publication-check publication-candidate-check secret-check test-fast test-transcription test-postgres
 
 check: compile compose-check publication-check test test-transcription
+
+.PHONY: corpus-check corpus-check-full corpus-history-check
+
+corpus-check:
+	PYTHONPATH=src "$(PYTHON)" scripts/corpus_check.py
+
+corpus-check-full:
+	PYTHONPATH=src "$(PYTHON)" scripts/corpus_check.py --full
+
+corpus-history-check:
+	PYTHONPATH=src "$(PYTHON)" scripts/corpus-history-check.py

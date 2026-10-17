@@ -1,0 +1,94 @@
+"""Historical regression evidence must be behavioral, complete and reproducible."""
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+import xml.etree.ElementTree as ET
+
+import pytest
+
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/corpus-history-check.py"
+spec = importlib.util.spec_from_file_location("corpus_history_check", SCRIPT)
+history = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(history)
+
+
+def report(tmp_path, case, *, failure=None, error=None, skipped=False, count=None, name=None):
+    suite = ET.Element("testsuite")
+    for index in range(case["expected_tests"] if count is None else count):
+        test = ET.SubElement(suite, "testcase", name=name or f'{case["test"]}[{index}]')
+        if failure and index < case["historical_failures"]:
+            ET.SubElement(test, "failure", message=failure).text = failure
+        if error and index == 0:
+            ET.SubElement(test, "error", message=error)
+        if skipped and index == 0:
+            ET.SubElement(test, "skipped")
+    path = tmp_path / "report.xml"
+    ET.ElementTree(suite).write(path)
+    return path
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+def test_current_evidence_requires_complete_passing_population(tmp_path, case):
+    path = report(tmp_path, case)
+    assert history.evaluate_report(path, case, 0, False)["accepted"]
+    assert not history.evaluate_report(path, case, 1, False)["accepted"]
+    path = report(tmp_path, case, count=0)
+    assert not history.evaluate_report(path, case, 0, False)["accepted"]
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+def test_historical_evidence_requires_specific_behavioral_failure(tmp_path, case):
+    failure = "AssertionError: " + case["failure_marker"]
+    path = report(tmp_path, case, failure=failure)
+    assert history.evaluate_report(path, case, 1, True)["accepted"]
+    # Neither a green baseline nor an interrupted process demonstrates a defect.
+    assert not history.evaluate_report(path, case, 0, True)["accepted"]
+    assert not history.evaluate_report(path, case, 2, True)["accepted"]
+    path = report(tmp_path, case)
+    assert not history.evaluate_report(path, case, 0, True)["accepted"]
+
+
+@pytest.mark.parametrize("mutation", [
+    {"error": "ImportError: synthetic dependency missing"},
+    {"skipped": True},
+    {"failure": "AttributeError: orange unicycle"},
+    {"failure": "AssertionError: unrelated mismatch"},
+    {"failure": "AssertionError: orange unicycle", "name": "test_unrelated"},
+    {"failure": "AssertionError: orange unicycle", "count": 2},
+])
+def test_setup_skips_unrelated_or_incomplete_failures_cannot_count_as_proof(tmp_path, mutation):
+    case = history.CASES[0]
+    path = report(tmp_path, case, **mutation)
+    assert not history.evaluate_report(path, case, 1, True)["accepted"]
+
+
+def test_missing_report_fails_closed(tmp_path):
+    assert not history.evaluate_report(tmp_path / "absent.xml", history.CASES[0], 1, True)["accepted"]
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+def test_probes_reuse_current_synthetic_tests_without_unrelated_collection(tmp_path, case):
+    probe = history.write_probe(history.ROOT, tmp_path, case)
+    contents = probe.read_text()
+    assert "def " + case["test"] + "(" in contents
+    compile(contents, str(probe), "exec")
+    assert len(case["fix"]) == 40
+    if case["id"] == "ask-routing":
+        assert (tmp_path / "benchmarks/ask-router-v1.json").read_bytes() == (
+            history.ROOT / "benchmarks/ask-router-v1.json").read_bytes()
+
+
+def test_missing_fixture_definition_is_an_error(tmp_path):
+    source = tmp_path / "fixture.py"
+    source.write_text("def present():\n    pass\n")
+    with pytest.raises(ValueError, match="Missing regression definitions"):
+        history.definitions(source, {"absent"})
+
+
+@pytest.mark.parametrize("timeout", ["0", "301"])
+def test_timeout_cannot_disable_execution_bound(timeout):
+    with pytest.raises(SystemExit) as exc:
+        history.main(["--timeout", timeout])
+    assert exc.value.code == 2
