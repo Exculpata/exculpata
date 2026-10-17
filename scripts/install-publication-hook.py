@@ -21,7 +21,7 @@ def main():
     source = Path(__file__).resolve().parent
     for name in ('pre-push-publication.py', 'publication-check.py',
                  'publication_home_owners.py', 'legacy_name_check.py',
-                 'publication-media-reviews.json'):
+                 'publication-media-reviews.json', 'publication-approvers.json'):
         shutil.copyfile(source / name, destination / name)
     hook = destination / 'pre-push'
     hook.write_text('#!/bin/sh\nset -eu\nexec ' + shlex.quote(str(interpreter)) + ' -I ' +

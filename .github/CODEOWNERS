@@ -1,1 +1,17 @@
 * @neilofneils404
+
+# Publication trust changes require maintainer review; enforcement also needs the trusted CI gate.
+/scripts/publication-media-reviews.json @neilofneils404
+/scripts/publication-approvers.json @neilofneils404
+/scripts/publication-check.py @neilofneils404
+/scripts/verify-publication-approval.py @neilofneils404
+/scripts/install-publication-hook.py @neilofneils404
+/scripts/pre-push-publication.py @neilofneils404
+/scripts/check-publication-candidate.py @neilofneils404
+/.github/workflows/ @neilofneils404
+/.github/CODEOWNERS @neilofneils404
+/AGENTS.md @neilofneils404
+
+/scripts/publication_home_owners.py @neilofneils404
+/scripts/legacy_name_check.py @neilofneils404
+/Makefile @neilofneils404

@@ -1,0 +1,37 @@
+name: Trusted publication approval
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to verify after maintainer review
+        required: true
+      expected_head:
+        description: Exact current pull request head SHA
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publication-approval:
+    if: github.event_name == 'pull_request_target' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out trusted workflow revision only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify live approval without executing candidate code
+        env:
+          APPROVAL_PR: ${{ github.event.pull_request.number || inputs.pull_request }}
+          APPROVAL_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -I scripts/verify-publication-approval.py \
+            --pull-request "$APPROVAL_PR" --expected-head "$APPROVAL_HEAD"

@@ -1,4 +1,5 @@
 """Synthetic binary collisions never exempt metadata or candidate policy changes."""
+from datetime import date, timedelta
 import hashlib
 import json
 from pathlib import Path
@@ -22,10 +23,15 @@ def inspect(data, name="synthetic.gif", deny=()):
 
 def review(tmp_path, monkeypatch, data, **overrides):
     entry = dict(sha256=hashlib.sha256(data).hexdigest(), suffix=".gif",
-                 reason="Synthetic fixture review", approver="synthetic-reviewer", expires="2099-12-31")
+                 reason="Synthetic fixture review", approver="synthetic-reviewer",
+                 status="approved", approved_on=date.today().isoformat(),
+                 expires=(date.today() + timedelta(days=30)).isoformat())
     entry.update(overrides)
     path = tmp_path / "reviews.json"
-    path.write_text(json.dumps(dict(version=1, reviews=[entry])))
+    path.write_text(json.dumps(dict(version=2, reviews=[entry])))
+    authority = tmp_path / "approvers.json"
+    authority.write_text(json.dumps(dict(version=1, maintainers=[dict(login="synthetic-reviewer", id=123)])))
+    monkeypatch.setattr(SCAN, "MEDIA_APPROVERS_FILE", authority)
     monkeypatch.setattr(SCAN, "MEDIA_REVIEW_FILE", path)
     return path
 
@@ -36,10 +42,12 @@ def commented(data, text):
     return data[:-1] + b"\x21\xfe" + blocks + b"\x00;"
 
 
-def test_real_compressed_gif_collision_is_reviewed_and_decodable():
+def test_real_compressed_gif_collision_is_reviewed_and_decodable(tmp_path, monkeypatch):
     data = FIXTURE.read_bytes()
     assert EMAIL in data
     assert SCAN._scan_bytes(data, location="synthetic", deny=())
+    assert SCAN.Finding("synthetic", "non-example-email-address") in inspect(data)
+    review(tmp_path, monkeypatch, data)
     assert inspect(data) == []
     result = subprocess.run(["ffmpeg", "-v", "error", "-i", str(FIXTURE), "-f", "null", "-"],
                             capture_output=True)
@@ -122,7 +130,7 @@ def test_decoded_metadata_values_are_scanned(monkeypatch):
     assert SCAN.Finding("synthetic#media-metadata", "non-example-email-address") in inspect(FIXTURE.read_bytes())
 
 
-def test_installed_hook_pins_policy_and_checks_removed_metadata(tmp_path):
+def test_installed_hook_pins_policy_and_checks_removed_metadata(tmp_path, monkeypatch):
     root = repository(tmp_path)
     destination = tmp_path / "trusted-hook"
     assert command(root, sys.executable, str(ROOT / "scripts/install-publication-hook.py"), str(destination)).returncode == 0
@@ -133,6 +141,11 @@ def test_installed_hook_pins_policy_and_checks_removed_metadata(tmp_path):
     def hook():
         return command(root, str(destination / "pre-push"),
                        input=f"HEAD {head} refs/heads/main {'0' * 40}\n")
+    assert hook().returncode != 0  # Actual pending policy grants no exception.
+    # A synthetic test-only trusted bundle exercises the approved path.
+    fixture_policy = review(tmp_path, monkeypatch, FIXTURE.read_bytes())
+    shutil.copyfile(fixture_policy, policy)
+    shutil.copyfile(tmp_path / "approvers.json", destination / "publication-approvers.json")
     assert hook().returncode == 0
     changed = commented(FIXTURE.read_bytes(), b"Synthetic changed media")
     (root / "synthetic.gif").write_bytes(changed)
@@ -186,7 +199,7 @@ def test_reviewed_image_type_mismatch_fails(tmp_path, monkeypatch):
 def test_duplicate_json_keys_cannot_override_review_fields(tmp_path, monkeypatch):
     data = FIXTURE.read_bytes()
     path = review(tmp_path, monkeypatch, data)
-    path.write_text(path.read_text().replace('"version": 1', '"version": 0, "version": 1'))
+    path.write_text(path.read_text().replace('"version": 2', '"version": 0, "version": 2'))
     assert SCAN.Finding("synthetic", "media-review-policy-invalid") in inspect(data)
 
 
@@ -219,7 +232,25 @@ def test_image_inspection_never_executes_candidate_exiftool_config(tmp_path, mon
     (tmp_path / ".ExifTool_config").write_text(
         "BEGIN { open(my $f, '>', 'executed'); print $f 'synthetic'; close($f); } 1;\n"
     )
+    review(tmp_path, monkeypatch, FIXTURE.read_bytes())
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("EXIFTOOL_HOME", str(tmp_path))
     assert inspect(FIXTURE.read_bytes()) == []
     assert not (tmp_path / "executed").exists()
+
+
+@pytest.mark.parametrize("overrides", [
+    {"approver": "codex-synthetic-fixture-review"},
+    {"status": "pending", "approver": None, "approved_on": None},
+    {"expires": (date.today() + timedelta(days=181)).isoformat()},
+])
+def test_unapproved_or_overlong_reviews_do_not_exempt(tmp_path, monkeypatch, overrides):
+    data = FIXTURE.read_bytes()
+    review(tmp_path, monkeypatch, data, **overrides)
+    assert inspect(data)
+
+
+def test_repository_fixture_remains_pending_without_named_approver():
+    entry = json.loads((ROOT / "scripts/publication-media-reviews.json").read_text())["reviews"][0]
+    assert entry["status"] == "pending"
+    assert entry["approver"] is None and entry["approved_on"] is None

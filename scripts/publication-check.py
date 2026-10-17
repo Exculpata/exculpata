@@ -221,6 +221,7 @@ MEDIA_SUFFIXES = {
 }
 IMAGE_TYPES = {".gif": "GIF", ".png": "PNG", ".jpg": "JPEG", ".jpeg": "JPEG", ".webp": "WEBP"}
 MEDIA_REVIEW_FILE = Path(__file__).with_name("publication-media-reviews.json")
+MEDIA_APPROVERS_FILE = Path(__file__).with_name("publication-approvers.json")
 MAX_DERIVED_SCAN_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 5_000
 
@@ -500,6 +501,30 @@ def _unique_json_object(pairs):
     return result
 
 
+def _media_maintainers() -> set[str]:
+    metadata = MEDIA_APPROVERS_FILE.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 64 * 1024:
+        raise ValueError("Invalid media approvers")
+    policy = json.loads(MEDIA_APPROVERS_FILE.read_text(), object_pairs_hook=_unique_json_object)
+    if (not isinstance(policy, dict) or set(policy) != {"version", "maintainers"}
+            or type(policy["version"]) is not int or policy["version"] != 1
+            or not isinstance(policy["maintainers"], list)):
+        raise ValueError("Invalid media approvers")
+    names = set()
+    ids = set()
+    for entry in policy["maintainers"]:
+        if (not isinstance(entry, dict) or set(entry) != {"login", "id"} or not isinstance(entry["login"], str)
+                or re.fullmatch(r"[A-Za-z0-9-]{1,39}", entry["login"]) is None
+                or type(entry["id"]) is not int or entry["id"] <= 0
+                or entry["login"] in names or entry["id"] in ids):
+            raise ValueError("Invalid media approvers")
+        names.add(entry["login"])
+        ids.add(entry["id"])
+    if not names:
+        raise ValueError("No media approvers")
+    return names
+
+
 def _reviewed_binary_media(data: bytes, suffix: str) -> bool:
     """Policy lives beside the trusted scanner, never in the candidate tree."""
     try:
@@ -508,17 +533,27 @@ def _reviewed_binary_media(data: bytes, suffix: str) -> bool:
             raise ValueError
         policy = json.loads(MEDIA_REVIEW_FILE.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object)
         if (not isinstance(policy, dict) or set(policy) != {"version", "reviews"}
-                or type(policy["version"]) is not int or policy["version"] != 1):
+                or type(policy["version"]) is not int or policy["version"] != 2):
             raise ValueError
         if not isinstance(policy["reviews"], list):
             raise ValueError
+        maintainers = _media_maintainers()
         seen = set()
         digest = hashlib.sha256(data).hexdigest()
         approved = False
         for entry in policy["reviews"]:
-            if not isinstance(entry, dict) or set(entry) != {"sha256", "suffix", "reason", "approver", "expires"}:
+            if not isinstance(entry, dict) or set(entry) != {"sha256", "suffix", "reason", "approver", "expires", "status", "approved_on"}:
                 raise ValueError
-            if any(not isinstance(value, str) or not value.strip() for value in entry.values()):
+            if any(not isinstance(entry[key], str) or not entry[key].strip()
+                   for key in ("sha256", "suffix", "reason", "expires", "status")):
+                raise ValueError
+            if entry["status"] == "pending":
+                if entry["approver"] is not None or entry["approved_on"] is not None:
+                    raise ValueError
+            elif entry["status"] == "approved":
+                if entry["approver"] not in maintainers or not isinstance(entry["approved_on"], str):
+                    raise ValueError
+            else:
                 raise ValueError
             if re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) is None:
                 raise ValueError
@@ -529,10 +564,17 @@ def _reviewed_binary_media(data: bytes, suffix: str) -> bool:
                 raise ValueError
             seen.add(key)
             expiry = date.fromisoformat(entry["expires"])
+            if entry["status"] == "pending":
+                continue
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry["approved_on"]) is None:
+                raise ValueError
+            approved_on = date.fromisoformat(entry["approved_on"])
+            if not 0 < (expiry - approved_on).days <= 180 or approved_on > date.today():
+                raise ValueError
             if key == (digest, suffix) and expiry >= date.today():
                 approved = True
         return approved
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, KeyError):
         raise ValueError("Media review policy is unavailable or invalid") from None
 
 

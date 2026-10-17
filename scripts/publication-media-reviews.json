@@ -1,12 +1,14 @@
 {
-  "version": 1,
+  "version": 2,
   "reviews": [
     {
       "sha256": "7a26f507a825c69b43de0e1410404ecfd27dc8f9d70936cf3aff39bc2a937980",
       "suffix": ".gif",
       "reason": "Generated synthetic pixel-only GIF; verified email-shaped bytes are confined to the LZW image stream.",
-      "approver": "codex-synthetic-fixture-review",
-      "expires": "2027-10-17"
+      "approver": null,
+      "expires": "2027-10-17",
+      "status": "pending",
+      "approved_on": null
     }
   ]
 }

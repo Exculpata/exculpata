@@ -24,6 +24,8 @@ Use neutral criminal-defense terminology in code, comments, docs, commits and
 PR text. Never disclose private organizational affiliations, employer details,
 office names or professional titles. Use synthetic examples only.
 
+Agents must never add or approve publication exemptions; only maintainers may authorize them.
+
 ## Correct the environment, not the agent
 
 When a mistake happens a second time, change the repo so the next contributor
@@ -54,6 +56,7 @@ behavioral guarantees into tests or track the remaining work in an issue.
 | Fix repeated mistakes at the highest effective level and explain lower-level choices. | Required fix-level field; PR review checks the choice because effectiveness depends on the failure. |
 | Supply a synthetic regression and name the failing commit. | Required regression field; the application CI suite runs tests; PR review verifies the historical failure evidence. |
 | Encode intent in implementation; give workaround comments an issue and expiry. | Code review checks intent, workaround relevance and expiry because syntax alone cannot establish them. |
+| Only maintainers authorize publication exemptions; agents never add or approve them. | [Publication safeguards](docs/PUBLIC_ALPHA.md) define the trusted approval boundary; policy validation and the trusted verifier check approval records, while maintainer review verifies actual authorization. |
 | Follow the linked coding, publication and validation standards. | `make check-fast`, the installed pre-push publication guard and the linked review policy; review covers public text outside Git. |
 
 Add a row for each new judgment rule; delete its row once the mistake cannot happen.

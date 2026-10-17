@@ -164,21 +164,70 @@ operator deny terms. Unreviewed and changed bytes keep raw scanning. Missing,
 unsafe or malformed policy and unavailable or failed metadata inspection block
 publication. Existing narrow historical video dispositions remain unchanged.
 
-The version-1 JSON object has `version: 1` and a `reviews` array. Each entry must
-contain exactly `sha256` (64 lowercase hex characters), `suffix` (a supported
-lowercase image/audio/video extension), `reason` (what was inspected and why the
-raw match is harmless), `approver` (the public reviewer identifier), and `expires`
-(an inclusive ISO date, `YYYY-MM-DD`, evaluated on the scanner host). Duplicate
-digest/suffix entries are invalid. Expired entries grant no exception. A review
-must cover the rendered media, complete metadata, and any embedded payloads;
-an entry is not permission to publish private material. The committed synthetic
-GIF is an explicitly labeled automated fixture review, not a claim of human
-approval. Production assets require a maintainer's review.
+The version-2 JSON object has `version: 2` and a `reviews` array. Each entry
+contains exactly `sha256` (64 lowercase hex characters), `suffix` (a supported
+lowercase image/audio/video extension), `reason`, `status`, `approver`,
+`approved_on`, and `expires`. Dates use `YYYY-MM-DD`. An approved entry must
+name a maintainer from the trusted sibling `publication-approvers.json`, have an
+approval date no later than today, and expire within 180 days of that date.
+Duplicate digest/suffix entries are invalid. Expired entries grant no exception.
+A pending entry has null `approver` and `approved_on` and grants no exception.
+The committed synthetic GIF is pending maintainer approval and therefore blocks
+publication until that review is completed. Agents must not approve it or fill
+in a maintainer's identity on their behalf.
 
-The hook installer copies this policy alongside its trusted scanner outside the
-checkout. Editing the candidate policy cannot change an already installed hook;
-review and reinstall into a fresh directory to adopt an update. The existing
-bare-digest CLI option retains only its older narrow collision behavior, and
+Review must cover rendered media, complete metadata and embedded payloads.
+A name in a JSON file is not evidence of approval. The read-only trusted
+`publication-approval.yml` workflow uses verifier code and the login/numeric-user-ID
+allowlist from its trusted base revision. It fetches candidate policy only as
+bounded JSON data and verifies live GitHub reviews for the exact PR head. It
+never checks out or executes candidate code, uses no API credentials, and
+persists no checkout credentials. API errors, pagination limits and incomplete
+change lists fail closed. Changes to policy, approval authority, scanner, hooks,
+workflows, Makefile, CODEOWNERS or agent instructions require review, including renames.
+
+The allowlisted maintainer must submit a GitHub PR review on the current head
+with this exact standalone line, substituting the SHA-256 of the complete policy
+file bytes:
+
+```text
+Publication exemptions approved for policy SHA-256: <policy-file-sha256>
+```
+
+An `APPROVED` review or an explicit `COMMENTED` review is accepted; the latter
+supports a maintainer's own PR, which GitHub does not allow them to approve.
+Generic comments, bot identities, mismatched user IDs, stale heads and mismatched
+policy digests fail. The latest review from each maintainer controls; dismissal
+or a later review without the attestation removes authorization. Every named
+policy approver must have a qualifying review. This verifies control of the
+maintainer's GitHub account, not human presence; agents must never issue the
+attestation using a maintainer's credentials.
+
+**Activation and enforcement:** this new workflow cannot authorize itself while
+it exists only in a candidate branch. A maintainer must independently review and
+bootstrap the verifier, workflow and authority list onto the trusted default
+branch. CODEOWNERS documents ownership; it does not itself enforce approval.
+Where the repository plan supports it, a maintainer must separately configure a
+[required-workflow ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+for this trusted workflow, not merely a candidate-spoofable check name. If that
+feature is unavailable, enforcement needs a separately trusted integration; this
+patch does not provide one. No repository protection settings are changed. Until those steps are complete, trusted CI
+enforcement is not active. Pending exemption entries still fail the local scanner.
+
+After submitting, dismissing or changing a review, rerun the trusted workflow
+against the exact current head, or dispatch it from `main` with the PR number
+and expected head. Review events do not trigger this workflow, so a prior green
+result is not proof against later revocation. Refresh the verification immediately
+before any publication decision; automatic review-event refresh requires a
+separately trusted integration. Do not treat a local run of candidate verifier
+code as trusted approval evidence.
+
+The hook installer copies policy and approver authority alongside its scanner
+outside the checkout. Editing candidate files cannot change an installed hook.
+After independently verified maintainer approval, review and reinstall into a
+fresh directory to adopt an update. The scanner enforces the trusted bundle's
+policy locally; GitHub review verification is a separate trust step. The existing
+bare-digest CLI option retains only its older narrow collision behavior and
 cannot grant the broader reviewed-media exception. Never bypass the hook.
 
 Image inspection requires ExifTool (`libimage-exiftool-perl` on Ubuntu,
