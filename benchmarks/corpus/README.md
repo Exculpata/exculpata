@@ -1,7 +1,7 @@
 # Synthetic discovery corpus
 
 Version 1 contains four one-page PDFs (two native English, one image-only English,
-one image-only Spanish), two single-voice synthetic WAV clips, five top-k searches,
+one image-only Spanish), two single-voice synthetic WAV clips, seven top-k searches,
 and five fact-and-citation answer cases. No real case material is used.
 `v1/manifest.json` pins every media byte count and SHA-256, model revisions,
 licenses, and fixture provenance. Every media file must be **strictly below
@@ -11,8 +11,10 @@ licenses, and fixture provenance. Every media file must be **strictly below
 uses Unicode NFKC, case folding, word characters, and collapsed whitespace.
 Native PDFs require zero character error; image PDFs allow CER <= 0.03; audio
 allows WER <= 0.15. Insertions, deletions, and substitutions all count. Search
-requires the named sources within top-k. Each answer requires its facts, the
-question route, all named source spans, and valid product citation resolution.
+requires the named sources within top-k. Two full-only search cases require
+the English and Spanish scanned sources and their validated citation support,
+so accurate OCR alone cannot hide a missing searchable catalog entry. Each answer
+requires its facts, the question route, all named source spans, and valid product citation resolution.
 Missing, unrelated, or invalid citations fail without a citation tolerance.
 The audio parcel gold explicitly permits the equivalent written forms “locker
 seven” and “Locker 7”; other numbers do not match. This is a reviewed span
@@ -84,7 +86,8 @@ new hashes, byte counts, provenance and publication inspection.
 
 `make corpus-history-check` overlays only the existing synthetic regression
 probes onto temporary source archives. It requires current-head passes and
-specific assertion failures on `f656f13^`, `00922fc^`, and `b0cae56^`.
+the expected marker in every assertion failure on `f656f13^`, `00922fc^`, and
+`b0cae56^`.
 The probes cover durable transcript corrections, missing text chunks in exact
 search, and reviewer-language Ask routing. Import/setup errors, skips, timeouts,
 wrong test populations, and unrelated failures cannot count as proof.

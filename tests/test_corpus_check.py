@@ -171,3 +171,60 @@ def test_malformed_span_alternatives_are_rejected(tmp_path, alternatives):
     expected['answers']['answer-parcel']['citations'][1]['alternative_spans'] = alternatives
     path.write_text(json.dumps(expected))
     with pytest.raises(ValueError): gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('missing_source', ['scan-en', 'scan-es'])
+def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missing_source):
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = {}
+    for source, want in expected['documents'].items():
+        actual[source] = {'text':want['text'], 'ocr_pages':1}
+    for source, want in expected['audio'].items():
+        actual[source] = {'text':want['text'], 'asr_text':want['text']}
+    for key, want in expected['search'].items():
+        actual[key] = {'document_ids':list(want['document_ids']), 'citations':[
+            {'document_id':source, 'excerpt':'Synthetic search support', 'source_valid':True}
+            for source in want['document_ids']]}
+    for key, want in expected['answers'].items():
+        actual[key] = {'text':' '.join(want['facts']), 'route':'question', 'dispatched':True,
+            'citations':[{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True}
+                         for c in want['citations']]}
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))
+    for key in expected['search']:
+        actual[key]['document_ids'] = [s for s in actual[key]['document_ids'] if s != missing_source]
+        actual[key]['citations'] = [c for c in actual[key]['citations'] if c['document_id'] != missing_source]
+    result = gate.compare(manifest, expected, actual, full=True)
+    assert any(not row['passed'] and row['id'].startswith('search-') for row in result), (
+        f'Accurate OCR must not conceal missing searchable source {missing_source}', result)
+
+
+@pytest.mark.parametrize('source', ['scan-en', 'scan-es'])
+def test_manifest_cannot_remove_scanned_source_discovery_coverage(tmp_path, source):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'manifest.json'; manifest = json.loads(path.read_text())
+    gold = root/'expected.json'; expected = json.loads(gold.read_text())
+    key = 'search-' + source
+    manifest['search'] = [case for case in manifest['search'] if case['id'] != key]
+    del expected['search'][key]
+    path.write_text(json.dumps(manifest)); gold.write_text(json.dumps(expected))
+    with pytest.raises(ValueError, match='Every OCR source'):
+        gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('full_only', [False, 1, 'true'])
+def test_scanned_search_requires_boolean_full_lane(tmp_path, full_only):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'manifest.json'; manifest = json.loads(path.read_text())
+    next(case for case in manifest['search'] if case['id'] == 'search-scan-en')['full_only'] = full_only
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='full-only lane'):
+        gate.load_corpus(root)
+
+
+def test_scanned_search_is_required_only_in_full_comparison():
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    fast = gate.compare(manifest, expected, {})
+    full = gate.compare(manifest, expected, {}, full=True)
+    for key in ['search-scan-en', 'search-scan-es']:
+        assert not any(row['id'] == key for row in fast)
+        assert any(row['id'] == key and not row['passed'] for row in full)
