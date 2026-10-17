@@ -9,7 +9,9 @@ from .review_candidates import CATEGORIES, FORMAT, NOTICE
 
 def _cell(value):
     text = str(value or '')
-    return "'" + text if text.lstrip().startswith(('=', '+', '-', '@')) else text
+    unsafe = (text.lstrip().startswith(('=', '+', '-', '@'))
+              or text.lstrip(' ').startswith(('\t', '\r', '\n')))
+    return "'" + text if unsafe else text
 
 
 def export_payload(payload, format_name):

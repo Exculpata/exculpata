@@ -46,6 +46,8 @@ def test_review_persists_exports_and_clean_restore(tmp_path):
         for kind in ('markdown','json','csv'):
             response=client.get(prefix+'/export?format='+kind)
             assert response.status_code==200 and 'no-store' in response.headers['cache-control']
+            extension='md' if kind=='markdown' else kind
+            assert response.headers['content-disposition']==f'attachment; filename="review-candidates.{extension}"'
             assert 'Synthetic-review.txt' in response.text.replace('\\','') and candidate['citation']['location'] in response.text
             if kind=='markdown': assert response.text.startswith(NOTICE)
             if kind=='json': assert next(iter(response.json()))=='notice'

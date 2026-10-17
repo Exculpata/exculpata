@@ -3,6 +3,7 @@ from dataclasses import asdict
 import csv
 import io
 import json
+import pytest
 
 from case_intelligence.review_candidate_exports import export_payload
 from case_intelligence.review_candidates import FORMAT, NOTICE, prohibited_phrases, detect
@@ -52,3 +53,11 @@ def test_export_injection_protection_and_original_source_attribution():
     original='The witness said the officer lied.'
     row['citation']['excerpt']=original
     assert json.loads(export_payload(data,'json'))['candidates'][0]['citation']['excerpt']==original
+
+
+@pytest.mark.parametrize('value',['=1+1','+1','-1','@SUM(A1)',' \t=1+1','\tSynthetic','\rSynthetic','\nSynthetic','  \tSynthetic','  \rSynthetic'])
+def test_csv_guards_formula_and_leading_control_cells(value):
+    data=payload(); data['candidates']=data['candidates'][:1]
+    data['candidates'][0]['citation']['source_name']=value
+    rows=list(csv.reader(io.StringIO(export_payload(data,'csv'))))
+    assert rows[3][7]=="'"+value
