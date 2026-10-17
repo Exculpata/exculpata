@@ -1,46 +1,51 @@
-"""Prove container-local forwarding and absence at a reachable outside recorder."""
+"""Causal DNS proof and a reachable, deliberately forwarding negative control."""
+import http.client
 import json
 import os
-import ssl
+import sys
 
-import httpx
 from dns_boundary_probe import query, verify
-from dns_trap import Trap
+
+
+def count():
+    connection = http.client.HTTPConnection(os.environ['DNS_RECORDER_ADDRESS'], 8080, timeout=3)
+    try:
+        connection.request('GET', '/dns-count')
+        response = connection.getresponse()
+        assert response.status == 200
+        return json.loads(response.read(4096))['queries']
+    finally:
+        connection.close()
 
 
 def main():
-    context = ssl.create_default_context(cafile="/fixture/issuer.pem")
-    def count():
-        response = httpx.get("https://issuer.example.test:8443/dns-count", verify=context, timeout=5)
-        response.raise_for_status()
-        return response.json()["queries"]
-
-    # Controls from the upstream network have already reached this recorder.
+    mode = sys.argv[1]
     before = count()
-    assert before == 6, "outside DNS recorder needs all six positive controls"
-    verify(["proxy"])
-    assert count() == before, "embedded DNS forwarded outside the app namespace"
-    for protocol in ("udp", "tcp"):
-        for kind in (1, 28, 16):
-            try:
-                query("synthetic-direct.example.invalid", kind, protocol, os.environ["ISSUER_ADDRESS"])
-            except OSError:
-                pass
-            else:
-                raise AssertionError("direct outside DNS was reachable")
-    # A test-only listener in the app namespace proves that explicit upstream
-    # queries really stay on its loopback, rather than silently using host DNS.
-    local = Trap("127.0.0.1")
-    try:
-        verify(["proxy"])
-        assert local.count == 6, "all outside-name questions must reach container loopback"
-    finally:
-        local.close()
-    assert count() == before, "outside recorder received an app query"
-    print(json.dumps({"internal_dns_udp_tcp": True, "outside_dns_udp_tcp_a_aaaa_txt_denied": True,
-        "container_local_dns_forwarding_proven": True, "outside_dns_recorder_positive_controls": before,
-        "outside_dns_recorder_app_queries": 0}))
+    if mode == 'controls':
+        for protocol in ('udp', 'tcp'):
+            for kind in (1, 28, 16):
+                assert query('synthetic-control.example.invalid', kind, protocol,
+                             os.environ['DNS_RECORDER_ADDRESS']) == (3, 0)
+        assert count() == before + 6
+        result = {'reachable_recorder_app_controls': 6}
+    elif mode == 'forwarding-control':
+        # App's disposable DNS override now names the reachable recorder.
+        try:
+            verify(['egress-proxy'])
+        except (ValueError, OSError):
+            pass
+        else:
+            raise AssertionError('known-forwarding DNS configuration falsely passed')
+        assert count() > before, 'negative control never reached recorder'
+        result = {'known_forwarding_control_rejected': True, 'forwarded_queries_observed': count() - before}
+    elif mode == 'production':
+        result = verify(['egress-proxy'])
+        assert count() == before, 'production diagnostic reached outside recorder'
+        result['outside_recorder_production_queries'] = 0
+    else:
+        raise ValueError('unknown mode')
+    print(json.dumps(result))
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

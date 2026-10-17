@@ -1585,21 +1585,22 @@ def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=20, check=False)
 
 
-def _dns_engine_supported() -> bool:
-    """Conservative stable Engine floor; old/backported/unknown runtimes need review."""
+def _dns_engine_known_fix() -> bool:
+    """Version hint only: behavioral acceptance is mandatory on every engine."""
     try:
         result = _probe(["docker", "info", "--format", "{{.ServerVersion}}"])
         match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", result.stdout.strip())
-        return result.returncode == 0 and bool(match) and tuple(map(int, match.groups())) >= (26, 0, 0)
+        if result.returncode or not match:
+            return False
+        version = tuple(map(int, match.groups()))
+        return version >= (26, 0, 0) or (version[:2] == (25, 0) and version[2] >= 5) or (version[:2] == (23, 0) and version[2] >= 11)
     except (OSError, subprocess.TimeoutExpired):
         return False
 
 
 def _verify_installed_dns(root: Path) -> None:
     """Inspect only network fields, then probe synthetic DNS as the normal app UID."""
-    remedy = "DNS isolation is unverified: use stable Docker Engine 26.0.0 or newer, recreate the restricted services with container-local upstream DNS, and rerun doctor. See docs/NETWORK_EGRESS.md."
-    if not _dns_engine_supported():
-        raise RuntimeError(remedy)
+    remedy = "DNS isolation is unverified: recreate restricted services with container-local upstream DNS and internal networks, ensure the app can bind its ephemeral loopback DNS challenge, and rerun doctor. Engine version alone cannot satisfy this check. See docs/NETWORK_EGRESS.md."
     try:
         installation, _ = _installed_release(root)
         compose = _compose(root, list(installation.get("profiles", [])))
@@ -1626,7 +1627,9 @@ def _verify_installed_dns(root: Path) -> None:
         command = [*compose, "exec", "-T", "app", "python", "-I", "-", "postgres", "clamav", "egress-proxy"]
         result = subprocess.run(command, input=(PROJECT / "scripts/dns_boundary_probe.py").read_text(),
             env=_compose_environment(command), text=True, capture_output=True, timeout=50, check=False)
-        if result.returncode:
+        proof = json.loads(result.stdout)
+        if (result.returncode or proof != {"internal_dns_udp_tcp": True,
+                "container_loopback_challenges": 6, "dns_behavior_verified": True}):
             raise ValueError("DNS probe failed")
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(remedy) from exc
@@ -2270,11 +2273,11 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         except (OSError, subprocess.TimeoutExpired):
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
-    dns_engine = docker and _dns_engine_supported()
-    add("docker-dns-version", dns_engine,
-        "Supported stable Engine; live DNS is not tested by preflight" if dns_engine else "Unsupported or unrecognized Engine DNS behavior",
-        "Use an Engine version with the internal-network DNS forwarding fix",
-        "Use stable Docker Engine 26.0.0 or newer. Unknown, prerelease and older/backported runtimes are unsupported by this installer; see docs/NETWORK_EGRESS.md. Run doctor after startup for runtime DNS checks.")
+    dns_engine = docker and _dns_engine_known_fix()
+    checks.append(PreflightCheck("docker-dns-version", "pass" if dns_engine else "warn",
+        "Version includes a known upstream fix; behavioral acceptance still required" if dns_engine else "Version is older, prerelease or unknown; behavioral acceptance still required",
+        "Provide a version hint without substituting for runtime DNS proof", False,
+        "Use a maintained Engine; backports may contain the fix. Startup and doctor must pass the container-local DNS challenge regardless of version. See docs/NETWORK_EGRESS.md."))
     storage_plan = _storage_plan(models, args)
     if docker:
         try:
@@ -3709,7 +3712,7 @@ def _wait_health(console: Console, root: Path) -> None:
         try:
             if settings.get("auth") == "kerberos":
                 compose = _compose(root, settings.get("profiles", []))
-                probe = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8786/health',timeout=5).read(262144).decode())"
+                probe = "import urllib.request; print(urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:8786/health',timeout=5).read(262144).decode())"
                 result = _run(console, [*compose, "exec", "-T", "app", "python", "-c", probe], capture=True)
                 payload = json.loads(result.stdout)
             else:
@@ -3736,8 +3739,11 @@ def _wait_health(console: Console, root: Path) -> None:
             _install_phase(root, "running", "complete")
             _install_phase(root, "basic_review", "complete" if base_ready else "incomplete")
             _install_phase(root, "login_reachable", "complete" if login_ready else "incomplete")
-            _install_phase(root, "selected_capabilities", "complete" if selected_ready else "incomplete")
+            _install_phase(root, "selected_capabilities", "incomplete")
             if selected_ready and login_ready:
+                _verify_installed_dns(root)
+                _install_phase(root, "selected_capabilities", "complete")
+                console.ok("DNS boundary :: internal memberships and container-local UDP/TCP A/AAAA/TXT challenges passed")
                 console.ok(f"Application health, selected capabilities and sign-in endpoint passed; authentication mode :: {expected_auth}")
                 if payload.get("status") == "degraded":
                     console.warn("Basic review is available; an unselected optional capability remains unavailable")
@@ -3782,8 +3788,6 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
     _run(console, [*compose, "ps"], dry_run=args.dry_run)
     if not args.dry_run:
-        _verify_installed_dns(root)
-        console.ok("DNS boundary :: supported Engine; internal-only memberships and container-local upstream; internal UDP/TCP lookup and outside A/AAAA/TXT rejection passed")
         _wait_health(console, root)
     else:
         console.note("Dry run: running authentication mode, DNS boundary and live health are not verified")

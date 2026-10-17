@@ -265,6 +265,7 @@ class TranscriptionV2Client:
                 headers=headers,
                 timeout=timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 response = client.request(method, path, files=files, data=data)
             if response.status_code >= 400:

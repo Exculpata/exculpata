@@ -369,14 +369,15 @@ services:
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
+      CASE_INTELLIGENCE_OIDC_PROXY: http://egress-proxy:3128
       HTTPS_PROXY: http://egress-proxy:3128
       https_proxy: http://egress-proxy:3128
-      HTTP_PROXY: ""
-      http_proxy: ""
-      ALL_PROXY: ""
-      all_proxy: ""
-      NO_PROXY: localhost,127.0.0.1,::1,postgres,clamav,retrieval,generator,transcription-api
-      no_proxy: localhost,127.0.0.1,::1,postgres,clamav,retrieval,generator,transcription-api
+      HTTP_PROXY: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      ALL_PROXY: http://egress-proxy:3128
+      all_proxy: http://egress-proxy:3128
+      NO_PROXY: ""
+      no_proxy: ""
     depends_on:
       egress-proxy: {condition: service_healthy}
       postgres: {condition: service_healthy}

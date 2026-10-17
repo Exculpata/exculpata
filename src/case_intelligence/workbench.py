@@ -183,7 +183,7 @@ from .source_locations import (
     SourceLocationRegistry,
     source_registry_from_environment,
 )
-from .service_endpoints import validate_service_endpoint
+from .service_endpoints import open_service_request, validate_service_endpoint
 from .workspace_store import (
     AUTOMATIC_DISCOVERY_PRINCIPAL,
     AnswerJobRecord,
@@ -1233,7 +1233,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         except ValueError:
             return False
         try:
-            with urllib.request.urlopen(endpoint + "/health", timeout=2) as response:
+            with open_service_request(endpoint + "/health", timeout=2, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS") as response:
                 payload = json.load(response)
             return bool(
                 isinstance(payload, dict)

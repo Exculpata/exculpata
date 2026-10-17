@@ -27,21 +27,31 @@ setting prevents inherited host search suffixes. OIDC issuer resolution happens
 in the constrained relay; its DNS settings are unchanged. Existing gateway,
 model-stager, updater and Kerberos proxy DNS settings are unchanged.
 
-The installer conservatively requires stable Docker Engine **26.0.0 or newer**.
-Older patched/backported releases, prereleases and unrecognized version formats
-are not accepted by this policy; this does not assert they are all vulnerable.
-Preflight is read-only and checks the version, not live forwarding. Live doctor
-also inspects each running restricted service's exact DNS/search settings and
-internal-only network memberships. From the actual app it requires positive
-internal service lookup and negative outside A/AAAA/TXT responses over UDP and
-TCP. Unsupported configuration, missing positive controls, timeouts and unexpected
-answers block doctor; dry-run explicitly reports DNS unverified.
+The installer uses Engine version only as a nonblocking advisory. Known upstream
+fixes include 23.0.11, 25.0.5 and 26.0.0; backports and unrecognized versions must
+meet the same behavioral check. A new version cannot bypass that check. Preflight
+checks configuration and reports the advisory; it cannot certify live isolation.
 
-Doctor's negative response alone does not prove no forwarding occurred. The live
-smoke separately observes controlled resolver counters, including positive outside
-controls, zero app queries at the outside recorder, and all six synthetic
-outside-name queries arriving at a temporary resolver on the app's own loopback.
-The temporary recorder is a test fixture, never part of the deployed application.
+Startup, update acceptance and live doctor inspect each running restricted
+service's exact DNS/search settings and internal-only memberships. From the actual
+app, the diagnostic first requires positive internal service lookups over UDP and
+TCP. It then briefly binds a bounded responder on **the app's own** loopback port
+53 and generates six unpredictable names: A, AAAA and TXT over each transport.
+Every query through Docker's embedded resolver must receive a positive response
+and be observed by that local responder with the matching name, type and transport.
+NXDOMAIN, refusal, timeout, an unavailable listener, or a positive response without
+a local observation fails acceptance. The responder closes before the diagnostic
+returns. Doctor therefore performs transient container-local network probes; it
+does not change host DNS or daemon settings. Dry-run reports DNS unverified.
+
+The live smoke separately proves the test recorder is reachable from the app with
+six direct UDP/TCP controls. It recreates only its disposable app with that recorder
+as the DNS upstream, requires a forwarded query to be observed, and requires the
+behavioral check to reject it. Restoring production DNS must pass all six local
+challenges without increasing that recorder's counter. This recorder is on an
+internal test network, outside the app namespace; the counter is not a claim to
+capture arbitrary daemon or Internet DNS. The causal local challenge provides the
+production proof. Neither temporary responder is a deployed resolver.
 Host-root/runtime compromise, additional network attachments, private overrides
 and deliberately running a resolver in a restricted container are outside this
 guarantee. Docker internal bridges can still reach appropriately bound services
@@ -51,15 +61,21 @@ No host firewall or system DNS configuration is installed by the product.
 
 ## OIDC relay
 
-`HTTPS_PROXY` directs OIDC HTTPS connections to `egress-proxy:3128`. Both upper
-and lower case proxy variables are fixed in Compose; HTTP and catch-all proxy
-variables are empty. Exact internal service names are in `NO_PROXY`. Existing
-internal HTTP clients keep their allowlists and communicate directly. The
-proxy has no host ports, volumes, application environment file or secrets.
+The Authlib adapter uses the explicitly configured
+`CASE_INTELLIGENCE_OIDC_PROXY` and disables ambient proxy discovery. Compose fixes
+that setting and all upper/lowercase HTTP, HTTPS and catch-all proxy variables to
+`egress-proxy:3128`; `NO_PROXY` is empty. Thus cleartext requests reach a denying
+relay, and suffixes such as `x.postgres` cannot acquire a proxy exemption.
+Internal companion clients use a separate transport that validates their existing
+exact host allowlists, disables ambient proxies and rejects redirects. Hardcoded
+loopback health probes also disable ambient proxies. The relay has no host ports,
+volumes, application environment file or secrets.
 
 The proxy permits CONNECT only to the configured issuer's exact host and port.
 It rejects all other destinations, plain HTTP forwarding, malformed authorities,
-userinfo, paths, body headers and conflicting Host headers. DNS is resolved for
+userinfo, paths, body headers and conflicting Host headers. Noncanonical numeric
+IPv4 authorities (octal, hexadecimal, shortened and integer forms) are rejected
+before resolution, even when a resolver would interpret one as a public IP. DNS is resolved for
 each connection; every answer must pass validation before any connection is
 made, and the proxy dials that validated numeric address without resolving it
 again. Empty issuer configuration starts in deny-all mode for local and Kerberos
@@ -78,7 +94,10 @@ protocols or paths to the approved authority. The application still validates
 the exact issuer, same-origin authorization/token/JWKS endpoints, signed tokens,
 PKCE, nonce/state and groups. Discovery does **not** expand the allowlist.
 Cross-origin endpoints remain unsupported, as before. Redirect following remains
-disabled. TLS verification, SNI and optional custom CA handling stay in the app;
+disabled for real Authlib discovery, token and JWKS requests. Discovery metadata
+is restricted to approved protocol fields before Authlib can merge it into client
+options, so it cannot replace proxy, TLS, redirect, timeout, header or secret policy.
+TLS verification, SNI and optional custom CA handling stay in the app;
 the proxy never receives a CA file or client secret.
 
 By default the relay accepts globally routable issuer addresses only. An operator
@@ -163,7 +182,8 @@ controlled live acceptance before treating a node as isolated.
 `make network-contract` runs `scripts/network-contract.py`; `make check`,
 `make check-fast` and the full Quality gates application job include it. The
 reviewed `config/egress-allowlist.toml` records Compose network definitions,
-per-service memberships, published ports, mounts and network-escape settings,
+per-service memberships, published ports, mounts, proxy-routing environment and
+network-escape settings,
 plus exact
 Python networking expressions and literal URL/DNS-name occurrences. New Compose files,
 implicit/default networks, host/service network modes, capabilities and changed
@@ -193,18 +213,24 @@ positive/negative isolation smoke, browser journeys and security/privacy review
 remain acceptance requirements; unexecuted checks must be reported as such.
 
 The opt-in `scripts/test-egress-smoke.py --docker-context CONTEXT --output DIR`
-builds the pinned Python image and locked app dependencies, then creates four
-limited synthetic containers and two internal networks with no host mounts or
-published ports. It runs the actual Authlib adapter against a temporary TLS OIDC
-endpoint, checks custom CA and redirects, proves numeric direct TCP/HTTPX bypass
-denials and UDP/TCP DNS behavior separately, and checks foreign/port/malformed and healthy no-issuer
-denials. It cleans up only its unique Compose project and images. The caller
-must provide an approved disposable Docker runtime and remove that runtime
-after retaining evidence. This exercises a fresh synthetic graph; it is not a
-full node installation, external identity-provider validation or browser sign-in.
-The empty-issuer probe checks only healthy deny-all proxy behavior; it is not a
-complete local-account or Kerberos sign-in journey. The fixture uses a separate
-four-container graph, not the production Compose graph.
+builds the actual production application and relay targets. It derives their
+network memberships, DNS, proxy environment, user and hardening from `compose.yaml`.
+Fixture changes remove app data mounts, env files and dependencies, replace startup
+with a probe process, and add three bounded synthetic endpoints. Five containers
+use the production app/relay networks; none publishes ports or mounts host data.
+A directly reachable internal canary makes cleartext/suffix denial assertions
+independent of routing failure. The actual Authlib adapter performs signed-token
+success, missing-CA denial, same-authority discovery/token/JWKS redirect denial,
+and malicious-metadata transport checks. Numeric direct TCP/HTTPX denials, causal
+DNS challenges and the known-forwarding negative control are independent checks.
+The harness cleans up only its unique project and images. The caller must supply
+an approved disposable runtime and remove it after retaining evidence.
+
+This exercises production-derived app/relay services, not a full installed node,
+external identity provider or browser sign-in. Fresh installation and doctor remain
+separate acceptance. Empty-issuer testing proves healthy relay denial, not complete
+local-account or Kerberos sign-in. External IdP, Kerberos and installed browser
+authentication checks must be reported separately when deferred.
 The separate `Network isolation smoke` workflow runs for PRs carrying the
 `network-smoke` label (including label events), merge groups, a weekly Monday
 06:43 UTC schedule, or explicit manual dispatch. Scheduled runs use the default

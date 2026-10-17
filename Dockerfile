@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir --no-build-isolation --require-hashes -r /opt/rec
 ENV HOME=/tmp/exculpata-home
 EXPOSE 8786
 HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=6 \
-  CMD python -c "import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8786/health',timeout=3)); assert p['status'] in {'ok','degraded'} and p['storage']['status']=='ready'"
+  CMD python -c "import json,urllib.request; p=json.load(urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:8786/health',timeout=3)); assert p['status'] in {'ok','degraded'} and p['storage']['status']=='ready'"
 
 CMD ["exculpata-workbench", "--host", "0.0.0.0", "--port", "8786", "--runtime", "/var/lib/recordbench/runtime"]
 
@@ -48,5 +48,5 @@ RUN pip install --no-cache-dir --no-build-isolation --require-hashes -r /opt/rec
     && pip check
 EXPOSE 8787
 HEALTHCHECK --interval=20s --timeout=5s --start-period=180s --retries=18 \
-  CMD python -c "import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=3)); assert p['status']=='ok' and p['embedding_loaded'] and p['reranker_loaded']"
+  CMD python -c "import json,urllib.request; p=json.load(urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:8787/health',timeout=3)); assert p['status']=='ok' and p['embedding_loaded'] and p['reranker_loaded']"
 CMD ["exculpata-retrieval-worker", "--host", "0.0.0.0", "--port", "8787"]
