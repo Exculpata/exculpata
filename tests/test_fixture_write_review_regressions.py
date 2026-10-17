@@ -147,6 +147,8 @@ def test_nested_transaction_mode_changes_are_rejected(tmp_path, attribute, value
     "with fixture_write(bench.workspace) as connection:\n    deferred = (connection.execute('DELETE FROM segment') for _ in items)  # fixture-write: A surrounding assignment cannot authorize deferred writes.\nlist(deferred)",
     "def seed(database):\n    execute = database.execute\n    execute('UPDATE source_version SET value=?', values)",
     "def finish(database):\n    database.commit()",
+    "with fixture_write(bench.workspace) as connection:\n    pass\nconnection.execute(sql='DELETE FROM segment')",
+    "def seed(database):\n    database.execute(sql='UPDATE source_version SET value=?', parameters=values)",
     "connection = bench.workspace.connection\nfinish = connection.rollback\nfinish()",
 ])
 def test_guard_closes_alias_and_deferred_scope_bypasses(source):

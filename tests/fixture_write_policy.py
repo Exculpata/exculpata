@@ -209,8 +209,10 @@ class _Check(ast.NodeVisitor):
         method = function.symbol.rsplit(".", 1)[-1]
         receiver = self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
-        if method in _SQL_METHODS and node.args and not imported_function:
-            sql = self.value(node.args[0]).text
+        if method in _SQL_METHODS and not imported_function:
+            argument = node.args[0] if node.args else next(
+                (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
+            sql = self.value(argument).text
             # Strip quoted values/comments so SELECT 'update' is still a read.
             commands = re.sub(r"'(?:''|[^'])*'|--[^\n]*|/\*[\s\S]*?\*/", " ", sql)
             writes = _WRITE.search(commands) or re.search(r"^\s*PRAGMA\b[^;]*=", commands, re.I)
