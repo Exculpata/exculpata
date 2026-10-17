@@ -200,3 +200,20 @@ def test_container_probes_read_either_environment_prefix(monkeypatch):
         assert module._either(suffix) == "legacy-probe"
         monkeypatch.setenv(current, "current-probe")
         assert module._either(suffix) == "current-probe"
+
+
+def test_documented_identifiers_match_code_or_the_legacy_list():
+    checker = _module("scripts/doc_identifier_check.py", "doc_identifier_check")
+    assert checker.findings(ROOT) == []
+    corpus, legacy = checker.load(ROOT)
+    renamed = f"Use `{CURRENT_STEM}-exact-v1` for this query.\n"
+    assert checker.findings_in_text("synthetic.md", renamed, corpus, legacy)
+    retained = f"Use `{LEGACY_STEM}-exact-v1` for this query.\n"
+    assert checker.findings_in_text("synthetic.md", retained, corpus, legacy) == []
+    role = "```\npg_restore -U " + CURRENT_STEM + " -d " + CURRENT_STEM + "\n```\n"
+    found = checker.findings_in_text("synthetic.md", role, corpus, legacy)
+    assert any(item.token == f"-U {CURRENT_STEM}" for item in found)
+    example = f"Restore into `/srv/{CURRENT_STEM}-restore-test`.\n"
+    assert checker.findings_in_text("synthetic.md", example, corpus, legacy) == []
+    mount = f"Cache at `/var/lib/{CURRENT_STEM}/model-cache`.\n"
+    assert checker.findings_in_text("synthetic.md", mount, corpus, legacy)
