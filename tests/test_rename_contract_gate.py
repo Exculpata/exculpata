@@ -351,7 +351,7 @@ def test_independent_historical_fixtures_and_caches_are_not_rewritten(tmp_path, 
 
 
 def test_binary_assets_and_symlinks_are_not_followed(tmp_path):
-    (tmp_path / "binary.py").write_bytes(b"\0recordbench-binary-fixture")
+    (tmp_path / "binary.py").write_bytes(b"\xff\0recordbench-binary-fixture")
     (tmp_path / "image.png").write_bytes(b"\x89PNG\r\n\x1a\nrecordbench-binary-fixture")
     hidden = tmp_path / "tests"
     hidden.mkdir()
@@ -419,3 +419,75 @@ def test_tuple_assignment_resolves_all_sources_before_rebinding(tmp_path):
         'FORMAT = f"{other}-unregistered-v99"\n'
     )
     assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", "recordbench-unregistered-v99")]
+
+
+@pytest.mark.parametrize("prefix,suffix", [("café", ""), ("cafe\u0301", ""), ("工具", ""), ("", "é")])
+def test_unicode_identifier_parts_are_not_discarded(tmp_path, prefix, suffix):
+    name = prefix + "record" + "bench" + suffix
+    (tmp_path / "synthetic.py").write_text(f'FORMAT = "{name}"\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'stem = enabled and LEGACY_STEM\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = selected or LEGACY_STEM\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = enabled and (selected or LEGACY_STEM)\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\ndef build():\n return f"{stem}-unregistered-v99"\nFORMAT = build()\nstem = "synthetic"',
+    'def build():\n return f"{stem}-unregistered-v99"\nstem = LEGACY_STEM\nFORMAT = build()\nstem = "synthetic"',
+    'def outer():\n stem = LEGACY_STEM\n def build():\n  return f"{stem}-unregistered-v99"\n result = build()\n stem = "synthetic"\n return result',
+    'stem = LEGACY_STEM\nbuild = lambda: f"{stem}-unregistered-v99"\nFORMAT = build()\nstem = "synthetic"',
+])
+def test_possible_conditional_and_prior_scope_bindings_are_checked(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("name,shebang", [("tool", "#!/usr/bin/env python3\n"), ("tool", ""), ("tool.in", "#!/usr/bin/python3\n")])
+def test_python_tools_are_detected_without_a_py_suffix(tmp_path, name, shebang):
+    (tmp_path / name).write_text(shebang + 'from case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = f"{LEGACY_STEM}-unregistered-v99"\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("suffix", [".css", ".txt", ""])
+def test_decodable_text_is_checked_despite_nul_characters(tmp_path, suffix):
+    (tmp_path / ("synthetic" + suffix)).write_bytes(b"\0.recordbench-unregistered-v99 { display: block; }\n")
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'stem = enabled and LEGACY_STEM\nFORMAT = f"{stem}-exact-v1"',
+    'stem = selected or LEGACY_STEM\nFORMAT = f"{stem}-exact-v1"',
+    'stem = LEGACY_STEM and "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic" or LEGACY_STEM\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\ndef build():\n return f"{stem}-exact-v1"\nFORMAT = build()\nstem = "synthetic"',
+    'stem = LEGACY_STEM\ndef outer(stem):\n def build():\n  return f"{stem}-unregistered-v99"\n return build()\nstem = "synthetic"',
+    'stem = LEGACY_STEM\ndef outer():\n stem = "synthetic"\n def build():\n  return f"{stem}-unregistered-v99"\n return build()\nstem = "synthetic"',
+    'stem = LEGACY_STEM\nstem = "synthetic"\ndef build():\n return f"{stem}-unregistered-v99"\nFORMAT = build()',
+])
+def test_possible_bindings_preserve_registered_names_and_shadowing(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n'
+    )
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("source", [
+    '\ufefffrom case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = f"{LEGACY_STEM}-unregistered-v99"\n',
+    'FORMAT = "\\x72ecordbench-unregistered-v99"\n',
+    'FORMAT = "\\u0072ecordbench-unregistered-v99"\n',
+])
+def test_python_decoding_does_not_hide_legacy_identifiers(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text(source)
+    assert checker.findings(tmp_path)
+
+
+def test_later_repeated_binding_remains_visible_to_deferred_body(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'stem = LEGACY_STEM\nstem = "synthetic"\n'
+        'def build():\n return f"{stem}-unregistered-v99"\n'
+        'stem = LEGACY_STEM\nFORMAT = build()\nstem = "synthetic"\n'
+    )
+    assert checker.findings(tmp_path)

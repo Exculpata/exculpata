@@ -13,6 +13,7 @@ import re
 from string import Formatter
 import sys
 from typing import NamedTuple
+import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -93,11 +94,23 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
     patterns = _patterns(contracts)
     found = []
     for match in _TOKENS.finditer(text):
-        token = match.group()
+        start, end = match.span()
+        # Python's ASCII-oriented operational patterns must not discard a
+        # neighboring Unicode letter, number or combining mark. Keep those
+        # characters in the token so a registered suffix cannot hide them.
+        def identifier_character(character: str) -> bool:
+            return character in "_-" or unicodedata.category(character)[0] in "LMN"
+
+        if match.lastgroup != "path" and not match.group().startswith(".") and start and ord(text[start - 1]) > 127:
+            while start and identifier_character(text[start - 1]):
+                start -= 1
+        while end < len(text) and identifier_character(text[end]):
+            end += 1
+        token = text[start:end]
         if token.rsplit("/", 1)[-1] == HISTORICAL_ASSET:
             continue
         if not any(_registered(candidate, patterns) for candidate in (token, token.rstrip("."), token.lstrip("."))):
-            line = text.count("\n", 0, match.start()) + 1
+            line = text.count("\n", 0, start) + 1
             finding = Finding(f"{location}:{line}", token)
             if finding not in found:
                 found.append(finding)
@@ -115,11 +128,12 @@ def scan_component(location: str, component: str, contracts: Mapping[str, NameCo
 def scan_python(location: str, text: str, contracts: Mapping[str, NameContract]) -> list[Finding]:
     """Inspect constant string compositions without importing or executing source."""
     try:
-        tree = ast.parse(text)
+        tree = ast.parse(text.removeprefix("\ufeff"))
     except SyntaxError:
         return []  # Compilation is enforced separately.
     env = dict(KNOWN_VALUES)
     unresolved_stems: set[str] = set()
+    binding_events: list[tuple[str, str | None]] = []
     found = []
 
     def joined(parts: list[str]) -> str | None:
@@ -145,6 +159,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             legacy = [item for item in choices if item is not None and LEGACY_STEM in item.casefold()]
             if len(legacy) == 1:
                 return legacy[0]  # Check the legacy branch of a generation choice.
+        if isinstance(node, ast.BoolOp):
+            operands = boolean_operands(node)
+            choices = [value(item) for item in operands]
+            legacy = {item for item in choices if item is not None and LEGACY_STEM in item.casefold()}
+            if len(legacy) == 1 and not any(
+                item is None and contains_stem(operand) for operand, item in zip(operands, choices)
+            ):
+                return legacy.pop()
         if isinstance(node, ast.JoinedStr):
             parts = []
             for part in node.values:
@@ -248,6 +270,18 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                 return re.escape(arguments[0])
         return None
 
+    def boolean_operands(node: ast.BoolOp) -> list[ast.AST]:
+        possible = []
+        for operand in node.values[:-1]:
+            resolved = value(operand)
+            if resolved is not None:
+                stops = not resolved if isinstance(node.op, ast.And) else bool(resolved)
+                if stops:
+                    return [*possible, operand]
+            else:
+                possible.append(operand)
+        return [*possible, node.values[-1]]
+
     def call_inputs(node: ast.Call) -> list[ast.AST]:
         """Only arguments contributing output text carry string provenance.
 
@@ -289,6 +323,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             return any(contains_stem(item) for item in call_inputs(piece))
         if isinstance(piece, ast.IfExp):
             return contains_stem(piece.body) or contains_stem(piece.orelse)
+        if isinstance(piece, ast.BoolOp):
+            return any(contains_stem(item) for item in boolean_operands(piece))
         return False
 
     def bind(target: ast.AST, expression: ast.AST | None) -> None:
@@ -314,27 +350,42 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             unbind(name)
             if resolved is not None:
                 env[name] = resolved
+                if LEGACY_STEM in resolved.casefold():
+                    binding_events.append((name, resolved))
             elif unresolved:
                 unresolved_stems.add(name)
+                binding_events.append((name, None))
 
     class Visitor(ast.NodeVisitor):
         def __init__(self) -> None:
             self.deferred = []
 
+        def visit_Constant(self, node: ast.Constant) -> None:
+            if isinstance(node.value, str):
+                for item in scan_text(location, node.value, contracts):
+                    _, line = item.location.rsplit(":", 1)
+                    found.append(Finding(f"{location}:{node.lineno + int(line) - 1}", item.identifier))
+
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
                 if alias.name == "case_intelligence.legacy_names":
                     env.update({f"{alias.asname or alias.name}.{key}": item for key, item in KNOWN_VALUES.items()})
+                    for key, item in KNOWN_VALUES.items():
+                        if LEGACY_STEM in item.casefold():
+                            binding_events.append((f"{alias.asname or alias.name}.{key}", item))
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
             if node.module and node.module.rsplit(".", 1)[-1] == "legacy_names":
                 for alias in node.names:
                     if alias.name in KNOWN_VALUES:
-                        env[alias.asname or alias.name] = KNOWN_VALUES[alias.name]
+                        bind(ast.Name(id=alias.asname or alias.name), ast.Constant(value=KNOWN_VALUES[alias.name]))
             elif node.module == "case_intelligence":
                 for alias in node.names:
                     if alias.name == "legacy_names":
                         env.update({f"{alias.asname or alias.name}.{key}": item for key, item in KNOWN_VALUES.items()})
+                        for key, item in KNOWN_VALUES.items():
+                            if LEGACY_STEM in item.casefold():
+                                binding_events.append((f"{alias.asname or alias.name}.{key}", item))
 
         def visit_Assign(self, node: ast.Assign) -> None:
             self.generic_visit(node)
@@ -388,7 +439,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append(node)
+            self.deferred.append((node, dict(env), set(unresolved_stems), len(binding_events)))
 
         visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -396,17 +447,32 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append(node)
+            self.deferred.append((node, dict(env), set(unresolved_stems), len(binding_events)))
 
         def finish(self) -> None:
-            nonlocal env, unresolved_stems
-            # Function globals and closure aliases resolve when called, after
-            # the containing scope has established its constant bindings.
-            for node in self.deferred:
-                outer = env
-                outer_unresolved = unresolved_stems
-                env = dict(env)
-                unresolved_stems = set(unresolved_stems)
+            nonlocal env, unresolved_stems, binding_events
+            # A body can see bindings at its definition or later, including
+            # values replaced after an earlier call. Bindings superseded before
+            # the definition cannot reach it unless assigned again afterward.
+            for node, definition_env, definition_unresolved, offset in self.deferred:
+                outer, outer_unresolved, outer_events = env, unresolved_stems, binding_events
+                env, unresolved_stems = dict(env), set(unresolved_stems)
+                possible_bindings = {name: {item} for name, item in definition_env.items()
+                                     if LEGACY_STEM in item.casefold()}
+                possible_unresolved = set(definition_unresolved)
+                for name, item in binding_events[offset:]:
+                    if item is None:
+                        possible_unresolved.add(name)
+                    else:
+                        possible_bindings.setdefault(name, set()).add(item)
+                for name in possible_bindings.keys() | possible_unresolved:
+                    possible = possible_bindings.get(name, set())
+                    if len(possible) == 1 and name not in possible_unresolved:
+                        env[name] = next(iter(possible))
+                    else:
+                        env.pop(name, None)
+                        unresolved_stems.add(name)
+                binding_events = []
                 for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
                     unbind(arg.arg)
                 for arg in (node.args.vararg, node.args.kwarg):
@@ -418,16 +484,20 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                 visitor.finish()
                 env = outer
                 unresolved_stems = outer_unresolved
+                binding_events = outer_events
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            nonlocal env, unresolved_stems
+            nonlocal env, unresolved_stems, binding_events
             outer = env
             outer_unresolved = unresolved_stems
+            outer_events = binding_events
             env = dict(env)
             unresolved_stems = set(unresolved_stems)
+            binding_events = []
             self.generic_visit(node)
             env = outer
             unresolved_stems = outer_unresolved
+            binding_events = outer_events
 
         def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
             self.composition(node)
@@ -491,14 +561,13 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         if path.is_symlink() or not path.is_file():
             continue
         data = path.read_bytes()
-        if b"\0" in data:
-            continue
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
         found.extend(scan_text(relative.as_posix(), text, contracts))
-        if path.suffix == ".py":
+        shebang = text.partition("\n")[0]
+        if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
             found.extend(scan_python(relative.as_posix(), text, contracts))
     return list(dict.fromkeys(found))
 

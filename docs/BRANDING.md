@@ -160,17 +160,20 @@ banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg)
 
 The rename contract check inspects complete repository file and directory names,
 including symlink names without following their targets. It checks all decoded
-UTF-8 text, including CSS, configuration files and extensionless tools; binary
-filenames must also use declared names. Historical fixtures, cached dependencies,
+UTF-8 text, including NUL-containing text, CSS, configuration files and
+extensionless tools; binary filenames must also use declared names. Historical fixtures, cached dependencies,
 and historical assets keep their existing exclusions.
-Python f-strings and string concatenations are inspected without executing source;
+Python files, extensionless tools and Python-shebang files receive syntax inspection
+without executing source. Parsed string literals expose escaped spellings;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
-Function bodies use the containing scope's completed bindings, including later
-module and closure aliases. Unsupported stem compositions, including mapping-style
+Function bodies retain possible legacy bindings from their containing scope,
+including aliases assigned after a definition or rebound after an earlier call.
+Unsupported stem compositions, including mapping-style
 interpolation, must use a contract key instead. String methods, container lookups,
-conditional aliases and tuple assignments preserve known legacy origins. Search
+conditional and short-circuit aliases, and tuple assignments preserve known legacy
+origins. Unicode letters and combining marks stay part of source identifiers. Search
 patterns and parser inputs do not become generated identifiers. This is a bounded
 syntax check, not whole-program execution: arbitrary function return values and
 runtime loop values are not inferred. Use contract keys for generated operational
