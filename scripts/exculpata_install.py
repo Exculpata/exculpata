@@ -51,16 +51,21 @@ sys.path.insert(0, str(PROJECT / "src"))
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
     CURRENT_PRODUCT,
+    CURRENT_ENV_PREFIX,
     CURRENT_STEM,
     LEGACY_ENV_PREFIX,
     LEGACY_HEADER_PREFIX,
     LEGACY_PRODUCT,
     LEGACY_STEM,
     accepts_product,
+    name_value,
 )
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
-STORAGE_MARKERS = (f".{LEGACY_STEM}-managed-storage.json", ".exculpata-managed-storage.json")
+STORAGE_MARKERS = tuple(name_value("storage_marker", names) for names in (LEGACY_STEM, CURRENT_STEM))
+CONTAINER_DATA = name_value("container_data")
+CONTAINER_SECRETS = name_value("container_secrets")
+CONTAINER_ACCOUNTS = name_value("container_accounts")
 
 
 class NamingError(RuntimeError):
@@ -88,15 +93,15 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
         if not isinstance(record, dict):
             raise NamingError("Saved installation metadata is invalid.")
         if "names" in record:
-            if record["names"] not in (f"{LEGACY_STEM}", "exculpata"):
+            if record["names"] not in (f"{LEGACY_STEM}", CURRENT_STEM):
                 raise NamingError("Saved installation naming generation is invalid.")
             generations.add(record["names"])
         else:
             # Installation records predating the naming field are legacy nodes.
             generations.add(LEGACY_STEM)
     config_generations = set()
-    for names in (f"{LEGACY_STEM}", "exculpata"):
-        path = root / "config" / f"{names}.env"
+    for names in (f"{LEGACY_STEM}", CURRENT_STEM):
+        path = root / "config" / name_value("app_env", names)
         if path.exists() or path.is_symlink():
             config_generations.add(names)
     storage = storage_root or root / "matter-storage"
@@ -105,9 +110,9 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
     if (root / "compose.env").is_file():
         saved = _dotenv(root / "compose.env")
         storage = Path(_env(f"{LEGACY_ENV_PREFIX}STORAGE_ROOT", str(storage), environ=saved))
-    for names in (f"{LEGACY_STEM}", "exculpata"):
+    for names in (f"{LEGACY_STEM}", CURRENT_STEM):
         for directory in (root, storage):
-            marker = directory / f".{names}-managed-storage.json"
+            marker = directory / name_value("storage_marker", names)
             if marker.exists() or marker.is_symlink():
                 generations.add(names)
     if len(generations) > 1:
@@ -125,20 +130,19 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
 
 
 def _node_names(root: Path) -> str:
-    return _detected_names(root) or "exculpata"
+    return _detected_names(root) or CURRENT_STEM
 
 
 def _active_names(names: str | None) -> str:
-    return names if names in {LEGACY_STEM, "exculpata"} else "exculpata"
+    return names if names in {LEGACY_STEM, CURRENT_STEM} else CURRENT_STEM
 
 
 def _default_server_name(names: str | None) -> str:
-    stem = CURRENT_STEM if _active_names(names) == "exculpata" else LEGACY_STEM
-    return f"{stem}.example.test"
+    return name_value("hostname", _active_names(names))
 
 
 def _server_name_prompt(names: str | None) -> str:
-    product = CURRENT_PRODUCT if _active_names(names) == "exculpata" else LEGACY_PRODUCT
+    product = CURRENT_PRODUCT if _active_names(names) == CURRENT_STEM else LEGACY_PRODUCT
     return f"{product} hostname"
 
 
@@ -147,20 +151,21 @@ def _select_names(args: argparse.Namespace, root: Path) -> str:
     requested = args.names
     if detected and requested and requested != detected:
         raise NamingError(f"This node uses {detected} names. --names {requested} would require a migration, which is not implemented. Existing paths, database, images and backups were left untouched.")
-    args.names = detected or requested or "exculpata"
+    args.names = detected or requested or CURRENT_STEM
     return args.names
 
 
 def _default_root() -> Path:
-    legacy = Path(f"/srv/{LEGACY_STEM}")
-    return legacy if _detected_names(legacy) == f"{LEGACY_STEM}" else Path("/srv/exculpata")
+    legacy = Path(name_value("host_root", LEGACY_STEM))
+    return legacy if _detected_names(legacy) == LEGACY_STEM else Path(name_value("host_root"))
 
 
 def _selected_app_env(config: Path, saved: Mapping[str, str], *, names: str | None = None) -> Path:
     """One selection shared by Compose and the node lifecycle."""
     selected = _env(f"{LEGACY_ENV_PREFIX}APP_ENV_FILE", "", environ=saved)
     if not selected:
-        selected = "exculpata.env" if (config / "exculpata.env").is_file() else f"{names or LEGACY_STEM}.env"
+        current = name_value("app_env")
+        selected = current if (config / current).is_file() else name_value("app_env", names or LEGACY_STEM)
     if selected in {".", ".."} or Path(selected).name != selected or "\\" in selected:
         raise RuntimeError("application environment selection must be a filename inside the config root")
     return config / selected
@@ -192,16 +197,16 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     saved = _dotenv(Path(command[command.index("--env-file") + 1]))
     result = dict(os.environ if environment is None else environment)
     for key in tuple(result):
-        if key.startswith((f"{LEGACY_ENV_PREFIX}", "EXCULPATA_")) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
+        if key.startswith((f"{LEGACY_ENV_PREFIX}", CURRENT_ENV_PREFIX)) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
             result.pop(key)
     # Compose defaults changed for new checkouts; older nodes may omit these.
     for suffix in ("COMPOSE_PROJECT", "IMAGE_NAMESPACE"):
-        result[f"EXCULPATA_{suffix}"] = _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)
+        result[name_value("environment", suffix=suffix)] = _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)
     # Select one complete application file; never merge old and new settings.
     # Explicit saved names remain authoritative, including a missing file (which
     # Compose must report). Unrelated shell values were removed above.
     config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
-    result["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(config, saved).name
+    result[name_value("environment", suffix="APP_ENV_FILE")] = _selected_app_env(config, saved).name
     return result
 
 
@@ -305,7 +310,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=("install", "preflight", "doctor", "update", "backup", "restore", "uninstall"),
         default="install",
     )
-    parser.add_argument("--names", choices=(f"{LEGACY_STEM}", "exculpata"), help="naming generation for a fresh node; existing nodes cannot be renamed")
+    parser.add_argument("--names", choices=(LEGACY_STEM, CURRENT_STEM), help="naming generation for a fresh node; existing nodes cannot be renamed")
     parser.add_argument("--root", type=Path, help="exact installation state directory")
     parser.add_argument("--storage-root", type=Path, help="dedicated local or mounted-NAS matter storage directory")
     parser.add_argument(
@@ -428,7 +433,7 @@ def _choose(prompt: str, choices: Sequence[str], default: str, *, non_interactiv
 
 IDENTITY_FIELDS = {
     "local": (
-        ("admin_username", "Initial administrator username", "exculpata.admin"),
+        ("admin_username", "Initial administrator username", name_value("administrator")),
         ("admin_display_name", "Administrator display name", "Exculpata Administrator"),
     ),
     "oidc": (
@@ -891,9 +896,9 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     if aliases:
         expanded = {}
         for key, value in values.items():
-            if key.startswith(("EXCULPATA_", f"{LEGACY_ENV_PREFIX}")):
-                suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix("EXCULPATA_")
-                new, old = f"EXCULPATA_{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
+            if key.startswith((CURRENT_ENV_PREFIX, f"{LEGACY_ENV_PREFIX}")):
+                suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix(CURRENT_ENV_PREFIX)
+                new, old = name_value("environment", suffix=suffix), f"{LEGACY_ENV_PREFIX}{suffix}"
                 preferred = values.get(new)
                 expanded[new] = values.get(old, "") if preferred in (None, "") else preferred
             else:
@@ -1675,7 +1680,7 @@ def _saved_oidc_ca_valid(root: Path, value: str) -> bool:
     path = Path(value)
     # The standard app graph mounts this canonical credential directory. Do not
     # mistake a host path or a traversal outside that mount for a runtime file.
-    if (path.parent != Path(f"/run/{LEGACY_STEM}-secrets")
+    if (path.parent != Path(CONTAINER_SECRETS)
             or path.name in {'', '.', '..'} or '..' in path.parts):
         return False
     source = root / 'secrets' / path.name
@@ -1709,14 +1714,14 @@ def _saved_provider_options_valid(args: argparse.Namespace) -> bool:
         if not _identity_options_valid(options):
             return False
         if args.auth == "kerberos":
-            return (environment.get("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "").strip() == f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret"
+            return (environment.get("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "").strip() == f"{CONTAINER_SECRETS}/kerberos-proxy-secret"
                     and _env(f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL", environ=compose) == f"HTTP/{args.server_name}@{options.kerberos_realm.strip().upper()}")
         origin = environment.get("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", "").strip().rstrip("/")
         origins = {f"https://{args.server_name}:{args.https_port}"}
         if args.https_port == 443:
             origins.add(f"https://{args.server_name}")
         if (origin not in origins or environment.get("CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE", "").strip()
-                != f"/run/{LEGACY_STEM}-secrets/oidc-client-secret"):
+                != f"{CONTAINER_SECRETS}/oidc-client-secret"):
             return False
         if not _saved_oidc_ca_valid(args.root, environment.get('CASE_INTELLIGENCE_OIDC_CA_FILE', '').strip()):
             return False
@@ -2267,7 +2272,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             # Share account-admin's NFC and Unicode control policy; names are
             # reported only as valid/invalid, with no runtime dependency.
             login = (args.admin_username if args.admin_username is not None else
-                     "" if existing_resume else (f"{LEGACY_STEM}.admin" if args.names == f"{LEGACY_STEM}" else "exculpata.admin")).strip().casefold()
+                     "" if existing_resume else name_value("administrator", _active_names(args.names))).strip().casefold()
             display = (args.admin_display_name if args.admin_display_name is not None else
                        "" if existing_resume else (f"{LEGACY_PRODUCT} Administrator" if args.names == f"{LEGACY_STEM}" else "Exculpata Administrator")).strip()
             try:
@@ -2868,7 +2873,7 @@ def _configure(
         **review_model.environment(),
     }
     if names == "exculpata":
-        compose_values["EXCULPATA_APP_ENV_FILE"] = "exculpata.env"
+        compose_values[name_value("environment", suffix="APP_ENV_FILE")] = name_value("app_env")
         compose_values["EXCULPATA_STORAGE_NAMES"] = "exculpata"
     if (root / "compose.env").is_file():
         saved = _dotenv(root / "compose.env")
@@ -2922,10 +2927,10 @@ def _configure(
     if auth == "local":
         if args.enable_account_management:
             compose_values[f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT"] = paths["accounts"]
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json"
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT"] = f"/var/lib/{LEGACY_STEM}-accounts"
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"{CONTAINER_ACCOUNTS}/local-accounts.json"
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT"] = f"{CONTAINER_ACCOUNTS}"
         else:
-            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"/run/{LEGACY_STEM}-secrets/local-accounts.json"
+            app_values["CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE"] = f"{CONTAINER_SECRETS}/local-accounts.json"
         admin_username, admin_display = _account_format()["normalized_account"](
             args.admin_username, args.admin_display_name)
     elif auth == "oidc":
@@ -2934,7 +2939,7 @@ def _configure(
                 "CASE_INTELLIGENCE_EXTERNAL_ORIGIN": f"https://{server_name}" + (f":{args.https_port}" if args.https_port != 443 else ""),
                 "CASE_INTELLIGENCE_OIDC_ISSUER": args.oidc_issuer,
                 "CASE_INTELLIGENCE_OIDC_CLIENT_ID": args.oidc_client_id,
-                "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/oidc-client-secret",
+                "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": f"{CONTAINER_SECRETS}/oidc-client-secret",
                 "CASE_INTELLIGENCE_OIDC_ALLOWED_GROUPS": args.oidc_allowed_groups,
                 "CASE_INTELLIGENCE_OIDC_ADMIN_GROUPS": args.oidc_admin_groups,
                 "CASE_INTELLIGENCE_OIDC_SCOPES": "openid profile email",
@@ -2964,7 +2969,7 @@ def _configure(
                 "CASE_INTELLIGENCE_KERBEROS_REALM": realm,
                 "CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS": args.kerberos_allowed_groups,
                 "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS": args.kerberos_admin_groups,
-                "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret",
+                "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": f"{CONTAINER_SECRETS}/kerberos-proxy-secret",
             }
         )
         if not args.dry_run:
@@ -3122,10 +3127,10 @@ def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool 
     original = path.read_bytes().decode("utf-8")
     saved = _dotenv(path)
     keys = {key}
-    aliased = key.startswith((f"{LEGACY_ENV_PREFIX}", "EXCULPATA_"))
+    aliased = key.startswith((f"{LEGACY_ENV_PREFIX}", CURRENT_ENV_PREFIX))
     if aliased:
-        suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix("EXCULPATA_")
-        keys = {f"EXCULPATA_{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"}
+        suffix = key.removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix(CURRENT_ENV_PREFIX)
+        keys = {name_value("environment", suffix=suffix), f"{LEGACY_ENV_PREFIX}{suffix}"}
     output = []
     for line in original.splitlines(keepends=True):
         current = line.strip().partition("=")[0]
@@ -3138,7 +3143,7 @@ def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool 
     # but only when neither alias exists, using the node's current naming style.
     if (not aliased or add_missing_aliases) and keys.isdisjoint(saved):
         if aliased:
-            prefix = "EXCULPATA_" if any(name.startswith("EXCULPATA_") for name in saved) else f"{LEGACY_ENV_PREFIX}"
+            prefix = CURRENT_ENV_PREFIX if any(name.startswith(CURRENT_ENV_PREFIX) for name in saved) else f"{LEGACY_ENV_PREFIX}"
             key = prefix + suffix
         if original and not original.endswith(("\r", "\n")):
             output.append("\n")
@@ -3369,16 +3374,16 @@ def _provision(
     if not any(marker.exists() or marker.is_symlink() for marker in markers):
         _run(
             console,
-            [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "init", "--root", f"/var/lib/{LEGACY_STEM}/matter-storage"],
+            [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "init", "--root", f"{CONTAINER_DATA}/matter-storage"],
             dry_run=args.dry_run,
         )
     if not args.dry_run:
         # The storage tool validates the existing ownership marker without reset.
-        _run(console, [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "status", "--root", f"/var/lib/{LEGACY_STEM}/matter-storage"], capture=True)
+        _run(console, [*compose, "run", "--rm", "--no-deps", "account-admin", "storage", "status", "--root", f"{CONTAINER_DATA}/matter-storage"], capture=True)
         _install_phase(root, "storage", "complete")
     account_directory = (getattr(args, "account_root", root / "accounts")
                          if args.enable_account_management else root / "secrets")
-    account_container_file = f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" if args.enable_account_management else f"/run/{LEGACY_STEM}-secrets/local-accounts.json"
+    account_container_file = f"{CONTAINER_ACCOUNTS}/local-accounts.json" if args.enable_account_management else f"{CONTAINER_SECRETS}/local-accounts.json"
     if not args.dry_run:
         _install_phase(root, "administrator", "checking" if auth == "local" else "not-selected")
     if auth == "local" and not (account_directory / "local-accounts.json").exists():
@@ -3554,7 +3559,7 @@ def _installed_auth_mode(root: Path, installation: Mapping[str, object]) -> str:
 # A direct HTTP connection avoids proxy environment variables and redirects.
 _AUTH_MODE_PROBE = f"""import hashlib, hmac, http.client, json
 try:
-    with open('/var/lib/{LEGACY_STEM}/runtime/identity-session.key', 'rb') as stream:
+    with open('{CONTAINER_DATA}/runtime/identity-session.key', 'rb') as stream:
         key = stream.read(33)
     if len(key) != 32:
         raise ValueError()
@@ -3796,9 +3801,9 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
         raise RuntimeError("saved authentication mode disagrees with application configuration")
     _assert_saved_storage_consistent(root, installation)
     if auth == "local":
-        expected_file = (f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" if account_management
-                         else f"/run/{LEGACY_STEM}-secrets/local-accounts.json")
-        expected_management = f"/var/lib/{LEGACY_STEM}-accounts" if account_management else ""
+        expected_file = (f"{CONTAINER_ACCOUNTS}/local-accounts.json" if account_management
+                         else f"{CONTAINER_SECRETS}/local-accounts.json")
+        expected_management = f"{CONTAINER_ACCOUNTS}" if account_management else ""
         if (app_env.get("CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE") != expected_file
                 or app_env.get("CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT", "") != expected_management):
             raise RuntimeError("saved local-account paths disagree with the installed application configuration")
@@ -3924,7 +3929,7 @@ def _resume_node(console: Console, args: argparse.Namespace, root: Path) -> None
 
 def _backup_tool(root: Path) -> Path:
     _installation, release = _installed_release(root)
-    tool = release / "scripts" / f"{_node_names(root)}_backup.py"
+    tool = release / "scripts" / name_value("backup_tool", _node_names(root))
     if tool.is_symlink() or not tool.is_file():
         raise RuntimeError("installed release does not contain the backup tool")
     return tool
@@ -3943,8 +3948,8 @@ def _schedule_backup(console: Console, root: Path, *, dry_run: bool) -> None:
         raise RuntimeError("node identity is invalid")
     user_units = Path.home() / ".config" / "systemd" / "user"
     names = _node_names(root)
-    service_name = f"{names}-backup-{node_id}.service"
-    timer_name = f"{names}-backup-{node_id}.timer"
+    service_name = name_value("backup_unit", names, node_id=node_id, kind="service")
+    timer_name = name_value("backup_unit", names, node_id=node_id, kind="timer")
     replacements = {
         "@NODE_ID@": node_id,
         "@RELEASE_ROOT@": str(release),
@@ -3955,8 +3960,8 @@ def _schedule_backup(console: Console, root: Path, *, dry_run: bool) -> None:
     if not dry_run:
         user_units.mkdir(parents=True, exist_ok=True)
         for template_name, destination_name in (
-            (f"{names}-backup.service.in", service_name),
-            (f"{names}-backup.timer.in", timer_name),
+            (name_value("backup_template", names, kind="service"), service_name),
+            (name_value("backup_template", names, kind="timer"), timer_name),
         ):
             text = (release / "deploy" / "systemd" / template_name).read_text(
                 encoding="utf-8"
@@ -4333,7 +4338,7 @@ def _uninstall(console: Console, args: argparse.Namespace, root: Path) -> None:
                 inside = storage.resolve().is_relative_to(root.resolve())
             except OSError:
                 inside = False
-            marker = storage / f".{names}-managed-storage.json"
+            marker = storage / name_value("storage_marker", names)
             if not inside and marker.is_file() and not marker.is_symlink():
                 external_storage = storage
                 _refuse_broad_deletion(external_storage)
