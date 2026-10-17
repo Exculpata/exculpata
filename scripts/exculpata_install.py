@@ -50,6 +50,8 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    CURRENT_STEM,
     LEGACY_ENV_PREFIX,
     LEGACY_HEADER_PREFIX,
     LEGACY_PRODUCT,
@@ -116,6 +118,20 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
 
 def _node_names(root: Path) -> str:
     return _detected_names(root) or "exculpata"
+
+
+def _active_names(names: str | None) -> str:
+    return names if names in {LEGACY_STEM, "exculpata"} else "exculpata"
+
+
+def _default_server_name(names: str | None) -> str:
+    stem = CURRENT_STEM if _active_names(names) == "exculpata" else LEGACY_STEM
+    return f"{stem}.example.test"
+
+
+def _server_name_prompt(names: str | None) -> str:
+    product = CURRENT_PRODUCT if _active_names(names) == "exculpata" else LEGACY_PRODUCT
+    return f"{product} hostname"
 
 
 def _select_names(args: argparse.Namespace, root: Path) -> str:
@@ -1599,7 +1615,7 @@ def _identity_options_valid(args: argparse.Namespace) -> bool:
     if not client or len(client) > 512 or any(ord(character) < 32 for character in client):
         return False
     for value, origin_only in ((values["oidc_issuer"], False),
-                               (f"https://{(args.server_name or f"{LEGACY_STEM}.example.test").strip().casefold()}:{args.https_port}", True)):
+                               (f"https://{(args.server_name or _default_server_name(args.names)).strip().casefold()}:{args.https_port}", True)):
         candidate = value.strip().rstrip("/")
         if not candidate or len(candidate) > 1024:
             return False
@@ -2336,7 +2352,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                 add(name, False, "Directory metadata unavailable", "Inspect storage before installation",
                     "Ask the storage administrator to restore directory access, then rerun preflight.")
         try:
-            _valid_host(args.server_name or f"{LEGACY_STEM}.example.test")
+            _valid_host(args.server_name or _default_server_name(args.names))
             server_name_ok = True
         except RuntimeError:
             server_name_ok = False
@@ -2753,7 +2769,7 @@ def _configure(
     args.review_model_profile = review_model.profile
     server_name = _valid_host(
         args.server_name
-        or _ask(f"{LEGACY_PRODUCT} hostname", f"{LEGACY_STEM}.example.test", non_interactive=args.non_interactive)
+        or _ask(_server_name_prompt(names), _default_server_name(names), non_interactive=args.non_interactive)
     )
     bind = args.bind_address or _ask(
         "HTTPS bind address", "127.0.0.1", non_interactive=args.non_interactive
@@ -4507,7 +4523,7 @@ def main() -> int:
             args.bind_address = _ask("HTTPS bind address", "127.0.0.1", non_interactive=False)
         if not args.server_name:
             args.server_name = _ask(
-                f"{LEGACY_PRODUCT} hostname", f"{LEGACY_STEM}.example.test", non_interactive=args.non_interactive
+                _server_name_prompt(args.names), _default_server_name(args.names), non_interactive=args.non_interactive
             )
         # Reject an invalid hostname before asking unrelated identity questions.
         _valid_host(args.server_name)

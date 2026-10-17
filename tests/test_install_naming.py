@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from case_intelligence.legacy_names import (
     CURRENT_ENV_PREFIX,
+    CURRENT_PRODUCT,
+    CURRENT_STEM,
     LEGACY_ENV_PREFIX,
+    LEGACY_PRODUCT,
     LEGACY_STEM,
 )
 
@@ -317,3 +320,33 @@ def test_compose_project_expression_defaults_to_previous_stem():
     )
     assert (ROOT / "compose.yaml").read_text().splitlines()[0] == expected
 
+
+@pytest.mark.parametrize("names,host", [
+    ("exculpata", f"{CURRENT_STEM}.example.test"),
+    (f"{LEGACY_STEM}", f"{LEGACY_STEM}.example.test"),
+    (None, f"{CURRENT_STEM}.example.test"),
+])
+def test_hostname_default_follows_selected_generation(names, host):
+    assert installer._default_server_name(names) == host
+    product = CURRENT_PRODUCT if host.startswith(f"{CURRENT_STEM}.") else LEGACY_PRODUCT
+    assert installer._server_name_prompt(names) == f"{product} hostname"
+
+
+@pytest.mark.parametrize("names,host", [
+    ("exculpata", f"{CURRENT_STEM}.example.test"),
+    (f"{LEGACY_STEM}", f"{LEGACY_STEM}.example.test"),
+])
+def test_prepared_node_hostname_follows_generation(tmp_path, names, host):
+    root, _, _ = configured_node(tmp_path, names=names)
+    record = json.loads((root / "installation.json").read_text())
+    assert record["server_name"] == host
+    assert installer._dotenv(root / "compose.env")[f"{CURRENT_ENV_PREFIX}SERVER_NAME" if names == "exculpata" else f"{LEGACY_ENV_PREFIX}SERVER_NAME"] == host
+
+
+def test_resume_keeps_saved_hostname_when_server_name_is_omitted(tmp_path):
+    root, _, _ = configured_node(tmp_path, names="exculpata")
+    saved = json.loads((root / "installation.json").read_text())["server_name"]
+    assert saved == f"{CURRENT_STEM}.example.test"
+    args = installer._parser().parse_args(["install", "--root", str(root), "--resume", "--non-interactive"])
+    installation, _release = installer._saved_node_arguments(args, root)
+    assert args.server_name == saved == installation["server_name"]

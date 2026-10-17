@@ -2,6 +2,8 @@ from __future__ import annotations
 
 
 from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    CURRENT_STEM,
     LEGACY_ENV_NAME,
     LEGACY_ENV_PREFIX,
     LEGACY_HEADER_PREFIX,
@@ -1129,14 +1131,14 @@ def test_interactive_invalid_hostname_blocks_before_storage_and_release(tmp_path
 
     def ask(prompt, default, *, non_interactive):
         prompts.append(prompt)
-        return "bad_name" if prompt == f"{LEGACY_PRODUCT} hostname" else default
+        return "bad_name" if prompt == f"{CURRENT_PRODUCT} hostname" else default
 
     monkeypatch.setattr(installer, "_ask", ask)
     monkeypatch.setattr(installer, "_prepare_directories", lambda *a, **kw: pytest.fail("invalid interactive hostname reached storage creation"))
     monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: pytest.fail("invalid interactive hostname reached release staging"))
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local"])
     assert installer.main() == 1
-    assert prompts.count(f"{LEGACY_PRODUCT} hostname") == 1
+    assert prompts.count(f"{CURRENT_PRODUCT} hostname") == 1
     assert not node.exists()
 
 
@@ -1181,6 +1183,42 @@ def test_preflight_rejects_execute_only_ancestor_before_preparing_storage(tmp_pa
     assert not selected.exists()
 
 
+def test_fresh_noninteractive_install_defaults_to_current_hostname(tmp_path, ready_host, monkeypatch):
+    node = tmp_path.resolve() / "uncreated node"
+    captured = {}
+
+    def configure(console, args, *positional, **kwargs):
+        captured["server_name"] = args.server_name
+        captured["names"] = args.names
+        return ("local", "none", args.server_name, args.admin_username, args.admin_display_name)
+
+    monkeypatch.setattr(installer, "_configure", configure)
+    monkeypatch.setattr(installer, "_provision", lambda *a, **k: None)
+    monkeypatch.setattr(installer, "_handoff", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local",
+                                      "--non-interactive", "--dry-run"])
+    assert installer.main() == 0
+    assert captured == {"names": "exculpata", "server_name": f"{CURRENT_STEM}.example.test"}
+    assert not node.exists()
+
+
+def test_legacy_interactive_hostname_prompt_keeps_previous_product(tmp_path, ready_host, monkeypatch):
+    node = tmp_path.resolve() / "uncreated node"
+    prompts = []
+
+    def ask(prompt, default, *, non_interactive):
+        prompts.append(prompt)
+        return "bad_name" if prompt == f"{LEGACY_PRODUCT} hostname" else default
+
+    monkeypatch.setattr(installer, "_ask", ask)
+    monkeypatch.setattr(installer, "_prepare_directories", lambda *a, **kw: pytest.fail("invalid interactive hostname reached storage creation"))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: pytest.fail("invalid interactive hostname reached release staging"))
+    monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--names", f"{LEGACY_STEM}", "--models", "none", "--auth", "local"])
+    assert installer.main() == 1
+    assert prompts.count(f"{LEGACY_PRODUCT} hostname") == 1
+    assert not node.exists()
+
+
 def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_path, ready_host, monkeypatch):
     node = tmp_path.resolve() / "uncreated node"
     prompts = []
@@ -1188,7 +1226,7 @@ def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_pa
 
     def ask(prompt, default, *, non_interactive):
         prompts.append(prompt)
-        return "synthetic-node.example.test" if prompt == f"{LEGACY_PRODUCT} hostname" else default
+        return "synthetic-node.example.test" if prompt == f"{CURRENT_PRODUCT} hostname" else default
 
     def configure(console, args, *positional, **kwargs):
         assert args.server_name == "synthetic-node.example.test"
@@ -1198,7 +1236,7 @@ def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_pa
     monkeypatch.setattr(installer, "_configure", configure)
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local", "--dry-run"])
     assert installer.main() == 0
-    assert prompts.count(f"{LEGACY_PRODUCT} hostname") == 1
+    assert prompts.count(f"{CURRENT_PRODUCT} hostname") == 1
     assert not node.exists()
 
 
@@ -1737,7 +1775,7 @@ def test_preflight_nonsecret_settings_match_identity_runtime(tmp_path, ready_hos
     try:
         if auth == "oidc":
             OidcSettings(issuer=values["oidc_issuer"],
-                         external_origin=f"https://{installer._valid_host(args.server_name or f"{LEGACY_STEM}.example.test")}:{args.https_port}",
+                         external_origin=f"https://{installer._valid_host(args.server_name or installer._default_server_name(args.names))}:{args.https_port}",
                          client_id=values["oidc_client_id"], client_secret="synthetic-secret-value",
                          allowed_groups=groups["allowed_groups"], administrator_groups=groups["admin_groups"])
         else:
@@ -3205,7 +3243,9 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
         before = before.removesuffix(b"\n")
     path.write_bytes(before)
     assert b"KERBEROS_PRINCIPAL" not in before
-    assert json.loads((root / "installation.json").read_text())["auth"] == "local"
+    record = json.loads((root / "installation.json").read_text())
+    assert record["auth"] == "local"
+    host = record["server_name"]
     args.auth = "kerberos"
     args.kerberos_realm = "EXAMPLE.TEST"
     args.kerberos_allowed_groups = "synthetic-reviewers@example.test"
@@ -3218,7 +3258,7 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
                          "synthetic-release", ROOT, ())
 
-    principal = f"HTTP/{LEGACY_STEM}.example.test@EXAMPLE.TEST"
+    principal = f"HTTP/{host}@EXAMPLE.TEST"
     added = f"{prefix}_KERBEROS_PRINCIPAL={json.dumps(principal)}\n".encode()
     expected = before + (b"" if final_newline else b"\n") + added
     assert path.read_bytes() == expected
