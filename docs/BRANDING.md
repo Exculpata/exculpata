@@ -125,7 +125,9 @@ keep working. Fresh Compose files set `EXCULPATA_ALLOW_CONTAINER_BIND`,
 `EXCULPATA_UPSTREAM` so a new container does not log a deprecation for a
 setting it did not choose. The gateway still clears both `X-Exculpata-*` and
 `X-RecordBench-*` request headers. When the project or image namespace is
-unset, the Compose default is `exculpata`. Newly built application images use
+unset, the image-namespace default is `exculpata` and the project-name
+default stays `recordbench`. A fresh installer still writes its project name
+into `compose.env`. Newly built application images use
 `HOME=/tmp/exculpata-home`. A fresh portable review service advertises
 `exculpata-qwen35-4b`; `recordbench-qwen35-4b` and `recordbench-qwen35-9b`
 remain accepted so an existing generator id still matches. Reconfigure keeps

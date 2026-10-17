@@ -1,4 +1,4 @@
-name: ${EXCULPATA_COMPOSE_PROJECT:-${RECORDBENCH_COMPOSE_PROJECT:-exculpata}}
+name: ${EXCULPATA_COMPOSE_PROJECT:-${RECORDBENCH_COMPOSE_PROJECT:-recordbench}}
 
 services:
   postgres:

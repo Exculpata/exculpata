@@ -33,7 +33,7 @@ ALLOWLIST: dict[str, str] = {
     "deploy/systemd/recordbench-backup.service.in": "Unit name for nodes already scheduled under the previous generation.",
     "deploy/systemd/recordbench-backup.timer.in": "Timer unit name for nodes already scheduled under the previous generation.",
     "docs/assets/recordbench-banner.svg": "Historical wordmark. The title text is the previous name.",
-    "compose.yaml": "Postgres role/database, container volume targets, and env alias pairs stay so existing nodes start unchanged. Fresh project, image, HOME, and portable served-model defaults use the current name.",
+    "compose.yaml": "Postgres role/database, container volume targets, env alias pairs, and the unset project-name default stay so existing nodes start unchanged. Fresh image, HOME, and portable served-model defaults use the current name. A saved project variable still selects the fresh project.",
     "compose.kerberos.yaml": "Kerberos overlay keeps the same volume targets and alias pairs as existing nodes.",
     "compose.local-accounts.yaml": "Local-account overlay keeps the accounts and secrets mounts existing nodes already use.",
     "scripts/compose-check.sh": "Renders both env prefixes and asserts the retained container mount targets.",
@@ -77,6 +77,7 @@ KEPT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"RECORDBENCH_"), "Previous environment prefix. Reads still accept it and warn when it is set."),
     (re.compile(r'\("recordbench", "exculpata"\)'), "CI and tests exercise both naming generations."),
     (re.compile(r"recordbench-backup-@NODE_ID@"), "Systemd instance name for an existing legacy timer."),
+    (re.compile(r"`recordbench`"), "Quoted previous identifier in operator documentation."),
 )
 
 

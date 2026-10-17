@@ -27,7 +27,10 @@ unchanged configuration remains byte-identical. Updates change only the release
 coordinate as before. PostgreSQL's user and database, applied SQL function
 names, and container volume paths stay on their existing names in both
 generations. There is no naming migration. A fresh Compose file defaults an
-unset project and image namespace to `exculpata`, uses `/tmp/exculpata-home`
+unset image namespace to `exculpata` and an unset project name to
+`recordbench`, so an environment file without a project variable keeps the
+existing volumes. The installer writes the fresh project name into
+`compose.env`. The file uses `/tmp/exculpata-home`
 as the container home, and serves the portable review model as
 `exculpata-qwen35-4b`. An existing node keeps the project, namespace, and
 served-model id already saved in its environment. Application health reports

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from case_intelligence.legacy_names import (
+    CURRENT_ENV_PREFIX,
     LEGACY_ENV_PREFIX,
     LEGACY_STEM,
 )
@@ -255,9 +256,10 @@ def test_installation_naming_record_symlink_is_refused(tmp_path):
 def test_compose_without_naming_environment_uses_current_defaults(tmp_path, overlay):
     # The full graph requires mount paths and application env files. Supply only
     # those synthetic prerequisites; neither naming family nor a .env file may
-    # supply a project, image namespace, or release default. Unset Compose
-    # defaults are the current name. A saved node still injects its stored
-    # project, and a missing saved key stays on the previous stem.
+    # supply a project, image namespace, or release default. An unset image
+    # namespace is the current name. An unset project name stays the previous
+    # stem so a compose.env without a project variable keeps existing volumes.
+    # A saved node still injects its stored project.
     root, _, _ = configured_node(tmp_path)
     saved = installer._dotenv(root / "compose.env")
     paths = {key: value for key, value in saved.items()
@@ -274,7 +276,7 @@ def test_compose_without_naming_environment_uses_current_defaults(tmp_path, over
     result = subprocess.run([*command, "config", "--format", "json"], env=env,
                             capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
-    assert graph["name"] == "exculpata"
+    assert graph["name"] == f"{LEGACY_STEM}"
     for service in graph["services"].values():
         if "build" in service:
             assert service["image"].startswith("exculpata/")
@@ -303,6 +305,15 @@ def test_compose_naming_fields_render_with_no_environment(tmp_path, overlay):
         input=config, env={}, capture_output=True, text=True, check=True,
     )
     graph = json.loads(result.stdout)
-    assert graph["name"] == "exculpata"
+    assert graph["name"] == f"{LEGACY_STEM}"
     assert len(graph["services"]) == len(images)
     assert all(service["image"].startswith("exculpata/") for service in graph["services"].values())
+
+
+def test_compose_project_expression_defaults_to_previous_stem():
+    expected = (
+        "name: ${" + CURRENT_ENV_PREFIX + "COMPOSE_PROJECT:-${"
+        + LEGACY_ENV_PREFIX + "COMPOSE_PROJECT:-" + f"{LEGACY_STEM}" + "}}"
+    )
+    assert (ROOT / "compose.yaml").read_text().splitlines()[0] == expected
+
