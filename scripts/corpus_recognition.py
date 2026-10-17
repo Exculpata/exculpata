@@ -24,6 +24,8 @@ def recognize(root, manifest):
         raise ValueError('Full corpus requires faster-whisper==1.2.1')
     if importlib.metadata.version('ctranslate2') != '4.8.2':
         raise ValueError('Full corpus requires ctranslate2==4.8.2')
+    if importlib.metadata.version('av') != '18.1.0':
+        raise ValueError('Full corpus requires av==18.1.0')
     # Product OCR intentionally uses its locked-down OS executable environment.
     data_root = Path('/usr/share/tesseract-ocr/5/tessdata')
     for language, digest in models['ocr']['sha256'].items():

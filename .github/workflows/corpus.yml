@@ -73,7 +73,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
-          python -m pip install --disable-pip-version-check -e . faster-whisper==1.2.1 ctranslate2==4.8.2 huggingface-hub==1.33.0
+          python -m pip install --disable-pip-version-check -e . faster-whisper==1.2.1 ctranslate2==4.8.2 huggingface-hub==1.33.0 av==18.1.0
       - name: Stage and verify pinned OCR data
         run: |
           python - <<'PY'

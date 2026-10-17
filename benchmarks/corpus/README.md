@@ -23,7 +23,9 @@ make corpus-check-full
 
 The fast lane ingests native PDFs and prepared transcript fixtures through the
 application's source store, durable media-job/import/projection path, search,
-Ask routing, and citation validation. It seeds the original WAV bytes without
+the answer service, and citation validation. A separate HTTP probe uses the
+real one-box dispatcher and Ask handler, requiring a durable answer job for each
+question. It stops before job execution; answer completion is evaluated separately. It seeds the original WAV bytes without
 acoustic preflight. It does not run OCR or ASR and cannot establish recognition
 quality. Retrieval uses deterministic test adapters with lexical behavior;
 answers use a deterministic extractive generator. Neither lane establishes
@@ -35,7 +37,7 @@ using real OCR and local pinned ASR. This requires the Linux product dependencie
 (`/usr/bin/pdftoppm`, Tesseract, ffprobe), exact English/Spanish OCR data hashes
 from the manifest at `/usr/share/tesseract-ocr/5/tessdata`, and the existing
 approved large-v3 snapshot. Install `faster-whisper==1.2.1`,
-`ctranslate2==4.8.2`, and `huggingface-hub==1.33.0`, then explicitly stage:
+`ctranslate2==4.8.2`, `huggingface-hub==1.33.0`, and `av==18.1.0`, then explicitly stage:
 
 ```sh
 python scripts/corpus_recognition.py --stage-models

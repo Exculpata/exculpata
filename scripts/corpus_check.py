@@ -125,7 +125,7 @@ def compare(manifest, expected, actual, *, full=False):
                                and normalize(c.get('excerpt', '')) for c in citations):
                         errors.append(f'missing validated search support: {source}')
             else:
-                if got.get('route') != 'question':
+                if got.get('route') != 'question' or got.get('dispatched') is not True:
                     errors.append(f"expected question route; observed {got.get('route')}")
                 for fact in want['facts']:
                     if normalize(fact) not in normalize(got.get('text', '')):

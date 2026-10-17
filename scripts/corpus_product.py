@@ -3,8 +3,9 @@
 This adapter never reads expected outputs. Fast runs ingest native PDFs and
 explicit prepared transcript projections; they do not test OCR, ASR or media intake.
 Full runs ingest scanned PDFs and original audio with independently observed ASR
-segments. Both use the real workbench router and a deterministic extractive
-generator, not a language-model quality evaluation.
+segments. A separate HTTP probe verifies one-box dispatch into durable Ask jobs;
+answer observations use the answer service and a deterministic extractive generator.
+This is not a language-model quality evaluation.
 """
 from __future__ import annotations
 
@@ -18,13 +19,12 @@ import tempfile
 import uuid
 import wave
 
-from case_intelligence.ask_router import classify
 from case_intelligence.answer_evidence import _terms
 from case_intelligence.managed_storage import StoragePolicy
 from case_intelligence.pilot_uploads import PilotDocument, canonical_media_type
 from case_intelligence.review_bench import Citation, ExtractiveAnswerProvider
 from case_intelligence.review_bench_v2 import DeterministicEmbeddingAdapter, DeterministicReranker
-from case_intelligence.workbench import CaseIntelligenceWorkbench
+from case_intelligence.workbench import CaseIntelligenceWorkbench, create_workbench_app
 
 
 class CorpusExtractiveGenerator:
@@ -144,6 +144,51 @@ def _citation(bench, matter, citation, aliases):
             "source_valid": valid, "evidence_kind": value["evidence_kind"]}
 
 
+def dispatch_questions(root, manifest):
+    """Exercise the real HTTP dispatcher and Ask handler through durable admission.
+
+    Completion/citation evaluation remains in observe's separate answer-service
+    run. This probe deliberately stops answer workers before queueing requests.
+    """
+    from fastapi.testclient import TestClient
+    from urllib.parse import parse_qs, urlsplit
+
+    result = {}
+    with tempfile.TemporaryDirectory(prefix="synthetic-dispatch-") as directory, _environment(
+        CASE_INTELLIGENCE_ONE_BOX="1", CASE_INTELLIGENCE_TEST_MODE="1",
+        CASE_INTELLIGENCE_MAINTENANCE_ENABLED="0", CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY="0",
+    ):
+        app = create_workbench_app(Path(directory).resolve(), auth_mode="test",
+            generator=CorpusExtractiveGenerator(), learned_retrieval=False,
+            background_ingestion=False, storage_policy=StoragePolicy(reserve_bytes=0))
+        with TestClient(app) as client:
+            response = client.post('/matters', data={'name':'Synthetic corpus dispatch'}, follow_redirects=False)
+            if response.status_code != 303:
+                raise RuntimeError('Corpus dispatch matter was not created')
+            slug = response.headers['location'].split('/')[2]
+            bench = app.state.workbench
+            bench.answers.close()
+            bench.answers = None
+            actor = 'development-taylor-morgan'
+            matter = bench.matter(slug, actor)
+            store = bench.source_store(matter)
+            native = next(c for c in manifest['documents'] if not c.get('ocr'))
+            path = _input_path(root, native['path'])
+            with path.open('rb') as stream:
+                store.store_stream(path.name, canonical_media_type(path.suffix), stream)
+            bench._sync_source_catalog(matter, tuple(store.documents.values()))
+            for case in manifest['answers']:
+                before = {job.job_id for job in bench.workspace.answer_jobs(matter.matter_id, actor, limit=100)}
+                response = client.post(f'/matters/{slug}/one-box', data={'question':case['question']}, follow_redirects=False)
+                destination = urlsplit(response.headers.get('location', ''))
+                query = parse_qs(destination.query)
+                jobs = [job for job in bench.workspace.answer_jobs(matter.matter_id, actor, limit=100) if job.job_id not in before]
+                result[case['id']] = {'route':query.get('one_box_kind', [''])[0],
+                    'dispatched':response.status_code == 303 and destination.path == f'/matters/{slug}'
+                    and len(jobs) == 1 and jobs[0].question == case['question']}
+    return result
+
+
 def observe(root: Path, manifest: dict, full: bool = False, *,
             observed_transcripts: dict | None = None) -> dict:
     """Return stable case IDs and actual product observations, without grading.
@@ -163,6 +208,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
         raise ValueError("Corpus observation requires an isolated environment without configured storage or database")
     if full and manifest.get("audio") and observed_transcripts is None:
         raise ValueError("Full observation requires independently observed transcripts")
+    dispatch = dispatch_questions(Path(root), manifest)
     results, aliases = {}, {}
     transcripts = observed_transcripts if full else manifest.get("fast_transcripts", {})
     root = Path(root)
@@ -222,7 +268,6 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                                        "citations": citations}
             for item in manifest.get("answers", []):
                 question = item["question"]
-                route = classify(question).kind
                 conversation = bench.workspace.create_conversation(matter.matter_id, item["id"])
                 answer = bench.ask(matter, conversation, question)
                 citations = [_citation(bench, matter, citation, aliases)
@@ -230,7 +275,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                 results[item["id"]] = {"text": " ".join(claim["text"] for claim in answer.payload["claims"]),
                                        "answerable": answer.payload["answerable"], "question": question,
                                        "citations": citations, "provider": "CorpusExtractiveGenerator",
-                                       "route": route}
+                                       **dispatch[item["id"]]}
             return results
         finally:
             bench.close()
