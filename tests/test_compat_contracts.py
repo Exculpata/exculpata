@@ -227,3 +227,43 @@ def test_browser_readiness_harnesses_use_the_dispatched_event():
         source = _read(f"scripts/browser-accept-{driver}.py")
         assert "addEventListener('{CURRENT_STEM}:readiness'" in source
         assert "{LEGACY_STEM}:readiness" not in source
+
+
+def test_activity_readiness_events_initialize_and_preserve_both_names():
+    """Execute the activity closure so a helper outside its scope cannot pass."""
+    import pytest
+
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the browser event regression")
+    source = _read("src/case_intelligence/static/case-intelligence.js")
+    activity = source.split(
+        "/* A workspace-wide activity drawer keeps background work visible across pages. */", 1
+    )[1].split("/* Compact matter navigation, persisted appearance, and the cross-workspace assistant. */", 1)[0]
+    script = r'''
+const assert = require('node:assert/strict');
+const delays = [];
+const element = {querySelector: () => ({}), addEventListener: () => {}};
+globalThis.document = {
+  body: {}, querySelector: () => element, addEventListener: () => {}
+};
+globalThis.window = new EventTarget();
+window.clearTimeout = () => {};
+window.setTimeout = (callback, delay) => { delays.push(delay); return delays.length; };
+''' + activity + r'''
+assert.deepEqual(delays, [1500], 'initialization must reach the first poll');
+for (const name of EVENT_NAMES) {
+  const before = delays.length;
+  window.dispatchEvent(new Event(name));
+  assert.equal(delays.length, before + 1, name + ' must schedule an activity refresh');
+  assert.equal(delays.at(-1), 1500);
+}
+window.dispatchEvent(new Event('pagehide'));
+const paused = delays.length;
+for (const name of EVENT_NAMES) window.dispatchEvent(new Event(name));
+assert.equal(delays.length, paused, 'hidden pages must stay paused');
+window.dispatchEvent(new Event('pageshow'));
+assert.equal(delays.length, paused + 1, 'returning pages must resume polling');
+'''.replace("EVENT_NAMES", json.dumps([f"{CURRENT_STEM}:readiness", f"{LEGACY_STEM}:readiness"]))
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr

@@ -3226,6 +3226,10 @@
 /* A workspace-wide activity drawer keeps background work visible across pages. */
 (() => {
   const body = document.body;
+  const onWorkbenchEvent = (name, handler) => {
+    window.addEventListener(`exculpata:${name}`, handler);
+    window.addEventListener(`recordbench:${name}`, handler);
+  };
   const drawer = document.querySelector("[data-activity-drawer]");
   const contentSlot = drawer?.querySelector("[data-activity-body]");
   const toggle = document.querySelector("[data-activity-toggle]");
