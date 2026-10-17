@@ -32,16 +32,17 @@ def runner():
     return module
 
 
-@pytest.fixture
-def intake_script():
-    spec = importlib.util.spec_from_file_location('browser_intake', ROOT / 'scripts/browser-accept-intake-receipts.py')
+@pytest.fixture(params=['intake-receipts', 'source-roles'])
+def refresh_script(monkeypatch, request):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    spec = importlib.util.spec_from_file_location('browser_refresh', ROOT / f'scripts/browser-accept-{request.param}.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
 @pytest.mark.parametrize('detachment', ['stale', 'inspector'])
-def test_refresh_waits_for_replacement_document_and_complete_load(intake_script, detachment):
+def test_refresh_waits_for_replacement_document_and_complete_load(refresh_script, detachment):
     from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
     from selenium.webdriver.support.ui import WebDriverWait
 
@@ -51,25 +52,25 @@ def test_refresh_waits_for_replacement_document_and_complete_load(intake_script,
              WebDriverException('Node with given id does not belong to the document'))
     previous.is_enabled.side_effect = [True, error]
     driver.execute_script.side_effect = ['loading', 'complete']
-    intake_script.refresh_page(driver, WebDriverWait(driver, 1, poll_frequency=.001))
+    refresh_script.refresh_page(driver, WebDriverWait(driver, 1, poll_frequency=.001))
     driver.refresh.assert_called_once_with()
     assert previous.is_enabled.call_count == 2
     assert driver.execute_script.call_count == 2
 
 
-def test_refresh_preserves_unexpected_driver_failures(intake_script):
+def test_refresh_preserves_unexpected_driver_failures(refresh_script):
     from selenium.common.exceptions import WebDriverException
     from selenium.webdriver.support.ui import WebDriverWait
 
     driver = Mock()
     driver.find_element.return_value.is_enabled.side_effect = WebDriverException('Unexpected inspector failure')
     with pytest.raises(WebDriverException, match='Unexpected inspector failure'):
-        intake_script.refresh_page(driver, WebDriverWait(driver, 1, poll_frequency=.001))
+        refresh_script.refresh_page(driver, WebDriverWait(driver, 1, poll_frequency=.001))
     driver.execute_script.assert_not_called()
 
 
 @pytest.mark.parametrize('stalled_document', ['old', 'new'])
-def test_refresh_fails_when_navigation_does_not_finish(intake_script, stalled_document):
+def test_refresh_fails_when_navigation_does_not_finish(refresh_script, stalled_document):
     from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
     from selenium.webdriver.support.ui import WebDriverWait
 
@@ -78,7 +79,7 @@ def test_refresh_fails_when_navigation_does_not_finish(intake_script, stalled_do
         driver.find_element.return_value.is_enabled.side_effect = StaleElementReferenceException()
     driver.execute_script.return_value = 'loading'
     with pytest.raises(TimeoutException):
-        intake_script.refresh_page(driver, WebDriverWait(driver, .01, poll_frequency=.001))
+        refresh_script.refresh_page(driver, WebDriverWait(driver, .01, poll_frequency=.001))
     if stalled_document == 'old':
         driver.execute_script.assert_not_called()
 

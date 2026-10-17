@@ -30,9 +30,8 @@ from case_intelligence.workbench import create_workbench_app
 ACTOR = 'development-taylor-morgan'
 
 
-def activate_role_action(driver, wait, element):
-    """Finish the native navigation before a subsequent reload or request."""
-    element.send_keys(Keys.ENTER)
+def wait_for_replacement(driver, wait, element):
+    """Observe the retiring document before checking its replacement's readiness."""
     def detached(current):
         try:
             return EC.staleness_of(element)(current)
@@ -42,6 +41,19 @@ def activate_role_action(driver, wait, element):
             return True
     wait.until(detached)
     wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
+
+
+def activate_role_action(driver, wait, element):
+    """Finish the native navigation before a subsequent reload or request."""
+    element.send_keys(Keys.ENTER)
+    wait_for_replacement(driver, wait, element)
+
+
+def refresh_page(driver, wait):
+    # Chrome can acknowledge reload before the replacement document commits.
+    previous_document = driver.find_element(By.TAG_NAME, 'html')
+    driver.refresh()
+    wait_for_replacement(driver, wait, previous_document)
 
 
 def main():
@@ -117,7 +129,7 @@ def main():
             wait.until(lambda _: driver.current_url == reader)
             assert service.read(matter.matter_id, ACTOR, token)['source_role'] == 'background'
             check('Native keyboard reaches editor from source details and marks background')
-            driver.refresh()
+            refresh_page(driver, wait)
             driver.get(reader + '/role')
             assert find('#source-role').get_attribute('value') == 'background'
             check('Designation survives reader navigation and reload')

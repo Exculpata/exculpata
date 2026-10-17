@@ -87,6 +87,13 @@ missing, failed and truncated C2 receipts fail the aggregate result. The
 and adjacent screenshots record the editor and conflict recovery; this does not
 replace the complete pinned Linux suite.
 
+After reloading the reader, the source-role journey waits for the old document
+to detach and its replacement to finish loading before opening the editor.
+The pinned driver can acknowledge refresh before the reader commits; immediately
+navigating again can leave the editor request pending until its page-load timeout.
+The wait uses the existing deadline, never repeats navigation, and propagates
+unexpected driver errors. A stalled old or replacement document still fails.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background
