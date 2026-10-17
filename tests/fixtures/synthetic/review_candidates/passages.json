@@ -238,5 +238,71 @@
     "category": "alternate_person",
     "expected": true,
     "text": "Another person may have been seen\nleaving the scene."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA comparison source could not be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The forensic result was not incompatible with the stated account."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The laboratory result was not different from the comparison sample."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-4",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The fingerprint comparison source cannot be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-5",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was never excluded."
+  },
+  {
+    "id": "investigation_gap-request-context-1",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "During the interview the witness requested a glass of water."
+  },
+  {
+    "id": "investigation_gap-request-context-2",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The investigator requested a lunch break during the interview."
+  },
+  {
+    "id": "investigation_gap-request-context-3",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The witness requested a glass of water before the laboratory test."
+  },
+  {
+    "id": "investigation_gap-request-object-1",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The laboratory test was requested."
+  },
+  {
+    "id": "investigation_gap-request-object-2",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The investigator requested the station footage."
+  },
+  {
+    "id": "investigation_gap-request-object-3",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The investigator requested a witness interview."
   }
 ]

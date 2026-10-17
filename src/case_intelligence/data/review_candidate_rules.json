@@ -68,7 +68,9 @@
     "label": "Mentions a lead, test or record that was requested, not done or not located",
     "reason": "Mentions the status of a requested lead, test or record.",
     "patterns": [
-      "\\b(?:not (?:done|performed|located|tested|collected|obtained|followed)|requested|never (?:tested|located|performed|collected)|still missing|not yet received|unable to locate|uncollected|unprocessed)\\b"
+      "\\b(?:not (?:done|performed|located|tested|collected|obtained|followed)|never (?:tested|located|performed|collected)|still missing|not yet received|unable to locate|uncollected|unprocessed)\\b",
+      "\\brequested\\s+(?:(?:a|an|the|additional|further|laboratory|forensic|new|another|station|camera|witness|blood|ballistic)\\s+){0,4}(?:lead|tests?|samples?|records?|footage|fingerprints?|DNA|interviews?|investigation)\\b",
+      "\\b(?:lead|tests?|samples?|records?|footage|fingerprints?|DNA|interviews?|investigation)\\s+(?:was|were|is|are|had been|has been|have been)\\s+requested\\b"
     ],
     "context": [
       "\\b(?:lead|test|sample|record|records|footage|fingerprint|DNA|interview|investigat\\w*)\\b"
@@ -86,7 +88,8 @@
       "\\b(?:DNA|fingerprint\\w*|forensic|blood|laboratory|lab result|ballistic\\w*|shoeprint\\w*|physical evidence)\\b"
     ],
     "exclude": [
-      "\\bexcluded\\s+from\\b"
+      "\\bexcluded\\s+from\\b",
+      "\\b(?:not|never|cannot|can't|couldn't|wasn't|isn't|weren't)\\s+(?:(?:be|been|being|found|considered|reported|deemed|shown|clearly|necessarily|directly|entirely|wholly)\\s+){0,4}(?:excluded|excludes|incompatible with|different from|not consistent with|no match|did not match|does not match|didn't match)\\b"
     ]
   }
 ]

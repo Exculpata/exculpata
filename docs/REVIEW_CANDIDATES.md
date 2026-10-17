@@ -24,6 +24,11 @@ ranking. Categories follow the table order, then source order. A request for a t
 can appear even when the same passage records its completion. Denials and hedges
 remain in the excerpt: “no deal was offered” receives the reason “Mentions whether
 a benefit was offered.” The tool does not infer that a benefit occurred.
+Physical-result triggers with a negated mismatch are omitted, including “could
+not be excluded” and “not incompatible with”; those phrases do not describe a
+result differing from the comparison.
+Requests are matched to a lead, test, record or related investigative object;
+an interview's mention of a request for water is not a candidate for review.
 
 **Prior statement differences are disabled** pending #271 / PR #283's merge and
 review. The typed adapter accepts only attributed same-person comparisons with
@@ -61,6 +66,10 @@ a model automatically.
 The scan covers at most 2,500 extracted units and 6,000 characters per unit and
 returns at most 150 candidates for review. A visible limit notice identifies
 truncation; filters apply to that bounded result, not the entire production.
+Source text is streamed with limits of 128 Ki characters per serialized record,
+32 Mi serialized characters per scan and ten seconds of cooperative reading.
+Reaching a reader limit stops the scan and displays the same limit notice; it
+does not load the remainder of a large source or start another source.
 Missing or changed citations are omitted and counted. Extraction errors, unusual
 phrasing and unprocessed sources can cause omissions. No candidates is not a
 statement that a production contains nothing worth review.

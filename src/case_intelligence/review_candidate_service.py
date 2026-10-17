@@ -1,10 +1,20 @@
 """Matter-scoped candidate snapshots and durable human review decisions."""
 from contextlib import contextmanager
 from dataclasses import asdict
+import time
 
 from .candidate_review import CandidateReviewRepository
 from .review_candidates import (CATEGORIES, FORMAT, MAX_CANDIDATES, MAX_UNITS, MAX_UNIT_CHARS,
     NOTICE, PRIOR_STATEMENT_DIFFERENCE_ENABLED, ReviewCandidate, add_verified_reason, detect, validate)
+from .unit_stream import UnitRecordLimit
+
+MAX_RECORD_CHARS = 128 * 1024
+MAX_SERIALIZED_CHARS = 32 * 1024 * 1024
+MAX_SCAN_SECONDS = 10
+
+
+class ScanLimit(Exception):
+    """Stop before reading or decoding more source content."""
 
 
 class ReviewCandidateService:
@@ -20,14 +30,29 @@ class ReviewCandidateService:
         transaction = repository.transaction if writing else repository.reading
         with self.store.mutation_guard(), transaction(self.matter.matter_id, actor):
             units, capped = [], False
-            for document in self.store.ready_documents():
-                for ordinal, unit in enumerate(document.parsed_units(), 1):
-                    if len(units) >= MAX_UNITS:
-                        capped = True
-                        break
-                    units.append(self.bench._candidate(self.matter, document, unit, ordinal))
-                if capped:
-                    break
+            serialized_chars = 0
+            deadline = time.monotonic() + MAX_SCAN_SECONDS
+
+            def check_budget():
+                if (len(units) >= MAX_UNITS or serialized_chars > MAX_SERIALIZED_CHARS
+                        or time.monotonic() >= deadline):
+                    raise ScanLimit
+
+            def charge_read(count):
+                nonlocal serialized_chars
+                serialized_chars += count
+                check_budget()
+
+            try:
+                for document in self.store.ready_documents():
+                    check_budget()
+                    for ordinal, unit in enumerate(document.iter_parsed_units(
+                            budget_check=check_budget, read_check=charge_read,
+                            max_record_chars=MAX_RECORD_CHARS), 1):
+                        check_budget()
+                        units.append(self.bench._candidate(self.matter, document, unit, ordinal))
+            except (ScanLimit, UnitRecordLimit):
+                capped = True
             originals = {(u.document_id, u.chunk_id): u for u in units}
 
             def resolve(citation):

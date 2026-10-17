@@ -146,3 +146,9 @@ def test_adapter_signature_binds_the_same_person_identity():
     def adapted(value):
         return from_comparisons(dict(format='exculpata-inconsistency-candidates-v1',candidates=[value]),enabled=True)[0]
     assert adapted(row).signature!=adapted(dict(row,speaker_ids=['person-b'])).signature
+
+
+def test_negated_physical_trigger_does_not_hide_separate_mismatch():
+    text='The DNA source could not be excluded, but the fingerprint did not match the comparison sample.'
+    rows=[c for c in detect([unit(text)]) if c.category=='favorable_physical_evidence']
+    assert len(rows)==1 and rows[0].citation['highlight']=='did not match'

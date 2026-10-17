@@ -161,3 +161,55 @@ def test_route_reports_cap_and_keeps_category_source_order(tmp_path,monkeypatch)
         payload=client.get(f'/matters/{slug}/review-candidates/export').json()
         assert payload['capped'] and len(payload['candidates'])==150
         assert [c['source_order'] for c in payload['candidates']]==list(range(150))
+
+
+def test_streaming_scan_stops_before_next_unit_or_source(tmp_path,monkeypatch):
+    from dataclasses import replace
+    from case_intelligence.pilot_uploads import PilotUnit
+    from case_intelligence.review_candidate_service import ReviewCandidateService, MAX_RECORD_CHARS
+    from case_intelligence.review_candidates import MAX_UNITS
+    from case_intelligence.unit_stream import iter_unit_records
+    with TestClient(app(tmp_path)) as client:
+        slug,_=seed(client); bench=client.app.state.workbench
+        service=ReviewCandidateService(bench,bench.matter(slug,WEB_ACTOR))
+        source=service.store.ready_documents()[0]
+        stream=io.StringIO(json.dumps(dict(version=1,units=[dict(number=i,text='Synthetic neutral passage.') for i in range(1,MAX_UNITS+5001)])))
+        decoded=[]
+        def iterator(name,**kwargs):
+            assert kwargs['max_record_chars']==MAX_RECORD_CHARS
+            for record in iter_unit_records(stream,**kwargs):
+                decoded.append(record['number'])
+                yield PilotUnit(**record)
+        def whole_file(name):
+            raise AssertionError('whole-file loading is forbidden for candidate scans')
+        source=replace(source,units=[],units_file='synthetic.json',_units_iterator=iterator,_units_loader=whole_file)
+        later=replace(source,_units_iterator=lambda *args,**kwargs:whole_file('later source'))
+        monkeypatch.setattr(service.store,'ready_documents',lambda:(source,later))
+        payload=service.payload(WEB_ACTOR)
+        assert payload['capped'] and payload['unit_count']==MAX_UNITS
+        assert len(decoded)==MAX_UNITS and stream.tell()<len(stream.getvalue())
+
+
+def test_streaming_record_and_serialized_limits_report_partial_scan(tmp_path,monkeypatch):
+    from dataclasses import replace
+    from case_intelligence.pilot_uploads import PilotUnit
+    import case_intelligence.review_candidate_service as module
+    from case_intelligence.unit_stream import iter_unit_records
+    with TestClient(app(tmp_path)) as client:
+        slug,_=seed(client); bench=client.app.state.workbench
+        service=module.ReviewCandidateService(bench,bench.matter(slug,WEB_ACTOR))
+        source=service.store.ready_documents()[0]
+        for oversized in (True,False):
+            text='x'*(module.MAX_RECORD_CHARS+1) if oversized else TEXT
+            stream=io.StringIO(json.dumps(dict(version=1,units=[dict(number=1,text=text)])))
+            decoded=[]
+            def iterator(name,**kwargs):
+                for record in iter_unit_records(stream,**kwargs):
+                    decoded.append(record)
+                    yield PilotUnit(**record)
+            bounded=replace(source,units=[],units_file='synthetic.json',_units_iterator=iterator)
+            monkeypatch.setattr(service.store,'ready_documents',lambda:(bounded,))
+            if not oversized:
+                monkeypatch.setattr(module,'MAX_SERIALIZED_CHARS',10)
+            payload=service.payload(WEB_ACTOR)
+            assert payload['capped'] and payload['unit_count']==0 and not decoded
