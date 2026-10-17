@@ -56,6 +56,7 @@ def test_fast_native_ingestion_and_transcript_citations_use_product_paths(tmp_pa
     assert result["search"]["document_ids"] == ["spoken"]
     answer = result["answer"]
     assert answer["route"] == "question"
+    assert answer["dispatched"] is True
     assert answer["answerable"] is True
     assert "orange parcel" in answer["text"]
     assert "green suitcase" not in answer["text"]
@@ -103,3 +104,13 @@ def test_adapter_rejects_non_synthetic_inputs_and_path_escape(tmp_path):
     root.mkdir()
     with pytest.raises(ValueError, match="inside the corpus root"):
         product._input_path(root, "../outside.txt")
+
+
+def test_real_dispatcher_wrong_route_cannot_be_masked_by_direct_answer(tmp_path, monkeypatch):
+    from case_intelligence import ask_router
+    manifest = _inputs(tmp_path)
+    monkeypatch.setattr(ask_router, 'classify', lambda text: ask_router.RouteDecision('exact', 'Synthetic wrong route'))
+    result = product.observe(tmp_path, manifest)
+    assert result['answer']['answerable'] is True
+    assert result['answer']['route'] == 'exact'
+    assert result['answer']['dispatched'] is False

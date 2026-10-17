@@ -30,11 +30,11 @@ def sample():
     manifest = {'documents':[{'id':'pdf','ocr':False}], 'audio':[{'id':'wav'}], 'search':[{'id':'search','top_k':1}], 'answers':[{'id':'answer'}]}
     citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
-    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','citations':[citation]}}
+    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'citations':[citation]}}
     return manifest, expected, actual
 
 
-@pytest.mark.parametrize('mutation', ['missing','fact','wrong-source','missing-citation','extra-citation','invalid-span','route','rank','search-support','search-invalid','text','transcript','projection'])
+@pytest.mark.parametrize('mutation', ['missing','fact','wrong-source','missing-citation','extra-citation','invalid-span','route','dispatch','rank','search-support','search-invalid','text','transcript','projection'])
 def test_regressions_fail_with_case_diff(mutation):
     manifest, expected, actual = sample()
     if mutation == 'missing': del actual['answer']
@@ -44,6 +44,7 @@ def test_regressions_fail_with_case_diff(mutation):
     elif mutation == 'extra-citation': actual['answer']['citations'].append({'document_id':'other','excerpt':'parcel is blue','source_valid':True})
     elif mutation == 'invalid-span': actual['answer']['citations'][0]['source_valid'] = False
     elif mutation == 'route': actual['answer']['route'] = 'exact'
+    elif mutation == 'dispatch': actual['answer']['dispatched'] = False
     elif mutation == 'rank': actual['search']['document_ids'] = ['other','pdf']
     elif mutation == 'search-support': actual['search']['citations'] = []
     elif mutation == 'search-invalid': actual['search']['citations'][0]['source_valid'] = False
