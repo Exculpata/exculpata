@@ -1057,6 +1057,7 @@ def _stage_release(console: Console, root: Path, *, dry_run: bool) -> tuple[str,
             _copy_release_entry(source, staging / source.name)
         manifest = {
             "format_version": 1,
+            "network_contract_version": 1,
             "version": VERSION,
             "release_id": release_id,
             "source_sha256": digest,
@@ -3692,8 +3693,35 @@ def _running_auth_mode(root: Path, installation: Mapping[str, object]) -> str | 
         return None
 
 
-def _wait_health(console: Console, root: Path) -> None:
-    settings, _ = _installed_release(root)
+def _release_requires_dns_proof(release: Path) -> bool:
+    """Recognize legacy rollback capsules without downgrading egress releases."""
+    manifest = release / "RELEASE_MANIFEST.json"
+    if manifest.exists() or manifest.is_symlink():
+        try:
+            if manifest.is_symlink():
+                raise ValueError("symlinked manifest")
+            metadata = json.loads(manifest.read_text(encoding="utf-8"))
+            if not isinstance(metadata, dict):
+                raise ValueError("invalid manifest")
+            if "network_contract_version" in metadata:
+                version = metadata["network_contract_version"]
+                if type(version) is not int or version != 1:
+                    raise ValueError("unsupported contract")
+                return True
+        except (OSError, ValueError) as exc:
+            raise RuntimeError("restored release network contract is invalid or unsupported") from exc
+    # Earlier egress capsules predate the explicit manifest field. Missing one
+    # artifact must not turn a partial/damaged egress release into a legacy pass.
+    artifacts = ("scripts/dns_boundary_probe.py", "config/egress-allowlist.toml", "deploy/egress-proxy")
+    if any((release / name).exists() or (release / name).is_symlink() for name in artifacts):
+        return True
+    compose = (release / "compose.yaml").read_text(encoding="utf-8")
+    return any(marker in compose for marker in ("egress-proxy", "app-egress", "CASE_INTELLIGENCE_OIDC_PROXY"))
+
+
+def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> None:
+    settings, release = _installed_release(root)
+    require_dns_proof = not rollback or _release_requires_dns_proof(release)
     expected_auth = _installed_auth_mode(root, settings)
     env = _dotenv(root / "compose.env")
     host = _valid_host(str(settings["server_name"]))
@@ -3742,9 +3770,12 @@ def _wait_health(console: Console, root: Path) -> None:
             _install_phase(root, "login_reachable", "complete" if login_ready else "incomplete")
             _install_phase(root, "selected_capabilities", "incomplete")
             if selected_ready and login_ready:
-                _verify_installed_dns(root)
+                if require_dns_proof:
+                    _verify_installed_dns(root)
+                    console.ok("DNS boundary :: internal memberships and container-local UDP/TCP A/AAAA/TXT challenges passed")
+                else:
+                    console.warn("Legacy rollback restored pre-egress health; DNS egress isolation is not verified")
                 _install_phase(root, "selected_capabilities", "complete")
-                console.ok("DNS boundary :: internal memberships and container-local UDP/TCP A/AAAA/TXT challenges passed")
                 console.ok(f"Application health, selected capabilities and sign-in endpoint passed; authentication mode :: {expected_auth}")
                 if payload.get("status") == "degraded":
                     console.warn("Basic review is available; an unselected optional capability remains unavailable")
@@ -4250,7 +4281,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
                 _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
                 rollback = _compose(root, profiles, release=old_release, auth=auth)
                 _run(console, [*rollback, "up", "-d", "--remove-orphans"])
-                _wait_health(console, root)
+                _wait_health(console, root, rollback=True)
                 console.ok("Prior release restored and healthy")
             except Exception as exc:
                 rollback_error = exc

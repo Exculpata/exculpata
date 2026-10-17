@@ -997,6 +997,11 @@ If replacement admission or startup acceptance fails, configuration is returned
 to the previous release and its images are relaunched. A rollback that cannot
 restore health is reported separately for operator recovery. Old releases and
 images are retained for deliberate operator cleanup; the updater never prunes them.
+If the restored capsule predates the egress contract, rollback checks its prior
+application/authentication/storage health and explicitly reports DNS egress
+isolation as unverified. Egress-contract capsules still require behavioral DNS
+proof after rollback. This exception does not apply to normal install, update
+or doctor acceptance; see [network egress](NETWORK_EGRESS.md).
 
 
 Before fresh managed-storage initialization, the reserved names `matters`,

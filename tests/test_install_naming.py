@@ -522,8 +522,8 @@ def test_custom_app_file_is_shared_by_validation_doctor_and_rollback(tmp_path, m
         return subprocess.CompletedProcess(command, 0, "", "")
     monkeypatch.setattr(installer, "_run", run)
     health_calls = []
-    def health(*args):
-        health_calls.append(True)
+    def health(*args, rollback=False):
+        health_calls.append(rollback)
         if len(health_calls) == 1:
             selected.write_text("# Synthetic failed startup mutation\n")
             raise RuntimeError("synthetic startup failure")
@@ -532,6 +532,7 @@ def test_custom_app_file_is_shared_by_validation_doctor_and_rollback(tmp_path, m
     with pytest.raises(RuntimeError, match="rollback was attempted"):
         installer._update(installer.Console(color=False, quiet=True), args, root)
     assert len(health_calls) == len(launches) == 2
+    assert health_calls == [False, True]
     assert selected.read_bytes() == selected_before
     assert default.read_bytes() == default_before
 

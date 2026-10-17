@@ -407,6 +407,7 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     release_id, release = installer._stage_release(console, root, dry_run=False)
     manifest = json.loads((release / "RELEASE_MANIFEST.json").read_text())
     assert manifest["release_id"] == release_id
+    assert manifest["network_contract_version"] == 1
     assert len(manifest["source_sha256"]) == 64
     assert (release / "compose.yaml").is_file()
     assert (release / "services/transcription/src").is_dir()
@@ -1850,8 +1851,11 @@ def test_oversized_oidc_secret_stops_before_writes(tmp_path, ready_host, monkeyp
     assert not args.root.exists()
 
 
-def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72"):
+def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72", old_release_path=None):
     root, installation, environment = saved_gpu_node(tmp_path)
+    if old_release_path is not None:
+        installation["release_path"] = str(old_release_path)
+        (root / "installation.json").write_text(json.dumps(installation))
     # Build the saved node using the real owner, then emulate the target Linux
     # host for read-only prerequisites and the mocked update lifecycle.
     request.getfixturevalue("ready_host")
@@ -2712,6 +2716,47 @@ def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, 
     assert (root / "compose.env").read_bytes() == before[Path("compose.env")]
     output = capsys.readouterr().out
     assert ("Prior release restored and healthy" in output) is (rollback_auth == "local")
+
+
+@pytest.mark.parametrize("old_contract", ["legacy", "marked", "unmarked-egress"])
+def test_failed_egress_update_rechecks_restored_release_contract(tmp_path, request, monkeypatch, capsys, old_contract):
+    import io
+    wait_health = installer._wait_health
+    old = tmp_path.resolve() / "old-release"
+    old.mkdir()
+    (old / "compose.yaml").write_text("services: {}\n")
+    if old_contract == "marked":
+        (old / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    elif old_contract == "unmarked-egress":
+        (old / "compose.yaml").write_text("services:\n  egress-proxy: {}\n")
+    root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request, old_release_path=old)
+    new = tmp_path.resolve() / "new-release"
+    (new / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    monkeypatch.setattr(installer, "_wait_health", wait_health)
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
+    monkeypatch.setattr(installer, "_running_auth_mode", lambda *a: "local")
+    monkeypatch.setattr(installer, "_login_reachable", lambda *a: True)
+    payload = {"product": LEGACY_PRODUCT, "status": "ok", "storage": {"status": "ready"},
+               "capabilities": {"source_review": "ready", "malware_scan": "ready",
+                                "answering": "ready", "search": "word + meaning"}}
+    monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    dns_releases = []
+    def reject_dns(root):
+        _settings, release = installer._installed_release(root)
+        dns_releases.append(release)
+        raise RuntimeError("synthetic DNS acceptance failure")
+    monkeypatch.setattr(installer, "_verify_installed_dns", reject_dns)
+    message = "update failed and rollback was attempted" if old_contract == "legacy" else "rollback also failed"
+    with pytest.raises(RuntimeError, match=message):
+        installer._update(installer.Console(color=False), args, root)
+    assert dns_releases == ([new] if old_contract == "legacy" else [new, old])
+    assert "up-new" in events and "up-old" in events and "seal" not in events
+    assert (root / "installation.json").read_bytes() == before[Path("installation.json")]
+    assert (root / "compose.env").read_bytes() == before[Path("compose.env")]
+    output = capsys.readouterr().out
+    assert ("Prior release restored and healthy" in output) is (old_contract == "legacy")
+    assert ("DNS egress isolation is not verified" in output) is (old_contract == "legacy")
+    assert "DNS boundary ::" not in output
 
 
 def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None):

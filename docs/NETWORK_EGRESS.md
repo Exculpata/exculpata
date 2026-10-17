@@ -44,6 +44,16 @@ a local observation fails acceptance. The responder closes before the diagnostic
 returns. Doctor therefore performs transient container-local network probes; it
 does not change host DNS or daemon settings. Dry-run reports DNS unverified.
 
+Failed updates can roll back to a capsule that predates this network contract.
+Only that rollback path may accept the prior release's application, storage,
+authentication and selected-capability health without the new DNS proof. It
+explicitly warns that DNS egress isolation is **not verified**; it does not print
+a DNS success. New capsules declare network contract version 1 in their manifest.
+Earlier unmarked egress capsules are recognized by their relay, inventory, DNS
+helper or Compose markers and still require strict DNS proof during rollback.
+Unknown or invalid declared contracts fail closed. Normal install, update and
+doctor acceptance never take this legacy rollback exception.
+
 The live smoke separately proves the test recorder is reachable from the app with
 six direct UDP/TCP controls. It recreates only its disposable app with that recorder
 as the DNS upstream, requires a forwarded query to be observed, and requires the
