@@ -349,7 +349,7 @@ services:
       CASE_INTELLIGENCE_CLAMAV_ALLOWED_HOSTS: clamav
       CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL: http://retrieval:8787
       CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS: retrieval
-      CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS: generator
+      CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS: ${EXCULPATA_GENERATOR_ALLOWED_HOSTS:-${RECORDBENCH_GENERATOR_ALLOWED_HOSTS:-generator}}
       CASE_INTELLIGENCE_TRANSCRIPTION_ALLOWED_HOSTS: transcription-api
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
@@ -374,9 +374,15 @@ services:
         source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
         target: /run/recordbench-secrets
         read_only: true
+      - type: bind
+        source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
+        target: /run/exculpata-secrets
+        read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    extra_hosts:
+      - "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway"
     networks: [front, services, models]
 
   gateway:

@@ -16,7 +16,7 @@ RETURN_LIMIT = 4000
 
 def install_assertion_routes(app, *, service_for, entities_for, authorized_matter, auth_context,
                              require_csrf, templates, base_context, audit,
-                             require_response_lease, transfer_response_lease):
+                             require_response_lease, transfer_response_lease, model_notice=lambda: ''):
     def safe_return(slug, value):
         return matter_return_path(slug, value, fallback=f'/matters/{slug}')
 
@@ -181,7 +181,8 @@ def install_assertion_routes(app, *, service_for, entities_for, authorized_matte
             support=support if action not in ('create', 'attach', 'delete') else '')), status_code=303)
 
     def export_response(request, matter, payload, format_name, filename, *, object_type, object_id):
-        from .assertion_exports import markdown_export
+        from .assertion_exports import markdown_export, qualified_payload
+        payload = qualified_payload(payload, model_notice())
         body = json.dumps(payload, indent=2) if format_name == 'json' else markdown_export(payload)
         from .assertion_repository import MAX_STORAGE_BYTES
         if len(body.encode('utf-8')) > MAX_STORAGE_BYTES:

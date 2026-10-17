@@ -90,6 +90,10 @@ class CaseDownloads:
                                       administrator_override=administrator)
             return completed
 
+    def visible_note(self, model_notice=""):
+        notice = str(model_notice or "")
+        return notice
+
     def receipt(self, current, actor_id):
         with self.workspace._lock:
             return self.connection.execute(

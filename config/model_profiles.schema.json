@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exculpata.example/model-profiles.schema.json",
+  "title": "Exculpata hardware model profiles",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fallback_profile", "profiles"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "fallback_profile": {"type": "string", "minLength": 1},
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/profile"}
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "label", "accelerator", "generator", "embed_rerank", "asr", "tradeoff"
+      ],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1},
+        "accelerator": {"enum": ["cpu", "gpu", "apple"]},
+        "min_ram_mib": {"type": ["integer", "null"], "minimum": 0},
+        "max_ram_mib": {"type": ["integer", "null"], "minimum": 0},
+        "min_vram_mib": {"type": ["integer", "null"], "minimum": 0},
+        "max_vram_mib": {"type": ["integer", "null"], "minimum": 0},
+        "generator": {"type": "string", "minLength": 1},
+        "embed_rerank": {"type": "string", "minLength": 1},
+        "asr": {"type": "string", "minLength": 1},
+        "tradeoff": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -171,6 +171,9 @@
       <section class="research-result">
         <header class="workflow-section-heading"><div><p class="eyebrow">Generated synthesis · needs review</p><h2>{{ "Full-text synthesis" if full_text_synthesis else "Investigation brief" }}</h2></div></header>
         <p class="workflow-caution" role="note">{{ generated_review_notice }}</p>
+        {% if active_research.result.get('answer', {}).get('model_notice') %}<p class="workflow-caution" role="note">{{ active_research.result.answer.model_notice }}</p>{% endif %}
+        {% if active_research.result.get('answer', {}).get('schema_enforcement') == 'not enforced / validated locally' %}<p class="workflow-caution" role="note">Schema enforcement: not enforced / validated locally.</p>{% endif %}
+        {% if active_research.result.get('answer', {}).get('schema_enforcement') == 'verified' %}<p class="workflow-caution" role="note">Schema enforcement: verified.</p>{% endif %}
         <nav class="workflow-completion-bar" aria-label="Completed synthesis actions">
           <span class="workflow-completion-state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg><span><strong>{{ "Synthesis ready" if full_text_synthesis else "Investigation ready" }}</strong><small>{{ active_research.result.evidence|length }} supporting passage{% if active_research.result.evidence|length != 1 %}s{% endif %}</small></span></span>
           <a href="#research-support">Review support</a>

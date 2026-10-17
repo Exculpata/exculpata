@@ -59,6 +59,7 @@
         <p>SHA-256: <code style="overflow-wrap:anywhere">{{ exit_record.archive_digest }}</code></p>
         <p>Keep the downloaded archive outside this workbench. Compare its SHA-256 with this value using a trusted local tool before running the included verifier. Inspect its manifest and verify all file checksums before confirming deletion. Downloads can be retried while closure is pending.</p>
         <p role="status">{{ 'The server observed delivery of the complete archive to your account. This does not prove that your device saved or retained a backup.' if download_complete else 'A completed download to your account is required before export-and-exit confirmation.' }}</p>
+        {% if download_notice %}<p role="note">{{ download_notice }}</p>{% endif %}
         <a class="button button-secondary" href="/matters/{{ matter.slug }}/close">Refresh download status</a>
       </section>
       {% endif %}
