@@ -52,6 +52,11 @@ def main():
         private.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
                                               serialization.NoEncryption()))
         private.chmod(0o600)
+        # Reproduce installation from an owner-only service-account checkout:
+        # Docker COPY must not leave the non-root relay unable to read its code.
+        proxy_context = root / "proxy"
+        shutil.copytree(ROOT / "deploy/egress-proxy", proxy_context)
+        (proxy_context / "proxy.py").chmod(0o600)
         # Synthetic RFC1918 subnet exists only inside the selected disposable VM.
         network = ipaddress.ip_network((int.from_bytes(bytes((172, 30, 219, 0))), 24))
         issuer_address, foreign_address = str(network[10]), str(network[11])
@@ -63,7 +68,7 @@ def main():
         data = {"services": {
             "issuer": {**endpoint, "networks": {"upstream": {"ipv4_address": issuer_address, "aliases": ["issuer.example.test"]}}},
             "foreign": {**endpoint, "networks": {"upstream": {"ipv4_address": foreign_address, "aliases": ["foreign.example.test"]}}},
-            "proxy": {**limits, "build": {"context": str(ROOT / "deploy/egress-proxy")}, "image": project + "-proxy",
+            "proxy": {**limits, "build": {"context": str(proxy_context)}, "image": project + "-proxy",
                 "networks": ["app", "upstream"], "environment": {"OIDC_ISSUER": issuer,
                     "OIDC_ISSUER_PINS": json.dumps({"issuer": issuer, "addresses": [issuer_address]})}},
             "app": {**limits, "build": {"context": str(fixture), "target": "probe"}, "image": project + "-app",
@@ -107,7 +112,8 @@ def main():
             compose_file.write_text(json.dumps(data))
             run([*compose, "up", "-d", "--wait", "--wait-timeout", "60", "proxy"], filename="deny-all-up.log")
             results.update(json.loads(run([*compose, "exec", "-T", "app", "python", "/fixture/probe.py", "deny-all"], filename="deny-all.log")))
-            results.update({"no_mounts_or_published_ports": True, "internal_test_networks": True, "passed": True})
+            results.update({"no_mounts_or_published_ports": True, "internal_test_networks": True,
+                            "owner_only_proxy_source_readable": True, "passed": True})
         finally:
             cleanup = subprocess.run([*compose, "down", "--volumes", "--rmi", "all", "--remove-orphans"],
                                      capture_output=True, text=True, timeout=120)
