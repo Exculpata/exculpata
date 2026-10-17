@@ -7,11 +7,13 @@ import subprocess
 import sys
 import threading
 import traceback
+from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 import pytest
 
 from case_intelligence.workbench import create_workbench_app
+from case_intelligence import case_lifecycle_support
 from tests.test_matter_notebook import WEB_ACTOR, _create_matter
 
 
@@ -33,12 +35,12 @@ def _overlap(runtime, automatic, cached):
     expected = client.get(f"/matters/{slug}/home")
     assert expected.status_code == 200 and "data-discovery-briefing" in expected.text
     if not cached:
-        with bench._store_lock:
+        with case_lifecycle_support.source_lock(bench, other.matter_id), case_lifecycle_support.source_cache_guard(bench):
             bench._stores.pop(other.matter_id).close()
 
-    in_snapshot, cache_owned = threading.Event(), threading.Event()
+    in_snapshot, cache_requested = threading.Event(), threading.Event()
     membership = bench.workspace.membership
-    lifecycle = bench.workspace.matter_lifecycle
+    cache_guard = case_lifecycle_support.source_cache_guard
     results, errors = {}, []
 
     def paused_membership(*args, **kwargs):
@@ -47,17 +49,20 @@ def _overlap(runtime, automatic, cached):
         if (sys._getframe(1).f_code.co_name == "home_briefing"
                 and bench.workspace._lock._is_owned()):
             in_snapshot.set()
-            assert cache_owned.wait(5), "Other matter did not acquire the source cache"
+            assert cache_requested.wait(5), "Other matter did not request the source cache"
         return membership(*args, **kwargs)
 
-    def paused_lifecycle(matter_id):
-        if threading.current_thread().name == "synthetic-other-store" and matter_id == other.matter_id:
-            assert bench._store_lock._is_owned()
-            cache_owned.set()
-        return lifecycle(matter_id)
+    @contextmanager
+    def observed_cache_guard(current):
+        if threading.current_thread().name == "synthetic-other-store":
+            assert not current._store_lock._is_owned()
+            cache_requested.set()
+        with cache_guard(current):
+            assert current.workspace._lock._is_owned()
+            yield
 
     bench.workspace.membership = paused_membership
-    bench.workspace.matter_lifecycle = paused_lifecycle
+    case_lifecycle_support.source_cache_guard = observed_cache_guard
 
     def run(name, operation):
         try:
@@ -74,7 +79,7 @@ def _overlap(runtime, automatic, cached):
     lookup.start()
     home.join(3)
     lookup.join(1)
-    assert cache_owned.is_set(), "The operations did not overlap"
+    assert cache_requested.is_set(), "The operations did not overlap"
     if home.is_alive() or lookup.is_alive():
         faulthandler.dump_traceback()
         raise AssertionError("Home and other-matter source lookup deadlocked on cache/workspace locks")
@@ -85,7 +90,7 @@ def _overlap(runtime, automatic, cached):
     assert client.get("/health").status_code == 200
     # The store and readiness must remain live rather than a cached snapshot.
     bench.workspace.membership = membership
-    bench.workspace.matter_lifecycle = lifecycle
+    case_lifecycle_support.source_cache_guard = cache_guard
     store = bench.source_store(matter)
     document = next(iter(store.documents.values()))
     store.remove(document.document_id)
