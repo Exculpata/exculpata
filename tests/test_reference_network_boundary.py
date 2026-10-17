@@ -1,6 +1,12 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import sys
+
+import pytest
+import yaml
 
 
 ROOT = Path(__file__).parents[1]
@@ -15,7 +21,8 @@ def test_reference_compose_network_boundary_and_explicit_exceptions():
         "postgres": "services", "clamav": "services",
         "clamav-updater": "updates", "retrieval": "models",
         "generator": "models", "transcription-api": "services",
-        "app": "front, services, models", "gateway": "front, services",
+        "app": "app-egress, services, models", "gateway": "front, services",
+        "egress-proxy": "app-egress, front",
         "model-stager": "front",
     }
     disconnected = {
@@ -34,7 +41,7 @@ def test_reference_compose_network_boundary_and_explicit_exceptions():
             assert not re.search(r"(?m)^    ports:", section), name
     assert ':-127.0.0.1}}' in services["gateway"]
     network_text = text.split("\nnetworks:\n", 1)[1].split("\nsecrets:\n", 1)[0]
-    assert network_text.strip() == "front:\n  updates:\n  services:\n    internal: true\n  models:\n    internal: true"
+    assert network_text.strip() == "front:\n  updates:\n  services:\n    internal: true\n  models:\n    internal: true\n  app-egress:\n    internal: true"
     for name in ("retrieval", "generator", "transcription-worker"):
         for flag in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
             assert f'{flag}: "1"' in services[name], (name, flag)
@@ -49,3 +56,116 @@ def test_reference_compose_network_boundary_and_explicit_exceptions():
     assert "profiles: [tools]" in services["model-stager"]
     assert "profiles: [ai]" in services["generator"]
     assert "profiles: [ai]" in services["retrieval"]
+
+
+def test_app_has_no_direct_egress():
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    app = compose["services"]["app"]
+    assert "network_mode" not in app
+    assert app["networks"]
+    assert all((compose["networks"][name] or {}).get("internal") is True for name in app["networks"])
+
+
+@pytest.fixture
+def contract_tree(tmp_path):
+    for name in ("src", "services", "config"):
+        shutil.copytree(ROOT / name, tmp_path / name,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
+    for path in ROOT.glob("compose*.yaml"):
+        shutil.copy(path, tmp_path / path.name)
+    return tmp_path
+
+
+def run_contract(root):
+    # Missing checker is an explicit red-before failure, not a skipped test.
+    assert (ROOT / "scripts/network-contract.py").is_file()
+    return subprocess.run([sys.executable, str(ROOT / "scripts/network-contract.py"),
+                           "--root", str(root)], capture_output=True, text=True, timeout=45)
+
+
+def test_network_contract_current_tree():
+    result = run_contract(ROOT)
+    assert result.returncode == 0, result.stderr
+
+
+def test_network_contract_rejects_loosening(contract_tree):
+    path = contract_tree / "compose.yaml"
+    path.write_text(path.read_text().replace("  models:\n    internal: true", "  models: {}"))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "compose.yaml:" in result.stderr and "network definitions changed" in result.stderr
+
+
+def test_network_contract_rejects_new_outbound_host(contract_tree):
+    (contract_tree / "src/synthetic_probe.py").write_text('import httpx\nhttpx.get("https://example.invalid")\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "src/synthetic_probe.py:2:" in result.stderr
+    assert "example.invalid" in result.stderr and "outbound client" in result.stderr
+
+
+def test_network_contract_rejects_bare_host_literal(contract_tree):
+    (contract_tree / "src/synthetic_probe.py").write_text('TARGET = "outbound.example.invalid"\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "src/synthetic_probe.py:1: unreviewed outbound host: outbound.example.invalid" in result.stderr
+
+
+@pytest.mark.parametrize("change", [
+    {"networks": ["front"]}, {"network_mode": "host"},
+    {"network_mode": "service:gateway"}, {"networks": None},
+    {"cap_add": ["NET_ADMIN"]}, {"privileged": True},
+    {"ports": [{"target": 8786, "published": "8786", "host_ip": "127.0.0.1"}]},
+    {"ports": ["8786:8786"]}, {"extra_hosts": ["issuer.example.test:host-gateway"]},
+])
+def test_contract_rejects_overlay_escape(contract_tree, change):
+    path = contract_tree / "compose.local-accounts.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["services"]["app"].update(change)
+    path.write_text(yaml.safe_dump(data))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1 and "compose.local-accounts.yaml:" in result.stderr
+
+
+@pytest.mark.parametrize("source", [
+    'import httpx as h\nh.get(destination)\n',
+    'from urllib.request import urlopen as fetch\nfetch(destination)\n',
+    'from requests import Session as S\ns = S()\ns.get(destination)\n',
+    'import aiohttp\nasync def probe():\n async with aiohttp.ClientSession() as c:\n  await c.get(destination)\n',
+    'from socket import create_connection as dial\ndial((destination, 443))\n',
+    'import httpx\nclient = httpx.Client()\nget = client.get\nget(destination)\n',
+    'import httpx\nclass Sender:\n def __init__(self):\n  self.client = httpx.Client()\n def send(self):\n  return self.client.get(destination)\n',
+    'import httpx\nasync def probe(client: httpx.AsyncClient):\n await client.post(destination)\n',
+    'not valid Python @\n',
+])
+def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source):
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    assert run_contract(contract_tree).returncode == 1
+
+
+def test_contract_rejects_new_compose_and_duplicate_keys(contract_tree):
+    (contract_tree / "compose.escape.yaml").write_text("services: {app: {network_mode: host}}\n")
+    assert run_contract(contract_tree).returncode == 1
+    (contract_tree / "compose.escape.yaml").unlink()
+    path = contract_tree / "compose.yaml"
+    path.write_text(path.read_text() + "\nnetworks: {}\n")
+    assert run_contract(contract_tree).returncode == 1
+
+
+def test_proxy_configuration_and_internal_clients(monkeypatch):
+    import httpx
+    compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+    env = compose["services"]["app"]["environment"]
+    for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(key, env[key])
+    with httpx.Client() as client:
+        issuer = client._transport_for_url(httpx.URL("https://issuer.example.test"))
+        assert isinstance(issuer._pool, __import__('httpcore').HTTPProxy)
+        assert client._transport_for_url(httpx.URL("http://retrieval:8787")) is client._transport
+        assert client._transport_for_url(httpx.URL("https://generator:8000")) is client._transport
+    proxy = compose["services"]["egress-proxy"]
+    assert set(proxy["environment"]) == {"OIDC_ISSUER"}
+    assert not any(key in proxy for key in ("volumes", "secrets", "env_file", "ports"))
+    assert compose["services"]["gateway"]["networks"] == ["front", "services"]
+    overlay = yaml.safe_load((ROOT / "compose.kerberos.yaml").read_text())
+    assert "services" in overlay["services"]["kerberos-proxy"]["networks"]
