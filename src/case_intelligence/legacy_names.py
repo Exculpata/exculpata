@@ -42,4 +42,5 @@ def sql_function(suffix: str) -> str:
 
 
 def accepts_product(value: object) -> bool:
-    return value in {LEGACY_PRODUCT, CURRENT_PRODUCT}
+    """Accept either product string. Malformed JSON values fail closed."""
+    return isinstance(value, str) and value in (LEGACY_PRODUCT, CURRENT_PRODUCT)
