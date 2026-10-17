@@ -212,3 +212,14 @@ def test_metadata_decoding_covers_nested_escaped_values(monkeypatch):
     value = "C:" + "\\Users\\" + "synthetic-person\\file"
     content = SCAN._metadata_content({"tags": {"comment": [value]}})
     assert SCAN.Finding("synthetic", "personal-home-path") in SCAN._scan_bytes(content, location="synthetic", deny=())
+
+
+def test_image_inspection_never_executes_candidate_exiftool_config(tmp_path, monkeypatch):
+    # ExifTool's default configuration is Perl code, not asset metadata.
+    (tmp_path / ".ExifTool_config").write_text(
+        "BEGIN { open(my $f, '>', 'executed'); print $f 'synthetic'; close($f); } 1;\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("EXIFTOOL_HOME", str(tmp_path))
+    assert inspect(FIXTURE.read_bytes()) == []
+    assert not (tmp_path / "executed").exists()

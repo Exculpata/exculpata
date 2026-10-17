@@ -545,7 +545,7 @@ def _scan_image(data: bytes, *, name: str, location: str, deny: tuple[bytes, ...
             handle.write(data)
             handle.flush()
             result = subprocess.run(
-                [exiftool, "-j", "-a", "-G1:4", "-u", "-U", "-ee", "-b", handle.name],
+                [exiftool, "-config", "", "-j", "-a", "-G1:4", "-u", "-U", "-ee", "-b", handle.name],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30,
             )
         if result.returncode or result.stderr or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:

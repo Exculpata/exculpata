@@ -185,5 +185,7 @@ Image inspection requires ExifTool (`libimage-exiftool-perl` on Ubuntu,
 `exiftool` on Homebrew) for GIF, PNG, JPEG and WebP. Audio/video inspection uses
 ffprobe and includes format, stream and chapter tags. Metadata values are
 inspected after JSON decoding; image binary metadata values are decoded too.
-Missing tools, parser errors, warnings and image type mismatches fail closed.
+ExifTool configuration loading is disabled so candidate files cannot execute
+Perl configuration during inspection. Missing tools, parser errors, warnings
+and image type mismatches fail closed.
 PDFs, archives and other files retain their existing inspection requirements.
