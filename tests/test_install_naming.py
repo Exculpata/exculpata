@@ -130,7 +130,7 @@ def test_shell_cannot_override_saved_naming_coordinates(tmp_path, names):
     assert env["EXCULPATA_IMAGE_NAMESPACE"] == f"{names}-{installer.hashlib_short(root)}"
     assert env["EXCULPATA_COMPOSE_PROJECT"] == f"{names}-{installer.hashlib_short(root)}"
     assert "COMPOSE_PROJECT_NAME" not in env
-    assert "EXCULPATA_APP_ENV_FILE" not in env
+    assert env["EXCULPATA_APP_ENV_FILE"] == f"{names}.env"
 
 
 @pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
@@ -350,3 +350,42 @@ def test_resume_keeps_saved_hostname_when_server_name_is_omitted(tmp_path):
     args = installer._parser().parse_args(["install", "--root", str(root), "--resume", "--non-interactive"])
     installation, _release = installer._saved_node_arguments(args, root)
     assert args.server_name == saved == installation["server_name"]
+
+
+@pytest.mark.parametrize("files,explicit,legacy_explicit,expected", [
+    (["legacy"], None, None, "legacy"),
+    (["current"], None, None, "current"),
+    (["legacy", "current"], None, None, "current"),
+    (["legacy", "current", "custom"], "custom", None, "custom"),
+    (["legacy", "current", "custom"], "custom", "legacy", "custom"),
+    (["legacy", "current"], None, "legacy", "legacy"),
+    (["legacy"], "current", None, "current"),
+    ([], None, None, "legacy"),
+])
+def test_compose_selects_one_saved_application_file(tmp_path, files, explicit, legacy_explicit, expected):
+    root, _, paths = configured_node(tmp_path)
+    filenames = {"legacy": f"{LEGACY_STEM}.env", "current": "exculpata.env", "custom": "custom.env"}
+    for path in paths["config"].glob("*.env"):
+        if path.name != "transcription.env":
+            path.unlink()
+    for name in files:
+        (paths["config"] / filenames[name]).write_text(f"SYNTHETIC_SELECTED={name}\nSYNTHETIC_{name.upper()}_ONLY=1\n")
+    saved = root / "compose.env"
+    if explicit:
+        saved.write_text(saved.read_text() + f"EXCULPATA_APP_ENV_FILE={filenames[explicit]}\n")
+    if legacy_explicit:
+        saved.write_text(saved.read_text() + f"{LEGACY_ENV_PREFIX}APP_ENV_FILE={filenames[legacy_explicit]}\n")
+    before = saved.read_bytes()
+    command = installer._compose(root, (), release=ROOT, auth="local")
+    environment = installer._compose_environment(command, {"PATH": os.environ["PATH"], "EXCULPATA_APP_ENV_FILE": "unrelated.env"})
+    assert environment["EXCULPATA_APP_ENV_FILE"] == filenames[expected]
+    result = subprocess.run([*command, "config", "--format", "json"], env=environment, capture_output=True, text=True)
+    assert saved.read_bytes() == before
+    if expected not in files:
+        assert result.returncode != 0  # A missing explicit file must not silently fall back.
+        return
+    assert result.returncode == 0, result.stderr
+    app = json.loads(result.stdout)["services"]["app"]["environment"]
+    assert app["SYNTHETIC_SELECTED"] == expected
+    for other in set(files) - {expected}:
+        assert f"SYNTHETIC_{other.upper()}_ONLY" not in app

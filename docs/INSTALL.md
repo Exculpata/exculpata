@@ -920,6 +920,15 @@ secret. Follow [Authentication](AUTHENTICATION.md) exactly.
 
 ## Upgrade
 
+The installer keeps the saved application env file on upgrade. An explicit
+`EXCULPATA_APP_ENV_FILE` in `compose.env` wins (the previous-prefix alias is
+also accepted). Otherwise it selects `exculpata.env` if present in the saved
+config root, then `recordbench.env`. The missing new-name file does not require
+renaming or copying an existing configuration. Fresh installs still write
+`exculpata.env`. Direct `docker compose` cannot detect filenames: set
+`EXCULPATA_APP_ENV_FILE` to the intended filename when both files exist or when
+using a new-name file; its unset default remains `recordbench.env`.
+
 The installer stages an immutable, content-addressed release capsule under the
 node root and gives every locally built image a release-specific tag. It does
 not fetch or merge source code: review and update the clone first, then run:

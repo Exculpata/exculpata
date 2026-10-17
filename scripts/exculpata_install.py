@@ -172,6 +172,14 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Compose defaults changed for new checkouts; older nodes may omit these.
     for suffix in ("COMPOSE_PROJECT", "IMAGE_NAMESPACE"):
         result[f"EXCULPATA_{suffix}"] = _env(f"{LEGACY_ENV_PREFIX}{suffix}", f"{LEGACY_STEM}", environ=saved)
+    # Select one complete application file; never merge old and new settings.
+    # Explicit saved names remain authoritative, including a missing file (which
+    # Compose must report). Unrelated shell values were removed above.
+    selected = _env(f"{LEGACY_ENV_PREFIX}APP_ENV_FILE", "", environ=saved)
+    if not selected:
+        config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
+        selected = "exculpata.env" if (config / "exculpata.env").is_file() else f"{LEGACY_STEM}.env"
+    result["EXCULPATA_APP_ENV_FILE"] = selected
     return result
 
 

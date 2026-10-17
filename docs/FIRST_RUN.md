@@ -8,6 +8,15 @@ receipts or the handoff.
 
 ## CPU practice matter
 
+The installer keeps the saved application env file on upgrade. An explicit
+`EXCULPATA_APP_ENV_FILE` in `compose.env` wins (the previous-prefix alias is
+also accepted). Otherwise it selects `exculpata.env` if present in the saved
+config root, then `recordbench.env`. The missing new-name file does not require
+renaming or copying an existing configuration. Fresh installs still write
+`exculpata.env`. Direct `docker compose` cannot detect filenames: set
+`EXCULPATA_APP_ENV_FILE` to the intended filename when both files exist or when
+using a new-name file; its unset default remains `recordbench.env`.
+
 Start with the [Ubuntu CPU node quick start](INSTALL.md#cpu-node-quick-start-ubuntu-2404)
 and a successful `./install doctor --root /srv/exculpata`. This first journey
 uses just the installer-created administrator and one synthetic text file.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from case_intelligence.legacy_names import (
+    CURRENT_STEM,
     LEGACY_STEM,
 )
 
@@ -205,7 +206,7 @@ def main():
                 (() => {{
                     const originalFetch = window.fetch;
                     const fixture = window.__readinessFocusFixture = {{pending:null, rendered:0}};
-                    window.addEventListener('{LEGACY_STEM}:readiness', () => fixture.rendered++);
+                    window.addEventListener('{CURRENT_STEM}:readiness', () => fixture.rendered++);
                     window.fetch = async (...args) => {{
                         const response = await originalFetch(...args);
                         if (!new URL(typeof args[0] === 'string' ? args[0] : args[0].url,

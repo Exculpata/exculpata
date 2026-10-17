@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from case_intelligence.legacy_names import (
+    CURRENT_STEM,
     LEGACY_STEM,
 )
 
@@ -273,7 +274,7 @@ def main():
 
             go(prefix + "?" + urlencode({"conversation": conversation.conversation_id}))
             main_window = driver.current_window_handle
-            driver.execute_script(f"window.emailMixedCoverage = false; window.addEventListener('{LEGACY_STEM}:readiness', event => {{ if (event.detail.attention_count === 1) window.emailMixedCoverage = true; }});")
+            driver.execute_script(f"window.emailMixedCoverage = false; window.addEventListener('{CURRENT_STEM}:readiness', event => {{ if (event.detail.attention_count === 1) window.emailMixedCoverage = true; }});")
             damaged = root / "damaged.pdf"
             damaged.write_bytes(b"%PDF-1.4\nGenerated damaged document.\n%%EOF\n")
             driver.switch_to.new_window("tab")

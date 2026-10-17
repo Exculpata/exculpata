@@ -19,7 +19,8 @@ def main():
         raise ValueError('The installation and Python environment must be outside this checkout.')
     destination.mkdir(parents=True, mode=0o700)
     source = Path(__file__).resolve().parent
-    for name in ('pre-push-publication.py', 'publication-check.py'):
+    for name in ('pre-push-publication.py', 'publication-check.py',
+                 'publication_home_owners.py', 'legacy_name_check.py'):
         shutil.copyfile(source / name, destination / name)
     hook = destination / 'pre-push'
     hook.write_text('#!/bin/sh\nset -eu\nexec ' + shlex.quote(str(interpreter)) + ' -I ' +

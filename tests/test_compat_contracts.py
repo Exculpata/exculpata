@@ -138,6 +138,7 @@ def _module(relative: str, name: str):
 def test_fresh_sample_selects_the_current_app_env_file():
     sample = _read(".env.example")
     assert f"{CURRENT_ENV_PREFIX}APP_ENV_FILE={CURRENT_STEM}.env" in sample
+    assert f"{CURRENT_ENV_PREFIX}STORAGE_NAMES={CURRENT_STEM}" in sample
     compose = _read("compose.yaml")
     default = (
         "${" + CURRENT_ENV_PREFIX + "APP_ENV_FILE:-${"
@@ -217,3 +218,12 @@ def test_documented_identifiers_match_code_or_the_legacy_list():
     assert checker.findings_in_text("synthetic.md", example, corpus, legacy) == []
     mount = f"Cache at `/var/lib/{CURRENT_STEM}/model-cache`.\n"
     assert checker.findings_in_text("synthetic.md", mount, corpus, legacy)
+
+
+def test_browser_readiness_harnesses_use_the_dispatched_event():
+    producer = _read("src/case_intelligence/static/case-intelligence.js")
+    assert f'CustomEvent("{CURRENT_STEM}:readiness"' in producer
+    for driver in ("matter-knowledge", "email-coverage"):
+        source = _read(f"scripts/browser-accept-{driver}.py")
+        assert "addEventListener('{CURRENT_STEM}:readiness'" in source
+        assert "{LEGACY_STEM}:readiness" not in source

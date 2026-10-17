@@ -195,3 +195,23 @@ def test_installed_scanner_ignores_candidate_pythonpath(tmp_path):
                      input=f"refs/heads/main {oid} refs/heads/main {'0' * 40}\n")
     assert not marker.exists()
     assert result.returncode != 0
+
+
+def test_installed_hook_retains_historical_owners_and_checks_legacy_names(tmp_path):
+    import sys
+    root = repository(tmp_path)
+    destination = tmp_path / "trusted-hook"
+    result = command(root, sys.executable, str(ROOT / "scripts/install-publication-hook.py"), str(destination))
+    assert result.returncode == 0, result.stderr
+    for name in ("publication_home_owners.py", "legacy_name_check.py"):
+        assert (destination / name).read_bytes() == (ROOT / "scripts" / name).read_bytes()
+    # This compatibility file is allowed to retain the historical fixture owner.
+    (root / "compose.yaml").write_text(f"# /home/{LEGACY_STEM}/runtime\n")
+    oid = commit(root)
+    def inspect_installed():
+        return command(root, str(destination / "pre-push"), input=f"HEAD {oid} refs/heads/main {'0' * 40}\n")
+    result = inspect_installed()
+    assert result.returncode == 0, result.stderr
+    (root / "unexpected.txt").write_text(LEGACY_STEM)
+    oid = commit(root)
+    assert inspect_installed().returncode != 0

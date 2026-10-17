@@ -244,11 +244,7 @@ def _safe_example_ip(
 
 
 def _previous_fixture_home_owners() -> frozenset[str]:
-    """Load retained fixture owners from the sibling file when it is present.
-
-    The isolated pre-push copy of this scanner omits that file. Synthetic hook
-    tests do not need the historical owner.
-    """
+    """Load retained fixture owners bundled with the reviewed scanner."""
     path = Path(__file__).with_name("publication_home_owners.py")
     if not path.is_file():
         return frozenset()
