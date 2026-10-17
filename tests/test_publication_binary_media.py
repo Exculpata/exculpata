@@ -261,3 +261,14 @@ def test_repository_fixture_records_exact_maintainer_authorization():
     assert entry["suffix"] == ".gif" and entry["status"] == "approved"
     assert entry["approver"] == "neilofneils404"
     assert entry["approved_on"] == "2026-10-17" and entry["expires"] == "2026-11-16"
+
+
+def test_valid_expired_entry_keeps_raw_scanning_without_invalidating_policy(tmp_path, monkeypatch):
+    data = FIXTURE.read_bytes()
+    review(tmp_path, monkeypatch, data,
+           approved_on=(date.today() - timedelta(days=40)).isoformat(),
+           expires=(date.today() - timedelta(days=10)).isoformat())
+    assert SCAN._reviewed_binary_media(data, ".gif") is False
+    findings = inspect(data)
+    assert SCAN.Finding("synthetic", "non-example-email-address") in findings
+    assert SCAN.Finding("synthetic", "media-review-policy-invalid") not in findings

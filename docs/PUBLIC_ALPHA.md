@@ -170,7 +170,9 @@ lowercase image/audio/video extension), `reason`, `status`, `approver`,
 `approved_on`, and `expires`. Dates use `YYYY-MM-DD`. An approved entry must
 name a maintainer from the trusted sibling `publication-approvers.json`, have an
 approval date no later than today, and expire within 180 days of that date.
-Duplicate digest/suffix entries are invalid. Expired entries grant no exception.
+Duplicate digest/suffix entries are invalid. Expired entries remain valid records
+but grant no exception and contribute no active approver requirement. Protected
+policy or code changes still require a fresh maintainer review.
 A pending entry has null `approver` and `approved_on` and grants no exception.
 The committed synthetic GIF has explicit maintainer authorization dated
 2026-10-17 through 2026-11-16 for its exact digest and GIF suffix. This records
@@ -184,8 +186,10 @@ A name in a JSON file is not evidence of approval. The read-only trusted
 allowlist from its trusted base revision. It fetches candidate policy only as
 bounded JSON data and verifies live GitHub reviews for the exact PR head. It
 never checks out or executes candidate code, uses no API credentials, and
-persists no checkout credentials. API errors, pagination limits and incomplete
-change lists fail closed. Changes to policy, approval authority, scanner, hooks,
+persists no checkout credentials. The live PR base SHA must match the actual
+trusted checkout SHA. Changed paths come from complete immutable base/head Git
+trees, including deleted paths and mode changes. Mutable PR file lists are not
+used. API errors, pagination limits and oversized or truncated trees fail closed. Changes to policy, approval authority, scanner, hooks,
 workflows, Makefile, CODEOWNERS or agent instructions require review, including renames.
 
 The allowlisted maintainer must submit a GitHub PR review on the current head
@@ -210,19 +214,28 @@ it exists only in a candidate branch. A maintainer must independently review and
 bootstrap the verifier, workflow and authority list onto the trusted default
 branch. CODEOWNERS documents ownership; it does not itself enforce approval.
 Where the repository plan supports it, a maintainer must separately configure a
-[required-workflow ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
+[required-workflow ruleset](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-workflows-to-pass-before-merging)
 for this trusted workflow, not merely a candidate-spoofable check name. If that
 feature is unavailable, enforcement needs a separately trusted integration; this
 patch does not provide one. No repository protection settings are changed. Until those steps are complete, trusted CI
 enforcement is not active. Pending exemption entries still fail the local scanner.
 
-After submitting, dismissing or changing a review, rerun the trusted workflow
-against the exact current head, or dispatch it from `main` with the PR number
-and expected head. Review events do not trigger this workflow, so a prior green
-result is not proof against later revocation. Refresh the verification immediately
-before any publication decision; automatic review-event refresh requires a
-separately trusted integration. Do not treat a local run of candidate verifier
-code as trusted approval evidence.
+**Revocation limitation: a previous green run can remain stale after a review
+changes. This patch does not provide automatic revocation enforcement.**
+After submitting, dismissing or changing a review, run trusted verification on
+the exact current head before any publication decision. Dispatch from `main`
+with the PR number and expected head; if `main` has advanced, start a fresh run
+rather than rerunning an old checkout. A stale trusted-base SHA fails closed.
+
+The `pull_request_review` event executes a workflow from the PR context. A
+candidate-controlled review-event workflow, even if it only wakes a trusted
+`workflow_run` consumer, can be removed or altered to suppress the refresh.
+It cannot establish the required revocation guarantee. The existing read-only
+permissions also cannot invalidate an earlier check result. Reliable automatic
+refresh/invalidation needs a separately trusted integration and separately
+authorized enforcement configuration. No such relay, credentials, permissions
+or settings are added here. See [GitHub review-event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request_review).
+Do not treat a local run of candidate verifier code as trusted approval evidence.
 
 The hook installer copies policy and approver authority alongside its scanner
 outside the checkout. Editing candidate files cannot change an installed hook.

@@ -23,6 +23,7 @@ PROTECTED = {
     ".github/CODEOWNERS", "AGENTS.md", "Makefile",
 }
 MAX_BYTES = 512 * 1024
+MAX_TREE_BYTES = 8 * 1024 * 1024
 
 
 class ApprovalError(ValueError):
@@ -38,8 +39,8 @@ def unique_object(pairs):
     return result
 
 
-def decode(data):
-    if len(data) > MAX_BYTES:
+def decode(data, limit=MAX_BYTES):
+    if len(data) > limit:
         raise ApprovalError("approval-data-too-large")
     return json.loads(data, object_pairs_hook=unique_object)
 
@@ -93,9 +94,10 @@ def policy_approvers(data, maintainers):
             raise ApprovalError("invalid-media-review-date")
         approved = date.fromisoformat(entry["approved_on"])
         expiry = date.fromisoformat(entry["expires"])
-        if not approved <= date.today() <= expiry or not 0 < (expiry - approved).days <= 180:
+        if approved > date.today() or not 0 < (expiry - approved).days <= 180:
             raise ApprovalError("invalid-media-review-lifetime")
-        approvers.add(entry["approver"])
+        if expiry >= date.today():
+            approvers.add(entry["approver"])
     return approvers
 
 
@@ -152,13 +154,13 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class GitHub:
     """Fixed public API origin, no token, no candidate-controlled URLs or artifacts."""
-    def get(self, path):
+    def get(self, path, *, limit=MAX_BYTES):
         request = urllib.request.Request("https://api.github.com/repos/" + REPOSITORY + path,
             headers={"Accept": "application/vnd.github+json", "User-Agent": "Exculpata-publication-approval",
                      "X-GitHub-Api-Version": "2022-11-28"})
         with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
-            data = response.read(MAX_BYTES + 1)
-        return decode(data)
+            data = response.read(limit + 1)
+        return decode(data, limit)
 
     def pages(self, path):
         result = []
@@ -170,6 +172,40 @@ class GitHub:
             if len(batch) < 100:
                 return result
         raise ApprovalError("api-pagination-limit")
+
+    def tree(self, commit_sha):
+        commit = self.get("/git/commits/" + commit_sha)
+        if not isinstance(commit, dict):
+            raise ApprovalError("invalid-immutable-commit")
+        tree_sha = commit.get("tree", {}).get("sha")
+        if (commit.get("sha") != commit_sha or not isinstance(tree_sha, str)
+                or re.fullmatch(r"[0-9a-f]{40}", tree_sha) is None):
+            raise ApprovalError("invalid-immutable-commit")
+        value = self.get("/git/trees/" + tree_sha + "?recursive=1", limit=MAX_TREE_BYTES)
+        if (not isinstance(value, dict) or value.get("sha") != tree_sha
+                or value.get("truncated") is not False or not isinstance(value.get("tree"), list)
+                or len(value["tree"]) > 100_000):
+            raise ApprovalError("incomplete-immutable-tree")
+        result = {}
+        modes = {"blob": {"100644", "100755", "120000"}, "tree": {"040000"}, "commit": {"160000"}}
+        for entry in value["tree"]:
+            if not isinstance(entry, dict):
+                raise ApprovalError("invalid-immutable-tree-entry")
+            path, kind, mode, sha = (entry.get(key) for key in ("path", "type", "mode", "sha"))
+            if (not isinstance(path, str) or not path or path in result
+                    or any(part in {"", ".", ".."} for part in path.split("/"))
+                    or kind not in modes or mode not in modes[kind]
+                    or not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None):
+                raise ApprovalError("invalid-immutable-tree-entry")
+            result[path] = (kind, mode, sha)
+        return result
+
+    def changed_files(self, base_sha, head_sha):
+        # Compare immutable complete trees; the PR files endpoint can race with
+        # a moving head, and the compare endpoint truncates its files list.
+        base, head = self.tree(base_sha), self.tree(head_sha)
+        return [{"filename": path} for path in sorted(base.keys() | head.keys())
+                if base.get(path) != head.get(path)]
 
     def policy(self, head):
         value = self.get("/contents/" + POLICY + "?ref=" + head)
@@ -190,19 +226,18 @@ def trusted_file(path):
     return path.read_bytes()
 
 
-def verify_current(client, number, expected_head, root):
+def verify_current(client, number, expected_head, root, trusted_base):
     maintainers = maintainers_from(trusted_file(root / APPROVERS))
     base_policy = trusted_file(root / POLICY)
     path = f"/pulls/{number}"
     pr = client.get(path)
     if (pr.get("state") != "open" or pr.get("base", {}).get("ref") != "main"
             or pr.get("base", {}).get("repo", {}).get("full_name") != REPOSITORY
-            or pr.get("head", {}).get("sha") != expected_head):
+            or pr.get("head", {}).get("sha") != expected_head
+            or pr.get("base", {}).get("sha") != trusted_base):
         raise ApprovalError("pull-request-head-or-base-mismatch")
     policy = client.policy(expected_head)
-    files = client.pages(path + "/files")
-    if len(files) != pr.get("changed_files"):
-        raise ApprovalError("incomplete-change-list")
+    files = client.changed_files(trusted_base, expected_head)
     reviews = client.pages(path + "/reviews")
     verify_policy(base_policy, policy, maintainers, expected_head, reviews, files)
     current = client.get(path)
@@ -217,10 +252,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pull-request", type=int, required=True)
     parser.add_argument("--expected-head", required=True)
+    parser.add_argument("--trusted-base", required=True)
     args = parser.parse_args()
-    if args.pull_request <= 0 or re.fullmatch(r"[0-9a-f]{40}", args.expected_head) is None:
+    if (args.pull_request <= 0 or any(re.fullmatch(r"[0-9a-f]{40}", value) is None
+                                      for value in (args.expected_head, args.trusted_base))):
         raise ApprovalError("invalid-verification-target")
-    verify_current(GitHub(), args.pull_request, args.expected_head, Path(__file__).resolve().parents[1])
+    verify_current(GitHub(), args.pull_request, args.expected_head,
+                   Path(__file__).resolve().parents[1], args.trusted_base)
     print("Publication approval verified against trusted maintainer identities and live GitHub reviews.")
 
 

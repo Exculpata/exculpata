@@ -34,4 +34,5 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           python3 -I scripts/verify-publication-approval.py \
-            --pull-request "$APPROVAL_PR" --expected-head "$APPROVAL_HEAD"
+            --pull-request "$APPROVAL_PR" --expected-head "$APPROVAL_HEAD" \
+            --trusted-base "$GITHUB_SHA"
