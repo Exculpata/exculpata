@@ -36,7 +36,7 @@ MAX_SUMMARY_LINES = 12
 NATIVE_FRAME = re.compile(r'\s*(?:#\d+ 0x[0-9a-f]+\b|\d+\s+\S+\s+0x[0-9a-f]+\b)')
 JOURNEYS = (
     ('intake', 'browser-accept-intake-receipts.py', 'receipt-browser-result.json', 11, ()),
-    ('dusk', 'browser-accept-dusk.py', 'receipt.json', 12, ()),
+    ('dusk', 'browser-accept-dusk.py', 'receipt.json', 164, ()),
     ('reports', 'browser-accept-reports-bundle.py', 'receipt.json', 16, ('--verify-readiness',)),
     ('workspace-layout', 'browser-accept-workspace-layout.py', 'receipt.json', 19, ()),
     ('activity', 'browser-accept-activity.py', 'receipt.json', 10, ()),

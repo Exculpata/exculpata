@@ -18,7 +18,7 @@ import threading
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import JavascriptException, TimeoutException
 from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -34,10 +34,23 @@ from case_intelligence.workbench import create_workbench_app  # noqa: E402
 # Composite every ancestor background and opacity, including transparent children.
 CONTRAST = """
 const el = arguments[0], pseudo = arguments[1], property = arguments[2];
-const rgba = s => {const c=s.match(/[\\d.]+/g).map(Number); if(c.length===3)c.push(1); return c;};
+const rgba = s => {
+  if (!/^rgba?\\([\\d.,\\s]+\\)$/.test(s)) throw new Error('Unsupported contrast color: ' + s);
+  const c=s.match(/[\\d.]+/g).map(Number);
+  if(c.length===3)c.push(1);
+  if(c.length!==4 || c.slice(0,3).some(v=>v<0 || v>255) || c[3]<0 || c[3]>1)
+    throw new Error('Invalid contrast color: ' + s);
+  return c;
+};
 const over = (f,b) => f.slice(0,3).map((v,i) => v*f[3]+b[i]*(1-f[3])).concat(1);
 const chain = []; for(let n=el;n;n=n.parentElement) chain.unshift(n);
 if(arguments[3]) chain.pop();
+// A color-only calculation cannot establish contrast over an image/gradient.
+for (const n of chain) {
+  const s=getComputedStyle(n);
+  if (s.backgroundImage !== 'none' || s.filter !== 'none' || s.mixBlendMode !== 'normal')
+    throw new Error('Unsupported contrast paint: image, filter or blending');
+}
 let bg=[255,255,255,1], fg;
 const paint = (i, back) => {
   const s=getComputedStyle(chain[i]);
@@ -58,6 +71,58 @@ const lum = c => c.slice(0,3).map(v=>{v/=255;return v<=.04045?v/12.92:((v+.055)/
 const a=lum(fg),b=lum(bg);
 return {ratio:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),fg,bg};
 """
+
+
+def verify_contrast_compositing(driver):
+    """Exercise the actual browser calculation with independently known colors."""
+    cases = (
+        ('inherited dark surface', 'background:rgb(20,20,20);color:white',
+         '', '', None, [255, 255, 255], [20, 20, 20]),
+        ('alpha foreground', 'background:white', '', 'color:rgba(0,0,0,.5)',
+         None, [127.5, 127.5, 127.5], [255, 255, 255]),
+        ('translucent nested surface', 'background:black;color:white',
+         'background:rgba(255,255,255,.5)', '', None,
+         [255, 255, 255], [127.5, 127.5, 127.5]),
+        ('nested group opacity', 'background:white', 'background:black;opacity:.5',
+         'color:white;opacity:.5', None, [191.25, 191.25, 191.25], [127.5, 127.5, 127.5]),
+        ('placeholder alpha and opacity', 'background:white', '',
+         'background:transparent;border:0', '::placeholder',
+         [191.25, 191.25, 191.25], [255, 255, 255]),
+    )
+    for label, outer, inner, text, pseudo, foreground, background in cases:
+        probe = driver.execute_script("""
+            const root=document.createElement('div');
+            root.style.cssText=arguments[0];
+            const middle=document.createElement('div'); middle.style.cssText=arguments[1];
+            const target=document.createElement(arguments[3] ? 'input' : 'span');
+            target.style.cssText=arguments[2]; target.id='synthetic-contrast-probe';
+            target.placeholder='Synthetic hint'; target.textContent='Synthetic text';
+            const style=document.createElement('style');
+            style.textContent='#synthetic-contrast-probe::placeholder {color:rgba(0,0,0,.5);opacity:.5}';
+            root.append(style,middle); middle.append(target); document.body.append(root);
+            return target;
+        """, outer, inner, text, pseudo)
+        try:
+            measured = driver.execute_script(CONTRAST, probe, pseudo, 'color', False)
+            for key, expected in (('fg', foreground), ('bg', background)):
+                assert all(abs(a - b) < .01 for a, b in zip(measured[key], expected)), (label, measured)
+        finally:
+            driver.execute_script('arguments[0].parentElement.parentElement.remove()', probe)
+    for style in ('color:color(srgb .5 .5 .5)', 'background-image:linear-gradient(white,black)',
+                  'filter:brightness(.5)', 'mix-blend-mode:multiply'):
+        probe = driver.execute_script("""
+            const target=document.createElement('span'); target.style.cssText=arguments[0];
+            target.textContent='Synthetic unsupported paint'; document.body.append(target); return target;
+        """, style)
+        try:
+            try:
+                driver.execute_script(CONTRAST, probe, None, 'color', False)
+            except JavascriptException as exc:
+                assert 'Unsupported contrast' in str(exc), str(exc)
+            else:
+                raise AssertionError(f'Unsupported paint accepted: {style}')
+        finally:
+            driver.execute_script('arguments[0].remove()', probe)
 
 
 def wait_for_light_snapshot(wait, snapshot, light):
@@ -155,6 +220,8 @@ def main():
             assert abs(measured['ratio'] - 3.976653) < .001, measured
             driver.execute_script('arguments[0].parentElement.remove()', probe)
             report['checks'].append('Contrast calculation composites transparent text and ancestor backgrounds')
+            verify_contrast_compositing(driver)
+            report['checks'].append('Contrast probes preserve inherited surfaces, alpha colors, nested opacity and placeholder opacity')
             one('[data-assistant-collapse]').click()
             # Dark is the default appearance. Capture Light only after it is applied.
             Select(one('[data-theme-picker]')).select_by_value('light')
@@ -173,11 +240,36 @@ def main():
             from browser_appearance import APPEARANCES, select_appearance
             for mode, accent in APPEARANCES:
                 select_appearance(driver, wait, mode, accent)
+                appearance = f'{mode}/{accent}'
+                # Require normal-text AA even for large headings (a stricter target).
+                for selector in ('.source-library-heading h1', '#setup-source-title', '.source-results-heading h3'):
+                    check(selector)
                 for selector in ('.source-stat-card strong', '.source-stat-card span',
                                  '.source-library-filters input[type=search]', '.source-library-filters select',
                                  '.source-bulk-toolbar strong', '.source-bulk-toolbar select',
                                  '[data-source-bulk-submit]:disabled'):
                     check(selector)
+                search = one('.source-library-filters input[type=search]')
+                query = search.get_attribute('value')
+                search.clear()
+                assert driver.execute_script('return arguments[0].matches(":placeholder-shown")', search)
+                check('.source-library-filters input[type=search]', '::placeholder')
+                search.send_keys(query)
+                selected = one('[data-source-select]')
+                driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', selected)
+                selected.click()
+                assert selected.is_selected(), f'{appearance}: source row was not selected'
+                row = '.source-table-row:has([data-source-select]:checked)'
+                for text in ('.source-name-cell strong', '.file-mark', '.source-collection-cell a',
+                             '.source-collection-cell small', '.review-badge', '.source-state',
+                             '.source-count > span:last-child', '.row-actions a', '.row-actions button'):
+                    check(f'{row} {text}')
+                Select(one('[data-source-bulk-action]')).select_by_value('create_set')
+                placeholder = wait.until(lambda _: one('[data-bulk-set-name]')
+                                         if one('[data-bulk-set-name]').is_displayed() else False)
+                assert driver.execute_script('return arguments[0].matches(":placeholder-shown")', placeholder)
+                check('[data-bulk-set-name]', '::placeholder')
+                report['checks'].append(f'{appearance}: headings, visible placeholders and selected source-row text meet 4.5:1')
                 outside = outside_disabled_style()
                 # Disabled actions remain readable on their own theme surface.
                 from exculpata_theme_contrast import cr

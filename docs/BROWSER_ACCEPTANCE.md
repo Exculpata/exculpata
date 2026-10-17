@@ -279,4 +279,23 @@ The pinned runner retains the historical `dusk` journey/artifact identifier for 
 
 The detailed Dark/Amber journey also checks hover, selected cards, paged navigation, mobile filters, and keyboard focus (solid outline at least 2px and 3:1 against the control and its parent surface). A final Light/Cyan round trip compares the complete computed-style snapshot with the original, including foreground, background, opacity, borders and element count. Timeouts and thresholds remain strict.
 
+In every Dark/Light and Cyan/Green/Amber combination, the same journey requires
+4.5:1 for the Review, Sources and Matching sources headings, both visibly empty
+source-library placeholders, and the first source row after native checkbox
+selection (name, type, collection, metadata, review state, status, length and
+actions). The heading target deliberately exceeds the AA large-text minimum.
+The filter value is restored without submitting, and no bulk action is saved.
+The runner requires all 164 checks, including the existing snapshot, focus,
+disabled-control and mobile assertions. Real-browser probes verify inherited
+dark surfaces, translucent backgrounds, alpha text, nested group opacity and
+placeholder opacity. Unsupported color formats, images, gradients, filters and
+blending fail explicitly instead of yielding a misleading color-only ratio.
+
+For the historical placeholder regression, apply only the journey's test changes
+to a disposable checkout of `6ebc292^` and run it with the same verified browser
+and driver. Its source-library placeholder must fail the 4.5:1 assertion; current
+main with the test changes must pass. Keep historical application and stylesheet
+sources intact and record the browser version, revision, failing selector and
+measured ratio. A navigation or setup failure is not a contrast regression result.
+
 Account controls exercise independently persisted mode and accent through the mobile account menu. Ask heading, matter context, Case file, graph, full-text review and layout journeys cover all six combinations. The standalone journeys clear deployment settings before constructing their disposable application. All fixtures and screenshot artifacts are synthetic.
