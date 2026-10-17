@@ -162,6 +162,10 @@ The rename contract check inspects repository file and directory names before
 filtering file contents by type. Extensionless tools and binary filenames must
 also use declared names. Historical fixtures, cached dependencies, and historical
 assets keep their existing exclusions.
+Python f-strings and string concatenations are inspected without executing source;
+known stem imports and constant aliases are resolved, and unknown runtime pieces
+must still fit a declared naming family. Existing persisted formats, runtime labels,
+and exact temporary-directory prefixes are retained explicitly in the table.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
@@ -194,6 +198,25 @@ while conflicting authentication headers fail closed.
 | environment | `RECORDBENCH_{suffix}` | `EXCULPATA_{suffix}` | alias |
 | exact_v1 | `recordbench-exact-v1` | `recordbench-exact-v1` | retained |
 | exact_v2 | `recordbench-exact-v2` | `recordbench-exact-v2` | retained |
+| format_answer_context_v1 | `recordbench-answer-context-v1` | `recordbench-answer-context-v1` | retained |
+| format_assertion_v1 | `recordbench-assertion-v1` | `recordbench-assertion-v1` | retained |
+| format_chronology_v1 | `recordbench-chronology-v1` | `recordbench-chronology-v1` | retained |
+| format_context_model_acceptance_v1 | `recordbench-context-model-acceptance-v1` | `recordbench-context-model-acceptance-v1` | retained |
+| format_context_selections_v1 | `recordbench-context-selections-v1` | `recordbench-context-selections-v1` | retained |
+| format_conversations_v1 | `recordbench-conversations-v1` | `recordbench-conversations-v1` | retained |
+| format_discovery_gold_v1 | `recordbench-discovery-gold-v1` | `recordbench-discovery-gold-v1` | retained |
+| format_dispatch_v1 | `recordbench-dispatch-v1` | `recordbench-dispatch-v1` | retained |
+| format_entity_discovery_v1 | `recordbench-entity-discovery-v1` | `recordbench-entity-discovery-v1` | retained |
+| format_entity_v1 | `recordbench-entity-v1` | `recordbench-entity-v1` | retained |
+| format_intake_receipt_v1 | `recordbench-intake-receipt-v1` | `recordbench-intake-receipt-v1` | retained |
+| format_local_ai_v1 | `recordbench-local-ai-v1` | `recordbench-local-ai-v1` | retained |
+| format_media_work_product_v2 | `recordbench-media-work-product-v2` | `recordbench-media-work-product-v2` | retained |
+| format_model_portfolio_gold_v1 | `recordbench-model-portfolio-gold-v1` | `recordbench-model-portfolio-gold-v1` | retained |
+| format_notebook_v1 | `recordbench-notebook-v1` | `recordbench-notebook-v1` | retained |
+| format_question_replay_result_v1 | `recordbench-question-replay-result-v1` | `recordbench-question-replay-result-v1` | retained |
+| format_question_replay_v1 | `recordbench-question-replay-v1` | `recordbench-question-replay-v1` | retained |
+| format_source_check_v1 | `recordbench-source-check-v1` | `recordbench-source-check-v1` | retained |
+| format_work_product_bundle_v1 | `recordbench-work-product-bundle-v1` | `recordbench-work-product-bundle-v1` | retained |
 | git_config | `recordbench.{suffix}` | `exculpata.{suffix}` | alias |
 | gpu_lock | `/tmp/recordbench-transcription-gpu.lock` | `/tmp/recordbench-transcription-gpu.lock` | retained |
 | header | `X-RecordBench-{suffix}` | `X-Exculpata-{suffix}` | alias |
@@ -226,12 +249,74 @@ while conflicting authentication headers fail closed.
 | restore_shim | `recordbench-restore-drill.sh` | `exculpata-restore-drill.sh` | alias |
 | retrieval_cli | `recordbench-retrieval-worker` | `exculpata-retrieval-worker` | alias |
 | review_acceptance | `recordbench-review-acceptance-v1` | `recordbench-review-acceptance-v1` | retained |
+| runtime_discovery | `recordbench-discovery` | `recordbench-discovery` | retained |
+| runtime_export | `recordbench-export` | `recordbench-export` | retained |
+| runtime_maintenance | `recordbench-maintenance` | `recordbench-maintenance` | retained |
+| runtime_playback_1 | `recordbench-playback-1` | `recordbench-playback-1` | retained |
+| runtime_research_thread | `recordbench-research-{suffix}` | `recordbench-research-{suffix}` | retained |
+| runtime_review_thread | `recordbench-full-review-{suffix}` | `recordbench-full-review-{suffix}` | retained |
+| runtime_source_thread | `recordbench-source-{suffix}` | `recordbench-source-{suffix}` | retained |
+| runtime_storage_probe | `recordbench-storage-probe` | `recordbench-storage-probe` | retained |
 | sql_function | `recordbench_{suffix}` | `recordbench_{suffix}` | retained |
 | stage_receipt | `.recordbench-stage-receipt.json` | `.recordbench-stage-receipt.json` | retained |
 | stem | `recordbench` | `exculpata` | generation |
 | storage_marker | `.recordbench-managed-storage.json` | `.exculpata-managed-storage.json` | generation |
+| temporary_account_browser | `recordbench-account-browser-` | `recordbench-account-browser-` | retained |
+| temporary_activity | `recordbench-activity-` | `recordbench-activity-` | retained |
+| temporary_ask_heading | `recordbench-ask-heading-` | `recordbench-ask-heading-` | retained |
+| temporary_assertion_recovery | `recordbench-assertion-recovery-` | `recordbench-assertion-recovery-` | retained |
+| temporary_assertions_browser | `recordbench-assertions-browser-` | `recordbench-assertions-browser-` | retained |
+| temporary_automatic_discovery | `recordbench-automatic-discovery-` | `recordbench-automatic-discovery-` | retained |
+| temporary_briefing | `recordbench-briefing-` | `recordbench-briefing-` | retained |
+| temporary_browser_ci | `recordbench-browser-ci-` | `recordbench-browser-ci-` | retained |
+| temporary_byte_match_reader | `recordbench-byte-match-reader-` | `recordbench-byte-match-reader-` | retained |
+| temporary_cedar_browser | `recordbench-cedar-browser-` | `recordbench-cedar-browser-` | retained |
+| temporary_cited_context_browser | `recordbench-cited-context-browser-` | `recordbench-cited-context-browser-` | retained |
+| temporary_compiled_report | `recordbench-compiled-report-` | `recordbench-compiled-report-` | retained |
+| temporary_connections_browser | `recordbench-connections-browser-` | `recordbench-connections-browser-` | retained |
+| temporary_context_browser | `recordbench-context-browser-` | `recordbench-context-browser-` | retained |
+| temporary_context_model | `recordbench-context-model-` | `recordbench-context-model-` | retained |
+| temporary_context_upgrade | `recordbench-context-upgrade-` | `recordbench-context-upgrade-` | retained |
+| temporary_decision_conflicts_browser | `recordbench-decision-conflicts-browser-` | `recordbench-decision-conflicts-browser-` | retained |
+| temporary_demo | `recordbench-demo-` | `recordbench-demo-` | retained |
+| temporary_discovery_migration | `recordbench-discovery-migration-` | `recordbench-discovery-migration-` | retained |
+| temporary_dock | `recordbench-dock-` | `recordbench-dock-` | retained |
+| temporary_dusk | `recordbench-dusk-` | `recordbench-dusk-` | retained |
+| temporary_email_browser | `recordbench-email-browser-` | `recordbench-email-browser-` | retained |
+| temporary_email_reader | `recordbench-email-reader-` | `recordbench-email-reader-` | retained |
+| temporary_entities_browser | `recordbench-entities-browser-` | `recordbench-entities-browser-` | retained |
+| temporary_entity_restore | `recordbench-entity-restore-` | `recordbench-entity-restore-` | retained |
+| temporary_exact_search | `recordbench-exact-search-` | `recordbench-exact-search-` | retained |
+| temporary_folder_browser | `recordbench-folder-browser-` | `recordbench-folder-browser-` | retained |
+| temporary_full_text_browser | `recordbench-full-text-browser-` | `recordbench-full-text-browser-` | retained |
+| temporary_full_text_model | `recordbench-full-text-model-` | `recordbench-full-text-model-` | retained |
+| temporary_full_text_restore | `recordbench-full-text-restore-` | `recordbench-full-text-restore-` | retained |
+| temporary_full_text_synthesis_browser | `recordbench-full-text-synthesis-browser-` | `recordbench-full-text-synthesis-browser-` | retained |
+| temporary_groups_acceptance | `recordbench-groups-acceptance-` | `recordbench-groups-acceptance-` | retained |
+| temporary_intake_browser | `recordbench-intake-browser-` | `recordbench-intake-browser-` | retained |
+| temporary_knowledge_browser | `recordbench-knowledge-browser-` | `recordbench-knowledge-browser-` | retained |
+| temporary_layout | `recordbench-layout-` | `recordbench-layout-` | retained |
+| temporary_note_conflicts_browser | `recordbench-note-conflicts-browser-` | `recordbench-note-conflicts-browser-` | retained |
+| temporary_occurrence_browser | `recordbench-occurrence-browser-` | `recordbench-occurrence-browser-` | retained |
+| temporary_occurrence_reader | `recordbench-occurrence-reader-` | `recordbench-occurrence-reader-` | retained |
+| temporary_ocr | `recordbench-ocr-` | `recordbench-ocr-` | retained |
+| temporary_one_box | `recordbench-one-box-` | `recordbench-one-box-` | retained |
+| temporary_people_acceptance | `recordbench-people-acceptance-` | `recordbench-people-acceptance-` | retained |
+| temporary_preflight_browser | `recordbench-preflight-browser-` | `recordbench-preflight-browser-` | retained |
+| temporary_preflight_rollback | `recordbench-preflight-rollback-` | `recordbench-preflight-rollback-` | retained |
+| temporary_receipt | `recordbench-receipt-` | `recordbench-receipt-` | retained |
+| temporary_receipt_rollback | `recordbench-receipt-rollback-` | `recordbench-receipt-rollback-` | retained |
+| temporary_rename_browser | `recordbench-rename-browser-` | `recordbench-rename-browser-` | retained |
+| temporary_report_conflicts_browser | `recordbench-report-conflicts-browser-` | `recordbench-report-conflicts-browser-` | retained |
+| temporary_report_rollback | `recordbench-report-rollback-` | `recordbench-report-rollback-` | retained |
+| temporary_reports_browser | `recordbench-reports-browser-` | `recordbench-reports-browser-` | retained |
+| temporary_review_report | `recordbench-review-report-` | `recordbench-review-report-` | retained |
+| temporary_slice1a_browser | `recordbench-slice1a-browser-` | `recordbench-slice1a-browser-` | retained |
+| temporary_timing | `recordbench-timing-` | `recordbench-timing-` | retained |
+| temporary_zoom | `recordbench-zoom-` | `recordbench-zoom-` | retained |
 | transcription_notice | `/usr/share/licenses/recordbench-transcription` | `/usr/share/licenses/recordbench-transcription` | retained |
 | whisperx_build | `3.8.6+recordbench.1` | `3.8.6+recordbench.1` | retained |
+| whisperx_wheel | `3.8.6+recordbench.1-py3-none-any.whl` | `3.8.6+recordbench.1-py3-none-any.whl` | retained |
 | words_v1 | `recordbench-words-v1` | `recordbench-words-v1` | retained |
 | workbench_cli | `recordbench-workbench` | `exculpata-workbench` | alias |
 | worker_gpu_lock | `/run/lock/recordbench-transcription-gpu.lock` | `/run/lock/recordbench-transcription-gpu.lock` | retained |

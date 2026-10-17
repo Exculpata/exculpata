@@ -85,6 +85,105 @@ def test_declared_and_excluded_legacy_paths_remain_allowed(tmp_path, relative):
     assert checker.findings(tmp_path) == []
 
 
+@pytest.mark.parametrize("prefix,suffix", [("my", ""), ("old-", ""), ("my", ".py")])
+@pytest.mark.parametrize("directory", [False, True])
+def test_prefixes_are_part_of_the_checked_path_component(tmp_path, prefix, suffix, directory):
+    component = prefix + "record" + "bench" + suffix
+    path = tmp_path / "tools" / component
+    path.parent.mkdir()
+    if directory:
+        path.mkdir()
+        (path / "config.py").touch()
+    else:
+        path.touch()
+    assert checker.findings(tmp_path) == [checker.Finding(f"tools/{component}:1", component)]
+
+
+@pytest.mark.parametrize("expression", [
+    'f"{LEGACY_STEM}-unregistered-v99"',
+    'LEGACY_STEM + "-unregistered-v99"',
+    '"old-" + LEGACY_STEM',
+    'f"{LEGACY_STEM}-unregistered-{version}"',
+    'LEGACY_STEM + "-unregistered-" + version',
+    '"{}-unregistered-v99".format(LEGACY_STEM)',
+    '"%s-unregistered-v99" % LEGACY_STEM',
+    'f"{LEGACY_STEM!r}-unregistered-v99"',
+    '"%99999999999999999999s-unregistered-v99" % LEGACY_STEM',
+])
+def test_constant_legacy_compositions_require_a_contract(tmp_path, expression):
+    path = tmp_path / "synthetic.py"
+    path.write_text('from case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = ' + expression + '\n')
+    found = checker.findings(tmp_path)
+    assert found
+    assert all(item.location == "synthetic.py:2" for item in found)
+
+
+def test_composed_declared_names_keep_their_contract_and_source_location(tmp_path):
+    path = tmp_path / "synthetic.py"
+    path.write_text('from case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = f"{LEGACY_STEM}-exact-v1"\n')
+    assert checker.findings(tmp_path) == []
+    contracts = dict(NAME_CONTRACTS)
+    del contracts["exact_v1"]
+    assert checker.findings(tmp_path, contracts) == [
+        checker.Finding("synthetic.py:2", "recordbench-exact-v1")
+    ]
+
+
+def test_composition_scan_tracks_import_and_assignment_aliases(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM as old\n'
+        'stem: str = old\n'
+        'FORMAT = f"{stem}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path) == [
+        checker.Finding("synthetic.py:3", "recordbench-unregistered-v99")
+    ]
+
+
+@pytest.mark.parametrize("import_line,reference", [
+    ('import case_intelligence.legacy_names as names', 'names.LEGACY_STEM'),
+    ('from case_intelligence import legacy_names as names', 'names.LEGACY_STEM'),
+    ('import case_intelligence.legacy_names', 'case_intelligence.legacy_names.LEGACY_STEM'),
+])
+def test_composition_scan_tracks_module_imports(tmp_path, import_line, reference):
+    (tmp_path / "synthetic.py").write_text(import_line + '\nFORMAT = f"{' + reference + '}-unregistered-v99"\n')
+    assert checker.findings(tmp_path) == [
+        checker.Finding("synthetic.py:2", "recordbench-unregistered-v99")
+    ]
+
+
+def test_composition_scan_preserves_function_scope_and_never_executes_source(tmp_path):
+    marker = tmp_path / "executed"
+    (tmp_path / "synthetic.py").write_text(
+        'from pathlib import Path\n'
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        f'Path({str(marker)!r}).touch()\n'
+        'def local(LEGACY_STEM):\n'
+        '    return f"{LEGACY_STEM}-unregistered-v99"\n'
+        'def different():\n'
+        '    LEGACY_STEM = "synthetic"\n'
+        '    return f"{LEGACY_STEM}-unregistered-v99"\n'
+        'FORMAT = f"{LEGACY_STEM}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path) == [
+        checker.Finding("synthetic.py:9", "recordbench-unregistered-v99")
+    ]
+    assert not marker.exists()
+
+
+def test_dynamic_composition_must_match_a_declared_family(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'unit = f"{LEGACY_STEM}-backup-{node_id}.service"\n'
+        'browser = f"{LEGACY_STEM}:readiness:{state}"\n'
+        'path = root / f"{LEGACY_STEM}.env"\n'
+        'payload = json.dumps({"format": f"{LEGACY_STEM}-exact-v1"}) + "\\n"\n'
+        'empty = ""\n'
+        'format_id = f"{LEGACY_STEM}{empty}-exact-v1"\n'
+    )
+    assert checker.findings(tmp_path) == []
+
+
 @pytest.mark.parametrize("identifier", [
     "RECORDBENCH_SYNTHETIC_SETTING",
     "X-RecordBench-Synthetic-Header",
