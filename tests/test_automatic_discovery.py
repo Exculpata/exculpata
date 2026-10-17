@@ -620,7 +620,8 @@ def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
                 if sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "REPLACE"))]
     assert "GROUP BY" not in " ".join(queries).upper()
     for sql in queries:
-        plan = " ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
+        with bench.workspace._lock:
+            plan = " ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
         assert "SCAN a" not in plan and "SCAN workbench_entity_auto_discovery_unit" not in plan, (sql, plan)
 
 

@@ -1,14 +1,16 @@
-"""Bounded, content-free diagnostics for local xdist workers; never alter results."""
+"""Bounded, content-free xdist diagnostics; worker crashes cannot report success."""
 from __future__ import annotations
 
 import json
+from itertools import islice
 import os
 from pathlib import Path
 import resource
 import signal
 import subprocess
 import threading
-import time
+# Keep the observer independent of finite clocks patched by application tests.
+from time import monotonic
 
 import pytest
 
@@ -24,7 +26,7 @@ def cgroup_memory(proc=Path('/proc'), mount=Path('/sys/fs/cgroup')):
     """Inspect the unified group and its ancestors, without exporting host paths."""
     membership = next((line[3:] for line in _read(proc / 'self/cgroup').splitlines()
                        if line.startswith('0::')), None)
-    if membership is None:
+    if membership is None or not membership.startswith('/'):
         return None
     # Mount roots can be namespace-relative (for example inside a container).
     roots = [line.split()[3] for line in _read(proc / 'self/mountinfo').splitlines()
@@ -36,7 +38,12 @@ def cgroup_memory(proc=Path('/proc'), mount=Path('/sys/fs/cgroup')):
         if '..' in relative.parts:
             return None
     except ValueError:
-        return None
+        # A cgroup namespace can expose membership relative to its mounted
+        # subtree even though mountinfo retains the host-side root.
+        relative = Path(membership).relative_to('/')
+        if '..' in relative.parts:
+            return None
+        group = mount / relative
     result = []
     for _ in range(64):
         row = {}
@@ -57,15 +64,18 @@ def cgroup_memory(proc=Path('/proc'), mount=Path('/sys/fs/cgroup')):
 
 
 def process_tree(pid, proc=Path('/proc')):
-    """Sample only this worker and its bounded descendant tree, never command lines."""
-    pending, seen = [pid], set()
-    rss = threads = fds = 0
-    while pending and len(seen) < 128:
+    """Report incomplete metrics as null, retaining explicitly partial observations."""
+    pending, scheduled, seen = [pid], {pid}, set()
+    observed = dict(rss_bytes=0, threads=0, fds=0, processes=0)
+    complete = dict.fromkeys(observed, True)
+    tree_complete, truncated = True, False
+    while pending:
         current = pending.pop()
-        if current in seen:
-            continue
         status = _read(proc / str(current) / 'status')
         if not status:
+            if current == pid:
+                return None
+            tree_complete = False
             continue
         seen.add(current)
         values = {}
@@ -74,21 +84,72 @@ def process_tree(pid, proc=Path('/proc')):
             fields = value.split()
             if key in {'VmRSS', 'Threads'} and fields and fields[0].isdecimal():
                 values[key] = int(fields[0])
-        rss += values.get('VmRSS', 0) * 1024
-        threads += values.get('Threads', 0)
+        for field, metric, factor in (('VmRSS', 'rss_bytes', 1024), ('Threads', 'threads', 1)):
+            if field in values:
+                observed[metric] += values[field] * factor
+            else:
+                complete[metric] = False
         try:
-            fds += sum(1 for _ in (proc / str(current) / 'fd').iterdir())
+            with os.scandir(proc / str(current) / 'fd') as entries:
+                count = sum(1 for _ in islice(entries, 65537))
+            observed['fds'] += min(count, 65536)
+            if count > 65536:
+                complete['fds'], truncated = False, True
         except OSError:
-            pass
-        # Children may be launched by any native thread, not only the leader.
+            complete['fds'] = False
+        # Read every thread's children: subprocesses need not belong to the leader.
         try:
-            tasks = list((proc / str(current) / 'task').iterdir())[:512]
+            with os.scandir(proc / str(current) / 'task') as entries:
+                tasks = [Path(entry.path) for entry in islice(entries, 513)]
+            if not tasks:
+                tree_complete = False
+            if len(tasks) > 512:
+                tree_complete, truncated = False, True
         except OSError:
-            tasks = []
-        for task in tasks:
-            pending.extend(int(n) for n in _read(task / 'children').split() if n.isdecimal())
-    return ({'rss_bytes': rss, 'threads': threads, 'fds': fds,
-             'processes': len(seen), 'truncated': bool(pending)} if seen else None)
+            tasks, tree_complete = [], False
+        for task in tasks[:512]:
+            try:
+                with (task / 'children').open() as stream:
+                    children = stream.read(16385)
+            except OSError:
+                tree_complete = False
+                continue
+            if len(children) > 16384:
+                tree_complete, truncated = False, True
+                # Do not interpret a partially read PID at the boundary.
+                children = children[:16384].rsplit(' ', 1)[0]
+            for child in children.split():
+                if not child.isdecimal():
+                    tree_complete = False
+                    continue
+                child = int(child)
+                if child in scheduled:
+                    continue
+                if len(scheduled) >= 128:
+                    tree_complete, truncated = False, True
+                    continue
+                scheduled.add(child)
+                pending.append(child)
+    observed['processes'] = len(seen)
+    partial = {key: not (available and tree_complete) for key, available in complete.items()}
+    return {**{key: None if partial[key] else value for key, value in observed.items()},
+            'observed': observed, 'partial': partial,
+            'tree_complete': tree_complete, 'truncated': truncated}
+
+
+def accumulate_sample(row, sample):
+    """Do not turn unavailable samples into healthy peaks, or erase partial evidence."""
+    row['latest'] = sample
+    if sample is None:
+        row['unavailable_samples'] += 1
+        return
+    row['samples'] += 1
+    for key in ('rss_bytes', 'threads', 'fds', 'processes'):
+        if sample['partial'][key]:
+            row['partial_samples'][key] += 1
+        if sample[key] is not None:
+            previous = row['peak'][key]
+            row['peak'][key] = max(previous, sample[key]) if previous is not None else sample[key]
 
 
 def runner_snapshot():
@@ -155,7 +216,7 @@ def _phase(item, phase):
         # Parameter reprs can contain data; identify only the test function.
         _write(directory / (config.workerinput['workerid'] + '-active.json'),
                {'test': item.nodeid.split('[')[0][:500], 'phase': phase,
-                'phase_started': time.monotonic(), 'pid': os.getpid()})
+                'phase_started': monotonic(), 'pid': os.getpid()})
 
 
 def pytest_runtest_setup(item):
@@ -170,12 +231,24 @@ def pytest_runtest_teardown(item):
     _phase(item, 'teardown')
 
 
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_protocol(item):
+    try:
+        return (yield)
+    finally:
+        config = item.config
+        directory = getattr(config, '_worker_diagnostics_dir', None)
+        if directory is not None and hasattr(config, 'workerinput'):
+            (directory / (config.workerinput['workerid'] + '-active.json')).unlink(missing_ok=True)
+
+
 class WorkerDiagnostics:
     def __init__(self, config):
         self.config = config
         self.directory = config._worker_diagnostics_dir
         self.before = runner_snapshot()
         self.workers = {}
+        self.crashed = False
         self.lock = threading.Lock()
         self.stop = threading.Event()
         _write(self.directory / 'runner-start.json', self.before)
@@ -191,7 +264,9 @@ class WorkerDiagnostics:
             popen = None
         with self.lock:
             self.workers[node.gateway.id] = {'process': popen, 'samples': 0,
-                                             'latest': None, 'peak': {}}
+                                             'latest': None, 'unavailable_samples': 0,
+                                             'partial_samples': dict.fromkeys(('rss_bytes', 'threads', 'fds', 'processes'), 0),
+                                             'peak': dict.fromkeys(('rss_bytes', 'threads', 'fds', 'processes'))}
 
     def sample(self):
         while not self.stop.is_set():
@@ -201,15 +276,12 @@ class WorkerDiagnostics:
                     if process is None or 'outcome' in row:
                         continue
                     sample = process_tree(process.pid)
-                    if sample is not None:
-                        row['samples'] += 1
-                        row['latest'] = sample
-                        for key in ('rss_bytes', 'threads', 'fds', 'processes'):
-                            row['peak'][key] = max(row['peak'].get(key, 0), sample[key])
+                    accumulate_sample(row, sample)
             self.stop.wait(1)
 
     @pytest.hookimpl(optionalhook=True)
     def pytest_testnodedown(self, node, error):
+        self.crashed = self.crashed or error is not None
         with self.lock:
             row = self.workers[node.gateway.id]
             process = row['process']
@@ -223,7 +295,7 @@ class WorkerDiagnostics:
         active_path = self.directory / (node.gateway.id + '-active.json')
         try:
             active = json.loads(active_path.read_text())
-            active['phase_seconds'] = round(time.monotonic() - active.pop('phase_started'), 3)
+            active['phase_seconds'] = round(monotonic() - active.pop('phase_started'), 3)
         except (OSError, ValueError, KeyError):
             active = None
         after = runner_snapshot()
@@ -232,6 +304,7 @@ class WorkerDiagnostics:
                 'pytest_exitstatus': getattr(node, 'workeroutput', {}).get('exitstatus'),
                 'crashed': error is not None, 'active': active, 'samples': row['samples'],
                 'latest': row['latest'], 'sampled_peak': row['peak'],
+                'partial_samples': row['partial_samples'], 'unavailable_samples': row['unavailable_samples'],
                 'cgroup_oom_delta': oom_delta(self.before['cgroup_memory'], after['cgroup_memory']),
                 'runner_end': after}
             outcome = row['outcome']
@@ -241,7 +314,12 @@ class WorkerDiagnostics:
             if reporter:
                 reporter.write_line('WORKER EXIT DIAGNOSTICS ' + json.dumps(outcome, sort_keys=True))
 
-    def pytest_sessionfinish(self):
+    @pytest.hookimpl(trylast=True)
+    def pytest_sessionfinish(self, session):
+        # xdist can otherwise report success when the last test passed and the
+        # worker died during session shutdown, with no crash item left to fail.
+        if self.crashed and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
         self.stop.set()
         self.thread.join(2)
         _write(self.directory / 'runner-end.json', runner_snapshot())

@@ -185,7 +185,11 @@ phase, raw local-worker return code, signal, sampled process-tree RSS/thread/fil
 descriptor peaks, runner limits and cgroup v2 memory/OOM counters where available.
 They do not read environment values, process arguments or fixture contents.
 Sampling is once per second, so peaks are lower bounds; missing process/cgroup
-data is unavailable, not zero. Cgroup counters cover the group and its ancestors,
+data is unavailable, not zero. Incomplete process metrics are null, with per-metric
+partial flags and separately labeled observed lower bounds. Missing task/child
+access or the 512-thread/128-process collection caps mark the tree incomplete.
+Peaks use only complete measurements and retain counts of partial/unavailable
+samples; gaps never become zero measurements. Cgroup counters cover the group and its ancestors,
 not an individual PID. A positive OOM delta is group evidence; SIGKILL alone does
 not establish OOM. Exit code 1 alone does not establish a timeout: correlate it
 with the existing `Timeout (0:06:00)!` thread dump in the job log.
@@ -196,6 +200,12 @@ assertion failure and success. Each child uses one worker with no restart and a
 30-second outer deadline. The first four must return failure; the parent verifies
 their exact diagnostics. It does not force OOM or turn a real application failure
 into a pass. These checks also run in the full application suite.
+Additional proofs kill a worker during teardown and after its last test has
+completed. A completed protocol clears its active marker. A worker crash during
+session shutdown still fails the overall run even if xdist has no remaining test
+item to fail; the diagnostics plugin changes only a would-be success to failure.
+The observer retains its own clock callable so finite application-test clocks
+are not consumed by phase reporting; the hosted-command regression covers this.
 
 ## Standalone browser journeys
 

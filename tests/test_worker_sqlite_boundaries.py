@@ -37,12 +37,19 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             if threading.get_ident() == caller and (
                 'count(*) from workbench_upload_session' in sql.lower()
                 or 'count(*) from workbench_principal where principal_id=' in sql.lower()
+                or sql.startswith('EXPLAIN QUERY PLAN ')
             ):
                 assert store._lock._is_owned(), 'read must serialize with live ingestion/report SQL'
-                observations.append('read')
+                observations.append('plan' if sql.startswith('EXPLAIN QUERY PLAN ') else 'read')
                 cursor = original.execute(sql, *args, **kwargs)
 
                 class CheckedCursor:
+                    def __iter__(self):
+                        assert store._lock._is_owned(), 'query-plan iteration must remain locked'
+                        for row in cursor:
+                            assert store._lock._is_owned(), 'query-plan consumption must remain locked'
+                            yield row
+
                     def fetchone(self):
                         assert store._lock._is_owned(), 'cursor consumption must remain locked'
                         return cursor.fetchone()
@@ -71,7 +78,8 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             assert observations == ['read', 'callback', 'callback', 'read']
         else:
             discovery.test_readiness_progress_never_scans_the_coverage_ledger(fixture)
-            assert observations == ['callback', 'callback']
+            assert observations[:2] == ['callback', 'callback']
+            assert observations[2:] and set(observations[2:]) == {'plan'}
     finally:
         with store._lock:
             original.set_trace_callback(None)
