@@ -7,8 +7,16 @@ import json
 from pathlib import Path
 
 
-def recognize(root, manifest):
+ASR_FILES = ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
+
+
+def snapshot(pin, *, offline):
     from huggingface_hub import snapshot_download
+    return snapshot_download(pin['model_id'], revision=pin['revision'],
+                             allow_patterns=ASR_FILES, local_files_only=offline)
+
+
+def recognize(root, manifest):
     from faster_whisper import WhisperModel
 
     models = manifest['models']
@@ -22,10 +30,10 @@ def recognize(root, manifest):
         if hashlib.sha256((data_root / (language+'.traineddata')).read_bytes()).hexdigest() != digest:
             raise ValueError('OCR data does not match the pinned corpus revision')
     pin = models['asr']
-    snapshot = snapshot_download(pin['model_id'], revision=pin['revision'], local_files_only=True)
-    if Path(snapshot).name != pin['revision']:
+    model_path = snapshot(pin, offline=True)
+    if Path(model_path).name != pin['revision']:
         raise ValueError('ASR snapshot is not the pinned revision')
-    model = WhisperModel(snapshot, device='cpu', compute_type='int8', cpu_threads=2, num_workers=1, local_files_only=True)
+    model = WhisperModel(model_path, device='cpu', compute_type='int8', cpu_threads=2, num_workers=1, local_files_only=True)
     observations, transcripts = {}, {}
     for case in manifest['audio']:
         if case['diarization'] is not False:
@@ -41,9 +49,7 @@ def recognize(root, manifest):
 
 def stage(manifest):
     """Explicit CI/setup operation. Inference itself remains local-only."""
-    from huggingface_hub import snapshot_download
-    pin = manifest['models']['asr']
-    snapshot_download(pin['model_id'], revision=pin['revision'], allow_patterns=['config.json','model.bin','preprocessor_config.json','tokenizer.json','vocabulary.json'])
+    snapshot(manifest['models']['asr'], offline=False)
 
 
 if __name__ == '__main__':

@@ -113,3 +113,21 @@ def test_report_cannot_overwrite_gold():
 def test_update_requires_explicit_flag_and_separate_proposal():
     with pytest.raises(SystemExit): gate.main(['--update-expected'])
     assert gate.main(['--update-expected','--proposal',str(gate.CORPUS/'expected.json')]) == 1
+
+
+def test_asr_staging_and_offline_lookup_require_identical_files(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    spec = importlib.util.spec_from_file_location('corpus_recognition', ROOT/'scripts/corpus_recognition.py')
+    recognition = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(recognition)
+    calls = []
+    monkeypatch.setitem(sys.modules, 'huggingface_hub', SimpleNamespace(snapshot_download=lambda *a, **kw: calls.append((a, kw))))
+    pin = {'model_id':'synthetic/model', 'revision':'a'*40}
+    recognition.stage({'models':{'asr':pin}})
+    recognition.snapshot(pin, offline=True)
+    assert calls[0][0] == calls[1][0] == ('synthetic/model',)
+    assert calls[0][1]['allow_patterns'] == calls[1][1]['allow_patterns']
+    assert calls[1][1]['revision'] == 'a'*40
+    assert calls[0][1]['local_files_only'] is False
+    assert calls[1][1]['local_files_only'] is True
