@@ -205,10 +205,17 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Share only the issuer with the relay. Never give it the application's
     # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
     selected = _selected_app_env(config, saved)
-    application = _dotenv(selected) if selected.is_file() else {}
+    application = _dotenv(selected, literal_keys={
+        "CASE_INTELLIGENCE_AUTH_MODE", "CASE_INTELLIGENCE_OIDC_ISSUER",
+        "CASE_INTELLIGENCE_OIDC_EGRESS_PINS",
+    }) if selected.is_file() else {}
     result["OIDC_EGRESS_ISSUER"] = (
         application.get("CASE_INTELLIGENCE_OIDC_ISSUER", "")
-        if application.get("CASE_INTELLIGENCE_AUTH_MODE") == "oidc" else ""
+        if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
+    )
+    result["OIDC_EGRESS_PINS"] = (
+        application.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
+        if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     )
     return result
 
@@ -920,31 +927,53 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     return "\n".join(lines) + "\n"
 
 
-def _dotenv(path: Path) -> dict[str, str]:
+def _dotenv(path: Path, *, literal_keys: set[str] | None = None) -> dict[str, str]:
+    """Read the supported single-line Compose subset without evaluating code.
+
+    Interpolation is deliberately not performed. The egress selector requires
+    literal auth/issuer values so Compose and the proxy cannot resolve different
+    destinations. Diagnostics never include environment values.
+    """
     values: dict[str, str] = {}
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         key, separator, encoded = line.partition("=")
+        key = key.strip()
+        error = f"invalid node environment line {number}; use single-line KEY=value literals (see docs/NETWORK_EGRESS.md)"
         if (
             not separator
-            or re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None
+            or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is None
             or key in values
         ):
-            raise RuntimeError(f"invalid node environment line {number}")
+            raise RuntimeError(error)
         encoded = encoded.strip()
-        if encoded.startswith('"'):
+        if encoded.startswith(('"', "'")):
+            quote = encoded[0]
+            end = 1
+            while end < len(encoded):
+                if encoded[end] == "\\":
+                    end += 2
+                    continue
+                if encoded[end] == quote:
+                    break
+                end += 1
+            if end >= len(encoded) or (encoded[end + 1:].strip() and not encoded[end + 1:].strip().startswith("#")):
+                raise RuntimeError(error)
+            quoted = encoded[:end + 1]
             try:
-                value = json.loads(encoded)
+                value = json.loads(quoted) if quote == '"' else quoted[1:-1].replace("\\'", "'")
             except json.JSONDecodeError as exc:
-                raise RuntimeError(f"invalid node environment line {number}") from exc
-            if not isinstance(value, str):
-                raise RuntimeError(f"invalid node environment line {number}")
+                raise RuntimeError(error) from exc
         else:
-            value = encoded
+            value = re.split(r"\s+#", encoded, maxsplit=1)[0].rstrip()
+            if value.startswith("#"):
+                value = ""
         if any(character in value for character in ("\x00", "\r", "\n")):
-            raise RuntimeError(f"invalid node environment line {number}")
+            raise RuntimeError(error)
+        if key in (literal_keys or ()) and "$" in value:
+            raise RuntimeError(f"unsupported node environment interpolation on line {number}; write the resolved auth/issuer literal (see docs/NETWORK_EGRESS.md)")
         values[key] = value
     return values
 

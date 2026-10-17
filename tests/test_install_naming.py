@@ -66,9 +66,71 @@ def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
                             env=environment, capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
     proxy = graph["services"]["egress-proxy"]
-    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"]}
+    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
     assert not any(key in proxy for key in ("volumes", "secrets", "ports"))
     assert graph["services"]["app"]["environment"]["CASE_INTELLIGENCE_OIDC_CA_FILE"] == "/run/example/ca.pem"
+
+
+@pytest.mark.parametrize("mode,issuer", [
+    ("OiDc # auth comment", "https://issuer.example.test/realm # issuer comment"),
+    ("' OIDC ' # auth comment", "'https://issuer.example.test/realm' # issuer comment"),
+    ('" oidc " # auth comment', '"https://issuer.example.test/realm" # issuer comment'),
+])
+def test_egress_dotenv_matches_compose_literals(tmp_path, mode, issuer):
+    root, _, paths = configured_node(tmp_path)
+    selected = installer._app_env(root)
+    selected.write_text(
+        f"CASE_INTELLIGENCE_AUTH_MODE = {mode}\n"
+        f"CASE_INTELLIGENCE_OIDC_ISSUER = {issuer}\n"
+        "https_proxy='http://unrelated.example.test:3128' # discarded by Compose\n"
+        "SYNTHETIC_SECRET='literal # value'\n"
+    )
+    command = installer._compose(root, (), release=ROOT, auth="oidc")
+    env = installer._compose_environment(command, {"PATH": os.environ["PATH"]})
+    result = subprocess.run([*command, "config", "--format", "json"], env=env,
+                            capture_output=True, text=True, check=True)
+    services = json.loads(result.stdout)["services"]
+    app = services["app"]["environment"]
+    assert app["CASE_INTELLIGENCE_AUTH_MODE"].strip().lower() == "oidc"
+    assert app["CASE_INTELLIGENCE_OIDC_ISSUER"] == env["OIDC_EGRESS_ISSUER"] == "https://issuer.example.test/realm"
+    assert services["egress-proxy"]["environment"] == {"OIDC_ISSUER": env["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert "SYNTHETIC_SECRET" not in env
+    assert app["https_proxy"] == "http://egress-proxy:3128"
+
+
+@pytest.mark.parametrize("line", [
+    "CASE_INTELLIGENCE_AUTH_MODE=${SYNTHETIC_MODE}",
+    'CASE_INTELLIGENCE_OIDC_ISSUER="${SYNTHETIC_ISSUER}"',
+    "CASE_INTELLIGENCE_OIDC_ISSUER=$SYNTHETIC_ISSUER",
+    "CASE_INTELLIGENCE_OIDC_ISSUER: https://issuer.example.test",
+    "CASE_INTELLIGENCE_OIDC_ISSUER='https://issuer.example.test\n/realm'",
+    "CASE_INTELLIGENCE_AUTH_MODE=oidc\nCASE_INTELLIGENCE_AUTH_MODE=local",
+])
+def test_egress_dotenv_unsupported_forms_fail_without_values(tmp_path, line):
+    root, _, _ = configured_node(tmp_path)
+    installer._app_env(root).write_text(line + "\n")
+    with pytest.raises(RuntimeError, match="docs/NETWORK_EGRESS.md") as error:
+        installer._compose_environment(installer._compose(root, (), release=ROOT, auth="oidc"))
+    assert "SYNTHETIC" not in str(error.value) and "issuer.example.test" not in str(error.value)
+
+
+@pytest.mark.parametrize("auth", ["oidc", " OIDC ", "local", "kerberos"])
+def test_egress_pins_are_selected_without_sharing_other_environment(tmp_path, auth):
+    root, _, _ = configured_node(tmp_path)
+    issuer = "https://issuer.example.test/realm"
+    pins = json.dumps({"issuer": issuer, "addresses": ["8.8.8.8"]})
+    installer._app_env(root).write_text(
+        f"CASE_INTELLIGENCE_AUTH_MODE='{auth}'\nCASE_INTELLIGENCE_OIDC_ISSUER='{issuer}'\n"
+        f"CASE_INTELLIGENCE_OIDC_EGRESS_PINS='{pins}'\nSYNTHETIC_UNRELATED=value\n")
+    command = installer._compose(root, (), release=ROOT, auth=auth.strip().lower())
+    env = installer._compose_environment(command, {"PATH": os.environ["PATH"], "OIDC_EGRESS_PINS": "unrelated"})
+    expected = pins if auth.strip().lower() == "oidc" else ""
+    assert env["OIDC_EGRESS_PINS"] == expected and "SYNTHETIC_UNRELATED" not in env
+    result = subprocess.run([*command, "config", "--format", "json"], env=env,
+                            capture_output=True, text=True, check=True)
+    proxy = json.loads(result.stdout)["services"]["egress-proxy"]
+    assert proxy["environment"]["OIDC_ISSUER_PINS"] == expected
+    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
 
 
 def test_fresh_defaults_and_generated_coordinates(tmp_path):

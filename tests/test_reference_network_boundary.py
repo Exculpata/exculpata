@@ -1,5 +1,7 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
+import importlib.util
+import json
 import re
 import shutil
 import subprocess
@@ -68,7 +70,7 @@ def test_app_has_no_direct_egress():
 
 @pytest.fixture
 def contract_tree(tmp_path):
-    for name in ("src", "services", "config"):
+    for name in ("src", "services", "deploy", "config"):
         shutil.copytree(ROOT / name, tmp_path / name,
                         ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
     for path in ROOT.glob("compose*.yaml"):
@@ -128,6 +130,37 @@ def test_contract_rejects_overlay_escape(contract_tree, change):
     assert result.returncode == 1 and "compose.local-accounts.yaml:" in result.stderr
 
 
+@pytest.mark.parametrize("change", [
+    {"volumes": ["/var/run/docker.sock:/run/control:ro"]},
+    {"volumes": [{"type": "bind", "source": "/run/containerd/containerd.sock", "target": "/run/control"}]},
+    {"volumes": ["/:/host:ro"]},
+    {"volumes": ["${SYNTHETIC_CONTROL_SOCKET}:/run/control"]},
+    {"volumes_from": ["gateway"]},
+    {"use_api_socket": True},
+])
+def test_contract_rejects_host_control_mounts(contract_tree, change):
+    path = contract_tree / "compose.local-accounts.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["services"]["app"].update(change)
+    path.write_text(yaml.safe_dump(data))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "compose.local-accounts.yaml:" in result.stderr and "mounts or escape capability changed" in result.stderr
+
+
+@pytest.mark.parametrize("definition", [
+    {"driver": "local", "driver_opts": {"type": "none", "o": "bind", "device": "/run"}},
+    {"external": True, "name": "synthetic-host-control"},
+])
+def test_contract_rejects_named_volume_host_control(contract_tree, definition):
+    path = contract_tree / "compose.yaml"
+    data = yaml.safe_load(path.read_text())
+    data["volumes"]["clamav-signatures"] = definition
+    path.write_text(yaml.safe_dump(data))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1 and "volume definitions changed" in result.stderr
+
+
 @pytest.mark.parametrize("source", [
     'import httpx as h\nh.get(destination)\n',
     'from urllib.request import urlopen as fetch\nfetch(destination)\n',
@@ -142,6 +175,35 @@ def test_contract_rejects_overlay_escape(contract_tree, change):
 def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source):
     (contract_tree / "src/synthetic_probe.py").write_text(source)
     assert run_contract(contract_tree).returncode == 1
+
+
+@pytest.mark.parametrize("baseline,addition,detail", [
+    ('import httpx as h\ndef probe(destination):\n    pass\n    # NEW\n', 'h.get(destination)', 'httpx.get'),
+    ('from urllib.request import urlopen as fetch\ndef probe(destination):\n    pass\n    # NEW\n', 'fetch(destination)', 'urllib.request.urlopen'),
+    ('from requests import Session as S\ndef probe(destination):\n    c = S()\n    # NEW\n', 'c.get(destination)', 'requests.Session.get'),
+    ('import httpx\nasync def probe(c: httpx.AsyncClient, destination):\n    pass\n    # NEW\n', 'await c.post(destination)', 'httpx.AsyncClient.post'),
+    ('import httpx\ndef probe(destination):\n    c = httpx.Client()\n    get = c.get\n    # NEW\n', 'get(destination)', 'httpx.Client.get'),
+    ('import httpx\ndef probe(destination):\n    c = httpx.Client()\n    c.get(destination)\n    # NEW\n', 'c.get(destination)', 'httpx.Client.get'),
+])
+def test_contract_detects_only_new_call_with_approved_imports(contract_tree, baseline, addition, detail):
+    path = contract_tree / "src/synthetic_probe.py"
+    path.write_text(baseline)
+    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    policy = contract_tree / "config/egress-allowlist.toml"
+    with policy.open("a") as stream:
+        for relative, _, kind, digest, description in checker.source_inventory(contract_tree):
+            if relative == "src/synthetic_probe.py":
+                stream.write('\n[[source]]\n' + '\n'.join(
+                    f'{key} = {json.dumps(value)}' for key, value in
+                    (("path", relative), ("kind", kind), ("digest", digest), ("detail", description))) + '\n')
+    assert run_contract(contract_tree).returncode == 0
+    line = baseline.splitlines().index("    # NEW") + 1
+    path.write_text(baseline.replace("# NEW", addition))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert result.stderr.strip() == f"src/synthetic_probe.py:{line}: unreviewed outbound client: {detail}"
 
 
 def test_contract_rejects_new_compose_and_duplicate_keys(contract_tree):
@@ -165,7 +227,7 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
         assert client._transport_for_url(httpx.URL("http://retrieval:8787")) is client._transport
         assert client._transport_for_url(httpx.URL("https://generator:8000")) is client._transport
     proxy = compose["services"]["egress-proxy"]
-    assert set(proxy["environment"]) == {"OIDC_ISSUER"}
+    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
     assert not any(key in proxy for key in ("volumes", "secrets", "env_file", "ports"))
     assert compose["services"]["gateway"]["networks"] == ["front", "services"]
     overlay = yaml.safe_load((ROOT / "compose.kerberos.yaml").read_text())

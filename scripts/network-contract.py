@@ -63,7 +63,8 @@ def source_inventory(root):
     """
     found = []
     paths = sorted(set((root / "src").rglob("*.py")) |
-                   set(root.glob("services/*/src/**/*.py")))
+                   set(root.glob("services/*/src/**/*.py")) |
+                   set(root.glob("deploy/**/*.py")))
     for path in paths:
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
@@ -218,6 +219,10 @@ def check(root):
         networks = data.get("networks", {})
         if networks != approved["networks"]:
             reject(path, "network definitions changed (internal, external, driver or options)", "networks:")
+        # A named volume can conceal a host bind through driver_opts. Compare
+        # definitions as well as mounts; a socket need not be named docker.sock.
+        if data.get("volumes", {}) != approved["volumes"]:
+            reject(path, "volume definitions changed (external, driver or host bind options)", "volumes:")
         if any(key in data for key in ("include", "extends")):
             reject(path, "unreviewed Compose include/extends")
         for service, definition in data.get("services", {}).items():
@@ -227,10 +232,10 @@ def check(root):
             network_fields = {key: definition[key] for key in (
                 "networks", "network_mode", "ports", "privileged", "cap_add", "devices",
                 "sysctls", "extra_hosts", "dns", "dns_search", "extends", "cap_drop",
-                "security_opt") if key in definition}
+                "security_opt", "volumes", "volumes_from", "use_api_socket") if key in definition}
             expected = approved["services"].get(service)
             if expected is None or network_fields != expected:
-                reject(path, f"{service}: network membership, published ports or escape capability changed", service + ":")
+                reject(path, f"{service}: network membership, published ports, mounts or escape capability changed", service + ":")
             effective = dict(base.get("services", {}).get(service, {}))
             effective.update(definition)
             if "networks" not in effective and effective.get("network_mode") != "none":
