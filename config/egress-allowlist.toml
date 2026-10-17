@@ -440,6 +440,30 @@ digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
 detail = "machine-result.json"
 
 [[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
 path = "services/transcription/src/transcription_v2/storage.py"
 kind = "host"
 digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
@@ -783,6 +807,12 @@ detail = "socket.socket"
 
 [[source]]
 path = "src/case_intelligence/malware_scan.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
 kind = "client"
 digest = "d5de3dc17d7db195dd2d78cdcb87592574abe4f04bf8aaab10b451732171b8f7"
 detail = "socket.create_connection"
@@ -950,6 +980,18 @@ digest = "59f8bf8afbd33e7cc5883d8fa36648e56cdb896f9b4ad56e3876187ab0eabcd2"
 detail = "httpx.HTTPError"
 
 [[source]]
+path = "src/case_intelligence/model_portfolio.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/model_portfolio.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
 path = "src/case_intelligence/onboarding.py"
 kind = "host"
 digest = "356b41e092ecaaba9c85e60dacd398dbad209d619a47baf6f9d3ed59eb01625c"
@@ -1030,8 +1072,38 @@ detail = "report.compile.finish"
 [[source]]
 path = "src/case_intelligence/retrieval_worker.py"
 kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
 digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
 detail = "http.request"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
 
 [[source]]
 path = "src/case_intelligence/review_bench.py"
@@ -1070,6 +1142,18 @@ digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
 detail = "catalog.sqlite"
 
 [[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
 path = "src/case_intelligence/review_bench_v2.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
@@ -1086,6 +1170,18 @@ path = "src/case_intelligence/review_bench_v2.py"
 kind = "client"
 digest = "8407c03f90cc02d2b887bef96dc920fe733e8fec49ebdb28ee2e43cbeba7f3f9"
 detail = "urllib.request.urlopen"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
 
 [[source]]
 path = "src/case_intelligence/slice1_evaluation.py"
@@ -1504,6 +1600,18 @@ detail = "answer.retry"
 [[source]]
 path = "src/case_intelligence/workbench.py"
 kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
 digest = "819b0cc88dc150b8b808976a22c74d2eca2e04109c647d5d9673890f09c8b168"
 detail = "workbench.sqlite"
 
@@ -1618,6 +1726,18 @@ detail = "support.open"
 [[source]]
 path = "src/case_intelligence/workbench.py"
 kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
 digest = "57e30e265e41d2fa7d6198893c18c660c7cfe8697f56acfcae2960ced8ab2112"
 detail = "conversation.delete"
 
@@ -1642,12 +1762,42 @@ detail = "conversation.create"
 [[source]]
 path = "src/case_intelligence/workbench.py"
 kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
 digest = "d3894428d67fd3b74047ad1a7017d9bc9fcd437fa37b59ea07e8722144d1c099"
 detail = "upload.cleanup"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
 kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
 digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
 detail = "matter.access"
 
@@ -1656,6 +1806,18 @@ path = "src/case_intelligence/workbench.py"
 kind = "host"
 digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
 detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"

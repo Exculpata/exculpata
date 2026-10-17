@@ -6,6 +6,7 @@ import argparse
 import ast
 from collections import Counter
 import hashlib
+import ipaddress
 import json
 from pathlib import Path
 import re
@@ -180,6 +181,11 @@ def source_inventory(root):
                 hosts = set(URL.findall(node.value))
                 if HOSTNAME.fullmatch(node.value):
                     hosts.add(node.value)
+                if len(node.value) <= 45:
+                    try:
+                        hosts.add(str(ipaddress.ip_address(node.value)))
+                    except ValueError:
+                        pass
                 for host in sorted(hosts):
                     found.append((relative, node.lineno, "host", fingerprint(node.value), host.lower()))
     return found
