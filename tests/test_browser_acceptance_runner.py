@@ -1050,6 +1050,32 @@ text = "browser.refresh()"
     test_browser_journeys_use_supported_navigation_helper()
 
 
+@pytest.mark.parametrize(('source', 'expected'), [
+    ('import collections\nclass Fixture(collections.UserDict):\n pass', []),
+    ('settings = {}\nclass Fixture(settings.get("base", object)):\n pass', []),
+    ('settings = {}\n'
+     '@settings.get("decorator", lambda cls: cls)\nclass Fixture:\n pass', []),
+    ('settings = {}\nclass Fixture(metaclass=settings.get("meta", type)):\n pass', []),
+    ('from selenium import webdriver\nbrowser = webdriver.Chrome()\n'
+     'class Fixture(browser.refresh() or object):\n browser = {}', [(3, 'refresh')]),
+    ('from selenium import webdriver\nbrowser = webdriver.Chrome()\n'
+     '@(browser.get("url") or (lambda cls: cls))\nclass Fixture:\n browser = {}', [(3, 'get')]),
+    ('from selenium import webdriver\nbrowser = webdriver.Chrome()\n'
+     'class Fixture(metaclass=browser.refresh() or type):\n browser = {}', [(3, 'refresh')]),
+    ('from selenium import webdriver\nbrowser = {}\n'
+     '@browser.get("decorator", lambda cls: cls)\nclass Fixture:\n browser = webdriver.Chrome()', []),
+    ('from selenium import webdriver\ndef base(session):\n session.refresh()\n return object\n'
+     'class Fixture(base(webdriver.Chrome())):\n pass', [(3, 'refresh')]),
+    ('from selenium import webdriver\ndef decorate(session):\n session.get("url")\n return lambda cls: cls\n'
+     '@decorate(webdriver.Chrome())\nclass Fixture:\n pass', [(3, 'get')]),
+])
+def test_navigation_lint_indexes_class_expressions_in_enclosing_scope(source, expected):
+    spec = importlib.util.spec_from_file_location('navigation_lint', Path(__file__).resolve().parents[1] / 'scripts/browser_navigation_lint.py')
+    lint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lint)
+    assert lint.navigation_violations(source) == expected
+
+
 def test_navigation_recovers_renderer_timeout_during_snapshot(navigation, tmp_path):
     from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
     browser, document = Mock(), Mock()

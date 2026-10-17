@@ -35,8 +35,10 @@ def navigation_violations(source: str) -> list[tuple[int, str]]:
         if isinstance(node, ast.ClassDef):
             child = id(node)
             scopes[child] = {'parent': scope, 'locals': set(), 'class': True}
-            for item in node.body:
-                index(item, child)
+            # Bases, decorators and metaclass arguments are evaluated outside
+            # the class namespace; every expression still needs an owner.
+            for item in ast.iter_child_nodes(node):
+                index(item, child if item in node.body else scope)
             return
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             child = id(node)
