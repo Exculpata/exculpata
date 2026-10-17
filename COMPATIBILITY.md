@@ -10,17 +10,18 @@ installation, model quality, or suitability for confidential workloads.
 ## Reference evidence
 
 The CPU row summarizes the dated [clean-node receipt](docs/LINUX_CPU_NODE_ACCEPTANCE_2026-09-19.md).
-The GPU row summarizes the [candidate reference journey](docs/BETA_REFERENCE_INSTALL.md).
-The GPU resource figures are qualification targets, not measurements of the trial
-hardware. Unrecorded values stay unrecorded; neither receipt ran the current claim
-probe scorecard. The seed rows link to the tester-program tracking issue because
+The GPU row summarizes the [reference journey](docs/BETA_REFERENCE_INSTALL.md)
+and the [release reference matrix](docs/COMPATIBILITY.md). The merged release
+guide records the GPU configuration as exercised reference hardware, not a
+guaranteed minimum. Unrecorded values stay unrecorded; neither receipt records
+a run of the current claim probe scorecard. The seed rows link to the tester-program tracking issue because
 there is no separate hardware-report issue for these historical receipts.
 Replace that link only when a corresponding report exists.
 
 | Hardware (generic) | OS | Backend | Model + quantization | Profile | Exculpata version | Install | doctor | Eval summary | Report | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | VM, 8 virtual CPUs, 16 GiB RAM, 220 GiB virtual SSD, no GPU | Ubuntu Server 24.04.5 LTS, x86-64 | CPU-only | None | none | d232e1ec66ddcfd38d38ff4a553bb80d3f639d02; installed capsule 0.1.0-alpha.2-a5d0fce3ca5e | pass | pass | Not run; seven synthetic browser assertions passed in the historical receipt | [Tracking #274](https://github.com/Exculpata/exculpata/issues/274) | Docker 29.1.3; Compose 2.40.3+ds1-0ubuntu1~24.04.1. Clean-node journey 313.26 s; no model generation or transcription exercised. |
-| GPU reference target: 16 CPU cores, 64 GiB RAM, 300 GiB free SSD, one NVIDIA GPU with at least 24 GiB VRAM; actual trial hardware not recorded | Linux x86-64; distribution not recorded | Not recorded | large-v3 ASR, EN/ES alignment, Nemotron; exact trial revisions and precision not recorded | portable | Exact trial commit not recorded | partial | not-recorded | Not run; synthetic review and EN/ES transcription workflow reported, independent language-quality review unavailable | [Tracking #274](https://github.com/Exculpata/exculpata/issues/274) | New application state with warm artifacts; no clean-OS or cold-download claim. Target resources are not tested minimums. |
+| GPU reference: 16 CPU cores, 64 GiB RAM, at least 300 GiB free SSD, one NVIDIA GPU with 24 GiB VRAM | Ubuntu 24.04, x86-64 | Not recorded | Qwen3.5-4B portable, large-v3 ASR, EN/ES alignment, Nemotron; exact trial revisions and precision not recorded | portable | 0.1.0-beta.1 per release matrix; exact trial commit not recorded | partial | not-recorded | Not run; synthetic review and EN/ES transcription workflow reported, independent language-quality review unavailable | [Tracking #274](https://github.com/Exculpata/exculpata/issues/274) | New application state with warm artifacts; no clean-OS or cold-download claim. Reference resources are not guaranteed minimums; driver and CUDA versions not recorded. |
 
 ## Maintaining the table
 

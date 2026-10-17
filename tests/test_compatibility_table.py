@@ -38,7 +38,8 @@ def test_valid_table_and_repository_reference_rows():
     current = (ROOT / 'COMPATIBILITY.md').read_text()
     assert table.validate(current) == []
     assert 'd232e1ec66ddcfd38d38ff4a553bb80d3f639d02' in current
-    assert 'not-recorded' in current and 'actual trial hardware not recorded' in current
+    assert 'not-recorded' in current and 'exact trial commit not recorded' in current
+    assert 'GPU reference:' in current and 'docs/COMPATIBILITY.md' in current
     assert links.check() == []
 
 

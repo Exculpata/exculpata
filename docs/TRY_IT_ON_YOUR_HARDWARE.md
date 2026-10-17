@@ -30,9 +30,9 @@ If the intended beta tag is not published, stop and ask for the reviewed release
 reference; do not substitute a moving branch or describe an alpha as a beta.
 
 ```sh
-EXCULPATA_TEST_TAG='<release-tag>'
-git fetch origin "refs/tags/$EXCULPATA_TEST_TAG:refs/tags/$EXCULPATA_TEST_TAG"
-git switch --detach "$EXCULPATA_TEST_TAG"
+tester_release_tag='<release-tag>'
+git fetch origin "refs/tags/$tester_release_tag:refs/tags/$tester_release_tag"
+git switch --detach "$tester_release_tag"
 git rev-parse HEAD
 ./install preflight --root /srv/exculpata --models none --auth local \
   --enable-account-management --server-name localhost --bind-address 127.0.0.1 \
@@ -90,9 +90,9 @@ service-account session in the same pinned checkout, then:
 
 ```sh
 make bootstrap
-EXCULPATA_EVAL_DIR="$(mktemp -d)"
+tester_eval_dir="$(mktemp -d)"
 PYTHONPATH=src .venv/bin/python scripts/evaluate-claims.py probes \
-  --output "$EXCULPATA_EVAL_DIR/probes.json"
+  --output "$tester_eval_dir/probes.json"
 ```
 
 Keep the output locally. Summarize false-acceptance and false-rejection counts
