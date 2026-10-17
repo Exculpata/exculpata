@@ -111,6 +111,10 @@ account, host paths, configuration filename, image namespace, and visible
 product strings. Existing nodes keep their account, root, configuration,
 database name, container mounts, images, marker, and backup units. There is
 no naming migration. `--names exculpata` refuses a legacy node.
+Saved browser preferences are different: a value stored under the previous
+assistant, review-layout, or readiness key is copied to the Exculpata key on
+read and the previous key is removed. In-page readiness and answer-complete
+events use the Exculpata name and still accept the previous event name.
 
 Settings and request headers that still use the `RECORDBENCH_` and
 `X-RecordBench-` prefixes keep working. The process logs a one-time warning

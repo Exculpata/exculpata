@@ -1,6 +1,10 @@
 /* Reuse the existing readiness poll; native forms retain keyboard/no-script use. */
 (() => {
-  window.addEventListener("recordbench:answer-complete", (event) => {
+  const onWorkbenchEvent = (name, handler) => {
+    window.addEventListener(`exculpata:${name}`, handler);
+    window.addEventListener(`recordbench:${name}`, handler);
+  };
+  onWorkbenchEvent("answer-complete", (event) => {
     const query = new URLSearchParams(window.location.search);
     if (!document.querySelector(".one-box-route") || query.get("one_box_kind") !== "question"
         || query.get("conversation") !== event.detail?.conversation_id) return;
@@ -12,7 +16,7 @@
   const form = document.querySelector("[data-one-box-form]");
   if (!form || form.dataset.readOnly === "true") return;
   const hint = form.querySelector("[data-one-box-readiness-hint]");
-  window.addEventListener("recordbench:readiness", (event) => {
+  onWorkbenchEvent("readiness", (event) => {
     const readiness = event.detail;
     if (!readiness) return;
     form.querySelectorAll("input[name=question], button[type=submit]").forEach((control) => {

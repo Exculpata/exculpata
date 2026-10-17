@@ -69,7 +69,11 @@
       if (!processing && needsRefresh && generation !== started) refresh();
     }
   };
-  window.addEventListener("recordbench:readiness", (event) => {
+  const onWorkbenchEvent = (name, handler) => {
+    window.addEventListener(`exculpata:${name}`, handler);
+    window.addEventListener(`recordbench:${name}`, handler);
+  };
+  onWorkbenchEvent("readiness", (event) => {
     if (!event.detail) return;
     const nextProcessing = isProcessing(event.detail);
     if (nextProcessing && !processing) generation += 1;
