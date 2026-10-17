@@ -1,4 +1,6 @@
 """Synthetic run deletion races with direct and ASGI ledger consumers."""
+
+from tests.fixture_write import fixture_write
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -24,7 +26,7 @@ def terminal_inventory(frozen):
     ledger = FullTextReviewLedger(store)
     ledger.inventory(run, decision, [PilotUnit(n, 'Synthetic text') for n in range(1, 206)],
                      current_source=lambda: True)
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_review_run SET state='succeeded' WHERE run_id=?", (run.run_id,))
     return store, matter, run, ledger
 

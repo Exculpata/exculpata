@@ -1,6 +1,8 @@
 """Synthetic stopped-runtime recovery; no encrypted-backup or model-quality claim."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import io
 import json
@@ -68,19 +70,26 @@ def _make_pre_lifecycle_fixture(path):
     with sqlite3.connect(path) as connection:
         assert not connection.execute('SELECT 1 FROM workbench_case_exit').fetchone()
         assert not connection.execute("SELECT 1 FROM workbench_matter_lifecycle WHERE state<>'active'").fetchone()
+        # fixture-write: Reconstruct the old schema only in the stopped runtime snapshot.
         connection.execute('BEGIN IMMEDIATE')
         cleanup = connection.execute("SELECT sql FROM sqlite_master WHERE name='workbench_deleted_matter_media_cleanup'").fetchone()[0]
         for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'case_fence_*'").fetchall():
             connection.execute(f'DROP TRIGGER "{name}"')
         for table in ('workbench_case_confirmation', 'workbench_case_exit', 'workbench_case_policy'):
             connection.execute(f'DROP TABLE {table}')
+        # fixture-write: Build the generated legacy table only in the stopped snapshot.
         connection.execute(schema)
+        # fixture-write: Copy retained rows into the stopped snapshot legacy lifecycle table.
         connection.execute('INSERT INTO generated_legacy_lifecycle SELECT * FROM workbench_matter_lifecycle')
+        # fixture-write: Remove the current lifecycle table only from the stopped runtime snapshot.
         connection.execute('DROP TABLE workbench_matter_lifecycle')
         connection.execute('PRAGMA legacy_alter_table=ON')
+        # fixture-write: Restore the legacy lifecycle table name only in the stopped runtime snapshot.
         connection.execute('ALTER TABLE generated_legacy_lifecycle RENAME TO workbench_matter_lifecycle')
         connection.execute('PRAGMA legacy_alter_table=OFF')
+        # fixture-write: Recreate the legacy lifecycle index only in the stopped runtime snapshot.
         connection.execute('CREATE INDEX workbench_matter_lifecycle_state_idx ON workbench_matter_lifecycle(state,updated_at DESC)')
+        # fixture-write: Restore the retained cleanup trigger only in the stopped snapshot.
         connection.execute(cleanup)
 
 
@@ -89,7 +98,7 @@ def stopped_recovery_snapshot(case, tmp_path):
     bench, matter = case["bench"], case["matter"]
     created = bench.workspace.current_time()
     # Synthetic old-policy metadata, retained verbatim through the upgrade.
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             'INSERT INTO workbench_matter_retention VALUES (?,?,?,?,?,?)',
             (matter.matter_id, bench.workspace._timestamp(created + timedelta(days=30)),

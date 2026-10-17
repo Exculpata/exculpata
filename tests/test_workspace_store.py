@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -23,7 +25,7 @@ def _seed(store: WorkspaceStore) -> None:
 def test_account_name_refresh_preserves_inactive_identity_and_signin_history(tmp_path):
     store = WorkspaceStore(tmp_path / "workbench.sqlite", clock=lambda: FIXED)
     person = store.upsert_principal("local", "synthetic.reviewer", "Original name", "original.login")
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute(
             "UPDATE workbench_principal SET active=0 WHERE principal_id=?", (person.principal_id,)
         )

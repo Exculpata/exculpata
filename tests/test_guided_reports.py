@@ -1,6 +1,8 @@
 """Synthetic browser-facing report compilation and document lifecycle."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import io
 import threading
 import time
@@ -221,6 +223,7 @@ def test_source_delimiters_remain_prose_and_compilation_basis_survives_restore(w
         with_store.close()
     # Startup is repeatable, and legacy text is never heuristically split.
     with sqlite3.connect(destination) as legacy:
+        # fixture-write: Reconstruct the isolated backup schema after closing its restored WorkspaceStore.
         legacy.execute("ALTER TABLE workbench_report_section DROP COLUMN compilation_basis")
     legacy_store = WorkspaceStore(destination)
     try:
@@ -289,7 +292,7 @@ def test_matter_purge_removes_terminal_compilation_jobs(workspace, state):
     bench.report_compilation.coordinator.close()
     job_id = queue(client, matter, ["notes:active"])
     report = bench.workspace.create_report(matter.matter_id, ACTOR, "Synthetic purge report", "")
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_report_compilation_job SET state=?,report_id=? WHERE job_id=?",
             (state, report.report_id if state == "succeeded" else None, job_id))
     _, lifecycle = claim_bench_exit(bench, matter, ACTOR)

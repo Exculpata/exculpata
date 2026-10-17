@@ -1,3 +1,5 @@
+
+from tests.fixture_write import fixture_write
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic occurrence recall, explicit identity decisions and durable recovery."""
 from contextlib import nullcontext
@@ -270,7 +272,7 @@ def test_processed_coverage_reports_later_source_change_and_mention_review_survi
     discovery.extractor.version = 'synthetic-reextract-v2'
     discovery.step(matter.matter_id, ACTOR, run.run_id)
     assert discovery.service.detail(matter.matter_id, ACTOR, entity['entity_id'])[1][0]['review_status'] == 'disputed'
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_source_catalog SET version_id='synthetic-replacement' WHERE matter_id=?", (matter.matter_id,))
     assert discovery.coverage(matter.matter_id, ACTOR, run.run_id)['counts']['invalidated'] == 1
 

@@ -1,4 +1,6 @@
 """Synthetic approval, ownership, bounds and durable reference acceptance."""
+
+from tests.fixture_write import fixture_write
 import json
 from pathlib import Path
 import sqlite3
@@ -126,8 +128,9 @@ def test_limits_before_materialization_and_removal_still_works(case, monkeypatch
     service = MatterContextService(assertions)
     add(service, matter, 'entity', first['entity_id'])
     with entities.repository.transaction(matter.matter_id, ACTOR):
-        store.connection.execute('UPDATE workbench_entity SET aliases_json=? WHERE entity_id=?',
-            (json.dumps(['Synthetic oversize ' * 50000]), first['entity_id']))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_entity SET aliases_json=? WHERE entity_id=?',
+                (json.dumps(['Synthetic oversize ' * 50000]), first['entity_id']))
     monkeypatch.setattr(assertions.repository.entities, 'get', lambda *args: pytest.fail('Unbounded materialization'))
     selection, _ = service.inspect(matter.matter_id, ACTOR)
     assert selection['rows'][0]['state'] == 'Inspection unavailable'
@@ -235,7 +238,8 @@ def test_exact_reference_metadata_and_source_guard_transaction(case):
     service = MatterContextService(assertions)
     add(service,matter,'entity',first['entity_id'])
     with assertions.repository.transaction(matter.matter_id,ACTOR):
-        store.connection.execute('UPDATE workbench_entity_mention SET excerpt_digest=? WHERE entity_id=?',('f'*64,first['entity_id']))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_entity_mention SET excerpt_digest=? WHERE entity_id=?',('f'*64,first['entity_id']))
     row = service.inspect(matter.matter_id,ACTOR)[0]['rows'][0]
     assert row['state'] == 'Changed' and row['current']['support_state'] == 'Source unavailable or changed'
     assert not row['current']['references'][0]['available']

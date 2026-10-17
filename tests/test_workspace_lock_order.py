@@ -1,4 +1,6 @@
 """Synthetic composition regressions for overlapping matter/entity actions."""
+
+from tests.fixture_write import fixture_write
 from contextlib import contextmanager
 import faulthandler
 import os
@@ -112,7 +114,7 @@ def _overlap(runtime, action):
         service.create(matter.matter_id, WEB_ACTOR, display_name="Unavailable support", support=token)
     with pytest.raises(KeyError):
         service.detail(results["matter"].matter_id, WEB_ACTOR, entity["entity_id"])
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_principal SET active=0 WHERE principal_id=?", (WEB_ACTOR,))
     with pytest.raises(KeyError):

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -83,7 +85,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
             store._save((document.document_id,))
         workspace = bench.workspace
         # Keep the real media worker from claiming the synthetic seed job.
-        with workspace._lock:
+        with fixture_write(workspace):
             job = workspace.queue_media_job(
                 matter.matter_id, document.document_id, document.version_id, ACTOR,
                 source_sha256=document.digest, byte_size=document.size,
@@ -108,7 +110,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
         )
         # Only the synthetic revision emulates legacy controls; today's import
         # and edit validators remain strict and are not bypassed in production.
-        with workspace._lock, workspace.connection:
+        with fixture_write(workspace):
             workspace.connection.execute(
                 "UPDATE workbench_transcript_segment_revision SET text=? WHERE segment_id=?",
                 (RAW_TEXT, segment.segment_id),

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_ENV_PREFIX,
     LEGACY_PRODUCT,
@@ -558,7 +560,7 @@ def test_exact_byte_comparisons_restore_and_rebuild_from_received_registry(node_
         assert restored.connection.execute('PRAGMA foreign_key_check').fetchall() == []
         # Discard only this synthetic derived lookup to prove that normal opening
         # rebuilds it from restored received source identities and bytes.
-        with restored.connection:
+        with fixture_write(restored):
             restored.connection.execute('DELETE FROM workbench_source_byte_match WHERE matter_id=?', (matter.matter_id,))
     finally:
         restored.close()

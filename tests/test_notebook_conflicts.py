@@ -1,4 +1,6 @@
 """Synthetic team-note stale edit and review-action regressions."""
+
+from tests.fixture_write import fixture_write
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import threading
@@ -106,7 +108,7 @@ def test_write_rechecks_member_and_matter_authority(tmp_path, operation, denial)
     if denial == 'other_matter':
         matter = store.create_matter('Neighbor canary', '', 'principal-member')
     else:
-        with store.connection:
+        with fixture_write(store):
             if denial == 'revoked':
                 store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE principal_id='principal-member'")
             elif denial == 'inactive':

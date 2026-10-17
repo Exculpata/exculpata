@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import sqlite3
 
 import pytest
@@ -28,8 +30,9 @@ def test_fresh_migration_foreign_keys_and_reopen(tmp_path):
     )] == [1]
     reopened.register_matter("matter-alpha", "Synthetic Alpha")
     with pytest.raises(sqlite3.IntegrityError):
-        reopened.connection.execute(
-            "INSERT INTO source_location(source_location_id,matter_id,display_name,enabled,catalog_revision) VALUES(?,?,?,?,?)",
-            ("bad-location", "unknown", "bad", 1, 0),
-        )
+        with fixture_write(reopened):
+            reopened.connection.execute(
+                "INSERT INTO source_location(source_location_id,matter_id,display_name,enabled,catalog_revision) VALUES(?,?,?,?,?)",
+                ("bad-location", "unknown", "bad", 1, 0),
+            )
     reopened.close()

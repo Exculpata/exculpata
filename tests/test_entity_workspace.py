@@ -1,4 +1,6 @@
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -121,7 +123,7 @@ def test_authority_cross_matter_and_two_connection_stale_writes(tmp_path):
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(change, svc, label, actor) for svc, label, actor in ((entities, 'First', ACTOR), (service(second), 'Second', member))]
         assert sorted(f.result(timeout=10) for f in futures) == ['conflict', 'saved']
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (ACTOR,))
     with pytest.raises(KeyError):
         service(second).create(matter.matter_id, ACTOR, display_name='Denied')
@@ -384,7 +386,7 @@ def test_existing_full_history_snapshot_survives_new_delta_edits(tmp_path):
     legacy.pop('removed_mentions')
     legacy.pop('history_format')
     legacy_json = json.dumps(legacy)
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_entity_history SET snapshot_json=? WHERE entity_id=? AND revision=1',
                                   (legacy_json, entity['entity_id']))
     entities.update(matter.matter_id, ACTOR, entity['entity_id'], expected_revision=1, display_name='Synthetic corrected label')

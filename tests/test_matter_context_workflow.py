@@ -1,3 +1,4 @@
+from tests.fixture_write import fixture_write
 
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
@@ -268,7 +269,7 @@ def test_read_only_identity_checks_never_commit_or_mutate_sessions(protected_ass
     token = c['client'].cookies.get(SESSION_COOKIE)
     actor = identity.resolve(token)
     for state in ('current','expired','bad_roles'):
-        with store._lock:
+        with fixture_write(store):
             store.connection.execute('BEGIN IMMEDIATE')
             if state == 'expired':
                 store.connection.execute("UPDATE workbench_session SET idle_expires_at='2000-01-01T00:00:00Z' WHERE session_id=?",(actor.session.session_id,))

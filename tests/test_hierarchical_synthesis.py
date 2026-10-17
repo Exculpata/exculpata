@@ -1,4 +1,6 @@
 """Synthetic provenance, >12-unit recall, interruption and budget acceptance."""
+
+from tests.fixture_write import fixture_write
 from copy import deepcopy
 import hashlib
 
@@ -396,7 +398,7 @@ def test_failed_synthesis_displays_saved_issue_checkpoint_and_spent_budget(chain
     corrupted = deepcopy(saved.result)
     corrupted["hierarchical_synthesis"]["issue"][0]["claims"][0]["text"] = "A submarine transported 9999 satellites to Jupiter."
     import json
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
             (json.dumps(corrupted), job.job_id))
     invalid = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")

@@ -1,4 +1,6 @@
 """Synthetic C1 storage, authorization, atomicity, fidelity and purge contracts."""
+
+from tests.fixture_write import fixture_write
 import json
 import sqlite3
 from pathlib import Path
@@ -157,7 +159,7 @@ def test_exact_byte_boundaries_and_disabled_principal(case):
     store, matter = case
     saved = update(store, matter, objective='界' * 341 + 'x', background='x' * 10000)
     assert len(saved['objective'].encode()) == 1024 and len(saved['background']) == 10000
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (ACTOR,))
     for operation in (lambda: store.matter_purpose(matter.matter_id, ACTOR), lambda: update(store, matter, 1)):
         with pytest.raises(KeyError):
@@ -168,7 +170,7 @@ def test_exact_byte_boundaries_and_disabled_principal(case):
 def test_nonactive_matter_denies_read_write_even_with_administrator_read_override(case, state):
     store, matter = case
     update(store, matter)
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_matter_lifecycle SET state=? WHERE matter_id=?', (state, matter.matter_id))
     for admin in (True, False):
         with pytest.raises(KeyError):

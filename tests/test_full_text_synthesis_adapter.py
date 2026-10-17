@@ -1,4 +1,5 @@
 """Narrow synthetic tests for the streamed full-text input contract."""
+from tests.fixture_write import fixture_write
 from copy import deepcopy
 import hashlib
 import io
@@ -20,46 +21,48 @@ from tests.test_full_text_synthesis import ACTOR, finish, queue, seed_terminal_r
 
 class SyntheticLedger:
     def __init__(self):
-        self.db = sqlite3.connect(":memory:")
-        self.db.row_factory = sqlite3.Row
+        self._lock = RLock()
+        self.connection = sqlite3.connect(":memory:")
+        self.connection.row_factory = sqlite3.Row
         self.allowed = True
         self.originals = {}
         self.resolutions = []
-        self.db.executescript("""
-            CREATE TABLE workbench_review_run(run_id TEXT,matter_id TEXT,run_kind TEXT,state TEXT,
-                criterion_id TEXT,criterion_version_id TEXT,source_set_id TEXT,updated_at TEXT);
-            CREATE TABLE workbench_text_review(run_id TEXT,policy_json TEXT);
-            CREATE TABLE workbench_text_review_budget(run_id TEXT,legacy INTEGER,limit_reason TEXT);
-            CREATE TABLE workbench_review_criterion_version(matter_id TEXT,criterion_version_id TEXT,
-                instructions TEXT,include_guidance TEXT,exclude_guidance TEXT);
-            CREATE TABLE workbench_review_criterion(matter_id TEXT,criterion_id TEXT,title TEXT);
-            CREATE TABLE workbench_text_review_source(run_id TEXT,document_id TEXT,source_version_id TEXT,
-                source_basis_digest TEXT,source_state TEXT,state TEXT,inventory_sealed INTEGER,
-                unit_count INTEGER,text_chars INTEGER,chunk_count INTEGER,empty_units INTEGER);
-            CREATE TABLE workbench_source_catalog(matter_id TEXT,document_id TEXT,version_id TEXT,
-                content_basis_digest TEXT,source_state TEXT);
-            CREATE TABLE workbench_text_review_unit(run_id TEXT,document_id TEXT,unit_ordinal INTEGER,
-                text_chars INTEGER,unit_digest TEXT,citation_json TEXT,state TEXT);
-            CREATE TABLE workbench_text_review_chunk(run_id TEXT,document_id TEXT,unit_ordinal INTEGER,
-                cursor INTEGER,state TEXT,decision TEXT,rationale TEXT,finding_key TEXT);
-            CREATE TABLE workbench_review_decision(run_id TEXT,ordinal INTEGER,human_decision TEXT,
-                human_note TEXT,updated_at TEXT);
-            CREATE TABLE workbench_text_review_counter(run_id TEXT,kind TEXT,state TEXT,count INTEGER,characters INTEGER);
-            CREATE TABLE workbench_source_set(matter_id TEXT,source_set_id TEXT);
-            CREATE TABLE workbench_source_set_item(matter_id TEXT,source_set_id TEXT,document_id TEXT);
-            INSERT INTO workbench_review_run VALUES ('run','matter','full','succeeded','criterion','criterion-v1',NULL,'run-time');
-            INSERT INTO workbench_text_review VALUES ('run','{}');
-            INSERT INTO workbench_text_review_budget VALUES ('run',0,'');
-            INSERT INTO workbench_review_criterion_version VALUES ('matter','criterion-v1','What do the dispatch records say about delivery?','','');
-            INSERT INTO workbench_review_criterion VALUES ('matter','criterion','Dispatch review');
-            INSERT INTO workbench_review_decision VALUES ('run',1,'','', 'decision-time');
-        """)
+        with fixture_write(self):
+            self.connection.executescript("""
+                CREATE TABLE workbench_review_run(run_id TEXT,matter_id TEXT,run_kind TEXT,state TEXT,
+                    criterion_id TEXT,criterion_version_id TEXT,source_set_id TEXT,updated_at TEXT);
+                CREATE TABLE workbench_text_review(run_id TEXT,policy_json TEXT);
+                CREATE TABLE workbench_text_review_budget(run_id TEXT,legacy INTEGER,limit_reason TEXT);
+                CREATE TABLE workbench_review_criterion_version(matter_id TEXT,criterion_version_id TEXT,
+                    instructions TEXT,include_guidance TEXT,exclude_guidance TEXT);
+                CREATE TABLE workbench_review_criterion(matter_id TEXT,criterion_id TEXT,title TEXT);
+                CREATE TABLE workbench_text_review_source(run_id TEXT,document_id TEXT,source_version_id TEXT,
+                    source_basis_digest TEXT,source_state TEXT,state TEXT,inventory_sealed INTEGER,
+                    unit_count INTEGER,text_chars INTEGER,chunk_count INTEGER,empty_units INTEGER);
+                CREATE TABLE workbench_source_catalog(matter_id TEXT,document_id TEXT,version_id TEXT,
+                    content_basis_digest TEXT,source_state TEXT);
+                CREATE TABLE workbench_text_review_unit(run_id TEXT,document_id TEXT,unit_ordinal INTEGER,
+                    text_chars INTEGER,unit_digest TEXT,citation_json TEXT,state TEXT);
+                CREATE TABLE workbench_text_review_chunk(run_id TEXT,document_id TEXT,unit_ordinal INTEGER,
+                    cursor INTEGER,state TEXT,decision TEXT,rationale TEXT,finding_key TEXT);
+                CREATE TABLE workbench_review_decision(run_id TEXT,ordinal INTEGER,human_decision TEXT,
+                    human_note TEXT,updated_at TEXT);
+                CREATE TABLE workbench_text_review_counter(run_id TEXT,kind TEXT,state TEXT,count INTEGER,characters INTEGER);
+                CREATE TABLE workbench_source_set(matter_id TEXT,source_set_id TEXT);
+                CREATE TABLE workbench_source_set_item(matter_id TEXT,source_set_id TEXT,document_id TEXT);
+                INSERT INTO workbench_review_run VALUES ('run','matter','full','succeeded','criterion','criterion-v1',NULL,'run-time');
+                INSERT INTO workbench_text_review VALUES ('run','{}');
+                INSERT INTO workbench_text_review_budget VALUES ('run',0,'');
+                INSERT INTO workbench_review_criterion_version VALUES ('matter','criterion-v1','What do the dispatch records say about delivery?','','');
+                INSERT INTO workbench_review_criterion VALUES ('matter','criterion','Dispatch review');
+                INSERT INTO workbench_review_decision VALUES ('run',1,'','', 'decision-time');
+            """)
         self.document_id = "a" * 32
-        self.db.execute("INSERT INTO workbench_source_catalog VALUES (?,?,?,?,?)", ("matter", self.document_id, "b" * 32, "c" * 64, "ready"))
-        self.db.execute("INSERT INTO workbench_text_review_source VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                        ("run", self.document_id, "b" * 32, "c" * 64, "ready", "inventoried", 1, 0, 0, 0, 0))
-        self.db.commit()
-        self.repository = FullTextSynthesisRepository(connection=self.db, lock=RLock(), authorize=self.authorize)
+        with fixture_write(self):
+            self.connection.execute("INSERT INTO workbench_source_catalog VALUES (?,?,?,?,?)", ("matter", self.document_id, "b" * 32, "c" * 64, "ready"))
+            self.connection.execute("INSERT INTO workbench_text_review_source VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                            ("run", self.document_id, "b" * 32, "c" * 64, "ready", "inventoried", 1, 0, 0, 0, 0))
+        self.repository = FullTextSynthesisRepository(connection=self.connection, lock=self._lock, authorize=self.authorize)
         self.service = FullTextSynthesisService(repository=self.repository, resolve_originals=self.resolve)
 
     def authorize(self, matter, actor):
@@ -75,14 +78,14 @@ class SyntheticLedger:
                    "line_start": None, "line_end": None, "evidence_kind": "document", "href": "/matters/synthetic"}
         self.originals[number] = payload
         locator = compact_locator(payload, number, text)
-        self.db.execute("INSERT INTO workbench_text_review_unit VALUES (?,?,?,?,?,?,?)",
-                        ("run", self.document_id, number, len(text), payload["excerpt_digest"], json.dumps(locator), unit_state or state))
-        if text:
-            self.db.execute("INSERT INTO workbench_text_review_chunk VALUES (?,?,?,?,?,?,?,?)",
-                            ("run", self.document_id, number, number, state, decision, text if rationale is None else rationale, f"finding-{number}"))
-        self.db.execute("UPDATE workbench_text_review_source SET unit_count=unit_count+1,text_chars=text_chars+?,chunk_count=chunk_count+?,empty_units=empty_units+?",
-                        (len(text), bool(text), not text))
-        self.db.commit()
+        with fixture_write(self):
+            self.connection.execute("INSERT INTO workbench_text_review_unit VALUES (?,?,?,?,?,?,?)",
+                            ("run", self.document_id, number, len(text), payload["excerpt_digest"], json.dumps(locator), unit_state or state))
+            if text:
+                self.connection.execute("INSERT INTO workbench_text_review_chunk VALUES (?,?,?,?,?,?,?,?)",
+                                ("run", self.document_id, number, number, state, decision, text if rationale is None else rationale, f"finding-{number}"))
+            self.connection.execute("UPDATE workbench_text_review_source SET unit_count=unit_count+1,text_chars=text_chars+?,chunk_count=chunk_count+?,empty_units=empty_units+?",
+                            (len(text), bool(text), not text))
 
     def resolve(self, locators, *, source_basis_digests, source_versions):
         assert source_basis_digests == {self.document_id: "c" * 64}
@@ -94,8 +97,8 @@ class SyntheticLedger:
         return self.service.prepare("matter", "reviewer", "run")
 
     def check(self, receipt, **kwargs):
-        with self.db:
-            self.db.execute("BEGIN IMMEDIATE")
+        with fixture_write(self):
+            self.connection.execute("BEGIN IMMEDIATE")
             self.repository.validate_locked("matter", "reviewer", receipt, **kwargs)
 
 
@@ -103,7 +106,7 @@ class SyntheticLedger:
 def ledger():
     value = SyntheticLedger()
     yield value
-    value.db.close()
+    value.connection.close()
 
 
 class Echo:
@@ -174,9 +177,9 @@ def test_human_edit_without_run_timestamp_change_invalidates_active_but_keeps_hi
     ledger.add(1)
     receipt = ledger.prepare()["full_text_synthesis_input"]
     ledger.check(receipt)
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_decision SET human_decision='exclude',human_note='Synthetic reviewer correction',updated_at='new-decision-time'")
-    assert ledger.db.execute("SELECT updated_at FROM workbench_review_run").fetchone()[0] == receipt["run_updated_at"]
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_decision SET human_decision='exclude',human_note='Synthetic reviewer correction',updated_at='new-decision-time'")
+    assert ledger.connection.execute("SELECT updated_at FROM workbench_review_run").fetchone()[0] == receipt["run_updated_at"]
     with pytest.raises(WorkspaceProblem, match="human decision changed"):
         ledger.check(receipt)
     ledger.check(receipt, historical=True)
@@ -187,8 +190,8 @@ def test_human_edit_without_run_timestamp_change_invalidates_active_but_keeps_hi
 def test_source_revocation_invalidates_active_and_historical_receipts(ledger, change):
     ledger.add(1)
     receipt = ledger.prepare()["full_text_synthesis_input"]
-    with ledger.db:
-        ledger.db.execute(change)
+    with fixture_write(ledger):
+        ledger.connection.execute(change)
     for historical in (False, True):
         with pytest.raises(WorkspaceProblem, match="source is missing"):
             ledger.check(receipt, historical=historical)
@@ -196,8 +199,8 @@ def test_source_revocation_invalidates_active_and_historical_receipts(ledger, ch
 
 @pytest.mark.parametrize("state", ["running", "queued"])
 def test_active_run_refusal(ledger, state):
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_run SET state=?", (state,))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_run SET state=?", (state,))
     with pytest.raises(WorkspaceProblem, match="terminal"):
         ledger.prepare()
 
@@ -215,21 +218,21 @@ def test_wrong_matter_membership_and_new_question_refuse(ledger):
 
 
 def test_overlong_criterion_refused_without_truncation(ledger):
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?", ("x" * 2001,))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?", ("x" * 2001,))
     with pytest.raises(WorkspaceProblem, match="cannot be truncated"):
         ledger.prepare()
 
 
 def test_source_set_addition_before_and_after_admission_refuses(ledger):
     ledger.add(1)
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_run SET source_set_id='set'")
-        ledger.db.execute("INSERT INTO workbench_source_set VALUES ('matter','set')")
-        ledger.db.execute("INSERT INTO workbench_source_set_item VALUES ('matter','set',?)", (ledger.document_id,))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_run SET source_set_id='set'")
+        ledger.connection.execute("INSERT INTO workbench_source_set VALUES ('matter','set')")
+        ledger.connection.execute("INSERT INTO workbench_source_set_item VALUES ('matter','set',?)", (ledger.document_id,))
     receipt = ledger.prepare()["full_text_synthesis_input"]
-    with ledger.db:
-        ledger.db.execute("INSERT INTO workbench_source_set_item VALUES ('matter','set','new-source')")
+    with fixture_write(ledger):
+        ledger.connection.execute("INSERT INTO workbench_source_set_item VALUES ('matter','set','new-source')")
     with pytest.raises(WorkspaceProblem, match="source set changed"):
         ledger.check(receipt)
     with pytest.raises(WorkspaceProblem, match="source set changed"):
@@ -256,14 +259,14 @@ def test_source_scope_read_uses_callers_reader_and_preserves_transaction_ownersh
     ledger.add(1)
     receipt = ledger.prepare()["full_text_synthesis_input"]
     ledger.repository.validate_source_scope_locked(receipt)
-    assert not ledger.db.in_transaction
+    assert not ledger.connection.in_transaction
     # A different reader's authorization belongs to the route, not the original
     # creator recorded in a now-historical input receipt.
     ledger.allowed = False
-    with ledger.db:
-        ledger.db.execute("BEGIN")
+    with fixture_write(ledger):
+        ledger.connection.execute("BEGIN")
         ledger.repository.validate_source_scope_locked(receipt)
-        assert ledger.db.in_transaction
+        assert ledger.connection.in_transaction
 
 
 def test_persistence_byte_admission_omits_whole_findings_without_slicing(ledger, monkeypatch):
@@ -290,8 +293,8 @@ def test_mid_generation_human_edit_refuses_intermediate_save(ledger):
     receipt = prepared["full_text_synthesis_input"]
     class EditingEcho(Echo):
         def generate(self, **kwargs):
-            with ledger.db:
-                ledger.db.execute("UPDATE workbench_review_decision SET human_decision='exclude',updated_at='edited-during-model'")
+            with fixture_write(ledger):
+                ledger.connection.execute("UPDATE workbench_review_decision SET human_decision='exclude',updated_at='edited-during-model'")
             return super().generate(**kwargs)
     ledger.service.generator = GroundedGenerationService(EditingEcho())
     saved = []
@@ -305,8 +308,8 @@ def test_complete_criterion_guidance_reaches_generator_and_frozen_export_input(l
     instructions = "Summarize the saved delivery accounts.\nKeep original record numbers."
     include = "Include decisive amber-bicycle dispatch support."
     exclude = "Exclude unsourced violet-submarine speculation."
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
                           (instructions, include, exclude))
     ledger.add(1)
     prepared = ledger.prepare()
@@ -327,8 +330,8 @@ def test_complete_criterion_guidance_reaches_generator_and_frozen_export_input(l
     # The canonical question is persisted unchanged in the portable input
     # receipt; complete result exports bind job.question to this same value.
     assert json.loads(json.dumps(prepared))["full_text_synthesis_input"]["question"] == expected
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET exclude_guidance=?", (exclude + " Revised.",))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET exclude_guidance=?", (exclude + " Revised.",))
     changed = ledger.prepare()["full_text_synthesis_input"]
     assert changed["criterion_digest"] != receipt["criterion_digest"]
     assert changed["snapshot_digest"] != receipt["snapshot_digest"]
@@ -343,8 +346,8 @@ def test_complete_criterion_guidance_reaches_generator_and_frozen_export_input(l
     ("s" * 1_000, "i" * 500, "e" * 500),
 ])
 def test_complete_criterion_overflow_refuses_without_dropping_guidance(ledger, instructions, include, exclude):
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
                           (instructions, include, exclude))
     with pytest.raises(WorkspaceProblem, match="complete review criterion exceeds"):
         ledger.prepare()
@@ -353,20 +356,20 @@ def test_complete_criterion_overflow_refuses_without_dropping_guidance(ledger, i
 
 def test_empty_guidance_has_no_placeholder_and_exact_instruction_text_is_retained(ledger):
     instructions = "Read these saved accounts.\n\nKeep competing statements separate."
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance='',exclude_guidance=''", (instructions,))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance='',exclude_guidance=''", (instructions,))
     ledger.add(1)
     assert ledger.prepare()["full_text_synthesis_input"]["question"] == instructions
 
 
 def test_instruction_only_question_accepts_exactly_2000_characters_without_labels(ledger):
     instructions = "x" * 2_000
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance='',exclude_guidance=''", (instructions,))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance='',exclude_guidance=''", (instructions,))
     ledger.add(1)
     assert ledger.prepare()["full_text_synthesis_input"]["question"] == instructions
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?", (instructions + "x",))
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?", (instructions + "x",))
     with pytest.raises(WorkspaceProblem, match="complete review criterion exceeds"):
         ledger.prepare()
 
@@ -388,8 +391,8 @@ def test_maximum_criterion_reaches_both_generation_requests_once_with_exclusion_
     criterion["instructions"] = (beginning + padding if guidance else beginning + padding + exclusion)
     expected = criterion_question(criterion)
     assert len(expected) == 2_000 and expected.endswith(exclusion)
-    with ledger.db:
-        ledger.db.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
+    with fixture_write(ledger):
+        ledger.connection.execute("UPDATE workbench_review_criterion_version SET instructions=?,include_guidance=?,exclude_guidance=?",
             tuple(criterion[key] for key in ("instructions", "include_guidance", "exclude_guidance")))
     ledger.add(1)
     prepared = ledger.prepare()

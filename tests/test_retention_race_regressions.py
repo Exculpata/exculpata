@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 
 import sqlite3
@@ -29,7 +31,8 @@ def due_matter(tmp_path):
     competing = WorkspaceStore(path, clock=lambda: now[0])
     # A deterministic interleaving should report contention immediately rather
     # than waiting for a writer held by this same test's other connection.
-    competing.connection.execute("PRAGMA busy_timeout=0")
+    with fixture_write(competing):
+        competing.connection.execute("PRAGMA busy_timeout=0")
     now[0] += timedelta(days=9)
     try:
         yield primary, competing, matter, now

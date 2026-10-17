@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import json
 import re
@@ -165,13 +167,15 @@ def test_preview_login_session_csrf_membership_revocation_and_audit(tmp_path):
         assert jordan_token not in serialized
 
         with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-            client.app.state.workbench.workspace.connection.execute(
-                "UPDATE workbench_audit_event SET outcome='failure'"
-            )
+            with fixture_write(client.app.state.workbench.workspace):
+                client.app.state.workbench.workspace.connection.execute(
+                    "UPDATE workbench_audit_event SET outcome='failure'"
+                )
         with pytest.raises(sqlite3.DatabaseError, match="append-only"):
-            client.app.state.workbench.workspace.connection.execute(
-                "DELETE FROM workbench_audit_event"
-            )
+            with fixture_write(client.app.state.workbench.workspace):
+                client.app.state.workbench.workspace.connection.execute(
+                    "DELETE FROM workbench_audit_event"
+                )
 
 
 def test_session_survives_restart_then_logout_revokes_replay(tmp_path):

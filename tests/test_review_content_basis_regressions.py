@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import io
 import sqlite3
@@ -85,7 +87,7 @@ def test_review_snapshot_refuses_empty_content_basis_atomically(tmp_path) -> Non
         )
         affected_version = _criterion(bench, affected)
         unaffected_version = _criterion(bench, unaffected)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_source_catalog SET content_basis_digest='' "
                 "WHERE matter_id=? AND document_id=?",
@@ -138,7 +140,7 @@ def test_restart_fails_active_snapshot_with_existing_empty_basis(tmp_path) -> No
         version.criterion_version_id,
         run_kind="full",
     )
-    with original.workspace.connection:
+    with fixture_write(original.workspace):
         original.workspace.connection.execute(
             "UPDATE workbench_review_decision SET source_basis_digest='' "
             "WHERE run_id=?",
@@ -178,7 +180,7 @@ def test_processing_rejects_active_snapshot_with_empty_basis(
             b"Generated event EVT-4821 occurred at 08:42:17.",
         )
         claimed, decision = _claimed_review(bench, matter)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_review_decision SET source_basis_digest='' "
                 "WHERE run_id=? AND document_id=?",
@@ -216,7 +218,7 @@ def test_recording_rejects_active_snapshot_with_empty_basis(tmp_path) -> None:
             b"Generated event EVT-4821 occurred at 08:42:17.",
         )
         claimed, decision = _claimed_review(bench, matter)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_review_decision SET source_basis_digest='' "
                 "WHERE run_id=? AND document_id=?",
@@ -258,7 +260,7 @@ def test_finalization_rejects_saved_decision_with_empty_basis(tmp_path) -> None:
             decision="included",
             rationale="Generated supported inclusion.",
         )
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_review_decision SET source_basis_digest='' "
                 "WHERE run_id=? AND document_id=?",
@@ -313,7 +315,7 @@ def test_finalization_revalidates_decisions_beyond_one_export_page(
                 decision="included",
                 rationale="Generated supported inclusion.",
             )
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             for decision, ordinal in zip(decisions, (99_999, 100_000, 100_001)):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_review_decision SET ordinal=? "
@@ -450,8 +452,10 @@ def test_postgres_retention_failure_does_not_skip_legacy_basis_repair(
     assert len(expected_basis) == 64
     original.close()
 
+    # fixture-write: Open migration fixture only after closing the original workbench and workers.
     database = sqlite3.connect(runtime / "workbench.sqlite")
     try:
+        # fixture-write: Remove the basis column while the original workbench remains closed.
         database.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
@@ -553,8 +557,10 @@ def test_postgres_projection_and_rollback_failure_keeps_repairing_catalogs(
     }
     original.close()
 
+    # fixture-write: Open migration fixture only after closing the original workbench and workers.
     database = sqlite3.connect(runtime / "workbench.sqlite")
     try:
+        # fixture-write: Remove the basis column while the original workbench remains closed.
         database.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )

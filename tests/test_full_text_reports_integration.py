@@ -1,4 +1,6 @@
 """Synthetic full-text runs copied and compiled into bounded, source-checked Reports."""
+
+from tests.fixture_write import fixture_write
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 from case_intelligence.workspace_store import WorkspaceProblem
 from dataclasses import asdict
@@ -308,7 +310,7 @@ def test_complete_text_ledger_preserves_human_validation_before_delete(workspace
 def test_full_text_run_only_offers_resume_when_budget_allows_it(workspace, state, exhausted):
     client, bench, matter = workspace
     run, _ = completed_text_run(bench, matter, ['The amber bicycle arrived.'])
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_review_run SET state=? WHERE run_id=?', (state, run.run_id))
         bench.workspace.connection.execute('UPDATE workbench_text_review_budget SET limit_reason=? WHERE run_id=?',
             ('Synthetic retained capacity limit' if exhausted else '', run.run_id))
@@ -322,7 +324,7 @@ def test_full_text_run_only_offers_resume_when_budget_allows_it(workspace, state
 def test_legacy_full_text_run_directs_new_run_instead_of_resume(workspace, state):
     client, bench, matter = workspace
     run, _ = completed_text_run(bench, matter, ['The amber bicycle arrived.'])
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_review_run SET state=? WHERE run_id=?', (state, run.run_id))
         bench.workspace.connection.execute('UPDATE workbench_text_review_budget SET legacy=1,limit_reason=? WHERE run_id=?', ('', run.run_id))
     page = client.get(f'/matters/{matter.slug}/full-review', params={'criterion': run.criterion_id, 'run': run.run_id})
@@ -335,7 +337,7 @@ def test_legacy_full_text_run_directs_new_run_instead_of_resume(workspace, state
 def test_older_selected_full_text_run_keeps_its_mode_and_ledger_link(workspace):
     client, bench, matter = workspace
     run, _ = completed_text_run(bench, matter, ['The amber bicycle arrived.'])
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         original = dict(bench.workspace.connection.execute('SELECT * FROM workbench_review_run WHERE run_id=?', (run.run_id,)).fetchone())
         bench.workspace.connection.execute('UPDATE workbench_review_run SET created_at=? WHERE run_id=?', ('2000-01-01T00:00:00Z', run.run_id))
         for index in range(101):
@@ -357,7 +359,7 @@ def test_bundle_ledger_and_source_check_share_concurrent_adjudication_snapshot(w
     run, documents = completed_text_run(bench, matter, ['The amber bicycle arrived.'])
     document = documents[0]
     current = bench.workspace.review_decision(matter.matter_id, ACTOR, run.run_id, document.document_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_review_decision SET validation_sample=1 WHERE run_id=?', (run.run_id,))
     before = bench.workspace.adjudicate_review_decision(matter.matter_id, ACTOR, run.run_id,
         document.document_id, human_decision='agree', expected_updated_at=current.updated_at,
@@ -411,7 +413,7 @@ def test_failed_close_full_text_bundle_never_reopens_quarantined_sources(workspa
     before = bench.workspace.review_decision(matter.matter_id, ACTOR, run.run_id, documents[0].document_id)
     assert bool(before.citations) is cited
     if corruption:
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             if corruption == "basis":
                 bench.workspace.connection.execute(
                     "UPDATE workbench_review_decision SET source_basis_digest=? WHERE run_id=?",

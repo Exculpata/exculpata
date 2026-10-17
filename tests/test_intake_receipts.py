@@ -1,5 +1,7 @@
 """Synthetic complete-selection accounting, resumable metadata and receipt boundaries."""
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -144,7 +146,7 @@ def test_receipt_authority_is_rechecked_for_reads_and_mutations(tmp_path, kind):
             w.revoke_member(m.matter_id, MEMBER, OWNER)
             actor = MEMBER
         elif kind == 'inactive':
-            with w.connection:
+            with fixture_write(w):
                 w.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (OWNER,))
         elif kind == 'closing':
             w.case_lifecycle.begin_exit(m.slug, OWNER, session_id=lifecycle_session(w, OWNER, administrator_override=False).session_id)

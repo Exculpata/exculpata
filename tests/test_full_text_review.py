@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from tests.fixture_write import fixture_write
 from dataclasses import asdict, replace
 import hashlib
 import io
@@ -36,7 +38,7 @@ def test_every_character_has_one_canonical_range_and_context_overlap():
 def test_repeated_cancellation_preserves_one_event_and_ledger_charge(frozen, state):
     store, matter, run, _ = frozen
     if state == 'queued':
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute("UPDATE workbench_review_run SET state='queued',worker_id=NULL WHERE run_id=?", (run.run_id,))
     def snapshot():
         events = tuple(tuple(row) for row in store.connection.execute(
@@ -162,7 +164,7 @@ def test_cancel_revocation_and_source_invalidation_refuse_late_findings(frozen):
     resumed = store.claim_review_run('synthetic-resumed-worker')
     assert not ledger.record(resumed, decision, chunk, state='processed', label='include', current_source=lambda: False)
     assert ledger.coverage(matter.matter_id, ACTOR, run.run_id)['units'] == {'invalidated': 1}
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
     with pytest.raises(KeyError):
         ledger.rows(matter.matter_id, ACTOR, run.run_id)
@@ -265,7 +267,7 @@ def test_changed_catalog_invalidates_uninventoried_source_and_cascades(frozen):
     store, matter, run, decision = frozen
     ledger = FullTextReviewLedger(store)
     # Later source readiness cannot rewrite the frozen extraction state.
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_source_catalog SET source_state='failed',state_label='OCR unavailable' WHERE matter_id=?", (matter.matter_id,))
     before = ledger.extraction_rows(matter.matter_id, ACTOR, run.run_id)[0]
     assert before['source_state'] == 'ready'
@@ -274,7 +276,7 @@ def test_changed_catalog_invalidates_uninventoried_source_and_cascades(frozen):
     assert coverage['sources'] == {'invalidated': 1}
     assert not coverage['inventory_complete']
     assert coverage['unresolved_inventory_sources'] == 1
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('DELETE FROM workbench_review_run WHERE run_id=?', (run.run_id,))
     for table in ('workbench_text_review', 'workbench_text_review_source', 'workbench_text_review_unit', 'workbench_text_review_chunk'):
         assert store.connection.execute(f'SELECT count(*) FROM {table}').fetchone()[0] == 0
@@ -299,7 +301,7 @@ def test_incremental_exports_keep_partial_checkpoint_and_refuse_foreign_actor(fr
 
 def test_admission_freezes_unavailable_extraction_separately_from_eligible_units(frozen):
     store, matter, run, _decision = frozen
-    with store.connection:
+    with fixture_write(store):
         original = store.connection.execute('SELECT * FROM workbench_source_catalog WHERE matter_id=?', (matter.matter_id,)).fetchone()
         columns = original.keys()
         values = [({'document_id': 'e' * 32, 'version_id': 'f' * 32, 'action_token': '9' * 32,
@@ -313,7 +315,7 @@ def test_admission_freezes_unavailable_extraction_separately_from_eligible_units
     assert coverage['sources'] == {'pending': 1, 'unavailable': 1}
     frozen_source = next(row for row in ledger.extraction_rows(matter.matter_id, ACTOR, next_run.run_id) if row['state'] == 'unavailable')
     assert frozen_source['extraction_note'] == 'Synthetic OCR unavailable'
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_source_catalog SET source_state='ready' WHERE document_id=?", ('e' * 32,))
     assert ledger.coverage(matter.matter_id, ACTOR, next_run.run_id)['sources']['unavailable'] == 1
 
@@ -399,7 +401,7 @@ def test_frozen_policy_limits_inventory_and_calls_without_refunding_restart(froz
     from case_intelligence.full_text_review_budget import TextReviewLimit
     store, matter, run, decision = frozen
     policy = TextReviewPolicy(packet_chars=512, overlap_chars=0, max_calls=2, max_characters=600)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_text_review SET policy_json=? WHERE run_id=?', (json.dumps(asdict(policy)),run.run_id))
         store.connection.execute('UPDATE workbench_text_review_budget SET max_calls=2,max_characters=600 WHERE run_id=?', (run.run_id,))
     ledger = FullTextReviewLedger(store)
@@ -467,7 +469,7 @@ def test_compact_locator_utf8_charge_zero_units_and_constant_poll(frozen):
     locator = compact_locator({'excerpt':text, 'source_name':'café🟠'}, 1, text)
     assert 'excerpt' not in locator and len(json.dumps(locator)) < 300
     before = coverage['budget']['ledger_bytes']
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_text_review_source SET source_name=source_name || '🟠' WHERE run_id=?",(run.run_id,))
     assert ledger.coverage(matter.matter_id,ACTOR,run.run_id)['budget']['ledger_bytes'] == before + 4
 
@@ -502,7 +504,7 @@ def test_legacy_backfill_is_concurrent_idempotent_and_preserves_malformed_eviden
     ledger = FullTextReviewLedger(store)
     ledger.inventory(run,decision,[PilotUnit(1,'Synthetic legacy text')],current_source=lambda:True)
     malformed = '{synthetic invalid locator'
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_text_review_unit SET citation_json=? WHERE run_id=?',(malformed,run.run_id))
         store.connection.execute('DELETE FROM workbench_text_review_budget WHERE run_id=?',(run.run_id,))
         store.connection.execute('DELETE FROM workbench_text_review_counter WHERE run_id=?',(run.run_id,))
@@ -565,7 +567,7 @@ def test_storage_overflow_rolls_back_whole_unit_and_queue_failure_leaves_no_run(
     from case_intelligence.full_text_review_budget import TextReviewLimit
     store,matter,run,decision=frozen
     ledger=FullTextReviewLedger(store)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_text_review_budget SET max_ledger_bytes=80000 WHERE run_id=?',(run.run_id,))
     with pytest.raises(TextReviewLimit,match='storage limit'):
         ledger.inventory(run,decision,[PilotUnit(1,'x'*100000)],current_source=lambda:True)
@@ -591,7 +593,7 @@ def test_restart_recovery_preserves_spend_fairness_and_control_storage_bound(fro
     assert ledger.coverage(matter.matter_id,ACTOR,run.run_id)['budget']['calls_used']==1
     assert ledger.coverage(matter.matter_id,ACTOR,run.run_id)['budget']['ledger_bytes']==before+2048
     store.claim_review_run('synthetic-recovered-worker')
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_text_review_budget SET max_ledger_bytes=ledger_bytes WHERE run_id=?',(run.run_id,))
     assert store.recover_running_review_runs()==1
     assert store.review_run(matter.matter_id,ACTOR,run.run_id).state=='failed'

@@ -5,6 +5,8 @@ OCR accuracy. Real image/OCR selection regressions are tested separately.
 """
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from dataclasses import asdict
 import io
 import json
@@ -52,7 +54,7 @@ def check_historical_exports(client, bench, matter, conversation, answer):
         'mode': 'complete', 'searchable_count': 1, 'total_count': 1,
         'excluded_count': 0, 'notice': ''}}
     saved_payload = json.dumps(payload)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_message SET payload_json=? WHERE message_id=?',
                                            (saved_payload, answer.message_id))
     slug = matter.slug
@@ -94,7 +96,7 @@ def check_historical_exports(client, bench, matter, conversation, answer):
     historical_result = json.loads(json.dumps(finished.result).replace(PDF_COVERAGE_NOTICE, ''))
     historical_result['coverage']['mode'] = 'complete'
     saved_result = json.dumps(historical_result)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET result_json=? WHERE job_id=?',
                                            (saved_result, claimed.job_id))
     page = client.get(f'/matters/{slug}/research', params={'job': claimed.job_id})

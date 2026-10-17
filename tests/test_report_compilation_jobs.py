@@ -1,4 +1,6 @@
 """Synthetic durable queue, fencing, cancellation, and restore regressions."""
+
+from tests.fixture_write import fixture_write
 import json
 import os
 import sqlite3
@@ -24,7 +26,8 @@ MIGRATION = ROOT / "src/case_intelligence/migrations/sqlite/0027_report_compilat
 
 def setup_store(path):
     store = WorkspaceStore(path)
-    store.connection.executescript(MIGRATION.read_text())
+    with fixture_write(store):
+        store.connection.executescript(MIGRATION.read_text())
     actor = store.upsert_principal("test", ACTOR, "Synthetic reviewer", ACTOR, preferred_principal_id=ACTOR)
     matter = store.create_matter("Generated compilation matter", "Synthetic", actor.principal_id)
     return store, matter
@@ -36,9 +39,10 @@ def queue(jobs, matter, key="a"):
 
 def build_report(store, matter, identifier="report-synthetic-completed"):
     now = store._now()
-    store.connection.execute(
-        "INSERT INTO workbench_report(report_id,matter_id,title,purpose,status,created_by,created_at,updated_by,updated_at) VALUES (?,?,?,?,'draft',?,?,?,?)",
-        (identifier, matter.matter_id, "Generated compiled report", "Synthetic", ACTOR, now, ACTOR, now))
+    with fixture_write(store):
+        store.connection.execute(
+            "INSERT INTO workbench_report(report_id,matter_id,title,purpose,status,created_by,created_at,updated_by,updated_at) VALUES (?,?,?,?,'draft',?,?,?,?)",
+            (identifier, matter.matter_id, "Generated compiled report", "Synthetic", ACTOR, now, ACTOR, now))
     return identifier
 
 
@@ -47,7 +51,8 @@ def test_migration_is_mirrored_idempotent_and_keeps_old_records(tmp_path):
     store, matter = setup_store(tmp_path / "control.sqlite")
     jobs = ReportCompilationJobs(store)
     first = queue(jobs, matter)
-    store.connection.executescript(MIGRATION.read_text())
+    with fixture_write(store):
+        store.connection.executescript(MIGRATION.read_text())
     assert jobs.get(matter.matter_id, ACTOR, first.job_id).state == "queued"
     assert store.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     store.close()
@@ -157,7 +162,7 @@ def test_closed_matter_or_revoked_membership_cannot_queue_claim_or_finish(tmp_pa
     queued = queue(jobs, matter)
     claimed = jobs.claim("synthetic-worker")
     jobs.record_input_fingerprint(claimed, FINGERPRINT)
-    with store.connection:
+    with fixture_write(store):
         if change == "revoked":
             store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=? AND principal_id=?", (matter.matter_id, ACTOR))
         else:
@@ -193,7 +198,7 @@ def test_frozen_jobs_remain_unchanged_and_do_not_block_active_work(tmp_path, lif
         pending_limit=1, actor_active_limit=1, lease_seconds=10), clock=lambda: now[0])
     queued = queue(jobs, frozen)
     claimed = jobs.claim("synthetic-old-worker") if job_state == "running" else None
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_matter_lifecycle SET state=? WHERE matter_id=?",
                                  (lifecycle, frozen.matter_id))
     before = tuple(store.connection.execute(
@@ -485,7 +490,7 @@ def test_independent_heartbeat_does_not_renew_cancelled_or_revoked_work(tmp_path
     if reason == "cancelled":
         jobs.cancel(matter.matter_id, ACTOR, queued.job_id)
     else:
-        with store.connection:
+        with fixture_write(store):
             store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=? AND principal_id=?", (matter.matter_id, ACTOR))
     assert jobs.heartbeat(claimed) is False
     assert store.connection.execute("SELECT lease_expires_at FROM workbench_report_compilation_job WHERE job_id=?", (queued.job_id,)).fetchone()[0] == before
@@ -502,7 +507,7 @@ def test_recovery_terminal_transitions_append_one_attributed_content_free_audit(
         jobs.claim("synthetic-worker")
     if reason in {"cancelled", "cancelled_and_revoked"}:
         jobs.cancel(matter.matter_id, ACTOR, queued.job_id)
-    with store._lock, store.connection:
+    with fixture_write(store):
         if reason in {"revoked_running", "revoked_queued", "cancelled_and_revoked"}:
             store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=? AND principal_id=?", (matter.matter_id, ACTOR))
         elif reason == "inactive_principal":
@@ -638,6 +643,7 @@ def test_busy_heartbeat_retries_until_renewal_or_actual_lease_expiry(tmp_path, m
     writer = sqlite3.connect(store.path, timeout=1)
     try:
         assert processing.wait(5)
+        # fixture-write: Independent writer must block real heartbeat renewal to exercise contention.
         writer.execute('BEGIN IMMEDIATE')
         assert busy.wait(3)  # Real independent SQLite writer outlasts busy_timeout.
         # The durable deadline can include renewals before the writer acquired

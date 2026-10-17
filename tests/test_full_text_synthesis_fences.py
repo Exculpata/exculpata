@@ -1,5 +1,7 @@
 """Security regressions at public retry/export and durable-job boundaries."""
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 from copy import deepcopy
 from dataclasses import replace
@@ -38,7 +40,7 @@ def test_legacy_job_mutations_cannot_bypass_full_text_fences(workspace, operatio
             plan.pop("full_text_synthesis_version")
         else:
             plan["full_text_synthesis_version"] = marker
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
                 (json.dumps(plan), job.job_id))
     before = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
@@ -113,7 +115,7 @@ def test_invalid_version_preserves_charges_and_refuses_processing_retry_and_insp
         plan.pop("full_text_synthesis_version")
     else:
         plan["full_text_synthesis_version"] = marker
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
             (json.dumps(plan), job.job_id))
     corrupt = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
@@ -199,7 +201,7 @@ def test_export_rechecks_actual_reader_and_source_scope_after_render(workspace, 
     def render_then_revoke(*args, **kwargs):
         artifact = original(*args, **kwargs)
         if change == "membership":
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
         else:
             bench.workspace.remove_source_organization(matter.matter_id, documents[0].document_id)
@@ -311,7 +313,7 @@ def test_interrupted_checkpoint_refuses_mismatched_job_binding(workspace, monkey
     assert bench._research_checkpoint_stale(matter, bad)
     # Exercise the real inspector for a plan-only mismatch without changing
     # matter routing or permission records as part of the corruption fixture.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=? WHERE job_id=?",
             (json.dumps({**failed.plan, "input_digest": "0" * 64}), job.job_id))
     response = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")
@@ -330,7 +332,7 @@ def test_full_text_synthesis_report_converters_refuse_before_copy_or_generation(
         completed = replace(completed, plan={key: value for key, value in completed.plan.items() if key != "full_text_synthesis_version"})
     with pytest.raises(WorkspaceProblem, match="Copying it into a Report is not supported"):
         research_sections(completed)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET plan_json=?,result_json=? WHERE job_id=?",
             (json.dumps(completed.plan), json.dumps(completed.result), completed.job_id))
     calls_before = len(model.calls)
@@ -390,7 +392,8 @@ def test_cancellation_cannot_overwrite_another_connections_charged_checkpoint(
     other = WorkspaceStore(bench.workspace.path)
     # An independent writer must either commit before cancellation's read or
     # wait until cancellation commits. Never wait for our own controlled hook.
-    other.connection.execute("PRAGMA busy_timeout=0")
+    with fixture_write(other):
+        other.connection.execute("PRAGMA busy_timeout=0")
     repository = FullTextSynthesisRepository(connection=other.connection,
         lock=other._lock, authorize=other.membership)
     original_read = bench.workspace.research_job
@@ -450,7 +453,8 @@ def test_restart_recovery_preserves_a_concurrent_charged_checkpoint(
     next_result = deepcopy(before.result)
     next_result["hierarchical_synthesis"]["requests_spent"] += 1
     other = WorkspaceStore(bench.workspace.path)
-    other.connection.execute("PRAGMA busy_timeout=0")
+    with fixture_write(other):
+        other.connection.execute("PRAGMA busy_timeout=0")
     repository = FullTextSynthesisRepository(connection=other.connection,
         lock=other._lock, authorize=other.membership)
     committed = []
@@ -489,6 +493,7 @@ def test_restart_recovery_preserves_a_concurrent_charged_checkpoint(
             return self.connection.__exit__(*args)
 
         def execute(self, sql, *args):
+            # fixture-write: This proxy observes product-owned transactions without changing their lifetime.
             cursor = self.connection.execute(sql, *args)
             if "FROM workbench_research_job WHERE state='running' ORDER BY" in sql:
                 return InterleavedCursor(cursor)
@@ -530,7 +535,7 @@ def test_response_rechecks_membership_after_the_final_original_source_scan(
         if len(scans) == 2:
             # Revocation occurs during the final potentially lengthy source
             # revalidation, after the earlier post-render membership check.
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?",
                     (matter.matter_id,))
