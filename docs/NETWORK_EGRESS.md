@@ -51,6 +51,10 @@ services; otherwise the relay denies all. Merely setting an issuer in root
 `.env` does not configure application authentication. Review the rendered graph
 privately. Existing nodes must build the new proxy image and recreate the app
 to gain isolation; a source checkout or passing static check does not apply it.
+Install and update include `egress-proxy` in their explicit image-build targets.
+It shares the application's pinned Python base; its incremental image layers
+remain unmeasured in the existing advisory evaluation-capacity estimate until
+controlled build acceptance. Model-selection build targets are unchanged.
 
 ## Named exceptions and limits
 

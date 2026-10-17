@@ -30,6 +30,19 @@ def no_host_account(monkeypatch):
     monkeypatch.setattr(installer, "_legacy_account", lambda: False)
 
 
+@pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
+@pytest.mark.parametrize("models", ["none", "review", "transcription", "all"])
+def test_install_and_update_build_proxy_without_changing_model_selection(auth, models):
+    expected = {"app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"}
+    if auth == "kerberos":
+        expected.add("kerberos-proxy")
+    if models in {"review", "all"}:
+        expected.add("retrieval")
+    if models in {"transcription", "all"}:
+        expected.update({"transcription-api", "transcription-worker"})
+    assert set(installer._build_targets(auth, models)) == expected
+
+
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
 @pytest.mark.parametrize("auth", ["oidc", "local", "kerberos"])
 def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
