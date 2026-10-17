@@ -292,21 +292,30 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         return False
 
     def bind(target: ast.AST, expression: ast.AST | None) -> None:
-        if isinstance(target, ast.Name):
-            resolved = value(expression) if expression is not None else None
-            unresolved = expression is not None and resolved is None and contains_stem(expression)
-            unbind(target.id)
+        # Resolve the complete right-hand side before updating any target,
+        # matching Python's simultaneous tuple/list assignment semantics.
+        pending = []
+
+        def collect(item: ast.AST, source: ast.AST | None) -> None:
+            if isinstance(item, ast.Name):
+                resolved = value(source) if source is not None else None
+                unresolved = source is not None and resolved is None and contains_stem(source)
+                pending.append((item.id, resolved, unresolved))
+            elif isinstance(item, (ast.Tuple, ast.List)):
+                if isinstance(source, (ast.Tuple, ast.List)) and len(item.elts) == len(source.elts):
+                    for child, child_source in zip(item.elts, source.elts):
+                        collect(child, child_source)
+                else:
+                    for child in item.elts:
+                        collect(child, source)
+
+        collect(target, expression)
+        for name, resolved, unresolved in pending:
+            unbind(name)
             if resolved is not None:
-                env[target.id] = resolved
+                env[name] = resolved
             elif unresolved:
-                unresolved_stems.add(target.id)
-        elif isinstance(target, (ast.Tuple, ast.List)):
-            if isinstance(expression, (ast.Tuple, ast.List)) and len(target.elts) == len(expression.elts):
-                for item, source in zip(target.elts, expression.elts):
-                    bind(item, source)
-            else:
-                for item in target.elts:
-                    bind(item, expression)
+                unresolved_stems.add(name)
 
     class Visitor(ast.NodeVisitor):
         def __init__(self) -> None:

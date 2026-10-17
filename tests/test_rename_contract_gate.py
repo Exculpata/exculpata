@@ -409,3 +409,13 @@ def test_string_provenance_preserves_declared_names_and_non_output_inputs(tmp_pa
         'from case_intelligence.legacy_names import LEGACY_STEM, name_value\n' + source + '\n'
     )
     assert checker.findings(tmp_path) == []
+
+
+def test_tuple_assignment_resolves_all_sources_before_rebinding(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'stem, other = LEGACY_STEM, "synthetic"\n'
+        'stem, other = other, stem\n'
+        'FORMAT = f"{other}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", "recordbench-unregistered-v99")]
