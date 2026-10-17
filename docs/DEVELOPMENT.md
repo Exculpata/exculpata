@@ -116,6 +116,12 @@ before entering the connection transaction and keeps it through commit or
 rollback. Nested SQL fixtures use a savepoint without committing their caller's
 transaction. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
+Use the yielded handle for scripts and explicit transaction control. A nested
+handle rejects `executescript`, commit/rollback, transaction-control SQL and
+transaction-mode changes before they can end the caller's transaction. The same
+restriction applies to a retained outer handle or cursor during the nested
+boundary. Use ordinary `execute`/`executemany` statements for nested SQL fixtures;
+the helper preserves any existing SQLite authorizer.
 Do not retain the yielded connection for later writes or wait for workers/HTTP
 while holding the helper. Keep source mutation guards outside it.
 
@@ -124,6 +130,10 @@ CI suite and names `fixture_write` when a write bypasses the boundary. Deliberat
 independent-connection contention, caller-owned transaction assertions, and
 stopped-database migration/restore tests require a narrowly documented exception
 at the specific statement; ordinary fixture setup must use the helper.
+Generator bodies are deferred work even when created inside the helper. Put
+their writes in a function that acquires its own fixture boundary, or use an
+eager operation while holding the helper. Unannotated SQL callback parameters
+and direct connection commit/rollback calls are checked conservatively too.
 The same lock must cover direct reads, backups and transaction-state assertions.
 For a rollback check, hold it across the rejected operation and the assertion so
 an idle report worker's claim transaction cannot be mistaken for a leaked one.

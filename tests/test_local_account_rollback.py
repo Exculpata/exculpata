@@ -135,6 +135,7 @@ def test_invalid_workspace_never_restores_accounts(migrated, tmp_path, fault):
         if fault != 'missing':
             with connection(target) as db:
                 if fault == 'wrong':
+                    # fixture-write: Construct an unrelated isolated database for operator rollback refusal.
                     db.execute('CREATE TABLE unrelated(value TEXT)')
                 else:
                     # fixture-write: Build an incompatible isolated database that no WorkspaceStore has opened.

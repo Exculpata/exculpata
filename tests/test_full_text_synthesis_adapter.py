@@ -27,8 +27,8 @@ class SyntheticLedger:
         self.allowed = True
         self.originals = {}
         self.resolutions = []
-        with fixture_write(self):
-            self.connection.executescript("""
+        with fixture_write(self) as connection:
+            connection.executescript("""
                 CREATE TABLE workbench_review_run(run_id TEXT,matter_id TEXT,run_kind TEXT,state TEXT,
                     criterion_id TEXT,criterion_version_id TEXT,source_set_id TEXT,updated_at TEXT);
                 CREATE TABLE workbench_text_review(run_id TEXT,policy_json TEXT);
@@ -97,8 +97,8 @@ class SyntheticLedger:
         return self.service.prepare("matter", "reviewer", "run")
 
     def check(self, receipt, **kwargs):
-        with fixture_write(self):
-            self.connection.execute("BEGIN IMMEDIATE")
+        with fixture_write(self) as connection:
+            connection.execute("BEGIN IMMEDIATE")
             self.repository.validate_locked("matter", "reviewer", receipt, **kwargs)
 
 
@@ -263,8 +263,8 @@ def test_source_scope_read_uses_callers_reader_and_preserves_transaction_ownersh
     # A different reader's authorization belongs to the route, not the original
     # creator recorded in a now-historical input receipt.
     ledger.allowed = False
-    with fixture_write(ledger):
-        ledger.connection.execute("BEGIN")
+    with fixture_write(ledger) as connection:
+        connection.execute("BEGIN")
         ledger.repository.validate_source_scope_locked(receipt)
         assert ledger.connection.in_transaction
 

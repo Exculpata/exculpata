@@ -19,6 +19,9 @@ import tokenize
 
 _WRITE = re.compile(r"(?:^|;)\s*(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|REINDEX|VACUUM|ATTACH|DETACH)\b", re.I)
 _TABLE = re.compile(r"\bworkbench_", re.I)
+_TRANSACTION = re.compile(r"^\s*(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b", re.I)
+_SQL_METHODS = {"execute", "executemany", "executescript"}
+_TRANSACTION_METHODS = {"commit", "rollback"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 
 
@@ -41,6 +44,7 @@ class _Value:
     workspace: bool = False
     active_path: bool = False
     imported_function: bool = False
+    fixture_handle: bool = False
 
 
 class _Check(ast.NodeVisitor):
@@ -85,9 +89,10 @@ class _Check(ast.NodeVisitor):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
             if node.attr == "connection":
-                return _Value(symbol=symbol, connection=base.symbol)
-            if node.attr in {"execute", "executemany", "executescript"}:
-                return _Value(symbol=symbol, connection=base.connection)
+                return _Value(symbol=symbol, connection=base.connection or base.symbol,
+                              fixture_handle=base.fixture_handle)
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS:
+                return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle)
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
                           active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
         if isinstance(node, ast.JoinedStr):
@@ -102,7 +107,7 @@ class _Check(ast.NodeVisitor):
                 return self.value(node.args[0])
             if function.symbol == "sqlite3.connect":
                 return _Value(symbol=f"sqlite@{node.lineno}", connection=f"sqlite@{node.lineno}")
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "cursor":
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {"cursor", "execute", "executemany"}:
                 return self.value(node.func.value)
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"format", "join"}:
                 return self.value(node.func.value)
@@ -115,7 +120,7 @@ class _Check(ast.NodeVisitor):
     def flag(self, node: ast.AST, rule: str) -> None:
         statement = node
         while not isinstance(statement, ast.stmt) and statement in self.parents:
-            if isinstance(statement, ast.Lambda):
+            if isinstance(statement, (ast.Lambda, ast.GeneratorExp)):
                 break
             statement = self.parents[statement]
         if statement not in self.exempt:
@@ -154,12 +159,24 @@ class _Check(ast.NodeVisitor):
         if isinstance(node.value, ast.Call) and self.value(node.value.func).symbol in {"WorkspaceStore", "case_intelligence.workspace_store.WorkspaceStore"}:
             value = _Value(symbol=f"workspace@{node.lineno}", workspace=True)
         for target in node.targets:
+            self.check_transaction_assignment(target)
             self.bind(target, value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
             self.visit(node.value)
+            self.check_transaction_assignment(node.target)
             self.bind(node.target, self.value(node.value))
+
+    def check_transaction_assignment(self, target: ast.AST) -> None:
+        if isinstance(target, ast.Attribute) and target.attr in {"autocommit", "isolation_level"}:
+            receiver = self.value(target.value)
+            if receiver.connection is not None and receiver.connection.startswith("sqlite@"):
+                return
+            if receiver.connection not in self.protected:
+                self.flag(target, "transaction mode change outside fixture_write")
+            elif not receiver.fixture_handle:
+                self.flag(target, "transaction control requires the yielded fixture_write handle")
 
     def visit_With(self, node: ast.With) -> None:
         previous = self.protected.copy()
@@ -171,7 +188,7 @@ class _Check(ast.NodeVisitor):
             if is_helper and expression.args:
                 owner = self.value(expression.args[0]).symbol
                 self.protected.add(owner)
-                value = _Value(connection=owner, symbol=owner + ".connection")
+                value = _Value(connection=owner, symbol=owner + ".connection", fixture_handle=True)
             elif value.connection is not None and not value.connection.startswith("sqlite@") and value.connection not in self.protected:
                 self.flag(expression, "naked connection context")
             if item.optional_vars is not None:
@@ -190,16 +207,16 @@ class _Check(ast.NodeVisitor):
             if path.active_path or "workbench.sqlite" in path.text:
                 self.flag(node, "direct SQLite connection to workspace database")
         method = function.symbol.rsplit(".", 1)[-1]
-        receiver = self.value(node.func.value) if isinstance(node.func, ast.Attribute) else _Value(connection=function.connection)
+        receiver = self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
-        if method in {"execute", "executemany", "executescript"} and node.args and not imported_function:
+        if method in _SQL_METHODS and node.args and not imported_function:
             sql = self.value(node.args[0]).text
             # Strip quoted values/comments so SELECT 'update' is still a read.
             commands = re.sub(r"'(?:''|[^'])*'|--[^\n]*|/\*[\s\S]*?\*/", " ", sql)
             writes = _WRITE.search(commands) or re.search(r"^\s*PRAGMA\b[^;]*=", commands, re.I)
             if re.match(r"\s*WITH\b", commands, re.I):
                 writes = writes or re.search(r"\b(?:INSERT|UPDATE|DELETE|REPLACE)\b", commands, re.I)
-            workspace_connection = receiver.connection is not None and not receiver.connection.startswith("sqlite@")
+            independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
             known_read = re.match(r"\s*(?:SELECT|EXPLAIN|PRAGMA)\b", commands, re.I)
             # Callback parameters may receive a workspace connection even when
             # this module cannot prove its origin. Imported workflow functions
@@ -207,8 +224,22 @@ class _Check(ast.NodeVisitor):
             # Unknown SQL therefore needs an explicit boundary or a precise audit
             # annotation; losing receiver provenance must not silently permit it.
             unknown_write = (not known_read and not writes) or method == "executescript"
-            if (unknown_write or (writes and (workspace_connection or _TABLE.search(sql)))) and receiver.connection not in self.protected:
+            # A literal DELETE/UPDATE is still a write when the callback's
+            # parameter is unannotated or its table has no workbench_ prefix.
+            if (unknown_write or (writes and (not independent_connection or _TABLE.search(sql)))) and receiver.connection not in self.protected:
                 self.flag(node, "SQL fixture write outside fixture_write")
+            if (method == "executescript" or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f"))) and receiver.connection in self.protected and not receiver.fixture_handle:
+                self.flag(node, "transaction control requires the yielded fixture_write handle")
+        if method in _TRANSACTION_METHODS and not imported_function:
+            # Product rollback APIs take domain arguments; a connection's
+            # commit/rollback accepts none. Retain bound-method provenance too.
+            connection_call = receiver.connection is not None or (not node.args and not node.keywords)
+            independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
+            if connection_call and not independent_connection:
+                if receiver.connection not in self.protected:
+                    self.flag(node, "transaction termination outside fixture_write")
+                elif not receiver.fixture_handle:
+                    self.flag(node, "transaction control requires the yielded fixture_write handle")
         if isinstance(node.func, ast.Attribute):
             if node.func.attr in _MEDIA_SEED and receiver.live_workspace and receiver.symbol not in self.protected:
                 self.flag(node, "manual media fixture seed outside fixture_write")
@@ -246,6 +277,21 @@ class _Check(ast.NodeVisitor):
         self.protected = set()
         self.visit(node.body)
         self.protected = protected
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        # Python evaluates only the first iterable at generator creation. The
+        # remaining clauses and result expression execute when it is consumed.
+        self.visit(node.generators[0].iter)
+        aliases, protected = self.aliases, self.protected
+        self.aliases, self.protected = aliases.copy(), set()
+        for index, generator in enumerate(node.generators):
+            if index:
+                self.visit(generator.iter)
+            self.bind(generator.target, _Value())
+            for condition in generator.ifs:
+                self.visit(condition)
+        self.visit(node.elt)
+        self.aliases, self.protected = aliases, protected
 
 
 def check_fixture_writes(source: str, filename: str = "<fixture>") -> list[Violation]:

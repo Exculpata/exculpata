@@ -222,6 +222,7 @@ def test_old_registry_without_receipt_is_backfilled_once(tmp_path, projection):
         payload = store._document_payload(document)
         payload.pop("transcript_index_basis", None)
         with store.mutation_guard(), store._registry:
+            # fixture-write: Source registry fixture mutation holds its dedicated source mutation guard.
             store._registry.execute("UPDATE source_document SET payload=? WHERE document_id=?",
                 (json.dumps(payload), document.document_id))
     before = projection.writes

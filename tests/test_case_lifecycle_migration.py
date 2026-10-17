@@ -134,6 +134,7 @@ def test_synthetic_backup_clean_restore_and_old_writer_refusal(tmp_path):
     with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
         # fixture-write: Exercise the independent old writer rejection against the upgraded database.
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
+    # fixture-write: Roll back the deliberately independent old writer after its rejected update.
     old.rollback()
     # The original 0007 startup backfill must also fail, even on ignored rows.
     with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
@@ -187,6 +188,7 @@ def test_v40_backup_upgrade_fences_old_writer_and_never_invents_authority(tmp_pa
     with pytest.raises(sqlite3.IntegrityError, match='writer version'):
         # fixture-write: Exercise version-one writer rejection through its original independent connection.
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
+    # fixture-write: Roll back the independent version-one writer after its rejected update.
     old.rollback()
     assert upgraded.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert upgraded.connection.execute('PRAGMA foreign_key_check').fetchall() == []

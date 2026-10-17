@@ -124,7 +124,9 @@ class SyntheticNode:
             self.events.append("stop")
             # A request admitted after the initial health probe finishes at stop.
             for connection in self.connections:
+                # fixture-write: Independent synthetic databases model the admitted writer finishing during shutdown.
                 connection.execute("UPDATE synthetic_state SET version='frozen'")
+                # fixture-write: Commit the independent simulated writer before taking the stopped snapshot.
                 connection.commit()
             self.projected_version = "frozen"
             if self.corrupt_at_stop:
@@ -135,7 +137,9 @@ class SyntheticNode:
             for index, connection in enumerate(self.connections):
                 if self.corrupt_at_stop and index == 1:
                     continue
+                # fixture-write: Independent synthetic databases model fresh writes after the simulated restart.
                 connection.execute("UPDATE synthetic_state SET version='live'")
+                # fixture-write: Commit only the independent simulated writer after restart.
                 connection.commit()
         elif "pg_dump" in command:
             self.events.append("dump")
