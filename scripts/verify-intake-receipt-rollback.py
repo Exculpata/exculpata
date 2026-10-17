@@ -5,7 +5,12 @@ This is a read-compatibility check, not permission to operate an older version
 without receipt UI/exports. Rollback after receipt use needs the complete verified
 pre-upgrade backup or a forward correction.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -49,7 +54,7 @@ def main():
     previous = args.previous_source.resolve()
     if 'intake_receipts' in (previous/'src/case_intelligence/workbench.py').read_text():
         raise SystemExit('Choose a previous checkout without selection receipt support.')
-    with tempfile.TemporaryDirectory(prefix='recordbench-receipt-rollback-') as d:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-receipt-rollback-") as d:
         runtime = Path(d)/'runtime'
         app = create_workbench_app(runtime, generator=UnavailableGenerator(), auth_mode='test', background_ingestion=True)
         body = b'Synthetic source retained during reader compatibility.\n'

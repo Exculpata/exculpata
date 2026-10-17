@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Preserve old email passages across upgrade, stopped rollback and forward read."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 from email.message import EmailMessage
@@ -43,7 +48,7 @@ def main():
     args = parser.parse_args()
     previous = args.previous_source.resolve()
     assert (previous / "src/case_intelligence/extended_extract.py").is_file()
-    with tempfile.TemporaryDirectory(prefix="recordbench-email-reader-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-email-reader-") as temporary:
         root = Path(temporary)
         message = EmailMessage()
         message["Subject"] = "Generated older email"

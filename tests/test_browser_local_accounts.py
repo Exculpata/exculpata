@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import re
 import json
 import shutil
@@ -15,7 +19,7 @@ from case_intelligence.workbench import create_workbench_app
 from tests.test_local_authentication import _challenge
 
 PASSWORD = "synthetic-browser-password"
-ORIGIN = "https://recordbench.example.test"
+ORIGIN = f"https://{LEGACY_STEM}.example.test"
 
 
 def configured_app(tmp_path, *, enabled=True):

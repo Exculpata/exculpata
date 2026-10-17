@@ -4,7 +4,12 @@ This is independent of ranked answer retrieval. Callers must authorize and scope
 documents before evaluating them; a query does not grant access to a population.
 """
 
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -12,9 +17,9 @@ import re
 import unicodedata
 from typing import Callable, Iterable
 
-GRAMMAR_VERSION = "recordbench-exact-v2"
-SUPPORTED_GRAMMAR_VERSIONS = {"recordbench-exact-v1", GRAMMAR_VERSION}
-TOKENIZER_VERSION = "recordbench-words-v1"
+GRAMMAR_VERSION = f"{LEGACY_STEM}-exact-v2"
+SUPPORTED_GRAMMAR_VERSIONS = {f"{LEGACY_STEM}-exact-v1", GRAMMAR_VERSION}
+TOKENIZER_VERSION = f"{LEGACY_STEM}-words-v1"
 MAX_PROXIMITY_GAP = 100
 MAX_QUERY_CHARS = 512
 MAX_QUERY_TOKENS = 128
@@ -307,14 +312,14 @@ def _lex(query: str, grammar_version: str) -> tuple[_Token, ...]:
             if value.upper() in {"AND", "OR", "NOT"}:
                 result.append(_Token(value.upper(), start))
             elif proximity := _PROXIMITY.fullmatch(value):
-                if grammar_version == "recordbench-exact-v1":
-                    raise QuerySyntaxError("Proximity requires the recordbench-exact-v2 grammar", start)
+                if grammar_version == f"{LEGACY_STEM}-exact-v1":
+                    raise QuerySyntaxError(f"Proximity requires the {LEGACY_STEM}-exact-v2 grammar", start)
                 gap = int(proximity[2])
                 if gap > MAX_PROXIMITY_GAP:
                     raise QuerySyntaxError("Use a proximity distance from 0 to 100 intervening words", start)
                 result.append(_Token("proximity", start, gap=gap, ordered=proximity[1].upper() == "BEFORE"))
             else:
-                unsupported = _UNSUPPORTED_V1 if grammar_version == "recordbench-exact-v1" else _UNSUPPORTED
+                unsupported = _UNSUPPORTED_V1 if grammar_version == f"{LEGACY_STEM}-exact-v1" else _UNSUPPORTED
                 if unsupported.fullmatch(value):
                     raise QuerySyntaxError("Use NEAR/n or BEFORE/n with 0 to 100 intervening words", start)
                 if any(mark in value for mark in "*?~:"):

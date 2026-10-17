@@ -1,4 +1,8 @@
 """Execute the hosted restore report gate against synthetic outcomes."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from pathlib import Path
 import subprocess
 import sys
@@ -17,7 +21,7 @@ def restore_step():
     return step.split("      - name:", 1)[0]
 
 
-def run_report_gate(tmp_path, names=("recordbench", "exculpata"), outcome="", content=None):
+def run_report_gate(tmp_path, names=(f"{LEGACY_STEM}", "exculpata"), outcome="", content=None):
     report = tmp_path / "restore-results.xml"
     if content is None:
         content = "<testsuites><testsuite>" + "".join(
@@ -32,7 +36,7 @@ def run_report_gate(tmp_path, names=("recordbench", "exculpata"), outcome="", co
 
 def test_hosted_restore_command_enables_integration_and_selects_both_names():
     step = restore_step()
-    assert 'RECORDBENCH_BACKUP_INTEGRATION: "1"' in step
+    assert 'EXCULPATA_BACKUP_INTEGRATION: "1"' in step
     assert "tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore \\" in step
     assert '--junitxml="$RUNNER_TEMP/restore-results.xml"' in step
     assert 'python - "$RUNNER_TEMP/restore-results.xml"' in step
@@ -52,8 +56,8 @@ def test_restore_report_rejects_nonpassing_cases(tmp_path, outcome):
     assert "must pass without skips" in result.stderr
 
 
-@pytest.mark.parametrize("names", [(), ("recordbench",), ("exculpata",),
-                                   ("recordbench", "recordbench"), ("recordbench", "unknown")])
+@pytest.mark.parametrize("names", [(), (f"{LEGACY_STEM}",), ("exculpata",),
+                                   (f"{LEGACY_STEM}", f"{LEGACY_STEM}"), (f"{LEGACY_STEM}", "unknown")])
 def test_restore_report_rejects_missing_or_wrong_generation(tmp_path, names):
     result = run_report_gate(tmp_path, names=names)
     assert result.returncode != 0

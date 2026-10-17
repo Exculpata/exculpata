@@ -6,7 +6,7 @@
   and data directory. It must not read from or modify an unrelated
   transcription installation.
 - No public route is assumed. An operator who enables Transcript Studio must
-  publish it through the same authenticated gateway used by RecordBench.
+  publish it through the same authenticated gateway used by Exculpata.
 - Model execution is local. No hosted transcription, translation, telemetry,
   or model API is part of the runtime path.
 - Development defaults to the mock backend. A worker cannot initialize

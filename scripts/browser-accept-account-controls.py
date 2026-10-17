@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Exercise compact account controls with a disposable authenticated session."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -43,7 +48,7 @@ def main():
     report = {'passed': False, 'synthetic_only': True, 'checks': [],
         'provenance': 'Temporary local account and browser profile; loopback only; no installed runtime.'}
     driver = None
-    with tempfile.TemporaryDirectory(prefix='recordbench-account-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-account-browser-") as temporary:
         root = Path(temporary).resolve()
         accounts = LocalAccountRepository(root / 'accounts/accounts.json')
         accounts.initialize('synthetic.reviewer', 'Synthetic Reviewer',

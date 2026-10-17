@@ -45,7 +45,7 @@ uv pip compile services/transcription/pyproject.toml --python-version 3.11 --pyt
 uv pip compile deploy/model-stager/requirements.in --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o deploy/model-stager/requirements.lock
 uv pip compile requirements/retrieval.in -c requirements/application.lock --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o requirements/retrieval.lock
 # First build the compatibility wheel using the pinned tools and recipe linked above.
-uv pip compile services/transcription/pyproject.toml services/transcription/requirements-worker.in --extra ml -c services/transcription/requirements-api.lock --find-links /tmp/recordbench-whisperx-wheels --python-version 3.11 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o services/transcription/requirements-worker.lock
+uv pip compile services/transcription/pyproject.toml services/transcription/requirements-worker.in --extra ml -c services/transcription/requirements-api.lock --find-links /tmp/exculpata-whisperx-wheels --python-version 3.11 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o services/transcription/requirements-worker.lock
 uv pip compile services/transcription/requirements-nemotron.in --python-version 3.11 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o services/transcription/requirements-nemotron.lock
 ```
 

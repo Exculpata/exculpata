@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Exercise Case notes continuity in a reopened, synthetic, generation-off app."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    CURRENT_STEM,
+    LEGACY_STEM,
+)
 
 import argparse
 from collections import deque
@@ -155,7 +161,7 @@ def main():
     def record(message):
         checks.append(message)
         print(message, flush=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-knowledge-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-knowledge-browser-") as temporary:
         runtime = Path(temporary) / 'runtime'
         context = seed(runtime)
         app = app_at(runtime)
@@ -196,25 +202,25 @@ def main():
             # Hold actual readiness fetch responses before rendering. Native Tab
             # establishes focus; no stale-element exceptions or JS clicks are
             # swallowed when a polling render removes the focused action.
-            harness = driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': r"""
-                (() => {
+            harness = driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {'source': rf"""
+                (() => {{
                     const originalFetch = window.fetch;
-                    const fixture = window.__readinessFocusFixture = {pending:null, rendered:0};
-                    window.addEventListener('recordbench:readiness', () => fixture.rendered++);
-                    window.fetch = async (...args) => {
+                    const fixture = window.__readinessFocusFixture = {{pending:null, rendered:0}};
+                    window.addEventListener('{CURRENT_STEM}:readiness', () => fixture.rendered++);
+                    window.fetch = async (...args) => {{
                         const response = await originalFetch(...args);
                         if (!new URL(typeof args[0] === 'string' ? args[0] : args[0].url,
                             location.href).pathname.endsWith('/processing-status')) return response;
                         const payload = await response.clone().json();
-                        return new Promise(resolve => {
-                            fixture.pending = overrides => {
+                        return new Promise(resolve => {{
+                            fixture.pending = overrides => {{
                                 fixture.pending = null;
-                                resolve(new Response(JSON.stringify({...payload,...overrides,poll_after_ms:50}),
-                                    {status:response.status,headers:{'Content-Type':'application/json'}}));
-                            };
-                        });
-                    };
-                })();
+                                resolve(new Response(JSON.stringify({{...payload,...overrides,poll_after_ms:50}}),
+                                    {{status:response.status,headers:{{'Content-Type':'application/json'}}}}));
+                            }};
+                        }});
+                    }};
+                }})();
             """})['identifier']
             driver.get(base + path)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'main')))

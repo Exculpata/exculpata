@@ -18,7 +18,7 @@ URLs and do not call a font delivery network. See
 
 ## Runtime foundations
 
-RecordBench builds on Python, FastAPI/Starlette, Uvicorn, PostgreSQL, pgvector,
+Exculpata builds on Python, FastAPI/Starlette, Uvicorn, PostgreSQL, pgvector,
 nginx, ClamAV, Tesseract, Poppler, FFmpeg, ImageMagick, Apache HTTP Server,
 `mod_auth_gssapi`, restic, vLLM, PyTorch, Transformers, sentence-transformers,
 WhisperX, faster-whisper, pyannote.audio, and their transitive dependencies.
@@ -76,7 +76,7 @@ No runtime model-hub access or additional end-user token step is introduced.
 This exact-artifact attribution does not approve different model revisions or
 resolve the separate NLTK tokenizer-data terms.
 
-The RecordBench compatibility distribution `whisperx==3.8.6+recordbench.1` builds
+The Exculpata compatibility distribution `whisperx==3.8.6+recordbench.1` builds
 from pinned upstream source with dependency metadata changes. Its wheel preserves
 the upstream BSD text and CNRS MIT notice, including the same VAD checkpoint.
 The [build recipe](services/transcription/compatibility/README.md) records the

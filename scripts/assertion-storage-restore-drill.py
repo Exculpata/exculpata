@@ -5,6 +5,10 @@ No installed node, model request, external service, or private material is used.
 The stopped fixture runtime contains its control store, session state, managed
 originals and source registries; every file is hashed before the clean copy.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 from datetime import datetime, timedelta
 import hashlib
@@ -85,7 +89,7 @@ def main():
     parser.add_argument('--baseline-ref', default=BASELINE)
     args = parser.parse_args()
     baseline = subprocess.check_output(['git', 'rev-parse', args.baseline_ref + '^{commit}'], cwd=ROOT, text=True).strip()
-    with tempfile.TemporaryDirectory(prefix='recordbench-assertion-recovery-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-assertion-recovery-") as temporary:
         root = Path(temporary).resolve()
         archive_path = root / 'baseline.tar'
         with archive_path.open('wb') as output:

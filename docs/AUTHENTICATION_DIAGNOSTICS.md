@@ -11,12 +11,14 @@ contract. Direct concurrent file edits do not provide that transaction contract.
 
 An installed node must agree on three authentication settings: the intended
 `auth` mode in `installation.json`, the explicit
-`CASE_INTELLIGENCE_AUTH_MODE` in `config/recordbench.env`, and the mode loaded by
+`CASE_INTELLIGENCE_AUTH_MODE` in `config/exculpata.env` (or
+`config/recordbench.env` on a legacy node), and the mode loaded by
 the running application's identity service. Only `local`, `oidc`, and
 `kerberos` are valid installation choices. A reachable login page or successful
 Compose configuration alone cannot establish that agreement.
 
-`./install doctor --root /srv/recordbench` checks the saved settings before
+`./install doctor --root /srv/exculpata` checks a fresh node. A legacy node
+keeps `/srv/recordbench`. Doctor checks the saved settings before
 issuing Compose commands. Its live health acceptance then queries the running
 app through `docker compose exec`, requiring the effective mode to match. The
 same check applies to initial startup, resumed startup, updates, and rollback

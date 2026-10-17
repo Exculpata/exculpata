@@ -1,7 +1,8 @@
-# Public contributor alpha
+# Public contributor boundary
 
-The maintainer authorizes publication of the environment-neutral source as a
-development alpha. This is distinct from a supported production release.
+The maintainer authorizes publication of the environment-neutral source. The
+current prerelease is community beta v0.1.0-beta.1. This is distinct from a
+supported production release.
 First-party Apache-2.0 approval is recorded in [release readiness](RELEASE_READINESS.md).
 The repository does not publish private deployments or represent an operator's
 endorsement. No model weights, credentials, or live evidence are distributed.
@@ -84,7 +85,7 @@ CI runs after content reaches GitHub. It cannot prevent an initial disclosure.
 Install the local pre-push check in every publishing checkout:
 
 ```console
-python3 scripts/install-publication-hook.py ~/.local/share/recordbench-publication-guard/reviewed-v1
+python3 scripts/install-publication-hook.py ~/.local/share/exculpata-publication-guard/reviewed-v1
 ```
 
 Run the installer from a trusted, reviewed checkout with the Python environment
@@ -114,14 +115,16 @@ Operators developing alongside private deployments must additionally configure
 an owner-only deny file outside the checkout:
 
 ```console
-git config --local recordbench.requirePrivatePublicationCheck true
-git config --local recordbench.publicationDenyFile /secure/path/private-deny.txt
+git config --local exculpata.requirePrivatePublicationCheck true
+git config --local exculpata.publicationDenyFile /secure/path/private-deny.txt
 ```
 
 Exact public clone URL and author-identity exceptions use the scanner's
-documented adjudication options. The hook reads `recordbench.publicCloneUrl`,
-`recordbench.publicGitIdentity` (tab-separated name/email), and
-`recordbench.publicBaselineIdentity` (tab-separated commit/name/email).
+documented adjudication options. The hook reads `exculpata.publicCloneUrl`,
+`exculpata.publicGitIdentity` (tab-separated name/email), and
+`exculpata.publicBaselineIdentity` (tab-separated commit/name/email).
+The same suffixes under `recordbench.` are still read when the `exculpata.`
+entry is absent.
 Do not add general exceptions for private names or paths.
 
 Hooks are local safeguards, not a security sandbox: another client, an API

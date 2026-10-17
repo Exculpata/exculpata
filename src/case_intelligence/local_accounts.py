@@ -3,7 +3,12 @@
 Readers need only read access. Writers require the existing private directory;
 this module does not grant filesystem access or authorize browser requests.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import fcntl
 import json
@@ -297,7 +302,7 @@ class LocalAccountRepository:
         with self._writer() as directory:
             _, version, accounts = _read(directory, self.path.name)
             if version != 2:
-                raise RuntimeError("Migrate local accounts with an explicit backup before changing them: run recordbench accounts migrate with --file and a new --backup-file")
+                raise RuntimeError(f"Migrate local accounts with an explicit backup before changing them: run {LEGACY_STEM} accounts migrate with --file and a new --backup-file")
             if self.guard is not None:
                 self.guard(accounts)
             update(accounts)

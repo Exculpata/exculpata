@@ -1,5 +1,11 @@
 """Portable, matter-scoped work-product exports generated entirely in memory."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 
 import csv
 import hashlib
@@ -119,7 +125,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def safe_file_stem(value: str, fallback: str = "recordbench-export") -> str:
+def safe_file_stem(value: str, fallback: str = f"{LEGACY_STEM}-export") -> str:
     normalized = unicodedata.normalize("NFKD", value or "").encode(
         "ascii", errors="ignore"
     ).decode("ascii")
@@ -1486,7 +1492,7 @@ def export_research(
             safe_hierarchy = portable_hierarchy(hierarchy, result["evidence"], safe_citation)
         body = json.dumps(
             {
-                "product": "RecordBench",
+                "product": f"{LEGACY_PRODUCT}",
                 "exported_at": created,
                 "matter": {"name": matter.display_name},
                 **({"presentation_notice": presentation_notice} if presentation_notice else {}),
@@ -1656,7 +1662,7 @@ def export_full_review(
         writer = csv.writer(output, lineterminator="\r\n")
         writer.writerow(
             (
-                "Ordinal", "Source", "Type", "RecordBench label", "Rationale",
+                "Ordinal", "Source", "Type", f"{LEGACY_PRODUCT} label", "Rationale",
                 "Cited support", "Needs attention", "Validation sample",
                 "Staff decision", "Staff note", "Reviewed at",
             )
@@ -1687,8 +1693,8 @@ def export_full_review(
     if format_name == "json":
         body = json.dumps(
             {
-                "schema": "recordbench-source-check-v1",
-                "product": "RecordBench",
+                "schema": f"{LEGACY_STEM}-source-check-v1",
+                "product": f"{LEGACY_PRODUCT}",
                 "exported_at": created,
                 "matter": {"name": matter.display_name},
                 "criterion": {
@@ -1719,7 +1725,7 @@ def export_full_review(
                         "ordinal": item.ordinal,
                         "source_name": item.source_name,
                         "source_kind": item.source_kind,
-                        "recordbench_label": _staff_label(item.machine_decision),
+                        f"{LEGACY_STEM}_label": _staff_label(item.machine_decision),
                         "rationale": review_rejection_notice(item.rationale),
                         "citations": _portable_review_citations(item.citations),
                         "attention_note": review_rejection_notice(item.error_message),
@@ -2067,7 +2073,7 @@ def export_matter_bundle(
         write_member(
             "notebook/notebook.json",
             json.dumps(
-                {"schema": "recordbench-notebook-v1", "items": portable_notebook},
+                {"schema": f"{LEGACY_STEM}-notebook-v1", "items": portable_notebook},
                 ensure_ascii=False,
                 indent=2,
             ).encode("utf-8"),
@@ -2155,7 +2161,7 @@ def export_matter_bundle(
             "media/media-work-product.json",
             json.dumps(
                 {
-                    "schema": "recordbench-media-work-product-v2",
+                    "schema": f"{LEGACY_STEM}-media-work-product-v2",
                     "original_media_included": False,
                     "overview_count": summary_count,
                     "transcripts": media_manifest,
@@ -2218,7 +2224,7 @@ def export_matter_bundle(
                 {"kind": kind, "path": path, "bytes": len(body)}
             )
         manifest = {
-            "schema": "recordbench-work-product-bundle-v1",
+            "schema": f"{LEGACY_STEM}-work-product-bundle-v1",
             "exported_at": created,
             "matter": {
                 "name": matter.display_name,
@@ -2244,7 +2250,7 @@ def export_matter_bundle(
         write_member(
             "conversations.json",
             json.dumps(
-                {"schema": "recordbench-conversations-v1", "conversations": portable_conversations},
+                {"schema": f"{LEGACY_STEM}-conversations-v1", "conversations": portable_conversations},
                 ensure_ascii=False,
                 indent=2,
             ).encode("utf-8"),

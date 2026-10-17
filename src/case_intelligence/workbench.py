@@ -1,5 +1,13 @@
 """Milestone A staff workbench: matters, uploads, retrieval, generation, support."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_STEM,
+)
 
 from .review_budget import DEFAULT_REVIEW_BUDGET, ReviewBudget, validate_primary_limit
 from .investigation_planner import PLANNER_VERSION, initial_query, propose_searches, query_key, validate_proposal
@@ -434,8 +442,8 @@ def _backup_status_projection() -> dict[str, object]:
     """Read one administrator-safe backup receipt, never repository content."""
 
     configured = env(
-        "RECORDBENCH_BACKUP_STATUS_FILE",
-        "/srv/recordbench/.local/state/recordbench-backup/status.json",
+        f"{LEGACY_ENV_PREFIX}BACKUP_STATUS_FILE",
+        f"/srv/{LEGACY_STEM}/.local/state/{LEGACY_STEM}-backup/status.json",
     ).strip()
     path = Path(configured)
     fallback = {
@@ -802,7 +810,7 @@ class MatterMaintenanceCoordinator:
         self._last_error = ""
         self._thread = threading.Thread(
             target=self._loop,
-            name="recordbench-maintenance",
+            name=f"{LEGACY_STEM}-maintenance",
             daemon=True,
         )
         self._thread.start()
@@ -844,7 +852,7 @@ class MatterMaintenanceCoordinator:
         self._thread.join(timeout=5)
 
 
-LOGGER = logging.getLogger("recordbench.workbench")
+LOGGER = logging.getLogger(f"{LEGACY_STEM}.workbench")
 MAX_AUTOMATIC_DISCOVERY_UNITS = 20000
 # Bounds one matter's steps per run; each step seals or processes durable work.
 MAX_AUTOMATIC_DISCOVERY_STEPS = 400
@@ -880,7 +888,7 @@ class AutomaticDiscoveryCoordinator:
         self._sweep_due = True
         self._last_error = ""
         self._thread = threading.Thread(
-            target=self._loop, name="recordbench-discovery", daemon=True
+            target=self._loop, name=f"{LEGACY_STEM}-discovery", daemon=True
         )
         self._thread.start()
 
@@ -6481,7 +6489,7 @@ def create_workbench_app(
                 request.method != "GET"
                 or request.client is None
                 or request.client.host not in {"127.0.0.1", "::1"}
-                or not identity.auth_diagnostic_authorized(header(request.headers, "X-RecordBench-Auth-Diagnostic"))
+                or not identity.auth_diagnostic_authorized(header(request.headers, f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic"))
             ):
                 return Response(status_code=404, headers={"Cache-Control": "no-store"})
             return JSONResponse({"auth_mode": identity.auth_mode}, headers={"Cache-Control": "no-store"})
@@ -8211,8 +8219,8 @@ def create_workbench_app(
                 if capabilities["answering"] == "ready" and storage["ready"]
                 else "degraded"
             ),
-            "product": "RecordBench",
-            "data": "private RecordBench node",
+            "product": CURRENT_PRODUCT,
+            "data": f"private {CURRENT_PRODUCT} node",
             "capabilities": capabilities,
             "ingest_jobs": bench.workspace.ingest_counts(),
             "media_jobs": bench.workspace.media_job_counts(),
@@ -11493,7 +11501,7 @@ def create_workbench_app(
             malware_scan_mode=bench.malware_scan_mode,
             scanner_ready=scanner_projection.ready,
             duplicate_token_scope=(
-                f"recordbench:loose-file-preflight:v1:{matter.matter_id}:{selection_nonce}"
+                f"{LEGACY_STEM}:loose-file-preflight:v1:{matter.matter_id}:{selection_nonce}"
                 if selection_nonce is not None
                 else None
             ),
@@ -16549,7 +16557,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1" and not (
         args.host == "0.0.0.0"
-        and env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
+        and env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1"
     ):
         parser.error(
             "non-loopback binding is allowed only in the isolated container profile"

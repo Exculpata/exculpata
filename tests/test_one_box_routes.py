@@ -1,4 +1,8 @@
 """Synthetic one-box dispatch into existing authorized review workflows."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from html import unescape
 import io
 from types import SimpleNamespace
@@ -225,7 +229,7 @@ def test_real_csrf_membership_and_read_only_administrator_checks(tmp_path, monke
     from tests.test_matter_management import _create_matter as create_authorized_matter
     monkeypatch.setenv('CASE_INTELLIGENCE_ONE_BOX', '1')
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized_matter(client, principal=OWNER, csrf_token=csrf, name='Synthetic protected one-box matter')
         path = f'/matters/{slug}/one-box'
@@ -236,7 +240,7 @@ def test_real_csrf_membership_and_read_only_administrator_checks(tmp_path, monke
             denied = client.post(path, headers=_headers(principal), data={'question': TEXTS['exact'], 'csrf_token': token})
             assert denied.status_code == status
     monkeypatch.delenv('CASE_INTELLIGENCE_ONE_BOX')
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get('/matters/new', headers=_headers(OWNER)).status_code == 200
         assert client.post(path, headers=_headers(OWNER), data={'question': TEXTS['exact']}, follow_redirects=False).status_code == 404
 

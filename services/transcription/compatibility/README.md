@@ -19,9 +19,9 @@ repository root, in a new Python 3.11 virtual environment:
 ```sh
 python -m pip install --require-hashes --no-build-isolation \
   -r services/transcription/requirements-api-build.lock
-python services/transcription/compatibility/build_whisperx.py --output /tmp/recordbench-whisperx-wheels
+python services/transcription/compatibility/build_whisperx.py --output /tmp/exculpata-whisperx-wheels
 python -m pip install --require-hashes --no-build-isolation \
-  --find-links=/tmp/recordbench-whisperx-wheels \
+  --find-links=/tmp/exculpata-whisperx-wheels \
   -r services/transcription/requirements-worker.lock
 python -m pip check
 ```

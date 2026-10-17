@@ -1,5 +1,10 @@
 """Synthetic runner failures must not produce a green browser CI result."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+)
 
 import hashlib
 import importlib.util
@@ -530,7 +535,7 @@ def test_standalone_dusk_clears_deployment_settings_before_app(tmp_path, monkeyp
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     for name in ('CASE_INTELLIGENCE_POSTGRES_DSN', 'CASE_INTELLIGENCE_POSTGRES_DSN_FILE',
-                 'CASE_REVIEW_RUNTIME_ROOT', 'RECORDBENCH_RUNTIME_ROOT'):
+                 'CASE_REVIEW_RUNTIME_ROOT', f"{LEGACY_ENV_PREFIX}RUNTIME_ROOT"):
         monkeypatch.setenv(name, 'synthetic-must-not-be-used')
     monkeypatch.setattr(sys, 'argv', ['browser-accept-dusk.py', '--chrome-binary', '/synthetic/chrome',
         '--chromedriver', '/synthetic/driver', '--output', str(tmp_path / 'screens')])
@@ -540,7 +545,7 @@ def test_standalone_dusk_clears_deployment_settings_before_app(tmp_path, monkeyp
         assert 'CASE_INTELLIGENCE_POSTGRES_DSN' not in os.environ
         assert 'CASE_INTELLIGENCE_POSTGRES_DSN_FILE' not in os.environ
         assert 'CASE_REVIEW_RUNTIME_ROOT' not in os.environ
-        assert 'RECORDBENCH_RUNTIME_ROOT' not in os.environ
+        assert f"{LEGACY_ENV_PREFIX}RUNTIME_ROOT" not in os.environ
         assert os.environ['CASE_INTELLIGENCE_STORAGE_RESERVE_GIB'] == '0'
         raise AppBoundary
     monkeypatch.setattr(module, 'create_workbench_app', check_app)
@@ -607,7 +612,7 @@ def test_workspace_failure_receipt_cannot_remain_successful(workspace_layout_scr
 
 def test_standalone_workspace_layout_clears_deployment_settings_before_app(workspace_layout_script, tmp_path, monkeypatch):
     for name in ('CASE_INTELLIGENCE_POSTGRES_DSN', 'CASE_INTELLIGENCE_POSTGRES_DSN_FILE',
-                 'CASE_REVIEW_RUNTIME_ROOT', 'RECORDBENCH_RUNTIME_ROOT'):
+                 'CASE_REVIEW_RUNTIME_ROOT', f"{LEGACY_ENV_PREFIX}RUNTIME_ROOT"):
         monkeypatch.setenv(name, 'synthetic-must-not-be-used')
 
     class AppBoundary(Exception):

@@ -1,16 +1,21 @@
-"""Versioned generated discovery-quality gold for RecordBench model evaluation.
+"""Versioned generated discovery-quality gold for Exculpata model evaluation.
 
 The suite is deliberately synthetic. It represents difficult review language
 patterns without containing case, client, employee, or other personal data.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
 from dataclasses import asdict, dataclass
 
 
-GOLD_SUITE_ID = "recordbench-discovery-gold-v1"
+GOLD_SUITE_ID = f"{LEGACY_STEM}-discovery-gold-v1"
 GOLD_SCHEMA_VERSION = 1
 DEFAULT_DOCUMENT_COUNT = 1_200
 

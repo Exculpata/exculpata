@@ -16,6 +16,7 @@ body:
         starting point, not a cap. CPU-only reports are welcome too; use the
         no-GPU answers below instead of inventing GPU details. A report does not
         establish support or production readiness for a hardware/model combination.
+        Maintainer-seeded rows are in docs/COMPATIBILITY.md.
   - type: input
     id: gpu-model
     attributes:

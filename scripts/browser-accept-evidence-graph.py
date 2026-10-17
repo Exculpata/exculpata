@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Evidence-connection browser acceptance in a disposable synthetic app."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -112,7 +117,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-connections-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-connections-browser-") as temporary:
         runtime = Path(temporary).resolve() / 'runtime'
         context = seed(runtime)
         app = app_at(runtime)

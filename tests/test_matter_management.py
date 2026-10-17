@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_helpers import lifecycle_session
 
 import io
@@ -30,13 +34,13 @@ from tests.case_lifecycle_bench_helpers import prepare_kerberos_exit
 from tests.case_lifecycle_web_helpers import prepare_bench_exit
 
 
-PROXY_SECRET = "synthetic_recordbench_proxy_secret_0000000000000000"
+PROXY_SECRET = f"synthetic_{LEGACY_STEM}_proxy_secret_0000000000000000"
 REALM = "EXAMPLE.TEST"
 ADMIN = "admin.reviewer@EXAMPLE.TEST"
 OWNER = "matter.owner@EXAMPLE.TEST"
 OTHER = "other.reviewer@EXAMPLE.TEST"
-USER_GROUP = "recordbench_users@example.test"
-ADMIN_GROUP = "recordbench_administrators@example.test"
+USER_GROUP = f"{LEGACY_STEM}_users@example.test"
+ADMIN_GROUP = f"{LEGACY_STEM}_administrators@example.test"
 
 
 def _headers(principal: str) -> dict[str, str]:
@@ -698,7 +702,7 @@ def test_playback_admission_cannot_cross_the_transactional_purge_claim(
 
 
 def test_owner_can_find_manage_matters_and_matter_settings(tmp_path):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -754,7 +758,7 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
     external_original = tmp_path / "external-original.txt"
     external_original.write_text("Generated source retained outside the workbench.")
     runtime = tmp_path / "runtime"
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -931,7 +935,7 @@ def test_administrator_close_is_explicit_safe_attributed_and_matter_isolated(
 def test_administrator_exports_closed_matter_after_owner_deactivation_with_attribution(
     tmp_path, monkeypatch
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1006,7 +1010,7 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
 ):
     slug = ""
     matter_id = ""
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1056,7 +1060,7 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
             f"/matters/{slug}/export", headers=_headers(OWNER)
         ).status_code == 200
 
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1095,7 +1099,7 @@ def test_failed_deletion_remains_discoverable_and_exportable_after_restart(
 def test_administrator_direct_exports_use_override_and_remain_matter_isolated(
     tmp_path,
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1217,7 +1221,7 @@ def test_administrator_direct_exports_use_override_and_remain_matter_isolated(
 def test_oversized_final_bundle_returns_409_and_releases_response_lease(
     tmp_path, monkeypatch
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1254,7 +1258,7 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
     tmp_path,
 ):
     runtime = tmp_path / "runtime"
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1360,7 +1364,7 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
 def test_final_bundle_refuses_excess_investigation_ledgers_without_omission(
     tmp_path, monkeypatch
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1394,7 +1398,7 @@ def test_final_bundle_refuses_excess_investigation_ledgers_without_omission(
 def test_final_bundle_refuses_excess_source_check_ledgers_without_omission(
     tmp_path, monkeypatch
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1449,7 +1453,7 @@ def test_final_bundle_refuses_excess_source_check_ledgers_without_omission(
 def test_source_stream_and_bundle_hold_deletion_lease_until_response_finishes(
     tmp_path, monkeypatch
 ):
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1559,7 +1563,7 @@ def test_administrator_final_bundle_uses_durable_catalog_after_restart(tmp_path)
     slug = ""
     matter_id = ""
     owner_id = ""
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303
@@ -1597,7 +1601,7 @@ def test_administrator_final_bundle_uses_durable_catalog_after_restart(tmp_path)
                 (owner_id,),
             )
 
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(ADMIN), follow_redirects=False
         ).status_code == 303

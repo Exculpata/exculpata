@@ -1,15 +1,19 @@
 """Console entry points with compatibility notices for historical commands."""
 
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
 from importlib import import_module
 from pathlib import Path
 import sys
 
 
 _DEPRECATED = {
-    "recordbench": "exculpata",
-    "recordbench-workbench": "exculpata-workbench",
+    f"{LEGACY_STEM}": "exculpata",
+    f"{LEGACY_STEM}-workbench": "exculpata-workbench",
     "case-intelligence-workbench": "exculpata-workbench",
-    "recordbench-retrieval-worker": "exculpata-retrieval-worker",
+    f"{LEGACY_STEM}-retrieval-worker": "exculpata-retrieval-worker",
     "case-review-bench": "python -m case_intelligence.review_bench",
 }
 

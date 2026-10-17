@@ -3,16 +3,21 @@
 No model-provided claim of insufficient evidence can grant an exception. Short
 output describes what the pipeline produced, not everything a source could support.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import re
 
 TARGET_QUESTIONS = 3
 MIN_QUESTIONS_PER_USABLE_CASE = 1
-EVALUATION_FORMAT = "recordbench-question-draft-evaluation-v2"
+EVALUATION_FORMAT = f"{LEGACY_STEM}-question-draft-evaluation-v2"
 ACCEPTANCE_POLICY = {
     "id": "grounded-question-target-v2",
-    "supersedes": "recordbench-question-draft-evaluation-v1",
+    "supersedes": f"{LEGACY_STEM}-question-draft-evaluation-v1",
     "decision": "https://github.com/Exculpata/exculpata/pull/142#issuecomment-6154342607",
     "rationale": "Three is a target, not a quota: retain useful supported short output without filler.",
     "empty_source_rule": "Only absent or whitespace-only excerpt text; never inferred from rejected or empty output.",

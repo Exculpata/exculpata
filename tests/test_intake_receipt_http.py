@@ -1,4 +1,8 @@
 """Synthetic selection, byte receipt, exact source support, and portable downloads."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import csv
 import io
 import json
@@ -258,7 +262,7 @@ def test_administrator_receipt_read_and_export_follow_existing_audited_boundary(
         kerberos_profile_resolver=_profile,
         kerberos_group_resolver=lambda principal: groups.get(principal, set()),
         background_ingestion=False)
-    with TestClient(app, base_url='https://recordbench.example.test') as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         client.get('/auth/login', headers=_headers(OWNER))
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         created = client.post('/matters', data={'name': 'Generated receipt administrator review',

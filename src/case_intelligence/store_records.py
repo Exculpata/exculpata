@@ -494,7 +494,7 @@ class MatterReadinessRecord:
     def can_query(self) -> bool:
         # Active preparation still holds the matter-wide gate. Terminal source
         # failures do not: reviewers may use the successfully indexed subset
-        # as long as RecordBench discloses exactly what was excluded.
+        # as long as Exculpata discloses exactly what was excluded.
         return self.state in {"ready", "attention"} and self.searchable_count > 0
 
     @property

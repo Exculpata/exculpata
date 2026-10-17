@@ -18,7 +18,9 @@ install -d -m 0700 \
   "$scratch/state" \
   "$scratch/models" \
   "$scratch/tls"
-install -m 0600 "$project_root/config/recordbench.env.example" "$scratch/config/recordbench.env"
+# Exercise the legacy-only graph before creating the fresh sample's filename.
+# A missing new-name file must not break an existing node.
+install -m 0600 "$project_root/config/exculpata.env.example" "$scratch/config/recordbench.env"
 install -m 0600 "$project_root/config/transcription.env.example" "$scratch/config/transcription.env"
 for name in postgres-password postgres-dsn transcription-token kerberos-proxy-secret recordbench.keytab; do
   install -m 0600 /dev/null "$scratch/secrets/$name"
@@ -53,12 +55,18 @@ clean = {key: value for key, value in os.environ.items()
          if not key.startswith(("RECORDBENCH_", "EXCULPATA_", "COMPOSE_"))}
 reference = {}
 for mode in ("old-only", "new-only", "both-equal", "both-different"):
+    if mode == "new-only":
+        (scratch / "config/exculpata.env").write_bytes((scratch / "config/recordbench.env").read_bytes())
     settings = {}
     for key, value in values.items():
+        if key == "APP_ENV_FILE":
+            continue  # The fresh filename is not a legacy prefix alias.
         if mode != "new-only":
             settings[f"RECORDBENCH_{key}"] = "ignored" if mode == "both-different" else value
         if mode != "old-only":
             settings[f"EXCULPATA_{key}"] = value
+    if mode != "old-only":
+        settings["EXCULPATA_APP_ENV_FILE"] = "exculpata.env"
     env_file = scratch / f"{mode}.env"
     env_file.write_text("".join(f"{key}={json.dumps(value)}\n" for key, value in settings.items()))
     for profile, overlay in (("standard", None), ("kerberos", "compose.kerberos.yaml"),

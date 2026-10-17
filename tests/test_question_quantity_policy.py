@@ -1,4 +1,8 @@
 """Synthetic v2 acceptance: useful short output is not a failed or empty pipeline."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import copy
 import json
 
@@ -156,8 +160,8 @@ def test_receipt_versions_the_policy_without_changing_the_fixture_or_binding(mon
         git_commit='1' * 40, working_tree_dirty=False, implementation_sha256={}))
     result = evaluation.receipt(GroundedGenerationService(OnePerCase(None)),
                                 identity=lambda _: dict(method='none', artifact_sha256=None))
-    assert result['format'] == 'recordbench-question-draft-evaluation-v2'
-    assert result['acceptance_policy']['supersedes'] == 'recordbench-question-draft-evaluation-v1'
+    assert result['format'] == f"{LEGACY_STEM}-question-draft-evaluation-v2"
+    assert result['acceptance_policy']['supersedes'] == f"{LEGACY_STEM}-question-draft-evaluation-v1"
     assert result['pass_bar']['target_questions_per_case'] == 3
     assert result['pass_bar']['minimum_questions_per_usable_case'] == 1
     assert 'minimum_questions_per_case' not in result['pass_bar']
@@ -248,12 +252,12 @@ def test_rich_output_is_not_capped_at_the_target():
 
 
 def test_old_failed_receipts_keep_their_original_format_policy_and_result(tmp_path):
-    old = {'format': 'recordbench-question-draft-evaluation-v1', 'passed': False,
+    old = {'format': f"{LEGACY_STEM}-question-draft-evaluation-v1", 'passed': False,
            'model_gate': 'failed', 'pass_bar': {'minimum_questions_per_case': 3}}
     path = tmp_path / 'old.json'
     original = evaluation.write_new_receipt(path, old)
     with pytest.raises(FileExistsError):
-        evaluation.write_new_receipt(path, {'format': 'recordbench-question-draft-evaluation-v2', 'passed': True})
+        evaluation.write_new_receipt(path, {'format': f"{LEGACY_STEM}-question-draft-evaluation-v2", 'passed': True})
     assert path.read_text() == original and json.loads(original) == old
 
 

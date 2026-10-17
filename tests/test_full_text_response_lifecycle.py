@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import replace
 """Synthetic ledger download, administrator-read and response-lifecycle races."""
 import asyncio
@@ -174,7 +178,7 @@ def test_unknown_ledger_releases_untransferred_lease(workspace):
 @pytest.mark.parametrize("owner_change", ["inactive", "revoked"])
 def test_nonmember_admin_reads_ledger_as_self_after_owner_loses_access(tmp_path, monkeypatch, owner_change, run_state):
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get("/auth/login", headers=_headers(OWNER), follow_redirects=False).status_code == 303
         owner_id = _principal_id(client, OWNER)
         bench = client.app.state.workbench
@@ -235,7 +239,7 @@ def test_terminal_ledger_only_offers_delete_to_member_creator(
     tmp_path, monkeypatch, viewer, is_member, can_delete
 ):
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get("/auth/login", headers=_headers(OWNER), follow_redirects=False).status_code == 303
         owner_id = _principal_id(client, OWNER)
         bench = client.app.state.workbench

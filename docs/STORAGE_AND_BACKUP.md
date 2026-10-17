@@ -5,7 +5,7 @@ Exculpata ownership marker. The application will not delete outside that
 boundary. A local filesystem or host-mounted NAS path is supported; the
 installer does not mount network shares or store NAS credentials.
 
-Both `.recordbench-managed-storage.json` and `.exculpata-managed-storage.json`
+Both `.exculpata-managed-storage.json` and `.recordbench-managed-storage.json`
 are supported, with each generation's original product/storage-ID validation.
 Opening or restoring a marker never rewrites it. Conflicting markers are refused.
 Fresh installs use the Exculpata marker; existing nodes retain the legacy marker.
@@ -57,12 +57,12 @@ copied to a separate protected location. The repository and recovery credential
 must not live inside the node or inside each other. Scheduling is opt-in.
 
 The examples below are for new Exculpata nodes. Existing nodes must keep their
-original root, service account, repository and recovery-key locations. Backups
-retain the `recordbench` restic tag and `recordbench-backup-<hash>` units on legacy
-nodes. New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
+original root, service account, repository and recovery-key locations. Legacy
+nodes retain the `recordbench` restic tag and `recordbench-backup-<hash>` units.
+New nodes use `exculpata` and `exculpata-backup-<hash>`. Scheduling never
 replaces legacy units with new names. Status and restore accept either restic tag;
 retention remains scoped to the node's existing generation. PostgreSQL dumps and
-imports continue to use the `recordbench` user/database.
+imports continue to use the `recordbench` user and database on every node.
 
 `scripts/exculpata-backup.sh`, `scripts/exculpata-backup-status.sh`,
 `scripts/exculpata-restore-drill.sh` and `scripts/exculpata_backup.py` expose the
@@ -215,7 +215,7 @@ repository and a real PostgreSQL dump/import using only synthetic state:
 
 ```bash
 # Requires restic, Docker and an already installed pgvector/pgvector:pg17 image.
-RECORDBENCH_BACKUP_INTEGRATION=1 python -m pytest tests/test_backup_consistency.py -q
+EXCULPATA_BACKUP_INTEGRATION=1 python -m pytest tests/test_backup_consistency.py -q
 ```
 
 This opt-in test uses an image already on the host, a disposable database with

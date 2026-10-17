@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import hashlib
 import json
@@ -397,9 +401,9 @@ def _ticket_outcome(case: dict[str, Any], evaluation_time: datetime) -> str:
             registry.begin_closure("matter-alpha", "benchmark-closure")
             redeem(launch.uri)
         elif operation == "unknown_ticket":
-            redeem("recordbench://ticket/unknown")
+            redeem(f"{LEGACY_STEM}://ticket/unknown")
         elif operation == "malformed_uri":
-            redeem("recordbench://ticket/bad?query")
+            redeem(f"{LEGACY_STEM}://ticket/bad?query")
         elif operation == "expired":
             clock.now += timedelta(seconds=60)
             redeem(launch.uri)

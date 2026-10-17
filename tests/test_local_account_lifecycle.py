@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 import multiprocessing
 import os
@@ -305,7 +309,7 @@ def test_safe_file_boundary_rejects_symlink_and_non_regular_inputs(tmp_path):
 def test_cli_uses_shared_changes_and_never_logs_passwords_or_hashes(tmp_path, monkeypatch, capsys):
     from case_intelligence import admin_cli
     repo = repository(tmp_path)
-    monkeypatch.setattr("sys.argv", ["recordbench", "accounts", "display-name", "--file", str(repo.path),
+    monkeypatch.setattr("sys.argv", [f"{LEGACY_STEM}", "accounts", "display-name", "--file", str(repo.path),
                                    "--username", "alice.admin", "--display-name", "CLI Updated"])
     admin_cli.main()
     output = capsys.readouterr().out

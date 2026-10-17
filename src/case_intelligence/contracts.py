@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import re
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -450,5 +454,5 @@ class StaffRetrievalProjection(StrictModel):
 
 
 class TicketLaunchProjection(StrictModel):
-    uri: Annotated[str, Field(pattern=r"^recordbench://ticket/[A-Za-z0-9_-]+$")]
+    uri: Annotated[str, Field(pattern=rf"^{LEGACY_STEM}://ticket/[A-Za-z0-9_-]+$")]
     expires_at: datetime

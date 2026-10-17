@@ -74,8 +74,8 @@ Python 3.12 explicitly. Custom environment paths, including absolute paths and
 paths containing spaces, work with all Make test targets:
 
 ```console
-python3 scripts/bootstrap-dev.py --python python3.12 --venv "/tmp/recordbench dev"
-make check PYTHON="/tmp/recordbench dev/bin/python"
+python3 scripts/bootstrap-dev.py --python python3.12 --venv "/tmp/exculpata dev"
+make check PYTHON="/tmp/exculpata dev/bin/python"
 ```
 
 Use `--dry-run` to inspect the selected/existing interpreters and preview commands
@@ -195,8 +195,8 @@ To reproduce against an isolated disposable database, set
 ```console
 python -m pytest -q tests/test_review_bench_v2_postgres.py \
   --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
-  --junitxml=/tmp/recordbench-postgres-results.xml
-python scripts/check-postgres-test-report.py /tmp/recordbench-postgres-results.xml
+  --junitxml=/tmp/exculpata-postgres-results.xml
+python scripts/check-postgres-test-report.py /tmp/exculpata-postgres-results.xml
 ```
 
 The tests mutate the database; use synthetic disposable data only. The service

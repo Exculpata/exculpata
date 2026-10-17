@@ -17,7 +17,7 @@ Reports distinguish direct observations from plans, estimates and later checks.
 
 The PDFs contain only native text, generated with `pypdf` using the standard
 Helvetica font. Their metadata contains only synthetic titles and the author
-`RecordBench synthetic demo`; they contain no scans, attachments or imported
+`Exculpata synthetic demo`; they contain no scans, attachments or imported
 assets. No audio is included: the rights in
 [`docs/assets/MEDIA_RIGHTS.md`](../docs/assets/MEDIA_RIGHTS.md) cover complete
 demo videos, not a separately licensed synthetic audio record for this

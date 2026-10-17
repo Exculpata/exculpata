@@ -51,7 +51,7 @@ ffmpeg -i original.mp4 -map 0:v:0 -map 0:a:0 \
 ```
 
 The site and documentation asset copies must be byte-identical. GitHub README
-playback uses uploaded GitHub video attachments, as the earlier RecordBench
+playback uses uploaded GitHub video attachments, as the earlier
 walkthroughs did; repository links remain available for direct downloads.
 The website uses its existing native video controls and same-origin range worker.
 

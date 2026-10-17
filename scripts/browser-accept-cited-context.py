@@ -5,7 +5,12 @@ The controlled answer client and retrieval population test persistence and UI
 behavior, not model quality. TXT sources and a silent PCM carrier use real
 ingestion; the deterministic transcript does not evaluate speech recognition.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import asyncio
@@ -190,7 +195,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-cited-context-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-cited-context-browser-") as temporary:
         runtime = Path(temporary).resolve() / 'runtime'
         seeded = seed(runtime)
         app = app_at(runtime)

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Exercise plain exact/proximity search with temporary synthetic sources."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -48,11 +53,11 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     # This acceptance process must not inherit deployed storage, source mounts,
-    # PostgreSQL, or worker endpoints from the host's RecordBench environment.
+    # PostgreSQL, or worker endpoints from the host's Exculpata environment.
     for name in tuple(os.environ):
         if name.startswith(("CASE_INTELLIGENCE_", "CASE_REVIEW_")):
             os.environ.pop(name)
-    with tempfile.TemporaryDirectory(prefix="recordbench-exact-search-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-exact-search-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / "runtime", auth_mode="test",
             generator=SyntheticAnswerGenerator(), learned_retrieval=False, background_ingestion=False)
         listener = socket.socket()

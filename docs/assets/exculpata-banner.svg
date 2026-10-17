@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 384" role="img" aria-labelledby="recordbench-banner-title recordbench-banner-description">
-  <title id="recordbench-banner-title">Exculpata</title>
-  <desc id="recordbench-banner-description">A white record page over an orange folio on navy. Review the record. Build the work.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 384" role="img" aria-labelledby="exculpata-banner-title exculpata-banner-description">
+  <title id="exculpata-banner-title">Exculpata</title>
+  <desc id="exculpata-banner-description">A white record page over an orange folio on navy. Review the record. Build the work.</desc>
   <rect width="1280" height="384" rx="24" fill="#071a3c"/>
   <path d="M0 348h1280v12H0Z" fill="#ed4b2f"/>
   <g transform="translate(64 62) scale(3.5)">

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import json
 import re
 from datetime import datetime, timedelta, timezone
@@ -17,13 +23,13 @@ from case_intelligence.identity import (
 from case_intelligence.workbench import create_workbench_app
 
 
-PROXY_SECRET = "synthetic_recordbench_proxy_secret_0000000000000000"
+PROXY_SECRET = f"synthetic_{LEGACY_STEM}_proxy_secret_0000000000000000"
 REALM = "EXAMPLE.TEST"
 ADMIN = "alice.reviewer@EXAMPLE.TEST"
 OWNER = "case.owner@EXAMPLE.TEST"
 OTHER = "ordinary.reviewer@EXAMPLE.TEST"
-USER_GROUP = "recordbench_users@example.test"
-ADMIN_GROUP = "recordbench_administrators@example.test"
+USER_GROUP = f"{LEGACY_STEM}_users@example.test"
+ADMIN_GROUP = f"{LEGACY_STEM}_administrators@example.test"
 
 
 def _headers(principal: str) -> dict[str, str]:
@@ -73,7 +79,7 @@ def test_group_admission_assigns_admin_and_rechecks_membership(tmp_path):
         kerberos_group_resolver=lambda principal: memberships.get(principal, set()),
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get(
             "/auth/login",
             headers=_headers(ADMIN),
@@ -120,7 +126,7 @@ def test_exact_bootstrap_admin_survives_directory_group_lookup_failure(tmp_path)
         kerberos_group_resolver=unavailable,
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         login = client.get(
             "/auth/login",
             headers=_headers(ADMIN),
@@ -135,7 +141,7 @@ def test_exact_bootstrap_admin_survives_directory_group_lookup_failure(tmp_path)
 def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
     tmp_path, monkeypatch
 ):
-    backup_status = tmp_path / "recordbench-backup-status.json"
+    backup_status = tmp_path / f"{LEGACY_STEM}-backup-status.json"
     backup_status.write_text(
         json.dumps(
             {
@@ -152,7 +158,7 @@ def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setenv("RECORDBENCH_BACKUP_STATUS_FILE", str(backup_status))
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}BACKUP_STATUS_FILE", str(backup_status))
     memberships = {
         ADMIN: {ADMIN_GROUP},
         OWNER: {USER_GROUP},
@@ -167,7 +173,7 @@ def test_administrator_can_audit_view_manage_membership_and_reach_safe_close(
         kerberos_group_resolver=lambda principal: memberships.get(principal, set()),
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         owner_login = client.get(
             "/auth/login",
             headers=_headers(OWNER),
@@ -304,7 +310,7 @@ def test_regular_group_user_cannot_use_administrator_console(tmp_path):
         kerberos_group_resolver=lambda _principal: {USER_GROUP},
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login",
             headers=_headers(OWNER),
@@ -328,7 +334,7 @@ def test_kerberos_logout_is_labelled_as_application_session_close(tmp_path):
         kerberos_group_resolver=lambda _principal: set(),
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login",
             headers=_headers(ADMIN),
@@ -355,7 +361,7 @@ def test_kerberos_group_policy_rejects_empty_or_malformed_configuration():
         KerberosSettings(
             realm=REALM,
             proxy_secret=PROXY_SECRET,
-            allowed_groups=frozenset({"RecordBench,Users"}),
+            allowed_groups=frozenset({f"{LEGACY_PRODUCT},Users"}),
         )
 
 
@@ -371,7 +377,7 @@ def test_ordinary_user_report_analysis_isolation_and_group_revocation(tmp_path):
         kerberos_group_resolver=lambda principal: memberships.get(principal, set()),
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import asdict, replace
 
 import pytest
@@ -73,7 +77,7 @@ def test_explicit_selection_fresh_validates_then_mints_opaque_ticket(tmp_path):
     result = service.search("actor-alpha", SearchRequest("select", "matter-alpha", "shared red bicycle")).results[0]
     launch = service.mint_open_source("actor-alpha", "matter-alpha", result.segment_navigation_id)
     assert launch.model_dump().keys() == {"uri", "expires_at"}
-    assert launch.uri.startswith("recordbench://ticket/")
+    assert launch.uri.startswith(f"{LEGACY_STEM}://ticket/")
     assert "matter" not in launch.uri and "report" not in launch.uri
     assert len(tickets.records) == 1
 

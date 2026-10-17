@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Synthetic-only SQLite upgrade/backup rollback evidence; never opens an installed node."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse, json, os, pathlib, sqlite3, subprocess, sys, tarfile, tempfile
 repo=pathlib.Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser(description="Verify synthetic Report migration and pre-upgrade backup rollback with the baseline reader.")
 parser.add_argument('--baseline-ref', default='1fed77a2c50686b073e4c3255421d77aa16fefe5')
 args=parser.parse_args()
 baseline=subprocess.check_output(['git','rev-parse',args.baseline_ref + '^{commit}'],cwd=repo,text=True).strip()
-with tempfile.TemporaryDirectory(prefix='recordbench-report-rollback-') as directory:
+with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-report-rollback-") as directory:
     root=pathlib.Path(directory)
     bundle=root/'baseline.tar'
     subprocess.run(['git','archive',baseline,'src'],cwd=repo,stdout=bundle.open('wb'),check=True)

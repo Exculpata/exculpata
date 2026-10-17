@@ -5,7 +5,7 @@ services:
       - /etc/nsswitch.conf:/etc/nsswitch.conf:ro
 
   kerberos-proxy:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/kerberos-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/kerberos-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: deploy/kerberos-proxy
     restart: unless-stopped
@@ -18,8 +18,8 @@ services:
     pids_limit: 128
     environment:
       KRB5RCACHEDIR: /run/recordbench-auth/rcache
-      RECORDBENCH_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-}}
-      RECORDBENCH_KERBEROS_PRINCIPAL: ${EXCULPATA_KERBEROS_PRINCIPAL:-${RECORDBENCH_KERBEROS_PRINCIPAL:-}}
+      EXCULPATA_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-}}
+      EXCULPATA_KERBEROS_PRINCIPAL: ${EXCULPATA_KERBEROS_PRINCIPAL:-${RECORDBENCH_KERBEROS_PRINCIPAL:-}}
     volumes:
       - ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro
       - /etc/krb5.conf:/etc/krb5.conf:ro
@@ -34,6 +34,6 @@ services:
 
   gateway:
     environment:
-      RECORDBENCH_UPSTREAM: kerberos-proxy:8080
+      EXCULPATA_UPSTREAM: kerberos-proxy:8080
     depends_on:
       kerberos-proxy: {condition: service_healthy}

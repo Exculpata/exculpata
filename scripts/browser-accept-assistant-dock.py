@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Check the assistant dock's Close control, page-aware suggestions and answer-passage actions with synthetic records."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import io
@@ -98,7 +103,7 @@ def main(argv=None):
         "checks": checks,
         "unrun_checks": ["screen reader", "WebKit", "physical mobile", "submitted answers (no model)"]}
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-dock-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-dock-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / "runtime", auth_mode="test",
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))
@@ -218,7 +223,7 @@ def main(argv=None):
             # A readiness update and a forced submission while pending must not reopen or send.
             held = ("const t=document.querySelector('#assistant-question'), b=t.form.querySelector('button[type=submit]');"
                     "return [t.disabled, b.disabled, t.value]")
-            js("window.dispatchEvent(new CustomEvent('recordbench:readiness', {detail: {can_query: true, state: 'ready',"
+            js(f"window.dispatchEvent(new CustomEvent('{LEGACY_STEM}:readiness', {{detail: {{can_query: true, state: 'ready',"
                " searchable_count: 1, total_count: 1}}))")
             assert js(held) == [True, True, "Synthetic unsent draft"], js(held)
             js("document.querySelector('#assistant-question').form.requestSubmit()")

@@ -42,7 +42,7 @@ adjudicate those short raw-byte matches for that exact media blob. Longer deny
 terms, decoded media metadata, secret patterns, filenames, and other file types
 remain checked. Record the digest and reason privately. Never use this option
 to excuse actual private content. The pre-push hook reads equivalent repeated
-`recordbench.reviewedMediaDigest` local configuration entries. The scanner also
+`exculpata.reviewedMediaDigest` local configuration entries. The scanner also
 keeps an exact list, `REVIEWED_MEDIA_DIGESTS`, for blobs that must pass in CI
 without that private configuration.
 
@@ -57,7 +57,7 @@ For an inspected historical GitHub merge, `--allow-public-merge-commit SHA`
 permits only an already approved public Git username in the conventional
 `Merge pull request #N from USER/branch` first line of that exact commit.
 The branch name and remaining prose still scan. The hook reads repeated local
-`recordbench.publicMergeCommit` entries; no general message exemption is granted.
+`exculpata.publicMergeCommit` entries; no general message exemption is granted.
 
 Run the repository's supported quality commands from a fresh environment:
 

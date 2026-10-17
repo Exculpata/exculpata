@@ -1,7 +1,7 @@
 # Continuity C implementation and acceptance handoff — September 22, 2026
 
 C is **Done** at `3c814e37adf18a84de9191bad84e0e8a2745e525` in
-[PR #107](https://github.com/neilofneils404/recordbench-oss/pull/107). Full final-head
+[PR #107](https://github.com/neilofneils404/exculpata-oss/pull/107). Full final-head
 Quality, requested hosted code review and fixed-corpus real-model acceptance
 passed. The [landing receipt](EXIT_ALPHA_CRUISE.md#continuity-c-landing-receipt)
 supersedes the historical pending-gate notes below. This does not authorize
@@ -11,11 +11,11 @@ retains the selected scope and limitations.
 ## Revisions and prerequisite
 
 - Planning baseline: `0d59d5fe4f7be575a66039274415de945a6d5db5`.
-- B landed in [PR #103](https://github.com/neilofneils404/recordbench-oss/pull/103)
+- B landed in [PR #103](https://github.com/neilofneils404/exculpata-oss/pull/103)
   at `d21c1d4849b46b8ae85db19b4d2ce80c8a9669a8`; its accepted landing receipt is
   `2a50ae6be36182d73c1d76d7896f68096bc18c29`.
   Read-only verification confirmed merged state and successful completed
-  [post-merge Quality run 35722012792](https://github.com/neilofneils404/recordbench-oss/actions/runs/35722012792),
+  [post-merge Quality run 35722012792](https://github.com/neilofneils404/exculpata-oss/actions/runs/35722012792),
   attempt 2, on that exact B implementation. B's receipt records all six gates,
   hosted code review and maintainer acceptance; earlier failures remain recorded.
 - C base: `dcee0cfb7912a4289faef5e8646fc33b82da128a`. Reconciliation retained B,
@@ -86,7 +86,7 @@ files mentioned below are local diagnostics, not uploaded attachments.
 | Transcription | From `services/transcription`: `python -m pytest -q` — **194 tests passed**, exit 0. No model weights were downloaded. |
 | Deployment contracts | `./scripts/compose-check.sh` — standard, Kerberos and dedicated local-account graphs valid. |
 | B upgrade, backup, clean restore, rollback | `python scripts/context-storage-restore-drill.py --answer-context` — passed from exact accepted B; immutable C prepared record and old notebook scope survived clean restore; matching pre-upgrade reader/backup rollback passed. Mixed writers were not used. |
-| Encrypted backup integration | `RECORDBENCH_BACKUP_INTEGRATION=1 python -m pytest -q tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore` — **1 passed**, 10.42 seconds, actual restic encryption and PostgreSQL restore. |
+| Encrypted backup integration | `EXCULPATA_BACKUP_INTEGRATION=1 python -m pytest -q tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore` — **1 passed**, 10.42 seconds, actual restic encryption and PostgreSQL restore. |
 | Compilation and whitespace | `python -m compileall -q src scripts tests`; `git diff --check` — passed. |
 | Generic publication sanitizer | `python scripts/publication-check.py --skip-history` — **CLEAN**; expressly not outgoing-history/private-deny clearance. |
 | Independent secrets | Gitleaks **8.30.1**, redacted working-tree and reachable-history scans — no leaks; initial history scan inspected **573 commits**. The completed handoff and final behavioral history were scanned again before the receipt commit. |

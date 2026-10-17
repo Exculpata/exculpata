@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Measure Ask and Review readability with the offline Harbor Street demo."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -37,7 +42,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'synthetic_only': True, 'passed': False, 'checks': [], 'measurements': []}
-    with tempfile.TemporaryDirectory(prefix='recordbench-ask-heading-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-ask-heading-") as temporary:
         print('Preparing isolated synthetic Harbor Street demo', flush=True)
         with seed_demo(Path(temporary)) as demo, socket.socket() as listener:
             print('Synthetic intake and indexing finished; starting Chrome', flush=True)

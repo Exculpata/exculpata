@@ -22,7 +22,7 @@ The existing secure-cookie and provider configuration checks still apply.
 For deliberate synthetic development only, use:
 
 ```console
-CASE_INTELLIGENCE_AUTH_MODE=preview recordbench-workbench --host 127.0.0.1
+CASE_INTELLIGENCE_AUTH_MODE=preview exculpata-workbench --host 127.0.0.1
 ```
 
 `test` is also an explicit isolated test mode. Both development modes deny
@@ -108,7 +108,8 @@ revocation, provider boundaries, migration 0031 and backup/rollback constraints.
 ## Compatible HTTP headers
 
 Trusted proxies may send `X-Exculpata-Authenticated-User` and
-`X-Exculpata-Proxy-Secret`, or their existing `X-RecordBench-*` aliases.
+`X-Exculpata-Proxy-Secret`, or the existing `X-RecordBench-Authenticated-User`
+and `X-RecordBench-Proxy-Secret`.
 Either identity spelling still requires the configured proxy secret. Each
 field may use either family independently. Equal copies are accepted; differing
 identity or secret copies return HTTP 401 before login or session processing,

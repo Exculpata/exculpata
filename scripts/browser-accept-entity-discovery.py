@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic discovery and reconciliation journey in a disposable loopback app, without a model."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import json
 from pathlib import Path
@@ -41,7 +46,7 @@ def main():
     def record(message):
         checks.append(message)
         print(message, flush=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-entities-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-entities-browser-") as temporary:
         root = Path(temporary).resolve()
         originals = []
         for name, text in [('depot', 'Alex Example visited the synthetic depot on 03/04/2026.'), ('archive', 'Alex Example called the synthetic archive on 03/04/2026.')]:

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic folder navigation through Chrome and disposable loopback state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -47,7 +52,7 @@ def main():
         report['checks'].append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-folder-browser-') as temp:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-folder-browser-") as temp:
         root = Path(temp).resolve()
         folder = root / 'Generated collection'
         fixtures = {

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from fastapi.testclient import TestClient
 
 from tests.test_matter_management import (
@@ -15,7 +19,7 @@ from tests.test_matter_management import (
 
 
 def test_administrator_can_open_matter_after_owner_is_disabled(tmp_path) -> None:
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get(
             "/auth/login", headers=_headers(OWNER), follow_redirects=False
         ).status_code == 303

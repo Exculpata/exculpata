@@ -4,6 +4,10 @@
 No model selection, weight download, private runtime discovery or remote corpus
 is performed. A missing configured runtime leaves semantic acceptance outstanding.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import json
 from pathlib import Path
@@ -25,7 +29,7 @@ from tests.test_matter_context_workflow import form
 
 def run():
     client = generator_from_environment()
-    result = dict(format='recordbench-context-model-acceptance-v1', synthetic_only=True,
+    result = dict(format=f"{LEGACY_STEM}-context-model-acceptance-v1", synthetic_only=True,
                   adapter=type(client).__name__, configured=not isinstance(client, UnavailableGenerator),
                   settings=dict(model=getattr(client, 'model', None), temperature=.1, reserved_output_tokens=1200,
                                 disable_thinking=getattr(client, 'disable_thinking', None)),
@@ -33,7 +37,7 @@ def run():
     if not client.available:
         result['limitation'] = 'Configured runtime unavailable. No semantic model acceptance was executed; deterministic tests are separate.'
         return result
-    with tempfile.TemporaryDirectory(prefix='recordbench-context-model-') as temp:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-context-model-") as temp:
         app = create_workbench_app(Path(temp)/'runtime', generator=client, auth_mode='test')
         with TestClient(app) as http:
             slug = _create_matter(http, 'Synthetic continuity model acceptance')

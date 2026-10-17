@@ -1,4 +1,8 @@
 """Synthetic Home briefing visibility, source links and read boundaries."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from contextlib import nullcontext
 from html.parser import HTMLParser
 import io
@@ -258,7 +262,7 @@ def test_real_home_keeps_nonmember_admin_read_only_and_outsider_unauthorized(tmp
     from tests.test_matter_management import ADMIN, OWNER, OTHER, _app, _csrf, _headers
     from tests.test_matter_management import _create_matter as create_authorized
     monkeypatch.setenv('CASE_INTELLIGENCE_BRIEFING', '1')
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         token = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized(client, principal=OWNER, csrf_token=token, name='Synthetic protected briefing')
         monkeypatch.setattr(module, 'build_briefing', lambda *args, **kwargs: pytest.fail('Nonmember assembler called'))

@@ -107,7 +107,7 @@ worktree and `umask 022` for account-directory tests.
   and rolling back the pre-upgrade backup with its matching baseline reader.
 - `python -m pytest -q tests/test_review_bench_v2_postgres.py --deselect
   tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention
-  --junitxml=/tmp/recordbench-context-postgres-results.xml`, with the existing
+  --junitxml=/tmp/exculpata-context-postgres-results.xml`, with the existing
   pinned pgvector image in a disposable test container: **7 passed, one explicitly
   deselected**. `check-postgres-test-report.py` confirmed zero skipped. The test
   container was removed. No model evaluation was requested or run.
@@ -118,7 +118,7 @@ worktree and `umask 022` for account-directory tests.
 - The existing Quality read-only installer diagnostic snippet: **passed**;
   no application node was installed or changed.
 - `python scripts/run-browser-acceptance.py --archives /path/to/verified-archives
-  --output /tmp/recordbench-context-pinned-suite`: **all nine journeys passed**,
+  --output /tmp/exculpata-context-pinned-suite`: **all nine journeys passed**,
   Chrome **153.0.8010.36**, including B's seven checks. Native keyboard save,
   source-return navigation, concurrent tabs, restart/reload, same-name IDs,
   explicit reconciliation/removal, Light/Dusk and 390-pixel reflow passed.
@@ -157,7 +157,7 @@ The final complete pinned browser runner was repeated after the read-only
 authority correction and inspection-template adjustment:
 
 ```console
-PYTHONPATH=src python scripts/run-browser-acceptance.py --archives /path/to/verified-archives --output /tmp/recordbench-context-final-browser-suite
+PYTHONPATH=src python scripts/run-browser-acceptance.py --archives /path/to/verified-archives --output /tmp/exculpata-context-final-browser-suite
 ```
 
 Result: **nine of nine journeys passed**, Chrome **153.0.8010.36**; B's seven
@@ -207,7 +207,7 @@ passes. No unrelated baseline fix was included.
 The nine skips were the eight opt-in PostgreSQL/model cases and the opt-in
 encrypted backup drill. Seven PostgreSQL cases were executed separately and
 passed as recorded above. The encrypted backup case was then executed separately:
-`PYTHONPATH=src RECORDBENCH_BACKUP_INTEGRATION=1 python -m pytest -q tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore`:
+`PYTHONPATH=src EXCULPATA_BACKUP_INTEGRATION=1 python -m pytest -q tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore`:
 **one passed in 10.12 seconds**, using real restic encryption and PostgreSQL
 restore in disposable synthetic storage; app stop/start is simulated by that
 existing drill. No installed-node acceptance is claimed.
@@ -259,7 +259,7 @@ Executed with the same Python 3.12 environment, synthetic fixtures and `umask 02
   with deletion/missing-identity assertions; that exact test passed separately
   (**one passed in 1.47 seconds**).
 - `PYTHONPATH=src python scripts/run-browser-acceptance.py --archives
-  /path/to/verified-archives --output /tmp/recordbench-context-role-review-suite`:
+  /path/to/verified-archives --output /tmp/exculpata-context-role-review-suite`:
   **nine of nine journeys passed**, Chrome **153.0.8010.36**. B's seven checks
   now include changed role inspection, dismissed-identity labeling, exact
   identity navigation and explicit reconciliation in Light/Dusk and at 390 pixels.
@@ -304,12 +304,12 @@ leaks. A read-only `git ls-remote origin refs/heads/main` confirmed public main
 still points to `91a97d2ef2b7d4733551a9189bd9c2c7c50c692c`; no newer upstream
 work needs reconciliation. The original checkout's unrelated work is unchanged.
 
-Local evidence logs for this follow-up: `/tmp/recordbench-context-role-review-application.log`,
-`/tmp/recordbench-context-role-review-focused.log`,
-`/tmp/recordbench-context-role-missing.log`,
-`/tmp/recordbench-context-role-review-suite/summary.json`,
-`/tmp/recordbench-context-role-review-restore.log` and
-`/tmp/recordbench-context-role-review-publication.log`. These are local execution
+Local evidence logs for this follow-up: `/tmp/exculpata-context-role-review-application.log`,
+`/tmp/exculpata-context-role-review-focused.log`,
+`/tmp/exculpata-context-role-missing.log`,
+`/tmp/exculpata-context-role-review-suite/summary.json`,
+`/tmp/exculpata-context-role-review-restore.log` and
+`/tmp/exculpata-context-role-review-publication.log`. These are local execution
 artifacts, not committed runtime state or published attachments.
 
 **Outstanding gates and next action:** maintainer disposition of the installed

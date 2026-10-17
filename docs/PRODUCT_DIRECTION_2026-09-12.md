@@ -22,7 +22,7 @@ This supersedes the no-next-step statement in the older receipt below; it does
 not alter that receipt's historical implementation or acceptance evidence.
 
 This addendum supersedes earlier implementation-status and queue claims below.
-[PR #85](https://github.com/neilofneils404/recordbench-oss/pull/85) landed the
+[PR #85](https://github.com/neilofneils404/exculpata-oss/pull/85) landed the
 first single-run full-text synthesis adapter at `95f290bf350742bc77c915eb0269c774069f3633`.
 The [cruise receipt](EXIT_ALPHA_CRUISE.md#current-upstream-receipt) records
 final-head acceptance and passed independent post-merge checks. Slices 16–18
@@ -49,7 +49,7 @@ are unchanged. Older assessments below retain their named historical revisions.
 
 This addendum supersedes earlier queue and implementation-status claims below,
 including the original proposed delivery sequence. Slice 18 landed in
-[#82](https://github.com/neilofneils404/recordbench-oss/pull/82) at
+[#82](https://github.com/neilofneils404/exculpata-oss/pull/82) at
 `19d57fbec29325ae9b5ab296e6a2adcb18a5e0ec`; the binding
 [cruise receipt](EXIT_ALPHA_CRUISE.md#historical-post-18-receipt-superseded-snapshot) records its passed
 independent post-merge checks and separate security-quota exception.
@@ -72,8 +72,8 @@ at `e9ab89c792b562c2abf27715d15b5f70d3216900`. The
 exact merged heads and distinguishes final PR CI, post-merge CI, hosted review,
 security-quota exceptions and local synthetic evidence.
 
-Slices 16 and 17 landed in [#77](https://github.com/neilofneils404/recordbench-oss/pull/77)
-and [#79](https://github.com/neilofneils404/recordbench-oss/pull/79).
+Slices 16 and 17 landed in [#77](https://github.com/neilofneils404/exculpata-oss/pull/77)
+and [#79](https://github.com/neilofneils404/exculpata-oss/pull/79).
 The [manual entity workspace](ENTITY_WORKSPACE.md) retains distinct identities,
 aliases, supported mentions and reviewer history. [Rule-based discovery](ENTITY_DISCOVERY.md)
 visits sealed full-text inventories and retains recognized occurrences; reviewers
@@ -108,7 +108,7 @@ deployment or confidential-casework validation.
 
 ## Original execution reconciliation (superseded by addendum)
 
-[PR #74](https://github.com/neilofneils404/recordbench-oss/pull/74) merged on
+[PR #74](https://github.com/neilofneils404/exculpata-oss/pull/74) merged on
 September 12 at the assessed revision. Its landing receipt marks 13 Done and
 16–18 Next, and dates superseded findings. This alignment preserves those
 completed states and makes 16 the first implementation within that sequence.

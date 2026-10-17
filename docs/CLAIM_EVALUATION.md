@@ -121,7 +121,7 @@ metadata therefore cannot consume all planned requests before receipt creation f
 ```console
 PYTHONPATH=src python scripts/evaluate-claims.py capture \
   --backend openai --endpoint http://127.0.0.1:8000 \
-  --profile portable --model recordbench-qwen35-4b \
+  --profile portable --model exculpata-qwen35-4b \
   --runtime-profile /tmp/r1b-runtime.json --repetitions 3 \
   --output /tmp/r1b-capture.json
 ```

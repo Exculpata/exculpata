@@ -2,6 +2,10 @@
 
 The caller owns the source guard and authorized transaction. No implicit commit.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 
 from .workspace_store import WorkspaceProblem
@@ -72,4 +76,4 @@ class MatterContextRepository:
             if size > 8 * 1024 * 1024:
                 raise ContextLimit('Context manifest exceeds the complete export limit.')
             selections.append(selection)
-        return dict(format='recordbench-context-selections-v1', consumption='explicit focused-answer opt-in only; actual consumption is recorded per answer', selections=selections)
+        return dict(format=f"{LEGACY_STEM}-context-selections-v1", consumption='explicit focused-answer opt-in only; actual consumption is recorded per answer', selections=selections)

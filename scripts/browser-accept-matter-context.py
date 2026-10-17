@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Synthetic durable context workflow through the existing pinned browser runner."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import importlib.util
@@ -60,7 +65,7 @@ def main():
     def record(message):
         checks.append(message)
         print(message, flush=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-context-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-context-browser-") as temporary:
         runtime = Path(temporary)/'runtime'
         context = knowledge.seed(runtime)
         # Persist a note selection, stop all app writers, and open a new app below.

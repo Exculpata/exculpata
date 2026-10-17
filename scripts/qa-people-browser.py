@@ -5,7 +5,13 @@ Requires this checkout's Python dependencies, Node, OpenSSL and Playwright with
 Chromium. Set PLAYWRIGHT_MODULE to an installed playwright package when it is
 not resolvable from the checkout. No existing node is contacted or modified.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 
 import argparse
 import os
@@ -26,7 +32,7 @@ def _isolate_environment() -> None:
     """Discard inherited deployment configuration before importing the runtime."""
     for name in tuple(os.environ):
         if name.startswith(("CASE_INTELLIGENCE_", "CASE_REVIEW_")) or (
-                name.startswith("RECORDBENCH_") and not name.startswith("RECORDBENCH_QA_")):
+                name.startswith(f"{LEGACY_ENV_PREFIX}") and not name.startswith(f"{LEGACY_ENV_PREFIX}QA_")):
             del os.environ[name]
 
 
@@ -46,7 +52,7 @@ def main() -> int:
     from case_intelligence.workbench import create_workbench_app
     import uvicorn
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-people-acceptance-") as directory:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-people-acceptance-") as directory:
         root = Path(directory).resolve()
         cert, key = root / "loopback.crt", root / "loopback.key"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -75,7 +81,7 @@ def main() -> int:
             artifacts = args.artifacts.resolve() if args.artifacts else root / "screenshots"
             artifacts.mkdir(parents=True, exist_ok=True)
             env = os.environ.copy()
-            env.update(RECORDBENCH_QA_ORIGIN=f"https://127.0.0.1:{listener.getsockname()[1]}", RECORDBENCH_QA_ARTIFACTS=str(artifacts))
+            env.update(EXCULPATA_QA_ORIGIN=f"https://127.0.0.1:{listener.getsockname()[1]}", EXCULPATA_QA_ARTIFACTS=str(artifacts))
             result = subprocess.run(["node", str(ROOT / "scripts/qa-people-browser.cjs")], env=env, cwd=ROOT)
             return result.returncode
         finally:

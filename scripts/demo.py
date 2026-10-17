@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Open an offline, disposable Harbor Street demonstration on loopback."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -65,7 +71,7 @@ def demo_environment() -> Iterator[None]:
 
     def relevant(name: str) -> bool:
         return name.startswith((
-            "CASE_INTELLIGENCE_", "CASE_REVIEW_", "RECORDBENCH_", "EXCULPATA_",
+            "CASE_INTELLIGENCE_", "CASE_REVIEW_", f"{LEGACY_ENV_PREFIX}", "EXCULPATA_",
         )) or name in offline
 
     saved = {name: value for name, value in os.environ.items() if relevant(name)}
@@ -199,7 +205,7 @@ def main() -> int:
         print("Choose a system temporary directory outside the checkout with TMPDIR.", file=sys.stderr)
         return 1
     try:
-        with tempfile.TemporaryDirectory(prefix="recordbench-demo-", dir=parent) as temporary:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-demo-", dir=parent) as temporary:
             print("Preparing the synthetic Harbor Street matter locally...", flush=True)
             with seed_demo(Path(temporary)) as demo, socket.socket() as listener:
                 listener.bind(("127.0.0.1", 0))

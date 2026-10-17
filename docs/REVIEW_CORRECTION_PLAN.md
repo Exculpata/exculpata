@@ -272,7 +272,7 @@ schema/storage change requires backup and clean restore before acceptance.
 ## R3 — Fail closed in installed authentication
 
 **Inspect:** `identity.py`, the workbench CLI and application factory, Compose
-environment defaults, `scripts/recordbench_install.py`, doctor/update/resume,
+environment defaults, `scripts/exculpata_install.py`, doctor/update/resume,
 and local/OIDC/Kerberos authentication tests.
 
 **Reproduce:** from a separate client exercise unset, empty, invalid, preview,

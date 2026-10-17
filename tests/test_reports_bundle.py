@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic regressions for preserving saved Reports in complete exports."""
 import io
@@ -182,7 +186,7 @@ def test_snapshot_does_not_mix_concurrent_report_edits(workspace, monkeypatch):
     original_sections = bench.workspace.report_sections
     def edit_between_reads(matter_id, report_id):
         with sqlite3.connect(bench.workspace.path) as other:
-            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
             other.execute("UPDATE workbench_report SET title='Concurrent title' WHERE report_id=?",
                           (report_id,))
             other.execute("UPDATE workbench_report_section SET body='Concurrent body' WHERE report_id=?",

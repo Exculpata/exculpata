@@ -1,5 +1,11 @@
 """Password re-prompts, NODE ONLINE, and uninstall refusal. Synthetic fixtures only."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 
 import io
 import json
@@ -142,7 +148,7 @@ def test_node_online_screen_hides_password_and_plain_output(tmp_path, capsys):
     installer._handoff(installer.Console(color=False), root)
     output = capsys.readouterr().out
     assert "NODE ONLINE" in output
-    assert "https://recordbench.example.test:8443/auth/login" in output
+    assert f"https://{LEGACY_STEM}.example.test:8443/auth/login" in output
     assert "Administrator username: alice.admin" in output
     assert "./install doctor --root " in output
     assert "The administrator password is not shown" in output
@@ -221,8 +227,8 @@ def _removed(calls: list[list[str]]) -> bool:
 
 def _project(root: Path) -> tuple[str, str]:
     env = installer._dotenv(root / "compose.env")
-    project = env["RECORDBENCH_COMPOSE_PROJECT"]
-    return project, env["RECORDBENCH_IMAGE_NAMESPACE"]
+    project = env[f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT"]
+    return project, env[f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE"]
 
 
 @pytest.fixture
@@ -277,7 +283,7 @@ def test_uninstall_yes_keeps_data_and_delete_data_removes_only_owned_resources(n
     project, namespace = _project(root)
     external = tmp_path / "external-matter"
     external.mkdir()
-    (external / ".recordbench-managed-storage.json").write_text("synthetic marker")
+    (external / f".{LEGACY_STEM}-managed-storage.json").write_text("synthetic marker")
     untouched = tmp_path / "untouched-directory"
     untouched.mkdir()
     (untouched / "keep.txt").write_text("synthetic")
@@ -333,8 +339,8 @@ def test_uninstall_accepts_exculpata_compose_names(node, monkeypatch, capsys):
     root, _paths = node
     project, _namespace = _project(root)
     env_path = root / "compose.env"
-    renamed = env_path.read_text().replace("RECORDBENCH_COMPOSE_PROJECT", "EXCULPATA_COMPOSE_PROJECT")
-    renamed = renamed.replace("RECORDBENCH_IMAGE_NAMESPACE", "EXCULPATA_IMAGE_NAMESPACE")
+    renamed = env_path.read_text().replace(f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT", "EXCULPATA_COMPOSE_PROJECT")
+    renamed = renamed.replace(f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE", "EXCULPATA_IMAGE_NAMESPACE")
     env_path.write_text(renamed)
     monkeypatch.setattr(sys, "argv", ["install", "uninstall", "--root", str(root), "--dry-run", "--plain"])
     assert installer.main() == 0
@@ -357,7 +363,7 @@ def test_uninstall_refuses_external_home_storage_before_any_docker_call(node, mo
     root, _paths = node
     external = tmp_path / "external-home"
     external.mkdir()
-    (external / ".recordbench-managed-storage.json").write_text("synthetic marker")
+    (external / f".{LEGACY_STEM}-managed-storage.json").write_text("synthetic marker")
     installation = json.loads((root / "installation.json").read_text())
     installation["storage_root"] = str(external)
     (root / "installation.json").write_text(json.dumps(installation))
@@ -367,7 +373,7 @@ def test_uninstall_refuses_external_home_storage_before_any_docker_call(node, mo
     ])
     assert installer.main() == 1
     assert _calls() == []
-    assert root.is_dir() and (external / ".recordbench-managed-storage.json").is_file()
+    assert root.is_dir() and (external / f".{LEGACY_STEM}-managed-storage.json").is_file()
 
 
 def test_uninstall_keep_data_still_removes_containers_when_the_root_is_home(node, monkeypatch, capsys):
@@ -382,7 +388,7 @@ def test_uninstall_keep_data_still_removes_containers_when_the_root_is_home(node
 def test_uninstall_refuses_a_project_that_does_not_match_the_root(node, monkeypatch, capsys):
     root, _paths = node
     env = (root / "compose.env").read_text().replace(
-        installer._dotenv(root / "compose.env")["RECORDBENCH_COMPOSE_PROJECT"], "exculpata-0123456789",
+        installer._dotenv(root / "compose.env")[f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT"], "exculpata-0123456789",
     )
     (root / "compose.env").write_text(env)
     monkeypatch.setattr(sys, "argv", ["install", "uninstall", "--root", str(root), "--yes", "--delete-data"])

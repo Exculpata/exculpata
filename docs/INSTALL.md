@@ -13,28 +13,37 @@ Fresh nodes use an `exculpata` service account and default to `/srv/exculpata`,
 `config/exculpata.env`, an `exculpata-<hash>` Compose project/image namespace,
 and `.exculpata-managed-storage.json`. The administrator prepares the service
 account as shown below; the installer runs without root privileges. Fresh local
-accounts default to `exculpata.admin` / `Exculpata Administrator`; legacy nodes
-retain `recordbench.admin` / `RecordBench Administrator`. Explicit choices and
-saved administrator identities are unchanged.
+accounts default to `exculpata.admin` / `Exculpata Administrator`. Legacy nodes
+keep the administrator identity they already saved. Explicit choices are
+unchanged. See [brand compatibility](BRANDING.md).
 
-Existing nodes keep their names. A retained `config/recordbench.env`,
-`.recordbench-managed-storage.json` (including separate managed storage), or
-the existing `recordbench` account selects the legacy generation. Use the
-node's original `--root` for every command, especially with a custom root or
-multiple nodes. P2's `EXCULPATA_*` environment aliases do not identify a renamed
-node. Resume/update retain saved paths, project/image namespace and environment
-key spelling; an unchanged configuration remains byte-identical. Updates change
-only the release coordinate as before. PostgreSQL's user/database remain
-`recordbench` in both generations, as does `recordbench_principal_enabled`.
-Container-internal paths and existing service credentials also retain their
-compatibility names.
+Existing nodes keep their names. A retained configuration file, storage marker,
+or service account from the previous generation selects that generation. See
+[brand compatibility](BRANDING.md) for those filenames. Use the node's original
+`--root` for every command, especially with a custom root or multiple nodes.
+`EXCULPATA_*` environment aliases do not identify a renamed node. Resume/update
+retain saved paths, project/image namespace and environment key spelling; an
+unchanged configuration remains byte-identical. Updates change only the release
+coordinate as before. PostgreSQL's user and database, applied SQL function
+names, and container volume paths stay on their existing names in both
+generations. There is no naming migration. A fresh Compose file defaults an
+unset image namespace to `exculpata` and an unset project name to
+`recordbench`, so an environment file without a project variable keeps the
+existing volumes. The installer writes the fresh project name into
+`compose.env`. The file uses `/tmp/exculpata-home`
+as the container home, and serves the portable review model as
+`exculpata-qwen35-4b`. An existing node keeps the project, namespace, and
+served-model id already saved in its environment. Application health reports
+`Exculpata`. Install and backup checks also accept a node that still reports
+the previous product name.
 
 `./install doctor --root <node-root>` reports the naming generation.
 `--names exculpata` explicitly selects the new generation on a fresh node;
 on a detected legacy node it refuses before changing state. This installer does
 not migrate or rename a node. Do not create a new service account, move state,
-or copy the fresh-node paths below onto an existing installation. The historical
-`scripts/recordbench_install.py` entry point continues to invoke the same installer.
+or copy the fresh-node paths below onto an existing installation. The previous
+installer entry point continues to invoke the same installer. See
+[brand compatibility](BRANDING.md).
 
 The Python distributions are `exculpata` and `exculpata-transcription-v2`.
 After `make bootstrap`, check the installed commands from the repository root:
@@ -46,9 +55,9 @@ After `make bootstrap`, check the installed commands from the repository root:
 .venv/bin/transcription-v2 --help
 ```
 
-The `recordbench`, `recordbench-workbench`, `recordbench-retrieval-worker`,
-`case-intelligence-workbench`, and `case-review-bench` commands remain available
-and print a one-line deprecation notice to stderr. The last command retains its
+The previous product's command names, `case-intelligence-workbench`, and
+`case-review-bench` remain available and print a one-line deprecation notice
+to stderr. The last command retains its
 standalone synthetic review bench; its replacement is
 `python -m case_intelligence.review_bench`. `transcription-v2` keeps its name.
 
@@ -141,7 +150,7 @@ it writes.
    docker info --format '{{.ServerVersion}}'
    docker compose version
    umask 077
-   git clone --single-branch --branch main --no-tags \
+   git clone --branch v0.1.0-beta.1 --depth 1 \
      https://github.com/Exculpata/exculpata.git exculpata
    cd exculpata
    ```
@@ -414,8 +423,9 @@ The install stages include `PREPARE RUNTIME`, `CONFIGURE SERVICES`, and
 the console reports elapsed seconds at most once every 30 seconds. Transient
 probe errors are held for the final timeout diagnostic; the health checks and
 15-minute timeout are unchanged. `NODE ONLINE` still requires successful
-readiness checks. Installer administration uses the `exculpata` command;
-explicit legacy CLI aliases such as `recordbench` retain their deprecation notice.
+readiness checks. Installer administration uses the `exculpata` command.
+Explicit legacy CLI aliases retain their deprecation notice; see
+[Branding](BRANDING.md).
 
 Docker builds and Compose service start, stop, and up output stay out of the
 terminal. The installer reads the private log while the command runs and prints
@@ -802,14 +812,15 @@ account contents.
 
 OIDC and Kerberos resume likewise validate the retained provider choices before
 Compose builds or service changes, including in a dry run. New provider flags do
-not override the saved application environment (`config/exculpata.env` on new
-nodes, `config/recordbench.env` on legacy nodes) or replace canonical credentials.
+not override the saved application environment (`config/exculpata.env` on a
+fresh node, or `config/recordbench.env` on a legacy node) or replace canonical credentials.
 OIDC checks the saved issuer, client, groups, scopes, claim names, token method,
 matching external origin and canonical secret reference, then validates the
 owned mode-0600 `secrets/oidc-client-secret` using the same UTF-8 rules as a fresh
 installation. Kerberos checks the saved realm, admission groups/principals,
 matching HTTP service identity, canonical proxy-secret reference, a nonempty
-owned mode-0600 `secrets/recordbench.keytab`, and the owned mode-0600 proxy secret's
+owned mode-0600 keytab for that generation (see
+[brand compatibility](BRANDING.md)), and the owned mode-0600 proxy secret's
 32–256-character ASCII syntax. Both refuse symbolic-link credential files and
 keep their contents out of output. Missing SSSD or Kerberos configuration paths
 block resume; these presence checks do not establish a working domain exchange.
@@ -908,6 +919,19 @@ Negotiate token before forwarding an authenticated principal plus a shared
 secret. Follow [Authentication](AUTHENTICATION.md) exactly.
 
 ## Upgrade
+
+The installer keeps the saved application env file on upgrade. An explicit
+`EXCULPATA_APP_ENV_FILE` in `compose.env` wins (the previous-prefix alias is
+also accepted). Otherwise it selects `exculpata.env` if present in the saved
+config root, then `recordbench.env`. The missing new-name file does not require
+renaming or copying an existing configuration. Validation, diagnostics, updates
+and rollback use that same selected file; custom selections must be filenames
+inside the config root. Keeping both filenames does not migrate the node’s
+saved naming generation; conflicting storage markers or installation metadata
+still block the operation. Fresh installs still write
+`exculpata.env`. Direct `docker compose` cannot detect filenames: set
+`EXCULPATA_APP_ENV_FILE` to the intended filename when both files exist or when
+using a new-name file; its unset default remains `recordbench.env`.
 
 The installer stages an immutable, content-addressed release capsule under the
 node root and gives every locally built image a release-specific tag. It does
@@ -1066,7 +1090,7 @@ be removed when the node root itself stays.
 Resources are removed only after Docker inspect shows the Compose project
 label for this root. Volume names must also start with that project name.
 Images are removed only when every tag is in this node's image namespace
-(`exculpata-<hash>/...` or `recordbench-<hash>/...`). That check happens
+(`<saved-namespace>-<hash>/...` for this node's image namespace). That check happens
 before any container, volume, or image is removed. An image with any tag
 outside the namespace is left in place and named in the plan. `--delete-data` also
 deletes the node root and, when it is outside that root, the recorded matter

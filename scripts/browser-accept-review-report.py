@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Convert synthetic research, edit its gaps, and download the retained basis."""
 
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -34,7 +39,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="recordbench-review-report-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-review-report-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / "downloads"
         downloads.mkdir()

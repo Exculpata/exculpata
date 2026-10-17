@@ -1,6 +1,6 @@
 """Fixed entry point executed by the separately pinned Nemotron interpreter.
 
-No RecordBench package imports: Python isolated mode keeps the WhisperX
+No Exculpata package imports: Python isolated mode keeps the WhisperX
 environment and its dependency versions out of this process.
 """
 from __future__ import annotations

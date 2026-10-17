@@ -1,5 +1,11 @@
 """The synthetic demo uses normal intake and works without external services."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 
 from collections import Counter
 import importlib.util
@@ -34,7 +40,7 @@ def load_script(name, filename):
 @pytest.fixture
 def demo_script(monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "scripts"))
-    return load_script("recordbench_demo_test", "demo.py")
+    return load_script(f"{LEGACY_STEM}_demo_test", "demo.py")
 
 
 def test_seed_demo_accounts_for_every_source_and_discovers_recurring_names_offline(
@@ -51,7 +57,7 @@ def test_seed_demo_accounts_for_every_source_and_discovers_recurring_names_offli
         "CASE_INTELLIGENCE_TRANSCRIPTION_URL": "https://transcription.example.test",
         "CASE_INTELLIGENCE_CLAMAV_HOST": "scanner.example.test",
         "CASE_REVIEW_ENABLE_MODELS": "1",
-        "RECORDBENCH_LOCAL_ACCOUNT_ROOT": str(external_storage),
+        f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT": str(external_storage),
         "EXCULPATA_ALLOW_CONTAINER_BIND": "1",
         "EXCULPATA_BACKUP_STATUS_FILE": str(external_storage / "backup-status"),
     }
@@ -88,7 +94,7 @@ def test_seed_demo_accounts_for_every_source_and_discovers_recurring_names_offli
         assert all(os.environ.get(flag) == "1" for flag in demo_script.FLAGS)
         assert "EXCULPATA_ALLOW_CONTAINER_BIND" not in os.environ
         assert "EXCULPATA_BACKUP_STATUS_FILE" not in os.environ
-        assert "RECORDBENCH_LOCAL_ACCOUNT_ROOT" not in os.environ
+        assert f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT" not in os.environ
         assert bench.generator.available is False
         sources = bench.sources(matter)
         assert Counter(source.relative_path for source in sources) == expected_paths
@@ -250,5 +256,5 @@ def test_seed_timeout_closes_workers_and_restores_environment(demo_script, tmp_p
 
 
 def test_demo_corpus_passes_publication_sanitizer():
-    publication = load_script("recordbench_demo_publication_check", "publication-check.py")
+    publication = load_script(f"{LEGACY_STEM}_demo_publication_check", "publication-check.py")
     assert publication.scan_tree(ROOT / "demo_data", ()) == []

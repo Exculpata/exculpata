@@ -5,12 +5,14 @@ import re
 
 import pytest
 
+from case_intelligence.legacy_names import CURRENT_PRODUCT, LEGACY_PRODUCT
 from tests.test_first_run_handoff import configured_node
 from tests.test_oss_installer import installer
 
 
+@pytest.mark.parametrize("product_name", [CURRENT_PRODUCT, LEGACY_PRODUCT])
 @pytest.mark.parametrize("outcome", ["ready", "timeout", "incomplete"])
-def test_health_wait_is_calm_bounded_and_retains_final_reason(tmp_path, monkeypatch, capsys, outcome):
+def test_health_wait_is_calm_bounded_and_retains_final_reason(tmp_path, monkeypatch, capsys, outcome, product_name):
     root, _, _ = configured_node(tmp_path)
     clock = [0.0]
     probes = []
@@ -24,7 +26,7 @@ def test_health_wait_is_calm_bounded_and_retains_final_reason(tmp_path, monkeypa
         if outcome == "timeout" or clock[0] < 96:
             clock[0] += 5  # Model a real probe reaching its transport timeout.
             raise TimeoutError("synthetic private transport detail")
-        payload = {"product": "RecordBench", "status": "ok",
+        payload = {"product": product_name, "status": "ok",
                    "storage": {"status": "ready"},
                    "capabilities": {"source_review": "ready", "malware_scan": "ready"}}
         if outcome == "incomplete":

@@ -30,7 +30,7 @@ security. Keep operator-managed LAN/TLS work explicit.
 
 ## Code and acceptance
 
-Start with `scripts/recordbench_install.py::_configure`, `_provision`, launch
+Start with `scripts/exculpata_install.py::_configure`, `_provision`, launch
 acceptance and doctor paths, `docs/INSTALL.md`, `docs/AUTHENTICATION.md`, and
 installer tests. Share phase meanings with other launchers.
 

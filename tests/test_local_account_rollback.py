@@ -1,4 +1,8 @@
 """Synthetic v1 recovery with old cookies never presented against v2."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from contextlib import contextmanager
 import hashlib
 import os
@@ -176,7 +180,7 @@ def test_rollback_requires_operator_stop_and_v1_backup(migrated, boundary):
 
 def test_rollback_cli_requires_confirmation_and_emits_only_receipt(migrated, monkeypatch, capsys):
     state = migrated
-    arguments = ['recordbench', 'accounts', 'rollback', '--file', str(state['repo'].path),
+    arguments = [f"{LEGACY_STEM}", 'accounts', 'rollback', '--file', str(state['repo'].path),
         '--backup-file', str(state['backup']), '--workspace-file', str(state['workspace'])]
     monkeypatch.setattr('sys.argv', arguments)
     with pytest.raises(SystemExit) as error:

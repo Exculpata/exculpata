@@ -2,7 +2,7 @@ limit_req_zone $binary_remote_addr zone=recordbench_login:10m rate=10r/m;
 
 server {
     listen 8443 ssl;
-    server_name ${RECORDBENCH_SERVER_NAME};
+    server_name ${EXCULPATA_SERVER_NAME};
 
     ssl_certificate /run/tls/tls.crt;
     ssl_certificate_key /run/tls/tls.key;
@@ -23,7 +23,7 @@ server {
 
     location = /auth/local {
         limit_req zone=recordbench_login burst=5 nodelay;
-        proxy_pass http://${RECORDBENCH_UPSTREAM};
+        proxy_pass http://${EXCULPATA_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -36,7 +36,7 @@ server {
     }
 
     location / {
-        proxy_pass http://${RECORDBENCH_UPSTREAM};
+        proxy_pass http://${EXCULPATA_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

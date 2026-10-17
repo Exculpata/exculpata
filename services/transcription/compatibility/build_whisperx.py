@@ -43,7 +43,7 @@ def patch_metadata(data: bytes) -> bytes:
         '"transformers>=4.48.0"': '"transformers==5.17.0"',
         'include-package-data = true': 'include-package-data = true\nlicense-files = ["LICENSE*", "licenses/*.txt"]',
     }
-    # RecordBench's explicit lock selects wheel origins; upstream uv settings
+    # Exculpata's explicit lock selects wheel origins; upstream uv settings
     # are not part of the patched distribution's dependency resolution.
     text = text.split("\n# torchcodec (transitive dep", 1)[0]
     for old, new in replacements.items():

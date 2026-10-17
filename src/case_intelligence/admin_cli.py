@@ -1,5 +1,10 @@
 """Content-free installation and identity administration commands."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import getpass
@@ -107,7 +112,7 @@ def _storage_status(args: argparse.Namespace) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="recordbench")
+    parser = argparse.ArgumentParser(prog=f"{LEGACY_STEM}")
     commands = parser.add_subparsers(dest="command", required=True)
     accounts = commands.add_parser("accounts", help="Manage local installation accounts")
     account_commands = accounts.add_subparsers(dest="accounts_command", required=True)
@@ -178,7 +183,7 @@ def main() -> None:
     try:
         args.handler(args)
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
-        parser.exit(1, f"recordbench: {exc}\n")
+        parser.exit(1, f"{LEGACY_STEM}: {exc}\n")
 
 
 if __name__ == "__main__":

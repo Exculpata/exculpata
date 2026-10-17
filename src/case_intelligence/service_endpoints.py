@@ -1,6 +1,6 @@
 """Strict operator-configured boundaries for private companion services.
 
-RecordBench accepts service URLs only from process configuration, never from a
+Exculpata accepts service URLs only from process configuration, never from a
 browser request. Even so, configuration should not silently turn the
 application into an unrestricted network client. Loopback is always permitted;
 container DNS names or appliance addresses must be named in an exact allowlist.

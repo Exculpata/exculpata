@@ -10,8 +10,8 @@ candidate when recorded. The [landing addendum](#landing-addendum) records the
 later merge and independent post-merge checks. Earlier measurements and
 limitations, including the refreshed review-correction evidence, are unchanged.
 
-Scope: [issue #83](https://github.com/neilofneils404/recordbench-oss/issues/83) and
-the prerequisite scope-documentation [PR #84](https://github.com/neilofneils404/recordbench-oss/pull/84).
+Scope: [issue #83](https://github.com/neilofneils404/exculpata-oss/issues/83) and
+the prerequisite scope-documentation [PR #84](https://github.com/neilofneils404/exculpata-oss/pull/84).
 These references do not assert that either the scope PR or implementation has
 landed. Final candidate-head validation, hosted CI, hosted review, and maintainer
 acceptance remain pending in this receipt. Local evidence is not a release gate
@@ -253,7 +253,7 @@ quality or hosted acceptance.
 
 ## Landing addendum
 
-Recorded 2026-09-12. [PR #85](https://github.com/neilofneils404/recordbench-oss/pull/85)
+Recorded 2026-09-12. [PR #85](https://github.com/neilofneils404/exculpata-oss/pull/85)
 merged at `95f290bf350742bc77c915eb0269c774069f3633` on 2026-09-12 at 21:59:37 UTC; the final reviewed
 head was `95f290bf350742bc77c915eb0269c774069f3633`. The
 [cruise receipt](EXIT_ALPHA_CRUISE.md#current-upstream-receipt) records final-head

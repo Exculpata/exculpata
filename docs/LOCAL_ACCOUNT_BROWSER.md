@@ -53,13 +53,16 @@ environment. Do not perform this through an HTTP request.
    boundary following [Storage and backup](STORAGE_AND_BACKUP.md).
 2. If accounts are version 1, run the separate verified migration in
    [Local account lifecycle](LOCAL_ACCOUNT_LIFECYCLE.md) first.
-3. Relocate the same version 2 account file with a new recovery destination:
+3. Relocate the same version 2 account file with a new recovery destination.
+   Use this node's existing secrets file and a new empty directory under the
+   existing node root. Do not rename the node root, configuration filename, or
+   other saved paths:
 
    ```bash
-   recordbench accounts relocate \
-     --file /srv/recordbench/secrets/local-accounts.json \
-     --destination /srv/recordbench/accounts/local-accounts.json \
-     --backup-file /mnt/recovery/recordbench/accounts-before-browser.json \
+   exculpata accounts relocate \
+     --file <existing-secrets>/local-accounts.json \
+     --destination <existing-node>/accounts/local-accounts.json \
+     --backup-file <recovery>/accounts-before-browser.json \
      --confirm-stopped
    ```
 
@@ -70,10 +73,11 @@ environment. Do not perform this through an HTTP request.
    the new file with independently rotated session revisions, then
    removes and syncs the old canonical file. If interrupted after writing the
    destination, keep writers stopped and inspect both paths before resuming.
-4. Set `RECORDBENCH_LOCAL_ACCOUNT_ROOT=/srv/recordbench/accounts` in `compose.env`.
+4. Set the account-root variable in `compose.env` to the host directory you
+   just wrote. Leave the node's other paths unchanged.
    Set `CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE=/var/lib/recordbench-accounts/local-accounts.json`
    and `CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT=/var/lib/recordbench-accounts`
-   in `config/recordbench.env`. Set `local_account_management` to `true` in
+   in the node's application environment file. Set `local_account_management` to `true` in
    `installation.json`. Preserve the other configuration fields and owner-only
    permissions. Include `compose.local-accounts.yaml` after `compose.yaml` for
    direct Compose operations; installer operations load it from node metadata.
@@ -141,7 +145,7 @@ session revisions or submitted form bodies.
 With the checkout's Python dependencies, Node, OpenSSL and Playwright Chromium
 available, run `python scripts/qa-people-browser.py`. Set `PLAYWRIGHT_MODULE` to
 an installed `playwright` package if Node cannot resolve it. For installed Chrome,
-set `RECORDBENCH_QA_BROWSER_CHANNEL=chrome`. Optional `--artifacts` retains desktop
+set `EXCULPATA_QA_BROWSER_CHANNEL=chrome`. Optional `--artifacts` retains desktop
 and narrow screenshots in a directory outside the checkout.
 
 The runner creates a temporary loopback HTTPS node with synthetic accounts and

@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Stopped previous-reader compatibility and forward reconstruction of byte matches."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -26,7 +31,7 @@ def main():
     previous = args.previous_source.resolve()
     if not (previous / 'src/case_intelligence/workspace_store.py').is_file():
         raise SystemExit('Choose the previous source checkout.')
-    with tempfile.TemporaryDirectory(prefix='recordbench-byte-match-reader-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-byte-match-reader-") as temporary:
         root = Path(temporary)
         runtime = root / 'runtime'
         with TestClient(create_workbench_app(runtime, generator=UnavailableGenerator(),

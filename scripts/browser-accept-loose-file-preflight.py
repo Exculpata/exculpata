@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run the synthetic loose-file preflight through the real browser path."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import base64
@@ -290,7 +295,7 @@ def main() -> int:
     server_thread: threading.Thread | None = None
     server_socket: socket.socket | None = None
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-slice1a-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-slice1a-browser-") as temporary:
         temporary_root = Path(temporary)
         files = _fixtures(temporary_root / "fixtures")
         app = create_workbench_app(
