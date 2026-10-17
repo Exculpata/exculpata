@@ -116,9 +116,9 @@ before entering the connection transaction and keeps it through commit or
 rollback. Nested SQL fixtures use a savepoint without committing their caller's
 transaction. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
-Use the yielded handle for scripts and explicit transaction control. A nested
+Use the yielded handle for scripts, connection contexts and explicit transaction control. A nested
 handle rejects `executescript`, commit/rollback, transaction-control SQL and
-transaction-mode changes before they can end the caller's transaction. The same
+transaction-mode changes or connection context entry before they can end the caller's transaction. The same
 restriction applies to a retained outer handle or cursor during the nested
 boundary. Use ordinary `execute`/`executemany` statements for nested SQL fixtures;
 the helper preserves any existing SQLite authorizer.

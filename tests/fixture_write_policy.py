@@ -189,8 +189,11 @@ class _Check(ast.NodeVisitor):
                 owner = self.value(expression.args[0]).symbol
                 self.protected.add(owner)
                 value = _Value(connection=owner, symbol=owner + ".connection", fixture_handle=True)
-            elif value.connection is not None and not value.connection.startswith("sqlite@") and value.connection not in self.protected:
-                self.flag(expression, "naked connection context")
+            elif value.connection is not None and not value.connection.startswith("sqlite@"):
+                if value.connection not in self.protected:
+                    self.flag(expression, "naked connection context")
+                elif not value.fixture_handle:
+                    self.flag(expression, "connection context requires the yielded fixture_write handle")
             if item.optional_vars is not None:
                 self.bind(item.optional_vars, value)
         for statement in node.body:

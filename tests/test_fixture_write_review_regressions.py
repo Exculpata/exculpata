@@ -1,4 +1,4 @@
-"""Synthetic regressions for the four fixture-boundary review findings."""
+"""Synthetic regressions for fixture-boundary review findings."""
 from textwrap import dedent
 import sqlite3
 
@@ -168,3 +168,45 @@ def test_guard_closes_alias_and_deferred_scope_bypasses(source):
 ])
 def test_guard_preserves_eager_and_guarded_operations(source):
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize("alias", [False, True])
+def test_guard_rejects_raw_connection_context_inside_fixture_boundary(alias):
+    source = "connection = bench.workspace.connection\n" if alias else ""
+    receiver = "connection" if alias else "bench.workspace.connection"
+    source += f"with fixture_write(bench.workspace):\n    with {receiver}:\n        pass"
+    violations = check_fixture_writes(source)
+    assert len(violations) == 1
+    assert violations[0].rule == "connection context requires the yielded fixture_write handle"
+
+
+@pytest.mark.parametrize("context", [
+    "connection:",
+    "bench.workspace.connection:  # fixture-write: Deliberately exercise the caller-owned raw transaction boundary.",
+])
+def test_guard_allows_yielded_context_or_exact_statement_exception(context):
+    source = f"with fixture_write(bench.workspace) as connection:\n    with {context}\n        pass"
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize("target", ["nested", "outer"])
+def test_nested_connection_context_cannot_commit_caller_writes(tmp_path, target):
+    store = WorkspaceStore(tmp_path / "synthetic.sqlite")
+    try:
+        with fixture_write(store) as connection:
+            connection.execute("CREATE TABLE synthetic_fixture (value TEXT)")
+        with pytest.raises(ValueError, match="caller rollback"):
+            with fixture_write(store) as connection:
+                connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
+                with fixture_write(store) as nested:
+                    handle = nested if target == "nested" else connection
+                    with pytest.raises(RuntimeError, match="fixture_write"):
+                        with handle:
+                            pass
+                    assert connection.in_transaction
+                    assert connection.execute("SELECT value FROM synthetic_fixture").fetchone()[0] == "caller"
+                raise ValueError("caller rollback")
+        with fixture_write(store) as connection:
+            assert connection.execute("SELECT * FROM synthetic_fixture").fetchall() == []
+    finally:
+        store.close()
