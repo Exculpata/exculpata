@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import re
 import select
 import socket
 import socketserver
+import subprocess
+import sys
 import threading
 import time
 from urllib.parse import urlsplit
@@ -14,6 +17,78 @@ from urllib.parse import urlsplit
 
 class Denied(ValueError):
     pass
+
+
+SETUP_SECONDS = 5
+MAX_CONNECTIONS = 8
+
+
+def pinnable(ip):
+    # Only ordinary unicast public addresses, RFC1918 or IPv6 ULA may be pinned.
+    # Explicit pins never authorize metadata/link-local/loopback/transition IPs.
+    private = (
+        ipaddress.ip_network((int.from_bytes(bytes((10, 0, 0, 0))), 8)),
+        ipaddress.ip_network((int.from_bytes(bytes((172, 16, 0, 0))), 12)),
+        ipaddress.ip_network((int.from_bytes(bytes((192, 168, 0, 0))), 16)),
+        ipaddress.ip_network((0xfc00 << 112, 7)),
+    )
+    return public_ip(ip) or any(ip in network for network in private)
+
+
+def public_ip(ip):
+    return (ip.is_global and not ip.is_multicast and not ip.is_unspecified and not ip.is_reserved
+            and not (isinstance(ip, ipaddress.IPv6Address)
+                     and (ip.ipv4_mapped or ip.sixtofour or ip.teredo)))
+
+
+def issuer_pins(value, issuer):
+    if not value:
+        return frozenset()
+    if len(value) > 2048:
+        raise Denied("invalid pins")
+    data = json.loads(value)
+    if (not issuer or not isinstance(data, dict) or set(data) != {"issuer", "addresses"}
+            or data["issuer"] != issuer or not isinstance(data["addresses"], list)
+            or not 1 <= len(data["addresses"]) <= 16):
+        raise Denied("invalid issuer-bound pins")
+    addresses = []
+    for value in data["addresses"]:
+        if not isinstance(value, str) or "/" in value or "%" in value:
+            raise Denied("invalid pin")
+        ip = ipaddress.ip_address(value)
+        if not pinnable(ip):
+            raise Denied("pin address denied")
+        addresses.append(ip)
+    if len(set(addresses)) != len(addresses):
+        raise Denied("duplicate pins")
+    return frozenset(addresses)
+
+
+def remaining(deadline):
+    value = deadline - time.monotonic()
+    if value <= 0:
+        raise Denied("setup deadline")
+    return value
+
+
+def resolve(host, port, deadline):
+    """A killable resolver process prevents stuck libc DNS from occupying slots.
+
+    At most one child exists per connection slot; no abandoned resolver threads
+    or queued futures survive timeout. The same deadline covers all TCP attempts.
+    """
+    with subprocess.Popen([sys.executable, "-I", __file__, "--resolve", host, str(port)],
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                          stderr=subprocess.DEVNULL, env={}) as child:
+        try:
+            output, _ = child.communicate(timeout=remaining(deadline))
+        except (subprocess.TimeoutExpired, Denied):
+            child.kill()
+            child.communicate()
+            raise Denied("resolver deadline") from None
+        if child.returncode != 0:
+            raise Denied("resolver unavailable")
+    return json.loads(output)
 
 
 def authority(value: str) -> tuple[str, int]:
@@ -40,34 +115,36 @@ def issuer_authority(value: str) -> tuple[str, int] | None:
     return authority(f"{'[' + host + ']' if ':' in host else host}:{parsed.port or 443}")
 
 
-def public_addresses(host: str, port: int):
+def public_addresses(host: str, port: int, pins=frozenset(), deadline=None):
     """Resolve once, reject the entire answer set on any forbidden address.
 
     Dialing the returned sockaddr avoids a second DNS lookup after validation.
     IPv6 transition mechanisms are denied, including mapped/6to4/Teredo forms.
     """
-    answers = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    answers = resolve(host, port, deadline if deadline is not None else time.monotonic() + SETUP_SECONDS)
     if not answers or len(answers) > 32:
         raise Denied("invalid address set")
     for family, socktype, proto, _, address in answers:
         ip = ipaddress.ip_address(address[0])
-        if (family not in (socket.AF_INET, socket.AF_INET6) or not ip.is_global
-                or ip.is_multicast or ip.is_unspecified or ip.is_reserved
-                or (isinstance(ip, ipaddress.IPv6Address)
-                    and (ip.ipv4_mapped or ip.sixtofour or ip.teredo))):
+        if (family not in (socket.AF_INET, socket.AF_INET6)
+                or (ip not in pins if pins else not public_ip(ip))):
             raise Denied("destination address denied")
     return answers
 
 
-def dial(host: str, port: int):
-    answers = public_addresses(host, port)
+def dial(host: str, port: int, pins=frozenset()):
+    deadline = time.monotonic() + SETUP_SECONDS
+    answers = public_addresses(host, port, pins, deadline)
     for family, socktype, proto, _, address in answers:
+        timeout = remaining(deadline)
         connection = socket.socket(family, socktype, proto)
         try:
+            connection.settimeout(timeout)
+            connection.connect(tuple(address))
+            remaining(deadline)
             connection.settimeout(5)
-            connection.connect(address)
             return connection
-        except OSError:
+        except (OSError, Denied):
             connection.close()
     raise Denied("destination unavailable")
 
@@ -126,7 +203,7 @@ class Handler(socketserver.BaseRequestHandler):
         established = False
         try:
             destination = read_connect(client, self.server.allowed)
-            with dial(*destination) as upstream:
+            with dial(*destination, self.server.pins) as upstream:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 established = True
                 relay(client, upstream)
@@ -142,11 +219,12 @@ class Handler(socketserver.BaseRequestHandler):
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
-    request_queue_size = 32
+    request_queue_size = MAX_CONNECTIONS
 
-    def __init__(self, address, allowed):
+    def __init__(self, address, allowed, pins=frozenset()):
         self.allowed = allowed
-        self.slots = threading.BoundedSemaphore(32)
+        self.pins = pins
+        self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__(address, Handler)
 
     def process_request(self, request, client_address):
@@ -168,8 +246,16 @@ class Server(socketserver.ThreadingTCPServer):
 
 if __name__ == "__main__":
     try:
-        allowed = issuer_authority(os.environ.get("OIDC_ISSUER", ""))
-        with Server(("0.0.0.0", 3128), allowed) as server:
+        if len(sys.argv) == 4 and sys.argv[1] == "--resolve":
+            answers = socket.getaddrinfo(sys.argv[2], int(sys.argv[3]), type=socket.SOCK_STREAM)
+            if not answers or len(answers) > 32:
+                raise Denied("invalid address set")
+            print(json.dumps(answers))
+            raise SystemExit(0)
+        issuer = os.environ.get("OIDC_ISSUER", "")
+        allowed = issuer_authority(issuer)
+        pins = issuer_pins(os.environ.get("OIDC_ISSUER_PINS", ""), issuer)
+        with Server(("0.0.0.0", 3128), allowed, pins) as server:
             server.serve_forever()
     except (OSError, ValueError):
         raise SystemExit("Egress proxy configuration or listener unavailable") from None

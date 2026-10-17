@@ -9,7 +9,12 @@
 {
   "networks": {},
   "services": {
-    "app": {},
+    "app": {
+      "volumes": [
+        "/var/lib/sss/pipes:/var/lib/sss/pipes:ro",
+        "/etc/nsswitch.conf:/etc/nsswitch.conf:ro"
+      ]
+    },
     "gateway": {},
     "kerberos-proxy": {
       "cap_add": [
@@ -27,18 +32,46 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "/etc/krb5.conf:/etc/krb5.conf:ro"
       ]
     }
-  }
+  },
+  "volumes": {}
 }
 '''
 "compose.local-accounts.yaml" = '''
 {
   "networks": {},
   "services": {
-    "account-admin": {},
-    "app": {}
-  }
+    "account-admin": {
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}",
+          "target": "/var/lib/recordbench-accounts",
+          "type": "bind"
+        }
+      ]
+    },
+    "app": {
+      "volumes": [
+        {
+          "source": "${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}",
+          "target": "/var/lib/recordbench-accounts",
+          "type": "bind"
+        }
+      ]
+    }
+  },
+  "volumes": {}
 }
 '''
 "compose.yaml" = '''
@@ -64,6 +97,18 @@
       "network_mode": "none",
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STORAGE_ROOT:-${RECORDBENCH_STORAGE_ROOT:-}}",
+          "target": "/var/lib/recordbench/matter-storage",
+          "type": "bind"
+        }
       ]
     },
     "app": {
@@ -77,6 +122,29 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_RUNTIME_ROOT:-${RECORDBENCH_RUNTIME_ROOT:-}}",
+          "target": "/var/lib/recordbench/runtime",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STORAGE_ROOT:-${RECORDBENCH_STORAGE_ROOT:-}}",
+          "target": "/var/lib/recordbench/matter-storage",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STATE_ROOT:-${RECORDBENCH_STATE_ROOT:-}}",
+          "target": "/var/lib/recordbench/state",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        }
       ]
     },
     "clamav": {
@@ -95,6 +163,9 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        "clamav-signatures:/var/lib/clamav"
       ]
     },
     "clamav-updater": {
@@ -113,6 +184,9 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        "clamav-signatures:/var/lib/clamav"
       ]
     },
     "egress-proxy": {
@@ -147,11 +221,24 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        "./deploy/gateway/default.conf.template:/etc/nginx/templates/default.conf.template:ro",
+        "${EXCULPATA_TLS_CERT:-${RECORDBENCH_TLS_CERT:-}}:/run/tls/tls.crt:ro",
+        "${EXCULPATA_TLS_KEY:-${RECORDBENCH_TLS_KEY:-}}:/run/tls/tls.key:ro"
       ]
     },
     "generator": {
       "networks": [
         "models"
+      ],
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
       ]
     },
     "model-stager": {
@@ -163,11 +250,22 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        ".:/workspace:ro",
+        {
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
       ]
     },
     "postgres": {
       "networks": [
         "services"
+      ],
+      "volumes": [
+        "postgres-data:/var/lib/postgresql/data"
       ]
     },
     "retrieval": {
@@ -179,6 +277,14 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
       ]
     },
     "transcription-api": {
@@ -190,10 +296,34 @@
       ],
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}",
+          "target": "/var/lib/recordbench/transcription",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
       ]
     },
     "transcription-cleanup": {
-      "network_mode": "none"
+      "network_mode": "none",
+      "volumes": [
+        "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}:/var/lib/recordbench/transcription",
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}:/models:ro"
+      ]
     },
     "transcription-cleanup-daemon": {
       "cap_drop": [
@@ -202,6 +332,11 @@
       "network_mode": "none",
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}:/var/lib/recordbench/transcription",
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}:/models:ro"
       ]
     },
     "transcription-worker": {
@@ -211,11 +346,76 @@
       "network_mode": "none",
       "security_opt": [
         "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}",
+          "target": "/var/lib/recordbench/transcription",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
       ]
     }
+  },
+  "volumes": {
+    "clamav-signatures": null,
+    "postgres-data": null
   }
 }
 '''
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "05c3191325b1d1d0a1250c8fc8b4e7dcb077f25d103830945a8301e317d107db"
+detail = "socket.socket"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "5941e17f9b3c219659fbe836ec4c3932d384fcd1a4826dd75bc01cde81417e6e"
+detail = "socket.getaddrinfo"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "48895d54774349e16f4d92830affcbf4a3d560f99981e16e6f11c554905a69d9"
+detail = "socket.AF_INET"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "145e467312f96004fa57dde7bda67fa838a4876869019ee9aae5e400d60fc358"
+detail = "socket.AF_INET6"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "9b1ca95f5f2c9daf0904e812e7f1febdbdf7b6feee935cc0bb73799a5a7103d1"
+detail = "socket.SOCK_STREAM"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
 
 [[source]]
 path = "services/transcription/src/transcription_v2/api.py"

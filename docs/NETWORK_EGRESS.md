@@ -19,7 +19,11 @@ each connection; every answer must pass validation before any connection is
 made, and the proxy dials that validated numeric address without resolving it
 again. Empty issuer configuration starts in deny-all mode for local and Kerberos
 sign-in. Requests, destinations and tunneled bytes are not logged. Concurrency,
-header size/time, tunnel duration and transferred bytes are bounded.
+header size/time, tunnel duration and transferred bytes are bounded. Eight
+connection slots each allow five seconds for headers and one five-second budget
+shared by DNS and all connection attempts. DNS runs in a killable subprocess;
+timeout kills/reaps it before releasing the slot. Tunnels last at most 60 seconds
+and carry at most 8 MiB.
 
 This is a destination control, not TLS inspection: CONNECT can carry other
 protocols or paths to the approved authority. The application still validates
@@ -29,24 +33,46 @@ Cross-origin endpoints remain unsupported, as before. Redirect following remains
 disabled. TLS verification, SNI and optional custom CA handling stay in the app;
 the proxy never receives a CA file or client secret.
 
-The current candidate accepts globally routable issuer addresses only and rejects
-private, loopback, link-local, multicast, unspecified, reserved and IPv6 transition
-destinations, including mixed allowed/denied DNS answers. **Private-address issuer
-compatibility is unresolved; this candidate is not ready for deployment until
-that policy and its migration/test path have been reviewed.** Do not replace this
-with a blanket private-network allowlist.
+By default the relay accepts globally routable issuer addresses only. An operator
+using a private issuer must explicitly save `CASE_INTELLIGENCE_OIDC_EGRESS_PINS`
+in the selected app env file: a single-quoted JSON object containing `issuer`
+(the full configured issuer URL, exactly) and `addresses` (1–16 distinct IP
+address strings). Pins authorize only that issuer authority. Every resolved
+address must be in the pin set; a changed issuer URL or mixed/unpinned DNS answer
+fails closed. DNS is still required; pins do not replace name resolution or TLS
+verification. Public unicast, RFC1918 and IPv6 ULA addresses can be pinned;
+loopback, link-local/metadata, shared-address space, multicast, unspecified,
+reserved and IPv6 transition destinations cannot. CIDRs and wildcards are not
+accepted. Review exact issuer addresses privately before upgrading a private
+issuer; no private access is inferred or automatically migrated. DNS rotation
+requires an explicit reviewed pin update and recreation of the proxy and app.
 
 ## Configuration and upgrades
 
 Installer Compose invocations derive `OIDC_EGRESS_ISSUER` from the one selected
 application env file's `CASE_INTELLIGENCE_OIDC_ISSUER`, only in `oidc` mode. Shell
 overrides are discarded. This preserves fresh, legacy and explicitly selected
-filenames without copying app configuration or secrets into the proxy. Changing
+filenames without copying app configuration or secrets into the proxy. Only the
+issuer and its optional pin JSON are passed. Changing
 the saved issuer requires recreating the proxy and app together through the
 installer. An existing proxy cannot observe a changed env file automatically.
 
+The installer accepts single-line `KEY=value` entries with upper/lowercase keys,
+spaces around `=`, unquoted, single-quoted or JSON-compatible double-quoted
+values, and inline comments. An unquoted comment requires preceding whitespace;
+quoted comments follow the closing quote. Auth mode uses `strip().lower()`, as
+the app does. Duplicate keys, multiline values, unset keys without `=`, `export`
+prefixes, colon delimiters and unsupported quoted escapes fail with a line-only
+diagnostic. Auth mode, issuer and pin values containing `$` are deliberately
+rejected: write resolved literals instead of shell/Compose interpolation before
+upgrading. Keep secrets in their existing files; diagnostics never print values.
+Other env entries are not copied to the proxy. This is a supported subset of
+[Compose env-file syntax](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/#env-file-syntax),
+not a second interpolation engine.
+
 For operator-managed direct Compose invocation, supply `OIDC_EGRESS_ISSUER`
-with the same value as the selected application's issuer when creating the
+with the same value as the selected application's issuer, and `OIDC_EGRESS_PINS`
+with the saved pin JSON if present, when creating the
 services; otherwise the relay denies all. Merely setting an issuer in root
 `.env` does not configure application authentication. Review the rendered graph
 privately. Existing nodes must build the new proxy image and recreate the app
@@ -82,10 +108,18 @@ controlled live acceptance before treating a node as isolated.
 `make network-contract` runs `scripts/network-contract.py`; `make check`,
 `make check-fast` and the full Quality gates application job include it. The
 reviewed `config/egress-allowlist.toml` records Compose network definitions,
-per-service memberships, published ports and network-escape settings, plus exact
+per-service memberships, published ports, mounts and network-escape settings,
+plus exact
 Python networking expressions and literal URL/DNS-name occurrences. New Compose files,
 implicit/default networks, host/service network modes, capabilities and changed
 ports require review. Duplicate YAML keys and unparseable sources fail closed.
+Service volumes (short and long syntax), `volumes_from`, `use_api_socket` and
+named-volume definitions are inventoried because Docker/container-runtime sockets
+and host binds can defeat container isolation, even when mounted read-only.
+The inventory detects changed mount expressions, external volumes and driver
+options; it cannot prove what an operator variable resolves to, follow a host
+symlink, or inspect the contents of an approved mount. Installer path checks and
+private rendered-graph/host review remain necessary.
 Source findings include file/line reasons. No whole source file is exempted.
 
 The AST inventory follows ordinary imports, aliases, client construction and
@@ -102,6 +136,22 @@ checks denial, address validation/rebinding and a bidirectional socket-pair smok
 Socket pairs do not prove container routing or a fresh install. Live Compose
 positive/negative isolation smoke, browser journeys and security/privacy review
 remain acceptance requirements; unexecuted checks must be reported as such.
+
+The opt-in `scripts/test-egress-smoke.py --docker-context CONTEXT --output DIR`
+builds the pinned Python image and locked app dependencies, then creates four
+limited synthetic containers and two internal networks with no host mounts or
+published ports. It runs the actual Authlib adapter against a temporary TLS OIDC
+endpoint, checks custom CA and redirects, proves numeric direct TCP/HTTPX bypass
+denials separately, and checks foreign/port/malformed and healthy no-issuer
+denials. It cleans up only its unique Compose project and images. The caller
+must provide an approved disposable Docker runtime and remove that runtime
+after retaining evidence. This exercises a fresh synthetic graph; it is not a
+full node installation, external identity-provider validation or browser sign-in.
+The separate `Network isolation smoke` workflow runs for PRs carrying the
+`network-smoke` label (including label events), or on explicit manual dispatch.
+It uses a disposable hosted Linux runner and publishes only its content-free
+summary. The six existing required quality checks are unchanged. A skipped
+smoke job is not a live test pass.
 
 This implements the repository enforcement work tracked by
 [#319](https://github.com/Exculpata/exculpata/issues/319). The separate architecture
