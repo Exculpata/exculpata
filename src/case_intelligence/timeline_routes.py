@@ -5,6 +5,7 @@ from fastapi import BackgroundTasks, Depends, Form, HTTPException, Query, Reques
 from fastapi.responses import RedirectResponse, Response
 
 from .timeline_builder import build_timeline
+from .timeline_coverage import collect_timeline_units
 from .timeline_exports import export_timeline
 from .timeline_jobs import TimelineJobs
 from .timeline_promotion import promote_entry
@@ -20,15 +21,12 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
         store = bench.source_store(matter)
         service = bench.assertion_service(matter)
         with service.entities.source_guard(), service.repository.transaction(matter.matter_id, actor):
-            units = []
-            for document in store.ready_documents():
-                for ordinal, unit in enumerate(document.parsed_units(), 1):
-                    units.append(bench._candidate(matter, document, unit, ordinal))
-                    if len(units) >= 2501:
-                        break
-                if len(units) >= 2501:
-                    break
-            payload = build_timeline(units, support_token=bench._support_token).payload()
+            units, total_unit_count, coverage_complete = collect_timeline_units(
+                store.ready_documents(),
+                lambda document, unit, ordinal: bench._candidate(matter, document, unit, ordinal))
+            payload = build_timeline(units, support_token=bench._support_token,
+                                     total_unit_count=total_unit_count,
+                                     coverage_complete=coverage_complete).payload()
             payload['generated_at'] = datetime.now(timezone.utc).isoformat()
             return payload
 

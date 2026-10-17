@@ -6,8 +6,8 @@
 <header class="notebook-heading"><div><p class="eyebrow">{{ matter.display_name }}</p><h1>Draft timeline</h1></div></header>
 {% with active='timeline_draft' %}{% include 'workbench_matter_tabs.html' %}{% endwith %}
 <p class="notice" role="note">{{ timeline.notice }}</p>
-<p>{{ timeline.source_count }} sources · {{ timeline.unit_count }} extracted units. Dates reflect source wording, without timezone conversion. Document dates used as anchors require review.</p>
-{% if timeline.capped %}<p class="notice" role="status">This draft is capped by scan or entry limits. It is not a complete chronology.</p>{% endif %}
+<p>{{ timeline.source_count }} sources scanned. Dates reflect source wording, without timezone conversion. Document dates used as anchors require review.</p>
+<p{% if timeline.capped %} class="notice" role="status"{% endif %}>{{ timeline.coverage_notice }}</p>
 {% if timeline.rejected_count %}<p>{{ timeline.rejected_count }} mentions omitted because their source excerpt could not be validated.</p>{% endif %}
 <form action="/matters/{{ matter.slug }}/timeline/draft/refresh" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button button-secondary">Refresh draft</button></form>
 {% if refresh_state %}<p role="status">Refresh {{ refresh_state }}. Drafts are recomputed from current sources when opened.</p>{% endif %}
