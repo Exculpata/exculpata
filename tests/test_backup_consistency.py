@@ -63,11 +63,16 @@ class SyntheticNode:
         repository = root / "repository"
         repository.mkdir()
         (repository / "config").write_text("synthetic repository stub")
-        _private_json(self.node / "installation.json", {
+        installation = {
             "format_version": 1, "auth": "local", "profiles": [],
             "release_path": str(ROOT), "release_id": "synthetic-release",
             "node_id": "synthetic-node",
-        })
+        }
+        # Current installs persist their generation; omitted names represents an
+        # older legacy install and must agree with its managed-storage marker.
+        if names != LEGACY_STEM:
+            installation["names"] = names
+        _private_json(self.node / "installation.json", installation)
         _private_json(self.node / "config/backup.json", {
             "format_version": 1, "repository": str(repository),
             "recovery_key_output": str(root / "recovery-key"), "retention": "14d",
