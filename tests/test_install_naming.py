@@ -30,6 +30,109 @@ def no_host_account(monkeypatch):
     monkeypatch.setattr(installer, "_legacy_account", lambda: False)
 
 
+@pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
+@pytest.mark.parametrize("models", ["none", "review", "transcription", "all"])
+def test_install_and_update_build_proxy_without_changing_model_selection(auth, models):
+    expected = {"app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"}
+    if auth == "kerberos":
+        expected.add("kerberos-proxy")
+    if models in {"review", "all"}:
+        expected.add("retrieval")
+    if models in {"transcription", "all"}:
+        expected.update({"transcription-api", "transcription-worker"})
+    assert set(installer._build_targets(auth, models)) == expected
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+@pytest.mark.parametrize("auth", ["oidc", "local", "kerberos"])
+def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
+    root, _, paths = configured_node(tmp_path, names=names)
+    selected = paths["config"] / "custom.env"
+    selected.write_text(
+        f"CASE_INTELLIGENCE_AUTH_MODE={auth}\n"
+        "CASE_INTELLIGENCE_OIDC_ISSUER=https://issuer.example.test:8443/realm\n"
+        "CASE_INTELLIGENCE_OIDC_CA_FILE=/run/example/ca.pem\n"
+        "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE=/run/example/secret\n"
+    )
+    installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", "custom.env", add_missing_aliases=True)
+    command = installer._compose(root, (), release=ROOT, auth=auth)
+    environment = installer._compose_environment(command, {
+        "PATH": os.environ["PATH"], "OIDC_EGRESS_ISSUER": "https://unrelated.example.test",
+    })
+    assert environment["OIDC_EGRESS_ISSUER"] == (
+        "https://issuer.example.test:8443/realm" if auth == "oidc" else ""
+    )
+    result = subprocess.run([*command, "config", "--format", "json"],
+                            env=environment, capture_output=True, text=True, check=True)
+    graph = json.loads(result.stdout)
+    proxy = graph["services"]["egress-proxy"]
+    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert not any(key in proxy for key in ("volumes", "secrets", "ports"))
+    assert graph["services"]["app"]["environment"]["CASE_INTELLIGENCE_OIDC_CA_FILE"] == "/run/example/ca.pem"
+
+
+@pytest.mark.parametrize("mode,issuer", [
+    ("OiDc # auth comment", "https://issuer.example.test/realm # issuer comment"),
+    ("' OIDC ' # auth comment", "'https://issuer.example.test/realm' # issuer comment"),
+    ('" oidc " # auth comment', '"https://issuer.example.test/realm" # issuer comment'),
+])
+def test_egress_dotenv_matches_compose_literals(tmp_path, mode, issuer):
+    root, _, paths = configured_node(tmp_path)
+    selected = installer._app_env(root)
+    selected.write_text(
+        f"CASE_INTELLIGENCE_AUTH_MODE = {mode}\n"
+        f"CASE_INTELLIGENCE_OIDC_ISSUER = {issuer}\n"
+        "https_proxy='http://unrelated.example.test:3128' # discarded by Compose\n"
+        "SYNTHETIC_SECRET='literal # value'\n"
+    )
+    command = installer._compose(root, (), release=ROOT, auth="oidc")
+    env = installer._compose_environment(command, {"PATH": os.environ["PATH"]})
+    result = subprocess.run([*command, "config", "--format", "json"], env=env,
+                            capture_output=True, text=True, check=True)
+    services = json.loads(result.stdout)["services"]
+    app = services["app"]["environment"]
+    assert app["CASE_INTELLIGENCE_AUTH_MODE"].strip().lower() == "oidc"
+    assert app["CASE_INTELLIGENCE_OIDC_ISSUER"] == env["OIDC_EGRESS_ISSUER"] == "https://issuer.example.test/realm"
+    assert services["egress-proxy"]["environment"] == {"OIDC_ISSUER": env["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert "SYNTHETIC_SECRET" not in env
+    assert app["https_proxy"] == "http://egress-proxy:3128"
+
+
+@pytest.mark.parametrize("line", [
+    "CASE_INTELLIGENCE_AUTH_MODE=${SYNTHETIC_MODE}",
+    'CASE_INTELLIGENCE_OIDC_ISSUER="${SYNTHETIC_ISSUER}"',
+    "CASE_INTELLIGENCE_OIDC_ISSUER=$SYNTHETIC_ISSUER",
+    "CASE_INTELLIGENCE_OIDC_ISSUER: https://issuer.example.test",
+    "CASE_INTELLIGENCE_OIDC_ISSUER='https://issuer.example.test\n/realm'",
+    "CASE_INTELLIGENCE_AUTH_MODE=oidc\nCASE_INTELLIGENCE_AUTH_MODE=local",
+])
+def test_egress_dotenv_unsupported_forms_fail_without_values(tmp_path, line):
+    root, _, _ = configured_node(tmp_path)
+    installer._app_env(root).write_text(line + "\n")
+    with pytest.raises(RuntimeError, match="docs/NETWORK_EGRESS.md") as error:
+        installer._compose_environment(installer._compose(root, (), release=ROOT, auth="oidc"))
+    assert "SYNTHETIC" not in str(error.value) and "issuer.example.test" not in str(error.value)
+
+
+@pytest.mark.parametrize("auth", ["oidc", " OIDC ", "local", "kerberos"])
+def test_egress_pins_are_selected_without_sharing_other_environment(tmp_path, auth):
+    root, _, _ = configured_node(tmp_path)
+    issuer = "https://issuer.example.test/realm"
+    pins = json.dumps({"issuer": issuer, "addresses": ["8.8.8.8"]})
+    installer._app_env(root).write_text(
+        f"CASE_INTELLIGENCE_AUTH_MODE='{auth}'\nCASE_INTELLIGENCE_OIDC_ISSUER='{issuer}'\n"
+        f"CASE_INTELLIGENCE_OIDC_EGRESS_PINS='{pins}'\nSYNTHETIC_UNRELATED=value\n")
+    command = installer._compose(root, (), release=ROOT, auth=auth.strip().lower())
+    env = installer._compose_environment(command, {"PATH": os.environ["PATH"], "OIDC_EGRESS_PINS": "unrelated"})
+    expected = pins if auth.strip().lower() == "oidc" else ""
+    assert env["OIDC_EGRESS_PINS"] == expected and "SYNTHETIC_UNRELATED" not in env
+    result = subprocess.run([*command, "config", "--format", "json"], env=env,
+                            capture_output=True, text=True, check=True)
+    proxy = json.loads(result.stdout)["services"]["egress-proxy"]
+    assert proxy["environment"]["OIDC_ISSUER_PINS"] == expected
+    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
+
+
 def test_fresh_defaults_and_generated_coordinates(tmp_path):
     args = installer._parser().parse_args([])
     assert installer._select_names(args, tmp_path / "fresh") == "exculpata"

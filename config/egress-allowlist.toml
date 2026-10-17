@@ -1,0 +1,2151 @@
+# Reviewed reference topology and exact AST occurrences. Changes require review.
+# Digest binds each client call to its arguments and lexical scope; line moves are allowed.
+# Literal records include inert XML/provenance URLs and DNS-shaped filenames.
+# Runtime exceptions: gateway ingress, operator model-stager, signature-only clamav-updater.
+# Proxy destination authority is supplied by the selected application configuration.
+
+[compose]
+"compose.kerberos.yaml" = '''
+{
+  "networks": {},
+  "services": {
+    "app": {
+      "volumes": [
+        "/var/lib/sss/pipes:/var/lib/sss/pipes:ro",
+        "/etc/nsswitch.conf:/etc/nsswitch.conf:ro"
+      ]
+    },
+    "gateway": {},
+    "kerberos-proxy": {
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "KILL",
+        "SETGID",
+        "SETUID"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "networks": [
+        "services"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "/etc/krb5.conf:/etc/krb5.conf:ro"
+      ]
+    }
+  },
+  "volumes": {}
+}
+'''
+"compose.local-accounts.yaml" = '''
+{
+  "networks": {},
+  "services": {
+    "account-admin": {
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}",
+          "target": "/var/lib/recordbench-accounts",
+          "type": "bind"
+        }
+      ]
+    },
+    "app": {
+      "volumes": [
+        {
+          "source": "${EXCULPATA_LOCAL_ACCOUNT_ROOT:-${RECORDBENCH_LOCAL_ACCOUNT_ROOT:-}}",
+          "target": "/var/lib/recordbench-accounts",
+          "type": "bind"
+        }
+      ]
+    }
+  },
+  "volumes": {}
+}
+'''
+"compose.yaml" = '''
+{
+  "networks": {
+    "app-egress": {
+      "internal": true
+    },
+    "front": null,
+    "models": {
+      "internal": true
+    },
+    "services": {
+      "internal": true
+    },
+    "updates": null
+  },
+  "services": {
+    "account-admin": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "network_mode": "none",
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STORAGE_ROOT:-${RECORDBENCH_STORAGE_ROOT:-}}",
+          "target": "/var/lib/recordbench/matter-storage",
+          "type": "bind"
+        }
+      ]
+    },
+    "app": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "app-egress",
+        "services",
+        "models"
+      ],
+      "proxy_environment": {
+        "ALL_PROXY": "http://egress-proxy:3128",
+        "CASE_INTELLIGENCE_OIDC_PROXY": "http://egress-proxy:3128",
+        "HTTPS_PROXY": "http://egress-proxy:3128",
+        "HTTP_PROXY": "http://egress-proxy:3128",
+        "NO_PROXY": "",
+        "all_proxy": "http://egress-proxy:3128",
+        "http_proxy": "http://egress-proxy:3128",
+        "https_proxy": "http://egress-proxy:3128",
+        "no_proxy": ""
+      },
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_RUNTIME_ROOT:-${RECORDBENCH_RUNTIME_ROOT:-}}",
+          "target": "/var/lib/recordbench/runtime",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STORAGE_ROOT:-${RECORDBENCH_STORAGE_ROOT:-}}",
+          "target": "/var/lib/recordbench/matter-storage",
+          "type": "bind"
+        },
+        {
+          "source": "${EXCULPATA_STATE_ROOT:-${RECORDBENCH_STATE_ROOT:-}}",
+          "target": "/var/lib/recordbench/state",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        }
+      ]
+    },
+    "clamav": {
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "services"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "clamav-signatures:/var/lib/clamav"
+      ]
+    },
+    "clamav-updater": {
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "SETGID",
+        "SETUID"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "networks": [
+        "updates"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "clamav-signatures:/var/lib/clamav"
+      ]
+    },
+    "egress-proxy": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "networks": [
+        "app-egress",
+        "front"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ]
+    },
+    "gateway": {
+      "cap_add": [
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "NET_BIND_SERVICE",
+        "SETGID",
+        "SETUID"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "networks": [
+        "front",
+        "services"
+      ],
+      "ports": [
+        "${EXCULPATA_BIND_ADDRESS:-${RECORDBENCH_BIND_ADDRESS:-127.0.0.1}}:${EXCULPATA_HTTPS_PORT:-${RECORDBENCH_HTTPS_PORT:-8443}}:8443"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "./deploy/gateway/default.conf.template:/etc/nginx/templates/default.conf.template:ro",
+        "${EXCULPATA_TLS_CERT:-${RECORDBENCH_TLS_CERT:-}}:/run/tls/tls.crt:ro",
+        "${EXCULPATA_TLS_KEY:-${RECORDBENCH_TLS_KEY:-}}:/run/tls/tls.key:ro"
+      ]
+    },
+    "generator": {
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "models"
+      ],
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
+      ]
+    },
+    "model-stager": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "networks": [
+        "front"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        ".:/workspace:ro",
+        {
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
+      ]
+    },
+    "postgres": {
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "services"
+      ],
+      "volumes": [
+        "postgres-data:/var/lib/postgresql/data"
+      ]
+    },
+    "retrieval": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "models"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
+      ]
+    },
+    "transcription-api": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "dns": [
+        "127.0.0.1"
+      ],
+      "dns_search": [
+        "."
+      ],
+      "networks": [
+        "services"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}",
+          "target": "/var/lib/recordbench/transcription",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
+      ]
+    },
+    "transcription-cleanup": {
+      "network_mode": "none",
+      "volumes": [
+        "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}:/var/lib/recordbench/transcription",
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}:/models:ro"
+      ]
+    },
+    "transcription-cleanup-daemon": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "network_mode": "none",
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}:/var/lib/recordbench/transcription",
+        "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}:/run/recordbench-secrets:ro",
+        "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}:/models:ro"
+      ]
+    },
+    "transcription-worker": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "network_mode": "none",
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "volumes": [
+        {
+          "source": "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}",
+          "target": "/var/lib/recordbench/transcription",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}",
+          "target": "/run/recordbench-secrets",
+          "type": "bind"
+        },
+        {
+          "read_only": true,
+          "source": "${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}",
+          "target": "/models",
+          "type": "bind"
+        }
+      ]
+    }
+  },
+  "volumes": {
+    "clamav-signatures": null,
+    "postgres-data": null
+  }
+}
+'''
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "05c3191325b1d1d0a1250c8fc8b4e7dcb077f25d103830945a8301e317d107db"
+detail = "socket.socket"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "5941e17f9b3c219659fbe836ec4c3932d384fcd1a4826dd75bc01cde81417e6e"
+detail = "socket.getaddrinfo"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "48895d54774349e16f4d92830affcbf4a3d560f99981e16e6f11c554905a69d9"
+detail = "socket.AF_INET"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "145e467312f96004fa57dde7bda67fa838a4876869019ee9aae5e400d60fc358"
+detail = "socket.AF_INET6"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "client"
+digest = "9b1ca95f5f2c9daf0904e812e7f1febdbdf7b6feee935cc0bb73799a5a7103d1"
+detail = "socket.SOCK_STREAM"
+
+[[source]]
+path = "deploy/egress-proxy/proxy.py"
+kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/api.py"
+kind = "host"
+digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
+detail = "ui-summary.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/api.py"
+kind = "host"
+digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
+detail = "ui-summary.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/api.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/api.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/asr_models.py"
+kind = "host"
+digest = "587cb980af76fdc7e52369fd0b9d926dff266976b6f8ac631e358fecc49ff8cf"
+detail = "config.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/asr_models.py"
+kind = "host"
+digest = "15d442008fc30bee1d28a81d2d926f17005fe428e465c2062627366bf2a68019"
+detail = "model.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/asr_models.py"
+kind = "host"
+digest = "224931eb13f8d2471acd38a4a0d7417d20e8ea340160a467ceaa359d25197b87"
+detail = "tokenizer.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/asr_models.py"
+kind = "host"
+digest = "997adb8193fc386bcb199ac522863a80691deafd9000f3ddfeaf2f69c52a2fc7"
+detail = "vocabulary.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/asr_models.py"
+kind = "host"
+digest = "d3d22bc7c4c52ddcbfad29e1ed1ec423541ee12f9f87e65ecf3d73ea92578901"
+detail = "vocabulary.txt"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/batch_exports.py"
+kind = "host"
+digest = "0258bb0baa6b83524bbae1eb4fff9acf776ff0809d26a6764d39941829f249ef"
+detail = "transcriptions.zip"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/exporters.py"
+kind = "host"
+digest = "b159efb69dd7e41ac380559eea1ea39d0baa07e690034d653e13f37ecbc33213"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/exporters.py"
+kind = "host"
+digest = "f19d9dbd1b3f1632492c79a8a27c0004fff7f2b3772712faf036bcb66f3bdda1"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/exporters.py"
+kind = "host"
+digest = "10e6b7602e9b3aa457b8eda6495b700968c6f83bcfcb9605d07671e3fa503a12"
+detail = "www.w3.org"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/exporters.py"
+kind = "host"
+digest = "8158103db5afa6e2c5377e6932a4a9fb771528d36546155dc2cbbedb3772ca68"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/exporters.py"
+kind = "host"
+digest = "f4142957241f3951bd3b4f7c9e5335b8f8ebb4cba3d4b6d7d327fff5dead1575"
+detail = "purl.org"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/model_manifest.py"
+kind = "host"
+digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
+detail = "approved-model-manifest.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/nemotron.py"
+kind = "host"
+digest = "587cb980af76fdc7e52369fd0b9d926dff266976b6f8ac631e358fecc49ff8cf"
+detail = "config.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/nemotron.py"
+kind = "host"
+digest = "9d75c1098fc54a1f7bd270f148884f599765d894639c9c4ee891396968c60df2"
+detail = "model.safetensors"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "host"
+digest = "eed80851b3bcbce25e592fa94b2d4fc4ddbe282881c8adeb0453aad81fdf32c5"
+detail = "pyannote.audio"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "host"
+digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
+detail = "config.yaml"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "host"
+digest = "94f69503b179443adf2b3e8a2395fc26362ae416ed6e58f0b87ddbf9d5b2e555"
+detail = "whisperx.diarize"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "host"
+digest = "33b3f93e6cf2914d6a002177a865ef1d8a6f5af86bd299775729d0e1d3dcd322"
+detail = "whisperx.utils"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "2f546cbdc2e9c01b3b2087cb87a590c0e619fdaf97ee7bb57559398af278055f"
+detail = "github.com"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "24d2ebb24ff35b75f31b1ebea440e9a7ede373c9794c62b2d92a1b95f87d8255"
+detail = "github.com"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "a46b480d7e619c2bd280de1ec48d8fe915990f662dfe93a96294268d3ba11bca"
+detail = "github.com"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "66e24d6ec25ba808df57e2aadb6d6a1006695cae3b568eaa9741226032cdd9c9"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "e0a1035a21565c125e00dd4615976771f4ca433c46f04491e43d8c6c3567c65d"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "a46b480d7e619c2bd280de1ec48d8fe915990f662dfe93a96294268d3ba11bca"
+detail = "github.com"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "eed80851b3bcbce25e592fa94b2d4fc4ddbe282881c8adeb0453aad81fdf32c5"
+detail = "pyannote.audio"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "eed80851b3bcbce25e592fa94b2d4fc4ddbe282881c8adeb0453aad81fdf32c5"
+detail = "pyannote.audio"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "eed80851b3bcbce25e592fa94b2d4fc4ddbe282881c8adeb0453aad81fdf32c5"
+detail = "pyannote.audio"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "af3d1c21355b7cdb660168af2ae95f2b5a64f78586115580e05ead209fc3be05"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "78e9e3d178afce78e314eca26bf643e54bef968d9ff6061d0fd5db7204946733"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "7734db287aacf58e37fcd5b1e6b4b3b57e1c8b2aa2fcadae61871b8423b14a5f"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/profiles.py"
+kind = "host"
+digest = "453cb49f45b2d3e3003607d9987cfb5ca578753f989a8319ebc27ad4ecfad156"
+detail = "huggingface.co"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/resources.py"
+kind = "host"
+digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
+detail = "config.yaml"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/review_exports.py"
+kind = "host"
+digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
+detail = "machine-result.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/settings.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/storage.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/storage.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/storage.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/storage.py"
+kind = "host"
+digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
+detail = "upload.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/storage.py"
+kind = "host"
+digest = "c03d130eafab83fd4b56692d1d4379698070dd1b54ea6c9ca44785296e902c33"
+detail = "output.bin"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/tokenizer_resources.py"
+kind = "host"
+digest = "b81ed947e69f8cfb48653aee1c52c87c8e76397a4f9cb47c794664b9cefa462b"
+detail = "collocations.tab"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/worker.py"
+kind = "host"
+digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
+detail = "config.yaml"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/worker.py"
+kind = "host"
+digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
+detail = "machine-result.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/worker.py"
+kind = "host"
+digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
+detail = "ui-summary.json"
+
+[[source]]
+path = "src/case_intelligence/assertion_routes.py"
+kind = "host"
+digest = "5269fb10ee99788a25d41bdd337e68a0250798ef91c5d7cd27caa7e236919bd2"
+detail = "assertion.export"
+
+[[source]]
+path = "src/case_intelligence/case_archive_delivery.py"
+kind = "host"
+digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
+detail = "http.response.start"
+
+[[source]]
+path = "src/case_intelligence/case_archive_delivery.py"
+kind = "host"
+digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
+detail = "http.response.start"
+
+[[source]]
+path = "src/case_intelligence/case_archive_delivery.py"
+kind = "host"
+digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
+detail = "http.response.body"
+
+[[source]]
+path = "src/case_intelligence/case_archive_delivery.py"
+kind = "host"
+digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
+detail = "http.response.body"
+
+[[source]]
+path = "src/case_intelligence/case_lifecycle_support.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
+
+[[source]]
+path = "src/case_intelligence/case_lifecycle_support.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
+
+[[source]]
+path = "src/case_intelligence/docx_extract_helper.py"
+kind = "host"
+digest = "b159efb69dd7e41ac380559eea1ea39d0baa07e690034d653e13f37ecbc33213"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/entity_routes.py"
+kind = "host"
+digest = "7a67694aae4bb942097528c2ab6ad4114122dd0abb07f8df7e079eb9ce2296c3"
+detail = "entity.export"
+
+[[source]]
+path = "src/case_intelligence/entity_routes.py"
+kind = "host"
+digest = "f8908fd8d80fc43c635e4d14ae845eecb70d97e7263caf701287ef90e890209b"
+detail = "entity.decide"
+
+[[source]]
+path = "src/case_intelligence/evaluation.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/extended_extract.py"
+kind = "host"
+digest = "0cf6e749095460da770de883ad173289adbd7c0dab62bf0fe319cbe036100517"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/extended_extract.py"
+kind = "host"
+digest = "ea75623b5b02a9b7d51d6c09b3b0f5c0d823b5937601b8bf53a6d184708bfa3d"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/extended_extract.py"
+kind = "host"
+digest = "a2afda436c92578d84317fa1f1364eb8820b7e3122129d0f654e1553845316b3"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/fixture_builder.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/fixture_builder.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/fixture_builder.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "06ab8e0b0168889ab13ea897fb0ddb4831fa96e2272ec870baaa432dd96e7529"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "d5c38b5675d885a47d71209c5e3691356c693f05f812041330c218dd5c8db05d"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "1f9e1ede2a398305799509957131b5ce48fff43cdb7417fae2c9c7ec98646b16"
+detail = "urllib.request.OpenerDirector"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "a4071e002b5b8f7306d0539b4bdc374bc1b62403cef64037609cf7f3fade5ecb"
+detail = "urllib.request.OpenerDirector"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "d0327dd635b319e366532d54a2c27713f9cae8dfe62702b647f21685a38bcc04"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "21f30cddb43874207f2dfbe03b2835e4892aabfbfd6a4b3cd6bb22a5f0a5b4da"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "6dabee8db79bcca2f77bb819d584b188a5de71a2ae1f211e8b76950720482e57"
+detail = "urllib.request.OpenerDirector"
+
+[[source]]
+path = "src/case_intelligence/generation.py"
+kind = "client"
+digest = "d0a255b168f460f572e2f08df4914391790da03097501b891f11e0142ba68e12"
+detail = "urllib.request.OpenerDirector"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "cfbd7ec4ab90c790a3496fb5a193e231c9da8bca6d9889b3be7473a4db02dd73"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "a47713a834f1176fcdbdde7241f142e5f5a5b6ac9cdf7c6241223169fc65039c"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "bf5e07c530f605db9a4e854c2a770485083be3e59ea920250c0479bd91e1ce6a"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "3ed9905752df3dd7696d90de4ace34d01d3791f730968f993fc1e232dfe2d605"
+detail = "authlib.integrations.starlette_client.OAuth"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "e6a2fa4ee6e187c3909690eca250b7fdbb7b174832ec47987356d54dce8ddbe4"
+detail = "authlib.integrations.starlette_client.OAuth.register"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "host"
+digest = "d2e7153ef8d5d22621297f6842407df8b2021e2f403672b383178064d4dcdcdb"
+detail = "identity-session.key"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "33e30c24b1e81f0576167859b007760f50896c6109032a5a159f4467addf7e5c"
+detail = "authlib.integrations.base_client.errors.AuthlibBaseError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "11b3bba407abd0c56a135c26f7b042cbb5382a3339943f2b9a758c271f673676"
+detail = "httpx.HTTPError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "f9b75e29f310c31c9a43c59a34aad47a8afd3259e4cab4d3362173c288803bc6"
+detail = "authlib.integrations.base_client.errors.AuthlibBaseError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "8c10f5f4c32f298f36ce36bb21a7380cdaeb30b3e279a38f500123c18ca18390"
+detail = "httpx.HTTPError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "40999cd787da9b1de708e3d54fb745b4c94cd34a0d53b7410217aeef5314f6e9"
+detail = "authlib.integrations.base_client.errors.AuthlibBaseError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "12ecff92f9b5c445766b43d769dfe1fb8959e08bbd32d3aa34484630bb64bfdc"
+detail = "httpx.HTTPError"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "b66d442bfebc813f401710fb66aa4afdc4475852d174c189749d9f3b732d4db3"
+detail = "httpx.Timeout"
+
+[[source]]
+path = "src/case_intelligence/local_account_admin.py"
+kind = "host"
+digest = "a26999d375fc39badc701593f61a13c56e29beea24f20aca61f361f74ee965a6"
+detail = "admin.people"
+
+[[source]]
+path = "src/case_intelligence/local_account_admin.py"
+kind = "host"
+digest = "54da4751b1cad7ff800542042c0528cca2a82eb45c05262826ad9a92116acd31"
+detail = "security.csrf"
+
+[[source]]
+path = "src/case_intelligence/local_account_format.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "src/case_intelligence/local_accounts.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "6cdbad58948c19f604ab18d504b98c6879b20685edf86dc91f97593c108a8d07"
+detail = "socket.socket"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "d5de3dc17d7db195dd2d78cdcb87592574abe4f04bf8aaab10b451732171b8f7"
+detail = "socket.create_connection"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "bbcde90250a7d095fb65ef74752eb185df418983ff382e21d75540455c742e4b"
+detail = "socket.create_connection.settimeout"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "2e5348aa0ce540064d7da8aa8cb2b850b8ded6ac3dc800f9b6b795bc7e185c81"
+detail = "socket.create_connection"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "75150bb0f0e700affb726ac6c97eb2cdf51a38f5c4319ec27fd1d6ff644ca6f6"
+detail = "socket.socket"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "7f375d0a6d8c5866ac721791eef540f0c36860df687107f9917ab83e35c3c669"
+detail = "socket.socket.recv"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "6b4e2450e89ce56c747b9038104fb40b18dc62b543f62300c81ab51f79c6cdba"
+detail = "socket.timeout"
+
+[[source]]
+path = "src/case_intelligence/malware_scan.py"
+kind = "client"
+digest = "d3b16410bac504734fdef1c713bc47be445028402550cf1b157b4c397b4b62b5"
+detail = "socket.timeout"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
+detail = "unavailable-references.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
+detail = "sources.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
+detail = "readme.txt"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
+detail = "unavailable-references.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
+detail = "sources.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
+detail = "sources.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
+detail = "readme.txt"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
+detail = "sources.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
+detail = "unavailable-references.jsonl"
+
+[[source]]
+path = "src/case_intelligence/matter_archive_verifier.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/matter_context_exports.py"
+kind = "host"
+digest = "05a513df2e6db7b51f6a6f251b7c6d63b4a94a3dd2449ccdfe45295e6f62e057"
+detail = "selections.json"
+
+[[source]]
+path = "src/case_intelligence/matter_context_exports.py"
+kind = "host"
+digest = "76b3b631079abb7f6557bc4853d4618ae15846596f387854d680377f925d52c7"
+detail = "matter-purpose.json"
+
+[[source]]
+path = "src/case_intelligence/media_evidence.py"
+kind = "client"
+digest = "cfbd7ec4ab90c790a3496fb5a193e231c9da8bca6d9889b3be7473a4db02dd73"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/media_evidence.py"
+kind = "client"
+digest = "a432f2f2e96ca3c8af5bf1b883430223986902fad86e6ef005c52b8b4a848a2c"
+detail = "httpx.Timeout"
+
+[[source]]
+path = "src/case_intelligence/media_evidence.py"
+kind = "client"
+digest = "fa3883f610c22784db022f3887719e32c23778ffd0b93c4d34c9af4ff70c1d06"
+detail = "httpx.Client"
+
+[[source]]
+path = "src/case_intelligence/media_evidence.py"
+kind = "client"
+digest = "6ab0eef5bc4024b60534d2e76443bc45bfc8f3aca8ac35d5b04e7e96a47c9bd6"
+detail = "httpx.Client.request"
+
+[[source]]
+path = "src/case_intelligence/media_evidence.py"
+kind = "client"
+digest = "59f8bf8afbd33e7cc5883d8fa36648e56cdb896f9b4ad56e3876187ab0eabcd2"
+detail = "httpx.HTTPError"
+
+[[source]]
+path = "src/case_intelligence/model_portfolio.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/model_portfolio.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/onboarding.py"
+kind = "host"
+digest = "356b41e092ecaaba9c85e60dacd398dbad209d619a47baf6f9d3ed59eb01625c"
+detail = "admin.setup"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "17b14a21bdcf391aeeca1fcb1e6a38945cdf2b65aee68173d11c78ff7a4ed500"
+detail = "http.disconnect"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
+detail = "http.request"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
+detail = "http.request"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
+detail = "http.response.start"
+
+[[source]]
+path = "src/case_intelligence/pilot_uploads.py"
+kind = "host"
+digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
+detail = "http.response.body"
+
+[[source]]
+path = "src/case_intelligence/question_draft_evaluation.py"
+kind = "host"
+digest = "76f65e507c8553d93c2dfec3417a6851f5de95206d0ff0de073ccf6de7b01c03"
+detail = "question-drafts-v1.json"
+
+[[source]]
+path = "src/case_intelligence/question_draft_evaluation.py"
+kind = "host"
+digest = "b546905e3eaa417cad3f64329ae02e69b2844d8551db177d092ef2d9a3a81276"
+detail = "models.json"
+
+[[source]]
+path = "src/case_intelligence/question_output_policy.py"
+kind = "host"
+digest = "77b21ac4bf17d68e0b9603975e6fb8c79ac6def2fc8e91949c855c4eaffe06bd"
+detail = "github.com"
+
+[[source]]
+path = "src/case_intelligence/report_compilation_jobs.py"
+kind = "host"
+digest = "eff10779e60935c5448d8fd67f8b18ed3700f8d14e5501b81969ce6258dde1fd"
+detail = "report.compile.recover"
+
+[[source]]
+path = "src/case_intelligence/report_compilation_jobs.py"
+kind = "host"
+digest = "82cc70ad4bec942a01db7ddda1bef698ab13bb0aa995ee44531f23aff796536b"
+detail = "report.compile.complete"
+
+[[source]]
+path = "src/case_intelligence/report_compilation_jobs.py"
+kind = "host"
+digest = "adcbea581e57c586ab716808700f64bf180b95f49d27315e32756510de848a19"
+detail = "report.compile.finish"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
+detail = "http.request"
+
+[[source]]
+path = "src/case_intelligence/retrieval_worker.py"
+kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
+detail = "catalog.sqlite"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "149af985ec9529e069c101109261fc6f1e9b4f86f4045847588dda1cc27020fa"
+detail = "workspace.html"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
+detail = "source.html"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
+detail = "source.html"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
+detail = "source.html"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
+detail = "catalog.sqlite"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/review_bench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/review_bench_v2.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/review_bench_v2.py"
+kind = "client"
+digest = "6049f9b3d47b1b9b80d19fd9e2a06fdbe9b883e7b97235d43a2c9e60be895973"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "src/case_intelligence/review_bench_v2.py"
+kind = "client"
+digest = "278c0b8915c9066cfec713ef4627d17554ea77adf03f7ca69cf89091d476a783"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "50ab09c8c57f728c2d0d0cf5966d429219f464273bbbec8bba93cfe8900da77f"
+detail = "urllib.request.HTTPRedirectHandler"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "3c9564287ba269cdf1e4ecd8da41cd0f6e374edd05737449e4b7088f70c2c4a7"
+detail = "urllib.request.build_opener.open"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "4351d1e3a7ce40d90a7f401d69b68f26b87c8a6f43f40abd158d19939fa40878"
+detail = "urllib.request.build_opener"
+
+[[source]]
+path = "src/case_intelligence/service_endpoints.py"
+kind = "client"
+digest = "614752cbb48c443bb4d935108a71fd92fe1d748164bdc5addc4e7a3309445d25"
+detail = "urllib.request.ProxyHandler"
+
+[[source]]
+path = "src/case_intelligence/slice1_evaluation.py"
+kind = "host"
+digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
+detail = "catalog.sqlite"
+
+[[source]]
+path = "src/case_intelligence/slice1_evaluation.py"
+kind = "host"
+digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
+detail = "report.txt"
+
+[[source]]
+path = "src/case_intelligence/slice1_evaluation.py"
+kind = "host"
+digest = "8a486c563ed75230d3c1e191ef10782c680cd26f0b42cb347816bcf69d791644"
+detail = "renamed.txt"
+
+[[source]]
+path = "src/case_intelligence/source_find.py"
+kind = "host"
+digest = "966b007db83d9638bdbb965d91846ab210149f8c191211b4cef87fff96c27b43"
+detail = "wordprocessingml.document"
+
+[[source]]
+path = "src/case_intelligence/source_roles.py"
+kind = "host"
+digest = "a4dfe66cd98011ecf8b0d570a0afd8295ff44ef4cbca0c148949f109a2d72848"
+detail = "source-roles.json"
+
+[[source]]
+path = "src/case_intelligence/timeline_routes.py"
+kind = "host"
+digest = "459b05a672052fdfa3db97bcdbd661fcbc03e78639460d8b19483e0345e8713f"
+detail = "timeline.export"
+
+[[source]]
+path = "src/case_intelligence/timeline_routes.py"
+kind = "host"
+digest = "68e9bacce98e9eb61b01e592d5b2cb31db74c45078894bd221191892aa35fdd7"
+detail = "timeline.promote"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "16a51feae004abd212d8b43771482bee478f81bb8700ac58e5c497bb51ca751a"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "859dff9e0ed9cebdd2fdd2171ae4cb6431f6823cbce17858406b6bebf6249e68"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "c504eef57309e41efd58671136df68963a00a97ca3b3d28ea7877035d8983ad2"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "aea4a33a0c1d5a26d6ad8b48a5f8fee1fcb8d8fc52582b0736f662d13d3858db"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "3c88d29deb60d83e15c90dc5517753df9d7f5784873aa28ffd5f8102940cb0e1"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "00dc92fe497951013ce26ed2761392ebff1f9fcb4f995aba9fadd086b3be2f05"
+detail = "purl.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "00dc92fe497951013ce26ed2761392ebff1f9fcb4f995aba9fadd086b3be2f05"
+detail = "schemas.openxmlformats.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "00dc92fe497951013ce26ed2761392ebff1f9fcb4f995aba9fadd086b3be2f05"
+detail = "www.w3.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "7a479d15942f89e508521cb720cc66316b05d2e5e6ebaaa78b4cdd465e40f385"
+detail = "matter-report.md"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "898419abecd8f415ef5fe5d431f55f88df8c4266e8bbb8eab37722c94e1a34f7"
+detail = "matter-report.docx"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
+detail = "readme.txt"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "177c9d62efa3e683c87a7ef61a71befaeda60b2b98631de1fcf6ba7406b08750"
+detail = "conversations.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "ddb1953b311892c6b14ff68fc4d2b1b0e72bfa1f763ba634d477149431a5a03c"
+detail = "auth.logout"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "8ea54f6fafedc8c11a774a5f6f11024a433855bb9b5b981b4a3122a1644981f2"
+detail = "admin.console"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "cf158f28a8396d60fdde68820fc67aa70fddfe0882ca54b9a21b447edc504a34"
+detail = "matter.retention"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "51c98b94358ba7b3c9595e8c7793f11b40170da214d8e0108093b636b1f7f328"
+detail = "admin.maintenance"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b94c45066468f00a06726467144305b021c35d383573af4059e063acb2a09ea6"
+detail = "matter.manage"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "daf0a0f7a0e28df5c1c32b2b84443a81fd0a37e43845e07171ed157717833753"
+detail = "matter.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "cf158f28a8396d60fdde68820fc67aa70fddfe0882ca54b9a21b447edc504a34"
+detail = "matter.retention"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "c85c212fc86e1743bc9d97d574c53e14457669a01d4e6756d349591f24e2f317"
+detail = "matter.settings"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "82d6d4dddc25cbc033c461e19a99916b3aa479307efc6a8c65de95889fab40eb"
+detail = "matter.home"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d957cafe3db56eedb4058cd988e4f92d34a1f56fdca44e3cc277a6da4445698e"
+detail = "membership.add"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "c8db2553dbc27163e9382d497a9afd52f2adde8ee0c292213fd06072c75163c2"
+detail = "membership.revoke"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "a11c8277efcc453a1ba057c612797ac33a2c14b76ec38fbadbb97176ca8c7830"
+detail = "source.preflight"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "9eef8b7d14e0810316b7558418ed26e21c30906b46b80fee68b158e8a4a4f47f"
+detail = "research.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "7a95ba72feb9f9ea02eebb2609ea071ab91ddc0498bbdffa4c9c038efc309c1f"
+detail = "research.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "7165157ceaa27ae36b65ba1f01e7d34a67b91024198912c23dae1fcc9c2e9325"
+detail = "research.cancel"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b3da4f946a547e07cfdf95b87b6d097ae886cba191e94c2e6865921f7b88f0d4"
+detail = "research.retry"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "6f1f469cc51dae5f491c566fdaec3972ca17a059b7afd2837a7450d8122700ca"
+detail = "research.export"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "72301cee0adc1f1fe675dea39449ccaa8df9c12678069fc7310f14d800d98a3e"
+detail = "research.report"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eb3facc9da1c456d07ef164735008f6bf916b09fef40618c5bdbf775d9ab859b"
+detail = "search.exact"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "603726140bbb4f6b601ebfeb918ba5272becb3f990f6762a4ed6909e254fac67"
+detail = "matter.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "54aa7f311565d3caf8f719e258a188b8b9bdb7e54bc31ab13fe9a41e50a82dd7"
+detail = "source.upload"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "76783d3913b96a227cd521ae270301f95d0220f58e8e470edb5bf57f42abbe00"
+detail = "source.retry"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "4ff36a4fc5b18276270baf75c130dbfef2f4c3075f96f9ceb82a3b6af32cf724"
+detail = "source.remove"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "ad8fc683a56034c8015a1a0b06fbe4ae30be81c0a7611653d1c4ed189d99d7b0"
+detail = "transcript.export"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "44b42e2ff64041a2d375099be2fcf977789ccab6968593a4b9324f4ae42091a9"
+detail = "conversation.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "17ae377d9aad86ec39e482685150f2a5ecd477f8f9ed4bd8422b9194caab2a1e"
+detail = "conversation.rename"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "192f5eadadff0f2e17e6b9aedbcf43cab4588304150fd95905ffc5d3e64478fa"
+detail = "conversation.pin"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "e5c3784325b443824bff6fdff4a09561ed185331128d3a4d9736acfa1a6e1749"
+detail = "conversation.unpin"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "cf03f76057cc0843f2849852cb0fbfcf8d0c7ae544b741ab9f4d6bcb9a4737cb"
+detail = "conversation.archive"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "819aebce4fc6b7a06de88075511f5daa51938f4eff6f3cd14e8ce360110dec8e"
+detail = "conversation.restore"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "57e30e265e41d2fa7d6198893c18c660c7cfe8697f56acfcae2960ced8ab2112"
+detail = "conversation.delete"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "2ba81a38b70059e88dbbcf3da0bfa095a70df777475a62529580d75cdbb05828"
+detail = "notebook.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b54bda9cb63e10ab14e5b7179521a4a54d006c7048b2377507c4ff870da6898a"
+detail = "analysis.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "960c38596706e3870d8b15898e9adfbaf30b0c328eb92db366389bc81db6602d"
+detail = "analysis.refresh"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "bcfe0bda465b9e207c24613599b0e2eb295af25b37ef820c83c66a715236af1b"
+detail = "report.compile"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "dddf7817f486fc51bf0a78c3a48ca2d00429cfeff93fce39bdc2bde5866ed1cb"
+detail = "report.cancel"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "a55545a4287cd10d0e27bd168e375e7028082efa3de4812215f9c86cb855a83e"
+detail = "report.retry"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "f89c12bf4210185e2c6a9c056e1b4d29a0e6e5945ffbceed13ba90bab9689dee"
+detail = "report.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "f1696f3ef8917d761b46a30c251c94064d58b3b2e2c75003d80f017bbbf34b4c"
+detail = "report.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "29c2c931721de08a02c66cff6f84de1cc98bb2686462e47d1b10e3fb4edcf0cc"
+detail = "report.update"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d851cccf9d2f7a7bd3bab4311d579815888b80a7394ca5c5f6b0481e2b1ba6f3"
+detail = "report.delete"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "aed935917702fbeec8df9f38cb192758e89f9f09729e2632b8605565eb3ec634"
+detail = "report.export"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "e2063166a95cc5557c17cb932ab92f0c898e8cf5bb18fdac252682b23d8baf45"
+detail = "notebook.suggest"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "a0947e41a37046d1ff6c15b0e7e4f8f30c6fd4b166b2388b670b231e4a092632"
+detail = "answer.cancel"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "45eecc9f2859198ed25c735c72648a675f530ea4d0faebcb26906e16eb84e93e"
+detail = "answer.retry"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "819b0cc88dc150b8b808976a22c74d2eca2e04109c647d5d9673890f09c8b168"
+detail = "workbench.sqlite"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "1e36c28904dbe84da1d510f84128608aa627fbb13e71fa8c23fcc446c8c4e809"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "17b14a21bdcf391aeeca1fcb1e6a38945cdf2b65aee68173d11c78ff7a4ed500"
+detail = "http.disconnect"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "54da4751b1cad7ff800542042c0528cca2a82eb45c05262826ad9a92116acd31"
+detail = "security.csrf"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "54da4751b1cad7ff800542042c0528cca2a82eb45c05262826ad9a92116acd31"
+detail = "security.csrf"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "8ea54f6fafedc8c11a774a5f6f11024a433855bb9b5b981b4a3122a1644981f2"
+detail = "admin.console"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "ee1832c20f2f7bd859fa4796b65f2d3a0c4f48918b7b672244c3d1aad0100571"
+detail = "matter.rename"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d957cafe3db56eedb4058cd988e4f92d34a1f56fdca44e3cc277a6da4445698e"
+detail = "membership.add"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "57e30e265e41d2fa7d6198893c18c660c7cfe8697f56acfcae2960ced8ab2112"
+detail = "conversation.delete"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "7e9d78d30b197686e95d7548f57787515057a207f151a6957f5de6ef62b7331f"
+detail = "answer.submit"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d957cafe3db56eedb4058cd988e4f92d34a1f56fdca44e3cc277a6da4445698e"
+detail = "membership.add"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "c8db2553dbc27163e9382d497a9afd52f2adde8ee0c292213fd06072c75163c2"
+detail = "membership.revoke"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "bd2fea7fcbabaa546f1eab8185daad862fdc14009546be7eee9a4b28af362262"
+detail = "search.execute"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "2c3522009091ee669d9ad70702e22d08e06fe1365755a01e07f38c1d06ec0999"
+detail = "support.open"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "57e30e265e41d2fa7d6198893c18c660c7cfe8697f56acfcae2960ced8ab2112"
+detail = "conversation.delete"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "7a95ba72feb9f9ea02eebb2609ea071ab91ddc0498bbdffa4c9c038efc309c1f"
+detail = "research.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "44b42e2ff64041a2d375099be2fcf977789ccab6968593a4b9324f4ae42091a9"
+detail = "conversation.create"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
+detail = "0.0.0.0"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d3894428d67fd3b74047ad1a7017d9bc9fcd437fa37b59ea07e8722144d1c099"
+detail = "upload.cleanup"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "eff8e7ca506627fe15dda5e0e512fcaad70b6d520f37cc76597fdb4f2d83a1a3"
+detail = "::1"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
+detail = "auth.login"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "bd2fea7fcbabaa546f1eab8185daad862fdc14009546be7eee9a4b28af362262"
+detail = "search.execute"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "b6a4cdb4f87fcf0709c2167a621dcbb8f31b5a7798fa1779c6c21e13e03189dc"
+detail = "matter.access"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "bd2fea7fcbabaa546f1eab8185daad862fdc14009546be7eee9a4b28af362262"
+detail = "search.execute"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "d3894428d67fd3b74047ad1a7017d9bc9fcd437fa37b59ea07e8722144d1c099"
+detail = "upload.cleanup"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "e5675b17900f8a8cd287b452ea2ff5c1f4611cbe5774affc248a752d4265bb37"
+detail = "discovery.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "1e8809804a14faaf3c87b477a837e3fd6c4709a1faf8e7d4aa770ae8212cdfe7"
+detail = "entity.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "61f70adf8afd898813bf60ed4912c452dd18e4c42b8aa52d9686ef44efeaf1a1"
+detail = "assertion.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "260a43df6fb18a04734e9e0a9243f8ac97a5c1b58ed93719c7723b7fc5f15efc"
+detail = "full-text-ledger.json"
+
+[[source]]
+path = "src/case_intelligence/workspace_store.py"
+kind = "host"
+digest = "ee1832c20f2f7bd859fa4796b65f2d3a0c4f48918b7b672244c3d1aad0100571"
+detail = "matter.rename"

@@ -132,6 +132,12 @@ def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> s
     if origin_only and parsed.path not in {"", "/"}:
         raise RuntimeError(f"{label} must not contain a path")
     hostname = parsed.hostname.casefold()
+    if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", hostname):
+        try:
+            if str(ipaddress.IPv4Address(hostname)) != hostname:
+                raise ValueError()
+        except ValueError:
+            raise RuntimeError(f"{label} must use a canonical numeric host") from None
     if hostname == "localhost":
         raise RuntimeError(f"{label} must not use a loopback host")
     try:
@@ -581,6 +587,10 @@ class AuthlibOidcClient:
     def __init__(self, settings: OidcSettings) -> None:
         self.settings = settings
         verify: bool | str = str(settings.ca_file) if settings.ca_file else True
+        # Explicit operator transport; discovery must never choose proxy/TLS or
+        # inherit a suffix-based NO_PROXY exception. Native installations can
+        # omit the relay; the reference Compose graph fixes this setting.
+        proxy = os.environ.get("CASE_INTELLIGENCE_OIDC_PROXY", "").strip() or None
         registry = OAuth()
         self.remote = registry.register(
             name="district",
@@ -594,6 +604,8 @@ class AuthlibOidcClient:
                 "timeout": httpx.Timeout(10.0, connect=5.0),
                 "verify": verify,
                 "follow_redirects": False,
+                "trust_env": False,
+                "proxy": proxy,
             },
         )
         self._metadata_ready = False
@@ -644,9 +656,19 @@ class AuthlibOidcClient:
         safe_algorithms = [value for value in algorithms if value in _SAFE_SIGNING_ALGORITHMS]
         if not safe_algorithms:
             raise OidcAuthenticationError("Organization sign-in has no approved token signing algorithm.")
-        self.remote.server_metadata["id_token_signing_alg_values_supported"] = safe_algorithms
+        # Authlib merges server_metadata over client_kwargs. Retain only OIDC
+        # fields consumed by this adapter; arbitrary provider metadata is not
+        # transport configuration (nor client credentials, headers or options).
+        fields = {"issuer", "authorization_endpoint", "token_endpoint", "jwks_uri",
+                  "response_types_supported", "code_challenge_methods_supported",
+                  "token_endpoint_auth_methods_supported", "id_token_signing_alg_values_supported",
+                  "_loaded_at"}
+        approved = {key: value for key, value in metadata.items() if key in fields}
+        approved["id_token_signing_alg_values_supported"] = safe_algorithms
+        self.remote.server_metadata.clear()
+        self.remote.server_metadata.update(approved)
         self._metadata_ready = True
-        return metadata
+        return self.remote.server_metadata
 
     async def authorization_url(
         self,

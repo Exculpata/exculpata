@@ -308,11 +308,11 @@ def test_remote_model_worker_adapters_validate_shapes_and_rerank(monkeypatch):
         )
     )
 
-    def fake_open(_request, timeout):
+    def fake_open(_request, timeout, **_kwargs):
         assert timeout == 120.0
         return _WorkerResponse(json.dumps(next(payloads)).encode("utf-8"))
 
-    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", fake_open)
     vectors = RemoteEmbeddingAdapter("http://127.0.0.1:8767").embed(["a", "b"])
     assert vectors == ((1.0, 0.0), (0.0, 1.0))
 
@@ -324,14 +324,14 @@ def test_remote_model_worker_adapters_validate_shapes_and_rerank(monkeypatch):
 def test_remote_embedding_adapter_batches_large_documents_at_worker_limit(monkeypatch):
     requested_batches: list[list[str]] = []
 
-    def fake_open(request, timeout):
+    def fake_open(request, timeout, **_kwargs):
         assert timeout == 120.0
         texts = json.loads(request.data)["texts"]
         requested_batches.append(texts)
         vectors = [[float(int(text.split("-")[-1])), 0.0] for text in texts]
         return _WorkerResponse(json.dumps({"vectors": vectors}).encode("utf-8"))
 
-    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", fake_open)
     texts = [f"page-{index}" for index in range(97)]
     vectors = RemoteEmbeddingAdapter("http://127.0.0.1:8767").embed(texts)
 
@@ -341,7 +341,7 @@ def test_remote_embedding_adapter_batches_large_documents_at_worker_limit(monkey
 
 def test_remote_embedding_rejects_wrong_batch_size(monkeypatch):
     monkeypatch.setattr(
-        "urllib.request.urlopen",
+        "case_intelligence.review_bench_v2.open_service_request",
         lambda *_args, **_kwargs: _WorkerResponse(b'{"vectors": [[1.0]]}'),
     )
     with pytest.raises(RuntimeError, match="invalid embedding batch"):

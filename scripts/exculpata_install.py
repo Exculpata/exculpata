@@ -202,6 +202,21 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Compose must report). Unrelated shell values were removed above.
     config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
     result["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(config, saved).name
+    # Share only the issuer with the relay. Never give it the application's
+    # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
+    selected = _selected_app_env(config, saved)
+    application = _dotenv(selected, literal_keys={
+        "CASE_INTELLIGENCE_AUTH_MODE", "CASE_INTELLIGENCE_OIDC_ISSUER",
+        "CASE_INTELLIGENCE_OIDC_EGRESS_PINS",
+    }) if selected.is_file() else {}
+    result["OIDC_EGRESS_ISSUER"] = (
+        application.get("CASE_INTELLIGENCE_OIDC_ISSUER", "")
+        if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
+    )
+    result["OIDC_EGRESS_PINS"] = (
+        application.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
+        if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
+    )
     return result
 
 
@@ -911,31 +926,53 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     return "\n".join(lines) + "\n"
 
 
-def _dotenv(path: Path) -> dict[str, str]:
+def _dotenv(path: Path, *, literal_keys: set[str] | None = None) -> dict[str, str]:
+    """Read the supported single-line Compose subset without evaluating code.
+
+    Interpolation is deliberately not performed. The egress selector requires
+    literal auth/issuer values so Compose and the proxy cannot resolve different
+    destinations. Diagnostics never include environment values.
+    """
     values: dict[str, str] = {}
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         key, separator, encoded = line.partition("=")
+        key = key.strip()
+        error = f"invalid node environment line {number}; use single-line KEY=value literals (see docs/NETWORK_EGRESS.md)"
         if (
             not separator
-            or re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None
+            or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) is None
             or key in values
         ):
-            raise RuntimeError(f"invalid node environment line {number}")
+            raise RuntimeError(error)
         encoded = encoded.strip()
-        if encoded.startswith('"'):
+        if encoded.startswith(('"', "'")):
+            quote = encoded[0]
+            end = 1
+            while end < len(encoded):
+                if encoded[end] == "\\":
+                    end += 2
+                    continue
+                if encoded[end] == quote:
+                    break
+                end += 1
+            if end >= len(encoded) or (encoded[end + 1:].strip() and not encoded[end + 1:].strip().startswith("#")):
+                raise RuntimeError(error)
+            quoted = encoded[:end + 1]
             try:
-                value = json.loads(encoded)
+                value = json.loads(quoted) if quote == '"' else quoted[1:-1].replace("\\'", "'")
             except json.JSONDecodeError as exc:
-                raise RuntimeError(f"invalid node environment line {number}") from exc
-            if not isinstance(value, str):
-                raise RuntimeError(f"invalid node environment line {number}")
+                raise RuntimeError(error) from exc
         else:
-            value = encoded
+            value = re.split(r"\s+#", encoded, maxsplit=1)[0].rstrip()
+            if value.startswith("#"):
+                value = ""
         if any(character in value for character in ("\x00", "\r", "\n")):
-            raise RuntimeError(f"invalid node environment line {number}")
+            raise RuntimeError(error)
+        if key in (literal_keys or ()) and "$" in value:
+            raise RuntimeError(f"unsupported node environment interpolation on line {number}; write the resolved auth/issuer literal (see docs/NETWORK_EGRESS.md)")
         values[key] = value
     return values
 
@@ -1548,6 +1585,56 @@ def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=20, check=False)
 
 
+def _dns_engine_known_fix() -> bool:
+    """Version hint only: behavioral acceptance is mandatory on every engine."""
+    try:
+        result = _probe(["docker", "info", "--format", "{{.ServerVersion}}"])
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", result.stdout.strip())
+        if result.returncode or not match:
+            return False
+        version = tuple(map(int, match.groups()))
+        return version >= (26, 0, 0) or (version[:2] == (25, 0) and version[2] >= 5) or (version[:2] == (23, 0) and version[2] >= 11)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _verify_installed_dns(root: Path) -> None:
+    """Inspect only network fields, then probe synthetic DNS as the normal app UID."""
+    remedy = "DNS isolation is unverified: recreate restricted services with container-local upstream DNS and internal networks, ensure the app can bind its ephemeral loopback DNS challenge, and rerun doctor. Engine version alone cannot satisfy this check. See docs/NETWORK_EGRESS.md."
+    try:
+        installation, _ = _installed_release(root)
+        compose = _compose(root, list(installation.get("profiles", [])))
+        identifiers = _probe([*compose, "ps", "--format", "json"])
+        if identifiers.returncode:
+            raise ValueError("service inventory unavailable")
+        # Compose emits JSON Lines in current versions, an array in older ones.
+        raw = identifiers.stdout.strip()
+        rows = json.loads(raw) if raw.startswith("[") else [json.loads(line) for line in raw.splitlines()]
+        restricted = {"app", "postgres", "clamav", "retrieval", "generator", "transcription-api"}
+        present = {row["Service"]: row["ID"] for row in rows if row.get("Service") in restricted}
+        if not {"app", "postgres", "clamav"} <= present.keys():
+            raise ValueError("required services missing")
+        for identifier in present.values():
+            result = _probe(["docker", "inspect", "--format",
+                '{"dns":{{json .HostConfig.Dns}},"search":{{json .HostConfig.DnsSearch}},"networks":{{json .NetworkSettings.Networks}}}', identifier])
+            config = json.loads(result.stdout)
+            if result.returncode or config["dns"] != ["127.0.0.1"] or config["search"] != ["."] or not config["networks"]:
+                raise ValueError("unexpected DNS configuration")
+            for network in config["networks"]:
+                result = _probe(["docker", "network", "inspect", "--format", "{{.Internal}}", network])
+                if result.returncode or result.stdout.strip() != "true":
+                    raise ValueError("non-internal membership")
+        command = [*compose, "exec", "-T", "app", "python", "-I", "-", "postgres", "clamav", "egress-proxy"]
+        result = subprocess.run(command, input=(PROJECT / "scripts/dns_boundary_probe.py").read_text(),
+            env=_compose_environment(command), text=True, capture_output=True, timeout=50, check=False)
+        proof = json.loads(result.stdout)
+        if (result.returncode or proof != {"internal_dns_udp_tcp": True,
+                "container_loopback_challenges": 6, "dns_behavior_verified": True}):
+            raise ValueError("DNS probe failed")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(remedy) from exc
+
+
 def _storage_ancestors_safe(ancestor: Path) -> bool:
     """Require a private creation point and a non-replaceable parent chain."""
     uid = os.geteuid()
@@ -1836,6 +1923,9 @@ _EVALUATION_IMAGE_BYTES = {
     "gateway": 106_216_980,
     "postgres": 638_421_012,
     "clamav": 406_589_383,
+    # Shares the application's pinned Python base; incremental relay layers
+    # remain unmeasured until controlled image-build acceptance.
+    "egress-proxy": 0,
     "retrieval": 0,
     "vllm": 0,
     "transcription-api": 0,
@@ -1859,7 +1949,7 @@ def _ceil_gib(amount: int) -> int:
 
 def _evaluation_payload_bytes(models: str, args: argparse.Namespace | None) -> int:
     """Bytes of images and pinned models the selected profile actually stages."""
-    total = sum(_EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav"))
+    total = sum(_EVALUATION_IMAGE_BYTES[name] for name in ("app", "gateway", "postgres", "clamav", "egress-proxy"))
     review_profile = getattr(args, "review_model_profile", "auto") if args is not None else "auto"
     languages: tuple[str, ...] = ("en",)
     if args is not None:
@@ -2183,6 +2273,11 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
         except (OSError, subprocess.TimeoutExpired):
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
+    dns_engine = docker and _dns_engine_known_fix()
+    checks.append(PreflightCheck("docker-dns-version", "pass" if dns_engine else "warn",
+        "Version includes a known upstream fix; behavioral acceptance still required" if dns_engine else "Version is older, prerelease or unknown; behavioral acceptance still required",
+        "Provide a version hint without substituting for runtime DNS proof", False,
+        "Use a maintained Engine; backports may contain the fix. Startup and doctor must pass the container-local DNS challenge regardless of version. See docs/NETWORK_EGRESS.md."))
     storage_plan = _storage_plan(models, args)
     if docker:
         try:
@@ -3617,7 +3712,7 @@ def _wait_health(console: Console, root: Path) -> None:
         try:
             if settings.get("auth") == "kerberos":
                 compose = _compose(root, settings.get("profiles", []))
-                probe = "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8786/health',timeout=5).read(262144).decode())"
+                probe = "import urllib.request; print(urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:8786/health',timeout=5).read(262144).decode())"
                 result = _run(console, [*compose, "exec", "-T", "app", "python", "-c", probe], capture=True)
                 payload = json.loads(result.stdout)
             else:
@@ -3644,8 +3739,11 @@ def _wait_health(console: Console, root: Path) -> None:
             _install_phase(root, "running", "complete")
             _install_phase(root, "basic_review", "complete" if base_ready else "incomplete")
             _install_phase(root, "login_reachable", "complete" if login_ready else "incomplete")
-            _install_phase(root, "selected_capabilities", "complete" if selected_ready else "incomplete")
+            _install_phase(root, "selected_capabilities", "incomplete")
             if selected_ready and login_ready:
+                _verify_installed_dns(root)
+                _install_phase(root, "selected_capabilities", "complete")
+                console.ok("DNS boundary :: internal memberships and container-local UDP/TCP A/AAAA/TXT challenges passed")
                 console.ok(f"Application health, selected capabilities and sign-in endpoint passed; authentication mode :: {expected_auth}")
                 if payload.get("status") == "degraded":
                     console.warn("Basic review is available; an unselected optional capability remains unavailable")
@@ -3692,7 +3790,7 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     if not args.dry_run:
         _wait_health(console, root)
     else:
-        console.note("Dry run: running authentication mode and live health are not verified")
+        console.note("Dry run: running authentication mode, DNS boundary and live health are not verified")
     if not args.dry_run:
         installation, _ = _installed_release(root)
         _record_prepared_phases(root, installation)
@@ -4050,7 +4148,7 @@ def _restore(console: Console, args: argparse.Namespace, root: Path) -> None:
 
 
 def _build_targets(auth: str, models: str) -> list[str]:
-    targets = ["app", "account-admin", "gateway", "clamav", "postgres"]
+    targets = ["app", "account-admin", "gateway", "clamav", "postgres", "egress-proxy"]
     if auth == "kerberos":
         targets.append("kerberos-proxy")
     if models in {"all", "review"}:

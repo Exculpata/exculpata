@@ -1,5 +1,9 @@
 # Installation playbook
 
+Review the [reference egress model](NETWORK_EGRESS.md) before configuring or
+upgrading OIDC. It covers issuer propagation, the internal app network, named
+stager/updater/gateway exceptions and outstanding live acceptance requirements.
+
 For a first CPU node, follow the short path below, then
 [sign in and create a practice matter](FIRST_RUN.md#cpu-practice-matter).
 The later sections are operator reference and recovery guidance.
@@ -465,8 +469,10 @@ passwords and staging tokens are never passed to the build logger.
 
 ## Hardware and capability profiles
 
-Exculpata targets a modern x86-64 Linux host with Docker Engine and Docker
-Compose v2. The figures below are starting targets for alpha evaluation, not
+Exculpata targets a modern x86-64 Linux host with maintained Docker Engine and Docker
+Compose v2. Engine versions are advisory; startup and doctor require the
+[container-local behavioral DNS check](NETWORK_EGRESS.md#dns-boundary-and-supported-runtime),
+including on patched older releases. The figures below are starting targets for alpha evaluation, not
 validated minimums:
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
