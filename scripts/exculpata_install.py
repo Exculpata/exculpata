@@ -206,7 +206,7 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
     selected = _selected_app_env(config, saved)
     application = _dotenv(selected) if selected.is_file() else {}
-    result["EXCULPATA_EGRESS_ISSUER"] = (
+    result["OIDC_EGRESS_ISSUER"] = (
         application.get("CASE_INTELLIGENCE_OIDC_ISSUER", "")
         if application.get("CASE_INTELLIGENCE_AUTH_MODE") == "oidc" else ""
     )

@@ -44,16 +44,16 @@ def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
     installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", "custom.env", add_missing_aliases=True)
     command = installer._compose(root, (), release=ROOT, auth=auth)
     environment = installer._compose_environment(command, {
-        "PATH": os.environ["PATH"], "EXCULPATA_EGRESS_ISSUER": "https://unrelated.example.test",
+        "PATH": os.environ["PATH"], "OIDC_EGRESS_ISSUER": "https://unrelated.example.test",
     })
-    assert environment["EXCULPATA_EGRESS_ISSUER"] == (
+    assert environment["OIDC_EGRESS_ISSUER"] == (
         "https://issuer.example.test:8443/realm" if auth == "oidc" else ""
     )
     result = subprocess.run([*command, "config", "--format", "json"],
                             env=environment, capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
     proxy = graph["services"]["egress-proxy"]
-    assert proxy["environment"] == {"OIDC_ISSUER": environment["EXCULPATA_EGRESS_ISSUER"]}
+    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"]}
     assert not any(key in proxy for key in ("volumes", "secrets", "ports"))
     assert graph["services"]["app"]["environment"]["CASE_INTELLIGENCE_OIDC_CA_FILE"] == "/run/example/ca.pem"
 

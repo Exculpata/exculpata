@@ -38,14 +38,14 @@ with a blanket private-network allowlist.
 
 ## Configuration and upgrades
 
-Installer Compose invocations derive `EXCULPATA_EGRESS_ISSUER` from the one selected
+Installer Compose invocations derive `OIDC_EGRESS_ISSUER` from the one selected
 application env file's `CASE_INTELLIGENCE_OIDC_ISSUER`, only in `oidc` mode. Shell
 overrides are discarded. This preserves fresh, legacy and explicitly selected
 filenames without copying app configuration or secrets into the proxy. Changing
 the saved issuer requires recreating the proxy and app together through the
 installer. An existing proxy cannot observe a changed env file automatically.
 
-For operator-managed direct Compose invocation, supply `EXCULPATA_EGRESS_ISSUER`
+For operator-managed direct Compose invocation, supply `OIDC_EGRESS_ISSUER`
 with the same value as the selected application's issuer when creating the
 services; otherwise the relay denies all. Merely setting an issuer in root
 `.env` does not configure application authentication. Review the rendered graph
