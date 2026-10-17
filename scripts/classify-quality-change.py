@@ -15,6 +15,18 @@ ROOT_DOCUMENTS = {
     "SECURITY.md", "CODE_OF_CONDUCT.md",
 }
 MAX_DIFF_BYTES = 8 * 1024 * 1024
+BROWSER_DEPENDENCIES = {
+    b".github/workflows/quality-gates.yml",
+    b"scripts/classify-quality-change.py",
+    b"scripts/run-browser-acceptance.py",
+    b"scripts/synthetic_browser_environment.py",
+    b"scripts/install-ci-browser-deps.py",
+    b"scripts/demo.py",
+    b"scripts/exculpata_theme_contrast.py",
+    b"config/browser-testing.json",
+    b"pyproject.toml",
+    b"tests/test_browser_acceptance_runner.py",
+}
 
 
 def git(*args: str) -> bytes:
@@ -89,16 +101,38 @@ def classify(event_name: str, event: dict, expected: str, ref: str) -> bool:
     return bool(before.strip("0"))
 
 
+def browser_changed(event_name: str, event: dict, expected: str) -> bool:
+    """Fail open to browser coverage unless a complete PR diff rules it out."""
+    if event_name != "pull_request" or git("rev-parse", "HEAD").decode() != oid(expected):
+        return True
+    pr = event["pull_request"]
+    base, head = oid(pr["base"]["sha"]), oid(pr["head"]["sha"])
+    ancestor = oid(git("merge-base", base, head).decode())
+    # Include additions, modifications, deletions and both sides of renames.
+    raw = git("diff", "--name-only", "-z", "--no-renames", ancestor, head, "--")
+    if not raw or len(raw) > MAX_DIFF_BYTES or not raw.endswith(b"\0"):
+        return True
+    return any(
+        path.startswith((b"scripts/browser-accept-", b"scripts/browser_"))
+        or path in BROWSER_DEPENDENCIES
+        for path in raw[:-1].split(b"\0")
+    )
+
+
 def main() -> None:
+    browser = True
     try:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
         docs_only = classify(os.environ["GITHUB_EVENT_NAME"], event,
                              os.environ["GITHUB_SHA"], os.environ["GITHUB_REF"])
+        browser = browser_changed(os.environ["GITHUB_EVENT_NAME"], event,
+                                  os.environ["GITHUB_SHA"])
     except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
         docs_only = False
     value = str(docs_only).lower()
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
         output.write(f"docs_only={value}\n")
+        output.write(f"browser_changed={str(browser).lower()}\n")
     print("Quality scope: plain documentation only" if docs_only else "Quality scope: full gates required")
 
 
