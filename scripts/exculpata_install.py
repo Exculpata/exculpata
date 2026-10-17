@@ -1590,7 +1590,7 @@ def _dns_engine_supported() -> bool:
     """Conservative stable Engine floor; old/backported/unknown runtimes need review."""
     try:
         result = _probe(["docker", "info", "--format", "{{.ServerVersion}}"])
-        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[+~][0-9A-Za-z.+~_-]+)?", result.stdout.strip())
+        match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", result.stdout.strip())
         return result.returncode == 0 and bool(match) and tuple(map(int, match.groups())) >= (26, 0, 0)
     except (OSError, subprocess.TimeoutExpired):
         return False

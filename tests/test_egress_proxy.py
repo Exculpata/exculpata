@@ -88,6 +88,8 @@ SPECIAL_ADDRESSES = [
     pytest.param(ipaddress.IPv4Address(bytes((100, 100, 100, 200))), id="shared-address-metadata"),
     pytest.param(ipaddress.IPv6Address((0xfe80 << 112) | 1), id="ipv6-link-local"),
     pytest.param(ipaddress.IPv6Address((0xfd00 << 112) | 1), id="ipv6-unique-local"),
+    pytest.param(ipaddress.IPv6Address((0xfd00 << 112) | (0xec2 << 96) | 0x254), id="ipv6-aws-metadata"),
+    pytest.param(ipaddress.IPv6Address((0xfd20 << 112) | (0xce << 96) | 0x254), id="ipv6-google-metadata"),
     pytest.param(ipaddress.IPv6Address((0x2002 << 112) | (int(ipaddress.IPv4Address("192.0.2.1")) << 80) | 1), id="6to4"),
     pytest.param(ipaddress.IPv6Address((0x2001 << 112) | 1), id="teredo"),
     pytest.param(ipaddress.IPv6Address((0x64 << 112) | (0xff9b << 96) | 1), id="nat64-well-known"),
@@ -192,6 +194,14 @@ def test_pins_never_authorize_special_destinations(address):
     else:
         with pytest.raises(proxy.Denied):
             proxy.issuer_pins(encoded, "https://issuer.example.test")
+
+
+@pytest.mark.parametrize("prefix,service", [(0xfd00, 0xec2), (0xfd20, 0xce)])
+def test_metadata_dns_answer_is_denied_even_with_supplied_pin(monkeypatch, prefix, service):
+    address = ipaddress.IPv6Address((prefix << 112) | (service << 96) | 0x254)
+    monkeypatch.setattr(proxy, "resolve", lambda *a: [answer(str(address))])
+    with pytest.raises(proxy.Denied, match="destination address denied"):
+        proxy.public_addresses("issuer.example.test", 80, frozenset({address}))
 
 
 @pytest.mark.parametrize("addresses", [["127.0.0.1"], ["::1"], ["0.0.0.0/0"], ["8.8.8.8", "8.8.8.8"], [], ["8.8.8.8"] * 17])

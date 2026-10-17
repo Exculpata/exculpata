@@ -94,6 +94,12 @@ reserved and IPv6 transition destinations cannot. CIDRs and wildcards are not
 accepted. Review exact issuer addresses privately before upgrading a private
 issuer; no private access is inferred or automatically migrated. DNS rotation
 requires an explicit reviewed pin update and recreation of the proxy and app.
+Known ULA metadata endpoints documented by
+[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-options.html)
+and [Google Cloud](https://cloud.google.com/compute/docs/metadata/overview#metadata_server_endpoints)
+are explicitly denied both when pins are loaded and when DNS answers are checked.
+Ordinary ULA pins remain supported. An IP allowlist cannot identify every
+operator-specific metadata or administrative service; review the chosen issuer.
 
 ## Configuration and upgrades
 
@@ -124,6 +130,7 @@ with the saved pin JSON if present, when creating the
 services; otherwise the relay denies all. Merely setting an issuer in root
 `.env` does not configure application authentication. Review the rendered graph
 privately. Existing nodes must build the new proxy image and recreate the app
+and other restricted services to receive the DNS configuration
 to gain isolation; a source checkout or passing static check does not apply it.
 Install and update include `egress-proxy` in their explicit image-build targets.
 It shares the application's pinned Python base; its incremental image layers
