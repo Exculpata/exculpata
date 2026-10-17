@@ -121,18 +121,24 @@ remaining workers or relying on wall-clock scheduling.
 
 Resolve a matter's source store before entering entity/assertion source guards
 and workspace transactions. Capture that store in validation and support
-callbacks, including nested citation lookup. Opening a different matter takes
-the shared store-cache lock before synchronizing the workspace catalog; a
-callback that looks up the cache while holding the workspace lock reverses that
-order and can freeze both requests. Capturing the store does not cache validation
+callbacks, including nested citation lookup. All source-cache acquisitions use
+`source_cache_guard`, which takes the workspace lock before the cache lock,
+including cached reads, archive access, purge and shutdown. Callers take the
+matter source guard first and must not acquire another matter's source guard
+inside the cache boundary. Shutdown detaches stores inside the boundary and
+closes them outside it. Capturing the store does not cache validation
 results: current source versions, passages, and membership remain checked under
 the existing source guard and authorized transaction. The overlapping-action
 regressions in `tests/test_workspace_lock_order.py` exercise this boundary.
 Home's briefing snapshot must also pass its already resolved live store through
 both readiness checks (including automatic-discovery progress) and source metadata
-lookup. Reentrant source/workspace locks do not make re-entering the global cache
-safe: another matter can own that cache while waiting for the workspace lock,
-even when its store is already cached. `tests/test_briefing_lock_order.py` overlaps
+lookup. `CASE_INTELLIGENCE_TEST_MODE=1` enables `SourceCacheLock` ownership checks
+before blocking, so an acquisition without the workspace lock raises immediately
+and names `source_cache_guard`. Pytest and application CI enable this switch.
+`tests/test_source_cache_order.py` covers inversion, contention, exception cleanup,
+reentrancy and the matter-creation/Home call paths, and prevents production
+callers from acquiring the cache outside the helper. Reentrant source/workspace
+locks alone cannot enforce this cross-matter order. `tests/test_briefing_lock_order.py` overlaps
 the real Home route with cached and uncached lookups, with discovery on and off.
 Keep membership, completion and support rechecks inside the existing snapshot;
 capture the store object, not an earlier readiness or authorization result.

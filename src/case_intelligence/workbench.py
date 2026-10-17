@@ -46,6 +46,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
 from .static_assets import asset_url, static_cache_control
+from .source_cache import SourceCacheLock, source_cache_guard
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
 from .citation_highlight import has_readable_highlight, highlight_segments
 from .answer_jobs import AnswerCoordinator, AnswerJobFailure, AnswerResult
@@ -990,7 +991,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         self.workspace.recover_interrupted_matter_purges()
         self.workspace.recover_running_analysis_runs()
         self._stores: dict[str, PilotStore] = {}
-        self._store_lock = threading.RLock()
+        self._store_lock = SourceCacheLock(lambda: self.workspace._lock)
         self._matter_source_locks: dict[str, threading.RLock] = {}
         self._storage_reservation_lock = threading.RLock()
         self._playback_reservations: dict[tuple[str, str], int] = {}
@@ -1255,7 +1256,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             self.media.close()
         if self.ingestion is not None:
             self.ingestion.close()
-        with self._store_lock:
+        with source_cache_guard(self):
             stores = tuple(self._stores.values())
             self._stores.clear()
         for store in stores:
@@ -3012,9 +3013,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
 
     def entity_service(self, matter, *, automatic=False, store=None):
         from .entity_service import EntityService, current_reference_indexes, current_source_indexes
-        # Resolve the cache before taking a source guard/workspace transaction.
-        # Opening another matter holds the cache lock while syncing its catalog;
-        # callbacks under the workspace lock must never re-enter that cache.
+        # Capture the live store before the snapshot; callbacks keep validating
+        # against that object without another shared-cache lookup.
         store = store if store is not None else self.source_store(matter)
         return EntityService(
             self.workspace.entity_repository(automatic=automatic),

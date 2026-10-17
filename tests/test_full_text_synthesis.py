@@ -342,10 +342,10 @@ def test_final_transaction_and_export_revalidate_sources_and_access(workspace, c
         with bench.workspace._lock, bench.workspace.connection:
             bench.workspace.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE matter_id=?", (matter.matter_id,))
     # Observe the rejected save and its rollback before another live worker can
-    # open an unrelated transaction. Preserve the source-cache/source/workspace
-    # lock order when the finisher resolves and validates its source store again.
+    # open an unrelated transaction. Take the source guard before the workspace;
+    # nested cache lookups acquire the workspace reentrantly before the cache.
     store = bench.source_store(matter)
-    with bench._store_lock, store.mutation_guard(), bench.workspace._lock:
+    with store.mutation_guard(), bench.workspace._lock:
         with pytest.raises(REFUSAL):
             bench._finish_research_job(job, result)
         row = bench.workspace.connection.execute('SELECT state,result_message_id FROM workbench_research_job WHERE job_id=?', (job.job_id,)).fetchone()
