@@ -11,7 +11,7 @@ from tests.test_answer_cited_context import context_path, long_answer  # noqa: F
 from tests.test_saved_answer_report_support import ACTOR, cedar  # noqa: F401
 
 DESTINATIONS = ["Home", "Review", "Ask", "Search", "Case file", "Settings"]
-CASE_FILE = ["Overview", "Notes", "People & things", "Timeline", "Review map", "Reports"]
+CASE_FILE = ["Overview", "Notes", "People & things", "Timeline", "Draft timeline", "Review map", "Reports"]
 
 
 class Navigation(HTMLParser):
@@ -68,6 +68,7 @@ def test_every_matter_page_offers_the_same_six_destinations(cedar):  # noqa: F81
         f"{prefix}/notebook": "Case file",
         f"{prefix}/entities": "Case file",
         f"{prefix}/chronology": "Case file",
+        f"{prefix}/timeline/draft": "Case file",
         f"{prefix}/reports": "Case file",
         f"{prefix}/export-readiness": "Case file",
         f"{prefix}/reports/new": "Case file",
@@ -90,7 +91,7 @@ def test_case_file_sections_share_one_sub_navigation(cedar):  # noqa: F811
     prefix = f"/matters/{matter.slug}"
     for path, current in {
         "/work-product": "Overview", "/notebook": "Notes", "/entities": "People & things",
-        "/chronology": "Timeline", "/analysis": "Review map", "/reports": "Reports",
+        "/chronology": "Timeline", "/timeline/draft": "Draft timeline", "/analysis": "Review map", "/reports": "Reports",
     }.items():
         page = client.get(prefix + path)
         assert page.status_code == 200, path

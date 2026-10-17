@@ -1,0 +1,13 @@
+{
+  "format": "exculpata-workflow-eval-questions-v1",
+  "integration_todo": "TODO #267: adapt this independent chronology question file to the merged workflow scorecard loader.",
+  "matter": "harbor-street",
+  "questions": [
+    {"id":"arrival-time","question":"What time do the records give for the arrival at Kestrelune Arcade?","expected_answer":"The arrival observation estimates near 09:26 on April 18, 2034. The follow-up says this was reconstructed from planned bells, not a checked clock; it does not establish a parcel delivery time.","expected_source_ids":["DEMO-HS-005","DEMO-HS-014"]},
+    {"id":"dispatch-time","question":"When does the dispatch observation place departure?","expected_answer":"09:14 on April 18, 2034 according to the unchecked wall clock; the observer did not read the band number.","expected_source_ids":["DEMO-HS-004"]},
+    {"id":"clock-offset","question":"Can the later clock comparison correct the dispatch time?","expected_answer":"No. The April 19 comparison found the clock seven minutes slow but does not establish its April 18 offset.","expected_source_ids":["DEMO-HS-007","DEMO-HS-004"]},
+    {"id":"planned-bells","question":"What bell times were planned and were they observed arrival times?","expected_answer":"09:10, 09:25 and 09:40 on April 18 were planned bells. The first bell was delayed; those are not observed arrival times.","expected_source_ids":["DEMO-HS-018","DEMO-HS-020"]},
+    {"id":"screen-movement","question":"When was the screen moved?","expected_answer":"The account says after the third rehearsal bell; no exact time is identified and the bell delay was not measured.","expected_source_ids":["DEMO-HS-012","DEMO-HS-LOG-F"]},
+    {"id":"follow-up-count","question":"On what date was the follow-up count recorded?","expected_answer":"April 19, 2034. It recorded eleven visible cases at the storehouse, one empty case at the arcade and a sealed parcel behind a screen; its contents were not inspected.","expected_source_ids":["DEMO-HS-008","DEMO-HS-039"]}
+  ]
+}

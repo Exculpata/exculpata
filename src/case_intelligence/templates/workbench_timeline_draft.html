@@ -1,0 +1,28 @@
+{% extends 'workbench_base.html' %}
+{% block title %}Draft timeline · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ asset_url('timeline-draft.css') }}">
+<main id="main-content" tabindex="-1" class="notebook-main timeline-draft">
+<header class="notebook-heading"><div><p class="eyebrow">{{ matter.display_name }}</p><h1>Draft timeline</h1></div></header>
+{% with active='timeline_draft' %}{% include 'workbench_matter_tabs.html' %}{% endwith %}
+<p class="notice" role="note">{{ timeline.notice }}</p>
+<p>{{ timeline.source_count }} sources · {{ timeline.unit_count }} extracted units. Dates reflect source wording, without timezone conversion. Document dates used as anchors require review.</p>
+{% if timeline.capped %}<p class="notice" role="status">This draft is capped by scan or entry limits. It is not a complete chronology.</p>{% endif %}
+{% if timeline.rejected_count %}<p>{{ timeline.rejected_count }} mentions omitted because their source excerpt could not be validated.</p>{% endif %}
+<form action="/matters/{{ matter.slug }}/timeline/draft/refresh" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button button-secondary">Refresh draft</button></form>
+{% if refresh_state %}<p role="status">Refresh {{ refresh_state }}. Drafts are recomputed from current sources when opened.</p>{% endif %}
+<p>Export for attorney review: {% for format in ('csv','markdown','json') %}<a href="/matters/{{ matter.slug }}/timeline/draft/export?format={{ format }}">{{ format|upper }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
+<details><summary>Select an entity for promotion</summary><p>Promotion requires a reviewed identity and explicit role. Saved entries remain marked Needs review.</p><form method="get"><label>Find entity<input name="q" value="{{ q }}" maxlength="200"></label><button class="button button-secondary">Find</button></form><p>{{ choice_total }} matching identities. <a href="/matters/{{ matter.slug }}/entities">Review or create identities</a>.</p>{% if page > 1 %}<a href="?q={{ q|urlencode }}&amp;page={{ page-1 }}">Previous identities</a>{% endif %}{% if page*50 < choice_total %}<a href="?q={{ q|urlencode }}&amp;page={{ page+1 }}">More identities</a>{% endif %}</details>
+{% macro entry_card(entry) %}
+<article class="timeline-entry" id="{{ entry.entry_id }}">
+<div class="timeline-date"><strong>{{ entry.date_label }}</strong><p>{{ entry.precision }} precision</p>{% if entry.sort_key %}<p>Ordering value: {{ entry.sort_key }}</p>{% endif %}</div>
+<div class="timeline-description"><p>{{ entry.description }}</p>{% if entry.uncertainty %}<p class="timeline-uncertainty">{{ entry.uncertainty }}</p>{% endif %}
+{% for citation in entry.citations %}<details class="cited-context"><summary>{{ citation.document_title }} · {{ citation.location }}</summary><div class="cited-context-panel"><blockquote class="cited-context-excerpt">{{ citation.excerpt }}</blockquote><a class="button button-secondary timeline-source" href="{{ source_url(citation) }}">Open original passage</a></div></details>{% endfor %}</div>
+<form class="timeline-promote" method="post" action="/matters/{{ matter.slug }}/timeline/draft/{{ entry.entry_id }}/promote"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label>Identity<select name="entity_selection" required><option value="">Choose identity</option>{% for choice in choices %}<option value="{{ choice.entity_id }}:{{ choice.revision }}">{{ choice.display_name }} · {{ choice.entity_type }} · {{ choice.entity_id[-8:] }} · revision {{ choice.revision }}</option>{% endfor %}</select></label><label>Role<select name="role"><option value="subject">Subject</option><option value="participant">Participant</option><option value="location">Location</option><option value="object">Object</option></select></label><button class="button button-secondary">Promote</button></form>
+</article>
+{% endmacro %}
+<section aria-labelledby="timeline-heading"><h2 id="timeline-heading">Timeline</h2><div class="timeline-table">{% for entry in timeline.entries if not entry.conflict_group %}{{ entry_card(entry) }}{% else %}<p>No ordered entries within the current limits.</p>{% endfor %}</div></section>
+<section aria-labelledby="timeline-conflicts"><h2 id="timeline-conflicts">Different dates for the same event</h2><p>Possible matching event wording; compare participants and context before treating accounts as conflicting.</p>{% for group in timeline.conflicts %}<h3>Different dates in the records</h3><div class="timeline-conflict-pair">{% for entry in group.entries %}{{ entry_card(entry) }}{% endfor %}</div>{% else %}<p>No different dates detected for matching event wording. This does not establish agreement.</p>{% endfor %}</section>
+<section aria-labelledby="timeline-undated"><h2 id="timeline-undated">Undated or unresolved mentions</h2>{% for entry in timeline.undated %}{{ entry_card(entry) }}{% else %}<p>No unresolved date mentions detected within the current limits.</p>{% endfor %}</section>
+</main>
+{% endblock %}
