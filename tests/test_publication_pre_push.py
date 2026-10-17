@@ -215,3 +215,26 @@ def test_installed_hook_retains_historical_owners_and_checks_legacy_names(tmp_pa
     (root / "unexpected.txt").write_text(LEGACY_STEM)
     oid = commit(root)
     assert inspect_installed().returncode != 0
+
+
+def test_installed_hook_checks_every_outgoing_branch_and_tag_tree(tmp_path):
+    import sys
+    root = repository(tmp_path)
+    destination = tmp_path / "trusted-hook"
+    result = command(root, sys.executable, str(ROOT / "scripts/install-publication-hook.py"), str(destination))
+    assert result.returncode == 0, result.stderr
+    (root / "unexpected.txt").write_text(LEGACY_STEM)
+    unsafe = commit(root)
+    command(root, "git", "tag", "-a", "synthetic-tag", unsafe, "-m", "Synthetic tag")
+    tag = command(root, "git", "rev-parse", "synthetic-tag").stdout.strip()
+    (root / "unexpected.txt").unlink()
+    clean = commit(root)
+    first = f"HEAD {clean} refs/heads/clean {'0' * 40}\n"
+    # Historical spelling alone remains allowed; only outgoing tips are gated.
+    assert command(root, str(destination / "pre-push"), input=first).returncode == 0
+    for oid, ref in ((unsafe, "refs/heads/second"), (tag, "refs/tags/second")):
+        second = f"other {oid} {ref} {'0' * 40}\n"
+        for records in (first + second, second + first):
+            result = command(root, str(destination / "pre-push"), input=records)
+            assert result.returncode != 0
+            assert LEGACY_STEM not in result.stderr

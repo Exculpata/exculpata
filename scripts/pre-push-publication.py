@@ -118,15 +118,22 @@ def main() -> int:
             else:
                 scoped_arguments.append(arguments[index])
                 index += 1
-        result = subprocess.run(
-            [sys.executable, "-I", str(scanner), "--root", str(temporary), *scoped_arguments],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-            env={key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "PYTHON"))},
-        )
-        if result.returncode:
-            # Keep candidate filenames and matched values out of terminal recordings.
-            print("Publication blocked: outgoing history failed inspection. Run the scanner locally for rule-only diagnostics.", file=sys.stderr)
-            return 1
+        # The first scan covers the complete fetched history. Each remaining
+        # outgoing tip also needs its own tree scan, including the naming gate
+        # whose historical occurrences intentionally remain allowed.
+        for index, oid in enumerate(dict.fromkeys(oid for oid, _ref in outgoing)):
+            if index:
+                git(temporary, "checkout", "--quiet", "--detach", oid)
+            result = subprocess.run(
+                [sys.executable, "-I", str(scanner), "--root", str(temporary),
+                 *scoped_arguments, *(["--skip-history"] if index else [])],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                env={key: value for key, value in os.environ.items() if not key.startswith(("GIT_", "PYTHON"))},
+            )
+            if result.returncode:
+                # Keep candidate filenames and matched values out of terminal recordings.
+                print("Publication blocked: outgoing history failed inspection. Run the scanner locally for rule-only diagnostics.", file=sys.stderr)
+                return 1
     print("Outgoing publication history passed inspection.")
     return 0
 

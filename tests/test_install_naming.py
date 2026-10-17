@@ -389,3 +389,124 @@ def test_compose_selects_one_saved_application_file(tmp_path, files, explicit, l
     assert app["SYNTHETIC_SELECTED"] == expected
     for other in set(files) - {expected}:
         assert f"SYNTHETIC_{other.upper()}_ONLY" not in app
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+def test_custom_app_file_is_shared_by_validation_doctor_and_rollback(tmp_path, monkeypatch, names):
+    root, _, paths = configured_node(tmp_path, names=names)
+    default = paths["config"] / f"{names}.env"
+    selected = paths["config"] / "custom.env"
+    selected.write_bytes(default.read_bytes())
+    installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", "custom.env", add_missing_aliases=True)
+    assert installer._app_env(root) == selected
+    default_before = default.read_bytes()
+    selected_before = selected.read_bytes()
+    args = installer._parser().parse_args(["update", "--root", str(root), "--no-backup", "--non-interactive"])
+    installer._replace_env(selected, "CASE_INTELLIGENCE_AUTH_MODE", "preview")
+    with pytest.raises(RuntimeError, match="authentication mode disagrees"):
+        installer._saved_node_arguments(args, root)
+    with pytest.raises(RuntimeError, match="authentication mode disagrees"):
+        installer._doctor(installer.Console(color=False, quiet=True), args, root)
+    selected.write_bytes(selected_before)
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: ("synthetic-next", ROOT))
+    launches = []
+    def run(console, command, **kwargs):
+        if "up" in command:
+            assert installer._compose_environment(command)["EXCULPATA_APP_ENV_FILE"] == selected.name
+            launches.append(selected.read_bytes())
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(installer, "_run", run)
+    health_calls = []
+    def health(*args):
+        health_calls.append(True)
+        if len(health_calls) == 1:
+            selected.write_text("# Synthetic failed startup mutation\n")
+            raise RuntimeError("synthetic startup failure")
+        assert selected.read_bytes() == selected_before
+    monkeypatch.setattr(installer, "_wait_health", health)
+    with pytest.raises(RuntimeError, match="rollback was attempted"):
+        installer._update(installer.Console(color=False, quiet=True), args, root)
+    assert len(health_calls) == len(launches) == 2
+    assert selected.read_bytes() == selected_before
+    assert default.read_bytes() == default_before
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+def test_reconfigure_preserves_custom_application_selection(tmp_path, names):
+    root, args, paths = configured_node(tmp_path, names=names)
+    default = paths["config"] / f"{names}.env"
+    selected = paths["config"] / "custom.env"
+    default.rename(selected)
+    installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", selected.name, add_missing_aliases=True)
+    installer._configure(installer.Console(color=False, quiet=True), args, root, paths, "synthetic-release", ROOT, ())
+    assert installer._app_env(root) == selected
+    assert not default.exists()
+    assert installer._compose_environment(installer._compose(root, ()))["EXCULPATA_APP_ENV_FILE"] == selected.name
+
+
+@pytest.mark.parametrize("filename", ["../outside.env", "/outside.env", ".", "..", "subdir/custom.env", "subdir\\custom.env"])
+def test_app_selection_cannot_escape_config_root(tmp_path, filename):
+    root, _, _ = configured_node(tmp_path)
+    installer._replace_env(root / "compose.env", "EXCULPATA_APP_ENV_FILE", filename, add_missing_aliases=True)
+    with pytest.raises(RuntimeError, match="filename inside the config root"):
+        installer._app_env(root)
+    with pytest.raises(RuntimeError, match="filename inside the config root"):
+        installer._compose_environment(installer._compose(root, ()))
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+@pytest.mark.parametrize("selection", [None, "legacy", "current", "custom"])
+@pytest.mark.parametrize("command", ["doctor", "update"])
+def test_cli_with_both_app_files_uses_selection_without_renaming_node(tmp_path, monkeypatch, names, selection, command):
+    root, _, paths = configured_node(tmp_path, names=names)
+    filenames = {"legacy": f"{LEGACY_STEM}.env", "current": f"{CURRENT_STEM}.env", "custom": "custom.env"}
+    original = (paths["config"] / f"{names}.env").read_bytes()
+    selected = filenames[selection or "current"]
+    for filename in filenames.values():
+        path = paths["config"] / filename
+        path.write_bytes(original)
+        if filename != selected:
+            installer._replace_env(path, "CASE_INTELLIGENCE_AUTH_MODE", "preview")
+    compose = root / "compose.env"
+    # Omit both spelling families for the existence-fallback case, including
+    # the current filename normally written by a fresh node.
+    compose.write_text("\n".join(line for line in compose.read_text().splitlines()
+                                 if "APP_ENV_FILE=" not in line) + "\n")
+    if selection:
+        installer._replace_env(compose, "EXCULPATA_APP_ENV_FILE", selected, add_missing_aliases=True)
+    before = {path: path.read_bytes() for path in (compose, root / "installation.json", *(paths["config"] / filename for filename in filenames.values()))}
+    calls = []
+    def run(console, argv, **kwargs):
+        if argv[:2] == ["docker", "compose"]:
+            environment = installer._compose_environment(argv)
+            assert environment["EXCULPATA_APP_ENV_FILE"] == selected
+            assert environment["EXCULPATA_COMPOSE_PROJECT"].startswith(names + "-")
+            calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(installer, "_run", run)
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: ("synthetic-next", ROOT))
+    monkeypatch.setattr(sys, "argv", ["install", command, "--root", str(root), "--dry-run", "--non-interactive", "--no-backup"])
+    assert installer.main() == 0
+    assert calls
+    assert installer._node_names(root) == names
+    assert installer._app_env(root) == paths["config"] / selected
+    assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.parametrize("marker_names", [LEGACY_STEM, CURRENT_STEM])
+def test_cli_with_both_app_files_still_rejects_storage_generation_conflict(tmp_path, monkeypatch, marker_names):
+    names = CURRENT_STEM if marker_names == LEGACY_STEM else LEGACY_STEM
+    root, _, paths = configured_node(tmp_path, names=names)
+    # Explicit durable naming evidence for both legacy and current nodes.
+    record = root / "installation.json"
+    metadata = json.loads(record.read_text())
+    metadata["names"] = names
+    record.write_text(json.dumps(metadata))
+    other = paths["config"] / f"{marker_names}.env"
+    other.write_bytes((paths["config"] / f"{names}.env").read_bytes())
+    (paths["storage"] / f".{marker_names}-managed-storage.json").write_text("{}")
+    monkeypatch.setattr(installer, "_doctor", lambda *a: pytest.fail("conflict reached doctor"))
+    monkeypatch.setattr(sys, "argv", ["install", "doctor", "--root", str(root), "--dry-run", "--non-interactive"])
+    assert installer.main() == 1

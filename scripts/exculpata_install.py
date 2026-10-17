@@ -91,10 +91,19 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
             if record["names"] not in (f"{LEGACY_STEM}", "exculpata"):
                 raise NamingError("Saved installation naming generation is invalid.")
             generations.add(record["names"])
+        else:
+            # Installation records predating the naming field are legacy nodes.
+            generations.add(LEGACY_STEM)
+    config_generations = set()
     for names in (f"{LEGACY_STEM}", "exculpata"):
         path = root / "config" / f"{names}.env"
         if path.exists() or path.is_symlink():
-            generations.add(names)
+            config_generations.add(names)
+    # When both candidate files exist, their filenames do not establish two
+    # storage generations. Keep the durable metadata/markers authoritative and
+    # let the application-file selector choose which configuration is read.
+    if len(config_generations) == 1:
+        generations.update(config_generations)
     storage = storage_root or root / "matter-storage"
     if (root / "compose.env").is_symlink():
         raise NamingError("Saved Compose configuration cannot be a symbolic link.")
@@ -111,7 +120,7 @@ def _detected_names(root: Path, storage_root: Path | None = None) -> str | None:
     if generations:
         return generations.pop()
     # P2 may already use EXCULPATA environment keys; those are not a migration.
-    if (root / "installation.json").exists() or (root / "compose.env").exists() or _legacy_account():
+    if config_generations or installation.exists() or (root / "compose.env").exists() or _legacy_account():
         return f"{LEGACY_STEM}"
     return None
 
@@ -148,8 +157,25 @@ def _default_root() -> Path:
     return legacy if _detected_names(legacy) == f"{LEGACY_STEM}" else Path("/srv/exculpata")
 
 
+def _selected_app_env(config: Path, saved: Mapping[str, str], *, names: str | None = None) -> Path:
+    """One selection shared by Compose and the node lifecycle."""
+    selected = _env(f"{LEGACY_ENV_PREFIX}APP_ENV_FILE", "", environ=saved)
+    if not selected:
+        selected = "exculpata.env" if (config / "exculpata.env").is_file() else f"{names or LEGACY_STEM}.env"
+    if selected in {".", ".."} or Path(selected).name != selected or "\\" in selected:
+        raise RuntimeError("application environment selection must be a filename inside the config root")
+    return config / selected
+
+
 def _app_env(root: Path, *, names: str | None = None) -> Path:
-    return root / "config" / f"{names or _node_names(root)}.env"
+    compose = root / "compose.env"
+    if compose.is_symlink():
+        raise RuntimeError("saved node configuration is unavailable or unsafe")
+    saved = _dotenv(compose) if compose.is_file() else {}
+    config = root / "config"
+    if Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", str(config), environ=saved)) != config:
+        raise RuntimeError("saved config mount disagrees with the installed node layout")
+    return _selected_app_env(config, saved, names=names)
 
 
 def _write_env_values(path: Path, values: Mapping[str, object], heading: str) -> None:
@@ -175,11 +201,8 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Select one complete application file; never merge old and new settings.
     # Explicit saved names remain authoritative, including a missing file (which
     # Compose must report). Unrelated shell values were removed above.
-    selected = _env(f"{LEGACY_ENV_PREFIX}APP_ENV_FILE", "", environ=saved)
-    if not selected:
-        config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
-        selected = "exculpata.env" if (config / "exculpata.env").is_file() else f"{LEGACY_STEM}.env"
-    result["EXCULPATA_APP_ENV_FILE"] = selected
+    config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
+    result["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(config, saved).name
     return result
 
 
@@ -2852,6 +2875,8 @@ def _configure(
         saved = _dotenv(root / "compose.env")
         for key in (f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT", f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE"):
             compose_values[key] = _env(key, f"{LEGACY_STEM}", environ=saved)
+        if "EXCULPATA_APP_ENV_FILE" in compose_values:
+            compose_values["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(paths["config"], saved, names=names).name
     app_values: dict[str, object] = {
         "CASE_INTELLIGENCE_AUTH_MODE": auth,
         "CASE_INTELLIGENCE_SECURE_COOKIE": 1,
@@ -4073,7 +4098,8 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         return
     old_installation_text = (root / "installation.json").read_text(encoding="utf-8")
     old_compose_text = (root / "compose.env").read_text(encoding="utf-8")
-    old_app_text = _app_env(root).read_text(encoding="utf-8")
+    app_path = _app_env(root)
+    old_app_text = app_path.read_text(encoding="utf-8")
     old_transcription_text = (root / "config" / "transcription.env").read_text(encoding="utf-8")
     updated = dict(installation)
     updated.update(
@@ -4122,7 +4148,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
             try:
                 _atomic_private_write(root / "compose.env", old_compose_text)
                 _atomic_private_write(root / "installation.json", old_installation_text)
-                _atomic_private_write(_app_env(root), old_app_text)
+                _atomic_private_write(app_path, old_app_text)
                 _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
                 rollback = _compose(root, profiles, release=old_release, auth=auth)
                 _run(console, [*rollback, "up", "-d", "--remove-orphans"])

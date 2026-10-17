@@ -924,7 +924,11 @@ The installer keeps the saved application env file on upgrade. An explicit
 `EXCULPATA_APP_ENV_FILE` in `compose.env` wins (the previous-prefix alias is
 also accepted). Otherwise it selects `exculpata.env` if present in the saved
 config root, then `recordbench.env`. The missing new-name file does not require
-renaming or copying an existing configuration. Fresh installs still write
+renaming or copying an existing configuration. Validation, diagnostics, updates
+and rollback use that same selected file; custom selections must be filenames
+inside the config root. Keeping both filenames does not migrate the node’s
+saved naming generation; conflicting storage markers or installation metadata
+still block the operation. Fresh installs still write
 `exculpata.env`. Direct `docker compose` cannot detect filenames: set
 `EXCULPATA_APP_ENV_FILE` to the intended filename when both files exist or when
 using a new-name file; its unset default remains `recordbench.env`.
