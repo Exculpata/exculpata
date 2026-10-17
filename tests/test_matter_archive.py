@@ -145,14 +145,14 @@ def test_cross_matter_and_operational_canaries_are_absent_but_failed_work_remain
 def test_unknown_schema_blocks_instead_of_omitting_or_exporting(archive_case, change):
     bench, matter, store = archive_case
     close(bench, matter)
-    with fixture_write(bench.workspace):
+    with fixture_write(bench.workspace) as connection:
         statements = {
             'table': 'CREATE TABLE future_records(matter_id,text)',
             'column': 'ALTER TABLE workbench_report ADD COLUMN future_secret TEXT',
             'authorization_column': 'ALTER TABLE workbench_case_purge_authority ADD COLUMN future_secret TEXT',
             'binding_column': 'ALTER TABLE workbench_case_session_binding ADD COLUMN future_secret TEXT',
         }
-        bench.workspace.connection.execute(statements[change])
+        connection.execute(statements[change])
     with pytest.raises(ArchiveProblem):
         build_matter_archive(bench, matter, OWNER, source_store=store)
     assert not list((bench.storage.root / 'preservation-exports').iterdir())

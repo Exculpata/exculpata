@@ -5,10 +5,18 @@ corrupt internal state, keep the complete mutation inside ``fixture_write``.
 """
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 import re
 
 
-_nested_connections = ContextVar("fixture_write_nested_connections", default=())
+_active_scopes = ContextVar("fixture_write_active_scopes", default=())
+
+
+@dataclass
+class _FixtureScope:
+    connection: object
+    nested: bool
+    active: bool = True
 
 
 @contextmanager
@@ -22,16 +30,22 @@ def fixture_write(workspace):
     """
     with workspace._lock:
         connection = workspace.connection
-        if connection.in_transaction:
-            with _nested_write(connection):
-                token = _nested_connections.set((*_nested_connections.get(), connection))
-                try:
+        active = _active_scopes.get()
+        nested = connection.in_transaction or any(scope.active and scope.connection is connection for scope in active)
+        scope = _FixtureScope(connection, nested)
+        token = _active_scopes.set((*active, scope))
+        try:
+            if nested:
+                with _nested_write(connection):
                     yield _FixtureConnection(connection, nested=True)
-                finally:
-                    _nested_connections.reset(token)
-        else:
-            with connection:
-                yield _FixtureConnection(connection)
+            else:
+                with connection:
+                    yield _FixtureConnection(connection)
+        finally:
+            # Copied contexts retain the same scope object after this boundary
+            # exits. They must not mistake it for a live transaction owner.
+            scope.active = False
+            _active_scopes.reset(token)
 
 
 def _reject_transaction_control():
@@ -70,7 +84,7 @@ class _FixtureConnection:
 
     def _owns_caller_transaction(self):
         # An outer handle retained inside a nested boundary must not bypass it.
-        return self._nested or any(item is self._connection for item in _nested_connections.get())
+        return self._nested or any(scope.active and scope.connection is self._connection and scope.nested for scope in _active_scopes.get())
 
     def _check_transaction_control(self):
         if self._owns_caller_transaction():
@@ -163,6 +177,10 @@ class _FixtureCursor:
 @contextmanager
 def _nested_write(connection):
     _check_nested_schema(connection)
+    if not connection.in_transaction:
+        # A read-first outer fixture is still the transaction owner. Without
+        # BEGIN, releasing an outermost savepoint would commit the inner write.
+        connection.execute('BEGIN')
     connection.execute('SAVEPOINT fixture_write_nested')
     try:
         yield

@@ -183,7 +183,7 @@ def test_pre_basis_active_source_check_fails_closed_after_backup_restore(tmp_pat
         legacy.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
-        legacy.commit()
+        legacy.commit()  # fixture-write: Commit the offline legacy schema before copying the closed database.
         legacy.backup(destination)
     finally:
         destination.close()

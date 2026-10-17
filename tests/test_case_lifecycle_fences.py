@@ -28,8 +28,8 @@ def test_content_fence_blocks_direct_and_indirect_mutations_and_survives_restart
          ('message-' + 'f' * 32, conversation.conversation_id, 2, 'user', 'Generated late message', '{}', store._now())),
     ]:
         with pytest.raises(sqlite3.IntegrityError, match='frozen'):
-            with fixture_write(store):
-                store.connection.execute(statement, parameters)
+            with fixture_write(store) as connection:
+                connection.execute(statement, parameters)
     reopened = WorkspaceStore(store.path, clock=clock)
     try:
         assert reopened.get_conversation_any(matter.matter_id, conversation.conversation_id) == original

@@ -459,7 +459,7 @@ def test_postgres_retention_failure_does_not_skip_legacy_basis_repair(
         database.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
-        database.commit()
+        database.commit()  # fixture-write: Commit the offline migration fixture while the original workbench is closed.
     finally:
         database.close()
 
@@ -564,7 +564,7 @@ def test_postgres_projection_and_rollback_failure_keeps_repairing_catalogs(
         database.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
-        database.commit()
+        database.commit()  # fixture-write: Commit the offline migration fixture while the original workbench is closed.
     finally:
         database.close()
 

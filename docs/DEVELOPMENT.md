@@ -114,7 +114,9 @@ fixture writes and hold it across a complete manual media seed sequence
 (queue, claim, import, finish). The helper acquires the current workspace lock
 before entering the connection transaction and keeps it through commit or
 rollback. Nested SQL fixtures use a savepoint without committing their caller's
-transaction. Public media methods may commit individually; the outer helper
+transaction, even when the outer fixture has only read or created a table before
+entering the nested fixture. Finished scopes do not retain ownership in copied
+contexts. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
 Use the yielded handle for scripts, connection contexts and explicit transaction control. A nested
 handle rejects `executescript`, commit/rollback, transaction-control SQL, rollback conflict clauses and
@@ -135,9 +137,16 @@ at the specific statement; ordinary fixture setup must use the helper.
 Generator bodies are deferred work even when created inside the helper. Put
 their writes in a function that acquires its own fixture boundary, or use an
 eager operation while holding the helper. Function decorators, defaults and
-non-postponed function annotations execute immediately and require the boundary
+annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
+Class-local aliases remain separate from module and enclosing function aliases;
+methods and comprehensions resolve names through their lexical scope. A direct
+SQLite connection to a workspace path keeps that provenance: exempting its
+creation does not exempt subsequent writes, contexts or transaction control.
+Alias assignments across branches, loops and exception paths are merged
+conservatively. Dynamic SQL must use the yielded handle so transaction-ending
+statements cannot bypass its runtime checks.
 Writable PRAGMAs, including parenthesized forms and action PRAGMAs without
 arguments, require the same boundary as other mutations.
 Unannotated SQL callback parameters

@@ -271,8 +271,8 @@ def test_snapshot_and_manifest_immutable_and_sqlite_clean_restore(case, tmp_path
     for sql in ['UPDATE workbench_answer_context SET snapshot_json=snapshot_json',
                 'UPDATE workbench_answer_context_attempt SET manifest_json=manifest_json']:
         with pytest.raises(sqlite3.IntegrityError):
-            with fixture_write(store):
-                store.connection.execute(sql)
+            with fixture_write(store) as connection:
+                connection.execute(sql)
     backup = tmp_path / 'synthetic-control-backup.sqlite3'
     with store._lock, sqlite3.connect(backup) as target:
         store.connection.backup(target)

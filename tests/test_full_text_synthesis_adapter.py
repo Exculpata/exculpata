@@ -190,8 +190,8 @@ def test_human_edit_without_run_timestamp_change_invalidates_active_but_keeps_hi
 def test_source_revocation_invalidates_active_and_historical_receipts(ledger, change):
     ledger.add(1)
     receipt = ledger.prepare()["full_text_synthesis_input"]
-    with fixture_write(ledger):
-        ledger.connection.execute(change)
+    with fixture_write(ledger) as connection:
+        connection.execute(change)
     for historical in (False, True):
         with pytest.raises(WorkspaceProblem, match="source is missing"):
             ledger.check(receipt, historical=historical)
