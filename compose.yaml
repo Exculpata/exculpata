@@ -354,7 +354,16 @@ services:
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
+      HTTPS_PROXY: http://egress-proxy:3128
+      https_proxy: http://egress-proxy:3128
+      HTTP_PROXY: ""
+      http_proxy: ""
+      ALL_PROXY: ""
+      all_proxy: ""
+      NO_PROXY: localhost,127.0.0.1,::1,postgres,clamav,retrieval,generator,transcription-api
+      no_proxy: localhost,127.0.0.1,::1,postgres,clamav,retrieval,generator,transcription-api
     depends_on:
+      egress-proxy: {condition: service_healthy}
       postgres: {condition: service_healthy}
       clamav: {condition: service_healthy}
       retrieval: {condition: service_healthy, required: false}
@@ -377,7 +386,25 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
-    networks: [front, services, models]
+    networks: [app-egress, services, models]
+
+  egress-proxy:
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/egress-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    build:
+      context: ./deploy/egress-proxy
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 64
+    cpus: "1.0"
+    mem_limit: 128m
+    environment:
+      # The installer derives this one value from the selected app env_file.
+      # Empty configuration keeps local/Kerberos startup healthy and denies all.
+      OIDC_ISSUER: ${EXCULPATA_EGRESS_ISSUER:-}
+    networks: [app-egress, front]
 
   gateway:
     image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
@@ -471,6 +498,8 @@ networks:
   services:
     internal: true
   models:
+    internal: true
+  app-egress:
     internal: true
 
 secrets:

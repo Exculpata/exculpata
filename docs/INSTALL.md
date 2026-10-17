@@ -1,5 +1,9 @@
 # Installation playbook
 
+Review the [reference egress model](NETWORK_EGRESS.md) before configuring or
+upgrading OIDC. It covers issuer propagation, the internal app network, named
+stager/updater/gateway exceptions and outstanding live acceptance requirements.
+
 For a first CPU node, follow the short path below, then
 [sign in and create a practice matter](FIRST_RUN.md#cpu-practice-matter).
 The later sections are operator reference and recovery guidance.

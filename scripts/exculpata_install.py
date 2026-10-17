@@ -202,6 +202,14 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Compose must report). Unrelated shell values were removed above.
     config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
     result["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(config, saved).name
+    # Share only the issuer with the relay. Never give it the application's
+    # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
+    selected = _selected_app_env(config, saved)
+    application = _dotenv(selected) if selected.is_file() else {}
+    result["EXCULPATA_EGRESS_ISSUER"] = (
+        application.get("CASE_INTELLIGENCE_OIDC_ISSUER", "")
+        if application.get("CASE_INTELLIGENCE_AUTH_MODE") == "oidc" else ""
+    )
     return result
 
 

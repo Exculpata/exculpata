@@ -1,5 +1,9 @@
 # Security model
 
+The [reference network contract](NETWORK_EGRESS.md) defines app isolation,
+destination-limited OIDC CONNECT and the named outbound exceptions. Its static
+and socket-pair checks do not replace live container isolation acceptance.
+
 Exculpata assumes confidential case material and a trusted internal operator.
 It does not assume uploaded files, browser headers, model output, or model hubs
 are trustworthy.
