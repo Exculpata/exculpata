@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from case_intelligence.legacy_names import (
+    CURRENT_STEM,
     LEGACY_STEM,
 )
 
@@ -463,14 +464,18 @@ def main(argv=None):
             viewport(1024, 768)
             open_page(paths["notes"])
             expanded_panels()
-            preference = f"{LEGACY_STEM}:assistant:display:v2"
-            js("localStorage.setItem(arguments[0], 'open')", preference + ":compact")
+            preference = f"{CURRENT_STEM}:assistant:display:v2"
+            legacy_compact_preference = f"{LEGACY_STEM}:assistant:display:v2:compact"
+            js("localStorage.removeItem(arguments[0])", preference + ":compact")
+            js("localStorage.setItem(arguments[0], 'open')", legacy_compact_preference)
             question = find("#assistant-question")
             question.send_keys("Synthetic unsent question")
             picker = find("[data-assistant-conversation-picker]")
             picker.send_keys(Keys.NULL)
             viewport(820, 768)
             wait.until(lambda _: driver.switch_to.active_element == picker and picker.is_displayed())
+            wait.until(lambda _: js("return localStorage.getItem(arguments[0])", preference + ":compact") == "open")
+            assert js("return localStorage.getItem(arguments[0])", legacy_compact_preference) is None
             viewport(1024, 768)
             wait.until(lambda _: driver.switch_to.active_element == picker and picker.is_displayed())
             viewport(390, 844)
