@@ -20,6 +20,14 @@ import tokenize
 _WRITE = re.compile(r"(?:^|;)\s*(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|REINDEX|VACUUM|ATTACH|DETACH)\b", re.I)
 _TABLE = re.compile(r"\bworkbench_", re.I)
 _TRANSACTION = re.compile(r"^\s*(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b", re.I)
+_ROLLBACK_CONFLICT = re.compile(r"\b(?:OR|ON\s+CONFLICT)\s+ROLLBACK\b|\bRAISE\s*\(\s*ROLLBACK\b", re.I)
+_SQL_IDENTIFIER = r'''(?:\w+|"(?:""|[^"])*"|'(?:''|[^'])*'|`(?:``|[^`])*`|\[[^\]]*\])'''
+_PRAGMA = re.compile(rf"^\s*PRAGMA\s+(?:{_SQL_IDENTIFIER}\s*\.\s*)?({_SQL_IDENTIFIER})\s*(\()?", re.I)
+_ACTION_PRAGMAS = {"optimize", "wal_checkpoint", "incremental_vacuum", "shrink_memory"}
+_READ_ARGUMENT_PRAGMAS = {
+    "table_info", "table_xinfo", "table_list", "index_info", "index_xinfo",
+    "index_list", "foreign_key_list", "foreign_key_check", "integrity_check", "quick_check",
+}
 _SQL_METHODS = {"execute", "executemany", "executescript"}
 _TRANSACTION_METHODS = {"commit", "rollback"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
@@ -219,6 +227,12 @@ class _Check(ast.NodeVisitor):
             # Strip quoted values/comments so SELECT 'update' is still a read.
             commands = re.sub(r"'(?:''|[^'])*'|--[^\n]*|/\*[\s\S]*?\*/", " ", sql)
             writes = _WRITE.search(commands) or re.search(r"^\s*PRAGMA\b[^;]*=", commands, re.I)
+            pragma = _PRAGMA.match(re.sub(r"--[^\n]*|/\*[\s\S]*?\*/", " ", sql))
+            pragma_name = pragma[1].strip("\"'`[]").lower() if pragma else ""
+            if pragma and (pragma_name in _ACTION_PRAGMAS or (pragma[2] and pragma_name not in _READ_ARGUMENT_PRAGMAS)):
+                # Parentheses also set values: user_version(12) is a write.
+                # Keep argument-taking schema/integrity inspection read-only.
+                writes = True
             if re.match(r"\s*WITH\b", commands, re.I):
                 writes = writes or re.search(r"\b(?:INSERT|UPDATE|DELETE|REPLACE)\b", commands, re.I)
             independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
@@ -233,7 +247,7 @@ class _Check(ast.NodeVisitor):
             # parameter is unannotated or its table has no workbench_ prefix.
             if (unknown_write or (writes and (not independent_connection or _TABLE.search(sql)))) and receiver.connection not in self.protected:
                 self.flag(node, "SQL fixture write outside fixture_write")
-            if (method == "executescript" or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f"))) and receiver.connection in self.protected and not receiver.fixture_handle:
+            if (method == "executescript" or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f")) or _ROLLBACK_CONFLICT.search(commands)) and receiver.connection in self.protected and not receiver.fixture_handle:
                 self.flag(node, "transaction control requires the yielded fixture_write handle")
         if method in _TRANSACTION_METHODS and not imported_function:
             # Product rollback APIs take domain arguments; a connection's
@@ -278,10 +292,18 @@ class _Check(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        protected = self.protected
-        self.protected = set()
+        positional = [*node.args.posonlyargs, *node.args.args]
+        defaults = dict(zip((argument.arg for argument in positional[-len(node.args.defaults):]), node.args.defaults))
+        defaults.update((argument.arg, default) for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults) if default is not None)
+        for default in defaults.values():
+            self.visit(default)
+        default_values = {name: self.value(default) for name, default in defaults.items()}
+        aliases, protected = self.aliases, self.protected
+        self.aliases, self.protected = aliases.copy(), set()
+        for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
+            self.aliases[argument.arg] = default_values.get(argument.arg, _Value())
         self.visit(node.body)
-        self.protected = protected
+        self.aliases, self.protected = aliases, protected
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         # Python evaluates only the first iterable at generator creation. The

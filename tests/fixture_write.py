@@ -40,9 +40,20 @@ def _reject_transaction_control():
 
 def _check_nested_sql(sql):
     # SQLite permits leading comments, empty statements and a UTF-8 BOM.
-    commands = re.sub(r"--[^\n]*|/\*[\s\S]*?\*/", " ", sql).lstrip(";\ufeff \t\r\n\v\f")
-    if re.match(r"(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b", commands, re.I):
+    commands = re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"|`(?:``|[^`])*`|\[[^\]]*\]|--[^\n]*|/\*[\s\S]*?\*/", " ", sql).lstrip(";\ufeff \t\r\n\v\f")
+    if (re.match(r"(?:BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b", commands, re.I)
+            or re.search(r"\b(?:OR|ON\s+CONFLICT)\s+ROLLBACK\b|\bRAISE\s*\(\s*ROLLBACK\b", commands, re.I)):
         _reject_transaction_control()
+
+
+def _check_nested_schema(connection):
+    # A plain INSERT can invoke a rollback policy stored in a constraint or
+    # trigger. Reject that schema before starting a nested fixture rather than
+    # discover transaction loss after the caller's pending work is gone.
+    for database in connection.execute('PRAGMA database_list'):
+        name = database[1].replace('"', '""')
+        for row in connection.execute(f'SELECT sql FROM "{name}".sqlite_schema WHERE sql IS NOT NULL'):
+            _check_nested_sql(row[0])
 
 
 class _FixtureConnection:
@@ -149,12 +160,13 @@ class _FixtureCursor:
 
 @contextmanager
 def _nested_write(connection):
+    _check_nested_schema(connection)
     connection.execute('SAVEPOINT fixture_write_nested')
     try:
         yield
     except BaseException:
-        # OR ROLLBACK can end the entire transaction and remove the savepoint.
-        # Preserve that database error instead of masking it during cleanup.
+        # External APIs or SQLite failures can remove the savepoint. Preserve
+        # the original error instead of masking it during cleanup.
         if connection.in_transaction:
             connection.execute('ROLLBACK TO fixture_write_nested')
             connection.execute('RELEASE fixture_write_nested')

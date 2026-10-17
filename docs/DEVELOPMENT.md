@@ -117,11 +117,13 @@ rollback. Nested SQL fixtures use a savepoint without committing their caller's
 transaction. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
 Use the yielded handle for scripts, connection contexts and explicit transaction control. A nested
-handle rejects `executescript`, commit/rollback, transaction-control SQL and
+handle rejects `executescript`, commit/rollback, transaction-control SQL, rollback conflict clauses and
 transaction-mode changes or connection context entry before they can end the caller's transaction. The same
 restriction applies to a retained outer handle or cursor during the nested
 boundary. Use ordinary `execute`/`executemany` statements for nested SQL fixtures;
 the helper preserves any existing SQLite authorizer.
+Nested fixtures reject schemas containing transaction-wide rollback constraints
+or triggers before executing fixture writes, including in attached databases.
 Do not retain the yielded connection for later writes or wait for workers/HTTP
 while holding the helper. Keep source mutation guards outside it.
 
@@ -132,7 +134,10 @@ stopped-database migration/restore tests require a narrowly documented exception
 at the specific statement; ordinary fixture setup must use the helper.
 Generator bodies are deferred work even when created inside the helper. Put
 their writes in a function that acquires its own fixture boundary, or use an
-eager operation while holding the helper. Unannotated SQL callback parameters
+eager operation while holding the helper. Lambda defaults execute immediately
+and require the boundary at definition time; their bodies remain deferred.
+Parenthesized writable PRAGMAs require the same boundary as other mutations.
+Unannotated SQL callback parameters
 and direct connection commit/rollback calls are checked conservatively too.
 The same lock must cover direct reads, backups and transaction-state assertions.
 For a rollback check, hold it across the rejected operation and the assertion so

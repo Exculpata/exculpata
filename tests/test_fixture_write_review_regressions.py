@@ -210,3 +210,96 @@ def test_nested_connection_context_cannot_commit_caller_writes(tmp_path, target)
             assert connection.execute("SELECT * FROM synthetic_fixture").fetchall() == []
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('sql', [
+    "INSERT OR ROLLBACK INTO synthetic_fixture VALUES ('caller')",
+    "INSERT OR /* synthetic */ ROLLBACK INTO synthetic_fixture VALUES ('caller')",
+    "CREATE TABLE synthetic_conflict (value TEXT UNIQUE ON CONFLICT ROLLBACK)",
+])
+def test_nested_rollback_conflicts_preserve_caller_work(tmp_path, sql):
+    store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
+    try:
+        with fixture_write(store) as connection:
+            connection.execute('CREATE TABLE synthetic_fixture (value TEXT UNIQUE)')
+        with pytest.raises(ValueError, match='caller rollback'):
+            with fixture_write(store) as connection:
+                connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
+                with fixture_write(store) as nested:
+                    with pytest.raises(RuntimeError, match='fixture_write'):
+                        nested.execute(sql)
+                    assert connection.in_transaction
+                    assert [r[0] for r in connection.execute('SELECT value FROM synthetic_fixture')] == ['caller']
+                raise ValueError('caller rollback')
+        with fixture_write(store) as connection:
+            assert connection.execute('SELECT * FROM synthetic_fixture').fetchall() == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('arguments', ['seeded=', '*, seeded='])
+def test_guard_checks_eager_lambda_defaults(arguments):
+    source = f"callback = lambda {arguments}bench.workspace.connection.execute('DELETE FROM segment'): None"
+    assert check_fixture_writes(source)
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source) == []
+
+
+@pytest.mark.parametrize('sql', ['PRAGMA user_version(12)', 'PRAGMA main.application_id(12)',
+                                  'PRAGMA journal_mode(WAL)'])
+def test_guard_rejects_writable_parenthesized_pragmas(sql):
+    source = f'bench.workspace.connection.execute({sql!r})'
+    assert check_fixture_writes(source)
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source) == []
+
+
+@pytest.mark.parametrize('sql', ['PRAGMA table_info(segment)', 'PRAGMA main.table_xinfo(segment)',
+                                  'PRAGMA index_info(synthetic_index)', 'PRAGMA foreign_key_list(segment)',
+                                  'PRAGMA integrity_check(1)', 'PRAGMA user_version'])
+def test_guard_preserves_read_only_pragmas(sql):
+    assert check_fixture_writes(f'bench.workspace.connection.execute({sql!r})') == []
+
+
+@pytest.mark.parametrize('sql', ['PRAGMA main . user_version(12)', 'PRAGMA "main"."user_version"(12)',
+                                  "PRAGMA 'user_version'(12)", 'PRAGMA [user_version](12)'])
+def test_guard_checks_quoted_and_qualified_writable_pragmas(sql):
+    assert check_fixture_writes(f'bench.workspace.connection.execute({sql!r})')
+
+
+def test_guard_requires_yielded_handle_for_rollback_conflict_sql():
+    source = "with fixture_write(bench.workspace):\n    bench.workspace.connection.execute(\"INSERT OR ROLLBACK INTO segment VALUES ('synthetic')\")"
+    assert check_fixture_writes(source)
+
+
+@pytest.mark.parametrize('schema', ['main', 'temp', 'synthetic_attached'])
+@pytest.mark.parametrize('rollback_schema', ['constraint', 'trigger'])
+def test_nested_fixture_rejects_existing_transaction_rollback_schema(tmp_path, rollback_schema, schema):
+    store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
+    table = f'{schema}.synthetic_fixture'
+    try:
+        with fixture_write(store) as connection:
+            if schema == 'synthetic_attached':
+                connection.execute("ATTACH ':memory:' AS synthetic_attached")
+            conflict = ' ON CONFLICT ROLLBACK' if rollback_schema == 'constraint' else ''
+            connection.execute(f'CREATE TABLE {table} (value TEXT UNIQUE{conflict})')
+            if rollback_schema == 'trigger':
+                connection.execute(f"CREATE TRIGGER {schema}.synthetic_rollback BEFORE INSERT ON synthetic_fixture "
+                                   "WHEN NEW.value = 'conflict' BEGIN SELECT RAISE(ROLLBACK, 'synthetic conflict'); END")
+        with pytest.raises(ValueError, match='caller rollback'):
+            with fixture_write(store) as connection:
+                connection.execute(f"INSERT INTO {table} VALUES ('caller')")
+                with pytest.raises(RuntimeError, match='fixture_write'):
+                    with fixture_write(store) as nested:
+                        value = 'caller' if rollback_schema == 'constraint' else 'conflict'
+                        nested.execute(f'INSERT INTO {table} VALUES (?)', (value,))
+                assert connection.in_transaction
+                assert [r[0] for r in connection.execute(f'SELECT value FROM {table}')] == ['caller']
+                raise ValueError('caller rollback')
+        with fixture_write(store) as connection:
+            assert connection.execute(f'SELECT * FROM {table}').fetchall() == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('sql', ['PRAGMA optimize', 'PRAGMA main.wal_checkpoint', 'PRAGMA incremental_vacuum'])
+def test_guard_rejects_action_pragmas_without_arguments(sql):
+    assert check_fixture_writes(f'bench.workspace.connection.execute({sql!r})')

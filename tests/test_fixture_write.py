@@ -140,7 +140,7 @@ def test_nested_fixture_write_preserves_caller_transaction(tmp_path):
         store.close()
 
 
-def test_nested_fixture_preserves_sqlite_rollback_error(tmp_path):
+def test_nested_fixture_preserves_sqlite_constraint_error_and_caller_work(tmp_path):
     store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
     try:
         with fixture_write(store) as connection:
@@ -149,8 +149,8 @@ def test_nested_fixture_preserves_sqlite_rollback_error(tmp_path):
             connection.execute("INSERT INTO synthetic_fixture VALUES ('duplicate')")
             with pytest.raises(sqlite3.IntegrityError, match='UNIQUE constraint'):
                 with fixture_write(store) as nested:
-                    nested.execute("INSERT OR ROLLBACK INTO synthetic_fixture VALUES ('duplicate')")
-            assert not connection.in_transaction
-            assert connection.execute('SELECT value FROM synthetic_fixture').fetchall() == []
+                    nested.execute("INSERT INTO synthetic_fixture VALUES ('duplicate')")
+            assert connection.in_transaction
+            assert [row[0] for row in connection.execute('SELECT value FROM synthetic_fixture')] == ['duplicate']
     finally:
         store.close()
