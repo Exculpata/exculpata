@@ -359,3 +359,110 @@ def test_learned_retrieval_floors_follow_worker_health(monkeypatch):
         ),
     )
     assert _healthy_retrieval_worker() is None
+
+
+def _lane_question(near_misses=()):
+    return Question(
+        "q-lanes", "m", "fact_lookup", "Where was the blue crate?", False,
+        (Fact("crate", "dock four", (Support("ref", "dock four"),)),), (), tuple(near_misses),
+    )
+
+
+def _candidates(*pairs):
+    from case_intelligence.review_bench_v2 import Candidate
+    return tuple(
+        Candidate("m", document_id, f"{document_id}-c1", f"{document_id}.txt", 1, document_id, score)
+        for document_id, score in pairs
+    )
+
+
+def _lane_passages(*ids, text=None):
+    return {
+        passage_id: Passage(
+            passage_id, "m", f"{passage_id}.txt", "0" * 64, "document", "Line 1",
+            (text or {}).get(passage_id, f"token{passage_id}"),
+        )
+        for passage_id in ids
+    }
+
+
+def _diagnose(question, trace, final_ids, *, top_k=2, floors=None, passages=None, rerank_limit=40):
+    from case_intelligence.defense_eval_lanes import lane_diagnostics_from_trace
+    return lane_diagnostics_from_trace(
+        question, trace, top_k=top_k, rrf_k=60, rerank_limit=rerank_limit,
+        final_ids=final_ids, deep_prefix_matches=True, floors=floors,
+        passages=passages or _lane_passages("ref", "a", "b", "c"),
+    )
+
+
+def test_lane_diagnostics_classify_recall_when_no_lane_returns_the_passage():
+    dense = _candidates(("a", 0.9), ("b", 0.8))
+    trace = {"lexical": (), "dense": dense, "fused": dense, "reranked": dense}
+    [entry] = _diagnose(_lane_question(), trace, ["a", "b"])["passages"]
+    assert entry["missed"] is True
+    assert (entry["lexical_status"], entry["vector_status"], entry["fused_status"]) == ("recall",) * 3
+    assert (entry["miss_reason"], entry["miss_class"], entry["miss_lane"]) == (
+        "not_retrieved", "recall", "lexical+vector",
+    )
+
+
+def test_lane_diagnostics_measure_ranks_and_flag_a_fusion_cutoff():
+    lexical = _candidates(("a", 0.3))
+    dense = _candidates(("a", 0.9), ("b", 0.8), ("ref", 0.7))
+    fused = _candidates(("a", 0.0), ("b", 0.0))
+    trace = {"lexical": lexical, "dense": dense, "fused": fused, "reranked": fused}
+    diagnostics = _diagnose(_lane_question(), trace, ["a", "b"], rerank_limit=2)
+    [entry] = diagnostics["passages"]
+    assert diagnostics["fused_matches_rerank_input"] is True
+    assert (entry["lexical_rank"], entry["vector_rank"], entry["fused_rank"], entry["rerank_rank"]) == (
+        None, 3, 3, None,
+    )
+    assert entry["vector_score"] == 0.7
+    assert (entry["miss_reason"], entry["miss_class"], entry["miss_lane"]) == ("ranked_out", "ranking", "fused")
+
+
+def test_lane_diagnostics_report_a_score_floor_and_post_rerank_reordering():
+    dense = _candidates(("ref", 0.60), ("a", 0.9), ("b", 0.8))
+    reranked = _candidates(("ref", 0.95), ("a", 0.9), ("b", 0.85))
+    trace = {"lexical": (), "dense": dense, "fused": dense, "reranked": reranked}
+    floored = _diagnose(_lane_question(), trace, ["a", "b"], floors=(0.72, 0.80))["passages"][0]
+    assert floored["score_floor_filtered"] is True
+    assert (floored["miss_reason"], floored["miss_lane"]) == ("score_floor", "rerank")
+    reordered = _diagnose(_lane_question(), trace, ["a", "b", "ref"])["passages"][0]
+    assert (reordered["rerank_rank"], reordered["final_rank"]) == (1, 3)
+    assert (reordered["miss_reason"], reordered["miss_lane"]) == ("ranked_out", "post_rerank")
+
+
+def test_lane_diagnostics_attribute_crowding_to_named_near_misses_and_duplicates():
+    order = _candidates(("a", 0.9), ("b", 0.8), ("ref", 0.7))
+    trace = {"lexical": order, "dense": order, "fused": order, "reranked": order}
+    named = _diagnose(_lane_question(near_misses=("a",)), trace, ["a", "b", "ref"])["passages"][0]
+    assert named["near_duplicates_ahead"] == ["a"]
+    assert named["miss_reason"] == "crowded_by_near_duplicates"
+    shared = "the blue crate stood at dock four by the north wall"
+    texts = _lane_passages("ref", "a", "b", text={"ref": shared, "b": shared + " today"})
+    textual = _diagnose(_lane_question(), trace, ["a", "b", "ref"], passages=texts)["passages"][0]
+    assert textual["near_duplicates_ahead"] == ["b"]
+    plain = _diagnose(_lane_question(), trace, ["a", "b", "ref"])["passages"][0]
+    assert (plain["near_duplicates_ahead"], plain["miss_reason"]) == ([], "ranked_out")
+
+
+def test_lane_summary_counts_misses_by_lane_and_renders_a_table(suite):
+    from case_intelligence.defense_eval_lanes import summarize_lane_diagnostics
+    dense = _candidates(("a", 0.9), ("b", 0.8))
+    trace = {"lexical": (), "dense": dense, "fused": dense, "reranked": dense}
+    rows = [{
+        "question_id": "q-lanes", "type": "fact_lookup",
+        "lane_diagnostics": _diagnose(_lane_question(), trace, ["a", "b"]),
+    }, {"question_id": "q-absent", "type": "not_in_record", "lane_diagnostics": None}]
+    summary = summarize_lane_diagnostics(rows)
+    assert summary["questions_diagnosed"] == 1
+    assert summary["missed_passages"] == 1
+    assert summary["by_class"] == {"recall": 1}
+    assert summary["by_lane_status"]["vector"] == {"hit": 0, "ranking": 0, "recall": 1}
+    card = run_eval(suite, ReferenceStub(), model={"mode": "stub"})
+    assert "lane_diagnostics" not in card
+    card["lane_diagnostics"] = summary
+    rendered = render_markdown(card)
+    assert "## Per-lane rank diagnostics" in rendered
+    assert "| `q-lanes` | `ref` | absent | absent | absent | absent | beyond depth | not_retrieved | recall |" in rendered
