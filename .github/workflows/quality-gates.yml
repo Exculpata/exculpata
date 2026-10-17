@@ -51,7 +51,7 @@ jobs:
       - name: Install publication inspection dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          sudo apt-get install --yes --no-install-recommends ffmpeg libimage-exiftool-perl
           python -m pip install --disable-pip-version-check 'pypdf>=6,<7'
       - name: Scan exact candidate tree and complete reachable history
         if: ${{ !github.event.deleted }}
@@ -133,7 +133,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
             -o APT::Keep-Downloaded-Packages=true install --yes --no-install-recommends \
-            ffmpeg imagemagick poppler-utils tesseract-ocr \
+            ffmpeg libimage-exiftool-perl imagemagick poppler-utils tesseract-ocr \
             tesseract-ocr-eng tesseract-ocr-spa
       - name: Bootstrap contributor environment
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
