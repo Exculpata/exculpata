@@ -131,3 +131,12 @@ def test_asr_staging_and_offline_lookup_require_identical_files(monkeypatch):
     assert calls[1][1]['revision'] == 'a'*40
     assert calls[0][1]['local_files_only'] is False
     assert calls[1][1]['local_files_only'] is True
+
+
+def test_receipt_records_measured_recognition_error_rates():
+    manifest, expected, actual = sample()
+    records = gate.compare(manifest, expected, actual, full=True)
+    assert records[0]['metric'] == 'cer'
+    assert records[1]['metric'] == 'wer'
+    assert records[0]['error_rate'] == records[1]['error_rate'] == 0
+    assert records[1]['tolerance'] == .15

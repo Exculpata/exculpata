@@ -94,6 +94,7 @@ def compare(manifest, expected, actual, *, full=False):
             want = expected[group][key]
             got = actual.get(key)
             errors = []
+            measurement = {}
             if not isinstance(got, dict):
                 errors.append('missing observed case')
             elif group in ('documents', 'audio'):
@@ -106,6 +107,7 @@ def compare(manifest, expected, actual, *, full=False):
                         errors.append('projected transcript differs from observed ASR text')
                 metric = 'cer' if group == 'documents' else 'wer'
                 score = error_rate(before if metric == 'cer' else before.split(), after if metric == 'cer' else after.split())
+                measurement = {'metric': metric, 'error_rate': score, 'tolerance': want[metric]}
                 if score > want[metric]:
                     errors.append(f'{metric}={score:.4f} exceeds {want[metric]:.4f}')
                     errors.extend(difflib.unified_diff([before+'\n'], [after+'\n'], fromfile='expected', tofile='observed'))
@@ -137,7 +139,7 @@ def compare(manifest, expected, actual, *, full=False):
                 for required in want['citations']:
                     if not any(c.get('document_id') == required['document_id'] and normalize(required['span']) in normalize(c.get('excerpt', '')) and c.get('source_valid') is True for c in citations):
                         errors.append(f'missing required citation: {required}')
-            results.append({'id': key, 'passed': not errors, 'diff': errors})
+            results.append({'id': key, 'passed': not errors, 'diff': errors, **measurement})
     return results
 
 
@@ -178,7 +180,8 @@ def main(argv=None):
             with args.proposal.open('x') as stream:
                 json.dump({'observations':actual,'review_required':True}, stream, indent=2)
         for row in results:
-            print(('PASS' if row['passed'] else 'FAIL')+' '+row['id'])
+            score = f" {row['metric']}={row['error_rate']:.4f} limit={row['tolerance']:.4f}" if 'metric' in row else ''
+            print(('PASS' if row['passed'] else 'FAIL')+' '+row['id']+score)
             for line in row['diff']:
                 print('  '+line.rstrip())
         print(f"{sum(r['passed'] for r in results)}/{len(results)} cases passed ({receipt['mode']})")
