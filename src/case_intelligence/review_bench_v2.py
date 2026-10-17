@@ -808,6 +808,9 @@ def upsert_postgres_document(
         )
     if not connection.autocommit:
         connection.commit()
+    from .embedding_index import note_populated_index
+
+    note_populated_index(populated=bool(units))
 
 
 def delete_postgres_document(connection, *, matter_id: str, document_id: str) -> None:

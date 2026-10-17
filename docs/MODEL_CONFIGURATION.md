@@ -77,9 +77,12 @@ in [`compose.yaml`](../compose.yaml) (the `generator` service). They cannot be
 combined with an external server.
 
 Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` from
-`RECORDBENCH_GENERATOR_ALLOWED_HOSTS`, defaulting to `generator`, which overrides
-the application env file. The external-generator option writes the chosen host
-there. A non-loopback host is refused until that allowlist contains it. Inside
+`EXCULPATA_GENERATOR_ALLOWED_HOSTS`, falling back to an older
+`RECORDBENCH_GENERATOR_ALLOWED_HOSTS` value only when the Exculpata name is
+unset, and otherwise defaulting to `generator`. The external-generator option
+writes the host it just checked into `EXCULPATA_GENERATOR_ALLOWED_HOSTS`, so a
+stale value cannot replace it. A non-loopback host is refused until that
+allowlist contains it. Inside
 the app container, loopback is the container itself, so a server on the host is
 not reached by `127.0.0.1`. The installer asks again and explains that; use a
 LAN address or the Docker host-gateway name with the same port. That name is
@@ -88,18 +91,25 @@ LAN address or the Docker host-gateway name with the same port. That name is
 alias when the chosen host is the gateway name. The default alias is
 `host-gateway.example.test`.
 
-A host that is not loopback, private, link-local, a single-label Docker name,
-or `*.local` is outside the local network. The installer states that matter
-text would be sent there and continues only after an explicit `yes`, or
-`--confirm-remote-generator` when input is not interactive. Invalid URLs are
-asked again. Non-interactive invalid input stops with the same explanation.
+A name is local only when every address it resolves to is loopback, RFC1918, or
+IPv6 ULA. A public address requires explicit confirmation before it is saved.
+Link-local addresses, including the cloud metadata address, and unspecified
+addresses are rejected instead of confirmed. The resolved addresses are checked
+again when the generator connects, so a name cannot rebind to a public,
+link-local, or unspecified address. One-word names and `*.local` names are not
+trusted from the spelling alone. Invalid URLs are asked again. Non-interactive
+invalid input stops with the same explanation. `--confirm-remote-generator`
+supplies the confirmation for a public host when input is not interactive. It
+does not allow a link-local or unspecified address.
 
 Startup sends one small strict-schema request. `doctor` sends the same request
 unless `--dry-run` is set. Ollama is checked with native `format`. llama.cpp,
 LM Studio, and vLLM are checked with nested `json_schema.schema`. If the body
 does not match, generation validates locally and retries, then refuses the
-answer. The doctor line and the administrator page say `verified`,
-`not enforced`, `refused`, or `not checked`.
+answer. The first probe asks for a value the schema rejects, so a model that
+only follows the prompt is not reported as enforced. The doctor line and the
+administrator page say `verified`, `not enforced / validated locally`,
+`refused`, or `not checked`.
 
 `doctor` and the installer also print CPU cores, RAM, GPU VRAM when a tool
 reports it, and Apple Silicon when the host is Darwin arm64. The suggestion
@@ -107,9 +117,11 @@ comes from [`config/model_profiles.json`](../config/model_profiles.json). A
 missing tool selects the CPU profile and says so. Nothing is downloaded.
 
 Embeddings and reranking stay in-process. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
-Granite and the ModernBERT reranker on CPU. Changing the embedding model away
-from the pinned Granite id makes `doctor` say that existing indexes must be
-rebuilt. Exculpata does not rebuild them automatically.
+Granite and the ModernBERT reranker on CPU. When an index already contains
+vectors and the embedding model or revision changes, `doctor` and startup say
+that existing indexes must be rebuilt. Exculpata does not rebuild them
+automatically. An API key for the answer server is read from
+`/run/exculpata-secrets/generator-api-key`.
 
 Answers whose model id has no passing row in
 [`config/model_qualifications.json`](../config/model_qualifications.json) are

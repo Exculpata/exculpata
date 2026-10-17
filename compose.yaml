@@ -374,11 +374,15 @@ services:
         source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
         target: /run/recordbench-secrets
         read_only: true
+      - type: bind
+        source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
+        target: /run/exculpata-secrets
+        read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
     extra_hosts:
-      - "${EXCULPATA_HOST_GATEWAY_ALIAS:-host-gateway.example.test}:host-gateway"
+      - "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway"
     networks: [front, services, models]
 
   gateway:

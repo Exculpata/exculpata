@@ -18,6 +18,7 @@ from jsonschema import Draft202012Validator
 
 PROBE_NAME = "exculpata_schema_probe"
 PROBE_MARKER = "exculpata-schema-ok"
+PROBE_CONFLICT = "exculpata-schema-refused"
 PROBE_ATTEMPTS = 3
 SCHEMA_SERVERS = ("ollama", "llamacpp", "lmstudio", "vllm")
 OPENAI_SERVERS = ("llamacpp", "lmstudio", "vllm")
@@ -30,6 +31,10 @@ PROBE_SCHEMA: dict[str, object] = {
 }
 
 _PROMPT = (
+    "Return only a JSON object with one field, marker, set to exculpata-schema-refused. "
+    "Do not return exculpata-schema-ok."
+)
+_REPAIR_PROMPT = (
     "Return only a JSON object with one field, marker, set to exculpata-schema-ok."
 )
 
@@ -49,7 +54,7 @@ class SchemaProbe:
     def label(self) -> str:
         return {
             "verified": "verified",
-            "validate_and_retry": "not enforced",
+            "validate_and_retry": "not enforced / validated locally",
             "refused": "refused",
             "unreachable": "not checked",
         }.get(self.status, "not checked")
@@ -131,13 +136,18 @@ def probe_schema_enforcement(
         )
         try:
             payload = sender(origin + path, body, header_map)
-        except SchemaTransportError:
+        except SchemaTransportError as exc:
             if saw_invalid:
                 continue
+            detail = str(exc).strip()
+            if detail in {"", "unreachable", "unreadable"}:
+                detail = (
+                    "The schema check could not reach the answer server."
+                )
             return SchemaProbe(
                 "unreachable",
                 sent,
-                "The schema check could not reach the answer server.",
+                detail,
                 "Confirm the server is running and that this host can open the configured URL. "
                 "A container name such as generator resolves only inside the application network.",
             )
@@ -146,22 +156,18 @@ def probe_schema_enforcement(
                 return SchemaProbe(
                     "verified",
                     sent,
-                    "The server returned the required JSON object on the first check.",
+                    "The server returned the schema value instead of the conflicting prompt value.",
                     "",
                 )
             return SchemaProbe(
                 "validate_and_retry",
                 sent,
-                "The server accepted the request but did not enforce the schema. "
-                "Later replies are checked locally and retried.",
+                "The server did not enforce the schema. Replies are validated locally.",
                 "Prefer a server build that enforces the nested JSON schema. "
                 "Answers still run, with local checks.",
             )
         saw_invalid = True
-        prompt = (
-            "The previous reply did not match the JSON schema. "
-            "Return only a JSON object with one field, marker, set to exculpata-schema-ok."
-        )
+        prompt = _REPAIR_PROMPT
     return SchemaProbe(
         "refused",
         sent,
@@ -225,6 +231,12 @@ def _urllib_transport(
         request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         request_headers.update(dict(headers))
         request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
+        try:
+            from .external_generator import DestinationRejected, require_resolved_destination
+
+            require_resolved_destination(url)
+        except DestinationRejected as exc:
+            raise SchemaTransportError(str(exc)) from exc
         try:
             with opener.open(request, timeout=timeout) as response:
                 raw = response.read(65_536)

@@ -25,6 +25,7 @@ from .review_quality import answer_advances_objective, classify_question
 from .generator_completion import (
     complete_structured as _complete_structured,
     generator_api_key as _generator_api_key,
+    guard_generator_destination as _guard_generator_destination,
     probe_generator as _probe_generator,
     refresh_generator_schema,
     repair_message as _repair_message,
@@ -266,6 +267,7 @@ def _bounded_json_request(
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    _guard_generator_destination(url)
     request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
@@ -290,6 +292,7 @@ def _bounded_json_get(
     url: str, *, timeout: float, headers: Mapping[str, str] | None = None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
+    _guard_generator_destination(url)
     request = urllib.request.Request(url, headers={"Accept": "application/json", **dict(headers or {})})
     try:
         open_request = opener.open if opener is not None else urllib.request.urlopen

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import ipaddress
 import json
 import subprocess
 import sys
@@ -12,10 +13,12 @@ import pytest
 
 from case_intelligence.external_generator import (
     HOST_GATEWAY_NAME,
+    DestinationRejected,
     EndpointRejected,
     environment_values,
     parse_generator_endpoint,
     require_local_or_confirmed,
+    require_resolved_destination,
 )
 from case_intelligence.generation import (
     GenerationUnavailable,
@@ -26,6 +29,7 @@ from case_intelligence.generation import (
     refresh_generator_schema,
 )
 from case_intelligence.generator_schema import (
+    PROBE_CONFLICT,
     PROBE_MARKER,
     PROBE_SCHEMA,
     SchemaProbe,
@@ -228,8 +232,20 @@ def test_schema_probe_reports_verified_retry_refused_and_unreachable(server):
         assert "schema" not in body["response_format"]
         assert body["response_format"]["json_schema"]["schema"]["required"] == ["marker"]
 
+    assert PROBE_CONFLICT in seen[0][1]["messages"][0]["content"]
+    assert PROBE_MARKER not in seen[0][1]["messages"][0]["content"].split("Do not return")[0]
+
+    following = dict(_valid(server))
+    if server == "ollama":
+        following["message"] = {"content": json.dumps({"marker": PROBE_CONFLICT})}
+    else:
+        following["choices"] = [{"message": {"content": json.dumps({"marker": PROBE_CONFLICT})}}]
+    obeyed, _calls = _probe(server, [following, _valid(server)])
+    assert obeyed.status == "validate_and_retry"
+    assert obeyed.label == "not enforced / validated locally"
+
     retried, calls = _probe(server, [_invalid(server), _valid(server)])
-    assert retried.status == "validate_and_retry" and retried.label == "not enforced"
+    assert retried.status == "validate_and_retry" and retried.label == "not enforced / validated locally"
     assert len(calls) == 2
 
     refused, calls = _probe(server, [_invalid(server), _invalid(server), _invalid(server)])
@@ -391,7 +407,26 @@ def test_qualification_registry_and_harness_seam(monkeypatch):
     assert qualification_label("synthetic-model") == UNVALIDATED_MODEL_LABEL
 
 
-def test_endpoint_acceptance_and_remote_confirmation():
+def _office_address():
+    return ipaddress.ip_address((10 << 24) + 8)
+
+
+def _trust_office_names(monkeypatch, *names):
+    import case_intelligence.external_generator as endpoints
+
+    office = _office_address()
+    original = endpoints._resolve_addresses
+
+    def resolve(hostname):
+        if hostname in names:
+            return (office,)
+        return original(hostname)
+
+    monkeypatch.setattr(endpoints, "_resolve_addresses", resolve)
+
+
+def test_endpoint_acceptance_and_remote_confirmation(monkeypatch):
+    _trust_office_names(monkeypatch, "synthetic-answers", HOST_GATEWAY_NAME)
     with pytest.raises(EndpointRejected, match="http or https"):
         parse_generator_endpoint("ollama", "not-a-url", "synthetic-model")
     with pytest.raises(EndpointRejected, match="/v1/chat/completions"):
@@ -413,7 +448,7 @@ def test_endpoint_acceptance_and_remote_confirmation():
         parse_generator_endpoint("lmstudio", "http://api.example.test:1234", "synthetic-model", remote_confirmed=True)
     )
     assert confirmed.remote_confirmed is True
-    values = environment_values(lan, api_key_file="/run/recordbench-secrets/generator-api-key")
+    values = environment_values(lan, api_key_file="/run/exculpata-secrets/generator-api-key")
     assert values["CASE_INTELLIGENCE_GENERATOR_BACKEND"] == "ollama"
     assert values["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     alias_args = _installer()._parser().parse_args([
@@ -460,6 +495,7 @@ def _configure_node(tmp_path, extra, monkeypatch=None):
 
 
 def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypatch, capsys):
+    _trust_office_names(monkeypatch, "synthetic-answers", HOST_GATEWAY_NAME)
     monkeypatch.setattr(sys, "stdin", io.StringIO(TOKEN + "\n"))
     installer, root, _args, paths = _configure_node(tmp_path, [
         "--external-generator", "ollama",
@@ -475,8 +511,9 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert application["CASE_INTELLIGENCE_GENERATOR_URL"] == "http://synthetic-answers:11434"
     assert application["CASE_INTELLIGENCE_GENERATOR_MODEL"] == "synthetic-model"
     assert application["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
-    assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == "/run/recordbench-secrets/generator-api-key"
-    assert compose["RECORDBENCH_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
+    assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == "/run/exculpata-secrets/generator-api-key"
+    assert compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
+    assert "RECORDBENCH_GENERATOR_ALLOWED_HOSTS" not in compose
     assert compose["RECORDBENCH_RETRIEVAL_DEVICE"] == "cpu"
     assert record["external_generator"] == {
         "server": "ollama",
@@ -521,11 +558,19 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert probes[0][1] == "ollama"
     assert probes[0][3]["Authorization"] == f"Bearer {TOKEN}"
 
+    (root / "state").mkdir(exist_ok=True)
+    (root / "state" / "embedding-index.json").write_text(json.dumps({
+        "model": "ibm-granite/granite-embedding-english-r2",
+        "revision": "47ea694b257b703fee9253d75c2b1f2985180498",
+        "populated": True,
+    }) + "\n")
     installer._replace_env(
-        root / "compose.env", "RECORDBENCH_EMBEDDING_MODEL", "synthetic/other-embedding", add_missing_aliases=True,
+        root / "compose.env", "EXCULPATA_EMBEDDING_MODEL", "synthetic/other-embedding", add_missing_aliases=True,
     )
     installer._doctor_generator(installer.Console(color=False), root, dry_run=True)
-    assert "Existing indexes must be rebuilt" in capsys.readouterr().out
+    assert "already has data" in capsys.readouterr().out
+    installer._replace_env(root / "compose.env", "EXCULPATA_GENERATOR_ALLOWED_HOSTS", "stale.example.test")
+    assert installer._dotenv(root / "compose.env")["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "stale.example.test"
 
     resumed = installer._parser().parse_args([
         "install", "--resume", "--non-interactive", "--prepare-only", "--root", str(root),
@@ -538,7 +583,9 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     resumed.admin_display_name = record["initial_administrator_display_name"]
     installer._configure(installer.Console(color=False, quiet=True), resumed, root, paths, "synthetic-release", ROOT, ())
     kept = installer._dotenv(root / "config" / "recordbench.env")
+    kept_compose = installer._dotenv(root / "compose.env")
     assert kept["CASE_INTELLIGENCE_GENERATOR_URL"] == "http://synthetic-answers:11434"
+    assert kept_compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     assert TOKEN not in (root / "installation.json").read_text()
 
 
@@ -574,6 +621,7 @@ def test_remote_and_partial_generator_settings_are_not_saved(tmp_path):
 
 
 def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, capsys):
+    _trust_office_names(monkeypatch, "synthetic-lan", HOST_GATEWAY_NAME)
     installer = _installer()
     answers = iter([
         "yes",
@@ -685,7 +733,7 @@ def test_answers_and_exports_label_unvalidated_models():
     answer = VerifiedAnswer(False, "Review the synthetic source.", (), None, "The passages do not answer it.", (), True, 1)
     payload = CaseIntelligenceWorkbench._noted_answer_payload(holder, answer, {})
     assert payload["model_notice"] == UNVALIDATED_MODEL_LABEL
-    assert payload["schema_enforcement"] == "not enforced"
+    assert payload["schema_enforcement"] == "not enforced / validated locally"
     silent = VerifiedAnswer(False, "Review the synthetic source.", (), None, "The passages do not answer it.", (), False, 1)
     unlabeled = CaseIntelligenceWorkbench._noted_answer_payload(holder, silent, {})
     assert "model_notice" not in unlabeled
@@ -701,13 +749,13 @@ def test_answers_and_exports_label_unvalidated_models():
             "missing_information": "A synthetic synthesis.",
             "claims": [{"text": "A synthetic vehicle arrived.", "citations": []}],
             "model_notice": UNVALIDATED_MODEL_LABEL,
-            "schema_enforcement": "not enforced",
+            "schema_enforcement": "not enforced / validated locally",
         },
         STAMP,
     )
     markdown = export_answer(matter, conversation, message, None, "markdown", exported_at=STAMP).body.decode()
     assert UNVALIDATED_MODEL_LABEL in markdown
-    assert "Schema enforcement: not enforced." in markdown
+    assert "Schema enforcement: not enforced / validated locally." in markdown
     job = ResearchJobRecord(
         "job-" + "e" * 32, matter.matter_id, "owner", "synthetic-key", "What happened?",
         "Synthetic investigation", None, None, None, "completed", "done", 1, None, 0, {},
@@ -716,17 +764,17 @@ def test_answers_and_exports_label_unvalidated_models():
     )
     exported = json.loads(export_research(matter, job, "json", exported_at=STAMP, presentation_notice="").body)
     assert exported["investigation"]["answer"]["model_notice"] == UNVALIDATED_MODEL_LABEL
-    assert exported["investigation"]["answer"]["schema_enforcement"] == "not enforced"
+    assert exported["investigation"]["answer"]["schema_enforcement"] == "not enforced / validated locally"
     research_markdown = export_research(matter, job, "markdown", exported_at=STAMP, presentation_notice="").body.decode()
     assert UNVALIDATED_MODEL_LABEL in research_markdown
-    assert "Schema enforcement: not enforced." in research_markdown
+    assert "Schema enforcement: not enforced / validated locally." in research_markdown
 
 
 def test_templates_show_schema_and_qualification_notices():
     templates = ROOT / "src" / "case_intelligence" / "templates"
     notices = (templates / "workbench_model_notices.html").read_text()
     assert "Schema enforcement: refused." in notices
-    assert "Schema enforcement: not enforced." in notices
+    assert "Schema enforcement: not enforced / validated locally." in notices
     assert "Schema enforcement: not checked." in notices
     assert "Unvalidated model." in notices
     workspace = (templates / "workbench_workspace.html").read_text()
@@ -742,5 +790,129 @@ def test_templates_show_schema_and_qualification_notices():
     assert "model_qualification" in admin
     compose = (ROOT / "compose.yaml").read_text()
     assert "EXCULPATA_GENERATOR_ALLOWED_HOSTS" in compose
-    assert "${EXCULPATA_HOST_GATEWAY_ALIAS:-host-gateway.example.test}:host-gateway" in compose
+    assert "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway" in compose
+    assert "/run/exculpata-secrets" in compose
     assert HOST_GATEWAY_NAME not in compose
+
+
+def _literal_url(address, port=None):
+    host = f"[{address}]" if address.version == 6 else str(address)
+    return f"http://{host}" + (f":{port}" if port else "")
+
+
+def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
+    from case_intelligence.embedding_index import note_populated_index, record_embedding_index
+
+    path = tmp_path / "state" / "embedding-index.json"
+    assert record_embedding_index(
+        path, model="ibm-granite/granite-embedding-english-r2",
+        revision="47ea694b257b703fee9253d75c2b1f2985180498", populated=True,
+    ) == ""
+    warning = record_embedding_index(
+        path, model="synthetic/other-embedding", revision="synthetic-revision", populated=True,
+    )
+    assert "already has data" in warning
+    kept = json.loads(path.read_text())
+    assert kept["model"] == "ibm-granite/granite-embedding-english-r2"
+    assert kept["populated"] is True
+    monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_INDEX_RECORD", str(path))
+    monkeypatch.setenv("CASE_REVIEW_EMBEDDING_MODEL", "synthetic/other-embedding")
+    assert "already has data" in note_populated_index(populated=True)
+    assert json.loads(path.read_text())["model"] == "ibm-granite/granite-embedding-english-r2"
+
+
+@pytest.mark.parametrize("url", [
+    _literal_url(ipaddress.IPv4Address((169 << 24) + (254 << 16) + (169 << 8) + 254)),
+    _literal_url(ipaddress.IPv6Address((0xFE80 << 112) + 1)),
+    _literal_url(ipaddress.IPv4Address(0), 11434),
+    _literal_url(ipaddress.IPv6Address(0), 11434),
+    "http://answers",
+    "http://answers." + "local",
+])
+def test_should_require_remote_confirmation(url):
+    assert parse_generator_endpoint("ollama", url, "m").local_network is False
+
+
+def test_link_local_and_unspecified_addresses_are_rejected():
+    for address, port in (
+        (ipaddress.IPv4Address((169 << 24) + (254 << 16) + (169 << 8) + 254), None),
+        (ipaddress.IPv6Address((0xFE80 << 112) + 1), None),
+        (ipaddress.IPv4Address(0), 11434),
+        (ipaddress.IPv6Address(0), 11434),
+    ):
+        url = _literal_url(address, port)
+        with pytest.raises(EndpointRejected, match="link-local or unspecified"):
+            require_local_or_confirmed(parse_generator_endpoint("ollama", url, "m", remote_confirmed=True))
+
+
+def test_connection_rechecks_every_resolved_address(monkeypatch):
+    import case_intelligence.external_generator as endpoints
+
+    public = ipaddress.ip_address("192.0.2.10")
+    calls = {"count": 0}
+
+    def resolve(_hostname):
+        calls["count"] += 1
+        return (_office_address(),) if calls["count"] == 1 else (public,)
+
+    monkeypatch.setattr(endpoints, "_resolve_addresses", resolve)
+    saved = parse_generator_endpoint("ollama", "http://synthetic-answers:11434", "m")
+    assert saved.local_network is True
+    with pytest.raises(DestinationRejected, match="outside the local network"):
+        require_resolved_destination("http://synthetic-answers:11434")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED", "1")
+    require_resolved_destination("http://synthetic-answers:11434")
+    metadata = ipaddress.IPv4Address((169 << 24) + (254 << 16) + (169 << 8) + 254)
+    with pytest.raises(DestinationRejected, match="link-local"):
+        require_resolved_destination(_literal_url(metadata))
+
+
+def test_unvalidated_label_reaches_every_export_format():
+    from case_intelligence.assertion_exports import markdown_export, qualified_payload
+    from case_intelligence.case_downloads import CaseDownloads
+    from case_intelligence.intake_receipt_exports import export_intake_receipt
+    from case_intelligence.matter_archive_projection import portable
+    from case_intelligence.matter_context_exports import _qualified
+    from case_intelligence.report_compilation import compile_report
+    from case_intelligence.store_records import ReportRecord, ReportSectionRecord
+    from case_intelligence.work_product_exports import export_report
+    from tests.test_report_compilation import material, service
+
+    generator = service()
+    generator.model_notice = UNVALIDATED_MODEL_LABEL
+    draft = compile_report("timeline", materials=(material(),), generator=generator)
+    rendered = json.dumps(draft.coverage) + "\n".join(section["body"] for section in draft.sections)
+    assert UNVALIDATED_MODEL_LABEL in rendered
+
+    matter = MatterRecord("ci-matter-" + "a" * 32, "m-" + "c" * 12, "Synthetic Matter", "fixture", "owner", STAMP, STAMP)
+    report = ReportRecord("report-" + "f" * 32, matter.matter_id, "Synthetic report", "Purpose", "draft", "owner", STAMP, "owner", STAMP)
+    section = ReportSectionRecord("section-" + "f" * 32, report.report_id, matter.matter_id, 1, "Finding", "A synthetic finding.", "human", "", "owner", STAMP, "owner", STAMP)
+    report_body = export_report(matter, report, ((section, ()),), "markdown", exported_at=STAMP, presentation_notice="", model_notice=UNVALIDATED_MODEL_LABEL).body.decode()
+    assert UNVALIDATED_MODEL_LABEL in report_body
+
+    assertion = qualified_payload({
+        "ordering": "Synthetic order",
+        "records": [{
+            "record": {"title": "Synthetic event", "statement": "A synthetic statement.", "record_type": "event",
+                       "status": "draft", "raw_date": "", "date_uncertainty": "", "sort_date": "", "revision": 1},
+            "roles": [], "accounts": [], "history": [],
+        }],
+    }, UNVALIDATED_MODEL_LABEL)
+    assert UNVALIDATED_MODEL_LABEL in json.dumps(assertion)
+    assert UNVALIDATED_MODEL_LABEL in markdown_export(assertion)
+
+    preserved = portable({"text": "synthetic", "model_notice": UNVALIDATED_MODEL_LABEL}, matter.matter_id)
+    assert preserved["model_notice"] == UNVALIDATED_MODEL_LABEL
+    assert UNVALIDATED_MODEL_LABEL in json.dumps(_qualified({"format": "synthetic"}, UNVALIDATED_MODEL_LABEL))
+
+    counts = {name: 0 for name in (
+        "selected", "included", "skipped", "unrecorded", "received", "partial", "not_received",
+        "searchable", "processing", "playback_only", "needs_review", "failed", "unavailable", "not_started",
+    )}
+    receipt = {
+        "collection_name": "Synthetic files", "selected_count": 0, "recorded_count": 0, "state": "ready",
+        "created_at": STAMP, "updated_at": STAMP, "counts": counts, "items": [],
+    }
+    for format_name in ("json", "csv", "markdown"):
+        assert UNVALIDATED_MODEL_LABEL in export_intake_receipt(receipt, format_name, model_notice=UNVALIDATED_MODEL_LABEL).body.decode("utf-8-sig")
+    assert CaseDownloads.visible_note(None, UNVALIDATED_MODEL_LABEL) == UNVALIDATED_MODEL_LABEL

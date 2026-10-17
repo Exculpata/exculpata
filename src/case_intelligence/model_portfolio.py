@@ -82,7 +82,7 @@ def model_portfolio_projection(
     schema_mode = str(getattr(client, "schema_mode", "unprobed") or "unprobed")
     schema_enforcement = {
         "verified": "verified",
-        "validate_and_retry": "not enforced",
+        "validate_and_retry": "not enforced / validated locally",
         "refused": "refused",
         "unreachable": "not checked",
     }.get(schema_mode, "not checked")

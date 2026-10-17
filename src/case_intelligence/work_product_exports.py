@@ -1305,6 +1305,7 @@ def export_report(
     *,
     exported_at: str | None = None,
     presentation_notice: str = PDF_SAVED_RESULT_NOTICE,
+    model_notice: str = "",
 ) -> ExportArtifact:
     created = exported_at or _now()
     _validate_report_export_scope(matter, report, sections)
@@ -1322,6 +1323,7 @@ def export_report(
         )
     if presentation_notice:
         blocks.append(ExportBlock(presentation_notice, "note"))
+    append_model_notes(blocks, {"model_notice": model_notice}, ExportBlock)
     for index, (section, citations) in enumerate(sections, 1):
         blocks.append(ExportBlock(f"{index}. {section.heading}", "heading1"))
         if section.body:

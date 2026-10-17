@@ -67,6 +67,12 @@ from case_intelligence.external_generator import (
     parse_generator_endpoint,
     require_local_or_confirmed,
 )
+from case_intelligence.embedding_index import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    embedding_change_warning,
+    load_embedding_index,
+)
 from case_intelligence.generator_schema import probe_schema_enforcement
 from case_intelligence.hardware_profile import detect_hardware, suggest_tier
 sys.path.pop(0)
@@ -523,11 +529,20 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
                 if input("Use this URL anyway? Type yes to keep it: ").strip() != "yes":
                     continue
         if not endpoint.local_network:
+            try:
+                require_local_or_confirmed(parse_generator_endpoint(
+                    server, endpoint.url, model, remote_confirmed=True,
+                ))
+            except EndpointRejected as exc:
+                print(str(exc))
+                continue
             print(REMOTE_CONFIRMATION)
             if input("Type yes to send matter text to this host: ").strip() != "yes":
                 print("That host was not confirmed. Enter a different URL.")
                 continue
-            endpoint = parse_generator_endpoint(server, endpoint.url, model, remote_confirmed=True)
+            endpoint = require_local_or_confirmed(parse_generator_endpoint(
+                server, endpoint.url, model, remote_confirmed=True,
+            ))
         args.external_generator = endpoint.server
         args.external_generator_url = endpoint.url
         args.external_generator_model = endpoint.model
@@ -554,12 +569,12 @@ def _apply_external_generator(
         if not secret.strip() or len(secret) > 4096:
             raise RuntimeError("The generator API key is missing or too long. Enter it on one line.")
         _private_write(secret_path, secret if secret.endswith("\n") else secret + "\n")
-        api_key_file = "/run/recordbench-secrets/generator-api-key"
+        api_key_file = "/run/exculpata-secrets/generator-api-key"
     elif secret_path.is_file():
-        api_key_file = "/run/recordbench-secrets/generator-api-key"
+        api_key_file = "/run/exculpata-secrets/generator-api-key"
     values = _external_environment_values(endpoint, api_key_file=api_key_file)
     app_values.update(values)
-    compose_values["RECORDBENCH_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
+    compose_values["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
     if endpoint.host == HOST_GATEWAY_NAME:
         compose_values["EXCULPATA_HOST_GATEWAY_ALIAS"] = HOST_GATEWAY_NAME
     if not endpoint.local_network:
@@ -3858,18 +3873,21 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     console.note(f"answer server :: {server} {model} at {url}")
     device = compose_env.get("RECORDBENCH_RETRIEVAL_DEVICE") or compose_env.get("EXCULPATA_RETRIEVAL_DEVICE") or "cpu"
     console.note(f"embed and rerank :: in-process Granite and ModernBERT; device {device}")
-    embedding = compose_env.get("RECORDBENCH_EMBEDDING_MODEL") or compose_env.get("EXCULPATA_EMBEDDING_MODEL") or ""
-    if embedding and embedding != "ibm-granite/granite-embedding-english-r2":
-        console.warn(
-            "Embedding model differs from the pinned Granite model. Existing indexes must be rebuilt "
-            "before meaning search can use the new vectors. Exculpata does not rebuild them automatically."
-        )
+    embedding = compose_env.get("EXCULPATA_EMBEDDING_MODEL") or compose_env.get("RECORDBENCH_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
+    revision = compose_env.get("EXCULPATA_EMBEDDING_REVISION") or compose_env.get("RECORDBENCH_EMBEDDING_REVISION") or DEFAULT_EMBEDDING_REVISION
+    index_warning = embedding_change_warning(
+        load_embedding_index(root / "state" / "embedding-index.json"),
+        model=embedding,
+        revision=revision,
+    )
+    if index_warning:
+        console.warn(index_warning)
     if dry_run:
         console.note("Dry run: the schema check was not sent")
         return
     hosts = (
-        compose_env.get("RECORDBENCH_GENERATOR_ALLOWED_HOSTS")
-        or compose_env.get("EXCULPATA_GENERATOR_ALLOWED_HOSTS")
+        compose_env.get("EXCULPATA_GENERATOR_ALLOWED_HOSTS")
+        or compose_env.get("RECORDBENCH_GENERATOR_ALLOWED_HOSTS")
         or app_env.get("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
         or "generator"
     )

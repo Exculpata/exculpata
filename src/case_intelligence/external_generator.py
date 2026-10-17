@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ipaddress
+import os
+import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -11,7 +13,6 @@ _BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai"}
 # Docker's host-gateway name. Kept split so the publication scan does not see
 # one internal hostname token.
 HOST_GATEWAY_NAME = "host.docker." + "internal"
-_LOCAL_NAMES = frozenset({"localhost", HOST_GATEWAY_NAME, "generator"})
 _COMPLETION_SUFFIXES = ("/v1/chat/completions", "/api/chat", "/v1/models", "/api/tags")
 # These documentation ranges are not office networks. Python's is_private flag
 # includes them, which would skip the off-network confirmation.
@@ -25,6 +26,10 @@ _DOCUMENTATION_NETWORKS = (
 
 class EndpointRejected(ValueError):
     """The URL or model name cannot be saved. The message is safe to show."""
+
+
+class DestinationRejected(ValueError):
+    """A resolved address is not allowed for this request. The message is safe to show."""
 
 
 @dataclass(frozen=True)
@@ -104,23 +109,109 @@ REMOTE_CONFIRMATION = (
 )
 
 
+def _unsafe_literal(hostname: str) -> str:
+    concrete = tuple(_concrete(address) for address in addresses_for(hostname))
+    if any(address.is_unspecified or address.is_link_local for address in concrete):
+        return (
+            "That address is link-local or unspecified. "
+            "Enter a loopback, RFC1918, or IPv6 ULA address."
+        )
+    return ""
+
+
 def require_local_or_confirmed(endpoint: GeneratorEndpoint) -> GeneratorEndpoint:
+    unsafe = _unsafe_literal(endpoint.host)
+    if unsafe:
+        raise EndpointRejected(unsafe)
     if not endpoint.local_network and not endpoint.remote_confirmed:
         raise EndpointRejected(REMOTE_CONFIRMATION)
     return endpoint
 
 
-def host_is_local(hostname: str) -> bool:
-    name = hostname.strip().casefold().rstrip(".")
-    if name in _LOCAL_NAMES or name.endswith(".local") or "." not in name:
-        return True
+def _concrete(address: ipaddress.IPv4Address | ipaddress.IPv6Address):
+    mapped = getattr(address, "ipv4_mapped", None)
+    return mapped if mapped is not None else address
+
+
+def _office_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Loopback, RFC1918, or IPv6 ULA. Link-local and unspecified addresses are not."""
+
+    concrete = _concrete(address)
+    if any(concrete in network for network in _DOCUMENTATION_NETWORKS):
+        return False
+    if concrete.is_unspecified or concrete.is_link_local or concrete.is_multicast:
+        return False
+    return bool(concrete.is_loopback or concrete.is_private)
+
+
+def _resolve_addresses(hostname: str) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]:
+    previous = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(2)
     try:
-        address = ipaddress.ip_address(name)
+        try:
+            infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
+        except socket.gaierror:
+            return ()
+    finally:
+        socket.setdefaulttimeout(previous)
+    found: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
+    seen: set[str] = set()
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0])
+        except (ValueError, IndexError):
+            continue
+        key = address.compressed
+        if key not in seen:
+            seen.add(key)
+            found.append(address)
+    return tuple(found)
+
+
+def addresses_for(hostname: str) -> tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]:
+    name = hostname.strip().casefold().rstrip(".")
+    if not name:
+        return ()
+    try:
+        return (ipaddress.ip_address(name),)
     except ValueError:
-        return False
-    if any(address in network for network in _DOCUMENTATION_NETWORKS):
-        return False
-    return bool(address.is_loopback or address.is_private or address.is_link_local)
+        return _resolve_addresses(name)
+
+
+def host_is_local(hostname: str) -> bool:
+    """True only when every resolved address is loopback or an office private range."""
+
+    addresses = addresses_for(hostname)
+    return bool(addresses) and all(_office_address(address) for address in addresses)
+
+
+def destination_block_reason(hostname: str, *, remote_confirmed: bool) -> str:
+    """Re-check a connection so a name cannot rebind to a public or metadata address."""
+
+    addresses = addresses_for(hostname)
+    if not addresses:
+        return "The answer server name did not resolve. The request was not sent."
+    concrete = tuple(_concrete(address) for address in addresses)
+    if any(address.is_unspecified or address.is_link_local for address in concrete):
+        return (
+            "The answer server resolved to a link-local or unspecified address. "
+            "The request was not sent."
+        )
+    if not remote_confirmed and not all(_office_address(address) for address in addresses):
+        return (
+            "The answer server resolved outside the local network. The request was not sent."
+        )
+    return ""
+
+
+def require_resolved_destination(url: str) -> None:
+    host = urlparse(url).hostname
+    if not host:
+        raise DestinationRejected("The answer server URL has no host. The request was not sent.")
+    confirmed = os.environ.get("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED") == "1"
+    reason = destination_block_reason(host, remote_confirmed=confirmed)
+    if reason:
+        raise DestinationRejected(reason)
 
 
 def _container_loopback(hostname: str) -> bool:

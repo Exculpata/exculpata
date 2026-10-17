@@ -107,6 +107,18 @@ def complete_structured(
     raise GenerationUnavailable(last + " Answering is unavailable for this request.")
 
 
+def guard_generator_destination(url: str) -> None:
+    """Refuse the connection when the name resolves outside the allowed set."""
+
+    from .external_generator import DestinationRejected, require_resolved_destination
+    from .generation import GenerationUnavailable
+
+    try:
+        require_resolved_destination(url)
+    except DestinationRejected as exc:
+        raise GenerationUnavailable(str(exc)) from exc
+
+
 def repair_message(messages: list[dict[str, str]], attempt: int) -> list[dict[str, str]]:
     if attempt <= 0:
         return messages
