@@ -1,0 +1,15 @@
+Chime comparison
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-110
+Record date: 2034-06-05
+Person: Joss Wicker
+Person: Sable Morn
+Object: Lumen Yard
+
+Joss Wicker compared the Lumen Yard chime against a newly set demonstration timer. The
+yard chime was four minutes fast during this comparison. Sable Morn cautioned that the
+comparison occurred one day after the departure note and could not establish the earlier
+chime offset.
+
+All names, locations, dates, and identifiers in this record were invented.
