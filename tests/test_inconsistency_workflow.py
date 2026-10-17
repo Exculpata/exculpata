@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import shutil
+import pytest
 
 from fastapi.testclient import TestClient
 from case_intelligence.generation import UnavailableGenerator
@@ -46,6 +47,8 @@ def test_review_persists_exports_and_clean_restore(tmp_path):
         for format_name in ('json', 'markdown', 'csv'):
             response = client.get(prefix+'/export?format='+format_name)
             assert response.status_code == 200 and 'reviewed' in response.text
+            extension = 'md' if format_name == 'markdown' else format_name
+            assert response.headers['content-disposition'] == f'attachment; filename="inconsistencies.{extension}"'
             assert all(text in response.text.replace('\\', '') for text in ('Synthetic-left.txt', 'Synthetic-right.txt'))
         assert not client.get(prefix+'/export?type=location').json()['candidates']
         witness = candidate['speaker_ids'][0]
@@ -86,12 +89,13 @@ def test_cross_matter_invalid_action_and_current_source_checks(tmp_path):
             assert not client.get(f'/matters/{slug}/inconsistencies/export').json()['candidates']
 
 
-def test_csv_formula_injection_is_escaped():
+@pytest.mark.parametrize('value', ['=1+1', '  @SUM(A1)', '+1', '-1', '\tplain', '\rplain', ' \tplain', ' \rplain'])
+def test_csv_formula_injection_is_escaped(value):
     from case_intelligence.statement_comparison_exports import export_payload
     row = dict(signature='abc', scope='same_witness', difference_type='time_date', note='Review', status='open', reviewed_by=None, reviewed_at=None)
-    row.update({side: dict(source_name='=1+1', location='Page 1', excerpt='  @SUM(A1)') for side in ('left','right')})
+    row.update({side: dict(source_name=value, location='Page 1', excerpt=value) for side in ('left','right')})
     result = list(csv.reader(io.StringIO(export_payload(dict(candidates=[row]), 'csv'))))
-    assert result[1][7] == "'=1+1" and result[1][9].startswith("'")
+    assert result[1][7] == "'" + value and result[1][9] == "'" + value
 
 
 def test_protected_csrf_and_revoked_member(tmp_path, monkeypatch):
@@ -136,7 +140,20 @@ def test_review_state_in_full_archive_frozen_and_purged(tmp_path):
         assert client.post(prefix+'/'+candidate['signature']+'/review', data=dict(action='reviewed', revision=0)).status_code == 200
         bench = client.app.state.workbench
         matter = bench.matter(slug, WEB_ACTOR)
+        review_url = prefix+'/'+candidate['signature']+'/review'
+        from tests.case_lifecycle_helpers import lifecycle_session
+        session = lifecycle_session(bench.workspace, WEB_ACTOR)
+        bench.workspace.case_lifecycle.begin_exit(matter.slug, WEB_ACTOR, session_id=session.session_id)
+        assert bench.workspace.matter_lifecycle(matter.matter_id).state == 'closing'
+        for action in ('dismiss', 'reviewed', 'reopen'):
+            assert client.post(review_url, data=dict(action=action, revision=1), follow_redirects=False).status_code == 404
         prepared, lifecycle = claim_bench_exit(bench, matter)
+        for action in ('dismiss', 'reviewed', 'reopen'):
+            assert client.post(review_url, data=dict(action=action, revision=1), follow_redirects=False).status_code == 404
+        with bench.workspace._lock:
+            decision = bench.workspace.connection.execute(
+                'SELECT status,revision FROM workbench_candidate_review WHERE matter_id=?', (matter.matter_id,)).fetchone()
+            assert tuple(decision) == ('reviewed', 1)
         from case_intelligence.case_lifecycle_support import archive_path
         current = bench.workspace.case_lifecycle.current_exit(matter.matter_id)
         with zipfile.ZipFile(archive_path(bench, matter, current)) as archive:
@@ -145,6 +162,8 @@ def test_review_state_in_full_archive_frozen_and_purged(tmp_path):
         with bench.workspace._lock, pytest.raises(sqlite3.IntegrityError):
             bench.workspace.connection.execute("UPDATE workbench_candidate_review SET status='dismissed' WHERE matter_id=?", (matter.matter_id,))
         bench.execute_matter_purge(prepared, lifecycle)
+        for action in ('dismiss', 'reviewed', 'reopen'):
+            assert client.post(review_url, data=dict(action=action, revision=1), follow_redirects=False).status_code == 404
         with bench.workspace._lock:
             assert not bench.workspace.connection.execute('SELECT * FROM workbench_candidate_review WHERE matter_id=?', (matter.matter_id,)).fetchall()
 

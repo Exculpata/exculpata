@@ -66,6 +66,7 @@ def install_statement_comparison_routes(app, *, bench, authorized_matter, auth_c
             raise HTTPException(400, 'Export exceeds the size limit. Narrow the filters.')
         audit(request, 'inconsistency.export', 'success', context=auth_context(request), matter=matter,
               object_type='matter', object_id=matter.matter_id)
+        extension = 'md' if format == 'markdown' else format
         return finish(request, matter, service, Response(body,
             media_type={'json': 'application/json', 'markdown': 'text/markdown', 'csv': 'text/csv'}[format],
-            headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="inconsistencies.{format}"'}))
+            headers={'Cache-Control': 'no-store', 'Content-Disposition': f'attachment; filename="inconsistencies.{extension}"'}))

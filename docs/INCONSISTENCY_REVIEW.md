@@ -6,6 +6,8 @@ initially. Mark reviewed, dismiss or reopen a candidate; these are review decisi
 not conclusions about a witness. A stale decision form returns a conflict and asks
 you to reload before saving. Each export includes the actor, decision time and state.
 Exports include all review states by default and retain witness/type filters.
+Markdown downloads use `.md`. CSV exports prefix spreadsheet formula and leading
+tab/carriage-return cells with an apostrophe while retaining the original text.
 
 The deterministic comparison works without a model. It looks for aligned statements
 with explicit speakers or interview subject metadata and compares clock/ISO dates,

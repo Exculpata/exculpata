@@ -10,6 +10,14 @@ EXPORT_HEADERS = ('signature', 'scope', 'difference_type', 'note', 'status', 're
                   'left_source', 'left_locator', 'left_excerpt', 'right_source', 'right_locator', 'right_excerpt')
 
 
+def _csv_cell(value):
+    text = str(value or '')
+    # Preserve control prefixes for inspection: lstrip() alone removes tab/CR.
+    if text.lstrip().startswith(('=', '+', '-', '@')) or text.lstrip(' ').startswith(('\t', '\r')):
+        return "'" + str(value)
+    return value
+
+
 def export_payload(payload, format_name):
     if format_name == 'json':
         return json.dumps(dict(payload, notice=REVIEW_NOTICE), ensure_ascii=False, indent=2)
@@ -25,7 +33,7 @@ def export_payload(payload, format_name):
             values.extend([payload.get('format', 'exculpata-inconsistency-candidates-v1'), REVIEW_NOTICE, payload.get('dropped', 0), payload.get('capped', False)])
             values.extend(row[side].get(key, '') for side in ('left', 'right') for key in ('document_id', 'source_version_id'))
             # Spreadsheet formula injection protection applies to every text cell.
-            writer.writerow(["'" + str(v) if str(v or '').lstrip().startswith(('=', '+', '-', '@')) else v for v in values])
+            writer.writerow([_csv_cell(value) for value in values])
         return output.getvalue()
     lines = ['# Possible inconsistencies for review', '', REVIEW_NOTICE, '',
              'Format: ' + payload['format'],
