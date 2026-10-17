@@ -174,3 +174,45 @@ def test_live_cutoff_counts_all_ready_passages_and_exports(timeline_client, monk
             assert response.json()['total_unit_count'] == total
             assert response.json()['unit_count'] == 2500
             assert response.json()['capped'] is (total > 2500)
+
+def test_coverage_population_scan_is_bounded(timeline_client, monkeypatch):
+    from dataclasses import replace
+    client, slug = timeline_client
+    bench = client.app.state.workbench
+    store = bench.source_store(bench.matter(slug, WEB_ACTOR))
+    original = next(iter(store.ready_documents()))
+    document = replace(original, units=[{'number': i+1, 'text': 'No dated event.'} for i in range(10001)], units_file='')
+    monkeypatch.setattr(store, 'ready_documents', lambda: (document,))
+    response = client.get(f'/matters/{slug}/timeline/draft/export')
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['total_unit_count'] is None
+    assert payload['capped']
+    assert 'Total passage count is unavailable' in payload['coverage_notice']
+
+@pytest.mark.parametrize('failure', ['missing', 'corrupt', 'oversized'])
+def test_unreadable_tail_preserves_draft_with_unknown_total(timeline_client, monkeypatch, failure):
+    from dataclasses import replace
+    client, slug = timeline_client
+    bench = client.app.state.workbench
+    store = bench.source_store(bench.matter(slug, WEB_ACTOR))
+    first, tail, *_ = store.ready_documents()
+    first = replace(first, units=[{'number': i+1, 'text': 'No dated event.'} for i in range(2501)], units_file='')
+    name = 'e' * 32 + '.json'
+    tail = replace(tail, units=[], units_file=name, _units_iterator=store._iter_units)
+    path = store.derived / name
+    if failure == 'missing':
+        path.unlink(missing_ok=True)
+    else:
+        path.write_text('{broken' if failure == 'corrupt' else
+                        '{"version":1,"units":[{"number":1,"text":"' + 'x' * 70000 + '"}]}')
+    monkeypatch.setattr(store, 'ready_documents', lambda: (first, tail))
+    prefix = f'/matters/{slug}/timeline/draft'
+    for endpoint in ('', '/export?format=csv', '/export?format=markdown', '/export?format=json'):
+        response = client.get(prefix + endpoint)
+        assert response.status_code == 200
+        assert 'Total passage count is unavailable' in response.text
+        assert 'Included 2,500 passages' in response.text
+        if endpoint.endswith('json'):
+            assert response.json()['total_unit_count'] is None
+            assert response.json()['capped']

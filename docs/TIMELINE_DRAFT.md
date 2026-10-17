@@ -27,8 +27,17 @@ date entries. Coverage reports passages included in the date scan and the total
 passages in current ready sources. Counts include passages read for document-local
 anchors; entry or text limits can still truncate a draft even when all passages
 were scanned. Sources that are not ready are outside this population. Counting
-streams all ready passages while candidate collection remains bounded at 2,501
-and date extraction at 2,500. A failed citation window is omitted and counted. Drafts recompute
+streams ready passages with ceilings of 1,000 documents, 10,000 passages, 8 Mi
+serialized characters, 8 Mi passage-text characters, 65,536 characters per record,
+and a two-second cooperative deadline. Checks run before and after reads/decodes;
+an individual read is at most 65,536 characters. Candidate collection remains
+bounded at 2,501 and date extraction at 2,500. If a ceiling is reached or source
+text is missing, corrupt, or too large, the usable draft remains available with
+an explicit unavailable-total warning and `capped` set. No partial count is
+presented as an exact total. Entries from a source whose container fails validation
+are discarded; earlier readable sources remain usable. These reads retain the
+existing source/authorization snapshot, with bounded work while its locks are held.
+A failed citation window is omitted and counted. Drafts recompute
 on demand and are not persisted; pure results have a null generation timestamp while
 HTTP results carry the recomputation time. No migration or backup format changes are
 needed. A 2,500-unit regression exercises the bounded scan budget.
@@ -42,7 +51,8 @@ not repurposed. No saved timeline is silently presented as current.
 CSV exports begin with a metadata row carrying the review notice, coverage notice,
 capped flag, included `unit_count`, and `total_unit_count`, followed by one row per
 citation. The appended `row_type` column distinguishes `metadata` from `citation`.
-JSON includes these counts and `coverage_notice`; Markdown prints the same coverage
+An unavailable `total_unit_count` is null in JSON and empty in CSV; all formats
+include the unavailable-coverage warning. JSON includes these counts and `coverage_notice`; Markdown prints the same coverage
 notice. JSON and Markdown retain all citations.
 The export response requires the existing matter response lease. CSV neutralizes
 spreadsheet formula prefixes. Promotion rechecks current source support and requires

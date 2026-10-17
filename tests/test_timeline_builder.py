@@ -122,6 +122,17 @@ def test_explicit_population_count_and_invalid_count():
     with pytest.raises(ValueError, match='Total passage count'):
         build_timeline([unit('No dates.')], total_unit_count=0)
 
+def test_unavailable_coverage_never_exports_a_partial_exact_total():
+    payload = build_timeline([unit('April 18, 2034.')], total_unit_count=12,
+                             coverage_complete=False).payload()
+    assert payload['total_unit_count'] is None and payload['capped']
+    assert 'Total passage count is unavailable' in payload['coverage_notice']
+    assert json.loads(export_timeline(payload, 'json'))['total_unit_count'] is None
+    metadata, citation = list(csv.DictReader(io.StringIO(export_timeline(payload, 'csv'))))
+    assert metadata['total_unit_count'] == '' and metadata['unit_count'] == '1'
+    assert citation['row_type'] == 'citation'
+    assert payload['coverage_notice'] in export_timeline(payload, 'markdown')
+
 def test_eval_questions_and_no_header_conflicts():
     data=json.loads((ROOT/'tests/fixtures/synthetic/workflow_eval/chronology.json').read_text())
     assert '#267' in data['integration_todo'] and 5 <= len(data['questions']) <= 8
