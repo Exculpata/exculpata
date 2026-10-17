@@ -26,7 +26,9 @@ lines. Exact normalized filename stems are matched inside the chosen scope.
 Other reference styles and names can need manual review.
 
 Gaps retain the briefing's readability and coverage accounting, including PDF
-coverage notices even when native text is searchable. The Harbor Street corpus
+coverage notices even when native text is searchable. Additional text/metadata read
+failures are merged into that source's reasons without counting it again;
+receipt-only items retain their separate selection counts. The Harbor Street corpus
 has 40 sources, 11 emails, two PDF pages, a date range of 2034-04-16 through
 2034-04-20, and one source with no ordered date. Its two PDFs have coverage
 notices; record 40 has an extraction failure.

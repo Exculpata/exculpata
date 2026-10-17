@@ -362,3 +362,44 @@ def test_pdf_text_and_metadata_share_physical_page_identity(workbench):
     [duplicate] = summarize(bench, matter).gaps['bates_duplicates']
     assert duplicate['occurrences'] == 2  # Two physical pages, not six label observations.
     assert len(duplicate['links']) == 2
+
+
+@pytest.mark.parametrize('failed_ingest', [False, True])
+def test_pdf_read_errors_merge_reasons_without_inflating_briefing_counts(workbench, monkeypatch, failed_ingest):
+    from case_intelligence.pilot_uploads import PilotDocument
+    from case_intelligence.intake_receipts import IntakeReceipts
+    client, bench, matter, _ = workbench
+    response = client.post(f'/matters/{matter.slug}/uploads', files=[('files', ('source.pdf', metadata_pdf(['SYN0001']), 'application/pdf'))])
+    assert response.status_code in (200, 303)
+    ready(bench, matter)
+    store = bench.source_store(matter)
+    [document] = store.documents.values()
+    if failed_ingest:
+        with bench.workspace._lock, bench.workspace.connection:
+            bench.workspace.connection.execute("UPDATE workbench_ingest_job SET state='failed',message='Synthetic PDF extraction failure' WHERE matter_id=? AND document_id=?", (matter.matter_id, document.document_id))
+    receipts = IntakeReceipts(bench.workspace)
+    receipt = receipts.create(matter.matter_id, WEB_ACTOR, selection_key='f'*32,
+        selection_fingerprint='f'*64, selected_count=2, eligible_indexes=[], collection_name='Synthetic incomplete selection')
+    baseline = assemble(bench, matter).section('unread')
+    assert baseline.total == 3  # One PDF plus two unrecorded receipt selections.
+    source_reason = next(line.text for line in baseline.lines if line.kind == 'source_incomplete')
+    path = store.source_path(document.document_id)
+    path.write_bytes(b'Corrupt synthetic PDF original.')
+    def unreadable(*args, **kwargs):
+        raise OSError('Synthetic derived-text read error')
+    monkeypatch.setattr(PilotDocument, 'iter_parsed_units', unreadable)
+    result = summarize(bench, matter)
+    rows = result.gaps['unreadable']
+    assert sum(row['count'] for row in rows) == assemble(bench, matter).section('unread').total == 3
+    assert result.capped['unreadable'] == dict(total=2, shown=2, omitted=0)
+    [source] = [row for row in rows if row['source_id'] == document.document_id]
+    assert source['count'] == 1
+    assert source['reasons'] == [source_reason, 'Extracted text could not be read.', 'PDF page-label metadata could not be read; Bates coverage is incomplete.']
+    assert all(reason in source['reason'] for reason in source['reasons'])
+    [selection] = [row for row in rows if row['source_id'] == receipt['receipt_id']]
+    assert selection['count'] == 2
+    scoped = summarize(bench, matter, scope=receipt['receipt_id'])
+    assert len(scoped.gaps['unreadable']) == 1
+    assert scoped.gaps['unreadable'][0]['count'] == 2
+    markdown = export_summary(result, 'markdown').body.decode()
+    assert all(reason in markdown for reason in source['reasons'])

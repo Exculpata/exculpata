@@ -209,9 +209,28 @@ class ProductionSummaryService:
         bates_caps = {}
         gaps = bates_gaps(bates, row_limit=MAX_DISPLAY, caps=bates_caps)
         gaps['referenced_absent'] = absent
-        gaps['unreadable'] = [dict(source_id=line.value, name=sources.get(line.value, {}).get('name', line.text),
-            reason=line.text, count=line.count, link=line.links[0].href) for line in unread.lines if line.kind != 'empty']
-        gaps['unreadable'].extend(failures)
+        gaps['unreadable'], source_items = [], {}
+        for line in unread.lines:
+            if line.kind == 'empty':
+                continue
+            item = dict(source_id=line.value, name=sources.get(line.value, {}).get('name', line.text),
+                reason=line.text, count=line.count, link=line.links[0].href)
+            gaps['unreadable'].append(item)
+            # Receipt-only and legacy-upload items retain their own accounting
+            # identity, even when additional source-read reasons are discovered.
+            if line.kind == 'source_incomplete':
+                source_items[line.value] = item
+        for failure in failures:
+            item = source_items.get(failure['source_id'])
+            if item is None:
+                item = dict(failure)
+                source_items[failure['source_id']] = item
+                gaps['unreadable'].append(item)
+            else:
+                reasons = item.setdefault('reasons', [item['reason']])
+                if failure['reason'] not in reasons:
+                    reasons.append(failure['reason'])
+                item['reason'] = ' '.join(reasons)
         people, organizations, excluded_mentions = self._entities(entities, sources, base)
         caps = {}
         for key, values in [('people', people), ('organizations', organizations), *gaps.items()]:
