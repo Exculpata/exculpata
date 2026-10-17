@@ -18,7 +18,11 @@ install -d -m 0700 \
   "$scratch/state" \
   "$scratch/models" \
   "$scratch/tls"
+# The sample sets EXCULPATA_APP_ENV_FILE=exculpata.env, and these alias checks
+# copy that value onto the previous prefix. Both filenames must exist. An
+# unset variable still selects recordbench.env in compose.yaml.
 install -m 0600 "$project_root/config/exculpata.env.example" "$scratch/config/recordbench.env"
+install -m 0600 "$project_root/config/exculpata.env.example" "$scratch/config/exculpata.env"
 install -m 0600 "$project_root/config/transcription.env.example" "$scratch/config/transcription.env"
 for name in postgres-password postgres-dsn transcription-token kerberos-proxy-secret recordbench.keytab; do
   install -m 0600 /dev/null "$scratch/secrets/$name"
