@@ -17,6 +17,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -116,7 +118,7 @@ def main():
                 driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
                 wait = WebDriverWait(driver, 20)
                 wait.until(lambda _: server.started)
-                driver.get(base + prefix + '/notebook')
+                navigate_to(driver, base + prefix + '/notebook', diagnostics=args.output)
                 js = driver.execute_script
                 find = lambda selector: driver.find_element(By.CSS_SELECTOR, selector)
                 metrics = js('''return {inner_width:innerWidth,inner_height:innerHeight,
@@ -187,7 +189,7 @@ def main():
                 wait.until(lambda _: support_shown())
                 report['checks'].append(f'{percent}% zoom: Find review suggestions remains reachable, submits, and opens the Suggested place original support')
 
-                driver.get(base + prefix + '/setup?view=list')
+                navigate_to(driver, base + prefix + '/setup?view=list', diagnostics=args.output)
                 no_overflow()
                 # Six destinations appear as direct links when they fit, otherwise
                 # in the section navigator. Both must be keyboard reachable.

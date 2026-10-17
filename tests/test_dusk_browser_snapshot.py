@@ -8,7 +8,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 
 @pytest.fixture
-def dusk_script():
+def dusk_script(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / 'scripts'))
     path = Path(__file__).resolve().parents[1] / 'scripts/browser-accept-dusk.py'
     spec = importlib.util.spec_from_file_location('browser_dusk_snapshot', path)
     module = importlib.util.module_from_spec(spec)

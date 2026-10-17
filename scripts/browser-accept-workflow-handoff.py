@@ -11,6 +11,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import hashlib
 import io
@@ -252,7 +254,7 @@ def main():
                     return True
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output, readiness_timeout=45)
                 wait.until(lambda _: detached(old))
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete" and
                            urlparse(d.current_url).path == urlparse(base + path).path)

@@ -87,6 +87,49 @@ missing, failed and truncated C2 receipts fail the aggregate result. The
 and adjacent screenshots record the editor and conflict recovery; this does not
 replace the complete pinned Linux suite.
 
+After reloading the reader, the source-role journey waits for the old document
+to detach and its replacement to finish loading before opening the editor.
+The pinned driver can acknowledge refresh before the reader commits; immediately
+navigating again can leave the editor request pending until its page-load timeout.
+The wait uses the existing deadline, never repeats navigation, and propagates
+unexpected driver errors. A stalled old or replacement document still fails.
+
+All `browser-accept-*.py` journeys use `browser_navigation.navigate_to` for
+URL navigation. It applies the existing 30-second page-load bound (20 seconds
+for loose-file preflight) and explicitly waits for a complete document. Only a
+nonblocking (`page_load_strategy='none'`) driver needs an additional transition
+check: the previous document must detach before its replacement can be accepted.
+Same-document fragment navigation instead waits for the canonical target URL;
+navigating to the same URL without a fragment still requires replacement. Both
+transition and readiness share the existing readiness deadline. Each permitted
+retry captures its own previous document. Only a
+Selenium `TimeoutException` identifying a renderer timeout permits one retry.
+Each such failure writes a bounded, content-free `navigation-timeouts.json`
+artifact before recovery; a second failure propagates. Other errors and readiness
+stalls fail without retrying navigation. The runner retains this
+artifact within its existing limits. Its CI contract tests cover recovery,
+exhaustion, unrelated errors, readiness, artifact retention and raw-call rejection.
+The source-role reload synchronization above remains required independently.
+
+Journey reloads use `browser_navigation.refresh_page(driver, wait)`: one refresh,
+then detachment of the previous document and completion of the replacement,
+using the caller's existing wait. The intake and source-role journeys share this
+implementation. Reloads are never retried. The navigation lint follows Selenium
+constructors, aliases, helper parameters, annotated drivers, and wait callbacks;
+it rejects raw `get` and `refresh` references regardless of the driver's variable
+name while permitting mapping, HTTP-client, and source-store `get` calls.
+
+Outside pull-request CI, the runner emits a GitHub warning annotation when a
+journey records a renderer retry:
+`::warning title=Renderer navigation retry::<journey> recorded N renderer navigation retry event(s); inspect navigation-timeouts.json`.
+Dynamic message text escapes percent signs, carriage returns and newlines using
+GitHub workflow-command data escaping. The diagnostic remains in the existing bounded artifact set.
+This warning does not change acceptance: process, receipt, and existing PR CI
+checks retain their failure behavior. Snapshot, navigation, and readiness renderer
+timeouts share the same two-attempt bound; other errors still propagate. The
+full-text-synthesis and workflow-handoff journeys retain their original 45-second
+readiness budgets.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background

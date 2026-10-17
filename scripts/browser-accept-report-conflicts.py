@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 import socket
@@ -104,7 +106,7 @@ def main():
                     links[0].click()
                     WebDriverWait(driver, 20).until(detached(links[0]))
             def go(driver, path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 enter_editor(driver)
             def fill(driver, selector, value):
                 field = driver.find_element(By.CSS_SELECTOR, selector)

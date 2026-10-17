@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic C2 reader navigation, keyboard editing and conflict recovery."""
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
+
 import argparse
 import io
 import json
@@ -30,18 +32,14 @@ from case_intelligence.workbench import create_workbench_app
 ACTOR = 'development-taylor-morgan'
 
 
+
+
 def activate_role_action(driver, wait, element):
     """Finish the native navigation before a subsequent reload or request."""
     element.send_keys(Keys.ENTER)
-    def detached(current):
-        try:
-            return EC.staleness_of(element)(current)
-        except WebDriverException as exc:
-            if 'Node with given id does not belong to the document' not in exc.msg:
-                raise
-            return True
-    wait.until(detached)
-    wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
+    wait_for_replacement(driver, wait, element)
+
+
 
 
 def main():
@@ -100,7 +98,7 @@ def main():
             def check(message):
                 report['checks'].append(message)
                 print(message, flush=True)
-            driver.get(reader)
+            navigate_to(driver, reader, diagnostics=args.output)
             details = find('.review-source-details summary')
             focus(details)
             details.send_keys(Keys.ENTER)
@@ -117,8 +115,8 @@ def main():
             wait.until(lambda _: driver.current_url == reader)
             assert service.read(matter.matter_id, ACTOR, token)['source_role'] == 'background'
             check('Native keyboard reaches editor from source details and marks background')
-            driver.refresh()
-            driver.get(reader + '/role')
+            refresh_page(driver, wait)
+            navigate_to(driver, reader + '/role', diagnostics=args.output)
             assert find('#source-role').get_attribute('value') == 'background'
             check('Designation survives reader navigation and reload')
             for width in (1440, 390, 320):
@@ -137,7 +135,7 @@ def main():
             check('Stale save retains the proposed choice and shows the competing saved role')
             submit()
             wait.until(lambda _: driver.current_url == reader)
-            driver.get(reader + '/role')
+            navigate_to(driver, reader + '/role', diagnostics=args.output)
             choice = find('#source-role')
             focus(choice)
             choice.send_keys('u')
