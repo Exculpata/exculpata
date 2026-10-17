@@ -1,0 +1,40 @@
+{% extends "workbench_base.html" %}
+{% block title %}Candidates for review · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{{ asset_url('review_candidates.css') }}">{% endblock %}
+{% block content %}
+<main id="main-content" tabindex="-1" class="review-candidate-shell">
+  <header><h1>Candidates for review</h1><p class="review-candidate-notice">{{ review_notice }}</p></header>
+  {% with active='analysis' %}{% include "workbench_matter_tabs.html" %}{% endwith %}
+  <nav class="review-category-chips" aria-label="Candidate categories">
+    <a href="?status={{ status }}" {% if not category %}aria-current="page"{% endif %}>All categories</a>
+    {% for key,label in categories.items() %}<a href="?category={{ key }}&amp;status={{ status }}" {% if category == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+  <form method="get" class="review-candidate-filters">
+    <input type="hidden" name="category" value="{{ category }}">
+    <label>Status<select name="status">{% for key,label in [('active','Open and reviewed'),('open','Open'),('reviewed','Reviewed'),('dismissed','Dismissed'),('all','All statuses')] %}<option value="{{ key }}" {% if status==key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <button type="submit">Apply filters</button>
+  </form>
+  <p>{{ unit_count }} extracted units scanned · {{ candidates|length }} matching candidates for review · {{ dropped }} omitted for unavailable citations{% if capped %} · Scan limit reached; additional passages may be omitted{% endif %}. No candidates does not mean there is nothing to review.</p>
+  {% if not prior_statement_difference_enabled %}<p>Prior statement differences are unavailable pending the statement comparison dependency review.</p>{% endif %}
+  <p>Export these filters: {% for kind in ['markdown','csv','json'] %}<a href="/matters/{{ matter.slug }}/review-candidates/export?format={{ kind }}&amp;category={{ category|urlencode }}&amp;status={{ status }}">{{ kind|upper }}</a> {% endfor %}</p>
+  {% for key,label in categories.items() %}{% if counts[key] %}
+  <section class="review-category-group" aria-labelledby="group-{{ key }}"><h2 id="group-{{ key }}">{{ label }} <span>({{ counts[key] }})</span></h2>
+    {% for candidate in candidates if candidate.category==key %}
+    <article class="review-candidate-card" id="{{ candidate.signature }}">
+      <h3>Candidate for review · {{ candidate.status|title }}</h3>
+      <p>{{ candidate.reason }}</p>{% if candidate.additional_reason %}<p>Additional cited reason: {{ candidate.additional_reason }}</p>{% endif %}
+      {% for citation in [candidate.citation, candidate.related_citation] if citation %}
+      <section class="review-candidate-passage" aria-label="Original passage">
+        {% set start=citation.get('highlight_start',citation.excerpt.find(citation.highlight)) %}{% set end=start+(citation.highlight|length) %}<blockquote>{{ citation.excerpt[:start] }}<mark>{{ citation.highlight }}</mark>{{ citation.excerpt[end:] }}</blockquote>
+        <a class="open-support-link" href="/matters/{{ matter.slug }}?support={{ citation.support_token }}#support-pane">{{ citation.source_name }} · {{ citation.location }}</a>
+      </section>{% endfor %}
+      <footer><p>{% if candidate.reviewed_at %}Decision by {{ candidate.reviewed_by }} · {{ candidate.reviewed_at }}{% else %}Awaiting review{% endif %}</p>
+        <div class="review-candidate-actions">{% for action,label in [('dismiss','Dismiss'),('reviewed','Mark reviewed'),('reopen','Reopen')] %}
+          <form method="post" action="/matters/{{ matter.slug }}/review-candidates/{{ candidate.signature }}/review"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="revision" value="{{ candidate.revision }}"><button type="submit" name="action" value="{{ action }}">{{ label }}</button></form>
+        {% endfor %}</div>
+      </footer>
+    </article>{% endfor %}
+  </section>{% endif %}{% endfor %}
+  {% if not candidates %}<p>No candidates for review match these filters. Read original records for passages outside these bounded rules.</p>{% endif %}
+</main>
+{% endblock %}

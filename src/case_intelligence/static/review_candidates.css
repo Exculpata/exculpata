@@ -1,0 +1,19 @@
+.review-candidate-shell { width: min(1100px, 100%); margin: 0 auto; padding: 24px; box-sizing: border-box; overflow-wrap: anywhere; }
+.review-candidate-notice { padding: 16px; border-left: 3px solid var(--accent, #247c6a); background: var(--surface, #f3f6f5); }
+.review-category-chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; max-width: 100%; }
+.review-category-chips a { flex: 0 0 auto; max-width: 280px; padding: 10px 14px; border: 1px solid var(--border, #bdc7c4); border-radius: 24px; font-size: .85rem; }
+.review-category-chips a[aria-current] { background: var(--surface, #e5eee9); font-weight: 700; }
+.review-candidate-filters, .review-candidate-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
+.review-candidate-filters label { display: grid; gap: 6px; }
+.review-candidate-filters button, .review-candidate-filters select, .review-candidate-actions button { min-height: 44px; padding: 10px 16px; }
+.review-candidate-card { border: 1px solid var(--border, #bdc7c4); border-radius: 12px; padding: 20px; margin: 16px 0; min-width: 0; }
+.review-category-group h2 { font-size: 1.15rem; margin-top: 30px; }
+.review-candidate-passage blockquote { margin: 14px 0; padding-left: 16px; border-left: 2px solid var(--border, #bdc7c4); white-space: pre-wrap; }
+.review-candidate-passage mark { background: #f7e8ac; color: #232921; }
+.review-candidate-passage .open-support-link { display: inline-block; max-width: 100%; padding: 10px; min-height: 44px; box-sizing: border-box; }
+@media (max-width: 600px) {
+  .review-candidate-shell { padding: 12px; }
+  .review-candidate-card { padding: 14px; }
+  .review-candidate-actions { display: grid; grid-template-columns: 1fr; }
+  .review-candidate-actions button, .review-candidate-actions form { width: 100%; }
+}

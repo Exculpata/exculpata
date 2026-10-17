@@ -1,0 +1,327 @@
+{
+  "format": "exculpata-workflow-eval-provisional-v1",
+  "todo": "TODO #267: map these synthetic questions to the merged harness without changing expected categories.",
+  "items": [
+    {
+      "id": "alternate_person-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "alternate_person"
+      ],
+      "source_id": "alternate_person-true-1"
+    },
+    {
+      "id": "alternate_person-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "alternate_person"
+      ],
+      "source_id": "alternate_person-true-2"
+    },
+    {
+      "id": "alternate_person-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "alternate_person"
+      ],
+      "source_id": "alternate_person-true-3"
+    },
+    {
+      "id": "alternate_person-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "alternate_person-false-1"
+    },
+    {
+      "id": "alternate_person-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "alternate_person-false-2"
+    },
+    {
+      "id": "alternate_person-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "alternate_person-false-3"
+    },
+    {
+      "id": "witness_benefit-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "witness_benefit"
+      ],
+      "source_id": "witness_benefit-true-1"
+    },
+    {
+      "id": "witness_benefit-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "witness_benefit"
+      ],
+      "source_id": "witness_benefit-true-2"
+    },
+    {
+      "id": "witness_benefit-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "witness_benefit"
+      ],
+      "source_id": "witness_benefit-true-3"
+    },
+    {
+      "id": "witness_benefit-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "witness_benefit-false-1"
+    },
+    {
+      "id": "witness_benefit-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "witness_benefit-false-2"
+    },
+    {
+      "id": "witness_benefit-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "witness_benefit-false-3"
+    },
+    {
+      "id": "credibility_context-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "credibility_context"
+      ],
+      "source_id": "credibility_context-true-1"
+    },
+    {
+      "id": "credibility_context-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "credibility_context"
+      ],
+      "source_id": "credibility_context-true-2"
+    },
+    {
+      "id": "credibility_context-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "credibility_context"
+      ],
+      "source_id": "credibility_context-true-3"
+    },
+    {
+      "id": "credibility_context-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "credibility_context-false-1"
+    },
+    {
+      "id": "credibility_context-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "credibility_context-false-2"
+    },
+    {
+      "id": "credibility_context-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "credibility_context-false-3"
+    },
+    {
+      "id": "identification_uncertainty-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "identification_uncertainty"
+      ],
+      "source_id": "identification_uncertainty-true-1"
+    },
+    {
+      "id": "identification_uncertainty-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "identification_uncertainty"
+      ],
+      "source_id": "identification_uncertainty-true-2"
+    },
+    {
+      "id": "identification_uncertainty-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "identification_uncertainty"
+      ],
+      "source_id": "identification_uncertainty-true-3"
+    },
+    {
+      "id": "identification_uncertainty-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "identification_uncertainty-false-1"
+    },
+    {
+      "id": "identification_uncertainty-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "identification_uncertainty-false-2"
+    },
+    {
+      "id": "identification_uncertainty-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "identification_uncertainty-false-3"
+    },
+    {
+      "id": "investigation_gap-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "investigation_gap"
+      ],
+      "source_id": "investigation_gap-true-1"
+    },
+    {
+      "id": "investigation_gap-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "investigation_gap"
+      ],
+      "source_id": "investigation_gap-true-2"
+    },
+    {
+      "id": "investigation_gap-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "investigation_gap"
+      ],
+      "source_id": "investigation_gap-true-3"
+    },
+    {
+      "id": "investigation_gap-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "investigation_gap-false-1"
+    },
+    {
+      "id": "investigation_gap-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "investigation_gap-false-2"
+    },
+    {
+      "id": "investigation_gap-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "investigation_gap-false-3"
+    },
+    {
+      "id": "favorable_physical_evidence-true-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "favorable_physical_evidence"
+      ],
+      "source_id": "favorable_physical_evidence-true-1"
+    },
+    {
+      "id": "favorable_physical_evidence-true-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "favorable_physical_evidence"
+      ],
+      "source_id": "favorable_physical_evidence-true-2"
+    },
+    {
+      "id": "favorable_physical_evidence-true-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "favorable_physical_evidence"
+      ],
+      "source_id": "favorable_physical_evidence-true-3"
+    },
+    {
+      "id": "favorable_physical_evidence-false-1",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "favorable_physical_evidence-false-1"
+    },
+    {
+      "id": "favorable_physical_evidence-false-2",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "favorable_physical_evidence-false-2"
+    },
+    {
+      "id": "favorable_physical_evidence-false-3",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "favorable_physical_evidence-false-3"
+    },
+    {
+      "id": "witness_benefit-bare-denial",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "witness_benefit"
+      ],
+      "source_id": "witness_benefit-bare-denial"
+    },
+    {
+      "id": "witness_benefit-postage",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "witness_benefit-postage"
+    },
+    {
+      "id": "favorable_physical_evidence-omitted-test",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [],
+      "source_id": "favorable_physical_evidence-omitted-test"
+    },
+    {
+      "id": "alternate_person-wrapped",
+      "question": "Which cited passages are candidates for review in this category?",
+      "fixture": "review_candidates/passages.json",
+      "expected_categories": [
+        "alternate_person",
+        "identification_uncertainty"
+      ],
+      "source_id": "alternate_person-wrapped"
+    }
+  ]
+}

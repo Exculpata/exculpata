@@ -1,0 +1,380 @@
+[
+  {
+    "id": "alternate_person-true-1",
+    "category": "alternate_person",
+    "expected": true,
+    "text": "Jordan Sample said another person was seen leaving the scene."
+  },
+  {
+    "id": "alternate_person-true-2",
+    "category": "alternate_person",
+    "expected": true,
+    "text": "The alternate suspect may have been connected to the event."
+  },
+  {
+    "id": "alternate_person-true-3",
+    "category": "alternate_person",
+    "expected": true,
+    "text": "An investigator noted that the other individual was not seen at the scene."
+  },
+  {
+    "id": "alternate_person-false-1",
+    "category": "alternate_person",
+    "expected": false,
+    "text": "Jordan Sample met another person at the benefit concert."
+  },
+  {
+    "id": "alternate_person-false-2",
+    "category": "alternate_person",
+    "expected": false,
+    "text": "The alternate shipping plan was connected to a warehouse schedule."
+  },
+  {
+    "id": "alternate_person-false-3",
+    "category": "alternate_person",
+    "expected": false,
+    "text": "The person entered a scene in a theater play."
+  },
+  {
+    "id": "witness_benefit-true-1",
+    "category": "witness_benefit",
+    "expected": true,
+    "text": "The witness said no deal was offered during the interview."
+  },
+  {
+    "id": "witness_benefit-true-2",
+    "category": "witness_benefit",
+    "expected": true,
+    "text": "The informant may have received a payment for cooperation."
+  },
+  {
+    "id": "witness_benefit-true-3",
+    "category": "witness_benefit",
+    "expected": true,
+    "text": "Relocation for the witness was discussed but not approved."
+  },
+  {
+    "id": "witness_benefit-false-1",
+    "category": "witness_benefit",
+    "expected": false,
+    "text": "The witness attended the benefit concert."
+  },
+  {
+    "id": "witness_benefit-false-2",
+    "category": "witness_benefit",
+    "expected": false,
+    "text": "The witness found a deal on parcel shipping."
+  },
+  {
+    "id": "witness_benefit-false-3",
+    "category": "witness_benefit",
+    "expected": false,
+    "text": "A customer received a payment refund for a damaged parcel."
+  },
+  {
+    "id": "credibility_context-true-1",
+    "category": "credibility_context",
+    "expected": true,
+    "text": "The witness described poor lighting while observing the gate."
+  },
+  {
+    "id": "credibility_context-true-2",
+    "category": "credibility_context",
+    "expected": true,
+    "text": "Jordan Sample said the observer may have been intoxicated."
+  },
+  {
+    "id": "credibility_context-true-3",
+    "category": "credibility_context",
+    "expected": true,
+    "text": "The witness said she was not without her glasses when she saw the van."
+  },
+  {
+    "id": "credibility_context-false-1",
+    "category": "credibility_context",
+    "expected": false,
+    "text": "The witness attended a seminar on shipping routes."
+  },
+  {
+    "id": "credibility_context-false-2",
+    "category": "credibility_context",
+    "expected": false,
+    "text": "The laboratory used blurred vision as a title for an abstract painting."
+  },
+  {
+    "id": "credibility_context-false-3",
+    "category": "credibility_context",
+    "expected": false,
+    "text": "The mechanic described poor lighting in an empty repair bay."
+  },
+  {
+    "id": "identification_uncertainty-true-1",
+    "category": "identification_uncertainty",
+    "expected": true,
+    "text": "The witness was not sure which person entered the van."
+  },
+  {
+    "id": "identification_uncertainty-true-2",
+    "category": "identification_uncertainty",
+    "expected": true,
+    "text": "Jordan Sample could not identify the driver."
+  },
+  {
+    "id": "identification_uncertainty-true-3",
+    "category": "identification_uncertainty",
+    "expected": true,
+    "text": "The person I saw might have been the courier."
+  },
+  {
+    "id": "identification_uncertainty-false-1",
+    "category": "identification_uncertainty",
+    "expected": false,
+    "text": "The clerk was unsure whether a parcel would arrive today."
+  },
+  {
+    "id": "identification_uncertainty-false-2",
+    "category": "identification_uncertainty",
+    "expected": false,
+    "text": "The identification card showed the expiry date clearly."
+  },
+  {
+    "id": "identification_uncertainty-false-3",
+    "category": "identification_uncertainty",
+    "expected": false,
+    "text": "The driver was certain about the delivery schedule."
+  },
+  {
+    "id": "investigation_gap-true-1",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The laboratory test was requested but not performed."
+  },
+  {
+    "id": "investigation_gap-true-2",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The investigator was unable to locate the station footage."
+  },
+  {
+    "id": "investigation_gap-true-3",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The sample was never tested after collection."
+  },
+  {
+    "id": "investigation_gap-false-1",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The witness requested a glass of water."
+  },
+  {
+    "id": "investigation_gap-false-2",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The laboratory test was performed and the record was located."
+  },
+  {
+    "id": "investigation_gap-false-3",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The parcel was not collected by the customer."
+  },
+  {
+    "id": "favorable_physical_evidence-true-1",
+    "category": "favorable_physical_evidence",
+    "expected": true,
+    "text": "The DNA result did not match the comparison sample."
+  },
+  {
+    "id": "favorable_physical_evidence-true-2",
+    "category": "favorable_physical_evidence",
+    "expected": true,
+    "text": "The fingerprint report excluded the named comparison source."
+  },
+  {
+    "id": "favorable_physical_evidence-true-3",
+    "category": "favorable_physical_evidence",
+    "expected": true,
+    "text": "The laboratory reported that the blood result may be incompatible with the stated account."
+  },
+  {
+    "id": "favorable_physical_evidence-false-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The parcel label did not match the shipping order."
+  },
+  {
+    "id": "favorable_physical_evidence-false-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The fingerprint report matched the comparison source."
+  },
+  {
+    "id": "favorable_physical_evidence-false-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The forensic kit was different in color but no analysis had started."
+  },
+  {
+    "id": "witness_benefit-bare-denial",
+    "category": "witness_benefit",
+    "expected": true,
+    "text": "No deal was offered."
+  },
+  {
+    "id": "witness_benefit-postage",
+    "category": "witness_benefit",
+    "expected": false,
+    "text": "The witness paid the clerk for parcel shipping."
+  },
+  {
+    "id": "favorable_physical_evidence-omitted-test",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The fingerprint was excluded from the laboratory report."
+  },
+  {
+    "id": "alternate_person-wrapped",
+    "category": "alternate_person",
+    "expected": true,
+    "text": "Another person may have been seen\nleaving the scene."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA comparison source could not be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The forensic result was not incompatible with the stated account."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The laboratory result was not different from the comparison sample."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-4",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The fingerprint comparison source cannot be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negated-5",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was never excluded."
+  },
+  {
+    "id": "investigation_gap-request-context-1",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "During the interview the witness requested a glass of water."
+  },
+  {
+    "id": "investigation_gap-request-context-2",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The investigator requested a lunch break during the interview."
+  },
+  {
+    "id": "investigation_gap-request-context-3",
+    "category": "investigation_gap",
+    "expected": false,
+    "text": "The witness requested a glass of water before the laboratory test."
+  },
+  {
+    "id": "investigation_gap-request-object-1",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The laboratory test was requested."
+  },
+  {
+    "id": "investigation_gap-request-object-2",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The investigator requested the station footage."
+  },
+  {
+    "id": "investigation_gap-request-object-3",
+    "category": "investigation_gap",
+    "expected": true,
+    "text": "The investigator requested a witness interview."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be reliably excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not, based on the available laboratory analysis, be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-4",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not be conclusively and reliably excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-5",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The forensic result was not, according to the laboratory report, incompatible with the stated account."
+  },
+  {
+    "id": "favorable_physical_evidence-clause-negation-6",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source couldn\u2019t be conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source has not yet been excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source could not, however, be excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-connective-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source has not yet been conclusively excluded."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-1",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was neither excluded nor included by the comparison."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-2",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA comparison failed to exclude the source, which could not be excluded on the available results."
+  },
+  {
+    "id": "favorable_physical_evidence-negation-operator-3",
+    "category": "favorable_physical_evidence",
+    "expected": false,
+    "text": "The DNA source was unable to be excluded."
+  }
+]

@@ -1,0 +1,96 @@
+[
+  {
+    "key": "alternate_person",
+    "label": "Mentions another person possibly connected to the event",
+    "reason": "Mentions another person in connection with the event.",
+    "patterns": [
+      "\\b(?:another|other|alternate|alternative)\\s+(?:suspect|person|individual)\\b.{0,90}\\b(?:scene|event|seen|saw|involved|connection|connected|entered|leaving)\\b",
+      "\\b(?:scene|event)\\b.{0,90}\\b(?:another|other|alternate)\\s+(?:suspect|person|individual)\\b"
+    ],
+    "context": [],
+    "exclude": []
+  },
+  {
+    "key": "witness_benefit",
+    "label": "Mentions a benefit, payment, deal, leniency or relocation for a witness",
+    "reason": "Mentions whether a benefit was offered.",
+    "patterns": [
+      "\\b(?:benefits?|payments?|deal|leniency|relocation|immunity|reward)\\b",
+      "\\bcharges?\\s+(?:would be |were |was |may be )?(?:reduced|dropped)\\b",
+      "\\b(?:witness|informant)\\s+(?:was|may have been|had been)\\s+paid\\b",
+      "\\bpaid\\s+(?:the |a )?(?:witness|informant)\\b"
+    ],
+    "context": [
+      "\\b(?:witness|informant|testif\\w*|cooperat\\w*|statement|interview)\\b",
+      "\\bno\\s+deal\\s+was\\s+offered\\b"
+    ],
+    "exclude": [
+      "\\bbenefit concert\\b",
+      "\\bdeal on (?:parcel )?shipping\\b"
+    ]
+  },
+  {
+    "key": "prior_statement_difference",
+    "label": "Differs from another statement by the same person",
+    "reason": "Mentions a difference between statements attributed to the same person.",
+    "patterns": [],
+    "context": [],
+    "exclude": []
+  },
+  {
+    "key": "credibility_context",
+    "label": "Mentions information bearing on a witness's reliability (e.g., impairment, vision, distance, prior reports)",
+    "reason": "Mentions conditions affecting an observation or recollection.",
+    "patterns": [
+      "\\b(?:impaired|intoxicated|poor vision|blurred vision|without (?:my |their |her |his )?glasses|poor lighting|too far|distance of \\d+|could not hear|could not see clearly)\\b"
+    ],
+    "context": [
+      "\\b(?:witness|observer|observed|saw|see|interview|recalled|remember\\w*|statement)\\b"
+    ],
+    "exclude": []
+  },
+  {
+    "key": "identification_uncertainty",
+    "label": "Expresses uncertainty in an identification or observation",
+    "reason": "Mentions uncertainty about an identification or observation.",
+    "patterns": [
+      "\\b(?:not sure|unsure|uncertain|could not identify|couldn.t identify|might have been|may have been|cannot identify|could not tell|couldn.t tell)\\b",
+      "\\bcould not (?:distinguish|say whether)\\b"
+    ],
+    "context": [
+      "\\b(?:identify|identification|person|face|saw|seen|observed|observation|driver|recogniz\\w*|witness)\\b",
+      "\\b(?:case|vehicle|color|colour|clothing)\\b"
+    ],
+    "exclude": []
+  },
+  {
+    "key": "investigation_gap",
+    "label": "Mentions a lead, test or record that was requested, not done or not located",
+    "reason": "Mentions the status of a requested lead, test or record.",
+    "patterns": [
+      "\\b(?:not (?:done|performed|located|tested|collected|obtained|followed)|never (?:tested|located|performed|collected)|still missing|not yet received|unable to locate|uncollected|unprocessed)\\b",
+      "\\brequested\\s+(?:(?:a|an|the|additional|further|laboratory|forensic|new|another|station|camera|witness|blood|ballistic)\\s+){0,4}(?:lead|tests?|samples?|records?|footage|fingerprints?|DNA|interviews?|investigation)\\b",
+      "\\b(?:lead|tests?|samples?|records?|footage|fingerprints?|DNA|interviews?|investigation)\\s+(?:was|were|is|are|had been|has been|have been)\\s+requested\\b"
+    ],
+    "context": [
+      "\\b(?:lead|test|sample|record|records|footage|fingerprint|DNA|interview|investigat\\w*)\\b"
+    ],
+    "exclude": []
+  },
+  {
+    "key": "favorable_physical_evidence",
+    "label": "Mentions physical or forensic results that don't match the stated account",
+    "reason": "Mentions a physical or forensic result differing from an account or comparison.",
+    "patterns": [
+      "\\b(?:did not match|does not match|didn.t match|excluded|excludes|incompatible with|different from|no match|not consistent with)\\b"
+    ],
+    "context": [
+      "\\b(?:DNA|fingerprint\\w*|forensic|blood|laboratory|lab result|ballistic\\w*|shoeprint\\w*|physical evidence)\\b"
+    ],
+    "exclude": [
+      "\\bexcluded\\s+from\\b"
+    ],
+    "negation_before": "\\b(?:no|not|never|neither|nor|without|unable|fail(?:ed|s)?|failure|lack(?:s|ed|ing)?|cannot|\\w+n['\u2019\u02bc]t)\\b",
+    "clause_boundary": ";|\\bbut\\b"
+  }
+]
