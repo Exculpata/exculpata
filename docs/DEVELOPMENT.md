@@ -231,6 +231,10 @@ Call checks inspect starred operands before expansion. Opaque tuple/list or
 dictionary expansions and dynamic dictionary keys cannot erase a known shared
 member, whether carried by a dictionary key or value: such containers retain
 unresolved ownership and reject explicitly.
+Dictionary inputs are checked in key/value evaluation order. Shared dictionary
+comprehension results and attribute/view access on unresolved shared containers
+are unsupported; use explicit named handles. String and path conversions retain
+active-database path provenance without retaining a reachable workspace handle.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

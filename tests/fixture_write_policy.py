@@ -202,9 +202,10 @@ class _Check(ast.NodeVisitor):
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
                               methods=frozenset({node.attr}), receiver=base,
                               descriptor=base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"})
+            active_path = node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols)
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
-                          active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols),
-                          receiver=base if base.workspace or base.live_workspace or (base.symbol and base.symbol in self.protected) else None)
+                          active_path=active_path,
+                          receiver=base if not active_path and (base.workspace or base.live_workspace or (base.symbol and base.symbol in self.protected)) else None)
         if isinstance(node, ast.JoinedStr):
             parts = [self.value(part.value if isinstance(part, ast.FormattedValue) else part) for part in node.values]
             return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts),
@@ -246,7 +247,11 @@ class _Check(ast.NodeVisitor):
                 return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
                                sqlite_cursor=True)
             if function.symbol in {"str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath"} and node.args:
-                return self.value(node.args[0])
+                argument = self.value(node.args[0])
+                # Paths/text retain source provenance for active-database opens,
+                # but do not expose the original workspace or SQL handle.
+                return _Value(symbol=ast.unparse(node), text=argument.text,
+                              complete_text=argument.complete_text, active_path=argument.active_path)
             if function.symbol == "sqlite3.connect":
                 argument = node.args[0] if node.args else next((kw.value for kw in node.keywords if kw.arg == "database"), None)
                 path = self.value(argument)
@@ -330,6 +335,30 @@ class _Check(ast.NodeVisitor):
 
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load) and self.unresolved_ownership(self.value(node)):
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        self.visit(node.value)
+        if self.unresolved_ownership(self.value(node.value)):
+            self.flag(node, "attributes of unresolved shared fixture containers are unsupported; use explicit named handles")
+
+    def visit_Dict(self, node: ast.Dict) -> None:
+        # Capture each input when Python evaluates it. A later key or value
+        # may rebind an alias, but cannot change a key already in the dictionary.
+        inputs = []
+        opaque = False
+        for key, item in zip(node.keys, node.values):
+            if key is not None:
+                self.visit(key)
+                name = self.value(key)
+                inputs.append(name)
+                opaque |= not name.complete_text
+            self.visit(item)
+            value = self.value(item)
+            inputs.append(value)
+            if key is None:
+                opaque |= value.mapping is None
+        if opaque and any(self.known_ownership(value, shared_only=True) for value in inputs):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
 
     @staticmethod
@@ -1210,7 +1239,10 @@ class _Check(ast.NodeVisitor):
                 self.visit(condition)
         if isinstance(node, ast.DictComp):
             self.visit(node.key)
+            key = self.value(node.key)
             self.visit(node.value)
+            if any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value))):
+                self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles")
         else:
             self.visit(node.elt)
         assignments = self.eager_walrus or {}
