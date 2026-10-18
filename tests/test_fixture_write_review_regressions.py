@@ -36,7 +36,10 @@ def test_guard_rejects_generator_consumed_after_fixture_boundary():
         list(deferred)
     """)
     violations = check_fixture_writes(source)
-    assert [(v.line, v.rule) for v in violations] == [(2, "SQL fixture write outside fixture_write")]
+    assert [(v.line, v.rule) for v in violations] == [
+        (2, "SQL fixture write outside fixture_write"),
+        (2, "generator transport of fixture values is unsupported; use fixed named inputs and fixture_write()"),
+    ]
 
 
 @pytest.mark.parametrize("table", ["segment", "source_version"])

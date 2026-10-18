@@ -34,7 +34,12 @@ def test_unsupported_dictionary_ownership_surfaces_reject(source):
     'bench.workspace.path.as_posix()',
 ])
 def test_scalar_or_path_keys_do_not_carry_reachable_connection_ownership(key):
-    assert check_fixture_writes('import os\nimport pathlib\nlabels = {' + key + ": 'expected'}") == []
+    source = 'import os\nimport pathlib\nlabels = {' + key + ": 'expected'}"
+    if 'bench.workspace.path' in key:
+        assert any('opaque dictionary paths' in v.rule for v in check_fixture_writes(source))
+        assert check_fixture_writes(source.replace('bench.workspace.path', 'pathlib.Path("synthetic.sqlite")')) == []
+    else:
+        assert check_fixture_writes(source) == []
 
 
 @pytest.mark.parametrize('source', [

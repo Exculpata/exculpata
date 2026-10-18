@@ -297,13 +297,14 @@ class _Check(ast.NodeVisitor):
                 else:
                     name = self.value(key)
                     inputs.append(name)
-                    if not name.complete_text:
+                    if not name.complete_text or self.has_active_path(name):
                         opaque = True
                     else:
                         mapping[name.text] = value
             if opaque:
                 return _Value(unresolved_shared_container=any(
-                    self.known_ownership(value, shared_only=True) for value in inputs))
+                    self.known_ownership(value, shared_only=True) for value in inputs),
+                    unresolved_active_path=any(self.has_active_path(value) for value in inputs))
             return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
@@ -346,9 +347,7 @@ class _Check(ast.NodeVisitor):
                           complete_text=all(part.complete_text for part in parts))
         if isinstance(node, ast.BinOp):
             left, right = self.value(node.left), self.value(node.right)
-            return _Value(symbol=left.symbol + "/" + right.symbol,
-                          text=left.text + right.text, active_path=left.active_path or right.active_path,
-                          complete_text=isinstance(node.op, ast.Add) and left.complete_text and right.complete_text)
+            return self.binary_value(left, right, node.op)
         if isinstance(node, ast.NamedExpr):
             return self.value(node.value)
         if isinstance(node, ast.IfExp):
@@ -531,6 +530,26 @@ class _Check(ast.NodeVisitor):
         if opaque and self.unresolved_ownership(self.evaluated_values[node]):
             self.flag(node, "opaque fixture tuple expansion is unsupported; use fixed tuples and fixture_write()", structural=True)
 
+    def binary_value(self, left, right, operator):
+        shared = any(self.known_ownership(value, shared_only=True) for value in (left, right))
+        container_path = any(self.has_active_path(value) and
+                             (value.elements is not None or value.mapping is not None or value.unresolved_active_path)
+                             for value in (left, right))
+        if shared or container_path:
+            return _Value(unresolved_shared_container=shared, unresolved_active_path=container_path)
+        return _Value(symbol=left.symbol + "/" + right.symbol,
+                      text=left.text + right.text, active_path=left.active_path or right.active_path,
+                      complete_text=isinstance(operator, ast.Add) and left.complete_text and right.complete_text)
+
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        self.visit(node.left)
+        left = self.value(node.left)
+        self.visit(node.right)
+        result = self.binary_value(left, self.value(node.right), node.op)
+        self.evaluated_values[node] = result
+        if self.unresolved_ownership(result):
+            self.flag(node, "fixture container binary operations are unsupported; use literal tuples and fixture_write()", structural=True)
+
     def visit_List(self, node: ast.List) -> None:
         self.visit_Tuple(node)
         self.reject_mutable_carrier(node, self.value(node))
@@ -559,7 +578,7 @@ class _Check(ast.NodeVisitor):
                 self.visit(key)
                 name = self.value(key)
                 inputs.append(name)
-                opaque |= not name.complete_text
+                opaque |= not name.complete_text or self.has_active_path(name)
             self.visit(item)
             value = self.value(item)
             inputs.append(value)
@@ -569,9 +588,11 @@ class _Check(ast.NodeVisitor):
             elif name.complete_text:
                 mapping[name.text] = value
         shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
-        self.evaluated_values[node] = (_Value(unresolved_shared_container=shared) if opaque
+        self.evaluated_values[node] = (self.payload_value(inputs) if opaque
                                   else _Value(mapping=tuple(mapping.items())))
         self.reject_mutable_carrier(node, self.evaluated_values[node])
+        if opaque and self.has_active_path(self.evaluated_values[node]):
+            self.flag(node, "opaque dictionary paths are unsupported; use named paths with fixture_write()", structural=True)
         if shared:
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
@@ -694,7 +715,7 @@ class _Check(ast.NodeVisitor):
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
-                                      workspace=any(value.workspace for value in values),
+                                      workspace=any(value.workspace is True for value in values),
                                       unannotated_parameter=any(value.unannotated_parameter for value in values),
                                       descriptor=any(value.descriptor for value in values),
                                       setter_attribute=values[0].setter_attribute if all(value.setter_attribute == values[0].setter_attribute for value in values) else None,
@@ -899,8 +920,13 @@ class _Check(ast.NodeVisitor):
             self.eager_walrus.setdefault(node.target.id, []).append(value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.target)
+        left = self.value(node.target)
         self.visit(node.value)
-        self.bind(node.target, self.value(ast.BinOp(left=node.target, op=node.op, right=node.value)))
+        result = self.binary_value(left, self.value(node.value), node.op)
+        if self.unresolved_ownership(result):
+            self.flag(node, "augmented fixture container operations are unsupported; use named handles and fixture_write()", structural=True)
+        self.bind(node.target, result)
 
     def check_factory_deletion(self, target: ast.Attribute) -> None:
         if target.attr not in {"row_factory", "text_factory"}:
@@ -1579,13 +1605,18 @@ class _Check(ast.NodeVisitor):
             key = self.value(node.key)
             self.visit(node.value)
             shared = any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value)))
-            self.evaluated_values[node] = _Value(unresolved_shared_container=shared)
+            result = self.payload_value([key, self.value(node.value)])
+            self.evaluated_values[node] = result
             if shared:
                 self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles", structural=True)
+            if result.unresolved_active_path:
+                self.flag(node, "active-path dictionary comprehension results are unsupported; use named paths and fixture_write()", structural=True)
         else:
             self.visit(node.elt)
+            element = self.value(node.elt)
+            if deferred and (self.known_ownership(element, shared_only=True) or self.has_active_path(element)):
+                self.flag(node, "generator transport of fixture values is unsupported; use fixed named inputs and fixture_write()", structural=True)
             if not deferred:
-                element = self.value(node.elt)
                 self.reject_mutable_carrier(node, element)
                 self.evaluated_values[node] = (_Value(receiver=element)
                     if element.fixture_handle and element.connection in self.protected

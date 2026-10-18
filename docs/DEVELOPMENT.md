@@ -215,6 +215,11 @@ comprehensions, subscript extraction/stores, mutable-container insertion, opaque
 expansion, and variadic ownership transport are unsupported. Use explicit named
 handles and `fixture_write(workspace)` instead. This applies to yielded scoped
 handles as well as raw handles; a lock does not make unsupported syntax analyzable.
+Tuple concatenation/repetition, augmented container insertion and generators that
+carry shared handles or active paths are also rejected, including when their
+inputs are fixed tuples. Dictionary comprehensions carrying active paths and
+active-path dictionary keys (including known literal database names) are rejected
+at construction; the inventory does not infer their eventual consumer.
 Ordinary scalar data and proven independent-resource containers remain supported.
 Scalar conversion can discard handle ownership but must retain active database-path
 provenance. Known active-path container stores and opaque path extraction remain

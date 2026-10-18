@@ -145,6 +145,10 @@ def test_comprehension_iteration_names_and_deferred_walrus_do_not_leak(expressio
         assert violations
         assert {v.line for v in violations} == {3}
         assert any('mutable shared fixture containers' in v.rule for v in violations)
+    elif expression.startswith('(('):
+        violations = check_fixture_writes(source)
+        assert violations and {v.line for v in violations} == {3}
+        assert any('generator transport' in v.rule for v in violations)
     else:
         assert check_fixture_writes(source) == []
 

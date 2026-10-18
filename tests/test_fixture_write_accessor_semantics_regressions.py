@@ -67,7 +67,11 @@ def test_independent_receiver_and_default_controls(source):
     'bench.workspace.path or other_path',
 ])
 def test_plain_merged_path_keys_remain_nonowning(expression):
-    assert check_fixture_writes('path = ' + expression + '\nlabels = {path: 0}') == []
+    source = 'path = ' + expression + '\nlabels = {path: 0}'
+    violations = check_fixture_writes(source)
+    assert any('opaque dictionary paths' in v.rule for v in violations)
+    assert not any('shared connection close' in v.rule for v in violations)
+    assert check_fixture_writes(source.replace('bench.workspace.path', '"synthetic.sqlite"')) == []
 
 
 @pytest.mark.parametrize('source', [
