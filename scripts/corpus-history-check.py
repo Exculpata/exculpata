@@ -53,8 +53,10 @@ def write_probe(root: Path, destination: Path, case: dict) -> Path:
     (tests / "__init__.py").write_text("")
     source = root / case["file"]
     if case["id"] == "transcript-edit-restart":
+        (tests / "fixture_write.py").write_bytes((root / "tests/fixture_write.py").read_bytes())
         header = ("import hashlib, io, wave\nimport pytest\n"
                   "from fastapi.testclient import TestClient\n"
+                  "from tests.fixture_write import fixture_write\n"
                   "from case_intelligence import workbench as module\n"
                   "from case_intelligence.generation import UnavailableGenerator\n"
                   "from case_intelligence.pilot_uploads import PilotDocument\n"

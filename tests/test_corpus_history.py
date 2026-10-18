@@ -132,3 +132,16 @@ def test_timeout_cannot_disable_execution_bound(timeout):
     with pytest.raises(SystemExit) as exc:
         history.main(["--timeout", timeout])
     assert exc.value.code == 2
+
+
+def test_transcript_probe_carries_the_exact_current_fixture_boundary(tmp_path):
+    history.write_probe(history.ROOT, tmp_path, history.CASES[0])
+    assert (tmp_path / 'tests/fixture_write.py').read_bytes() == (
+        history.ROOT / 'tests/fixture_write.py').read_bytes()
+
+
+def test_transcript_probe_executes_current_fixture_and_assertion():
+    result = history.run_probe(history.ROOT, history.CASES[0], historical=False, timeout=90)
+    assert result['accepted'], result.get('diagnostic', result)
+    assert result['tests'] == 1
+    assert result['failures'] == result['errors'] == result['skipped'] == 0
