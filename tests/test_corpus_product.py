@@ -190,3 +190,24 @@ def test_observation_preserves_wrong_claim_attachment_for_gate_rejection(tmp_pat
             assert [citation['document_id'] for citation in claim['citations']] == ['spoken']
         else:
             assert [citation['document_id'] for citation in claim['citations']] == ['written']
+
+
+def test_actual_corpus_shared_facts_cannot_hide_swapped_full_claim_support():
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    positive = gate.compare(manifest, expected, actual)
+    assert len(positive) == 12 and all(row['passed'] for row in positive), positive
+    answer = actual['answer-bicycle']
+    first, second = answer['claims']
+    assert {first['citations'][0]['document_id'], second['citations'][0]['document_id']} == {
+        'bicycle', 'audio-bicycle'}
+    for claim in (first, second):
+        assert all(gate.contains_tokens(claim['text'], fact)
+                   for fact in expected['answers']['answer-bicycle']['facts'])
+    first['citations'], second['citations'] = second['citations'], first['citations']
+    answer['citations'] = [citation for claim in answer['claims'] for citation in claim['citations']]
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer-bicycle')
+    assert result['passed'] is False
+    assert any('complete claim' in difference for difference in result['diff'])

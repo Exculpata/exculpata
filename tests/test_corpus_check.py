@@ -84,6 +84,41 @@ def test_answer_fact_normalization_preserves_case_and_punctuation(fact, text):
     assert result['passed'] is True
 
 
+@pytest.mark.parametrize('text,kind,passes', [
+    ('The parcel is blue.', 'document', True),
+    ('A reviewer confirmed that The parcel is blue.', 'document', False),
+    ('The parcel is blue. It was hidden.', 'document', False),
+    ('The machine transcript appears to say that The parcel is blue.', 'transcript', True),
+    ('The machine transcript appears to say that The parcel is blue.', 'document', False),
+    ('The machine transcript appears to say that The machine transcript appears to say that The parcel is blue.', 'transcript', False),
+    ('The machine transcript appears to say that The parcel is blue. It was hidden.', 'transcript', False),
+    ('The parcel is blue.', 'transcript', False),
+])
+def test_complete_claim_requires_own_passage_with_only_exact_transcript_qualifier(text, kind, passes):
+    manifest, expected, actual = sample()
+    citation = actual['answer']['citations'][0]
+    citation['evidence_kind'] = kind
+    actual['answer']['text'] = actual['answer']['claims'][0]['text'] = text
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is passes
+    if not passes:
+        assert any('complete claim' in difference for difference in result['diff'])
+
+
+@pytest.mark.parametrize('claimed,observed,passes', [
+    ('09:15', '09:45', False), ('locker seven', 'Locker 7', False), ('Locker 7', 'locker 7', True),
+])
+def test_complete_claim_cannot_change_details_beyond_required_gold_fact(claimed, observed, passes):
+    manifest, expected, actual = sample()
+    claim = actual['answer']['claims'][0]
+    claim['text'] = actual['answer']['text'] = f'The parcel is blue at {claimed}.'
+    claim['citations'][0]['excerpt'] = f'The parcel is blue at {observed}.'
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is passes
+    if not passes:
+        assert any('complete claim' in difference for difference in result['diff'])
+
+
 @pytest.mark.parametrize('present,answerable', [(False, None), (True, None), (True, False),
     (True, 0), (True, 1), (True, 'true'), (True, 'false'), (True, []), (True, {})],
     ids=['missing', 'null', 'false', 'zero', 'one', 'true-string', 'false-string', 'list', 'dict'])

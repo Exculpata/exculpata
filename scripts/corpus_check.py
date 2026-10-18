@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'benchmarks/corpus/v1'
+TRANSCRIPT_QUALIFIER = 'The machine transcript appears to say that '
 
 
 def normalize(text: str) -> str:
@@ -107,6 +108,23 @@ def matches_span(citation, required):
             and any(contains_tokens(citation.get('excerpt', ''), span) for span in spans))
 
 
+def supports_complete_claim(citation, text):
+    """The extractive adapter may add only its exact transcript qualifier.
+
+    Each attached passage must contain the entire remaining normalized claim,
+    including details beyond the required gold facts. Never borrow support from
+    another claim or treat reviewed numeral alternatives as interchangeable text.
+    """
+    kind = citation.get('evidence_kind', 'document')
+    if kind == 'transcript':
+        if not text.startswith(TRANSCRIPT_QUALIFIER):
+            return False
+        text = text[len(TRANSCRIPT_QUALIFIER):]
+    elif kind != 'document' or text.startswith(TRANSCRIPT_QUALIFIER):
+        return False
+    return citation.get('source_valid') is True and contains_tokens(citation.get('excerpt', ''), text)
+
+
 def compare(manifest, expected, actual, *, full=False):
     """Return per-case diagnostics; no aggregate or caller-supplied pass flag is trusted."""
     results = []
@@ -166,6 +184,10 @@ def compare(manifest, expected, actual, *, full=False):
                         errors.append(f'invalid observed claim {index}')
                     else:
                         valid_claims.append(claim)
+                        for citation in claim['citations']:
+                            if not supports_complete_claim(citation, claim['text']):
+                                errors.append(f"complete claim {index} is not supported by its attached passage: "
+                                              f"{citation.get('document_id')}")
                 # Aggregates are compatibility summaries, never a substitute for
                 # the actual per-claim support returned by the product.
                 citations = [citation for claim in valid_claims for citation in claim['citations']]
