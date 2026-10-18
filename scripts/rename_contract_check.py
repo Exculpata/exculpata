@@ -7,6 +7,7 @@ name, or documentation gates. Tests retain independent historical expectations.
 from __future__ import annotations
 
 import ast
+import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 import re
@@ -35,16 +36,43 @@ SKIP_DIRS = {
 # not operational names. Neither its implementation nor its policy is changed.
 SKIP_FILES = {"CHANGELOG.md", "scripts/legacy_name_check.py"}
 HISTORICAL_ASSET = f"{LEGACY_STEM}-banner.svg"
+# This exact helper translates candidate identifiers for documentation analysis;
+# it does not emit operational names. Only unresolved-composition diagnostics
+# receive this disposition. Literal and resolved-name scanning still applies,
+# and any AST change requires a new review rather than inheriting an exemption.
+REVIEWED_ANALYSIS_FUNCTIONS = {
+    ("scripts/doc_identifier_check.py", "_swap"): "75ce8138218b66706d732d21f538e1f7f5877331b2f332a63e973b18718d2d3b",
+}
 
 _STEM = re.escape(LEGACY_STEM)
 _TOKENS = re.compile(
-    rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/?%#&=+~!$,*@;-]*)"
+    rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/%&=+~!$,*@;-]*(?:[?#][A-Za-z0-9_.:/?%#&=+~!$,*@;()'-]*)?)"
     rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
     rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.-]*)",
     re.IGNORECASE,
 )
+
+
+class UnknownLegacy(ast.expr):
+    """Analysis-only unknown value with known legacy provenance."""
+    _fields = ()
+
+
+class ContainerValue(NamedTuple):
+    kind: str
+    items: tuple
+
+
+def legacy_value(item: str | ContainerValue | None) -> bool:
+    if isinstance(item, str):
+        return LEGACY_STEM in item.casefold()
+    if isinstance(item, ContainerValue):
+        if item.kind == "unknown":
+            return True
+        return any(legacy_value(value) for value in item.items) if item.kind != "dict" else any(legacy_value(value) for _, value in item.items)
+    return False
 
 
 class Finding(NamedTuple):
@@ -125,6 +153,8 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
         while end < len(text) and identifier_character(text[end]):
             end += 1
         token = text[start:end]
+        if match.lastgroup == "uri" and start and text[start - 1] == "'" and token.endswith("'"):
+            token = token[:-1]  # A source string's closing delimiter is not URI content.
         if token.rsplit("/", 1)[-1] == HISTORICAL_ASSET:
             continue
         documented_prefix = Path(location).suffix.lower() == ".md"
@@ -153,18 +183,66 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return []  # Compilation is enforced separately.
     env = dict(KNOWN_VALUES)
     unresolved_stems: set[str] = set()
-    binding_events: list[tuple[str, str | None]] = []
+    binding_events: list[tuple[str, str | ContainerValue | None]] = []
     found = []
     class_scopes = []
+    function_locals = []
+    module_scope = None
 
     def joined(parts: list[str]) -> str | None:
         return "".join(parts) if sum(map(len, parts)) <= 65536 else None
 
     def unbind(name: str) -> None:
         for key in list(env):
-            if key == name or key.startswith(name + "."):
+            if key == name or key.startswith((name + ".", name + "[")):
                 env.pop(key)
-        unresolved_stems.discard(name)
+        for key in list(unresolved_stems):
+            if key == name or key.startswith((name + ".", name + "[")):
+                unresolved_stems.discard(key)
+
+    def frozen(node: ast.AST) -> str | ContainerValue | None:
+        resolved = value(node)
+        if resolved is not None:
+            return resolved
+        structured = structure(node)
+        if structured is not None:
+            return structured
+        return ContainerValue("unknown", ()) if contains_stem(node) else None
+
+    def structure(node: ast.AST) -> ContainerValue | None:
+        if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
+            stored = env.get(ast.unparse(node))
+            if isinstance(stored, ContainerValue):
+                return stored
+            if isinstance(node, ast.Subscript):
+                stored = member(node)
+                return stored if isinstance(stored, ContainerValue) else None
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return ContainerValue(type(node).__name__.lower(), tuple(frozen(item) for item in node.elts))
+        if isinstance(node, ast.Dict):
+            return ContainerValue("dict", tuple((key.value if isinstance(key, ast.Constant) else None, frozen(item))
+                                                for key, item in zip(node.keys, node.values)))
+        return None
+
+    def member(node: ast.Subscript) -> str | ContainerValue | None:
+        source = structure(node.value)
+        if source is None or not isinstance(node.slice, ast.Constant):
+            return None
+        key = node.slice.value
+        if source.kind == "dict":
+            return next((item for name, item in reversed(source.items) if name == key), None)
+        if source.kind in {"list", "tuple"} and isinstance(key, int) and -len(source.items) <= key < len(source.items):
+            return source.items[key]
+        return None
+
+    def literal(item: str | ContainerValue | None) -> ast.AST:
+        if isinstance(item, ContainerValue):
+            if item.kind == "dict":
+                return ast.Dict(keys=[ast.Constant(value=key) for key, _ in item.items], values=[literal(value) for _, value in item.items])
+            if item.kind == "unknown":
+                return UnknownLegacy()
+            return ast.List(elts=[literal(value) for value in item.items], ctx=ast.Load())
+        return ast.Constant(value=item)
 
     def value(node: ast.AST) -> str | None:
         if isinstance(node, ast.Constant):
@@ -175,10 +253,11 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                     return node.value.decode("utf-8")
                 except UnicodeDecodeError:
                     return None
-        if isinstance(node, ast.Name):
-            return env.get(node.id)
-        if isinstance(node, ast.Attribute):
-            return env.get(ast.unparse(node))
+        if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
+            stored = env.get(ast.unparse(node))
+            if stored is None and isinstance(node, ast.Subscript):
+                stored = member(node)
+            return stored if isinstance(stored, str) else None
         if isinstance(node, ast.IfExp):
             choices = [value(node.body), value(node.orelse)]
             if choices[0] == choices[1]:
@@ -345,8 +424,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return []
 
     def contains_stem(piece: ast.AST) -> bool:
-        if isinstance(piece, (ast.Name, ast.Attribute)) and ast.unparse(piece) in unresolved_stems:
+        if isinstance(piece, UnknownLegacy):
             return True
+        if isinstance(piece, (ast.Name, ast.Attribute, ast.Subscript)):
+            if ast.unparse(piece) in unresolved_stems or legacy_value(env.get(ast.unparse(piece))):
+                return True
+            if isinstance(piece, ast.Subscript) and legacy_value(member(piece)):
+                return True
         if isinstance(piece, ast.Dict):
             return any(contains_stem(item) for item in piece.values)
         if isinstance(piece, (ast.List, ast.Tuple, ast.Set)):
@@ -371,52 +455,97 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         pending = []
 
         def collect(item: ast.AST, source: ast.AST | None) -> None:
-            if isinstance(item, (ast.Name, ast.Attribute)):
-                resolved = value(source) if source is not None else None
+            if isinstance(item, (ast.Name, ast.Attribute, ast.Subscript)):
+                resolved = frozen(source) if source is not None else None
                 unresolved = source is not None and resolved is None and contains_stem(source)
-                pending.append((ast.unparse(item), resolved, unresolved))
+                pending.append((item, resolved, unresolved))
+            elif isinstance(item, ast.Starred):
+                collect(item.value, source)
             elif isinstance(item, (ast.Tuple, ast.List)):
-                if isinstance(source, (ast.Tuple, ast.List)) and len(item.elts) == len(source.elts):
-                    for child, child_source in zip(item.elts, source.elts):
-                        collect(child, child_source)
+                structured = structure(source) if source is not None else None
+                if structured is not None and structured.kind in {"list", "tuple"}:
+                    source = literal(structured)
+                if isinstance(source, (ast.Tuple, ast.List)):
+                    star = next((index for index, child in enumerate(item.elts) if isinstance(child, ast.Starred)), None)
+                    for index, child in enumerate(item.elts):
+                        if isinstance(child, ast.Starred):
+                            end = len(source.elts) - (len(item.elts) - index - 1)
+                            collect(child.value, ast.List(elts=source.elts[index:end], ctx=ast.Load()))
+                        else:
+                            offset = index if star is None or index < star else index - len(item.elts)
+                            collect(child, source.elts[offset] if -len(source.elts) <= offset < len(source.elts) else None)
                 else:
                     for child in item.elts:
                         collect(child, source)
 
+        def store(scope, unknown, events, target, resolved, unresolved):
+            name = ast.unparse(target)
+            if isinstance(target, ast.Subscript):
+                parent = ast.unparse(target.value)
+                original = scope.get(parent)
+                if isinstance(original, ContainerValue):
+                    updated = ContainerValue("unknown", ()) if legacy_value(original) or legacy_value(resolved) or unresolved else None
+                    if isinstance(target.slice, ast.Constant):
+                        key = target.slice.value
+                        if original.kind == "dict":
+                            updated = ContainerValue("dict", (*((key_, item) for key_, item in original.items if key_ != key), (key, resolved)))
+                        elif original.kind == "list" and isinstance(key, int) and -len(original.items) <= key < len(original.items):
+                            items = list(original.items)
+                            items[key] = resolved
+                            updated = ContainerValue("list", tuple(items))
+                    aliases = [key for key, item in scope.items() if item is original]
+                    for alias in aliases:
+                        for key in list(scope):
+                            if key.startswith(alias + "["):
+                                scope.pop(key)
+                        if updated is None:
+                            scope.pop(alias, None)
+                        else:
+                            scope[alias] = updated
+                            if legacy_value(updated):
+                                events.append((alias, updated))
+                elif legacy_value(resolved) or unresolved:
+                    unknown.add(parent)
+                    events.append((parent, None))
+            for key in list(scope):
+                if key == name or key.startswith((name + ".", name + "[")):
+                    scope.pop(key)
+            for key in list(unknown):
+                if key == name or key.startswith((name + ".", name + "[")):
+                    unknown.discard(key)
+            if resolved is not None:
+                scope[name] = resolved
+                if legacy_value(resolved):
+                    events.append((name, resolved))
+            elif unresolved:
+                unknown.add(name)
+                events.append((name, None))
+
         collect(target, expression)
-        for name, resolved, unresolved in pending:
+        for target, resolved, unresolved in pending:
+            name = ast.unparse(target)
             if class_scopes:
-                outer_env, outer_unresolved, outer_events, local_names = class_scopes[-1]
-                root, separator, _ = name.partition(".")
-                if not separator:
+                outer_env, outer_unresolved, outer_events, local_names, declared_outer = class_scopes[-1]
+                root = re.split(r"[.\[]", name, maxsplit=1)[0]
+                if isinstance(target, ast.Name) and root not in declared_outer:
                     local_names.add(root)
                 elif root not in local_names:
-                    # Class suites execute immediately. Mutating an enclosing
-                    # object updates the namespace seen by methods and callers.
-                    for key in list(outer_env):
-                        if key == name or key.startswith(name + "."):
-                            outer_env.pop(key)
-                    outer_unresolved.discard(name)
-                    if resolved is not None:
-                        outer_env[name] = resolved
-                        if LEGACY_STEM in resolved.casefold():
-                            outer_events.append((name, resolved))
-                    elif unresolved:
-                        outer_unresolved.add(name)
-                        outer_events.append((name, None))
-            unbind(name)
-            if resolved is not None:
-                env[name] = resolved
-                if LEGACY_STEM in resolved.casefold():
-                    binding_events.append((name, resolved))
-            elif unresolved:
-                unresolved_stems.add(name)
-                binding_events.append((name, None))
+                    if declared_outer.get(root) == "global" and module_scope is not None:
+                        store(*module_scope, target, resolved, unresolved)
+                        # A method still closes over a same-named function
+                        # local; a class global declaration cannot change it.
+                        if not function_locals or root not in function_locals[-1]:
+                            store(outer_env, outer_unresolved, outer_events, target, resolved, unresolved)
+                    else:
+                        store(outer_env, outer_unresolved, outer_events, target, resolved, unresolved)
+            store(env, unresolved_stems, binding_events, target, resolved, unresolved)
 
     class Visitor(ast.NodeVisitor):
-        def __init__(self) -> None:
+        def __init__(self, *, scope=(), reviewed_analysis=False) -> None:
             self.deferred = []
             self.method_scope = None
+            self.scope = scope
+            self.reviewed_analysis = reviewed_analysis
 
         def visit_Constant(self, node: ast.Constant) -> None:
             decoded = node.value
@@ -466,11 +595,91 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
             self.visit(node.iter)
-            bind(node.target, None)
-            for statement in (*node.body, *node.orelse):
-                self.visit(statement)
+            def joined_values(items):
+                candidates = set(items)
+                if len(candidates) == 1:
+                    return next(iter(candidates))
+                containers = [item for item in candidates if isinstance(item, ContainerValue)]
+                if containers and len(containers) == len(candidates) and all(
+                    item.kind in {"list", "tuple"} and len(item.items) == len(containers[0].items) for item in containers
+                ):
+                    return ContainerValue("tuple", tuple(joined_values([item.items[index] for item in containers])
+                                                         for index in range(len(containers[0].items))))
+                legacy = {item for item in candidates if legacy_value(item)}
+                return next(iter(legacy)) if len(legacy) == 1 else ContainerValue("unknown", ()) if legacy else None
+
+            iterable = structure(node.iter)
+            possibilities = [iterable] if iterable is not None else []
+            if isinstance(node.iter, ast.Subscript) and not isinstance(node.iter.slice, ast.Constant):
+                parent = structure(node.iter.value)
+                if parent is not None:
+                    possibilities = [item for _, item in parent.items] if parent.kind == "dict" else list(parent.items)
+            members = []
+            for possible in possibilities:
+                if isinstance(possible, ContainerValue) and possible.kind in {"dict", "list", "tuple", "set"}:
+                    members.extend(key for key, _ in possible.items) if possible.kind == "dict" else members.extend(possible.items)
+                elif legacy_value(possible):
+                    members.append(ContainerValue("unknown", ()))
+            iteration = joined_values(members) if members else ContainerValue("unknown", ()) if contains_stem(node.iter) else None
+            assignment = ast.Assign(targets=[node.target], value=literal(iteration))
+            ast.fix_missing_locations(ast.copy_location(assignment, node))
+            self.alternatives([[], [assignment, *node.body]])
+            # A break can bypass the else suite; retain both possibilities.
+            self.alternatives([[], node.orelse])
 
         visit_AsyncFor = visit_For
+
+        def visit_While(self, node: ast.While) -> None:
+            self.visit(node.test)
+            self.alternatives([[], node.body])
+            self.alternatives([[], node.orelse])
+
+        def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
+            for item in node.items:
+                self.visit(item.context_expr)
+                if item.optional_vars is not None:
+                    bind(item.optional_vars, None)
+            for statement in node.body:
+                self.visit(statement)
+
+        visit_AsyncWith = visit_With
+
+        def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+            if node.type is not None:
+                self.visit(node.type)
+            if node.name:
+                bind(ast.Name(id=node.name, ctx=ast.Store()), None)
+            for statement in node.body:
+                self.visit(statement)
+            if node.name:
+                unbind(node.name)
+                if class_scopes:
+                    class_scopes[-1][3].discard(node.name)
+
+        def visit_Try(self, node: ast.Try | ast.TryStar) -> None:
+            # Visit each statement once. An exception can occur before or after
+            # any statement; merge those inputs for the handler paths while
+            # preserving the precise successful body result for the else path.
+            exceptional = [self.snapshot()]
+            for statement in node.body:
+                self.visit(statement)
+                exceptional.append(self.snapshot())
+            normal = self.snapshot()
+            self.merge_states(exceptional)
+            handler_input = self.snapshot()
+            if isinstance(node, ast.TryStar):
+                # Exception-group handlers can run in order on disjoint
+                # subgroups, so each later handler sees earlier possible writes.
+                for handler in node.handlers:
+                    self.alternatives([[], [handler]])
+                self.alternatives([node.orelse, []], starts=[normal, self.snapshot()])
+            else:
+                self.alternatives([node.orelse, *[[handler] for handler in node.handlers]],
+                                  starts=[normal, *[handler_input for _ in node.handlers]])
+            for statement in node.finalbody:
+                self.visit(statement)
+
+        visit_TryStar = visit_Try
 
         def visit_AugAssign(self, node: ast.AugAssign) -> None:
             expression = ast.copy_location(ast.BinOp(left=node.target, op=node.op, right=node.value), node)
@@ -489,6 +698,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.visit(node.subject)
 
             def captures(pattern: ast.pattern, subject: ast.AST) -> list[ast.Assign]:
+                structured = structure(subject)
+                if structured is not None:
+                    subject = literal(structured)
                 result = []
                 def capture(name: str | None, source: ast.AST) -> None:
                     if name:
@@ -546,30 +758,68 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             for case in node.cases:
                 # Captures bind matched values, including structural members;
                 # they are not unknown values that erase existing provenance.
-                choices.append([case.pattern, *captures(case.pattern, node.subject), *([case.guard] if case.guard else []), *case.body])
+                bindings = captures(case.pattern, node.subject)
+                # Evaluate all capture sources before binding any name: one
+                # capture may shadow a name used to construct the subject.
+                assignment = ast.Assign(
+                    targets=[ast.Tuple(elts=[item.targets[0] for item in bindings], ctx=ast.Store())],
+                    value=ast.Tuple(elts=[item.value for item in bindings], ctx=ast.Load()),
+                )
+                ast.fix_missing_locations(ast.copy_location(assignment, node.subject))
+                choices.append([case.pattern, assignment, *([case.guard] if case.guard else []), *case.body])
                 exhaustive |= isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None and case.guard is None
             self.alternatives(choices if exhaustive else [*choices, []])
 
-        def alternatives(self, choices: list[list[ast.AST]]) -> None:
+        def snapshot(self):
+            enclosing = None
+            if class_scopes:
+                scope, unknown, _, local_names, _ = class_scopes[-1]
+                enclosing = dict(scope), set(unknown), set(local_names)
+            return dict(env), set(unresolved_stems), enclosing
+
+        def restore(self, state) -> None:
             nonlocal env, unresolved_stems
-            outer, outer_unresolved = dict(env), set(unresolved_stems)
-            branches = []
-            for statements in choices:
-                env, unresolved_stems = dict(outer), set(outer_unresolved)
+            env, unresolved_stems = dict(state[0]), set(state[1])
+            if class_scopes:
+                scope, unknown, _, local_names, _ = class_scopes[-1]
+                scope.clear()
+                scope.update(state[2][0])
+                unknown.clear()
+                unknown.update(state[2][1])
+                local_names.clear()
+                local_names.update(state[2][2])
+
+        def merge_states(self, states) -> None:
+            def merged(branches):
+                bindings = {key: item for key, item in branches[0][0].items()
+                            if all(item == scope.get(key) for scope, _ in branches[1:])}
+                unresolved = set().union(*(unknown for _, unknown in branches))
+                for key in set().union(*(scope.keys() for scope, _ in branches)):
+                    legacy = {scope[key] for scope, _ in branches if key in scope and legacy_value(scope[key])}
+                    if key not in bindings and key not in unresolved and len(legacy) == 1:
+                        bindings[key] = legacy.pop()
+                    elif key not in bindings and legacy:
+                        unresolved.add(key)
+                return bindings, unresolved
+
+            bindings, unknown = merged([(state[0], state[1]) for state in states])
+            enclosing = None
+            if class_scopes:
+                scope, uncertain = merged([(state[2][0], state[2][1]) for state in states])
+                # A class root is definitely local only if every path binds it.
+                locals_ = set.intersection(*(state[2][2] for state in states))
+                enclosing = scope, uncertain, locals_
+            self.restore((bindings, unknown, enclosing))
+
+        def alternatives(self, choices: list[list[ast.AST]], *, starts=None) -> None:
+            initial = self.snapshot()
+            results = []
+            for index, statements in enumerate(choices):
+                self.restore(starts[index] if starts is not None else initial)
                 for statement in statements:
                     self.visit(statement)
-                branches.append((env, unresolved_stems))
-            env = {key: item for key, item in branches[0][0].items()
-                   if all(item == bindings.get(key) for bindings, _ in branches[1:])}
-            unresolved_stems = set().union(*(unresolved for _, unresolved in branches))
-            for key in set().union(*(bindings.keys() for bindings, _ in branches)):
-                legacy = {bindings[key] for bindings, _ in branches
-                          if key in bindings and LEGACY_STEM in bindings[key].casefold()}
-                if key not in env and key not in unresolved_stems and len(legacy) == 1:
-                    env[key] = legacy.pop()
-                    unresolved_stems.discard(key)
-                elif key not in env and legacy:
-                    unresolved_stems.add(key)
+                results.append(self.snapshot())
+            self.merge_states(results)
 
         def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
@@ -598,7 +848,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 outer, outer_unresolved, outer_events = env, unresolved_stems, binding_events
                 env, unresolved_stems = dict(env), set(unresolved_stems)
                 possible_bindings = {name: {item} for name, item in definition_env.items()
-                                     if LEGACY_STEM in item.casefold()}
+                                     if legacy_value(item)}
                 possible_unresolved = set(definition_unresolved)
                 for name, item in binding_events[offset:]:
                     if item is None:
@@ -618,10 +868,30 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 for arg in (node.args.vararg, node.args.kwarg):
                     if arg is not None:
                         unbind(arg.arg)
-                visitor = Visitor()
+                local_names = set()
+                def locals_in(statement):
+                    if isinstance(statement, ast.Name) and isinstance(statement.ctx, ast.Store):
+                        local_names.add(statement.id)
+                    elif isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        local_names.add(statement.name)
+                    elif isinstance(statement, (ast.Import, ast.ImportFrom)):
+                        local_names.update(alias.asname or alias.name.split(".")[0] for alias in statement.names)
+                    elif not isinstance(statement, ast.Lambda):
+                        for child in ast.iter_child_nodes(statement):
+                            locals_in(child)
+                for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+                    local_names.add(arg.arg)
+                for statement in [node.body] if isinstance(node, ast.Lambda) else node.body:
+                    locals_in(statement)
+                function_locals.append(local_names)
+                name = getattr(node, "name", "<lambda>")
+                expected = REVIEWED_ANALYSIS_FUNCTIONS.get((location, name)) if not self.scope else None
+                reviewed = expected is not None and hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest() == expected
+                visitor = Visitor(scope=(*self.scope, name), reviewed_analysis=reviewed)
                 for statement in [node.body] if isinstance(node, ast.Lambda) else node.body:
                     visitor.visit(statement)
                 visitor.finish()
+                function_locals.pop()
                 env = outer
                 unresolved_stems = outer_unresolved
                 binding_events = outer_events
@@ -637,7 +907,16 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             env = dict(scope_env)
             unresolved_stems = set(scope_unresolved)
             binding_events = []
-            class_scopes.append((scope_env, scope_unresolved, scope_events, set()))
+            declared_outer = {}
+            def declarations(statement):
+                if isinstance(statement, (ast.Global, ast.Nonlocal)):
+                    declared_outer.update({name: "global" if isinstance(statement, ast.Global) else "nonlocal" for name in statement.names})
+                elif not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                    for child in ast.iter_child_nodes(statement):
+                        declarations(child)
+            for statement in node.body:
+                declarations(statement)
+            class_scopes.append((scope_env, scope_unresolved, scope_events, set(), declared_outer))
             self.generic_visit(node)
             class_scopes.pop()
             env = outer
@@ -679,13 +958,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                     if node.func.attr in STRING_METHODS:
                         pieces = call_inputs(node)
-                if any(contains_stem(piece) for piece in pieces):
+                if any(contains_stem(piece) for piece in pieces) and not self.reviewed_analysis:
                     found.append(Finding(f"{location}:{node.lineno}", "unsupported legacy composition; use a contract key"))
                     return
                 self.generic_visit(node)
 
     visitor = Visitor()
     visitor.visit(tree)
+    module_scope = env, unresolved_stems, binding_events
     visitor.finish()
     return found
 

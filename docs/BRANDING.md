@@ -175,14 +175,24 @@ Unsupported stem compositions, including mapping-style
 interpolation, must use a contract key instead. String methods, container lookups,
 conditional and short-circuit aliases, local attribute assignments, and tuple
 assignments preserve known legacy origins. Both `if` and `match` alternatives merge
-possible bindings, and match captures retain their subject or member provenance.
+possible bindings, including class-suite mutations of enclosing objects. Match
+captures retain their subject or member provenance and bind simultaneously.
 Methods use their enclosing lexical scope; class suites preserve writes through
 enclosing objects while class-local bindings stay separate. UTF-8 bytes aliases,
 compositions and ordinary encode/decode calls retain string provenance.
+Known sequence and mapping aliases retain member values; starred assignments and
+subscript writes preserve those values or a conservative unknown legacy origin.
+Class global/nonlocal declarations and implicit with/exception targets determine
+where bindings belong. Shared state merging covers normal and exceptional try
+paths, applies finally afterward, permits ordered exception-group handlers, and
+retains zero-iteration loop paths. Known iterable members retain their origins;
+unknown runtime iteration values are not evaluated.
 Unicode letters and combining marks stay part of source identifiers. Search
 patterns and parser inputs do not become generated identifiers. This is a bounded
 syntax check, not whole-program execution: arbitrary function return values and
-runtime loop values are not inferred. Use contract keys for generated operational
+runtime loop values are not inferred. Once a supported expression has a known
+legacy origin, loss of its precise value remains review-required instead of
+clearing that origin. This bounded analysis cannot prove arbitrary Python safe. Use contract keys for generated operational
 names, including names assembled through helpers; review still checks that usage.
 Complete symbolic templates are checked against their family; bare template
 prefixes are examples only in Markdown unless explicitly registered. Registered
@@ -191,6 +201,10 @@ own contract. The authority module is scanned outside the table declaration;
 only its exact source span is covered by the separate contract-table validation,
 so neighboring statements remain checked. URI query, fragment and percent-encoded
 suffixes remain part of the identifier and require an explicit contract.
+The documentation checker's `_swap` helper translates candidate text rather than
+emitting operational names. Its exact function AST has a recorded disposition for
+unresolved-composition diagnostics only. Literal and resolved-name scanning still
+applies; a changed function body or another file does not inherit the disposition.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract

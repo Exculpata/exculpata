@@ -666,3 +666,155 @@ def test_malformed_uri_exception_is_exact():
     assert checker.scan_text("synthetic", "recordbench://ticket/bad?query") == []
     assert checker.scan_text("synthetic", "recordbench://ticket/bad?query#extra")
     assert checker.scan_text("synthetic", "recordbench://ticket/other?query")
+
+
+@pytest.mark.parametrize("source", [
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings.stem = LEGACY_STEM\n else:\n  settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings = unknown\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nmatch {"first":"synthetic", "second":stem}:\n case {"first":stem,"second":captured}:\n  FORMAT=f"{captured}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n match selected:\n  case "legacy":\n   settings.stem = LEGACY_STEM\n  case _:\n   settings.stem = "synthetic"\nFORMAT = f"{settings.stem}-unregistered-v99"',
+])
+def test_branch_mutations_and_simultaneous_captures_preserve_provenance(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings = first\n else:\n  settings = second\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = LEGACY_STEM\nclass Builder:\n if selected:\n  settings.stem = "synthetic"\n else:\n  settings.stem = "also-synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings.stem = LEGACY_STEM\n else:\n  settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-exact-v1"',
+    'stem = "synthetic"\nmatch {"first":LEGACY_STEM, "second":stem}:\n case {"first":stem,"second":captured}:\n  FORMAT=f"{captured}-unregistered-v99"',
+])
+def test_branch_overwrites_and_simultaneous_captures_keep_valid_names(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("source", [
+    'settings = "synthetic"\nclass Builder:\n global settings\n settings = LEGACY_STEM\n def build(self):\n  return f"{settings}-unregistered-v99"',
+    'def outer():\n settings = "synthetic"\n class Builder:\n  nonlocal settings\n  settings = LEGACY_STEM\n  def build(self):\n   return f"{settings}-unregistered-v99"',
+    'settings = {}\nclass Builder:\n settings["stem"] = LEGACY_STEM\n def build(self):\n  return settings["stem"] + "-unregistered-v99"',
+    'settings = ["synthetic"]\nclass Builder:\n settings[0] = LEGACY_STEM\n def build(self):\n  return settings[0] + "-unregistered-v99"',
+    '*captured, tail = (LEGACY_STEM, "synthetic")\nFORMAT = captured[0] + "-unregistered-v99"',
+    'first, *captured, tail = ("synthetic", LEGACY_STEM, "synthetic")\nFORMAT = captured[0] + "-unregistered-v99"',
+    'try:\n stem = LEGACY_STEM\nexcept Exception:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nfor item in []:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nwhile selected:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'async def build():\n stem = LEGACY_STEM\n async for item in selected:\n  stem = "synthetic"\n return f"{stem}-unregistered-v99"',
+])
+def test_declared_scopes_container_writes_and_control_paths_are_checked(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'parts = (LEGACY_STEM, "synthetic")\nmatch parts:\n case [_, captured]:\n  FORMAT = f"{captured}-unregistered-v99"',
+    'parts = {"stem":LEGACY_STEM, "safe":"synthetic"}\nmatch parts:\n case {"safe": captured}:\n  FORMAT = f"{captured}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n try:\n  operation()\n except Exception as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+])
+def test_container_capture_aliases_and_implicit_class_locals_stay_valid(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("suffix", ["(extra)", "'extra'", "*extra"])
+def test_uri_exception_does_not_hide_query_subdelimiters(suffix):
+    assert checker.scan_text("synthetic", "recordbench://ticket/bad?query" + suffix)
+
+
+@pytest.mark.parametrize("source", [
+    'settings = {"stem":"synthetic"}\nalias = settings\nclass Builder:\n settings["stem"] = LEGACY_STEM\n def build(self):\n  return alias["stem"] + "-unregistered-v99"',
+    'settings = ["synthetic"]\nalias = settings\nclass Builder:\n settings[0] = LEGACY_STEM\n def build(self):\n  return alias[0] + "-unregistered-v99"',
+    'settings = {}\nsettings[index] = LEGACY_STEM\nFORMAT = settings["stem"] + "-unregistered-v99"',
+    'parts = (LEGACY_STEM, "synthetic")\nmatch parts:\n case [captured, _]:\n  FORMAT = f"{captured}-unregistered-v99"',
+    'parts = {"stem":LEGACY_STEM, "safe":"synthetic"}\nmatch parts:\n case {"stem": captured}:\n  FORMAT = f"{captured}-unregistered-v99"',
+    'stem = "synthetic"\ntry:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"\nexcept Exception:\n FORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic"\ntry:\n operation()\nexcept Exception:\n stem = LEGACY_STEM\nelse:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nfor item in selected:\n break\nelse:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'parts = ("recordbench-unregistered-v99", "synthetic")\nmatch parts:\n case [captured, _]:\n  FORMAT = captured',
+])
+def test_container_and_control_flow_uncertainty_keeps_legacy_origin(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'settings = "synthetic"\ndef outer():\n settings = "synthetic-local"\n class Builder:\n  global settings\n  settings = LEGACY_STEM\n  def build(self):\n   return f"{settings}-unregistered-v99"',
+    'settings = {"stem":LEGACY_STEM}\nalias = settings\nclass Builder:\n alias["stem"] = "synthetic"\n def build(self):\n  return settings["stem"] + "-unregistered-v99"',
+    'settings = [LEGACY_STEM]\nalias = settings\nclass Builder:\n alias[0] = "synthetic"\n def build(self):\n  return settings[0] + "-unregistered-v99"',
+    'first, *captured = (LEGACY_STEM, "synthetic")\nFORMAT = captured[0] + "-unregistered-v99"',
+    'first, *captured, tail = (LEGACY_STEM, "synthetic", LEGACY_STEM)\nFORMAT = captured[0] + "-unregistered-v99"',
+    'try:\n stem = LEGACY_STEM\nexcept Exception:\n stem = LEGACY_STEM\nfinally:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'try:\n stem = LEGACY_STEM\n stem = "synthetic"\nexcept Exception:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nfor item in selected:\n stem = "synthetic"\nstem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-exact-v1"',
+])
+def test_explicit_overwrites_and_safe_members_remain_valid(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("source", [
+    'for stem in [LEGACY_STEM]:\n FORMAT = f"{stem}-unregistered-v99"',
+    'parts = [LEGACY_STEM, "synthetic"]\nfor stem in parts:\n FORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic"\ntry:\n operation()\nexcept* ValueError:\n stem = LEGACY_STEM\nexcept* TypeError:\n FORMAT = f"{stem}-unregistered-v99"',
+])
+def test_known_iteration_and_exception_group_origins_are_not_cleared(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'for stem in [LEGACY_STEM]:\n FORMAT = f"{stem}-exact-v1"',
+    'for stem in {"synthetic": LEGACY_STEM}:\n FORMAT = f"{stem}-unregistered-v99"',
+])
+def test_known_iteration_values_keep_valid_names(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+
+def test_dynamic_row_selection_keeps_destructured_member_positions(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'fields = {"first": [("synthetic", "prompt", LEGACY_STEM), ("safe", LEGACY_STEM, "default")], "second": [("also-safe", "prompt", "default")]}\n'
+        'for name, prompt, default in fields[selected]:\n FORMAT = "CASE_INTELLIGENCE_" + name.upper()\n'
+    )
+    assert checker.findings(tmp_path) == []
+
+
+def test_dynamic_row_selection_retains_a_legacy_name_member(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'fields = {"first": [(LEGACY_STEM, "synthetic")], "second": [("synthetic", "safe")]}\n'
+        'for name, unused in fields[selected]:\n FORMAT = f"{name}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("mutation", [None, "count", "body", "literal"])
+def test_analysis_helper_disposition_is_exact_and_keeps_literal_scanning(tmp_path, mutation):
+    import ast
+    source = (ROOT / "scripts/doc_identifier_check.py").read_text()
+    module = ast.parse(source)
+    helper = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
+    source = ast.get_source_segment(source, helper) + "\n"
+    if mutation == "count":
+        source = source.replace("token.replace(old, new, 1)", "token.replace(old, new, 2)")
+    elif mutation == "body":
+        source = source.replace('    return None', '    unused = "synthetic"\n    return None')
+    elif mutation == "literal":
+        source += 'OTHER = "recordbench-unregistered-v99"\n'
+    path = tmp_path / "scripts/doc_identifier_check.py"
+    path.parent.mkdir()
+    path.write_text(source)
+    assert bool(checker.findings(tmp_path)) is (mutation is not None)
+
+
+def test_analysis_helper_disposition_does_not_follow_another_path(tmp_path):
+    import ast
+    source = (ROOT / "scripts/doc_identifier_check.py").read_text()
+    helper = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
+    (tmp_path / "synthetic.py").write_text(ast.get_source_segment(source, helper) + "\n")
+    assert checker.findings(tmp_path)
