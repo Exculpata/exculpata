@@ -283,6 +283,10 @@ class _Check(ast.NodeVisitor):
                     self.bind(item, element)
         elif isinstance(target, ast.Starred):
             self.bind(target.value, value)
+        elif isinstance(target, ast.Attribute):
+            # Assignment leaves execute left to right. An earlier name target
+            # can replace the receiver of a later SQLite descriptor setter.
+            self.check_transaction_assignment(target)
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
         # A local workflow helper named execute is inspected at its definition;
@@ -341,10 +345,13 @@ class _Check(ast.NodeVisitor):
             else:
                 receivers = [value.receiver for value in values if value.receiver is not None]
                 same_owner = all(value.connection == values[0].connection for value in values)
+                connections = [value.connection for value in values if value.connection is not None]
+                merged_connection = (f"unknown@merged:{name}" if any(
+                    not owner.startswith("sqlite@") for owner in connections) else
+                    f"sqlite@merged:{name}" if connections else None)
                 result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       active_path=any(value.active_path for value in values),
-                                      connection=(values[0].connection if same_owner else
-                                                  f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None),
+                                      connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
                                       workspace=any(value.workspace for value in values),
@@ -436,7 +443,6 @@ class _Check(ast.NodeVisitor):
         if target is not None:
             elements = self.value(node.iter).elements
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
-            self.check_transaction_assignment(target)
             self.bind(target, value)
         for statement in node.body:
             self.visit(statement)
@@ -513,13 +519,11 @@ class _Check(ast.NodeVisitor):
         if isinstance(node.value, ast.Call) and self.value(node.value.func).symbol in {"WorkspaceStore", "case_intelligence.workspace_store.WorkspaceStore"}:
             value = _Value(symbol=f"workspace@{node.lineno}", workspace=True)
         for target in node.targets:
-            self.check_transaction_assignment(target)
             self.bind(target, value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if node.value is not None:
             self.visit(node.value)
-            self.check_transaction_assignment(node.target)
             self.bind(node.target, self.value(node.value))
         if self.eager_variable_annotations and not self.postponed_annotations:
             self.visit(node.annotation)
@@ -533,7 +537,6 @@ class _Check(ast.NodeVisitor):
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self.visit(node.value)
-        self.check_transaction_assignment(node.target)
         self.bind(node.target, self.value(ast.BinOp(left=node.target, op=node.op, right=node.value)))
 
     def check_factory_deletion(self, target: ast.Attribute) -> None:
@@ -1092,7 +1095,6 @@ class _Check(ast.NodeVisitor):
             iterable = self.value(generator.iter) if index else first_iterable
             elements = iterable.elements if iterable is not None else None
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
-            self.check_transaction_assignment(generator.target)
             self.bind(generator.target, value)
             self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
             for condition in generator.ifs:

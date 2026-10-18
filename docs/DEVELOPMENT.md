@@ -205,7 +205,10 @@ and writable-attribute descriptors called with an explicit receiver, and element
 unpacking, including nested and starred assignments.
 Literal tuple/list iteration preserves element ownership, including nested loop
 targets and saved methods. Attribute setters in unpacked assignments, loops and
-comprehensions follow the same boundary rules as direct assignments.
+comprehensions follow the same boundary rules as direct assignments, evaluating
+and binding leaves left to right. A cleanup container containing only independent
+connections and ordinary resources remains non-shared; any known shared member
+retains the shared boundary requirement.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
