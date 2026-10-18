@@ -241,6 +241,10 @@ Known shared mappings reject value-returning accessors while literal-key iterati
 remains allowed. Only proven scalar converters discard handle ownership; ambiguous
 rebindings remain conservative. Active workspace paths still specialize fixed
 local helper parameters so indirect database opens cannot lose path provenance.
+Accessor results retain unsupported provenance after exact extraction exceptions,
+and unbound dictionary descriptors check their explicit receiver. Value-returning
+views over known active workspace paths are also unsupported; literal keys remain
+non-owning. Branches composed entirely of proven scalar converters stay proven.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

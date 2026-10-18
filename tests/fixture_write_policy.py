@@ -73,6 +73,7 @@ class _Value:
     descriptor: bool = False
     setter_attribute: str | None = None
     unresolved_shared_container: bool = False
+    unresolved_active_path: bool = False
     imported_module: bool = False
     scalar_converter: bool | None = None
 
@@ -192,10 +193,9 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
-            if self.unresolved_ownership(base) or (
-                    base.mapping is not None and self.known_ownership(base, shared_only=True)
-                    and node.attr not in {"keys", "__iter__", "__len__", "__contains__"}):
-                return _Value(symbol=symbol, unresolved_shared_container=True)
+            accessor = self.container_accessor_value(base, node.attr)
+            if accessor is not None:
+                return replace(accessor, symbol=symbol)
             if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
                 return _Value(symbol=symbol, scalar_converter=True)
             if node.attr in {"__set__", "__delete__"} and base.setter_attribute is not None:
@@ -236,6 +236,13 @@ class _Check(ast.NodeVisitor):
             if node in self.evaluated_values:
                 return self.evaluated_values[node]
             function = self.value(node.func)
+            if self.unresolved_ownership(function):
+                return function
+            owner, _, method = function.symbol.rpartition('.')
+            if owner in {"dict", "builtins.dict"} and node.args:
+                accessor = self.container_accessor_value(self.value(node.args[0]), method)
+                if accessor is not None:
+                    return accessor
             if "__enter__" in function.methods:
                 return self.value(node.args[0]) if function.descriptor and node.args else function.receiver or _Value()
             if function.descriptor and node.args and function.methods & {"cursor", "execute", "executemany"}:
@@ -403,10 +410,20 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def unresolved_ownership(value: _Value) -> bool:
-        return value.unresolved_shared_container or any(_Check.unresolved_ownership(item) for item in (
+        return value.unresolved_shared_container or value.unresolved_active_path or any(_Check.unresolved_ownership(item) for item in (
             *([value.receiver] if value.receiver is not None else []),
             *(value.elements or ()), *(item for _, item in value.mapping or ()),
         ))
+
+    def container_accessor_value(self, receiver: _Value, method: str) -> _Value | None:
+        if (self.unresolved_ownership(receiver) or
+                (receiver.mapping is not None and method not in {"keys", "__iter__", "__len__", "__contains__"})):
+            shared = self.known_ownership(receiver, shared_only=True)
+            active_path = self.has_active_path(receiver)
+            if shared or active_path:
+                return _Value(unresolved_shared_container=shared,
+                              unresolved_active_path=active_path, active_path=active_path)
+        return None
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
         # A local workflow helper named execute is inspected at its definition;
@@ -471,7 +488,8 @@ class _Check(ast.NodeVisitor):
                     f"sqlite@merged:{name}" if connections else None)
                 result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       active_path=any(value.active_path for value in values),
-                                      scalar_converter=False if any(value.scalar_converter is not None for value in values) else None,
+                                      scalar_converter=True if all(value.scalar_converter is True for value in values) else
+                                      False if any(value.scalar_converter is not None for value in values) else None,
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
@@ -484,6 +502,7 @@ class _Check(ast.NodeVisitor):
                                           ((value.elements is not None or value.mapping is not None)
                                            and _Check.known_ownership(value, shared_only=True))
                                           for value in values),
+                                      unresolved_active_path=any(value.unresolved_active_path for value in values),
                                       sqlite_cursor=all(value.sqlite_cursor for value in values),
                                       lock_owner=values[0].lock_owner if all(value.lock_owner == values[0].lock_owner for value in values) else None,
                                       methods=frozenset().union(*(value.methods for value in values)),
@@ -790,6 +809,7 @@ class _Check(ast.NodeVisitor):
         function = self.value(node.func)
         if self.unresolved_ownership(function):
             self.flag(node, "shared container accessors are unsupported; use explicit named handles")
+            self.evaluated_values[node] = function
         arguments_before = [self.value(argument.value if isinstance(argument, ast.Starred) else argument)
                             for argument in node.args]
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
@@ -799,6 +819,12 @@ class _Check(ast.NodeVisitor):
             self.visit(argument)
         for keyword in node.keywords:
             self.visit(keyword.value)
+        owner, _, method = function.symbol.rpartition('.')
+        if owner in {"dict", "builtins.dict"} and node.args:
+            accessor = self.container_accessor_value(self.value(node.args[0]), method)
+            if accessor is not None:
+                self.evaluated_values[node] = accessor
+                self.flag(node, "container accessors with shared handles or active workspace paths are unsupported")
         argument_nodes = [*node.args, *(keyword.value for keyword in node.keywords)]
         if (any(isinstance(item, ast.NamedExpr) for argument in argument_nodes for item in ast.walk(argument))
                 and any(self.known_ownership(value, shared_only=True)
@@ -1007,7 +1033,7 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def has_active_path(value):
-        return value.active_path or any(_Check.has_active_path(item) for item in (
+        return value.active_path or value.unresolved_active_path or any(_Check.has_active_path(item) for item in (
             *(value.elements or ()), *(item for _, item in value.mapping or ()),
         ))
 
