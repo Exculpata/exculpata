@@ -62,7 +62,7 @@ from case_intelligence.legacy_names import (
 )
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
-STORAGE_MARKERS = tuple([name_value("storage_marker", names) for names in (LEGACY_STEM, CURRENT_STEM)])
+STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
 CONTAINER_DATA = name_value("container_data")
 CONTAINER_SECRETS = name_value("container_secrets")
 CONTAINER_ACCOUNTS = name_value("container_accounts")
@@ -2877,13 +2877,13 @@ def _configure(
     }
     if names == "exculpata":
         compose_values = dict(compose_values, **{name_value("environment", suffix="APP_ENV_FILE"): name_value("app_env")})
-        compose_values = dict(compose_values, **{"EXCULPATA_STORAGE_NAMES": "exculpata"})
+        compose_values = dict(compose_values, EXCULPATA_STORAGE_NAMES="exculpata")
     if (root / "compose.env").is_file():
         saved = _dotenv(root / "compose.env")
         for key in (f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT", f"{LEGACY_ENV_PREFIX}IMAGE_NAMESPACE"):
             compose_values = dict(compose_values, **{key: _env(key, f"{LEGACY_STEM}", environ=saved)})
         if "EXCULPATA_APP_ENV_FILE" in compose_values:
-            compose_values = dict(compose_values, **{"EXCULPATA_APP_ENV_FILE": _selected_app_env(paths["config"], saved, names=names).name})
+            compose_values = dict(compose_values, EXCULPATA_APP_ENV_FILE=_selected_app_env(paths["config"], saved, names=names).name)
     app_values: dict[str, object] = {
         "CASE_INTELLIGENCE_AUTH_MODE": auth,
         "CASE_INTELLIGENCE_SECURE_COOKIE": 1,
@@ -2923,17 +2923,17 @@ def _configure(
         )
         if saved_served:
             compose_values = dict(compose_values, **{f"{LEGACY_ENV_PREFIX}GENERATOR_SERVED_NAME": saved_served})
-            app_values = dict(app_values, **{"CASE_INTELLIGENCE_GENERATOR_MODEL": saved_served})
+            app_values = dict(app_values, CASE_INTELLIGENCE_GENERATOR_MODEL=saved_served)
     if storage_plan.profile == "evaluation":
-        app_values = dict(app_values, **{"CASE_INTELLIGENCE_STORAGE_PROFILE": "evaluation"})
+        app_values = dict(app_values, CASE_INTELLIGENCE_STORAGE_PROFILE="evaluation")
     admin_username = admin_display = None
     if auth == "local":
         if args.enable_account_management:
             compose_values = dict(compose_values, **{f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT": paths["accounts"]})
-            app_values = dict(app_values, **{"CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE": f"{CONTAINER_ACCOUNTS}/local-accounts.json"})
-            app_values = dict(app_values, **{"CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT": f"{CONTAINER_ACCOUNTS}"})
+            app_values = dict(app_values, CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE=f"{CONTAINER_ACCOUNTS}/local-accounts.json")
+            app_values = dict(app_values, CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT=f"{CONTAINER_ACCOUNTS}")
         else:
-            app_values = dict(app_values, **{"CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE": f"{CONTAINER_SECRETS}/local-accounts.json"})
+            app_values = dict(app_values, CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE=f"{CONTAINER_SECRETS}/local-accounts.json")
         admin_username, admin_display = _account_format()["normalized_account"](
             args.admin_username, args.admin_display_name)
     elif auth == "oidc":

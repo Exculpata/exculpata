@@ -129,6 +129,48 @@
           "function": "visit_Call",
           "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
           "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 73,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_pattern",
+          "reason": "Return the documentation scanner regex over both product spellings; matches are analysis evidence, not emitted operational names.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 147,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_eval",
+          "reason": "Return the two registered generation stems as finite documentation-analysis possibilities.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 215,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_both_env",
+          "reason": "Return both registered environment-key families for a validated documentation setting suffix.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 278,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_parametrize",
+          "reason": "Return literal fixture parameter possibilities for the documentation evidence corpus.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 413,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_walk_python",
+          "reason": "Return the module binding environment collected by the documentation scanner; values are analysis state.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 540,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_swap",
+          "reason": "Return a single-spelling translation for documentation matching. The existing exact helper digest still governs composition, and this return has its own exact-source receipt.",
+          "validation": "tests/test_documentation.py"
         }
       ]
     },
@@ -180,7 +222,7 @@
       ]
     },
     "scripts/exculpata_install.py": {
-      "source_sha256": "7e4c1bd2b1294b79d1cd1fae370abf23728609393644ebefccdeb0a12cd9bf3a",
+      "source_sha256": "fe350cf249c0878209e9ea33715159bd38b3c248d7a84a43b7d522075817bd9e",
       "diagnostics": [
         {
           "line": 1618,
@@ -384,11 +426,123 @@
           "function": "_uninstall",
           "reason": "Validate the selected existing Compose project against the registered project-name pattern before uninstall; the refusal boundary remains unchanged.",
           "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 121,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_detected_names",
+          "reason": "Return the existing node generation after rejecting conflicting metadata/storage markers; filenames remain fallback evidence and this result must not rename saved coordinates.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 125,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_detected_names",
+          "reason": "Return the existing node generation after rejecting conflicting metadata/storage markers; filenames remain fallback evidence and this result must not rename saved coordinates.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 128,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_detected_names",
+          "reason": "Return the existing node generation after rejecting conflicting metadata/storage markers; filenames remain fallback evidence and this result must not rename saved coordinates.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 141,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_default_server_name",
+          "reason": "Return the hostname from the central contract for the selected generation.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 146,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_server_name_prompt",
+          "reason": "Return a human-facing hostname prompt containing the selected product display name.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 160,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_default_root",
+          "reason": "Return the existing legacy root only when detected there, otherwise the fresh-install root from the contract.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 171,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_selected_app_env",
+          "reason": "Return one config-root child selected by explicit saved env alias or deterministic filename fallback; no file contents are merged or rewritten.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 210,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_compose_environment",
+          "reason": "Return the sanitized Compose environment with saved naming coordinates and the selected application filename; unrelated shell overrides were removed.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 266,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "environment",
+          "reason": "Return the existing GPU/model configuration mapping with registered environment keys; values remain the already validated plan fields.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 291,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "environment",
+          "reason": "Return the existing GPU/model configuration mapping with registered environment keys; values remain the already validated plan fields.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 457,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_identity_fields",
+          "reason": "Return the ordered local identity prompts and existing generation-specific administrator defaults, preserving tuple shape and prompt values.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 459,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_identity_fields",
+          "reason": "Return the ordered local identity prompts and existing generation-specific administrator defaults, preserving tuple shape and prompt values.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 918,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_env_text",
+          "reason": "Return the existing environment-file serialization; exact bytes, alias precedence, empty input and insertion order are covered by installer regressions.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1427,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_review_model_plan",
+          "reason": "Return the validated model-plan record; the analyzer carries the registered environment selector through configuration reads, not a newly constructed name.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 3599,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_running_auth_mode",
+          "reason": "Return only an allowlisted authentication mode or None from the live probe. The legacy Compose selector is input provenance, not the result.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 3935,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_backup_tool",
+          "reason": "Return the existing node backup entrypoint selected from its saved naming generation.",
+          "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py"
         }
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "73395687c6292b6ab08b37ac9f9cd64f2acd4532555f46a43852043339a10aeb",
+      "source_sha256": "fe04d3f1e488c388654c382b857e00842355e544eeefff5b6f9b3ec1d5cf1dff",
       "diagnostics": [
         {
           "line": 228,
@@ -611,6 +765,20 @@
           "function": "patch_metadata",
           "reason": "Encode authenticated, explicitly replaced package metadata as UTF-8; the retained compatibility version is checked separately.",
           "validation": "services/transcription/tests/test_compatibility_build.py"
+        },
+        {
+          "line": 53,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "patch_metadata",
+          "reason": "Return encoded wheel metadata retaining the registered compatibility-build version after exact upstream metadata checks.",
+          "validation": "services/transcription/tests/test_compatibility_build.py"
+        },
+        {
+          "line": 122,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "build",
+          "reason": "Return the compatibility wheel receipt with the registered patched version and the computed artifact hashes; no additional naming family is introduced.",
+          "validation": "services/transcription/tests/test_compatibility_build.py"
         }
       ]
     },
@@ -629,6 +797,13 @@
           "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
           "function": "from_env",
           "reason": "Validate the constructed settings object containing retained default paths; validation consumes settings and creates no naming generation.",
+          "validation": "services/transcription/tests/test_settings.py"
+        },
+        {
+          "line": 301,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "from_env",
+          "reason": "Return validated transcription settings; the retained WhisperX compatibility build is an existing registered model dependency coordinate.",
           "validation": "services/transcription/tests/test_settings.py"
         }
       ]
@@ -682,6 +857,27 @@
           "function": "kerberos_headers",
           "reason": "Select authentication header values using registered aliases; the selector name is not returned data and conflict rejection stays unchanged.",
           "validation": "tests/test_compat_env.py"
+        },
+        {
+          "line": 54,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "env",
+          "reason": "Return the nonempty current value, legacy value, or default in that order. Selector names are inputs; this module remains pinned for the separate selector-role contract.",
+          "validation": "tests/test_compat_env.py"
+        },
+        {
+          "line": 81,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "kerberos_headers",
+          "reason": "Return the authenticated-user and proxy-proof values through the existing conflict-rejecting header reader; do not treat input header keys as output names.",
+          "validation": "tests/test_compat_env.py"
+        },
+        {
+          "line": 88,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "response_headers",
+          "reason": "Return both registered header spelling families for the same response suffix and value, retaining legacy clients.",
+          "validation": "tests/test_compat_env.py"
         }
       ]
     },
@@ -708,6 +904,20 @@
           "function": "parse_query",
           "reason": "Parse query tokens under the validated retained grammar version; the parser emits a query expression rather than a new grammar identifier.",
           "validation": "tests/test_exact_search.py; tests/test_exact_search_proximity.py"
+        },
+        {
+          "line": 148,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "to_dict",
+          "reason": "Return the query-plan dictionary with the registered tokenizer version and existing grammar fields.",
+          "validation": "tests/test_exact_search.py"
+        },
+        {
+          "line": 424,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "parse_query",
+          "reason": "Return the validated parsed query record; its registered tokenizer coordinate is preserved unchanged.",
+          "validation": "tests/test_exact_search.py"
         }
       ]
     },
@@ -795,6 +1005,13 @@
           "function": "automatic_discovery_pass",
           "reason": "Emit fixed content-free warning messages through the existing retained logger namespace; the call does not construct a new logger name.",
           "validation": "tests/test_automatic_discovery.py; tests/test_automatic_discovery_transactions.py"
+        },
+        {
+          "line": 11535,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "loose_file_upload_preflight",
+          "reason": "Return the validated loose-file preflight result as a no-store JSON response, preserving the existing registered preflight format.",
+          "validation": "tests/test_loose_file_preflight.py"
         }
       ]
     },
@@ -866,6 +1083,13 @@
           "function": "_prefer_current",
           "reason": "Inspect the captured git-config process result for a deprecated selector. This additive naming diagnostic does not change the publication guard implementation or policy.",
           "validation": "tests/test_publication_pre_push.py; tests/test_publication_candidate.py"
+        },
+        {
+          "line": 42,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_prefer_current",
+          "reason": "Return the already completed Git configuration lookup for a legacy alias only when the current key is absent. The publication guard source and enforcement are unchanged; this receipt does not suppress publication findings.",
+          "validation": "tests/test_publication_pre_push.py"
         }
       ]
     },
@@ -877,6 +1101,20 @@
           "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
           "function": "freeze",
           "reason": "Validate serialization of the selected context snapshot through the unchanged orientation helper, whose format marker is independently registered.",
+          "validation": "tests/test_answer_context.py"
+        },
+        {
+          "line": 46,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "freeze",
+          "reason": "Return the bounded frozen selected-context snapshot with its registered format and verified source references.",
+          "validation": "tests/test_answer_context.py"
+        },
+        {
+          "line": 69,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "orientation",
+          "reason": "Return bounded serialized selected-context orientation using its registered format; reference text remains in the separately verified evidence packet.",
           "validation": "tests/test_answer_context.py"
         }
       ]
@@ -944,6 +1182,27 @@
           "function": "export_research",
           "reason": "Serialize and UTF-8 encode validated research data after citation-callback projection; the captured values are export data and do not become callable name constructors.",
           "validation": "tests/test_work_product_exports.py; tests/test_hierarchical_synthesis.py"
+        },
+        {
+          "line": 142,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "safe_file_stem",
+          "reason": "Return a sanitized user filename stem or the existing registered export fallback; reserved device names and empty names select the fallback.",
+          "validation": "tests/test_work_product_exports.py"
+        },
+        {
+          "line": 1528,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export_research",
+          "reason": "Return the existing research JSON export artifact with its registered format and sanitized filename.",
+          "validation": "tests/test_work_product_exports.py"
+        },
+        {
+          "line": 1745,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export_full_review",
+          "reason": "Return the existing full-review JSON export artifact with its registered format and sanitized filename.",
+          "validation": "tests/test_work_product_exports.py"
         }
       ]
     },
@@ -1278,6 +1537,13 @@
           "function": "_parser",
           "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
           "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 177,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "_parser",
+          "reason": "Return the argparse parser containing current and legacy administrative command aliases, not an emitted identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_console_entry_points.py"
         }
       ]
     },
@@ -1336,6 +1602,13 @@
           "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
           "function": "redeem",
           "reason": "Match an input ticket URI against the anchored registered ticket scheme; this predicate does not create a URI.",
+          "validation": "tests/test_tickets.py"
+        },
+        {
+          "line": 94,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "create",
+          "reason": "Return the existing ticket-launch projection using the registered ticket URI family and generated token, preserving its expiry.",
           "validation": "tests/test_tickets.py"
         }
       ]
@@ -3952,6 +4225,183 @@
           "function": "source columns 58-44:67",
           "reason": "Retain this exact existing synthetic browser counters, geometry or indexes expression with its original JavaScript operator. No numeric type is inferred; native ToPrimitive/coercion, operand order and any assignment target read/write remain unchanged.",
           "validation": "tests/test_gateway_static_assets.py; tests/test_rename_javascript_consumers.py"
+        }
+      ]
+    },
+    "scripts/accept-answer-context-model.py": {
+      "source_sha256": "c9e7cd1bc13125d737890e9215ee771431954b8916d89d85bfc0c4aed488d210",
+      "diagnostics": [
+        {
+          "line": 38,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "run",
+          "reason": "Return the synthetic context-model acceptance report with its registered context-model format; the unavailable branch explicitly records that no model acceptance ran. This does not authorize newly composed format names.",
+          "validation": "tests/test_answer_context.py"
+        },
+        {
+          "line": 103,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "run",
+          "reason": "Return the synthetic context-model acceptance report with its registered context-model format; the unavailable branch explicitly records that no model acceptance ran. This does not authorize newly composed format names.",
+          "validation": "tests/test_answer_context.py"
+        }
+      ]
+    },
+    "scripts/demo.py": {
+      "source_sha256": "b8332134b14a42ee1c0e390c4c495f06905a07d55d57436976edea0869e7b123",
+      "diagnostics": [
+        {
+          "line": 73,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "relevant",
+          "reason": "Return a boolean environment-name inclusion predicate, not the selected prefix or a constructed identifier.",
+          "validation": "tests/test_demo.py"
+        }
+      ]
+    },
+    "scripts/rename_contract_artifacts.py": {
+      "source_sha256": "eb208b7771b1de9effe485353a6f38a00cabf464ba82967b6e982ad82ba2af4b",
+      "diagnostics": [
+        {
+          "line": 29,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "qa_environment_source",
+          "reason": "Return generated JavaScript implementing current-then-legacy environment lookup from the registered name table; generated artifacts remain independently checked.",
+          "validation": "tests/test_rename_contract_artifacts.py"
+        },
+        {
+          "line": 60,
+          "identifier": "unsupported legacy syntax (direct contract-table access); use case_intelligence.legacy_names.name_value",
+          "function": "documentation_block",
+          "reason": "Read NAME_CONTRACTS.items to generate the complete documentation table. This is the contract renderer, not a caller composing an unregistered operational name.",
+          "validation": "tests/test_rename_contract_artifacts.py"
+        }
+      ]
+    },
+    "src/case_intelligence/assertion_service.py": {
+      "source_sha256": "186a9e6fd1345b274d2790c6e987fe78f49c494f79c23565c2b7f2b66f4d34c0",
+      "diagnostics": [
+        {
+          "line": 107,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export",
+          "reason": "Return an assertion export using the existing registered assertion-v1 format and the existing detail payload.",
+          "validation": "tests/test_assertion_workflow.py"
+        },
+        {
+          "line": 130,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "chronology_export",
+          "reason": "Return the existing chronology export payload and its registered format; no new name construction is accepted.",
+          "validation": "tests/test_assertion_workflow.py"
+        }
+      ]
+    },
+    "src/case_intelligence/discovery_gold.py": {
+      "source_sha256": "0bd851b65f0d2e050ab1b10f5dd6273e30f6570971dc2fa90f65bd8c6ebcec93",
+      "diagnostics": [
+        {
+          "line": 488,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "suite_fingerprint",
+          "reason": "Return a SHA-256 hex digest of canonical suite data. Its registered format is hash input, not the returned identifier.",
+          "validation": "tests/test_discovery_gold.py"
+        }
+      ]
+    },
+    "src/case_intelligence/entity_repository.py": {
+      "source_sha256": "2d5647ca511916b053ce2c20411c3b8f01fac70c8217bee15f96b271021408e8",
+      "diagnostics": [
+        {
+          "line": 730,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "discovery_export",
+          "reason": "Return frozen entity-discovery coverage and sources under the registered entity-discovery-v1 format, retaining its explicit availability limitation.",
+          "validation": "tests/test_entity_discovery.py"
+        }
+      ]
+    },
+    "src/case_intelligence/entity_service.py": {
+      "source_sha256": "3b800a8c9b7086f31a53b0d07a4c91830554bc67b6dccca5af7770268ee15982",
+      "diagnostics": [
+        {
+          "line": 68,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export",
+          "reason": "Return entity details and history under the existing registered entity-v1 export format.",
+          "validation": "tests/test_entity_workspace.py"
+        }
+      ]
+    },
+    "src/case_intelligence/identity.py": {
+      "source_sha256": "e7cf5a73f71df4eac648a47b6007d3c09699e34498b65824267e8b0626d3d7cb",
+      "diagnostics": [
+        {
+          "line": 915,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "auth_diagnostic_authorized",
+          "reason": "Return the boolean constant-time proof comparison after authorization prerequisites; the registered header name is an input selector, never a returned proof or identifier.",
+          "validation": "tests/test_auth_entrypoints.py; tests/test_kerberos_authentication.py"
+        }
+      ]
+    },
+    "src/case_intelligence/intake_receipt_exports.py": {
+      "source_sha256": "efd1815a984f2a245ff3167a89f7a22043d7a24e068583c0b1c720b18d345454",
+      "diagnostics": [
+        {
+          "line": 84,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export_intake_receipt",
+          "reason": "Return the existing intake-receipt artifact containing its registered format; the filename uses the selected-file-receipt family and validated extension.",
+          "validation": "tests/test_intake_receipts.py"
+        }
+      ]
+    },
+    "src/case_intelligence/matter_context_repository.py": {
+      "source_sha256": "b968dbc30c573c9fb3e07505a606fd8e605cdecf534573f396bd01e41c36a4c5",
+      "diagnostics": [
+        {
+          "line": 79,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export",
+          "reason": "Return context selections with the registered context-selections-v1 format and explicit opt-in consumption description.",
+          "validation": "tests/test_matter_context_workflow.py"
+        }
+      ]
+    },
+    "src/case_intelligence/model_portfolio.py": {
+      "source_sha256": "f763e420f3289ab6116c3d4e8373cfce9271661384810e13639f775f31480286",
+      "diagnostics": [
+        {
+          "line": 127,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "model_portfolio_projection",
+          "reason": "Return the configured local model-portfolio projection with its registered portfolio identifier and readiness fields.",
+          "validation": "tests/test_model_portfolio.py"
+        }
+      ]
+    },
+    "src/case_intelligence/model_portfolio_gold.py": {
+      "source_sha256": "a21944256af1db1cad6ac207d14f505e48f6e6c25081c36876a93509a3593ba2",
+      "diagnostics": [
+        {
+          "line": 204,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "model_portfolio_fingerprint",
+          "reason": "Return a SHA-256 hex digest of the rendered model-portfolio suite; its registered format remains hash input.",
+          "validation": "tests/test_model_portfolio_gold.py"
+        }
+      ]
+    },
+    "src/case_intelligence/question_explanations.py": {
+      "source_sha256": "400411b020d4d2692e40ed0f5180851f1e7bf28659aef47d3204de6feeb2e688",
+      "diagnostics": [
+        {
+          "line": 104,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "replay_receipt",
+          "reason": "Return the registered question-replay-result-v1 receipt with synthetic-only, replay-only and model-not-run limitations preserved.",
+          "validation": "tests/test_question_recorded_output.py"
         }
       ]
     }

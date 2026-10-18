@@ -132,3 +132,87 @@ def test_legacy_upgrade_loads_coordinates_and_dry_run_preserves_node(
     assert f"{LEGACY_STEM}-backup-{installer.hashlib_short(root)}.timer" in output
     assert json.loads(marker.read_text())["storage_id"] == storage_id
     assert snapshot() == before
+
+
+def _node_snapshot(root):
+    return {
+        path.relative_to(root): (
+            None if path.is_dir() else path.read_bytes(),
+            path.stat().st_mode, path.stat().st_mtime_ns,
+        )
+        for path in root.rglob("*")
+    }
+
+
+@pytest.mark.parametrize("names,requested", [
+    (LEGACY_STEM, CURRENT_STEM), (CURRENT_STEM, LEGACY_STEM),
+])
+@pytest.mark.parametrize("conflict", ["requested-generation", "storage-marker"])
+def test_cross_generation_restore_rejects_before_commands_or_writes(
+    tmp_path, monkeypatch, capsys, names, requested, conflict,
+):
+    monkeypatch.setattr(installer, "_legacy_account", lambda: False)
+    root, _, paths = configured_node(tmp_path, names=names)
+    # Both filenames are deliberately present; they cannot override durable
+    # installation/storage coordinates or authorize a generation migration.
+    (paths["config"] / f"{requested}.env").write_bytes(
+        (paths["config"] / f"{names}.env").read_bytes()
+    )
+    target = tmp_path / "new-parent" / "restore-drill"
+    arguments = ["install", "restore", "--root", str(root),
+                 "--restore-target", str(target), "--non-interactive", "--plain"]
+    if conflict == "requested-generation":
+        arguments.extend(["--names", requested])
+    else:
+        (paths["storage"] / f".{requested}-managed-storage.json").write_text("{}")
+    before = _node_snapshot(tmp_path)
+    monkeypatch.setattr(installer, "_restore", lambda *a: pytest.fail(
+        "cross-generation restore reached the restore dispatcher"
+    ))
+    monkeypatch.setattr(installer.subprocess, "run", lambda *a, **k: pytest.fail(
+        "cross-generation restore attempted an external command"
+    ))
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert installer.main() == 1
+    output = capsys.readouterr().out
+    assert ("migration" in output if conflict == "requested-generation"
+            else "Conflicting naming markers" in output)
+    assert not target.parent.exists()
+    assert _node_snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+@pytest.mark.parametrize("selection,expected", [
+    (None, "exculpata.env"),
+    ("recordbench.env", "recordbench.env"),
+    ("exculpata.env", "exculpata.env"),
+    ("missing-selected.env", "missing-selected.env"),
+])
+def test_both_environment_files_have_one_read_only_selection(
+    tmp_path, monkeypatch, names, selection, expected,
+):
+    monkeypatch.setattr(installer, "_legacy_account", lambda: False)
+    root, _, paths = configured_node(tmp_path, names=names)
+    for filename, value in (("recordbench.env", "legacy"), ("exculpata.env", "current")):
+        (paths["config"] / filename).write_text(f"SYNTHETIC_SOURCE={value}\n")
+    compose = root / "compose.env"
+    saved = "\n".join(line for line in compose.read_text().splitlines()
+                      if "APP_ENV_FILE=" not in line) + "\n"
+    if selection is not None:
+        # Conflicting aliases resolve to the explicit nonempty current key.
+        saved += 'RECORDBENCH_APP_ENV_FILE="ignored-legacy-selection.env"\n'
+        saved += f'EXCULPATA_APP_ENV_FILE="{selection}"\n'
+    compose.write_text(saved)
+    before = _node_snapshot(tmp_path)
+    selected = installer._app_env(root)
+    assert selected == paths["config"] / expected
+    environment = installer._compose_environment(installer._compose(root, ()), {})
+    assert environment["EXCULPATA_APP_ENV_FILE"] == expected
+    assert installer._node_names(root) == names
+    if selection == "missing-selected.env":
+        assert not selected.exists()
+    else:
+        assert installer._dotenv(selected) == {
+            "SYNTHETIC_SOURCE": "current" if expected == "exculpata.env" else "legacy",
+        }
+    assert _node_snapshot(tmp_path) == before

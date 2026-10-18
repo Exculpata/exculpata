@@ -354,7 +354,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         tree = tree if tree is not None else ast.parse(text.removeprefix("\ufeff"))
     except (SyntaxError, ValueError, RecursionError):
         return [Finding(f"{location}:1", f"unsupported Python parse; use {RENAME_COMPAT_HELPER}")]
-    env = {name: ContainerValue("callable", ("builtins." + name,)) for name in ("str", "repr", "ascii", "len", "bool", "int", "float", "dict", "list", "tuple", "set")}
+    env = {name: ContainerValue("callable", ("builtins." + name,)) for name in ("str", "repr", "ascii", "len", "bool", "int", "float", "dict", "list", "tuple", "set", "getattr", "exec", "eval")}
     unresolved_stems: set[str] = set()
     binding_events: list[tuple[str, str | ContainerValue | None]] = []
     found = []
@@ -393,6 +393,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         if active_visitors and active_visitors[-1].reviewed_analysis:
             return
         found.append(Finding(f"{location}:{getattr(node, 'lineno', 1)}", f"unsupported legacy syntax ({form}); use immutable contract-based construction"))
+
+    def restricted_boundary(node: ast.AST, form: str) -> None:
+        found.append(Finding(f"{location}:{getattr(node, 'lineno', 1)}",
+                             f"unsupported legacy syntax ({form}); use {RENAME_COMPAT_HELPER}"))
 
     def index_value(node: ast.AST):
         if isinstance(node, ast.Constant) and isinstance(node.value, (str, int, bytes)):
@@ -1174,6 +1178,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                         env[name] = ContainerValue("callable", ("case_intelligence.legacy_names.name_value",))
                     if alias.name == "*":
                         env["name_value"] = ContainerValue("callable", ("case_intelligence.legacy_names.name_value",))
+                        env["NAME_CONTRACTS"] = ContainerValue("callable", ("case_intelligence.legacy_names.NAME_CONTRACTS",))
                     names = KNOWN_VALUES if alias.name == "*" else {name: KNOWN_VALUES[alias.name]} if alias.name in KNOWN_VALUES else {}
                     for bound_name, item in names.items():
                         bind(ast.Name(id=bound_name), ast.Constant(value=item))
@@ -1613,6 +1618,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 expected = REVIEWED_ANALYSIS_FUNCTIONS.get((location, name)) if not self.scope else None
                 reviewed = expected is not None and hashlib.sha256(textwrap.dedent(ast.get_source_segment(text, node) or "").replace("\r\n", "\n").encode()).hexdigest() == expected
                 visitor = Visitor(scope=(*self.scope, name), reviewed_analysis=reviewed)
+                if isinstance(node, ast.Lambda) and contains_stem(node.body):
+                    restricted_boundary(node, "legacy lambda result")
                 for statement in [node.body] if isinstance(node, ast.Lambda) else node.body:
                     visitor.visit(statement)
                 visitor.finish()
@@ -1732,7 +1739,36 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         def visit_BinOp(self, node: ast.BinOp) -> None:
             self.composition(node)
 
+        def visit_Return(self, node: ast.Return) -> None:
+            if node.value is not None and contains_stem(node.value):
+                restricted_boundary(node, "legacy helper return")
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            if qualified(node.value) == "case_intelligence.legacy_names.NAME_CONTRACTS":
+                restricted_boundary(node, "direct contract-table access")
+            self.generic_visit(node)
+
+        def visit_Subscript(self, node: ast.Subscript) -> None:
+            if qualified(node.value) == "case_intelligence.legacy_names.NAME_CONTRACTS":
+                restricted_boundary(node, "direct contract-table access")
+            self.generic_visit(node)
+
         def visit_Call(self, node: ast.Call) -> None:
+            reference = qualified(node.func)
+            if reference in {"builtins.exec", "builtins.eval"}:
+                found.append(Finding(f"{location}:{node.lineno}",
+                                     f"unsupported Python dynamic execution; use {RENAME_COMPAT_HELPER}"))
+            if reference == "string.Template":
+                restricted_boundary(node, "string.Template construction")
+            if reference == "builtins.getattr" and node.args and (
+                qualified(node.args[0]) in {"case_intelligence.legacy_names", "case_intelligence.legacy_names.NAME_CONTRACTS"}
+                or contains_stem(node.args[0])
+                or (qualified(node.args[0]) == "builtins" and len(node.args) > 1
+                    and value(node.args[1]) in {"exec", "eval"})
+            ):
+                restricted_boundary(node, "dynamic legacy or execution lookup")
+
             callee = structure(node.func)
             if callee is None and not isinstance(node.func, (ast.Name, ast.Attribute, ast.Subscript)):
                 captured = frozen(node.func)

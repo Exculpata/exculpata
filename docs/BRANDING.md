@@ -171,6 +171,15 @@ must still fit a declared naming family. Existing persisted formats, runtime lab
 and exact temporary-directory prefixes are retained explicitly in the table.
 The Python gate rejects unknown AST classes and unmodeled type-alias/type-parameter syntax before value resolution, even without a known legacy origin. This preflight uses the existing per-file budget; unknown-node diagnostics cannot receive source receipts. Decoded literals remain checked when syntax is rejected. Diagnostics direct callers to `case_intelligence.legacy_names.name_value`.
 
+Known legacy-bearing helper returns and lambda results are rejected at their
+source boundary. Direct attribute/subscript access to the imported contract table,
+legacy-authority `getattr`, and `string.Template` construction are also rejected;
+call `case_intelligence.legacy_names.name_value` at the construction site instead.
+The checker does not execute or infer helper bodies at call sites. Builtin `exec`
+and `eval`, including verified aliases, are rejected even without a tracked legacy
+origin; their dynamic-execution diagnostic cannot receive a source receipt.
+Ordinary runtime values without a known origin remain outside value inference.
+
 The Python gate has a restricted syntax contract. It is a source policy, not a
 proof of arbitrary Python execution. A known legacy origin must remain either a
 checked value or an explicit diagnostic; unsupported syntax must not erase it.
@@ -208,7 +217,7 @@ unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
 does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
 
-`config/rename-source-forms.json` records 177 Python and 365 JavaScript diagnostic-specific source
+`config/rename-source-forms.json` records 232 Python and 365 JavaScript diagnostic-specific source
 contracts for existing analysis or transport operations that remain outside this
 grammar. Forty-five concern diagnostic text analysis; the remaining 132 concern
 existing setting validation/output, authenticated dependency metadata replacement,
@@ -257,6 +266,21 @@ consolidated follow-up after the final review; correctness and security defects
 continue to block readiness.
 
 
+The additional return/access boundary has 55 exact-source dispositions: 54 return
+sites and the contract documentation renderer's table access. Their records name
+the concrete output or input-only role and relevant validation. They preserve
+existing registered exports, configuration and analysis results; they do not
+authorize arbitrary helper returns or add helper-name exemptions. The unchanged
+publication guard has one return disposition for its completed Git-config lookup;
+its enforcement is not altered.
+
+Where already supported, the installer uses an ordinary two-element tuple and
+keyword dictionary replacement instead of list-to-tuple construction and literal
+keyword unpacking. Dynamic-key dictionary writes and deferred legacy-bearing
+generator outputs still conflict with the restricted mutation/generator rules.
+Those forms require a separate contract decision; this batch does not add Python
+interpretation or silently permit them.
+
 Application migrations use new local dictionaries, pure set union and explicit
 contract calls instead of unsupported name-bearing mutation. The environment
 serializer uses direct contract lookups instead of conditional name temporaries and retains its exact bytes and input ordering, including an empty mapping;
@@ -264,6 +288,21 @@ unit generation retains the same two kinds in the same order. The People and Tea
 change stored naming generations or relax installation, storage or publication
 checks. The source-form inventory makes the remaining limits visible to reviewers
 rather than treating unknown helpers as safe consumers.
+
+For an existing node, application environment selection is independent of its
+saved naming generation. A nonempty saved `EXCULPATA_APP_ENV_FILE` wins over its
+legacy alias. With neither set, `exculpata.env` wins when present; otherwise the
+legacy filename is selected. The two files are never merged. An explicit missing
+file remains selected so configuration validation fails instead of silently
+using another file. These lookups do not rewrite either file or installation
+metadata.
+
+Restore uses the same generation check before dispatching the backup tool.
+Requesting a different generation, or combining conflicting saved installation
+and storage markers, fails before running commands or creating the restore target
+or its parent. Having both environment filenames does not authorize migration.
+This pre-dispatch guarantee concerns the live node's saved coordinates; snapshot
+content validation remains the separate restore-drill boundary.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract

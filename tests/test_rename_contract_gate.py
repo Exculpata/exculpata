@@ -223,7 +223,10 @@ def test_nested_functions_resolve_later_closure_aliases(tmp_path):
         '    stem = LEGACY_STEM\n'
         '    return build\n'
     )
-    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", "recordbench-unregistered-v99")]
+    assert checker.findings(tmp_path) == [
+        checker.Finding("synthetic.py:4", 'unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value'),
+        checker.Finding("synthetic.py:4", "recordbench-unregistered-v99"),
+    ]
 
 
 def test_deferred_functions_keep_declared_names_and_parameter_shadowing(tmp_path):
@@ -236,7 +239,7 @@ def test_deferred_functions_keep_declared_names_and_parameter_shadowing(tmp_path
         '    return f"{stem}-unregistered-v99"\n'
         'stem = LEGACY_STEM\n'
     )
-    assert checker.findings(tmp_path) == []
+    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", 'unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value')]
 
 
 def test_css_selectors_are_checked_as_text(tmp_path):
@@ -421,7 +424,9 @@ def test_tuple_assignment_resolves_all_sources_before_rebinding(tmp_path):
         'stem, other = other, stem\n'
         'FORMAT = f"{other}-unregistered-v99"\n'
     )
-    assert checker.findings(tmp_path) == [checker.Finding("synthetic.py:4", "recordbench-unregistered-v99")]
+    assert checker.findings(tmp_path) == [
+        checker.Finding("synthetic.py:4", "recordbench-unregistered-v99"),
+    ]
 
 
 @pytest.mark.parametrize("prefix,suffix", [("café", ""), ("cafe\u0301", ""), ("工具", ""), ("", "é")])
@@ -464,7 +469,6 @@ def test_decodable_text_is_checked_despite_nul_characters(tmp_path, suffix):
     'stem = selected or LEGACY_STEM\nFORMAT = f"{stem}-exact-v1"',
     'stem = LEGACY_STEM and "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
     'stem = "synthetic" or LEGACY_STEM\nFORMAT = f"{stem}-unregistered-v99"',
-    'stem = LEGACY_STEM\ndef build():\n return f"{stem}-exact-v1"\nFORMAT = build()\nstem = "synthetic"',
     'stem = LEGACY_STEM\ndef outer(stem):\n def build():\n  return f"{stem}-unregistered-v99"\n return build()\nstem = "synthetic"',
     'stem = LEGACY_STEM\ndef outer():\n stem = "synthetic"\n def build():\n  return f"{stem}-unregistered-v99"\n return build()\nstem = "synthetic"',
     'stem = LEGACY_STEM\nstem = "synthetic"\ndef build():\n return f"{stem}-unregistered-v99"\nFORMAT = build()',
@@ -798,7 +802,10 @@ def test_analysis_helper_disposition_is_exact_and_keeps_literal_scanning(tmp_pat
     path = tmp_path / "scripts/doc_identifier_check.py"
     path.parent.mkdir()
     path.write_text(source)
-    assert bool(checker.findings(tmp_path)) is (mutation is not None)
+    found = checker.findings(tmp_path)
+    returns = [item for item in found if item.identifier == 'unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value']
+    assert len(returns) == 1
+    assert bool([item for item in found if item not in returns]) is (mutation is not None)
 
 
 def test_analysis_helper_disposition_does_not_follow_another_path(tmp_path):
@@ -854,7 +861,7 @@ def test_reviewed_helper_fingerprint_is_independent_of_ast_schema(monkeypatch, t
     path.write_text(source)
     original = checker.ast.dump
     monkeypatch.setattr(checker.ast, "dump", lambda *a, **kw: original(*a, **kw) + ",new_optional_ast_field=[]")
-    assert checker.findings(tmp_path) == []
+    assert checker.findings(tmp_path) == [checker.Finding("scripts/doc_identifier_check.py:13", 'unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value')]
 
 
 # The approved grammar rejects these formerly modeled mutations at their source,
@@ -1940,3 +1947,40 @@ def test_parse_and_shell_rejections_cannot_receive_source_receipts(tmp_path, mon
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
     with pytest.raises(ValueError, match='diagnostic contract'):
         checker.source_form_contracts()
+
+
+@pytest.mark.parametrize("source", [
+    "from case_intelligence.legacy_names import LEGACY_STEM\ndef stem():\n    return LEGACY_STEM\nFORMAT = stem() + \"-synthetic-unregistered-v99\"\n",
+    "from case_intelligence.legacy_names import NAME_CONTRACTS\nFORMAT = NAME_CONTRACTS[\"stem\"].legacy + \"-synthetic-unregistered-v99\"\n",
+    "from case_intelligence.legacy_names import NAME_CONTRACTS\nFORMAT = NAME_CONTRACTS[\"stem\"].legacy[:6] + \"bench-synthetic-unregistered-v99\"\n",
+    "from case_intelligence import legacy_names as names\nFORMAT = getattr(names, \"LEGACY_\" + \"STEM\") + \"-synthetic-unregistered-v99\"\n",
+    "from string import Template\nfrom case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = Template(\"${stem}-synthetic-unregistered-v99\").substitute(stem=LEGACY_STEM)\n",
+    "from case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = (lambda: LEGACY_STEM)() + \"-synthetic-unregistered-v99\"\n",
+    "exec(\"FORMAT = 'record' + 'bench-synthetic-unregistered-v99'\")\n",
+    "FORMAT = eval(\"'record' + 'bench-synthetic-unregistered-v99'\")\n"
+], ids=['helper_return', 'contract_attribute', 'contract_subscript', 'dynamic_getattr', 'string_template', 'lambda', 'exec', 'eval'])
+def test_opaque_legacy_construction_requires_rename_helper(source):
+    found = checker.scan_python("src/synthetic.py", source, NAME_CONTRACTS)
+    assert any("case_intelligence.legacy_names.name_value" in item.identifier for item in found), found
+
+
+@pytest.mark.parametrize("source", [
+    'from case_intelligence.legacy_names import *\nFORMAT = NAME_CONTRACTS["stem"].legacy + "-unregistered-v99"',
+    'from case_intelligence.legacy_names import LEGACY_STEM\ndef build():\n return f"{LEGACY_STEM}-exact-v1"\nFORMAT = build()',
+    'from builtins import eval as execute\nFORMAT = execute("\'record\' + \'bench-unregistered-v99\'")',
+    'execute = exec\nexecute("FORMAT = \'record\' + \'bench-unregistered-v99\'")',
+    'from string import Template as T\nFORMAT = T("${stem}-unregistered-v99")',
+    'from builtins import getattr as read\nfrom case_intelligence import legacy_names as names\nFORMAT = read(names, "LEGACY_STEM")',
+])
+def test_opaque_construction_aliases_remain_blocked(source):
+    assert checker.scan_python("synthetic.py", source, NAME_CONTRACTS)
+
+
+@pytest.mark.parametrize("source", [
+    'def ordinary():\n return "synthetic"\nVALUE = ordinary()',
+    'VALUE = (lambda: "synthetic")()',
+    'VALUE = getattr(runtime, "ordinary_field")',
+    'from case_intelligence.legacy_names import name_value\nVALUE = name_value("exact_v1")',
+])
+def test_ordinary_runtime_and_direct_contract_calls_keep_supported_boundary(source):
+    assert checker.scan_python("synthetic.py", source, NAME_CONTRACTS) == []
