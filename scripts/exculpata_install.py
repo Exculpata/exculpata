@@ -62,7 +62,7 @@ from case_intelligence.legacy_names import (
 )
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
-STORAGE_MARKERS = tuple(name_value("storage_marker", names) for names in (LEGACY_STEM, CURRENT_STEM))
+STORAGE_MARKERS = tuple([name_value("storage_marker", names) for names in (LEGACY_STEM, CURRENT_STEM)])
 CONTAINER_DATA = name_value("container_data")
 CONTAINER_SECRETS = name_value("container_secrets")
 CONTAINER_ACCOUNTS = name_value("container_accounts")
@@ -454,8 +454,8 @@ IDENTITY_FIELDS = {
 def _identity_fields(args: argparse.Namespace):
     fields = IDENTITY_FIELDS[args.auth]
     if args.auth == "local" and args.names == f"{LEGACY_STEM}":
-        return tuple((name, prompt, f"{LEGACY_STEM}.admin" if name == "admin_username"
-                      else f"{LEGACY_PRODUCT} Administrator") for name, prompt, _ in IDENTITY_FIELDS["local"])
+        return tuple([(name, prompt, f"{LEGACY_STEM}.admin" if name == "admin_username"
+                      else f"{LEGACY_PRODUCT} Administrator") for name, prompt, _ in IDENTITY_FIELDS["local"]])
     return fields
 
 
@@ -900,9 +900,8 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
         for key, value in values.items():
             if key.startswith((CURRENT_ENV_PREFIX, f"{LEGACY_ENV_PREFIX}")):
                 suffix = str(key).removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix(CURRENT_ENV_PREFIX)
-                new, old = name_value("environment", suffix=suffix), f"{LEGACY_ENV_PREFIX}{suffix}"
-                preferred = values.get(new)
-                expanded[new] = values.get(old, "") if preferred in (None, "") else preferred
+                preferred = values.get(name_value("environment", suffix=suffix))
+                expanded[name_value("environment", suffix=suffix)] = values.get(f"{LEGACY_ENV_PREFIX}{suffix}", "") if preferred in (None, "") else preferred
             else:
                 expanded[key] = value
         values = expanded
@@ -3369,7 +3368,7 @@ def _provision(
             raise RuntimeError("installed matter storage path is invalid")
         storage_root = Path(configured_storage)
     storage_root = Path(storage_root)
-    markers = tuple(storage_root / name for name in STORAGE_MARKERS)
+    markers = tuple([storage_root / name for name in STORAGE_MARKERS])
     if not args.dry_run:
         _install_phase(root, "storage", "checking")
     if not any(marker.exists() or marker.is_symlink() for marker in markers):

@@ -12,8 +12,8 @@
           "validation": "tests/test_documentation.py"
         },
         {
-          "line": 270,
-          "identifier": "unsupported legacy syntax (nonfinite or filtered legacy comprehension); use immutable contract-based construction",
+          "line": 274,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
           "function": "_parametrize",
           "reason": "Collect literal fixture parameter values into the documentation evidence corpus; container mutations are analysis state.",
           "validation": "tests/test_documentation.py"
@@ -21,6 +21,20 @@
         {
           "line": 275,
           "identifier": "unsupported legacy composition; use a contract key",
+          "function": "_parametrize",
+          "reason": "Collect literal fixture parameter values into the documentation evidence corpus; container mutations are analysis state.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 275,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "_parametrize",
+          "reason": "Collect literal fixture parameter values into the documentation evidence corpus; container mutations are analysis state.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 277,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
           "function": "_parametrize",
           "reason": "Collect literal fixture parameter values into the documentation evidence corpus; container mutations are analysis state.",
           "validation": "tests/test_documentation.py"
@@ -40,6 +54,13 @@
           "validation": "tests/test_documentation.py"
         },
         {
+          "line": 270,
+          "identifier": "unsupported legacy syntax (nonfinite or filtered legacy comprehension); use immutable contract-based construction",
+          "function": "_parametrize",
+          "reason": "Collect literal fixture parameter values into the documentation evidence corpus; container mutations are analysis state.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
           "line": 424,
           "identifier": "unsupported legacy syntax (legacy-bearing mutator call); use immutable contract-based construction",
           "function": "apply",
@@ -51,6 +72,13 @@
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "apply",
           "reason": "Add analyzed prefix/value combinations to the documentation corpus; never use them as operational identifiers.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 484,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "_code_corpus",
+          "reason": "Build the documentation evidence corpus from source and QA settings; the resulting strings are analysis evidence.",
           "validation": "tests/test_documentation.py"
         },
         {
@@ -82,7 +110,7 @@
       ]
     },
     "scripts/exculpata_install.py": {
-      "source_sha256": "8dacacd0a2f21601e825496eae9d4c959bf08ae332d1dbbd6c4823c9cf54bc67",
+      "source_sha256": "7e4c1bd2b1294b79d1cd1fae370abf23728609393644ebefccdeb0a12cd9bf3a",
       "diagnostics": [
         {
           "line": 1618,
@@ -108,15 +136,8 @@
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "394735278a54414d35008f3d277cead2c90cfa8da536952bd385cc72480e49ce",
+      "source_sha256": "0de225c86f52e3df5603a44d67c2f95a1084a1f3dd61ed5cc387833d701339dc",
       "diagnostics": [
-        {
-          "line": 168,
-          "identifier": "unsupported legacy composition; use a contract key",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
         {
           "line": 169,
           "identifier": "unsupported legacy composition; use a contract key",
@@ -132,7 +153,21 @@
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 172,
+          "line": 171,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 171,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 173,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
@@ -140,20 +175,20 @@
         },
         {
           "line": 173,
-          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
           "line": 174,
-          "identifier": "unsupported legacy composition; use a contract key",
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 181,
+          "line": 175,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
@@ -167,14 +202,70 @@
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
+          "line": 183,
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
           "line": 184,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 188,
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 189,
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 193,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 193,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 194,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 194,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 196,
           "identifier": "unsupported legacy syntax (legacy-bearing mutator call); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 160,
+          "line": 161,
           "identifier": "unsupported legacy syntax (abrupt loop with legacy bindings); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
@@ -191,6 +282,25 @@
           "function": "patch_metadata",
           "reason": "Replace fixed dependency/version entries in bytes authenticated by the existing metadata digest. The complete replacement version is checked normally.",
           "validation": "services/transcription/tests/test_compatibility_build.py"
+        },
+        {
+          "line": 52,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "patch_metadata",
+          "reason": "Replace fixed dependency/version entries in bytes authenticated by the existing metadata digest. The complete replacement version is checked normally.",
+          "validation": "services/transcription/tests/test_compatibility_build.py"
+        }
+      ]
+    },
+    "services/transcription/src/transcription_v2/settings.py": {
+      "source_sha256": "ffa5ca8db230886c06edc9772a55704adbc2f69a5fdafacdf1cb44bcb2b1a9d5",
+      "diagnostics": [
+        {
+          "line": 155,
+          "identifier": "unsupported legacy syntax (legacy-bearing class namespace); use immutable contract-based construction",
+          "function": "Settings",
+          "reason": "Frozen settings dataclass stores the existing registered lock/cache paths as configuration defaults; literal and resolved names remain checked. This receipt covers only this complete unchanged module.",
+          "validation": "services/transcription/tests/test_settings.py"
         }
       ]
     },
@@ -232,6 +342,18 @@
         }
       ]
     },
+    "src/case_intelligence/exact_search.py": {
+      "source_sha256": "4a6c4933550ab940afe35d19ea9a05a27a10e3abe949bc7c109b02f8ee3985ba",
+      "diagnostics": [
+        {
+          "line": 137,
+          "identifier": "unsupported legacy syntax (legacy-bearing class namespace); use immutable contract-based construction",
+          "function": "ParsedQuery",
+          "reason": "Frozen parsed-query dataclass stores the retained grammar version default; serialization and parsing keep their existing contract. This receipt covers only this complete unchanged module.",
+          "validation": "tests/test_exact_search.py"
+        }
+      ]
+    },
     "src/case_intelligence/media_playback.py": {
       "source_sha256": "497c31fd7452dc9f572c05e7514ec5e7cda789ca654a3846dc88ab5012ce1455",
       "diagnostics": [
@@ -245,17 +367,17 @@
       ]
     },
     "src/case_intelligence/workbench.py": {
-      "source_sha256": "0130d5220caad249e77181adcb390412dbca01845ff16f80afce14ae978a6a78",
+      "source_sha256": "92634fc1f5013bcf25ec32d5486dac5b8b73ba4b1b42f4b83b3add110fb0b3a7",
       "diagnostics": [
         {
-          "line": 811,
+          "line": 812,
           "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
           "function": "__init__",
           "reason": "Store a Thread object whose complete maintenance/discovery name was already checked; preserve scheduling, locking and lifecycle behavior.",
           "validation": "tests/test_matter_continuity_lifecycle.py"
         },
         {
-          "line": 890,
+          "line": 891,
           "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
           "function": "__init__",
           "reason": "Store a Thread object whose complete maintenance/discovery name was already checked; preserve scheduling, locking and lifecycle behavior.",

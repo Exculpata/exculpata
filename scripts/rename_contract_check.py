@@ -7,6 +7,7 @@ name, or documentation gates. Tests retain independent historical expectations.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 from collections.abc import Mapping
@@ -55,10 +56,10 @@ REVIEWED_ANALYSIS_FUNCTIONS = {
 _STEM = re.escape(LEGACY_STEM)
 _TOKENS = re.compile(
     rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/%&=+~!$,*@;-]*(?:[?#][A-Za-z0-9_.:/?%#&=+~!$,*@;()'-]*)?)"
-    rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
+    rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/+:%-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
-    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.-]*)",
+    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.+%/-]*)",
     re.IGNORECASE,
 )
 
@@ -151,7 +152,7 @@ def _registered(token: str, patterns: list[tuple[str, re.Pattern[str]]], *, temp
     return False
 
 
-def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = NAME_CONTRACTS) -> list[Finding]:
+def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = NAME_CONTRACTS, *, literal: bool = False) -> list[Finding]:
     # Inspect the complete generated name for ordinary deployment, Python and
     # JavaScript placeholders; an unfilled fixed prefix alone is not a name.
     text = re.sub(r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}", "CONTRACTDYNAMIC", text)
@@ -175,13 +176,87 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
             token = token[:-1]  # A source string's closing delimiter is not URI content.
         if token.rsplit("/", 1)[-1] == HISTORICAL_ASSET:
             continue
+        if Path(location).name == ".gitignore" and not literal:
+            token = token.rstrip("/")
         documented_prefix = Path(location).suffix.lower() == ".md"
+        line_start = text.rfind("\n", 0, start) + 1
+        prose = documented_prefix or (not literal and text[line_start:start].lstrip().startswith(("#", "//")))
+        if not literal and token.startswith(".") and start and (text[start - 1].isalnum() or text[start - 1] in "_?])"):
+            token = token[1:]  # Source member-access syntax; decoded literals stay exact.
+        if (not literal and Path(location).suffix in {".yaml", ".yml"}
+                and token.startswith("/") and token.endswith((":ro", ":rw"))
+                and (text[line_start:start].rstrip().endswith(("}:", "CONTRACTDYNAMIC:")) or
+                     (text[line_start:start].strip() == "-" and text[end:].startswith(",noexec,nosuid,nodev,")))):
+            token = token.rsplit(":", 1)[0]  # Explicit interpolated-host Compose mount.
         if not any(_registered(candidate, patterns, template_prefix=documented_prefix)
-                   for candidate in (token, token.rstrip("."), token.lstrip("."))):
+                   for candidate in ((token, token.rstrip("."), token.lstrip(".")) if prose else (token,))):
             line = text.count("\n", 0, start) + 1
             finding = Finding(f"{location}:{line}", token)
             if finding not in found:
                 found.append(finding)
+    return found
+
+
+def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
+    """Decode bounded quoted/template string escapes without executing source."""
+    literals = re.compile(r"//[^\n]*|/\*[\s\S]*?\*/|(?P<quote>['\"`])(?P<body>(?:\\[\s\S]|(?!(?P=quote))[\s\S])*)(?P=quote)")
+    escapes = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|\r\n|[\s\S])")
+    def decode(match):
+        token = match.group()[1:]
+        if token.startswith("x") and len(token) == 3:
+            return chr(int(token[1:], 16))
+        if token.startswith("u") and len(token) > 1:
+            number = int(token[2:-1] if token.startswith("u{") else token[1:], 16)
+            if number > 0x10ffff:
+                raise ValueError("invalid Unicode code point")
+            return chr(number)
+        if token in {"x", "u"}:
+            raise ValueError("incomplete hexadecimal escape")
+        return {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0", "\n": "", "\r\n": ""}.get(token, token)
+    # Also inspect decoded text conservatively: regex literals can resemble
+    # comment/string boundaries, so lexical ambiguity must not hide escapes.
+    try:
+        found = scan_text(location, escapes.sub(decode, text), contracts)
+    except ValueError:
+        found = []  # A comment/regex may not follow string-escape grammar.
+    for literal_match in literals.finditer(text):
+        body = literal_match.group("body")
+        if body is None:
+            continue
+        if len(body) > 65536:
+            found.append(Finding(f"{location}:1", "unsupported oversized JavaScript literal"))
+            continue
+        try:
+            decoded = escapes.sub(decode, body)
+        except ValueError:
+            found.append(Finding(f"{location}:1", "unsupported undecodable JavaScript literal"))
+            continue
+        offset = text.count("\n", 0, literal_match.start())
+        for item in scan_text(location, decoded, contracts, literal=True):
+            _, line = item.location.rsplit(":", 1)
+            found.append(Finding(f"{location}:{offset + int(line)}", item.identifier))
+    return found
+
+
+def scan_json(location: str, text: str, contracts) -> list[Finding]:
+    try:
+        pending = [json.loads(text.removeprefix("\ufeff"))]
+    except (ValueError, RecursionError):
+        return [Finding(f"{location}:1", "unsupported undecodable JSON source")]
+    found = []
+    visited = 0
+    while pending:
+        item = pending.pop()
+        visited += 1
+        if visited > 100000:
+            return [*found, Finding(f"{location}:1", "unsupported oversized JSON structure")]
+        if isinstance(item, str):
+            found.extend(scan_text(location, item, contracts, literal=True))
+        elif isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, list):
+            pending.extend(item)
     return found
 
 
@@ -210,6 +285,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     active_visitors = []
     expansion_budget = 4096
     shadowed_qualified = set()
+    loop_carried_names = []
 
     def unsupported(node: ast.AST, form: str) -> None:
         if active_visitors and active_visitors[-1].reviewed_analysis:
@@ -314,7 +390,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             bindings = {}
             if not targets(generator.target, item, bindings):
                 return None
-            scope = dict(env)
+            scope = dict(class_scopes[-1][0] if class_scopes else env)
             for name, item in bindings.items():
                 for key in list(scope):
                     if key == name or key.startswith((name + ".", name + "[")):
@@ -387,7 +463,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             outer, outer_unknown = env, unresolved_stems
             items = []
             for scope, targets in possibilities:
-                env, unresolved_stems = scope, outer_unknown - targets
+                env, unresolved_stems = scope, (class_scopes[-1][1] if class_scopes else outer_unknown) - targets
                 items.append((index_value(node.key), frozen(node.value)) if isinstance(node, ast.DictComp) else frozen(node.elt))
             env, unresolved_stems = outer, outer_unknown
             if node.generators[0].ifs:
@@ -799,6 +875,16 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             if isinstance(target, ast.Attribute):
                 shadowed_qualified.add(name)
             root = re.split(r"[.\[]", name, maxsplit=1)[0]
+            if any(root in names for names in loop_carried_names) and (legacy_value(resolved) or unresolved):
+                accumulator = False
+                if isinstance(target, ast.Name) and isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
+                    own = [part for part in (expression.left, expression.right) if isinstance(part, ast.Name) and part.id == target.id]
+                    other = expression.right if own and own[0] is expression.left else expression.left
+                    accumulator = bool(own) and isinstance(resolved, ContainerValue) and resolved.kind == "set" and not any(isinstance(part, ast.Name) and part.id == target.id for part in ast.walk(other))
+                if isinstance(target, ast.Name) and isinstance(expression, ast.Call) and qualified(expression.func) == "builtins.dict":
+                    accumulator = len(expression.args) == 1 and isinstance(expression.args[0], ast.Name) and expression.args[0].id == target.id and not any(isinstance(part, ast.Name) and part.id == target.id for keyword in expression.keywords for part in ast.walk(keyword.value))
+                if not accumulator:
+                    unsupported(target, "loop-carried legacy binding")
             if not class_scopes and function_declarations and root in function_declarations[-1] and (legacy_value(resolved) or unresolved):
                 unsupported(target, "global or nonlocal write")
             if class_scopes:
@@ -825,6 +911,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.method_scope = None
             self.scope = scope
             self.reviewed_analysis = reviewed_analysis
+            self.comprehension_depth = 0
+            self.try_depth = 0
 
         def visit(self, node):
             active_visitors.append(self)
@@ -849,7 +937,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 except UnicodeDecodeError:
                     return
             if isinstance(decoded, str):
-                for item in scan_text(location, decoded, contracts):
+                for item in scan_text(location, decoded, contracts, literal=True):
                     _, line = item.location.rsplit(":", 1)
                     found.append(Finding(f"{location}:{node.lineno + int(line) - 1}", item.identifier))
 
@@ -865,13 +953,20 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                             binding_events.append((f"{alias.asname or alias.name}.{key}", item))
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-            authority = node.module == "case_intelligence.legacy_names" and node.level == 0
-            authority |= node.module == "legacy_names" and node.level == 1 and location.startswith("src/case_intelligence/")
+            module = node.module or ""
+            if node.level:
+                parts = Path(location).parent.parts
+                package = list(parts[1:]) if parts and parts[0] == "src" else []
+                if node.level <= len(package):
+                    module = ".".join([*package[:len(package) - node.level + 1], *module.split(".")]).rstrip(".")
+                else:
+                    module = ""
+            authority = module == "case_intelligence.legacy_names"
             for alias in node.names:
                 name = alias.asname or alias.name
                 bind(ast.Name(id=name), None)
-                if alias.name != "*" and node.level == 0:
-                    env[name] = ContainerValue("callable", ((node.module or "") + "." + alias.name,))
+                if alias.name != "*" and module:
+                    env[name] = ContainerValue("callable", (module + "." + alias.name,))
                 if authority:
                     if alias.name == "name_value":
                         env[name] = ContainerValue("callable", ("case_intelligence.legacy_names.name_value",))
@@ -880,7 +975,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                     names = KNOWN_VALUES if alias.name == "*" else {name: KNOWN_VALUES[alias.name]} if alias.name in KNOWN_VALUES else {}
                     for bound_name, item in names.items():
                         bind(ast.Name(id=bound_name), ast.Constant(value=item))
-                elif node.module == "case_intelligence" and node.level == 0 and alias.name == "legacy_names":
+                elif module == "case_intelligence" and alias.name == "legacy_names":
                     env[name] = ContainerValue("module", ("case_intelligence.legacy_names",))
                     env.update({f"{name}.{key}": item for key, item in KNOWN_VALUES.items()})
                     for key, item in KNOWN_VALUES.items():
@@ -901,7 +996,32 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
             self.generic_visit(node)
-            bind(node.target, node.value)
+            if node.value is not None:
+                bind(node.target, node.value)
+
+        def loop_reads(self, node):
+            # Only a direct, unconditional fresh binding can rule out carry
+            # between iterations. Nested/conditional assignments stay rejected.
+            reset = {part.id for part in ast.walk(node.target) if isinstance(part, ast.Name)} if isinstance(node, (ast.For, ast.AsyncFor)) else set()
+            carried = set()
+            statements = [*([node.test] if isinstance(node, ast.While) else []), *node.body]
+            for statement in statements:
+                if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                    reads = self.loop_reads(statement)
+                    eager = [statement.iter] if isinstance(statement, (ast.For, ast.AsyncFor)) else [statement.test]
+                    reads |= {part.id for expression in [*eager, *statement.orelse] for part in ast.walk(expression)
+                              if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Load)}
+                else:
+                    reads = {part.id for part in ast.walk(statement)
+                             if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Load)}
+                reads.update(part.target.id for part in ast.walk(statement)
+                             if isinstance(part, ast.AugAssign) and isinstance(part.target, ast.Name))
+                carried.update(reads - reset)
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target] if isinstance(statement, ast.AnnAssign) and statement.value is not None else []
+                for target in targets:
+                    reset.update(part.id for part in ast.walk(target)
+                                 if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Store))
+            return carried
 
         def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
             self.visit(node.iter)
@@ -934,7 +1054,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             iteration = joined_values(members) if members else ContainerValue("unknown", ()) if contains_stem(node.iter) else None
             assignment = ast.Assign(targets=[node.target], value=literal(iteration))
             ast.fix_missing_locations(ast.copy_location(assignment, node))
+            loop_carried_names.append(self.loop_reads(node))
             self.alternatives([[], [assignment, *node.body]])
+            loop_carried_names.pop()
             # A break can bypass the else suite; retain both possibilities.
             self.alternatives([[], node.orelse])
             if binding_events[event_offset:] and any(isinstance(part, (ast.Break, ast.Continue)) for statement in node.body for part in ast.walk(statement)):
@@ -944,8 +1066,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         def visit_While(self, node: ast.While) -> None:
             event_offset = len(binding_events)
+            loop_carried_names.append(self.loop_reads(node))
             self.visit(node.test)
             self.alternatives([[], node.body])
+            loop_carried_names.pop()
             self.alternatives([[], node.orelse])
             if binding_events[event_offset:] and any(isinstance(part, (ast.Break, ast.Continue)) for statement in node.body for part in ast.walk(statement)):
                 unsupported(node, "abrupt loop with legacy bindings")
@@ -979,7 +1103,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             exceptional = [self.snapshot()]
             for statement in node.body:
                 offset = len(binding_events)
+                self.try_depth += 1
                 self.visit(statement)
+                self.try_depth -= 1
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, ast.TryStar, ast.Match)) and binding_events[offset:]:
                     unsupported(statement, "compound exception path with legacy bindings")
                 exceptional.append(self.snapshot())
@@ -1005,7 +1131,20 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.visit(expression)
             bind(node.target, expression)
 
+        def visit_conditional_expression(self, node):
+            writes = [part for part in ast.walk(node) if isinstance(part, ast.NamedExpr)]
+            if any(contains_stem(write.target) or contains_stem(write.value) for write in writes):
+                unsupported(node, "conditional legacy assignment expression")
+            self.generic_visit(node)
+
+        visit_BoolOp = visit_conditional_expression
+        visit_IfExp = visit_conditional_expression
+
         def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+            if self.try_depth and (contains_stem(node.target) or contains_stem(node.value)):
+                unsupported(node, "exception-sensitive legacy assignment expression")
+            if self.comprehension_depth and contains_stem(node.value):
+                unsupported(node, "legacy assignment expression in comprehension")
             self.visit(node.value)
             bind(node.target, node.value)
 
@@ -1143,12 +1282,21 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.merge_states(results)
 
         def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
+                         *([node.args.vararg] if node.args.vararg else []),
+                         *([node.args.kwarg] if node.args.kwarg else [])]
+            for annotation in [*(arg.annotation for arg in arguments), node.returns]:
+                if annotation is not None:
+                    self.visit(annotation)
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
             bind(ast.Name(id=node.name), None)
             scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
-            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events)))
+            parameters = [*node.args.posonlyargs, *node.args.args]
+            defaults = {arg.arg: frozen(default) for arg, default in zip(parameters[len(parameters) - len(node.args.defaults):], node.args.defaults)}
+            defaults.update({arg.arg: frozen(default) for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults) if default is not None})
+            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events), defaults))
             if class_scopes:
                 class_scopes[-1][3].add(node.name)
 
@@ -1159,14 +1307,17 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 if expression is not None:
                     self.visit(expression)
             scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
-            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events)))
+            parameters = [*node.args.posonlyargs, *node.args.args]
+            defaults = {arg.arg: frozen(default) for arg, default in zip(parameters[len(parameters) - len(node.args.defaults):], node.args.defaults)}
+            defaults.update({arg.arg: frozen(default) for arg, default in zip(node.args.kwonlyargs, node.args.kw_defaults) if default is not None})
+            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events), defaults))
 
         def finish(self) -> None:
             nonlocal env, unresolved_stems, binding_events
             # A body can see bindings at its definition or later, including
             # values replaced after an earlier call. Bindings superseded before
             # the definition cannot reach it unless assigned again afterward.
-            for node, definition_env, definition_unresolved, offset in self.deferred:
+            for node, definition_env, definition_unresolved, offset, defaults in self.deferred:
                 outer, outer_unresolved, outer_events = env, unresolved_stems, binding_events
                 env, unresolved_stems = dict(env), set(unresolved_stems)
                 possible_bindings = {name: {item} for name, item in definition_env.items()
@@ -1190,6 +1341,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 for arg in (node.args.vararg, node.args.kwarg):
                     if arg is not None:
                         unbind(arg.arg)
+                for name, item in defaults.items():
+                    if item is not None:
+                        env[name] = item
                 local_names = set()
                 declared_names = set()
                 def locals_in(statement):
@@ -1248,21 +1402,35 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             class_scopes.append((scope_env, scope_unresolved, scope_events, set(), declared_outer))
             for statement in node.body:
                 self.visit(statement)
+            local_names = class_scopes[-1][3]
+            attributes = {name: env[name] for name in env if name.split(".", 1)[0] in local_names}
+            unknown_attributes = {name for name in unresolved_stems if name.split(".", 1)[0] in local_names}
+            if any(legacy_value(item) for item in attributes.values()) or unknown_attributes:
+                unsupported(node, "legacy-bearing class namespace")
             class_scopes.pop()
             env = outer
             unresolved_stems = outer_unresolved
             binding_events = outer_events
             self.method_scope = outer_method_scope
+            bind(ast.Name(id=node.name), None)
+            for name, item in attributes.items():
+                env[node.name + "." + name] = item
+                if legacy_value(item):
+                    binding_events.append((node.name + "." + name, item))
+            for name in unknown_attributes:
+                unresolved_stems.add(node.name + "." + name)
+                binding_events.append((node.name + "." + name, None))
             if class_scopes:
                 class_scopes[-1][3].add(node.name)
 
         def visit_comprehension_expression(self, node):
             nonlocal env, unresolved_stems
             outer = self.snapshot()
+            self.comprehension_depth += 1
             possibilities = comprehension_bindings(node)
             if possibilities is not None:
                 for scope, targets in possibilities:
-                    env, unresolved_stems = scope, outer[1] - targets
+                    env, unresolved_stems = scope, (class_scopes[-1][1] if class_scopes else outer[1]) - targets
                     for condition in node.generators[0].ifs:
                         for call in (part for part in ast.walk(condition) if isinstance(part, ast.Call)):
                             receiver = structure(call.func.value) if isinstance(call.func, ast.Attribute) else None
@@ -1272,12 +1440,19 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                         self.visit(condition)
                     for expression in [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]:
                         self.visit(expression)
+                        if getattr(node, "deferred_generator", False) and contains_stem(expression):
+                            unsupported(node, "deferred legacy generator")
                         if contains_stem(expression) and frozen(expression) == ContainerValue("unknown", ()):
                             unsupported(node, "nonconstant comprehension output")
             else:
-                for generator in node.generators:
-                    self.visit(generator.iter)
-                    origin = contains_stem(generator.iter)
+                first_iterable = frozen(node.generators[0].iter)
+                self.visit(node.generators[0].iter)
+                if class_scopes:
+                    env, unresolved_stems = dict(class_scopes[-1][0]), set(class_scopes[-1][1])
+                for index, generator in enumerate(node.generators):
+                    if index:
+                        self.visit(generator.iter)
+                    origin = legacy_value(first_iterable) if not index else contains_stem(generator.iter)
                     bind(generator.target, UnknownLegacy() if origin else None)
                     if origin:
                         unsupported(node, "nonfinite or filtered legacy comprehension")
@@ -1285,14 +1460,26 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                         self.visit(condition)
                 for expression in [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]:
                     self.visit(expression)
+                    if getattr(node, "deferred_generator", False) and contains_stem(expression):
+                        unsupported(node, "deferred legacy generator")
                     if contains_stem(expression) and frozen(expression) == ContainerValue("unknown", ()):
                         unsupported(node, "nonfinite or filtered legacy comprehension")
             self.restore(outer)
+            self.comprehension_depth -= 1
 
         visit_ListComp = visit_comprehension_expression
         visit_SetComp = visit_comprehension_expression
         visit_DictComp = visit_comprehension_expression
-        visit_GeneratorExp = visit_comprehension_expression
+        def visit_GeneratorExp(self, node):
+            # The first iterable is eager; the output and guards are delayed.
+            self.visit(node.generators[0].iter)
+            captured_iterable = frozen(node.generators[0].iter)
+            eager = ast.copy_location(ast.ListComp(elt=copy.deepcopy(node.elt), generators=copy.deepcopy(node.generators)), node)
+            eager.deferred_generator = True
+            eager.generators[0].iter = ast.copy_location(literal(captured_iterable), node.generators[0].iter)
+            delayed = ast.copy_location(ast.Lambda(args=ast.arguments(posonlyargs=[], args=[], kwonlyargs=[], kw_defaults=[], defaults=[]), body=eager), node)
+            scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
+            self.deferred.append((delayed, dict(scope_env), set(scope_unresolved), len(scope_events), {}))
 
         def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
             self.composition(node)
@@ -1301,6 +1488,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.composition(node)
 
         def visit_Call(self, node: ast.Call) -> None:
+            if qualified(node.func) in {"os.path.join", "posixpath.join", "ntpath.join"} and any(contains_stem(item) for item in call_inputs(node)):
+                unsupported(node, "legacy path builder output")
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend", "insert", "update", "setdefault", "add", "__setitem__"} and any(contains_stem(item) for item in [node.func.value, *node.args, *(arg.value for arg in node.keywords)]):
                 unsupported(node, "legacy-bearing mutator call")
             self.composition(node)
@@ -1310,9 +1499,15 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 self.generic_visit(node)
                 return
             resolved = value(node)
+            path_output = isinstance(node, ast.Call) and qualified(node.func) == "pathlib.Path"
+            if resolved is None and isinstance(node, ast.Call) and qualified(node.func) == "pathlib.Path":
+                constructed = structure(node)
+                if constructed is not None:
+                    resolved = value(FrozenDomainValue(constructed))
             if resolved is not None:
-                scan = scan_component if re.fullmatch(r"[A-Za-z0-9_.-]+", resolved) else scan_text
-                for item in scan(location, resolved, contracts):
+                scanned = (scan_component(location, resolved, contracts) if path_output or re.fullmatch(r"[A-Za-z0-9_.-]+", resolved)
+                           else scan_text(location, resolved, contracts, literal=True))
+                for item in scanned:
                     _, line = item.location.rsplit(":", 1)
                     found.append(Finding(f"{location}:{node.lineno + int(line) - 1}", item.identifier))
             else:
@@ -1395,6 +1590,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         source_forms = source_form_contracts()
     except (ValueError, OSError, TypeError, KeyError) as error:
         return [Finding("config/rename-source-forms.json:1", str(error))]
+    consumed_source_forms = set()
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in relative.parts):
@@ -1410,6 +1606,8 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
+            if path.suffix.lower() in {".py", ".js", ".cjs", ".mjs", ".json"}:
+                found.append(Finding(f"{relative.as_posix()}:1", "unsupported undecodable operational source"))
             continue
         authority = None
         if relative.as_posix() == "src/case_intelligence/legacy_names.py":
@@ -1438,11 +1636,19 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             authority.body = remaining
             text = b"".join(lines).decode("utf-8")
         found.extend(scan_text(relative.as_posix(), text, contracts))
+        if path.suffix.lower() == ".json":
+            found.extend(scan_json(relative.as_posix(), text, contracts))
+        if path.suffix.lower() in {".js", ".cjs", ".mjs"}:
+            found.extend(scan_javascript(relative.as_posix(), text, contracts))
         shebang = text.removeprefix("\ufeff").partition("\n")[0]
         if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
+            consumed_source_forms.add(relative.as_posix())
             syntactic = scan_python(relative.as_posix(), text, contracts, tree=authority)
             found.extend(apply_source_forms(relative.as_posix(), text, syntactic, source_forms,
                                             require_current=root.resolve() == ROOT.resolve()))
+    if root.resolve() == ROOT.resolve():
+        for missing in sorted(source_forms.keys() - consumed_source_forms):
+            found.append(Finding(f"{missing}:1", "unused source-form contract; source was not scanned"))
     return list(dict.fromkeys(found))
 
 

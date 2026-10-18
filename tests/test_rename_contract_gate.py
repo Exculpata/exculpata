@@ -361,7 +361,7 @@ def test_binary_assets_and_symlinks_are_not_followed(tmp_path):
     fixture = hidden / "historical.py"
     fixture.write_text("recordbench-independent-historical-fixture")
     (tmp_path / "linked.py").symlink_to(fixture)
-    assert checker.findings(tmp_path) == []
+    assert checker.findings(tmp_path) == [checker.Finding("binary.py:1", "unsupported undecodable operational source")]
 
 
 def test_unknown_operational_json_identifier_fails(tmp_path):
@@ -513,7 +513,11 @@ def test_class_namespace_is_not_a_method_enclosing_scope(tmp_path):
         'stem = "synthetic"\nclass Builder:\n stem = LEGACY_STEM\n'
         ' def build(self):\n  return f"{stem}-unregistered-v99"\n'
     )
-    assert checker.findings(tmp_path) == []
+    found = checker.findings(tmp_path)
+    assert len(found) == 1
+    assert "legacy-bearing class namespace" in found[0].identifier
+    # The method still uses the nonlegacy outer binding, not the class value.
+    assert "unregistered-v99" not in found[0].identifier
 
 
 @pytest.mark.parametrize("identifier", [
@@ -973,3 +977,233 @@ def test_source_form_contracts_never_accept_literal_diagnostics(tmp_path, monkey
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', source)
     with pytest.raises(ValueError, match='diagnostic contract'):
         checker.source_form_contracts()
+
+
+@pytest.mark.parametrize('source', [
+    'stem = "synthetic"\n[item for item in ["one"] if (stem := LEGACY_STEM)]\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic"\n[(stem := LEGACY_STEM) for item in ["one"]]\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nclass C:\n stem = "synthetic"\n values = [f"{stem}-unregistered-v99" for item in ["one"]]',
+    'stem = "synthetic"\nvalues = (f"{stem}-unregistered-v99" for item in ["one"])\nstem = LEGACY_STEM\nlist(values)',
+    'class C:\n stem = LEGACY_STEM\nFORMAT = C.stem + "-unregistered-v99"',
+    'def build(stem=LEGACY_STEM):\n return f"{stem}-unregistered-v99"\nbuild()',
+    'def build(*, stem=LEGACY_STEM):\n return f"{stem}-unregistered-v99"\nbuild()',
+    'build = lambda stem=LEGACY_STEM: f"{stem}-unregistered-v99"\nbuild()',
+    'stem = LEGACY_STEM\nstem: str\nFORMAT = f"{stem}-unregistered-v99"',
+    'def build():\n stem = LEGACY_STEM\n stem: str\n return f"{stem}-unregistered-v99"',
+])
+def test_final_review_scope_and_default_origins(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('relative, statement', [
+    ('src/case_intelligence/store/tool.py', 'from ..legacy_names import LEGACY_STEM'),
+    ('src/case_intelligence/store/deeper/tool.py', 'from ...legacy_names import LEGACY_STEM'),
+    ('src/case_intelligence/store/tool.py', 'from .. import legacy_names as names'),
+])
+def test_final_review_nested_authority_imports(tmp_path, relative, statement):
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    stem = 'names.LEGACY_STEM' if ' as names' in statement else 'LEGACY_STEM'
+    path.write_text(statement + '\nFORMAT = f"{' + stem + '}-unregistered-v99"\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('suffix', ['.js', '.cjs', '.mjs'])
+@pytest.mark.parametrize('escape', [r'\x72', r'\u0072', r'\u{72}'])
+def test_final_review_javascript_escaped_literals(tmp_path, suffix, escape):
+    (tmp_path / ('synthetic' + suffix)).write_text('const FORMAT = "' + escape + 'ecordbench-unregistered-v99";\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('extra', ['+unregistered-v99', ':unregistered-v99', '%unregistered-v99'])
+def test_final_review_path_punctuation(tmp_path, extra):
+    (tmp_path / 'synthetic.py').write_text('PATH = "/var/lib/' + 'record' + 'bench' + extra + '"\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('prefix,suffix', [('', '.'), ('.', ''), ('...', '')])
+def test_final_review_exact_literal_dots(tmp_path, prefix, suffix):
+    (tmp_path / 'synthetic.py').write_text('FORMAT = "' + prefix + 'record' + 'bench-exact-v1' + suffix + '"\n')
+    assert checker.findings(tmp_path)
+
+
+def test_final_review_missing_receipt_source(tmp_path, monkeypatch):
+    import json
+    path = tmp_path / 'forms.json'
+    path.write_text(json.dumps({'version': 1, 'files': {'missing.py': {
+        'source_sha256': 'a' * 64, 'diagnostics': [{'line': 1,
+        'identifier': 'unsupported legacy composition; use a contract key',
+        'reason': 'synthetic fixture', 'validation': 'synthetic fixture'}]}}}))
+    monkeypatch.setattr(checker, 'ROOT', tmp_path)
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', path)
+    assert any('unused source-form' in item.identifier for item in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('source', [
+    'stem = LEGACY_STEM\nclass C:\n stem = "synthetic"\n values = [f"{stem}-unregistered-v99" for item in unknown]',
+    'stem = "synthetic"\nvalues = (f"{stem}-unregistered-v99" for item in ["one"])\nstem = LEGACY_STEM\nlist(values)\nstem = "synthetic"',
+    'stem = LEGACY_STEM\ndef build(value=stem):\n return f"{value}-unregistered-v99"\nstem = "synthetic"\nbuild()',
+    'class C:\n stem = LEGACY_STEM\n class D:\n  value = LEGACY_STEM\nFORMAT = C.D.value + "-unregistered-v99"',
+])
+def test_final_review_deferred_and_nested_scope_controls(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'stem = "synthetic"\ndef build(value=stem):\n return f"{value}-unregistered-v99"\nstem = LEGACY_STEM\nbuild()',
+    'stem = "synthetic"\nclass C:\n stem = LEGACY_STEM\n values = [f"{stem}-unregistered-v99" for item in ["one"]]',
+    'class C:\n stem = LEGACY_STEM\n stem = "synthetic"\nFORMAT = C.stem + "-unregistered-v99"',
+    'stem = LEGACY_STEM\nvalues = (f"{stem}-exact-v1" for item in ["one"])',
+])
+def test_final_review_precise_safe_controls(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    found = checker.findings(tmp_path)
+    if "class C" in source and 'stem = "synthetic"\nFORMAT' not in source:
+        assert any("legacy-bearing class namespace" in item.identifier for item in found)
+    elif "values = (" in source:
+        assert any("deferred legacy generator" in item.identifier for item in found)
+    else:
+        assert found == []
+
+
+def test_final_review_js_comments_do_not_hide_escaped_literals(tmp_path):
+    source = '// synthetic apostrophe: \'\nconst FORMAT = "\\x72ecordbench-unregistered-v99";\n// another apostrophe: \'\n'
+    (tmp_path / 'synthetic.js').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+def test_final_review_js_escaped_backslash_does_not_decode_twice(tmp_path):
+    (tmp_path / 'synthetic.js').write_text(r'const text = "\\x72ecordbench-unregistered-v99";' + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('relative, content', [
+    ('synthetic.js', '// A registered prose name ends a sentence: recordbench-exact-v1.\nconst x = state.recordbenchSourceNote;'),
+    ('compose.yaml', 'volumes:\n  - ${SYNTHETIC_ROOT}:/run/recordbench-secrets:ro\n'),
+    ('compose.yaml', 'tmpfs:\n  - /run/recordbench-auth:rw,noexec,nosuid,nodev,size=2m\n'),
+])
+def test_final_review_source_syntax_is_distinct_from_literal_names(tmp_path, relative, content):
+    (tmp_path / relative).write_text(content)
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('value', ['/run/recordbench-secrets:ro', 'state.recordbenchSourceNote'])
+def test_final_review_source_syntax_does_not_exempt_decoded_literals(tmp_path, value):
+    (tmp_path / 'synthetic.py').write_text('value = ' + repr(value) + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('state', ['missing', 'renamed', 'nonpython', 'binary', 'excluded'])
+def test_final_review_unused_receipt_variants(tmp_path, monkeypatch, state):
+    import hashlib
+    import json
+    source = 'synthetic = True\n'
+    path = {'renamed': 'other.py', 'nonpython': 'source.txt', 'binary': 'source.py', 'excluded': 'tests/source.py'}.get(state)
+    recorded = 'source.txt' if state == 'nonpython' else 'tests/source.py' if state == 'excluded' else 'source.py'
+    if path:
+        p = tmp_path / path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'\xff' if state == 'binary' else source.encode())
+    manifest = tmp_path / 'forms.json'
+    manifest.write_text(json.dumps({'version': 1, 'files': {recorded: {
+        'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
+        'diagnostics': [{'line': 1, 'identifier': 'unsupported legacy composition; use a contract key',
+                         'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
+    monkeypatch.setattr(checker, 'ROOT', tmp_path)
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
+    assert any('unused source-form' in item.identifier for item in checker.findings(tmp_path))
+
+
+def test_final_review_js_regex_comment_ambiguity_does_not_hide_escapes(tmp_path):
+    (tmp_path / 'synthetic.js').write_text(r'const regex = /\//; const FORMAT = "\x72ecordbench-unregistered-v99";' + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source, expected', [
+    ('value = LEGACY_STEM\nfor _ in range(2):\n value += ".env"\nFORMAT = value', 'record' + 'bench.env.env'),
+    ('value = LEGACY_STEM\nfor _ in [1, 2]:\n value = value + ".env"\nFORMAT = value', 'record' + 'bench.env.env'),
+    ('value = LEGACY_STEM\ni = 0\nwhile i < 2:\n value += ".env"\n i += 1\nFORMAT = value', 'record' + 'bench.env.env'),
+    ('stem = LEGACY_STEM\nFalse and (stem := "synthetic")\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
+    ('stem = LEGACY_STEM\nTrue or (stem := "synthetic")\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
+    ('stem = LEGACY_STEM\n(stem := "synthetic") if False else None\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
+])
+def test_independent_review_repeated_and_conditional_writes(tmp_path, source, expected):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n'
+    # These fixed, bounded synthetic programs independently verify runtime output.
+    namespace = {}
+    exec(compile(source, 'synthetic.py', 'exec'), namespace)
+    assert namespace['FORMAT'] == expected
+    assert checker.scan_component('synthetic.py', expected, NAME_CONTRACTS)
+    (tmp_path / 'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'from pathlib import Path\nFORMAT = Path(LEGACY_STEM + "+unregistered-v99")',
+    'def build(value: LEGACY_STEM + "-unregistered-v99"):\n pass',
+    'def build() -> LEGACY_STEM + "-unregistered-v99":\n pass',
+    'stem = "synthetic"\ntry:\n values = ((stem := LEGACY_STEM), operation(), (stem := "synthetic"))\nexcept Exception:\n pass\nFORMAT = f"{stem}-unregistered-v99"',
+    'from os.path import join\nFORMAT = join(LEGACY_STEM, "unregistered-v99")',
+    'from pathlib import Path\nFORMAT = Path(LEGACY_STEM, "unregistered-v99")',
+])
+def test_reviewed_annotation_exception_and_path_outputs(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+def test_reviewed_json_escape_is_decoded(tmp_path):
+    (tmp_path / 'synthetic.json').write_text(r'{"format":"\u0072ecordbench-unregistered-v99"}')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'value = None\nfor item in range(3):\n if value is None:\n  value = LEGACY_STEM\n else:\n  value += ".env"\nFORMAT = value',
+    'stem = "synthetic"\nfor next_stem in [LEGACY_STEM, "synthetic"]:\n FORMAT = f"{stem}-unregistered-v99"\n stem = next_stem',
+    'stem = "synthetic"\nvalue = (stem := LEGACY_STEM) if selected else (stem := "synthetic")\nFORMAT = f"{stem}-unregistered-v99"',
+    'value = LEGACY_STEM\nwhile (value := value + ".env"):\n break',
+    'settings = {"stem": LEGACY_STEM}\nfor _ in range(2):\n settings = dict(settings, stem=settings["stem"] + ".env")',
+])
+def test_loop_and_expression_policy_rejects_unmodeled_state(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert any('unsupported legacy syntax' in x.identifier for x in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('source', [
+    'for _ in range(2):\n stem = LEGACY_STEM\n FORMAT = stem + ".env"',
+    'for _ in range(2):\n stem, other = LEGACY_STEM, "synthetic"\n FORMAT = stem + ".env"',
+    'names = set()\nfor _ in range(2):\n names = names | {LEGACY_STEM}',
+    'settings = {}\nfor _ in range(2):\n settings = dict(settings, stem=LEGACY_STEM)',
+    'from os.path import join\nFORMAT = join("synthetic", "example")',
+    'from pathlib import Path\nFORMAT = Path(LEGACY_STEM + ".env")',
+])
+def test_bounded_loop_resets_and_immutable_accumulation_remain_supported(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('contents', [r'{"format":"\uZZZZ"}', '{"format":', '{"format":"unterminated}'])
+def test_undecodable_json_is_not_safe_unknown(tmp_path, contents):
+    (tmp_path / 'synthetic.json').write_text(contents)
+    assert any('undecodable JSON' in x.identifier for x in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('suffix', ['.py', '.js', '.cjs', '.mjs', '.json'])
+def test_undecodable_operational_source_is_rejected(tmp_path, suffix):
+    (tmp_path / ('synthetic' + suffix)).write_bytes(b'\xff')
+    assert any('undecodable operational source' in x.identifier for x in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('escape', [r'\uZZZZ', r'\xQ1', r'\u{110000}'])
+def test_undecodable_javascript_literals_are_rejected(tmp_path, escape):
+    (tmp_path / 'synthetic.js').write_text('const text = "' + escape + '";\n')
+    assert any('undecodable JavaScript' in x.identifier for x in checker.findings(tmp_path))
+
+
+def test_json_escape_keys_and_single_decoding(tmp_path):
+    path = tmp_path / 'synthetic.json'
+    path.write_text(r'{"\u0072ecordbench-unregistered-v99":"synthetic"}')
+    assert checker.findings(tmp_path)
+    path.write_text(r'{"format":"\\u0072ecordbench-unregistered-v99"}')
+    assert checker.findings(tmp_path) == []

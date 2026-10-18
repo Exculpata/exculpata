@@ -178,15 +178,15 @@ checked value or an explicit diagnostic; unsupported syntax must not erase it.
 | Authority imports | Absolute imports from `case_intelligence.legacy_names`, aliases, and package-relative imports within that package. Foreign imports do not inherit authority constants. |
 | Bindings and containers | Local bindings and literal lists, tuples, sets and mappings; verified pure collection constructors, dictionary replacement and set union; known mapping keys and static positive or negative integer member indexes. |
 | String construction | Bounded concatenation, simple f-strings, simple positional formatting, declared `name_value` calls, statically resolved string operations and finite JSON serialization. Unknown fields without a known legacy origin are checked as symbolic family members. |
-| Comprehensions | One synchronous generator over a finite known container, with simple name or tuple/list targets. Filtered selections lose positional precision; predicates using calls must be verified path-status operations when they carry a known origin. At most 256 members per expansion, a 4096-member analysis budget and 65536-character composed values. Comprehension targets stay local. A nonfinite input without a tracked origin may carry resolved literal/record output, but not an opaque legacy-derived result. |
-| Branches and scopes | Conservative `if`, unguarded `match`, simple loop and simple exception-path merges. Class headers execute in their enclosing scope. Enclosing function global/nonlocal declarations do not create closure locals. |
+| Comprehensions | One synchronous generator over a finite known container, with simple name or tuple/list targets. Filtered selections lose positional precision; predicates using calls must be verified path-status operations when they carry a known origin. At most 256 members per expansion, a 4096-member analysis budget and 65536-character composed values. Comprehension targets stay local; their bodies use lexical scope rather than a surrounding class namespace. Legacy-bearing assignment expressions and deferred generator outputs are rejected. Known function defaults are captured at definition time; annotations without values do not overwrite bindings. Function parameter/return annotations are checked in their defining scope. A nonfinite input without a tracked origin may carry resolved literal/record output, but not an opaque legacy-derived result. |
+| Branches and scopes | Conservative `if`, unguarded `match` and simple exception-path merges. Loop-carried legacy bindings and side-effecting conditional/exception-sensitive expressions are rejected. Direct fresh per-iteration resets, pure set union and dictionary accumulation without transforming prior entries remain supported. Class headers execute in their enclosing scope. Enclosing function global/nonlocal declarations do not create closure locals. |
 | Input roles | Roles require a verified callable or receiver. Verified `Path` reads return external data, not their filename; numeric builtins do not return identifier text. Known dictionary lookups return values/defaults rather than selector keys. The environment reader returns environment values/defaults rather than key names; this summary is pinned to the entire helper module source and rejects changed implementations. Arbitrary helper or method results retain known input provenance. Parser and regular-expression objects may expose their inputs through attributes. |
 
 Legacy-bearing attribute/subscript mutations, mutator calls, chained mutable
 assignments, starred collection displays, mapping unpacking, global/nonlocal
 writes, guarded captures, abrupt loops with legacy bindings and compound
 exception paths with legacy bindings are rejected. Nonfinite legacy-bearing iterables, asynchronous comprehensions, unverified
-predicates and unresolved legacy-derived comprehension outputs are also rejected. A safe later overwrite does not authorize an unsupported earlier form.
+predicates, legacy-bearing class namespaces and unresolved legacy-derived comprehension outputs are also rejected. A safe later overwrite does not authorize an unsupported earlier form.
 Use immutable contract-based construction, or propose a narrow disposition for
 review; do not add a helper-name exemption or clear provenance to make the gate
 pass. Arbitrary helper return values without a tracked input origin and arbitrary
@@ -199,29 +199,29 @@ paths permit ordinary descendants, while legacy-named descendants must have thei
 own contract. The authority module is scanned outside the table declaration;
 only its exact source span is covered by the separate contract-table validation,
 so neighboring statements remain checked. URI query, fragment and percent-encoded
-suffixes remain part of the identifier and require an explicit contract.
+suffixes remain part of the identifier and require an explicit contract. Path punctuation and decoded source-literal dots remain exact. Prose punctuation, source member access and explicit Compose mount modes are syntax boundaries, not literal-name exemptions. Bounded JavaScript and JSON string escapes are decoded without executing source. Malformed relevant escapes, invalid JSON and non-UTF-8 operational source are rejected. Imported path builders with legacy-bearing outputs outside the verified Path constructor boundary are rejected.
 The documentation checker's `_swap` helper translates candidate text rather than
 emitting operational names. Its exact normalized source body has a recorded SHA-256 disposition for
 unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
 does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
 
-`config/rename-source-forms.json` records 33 additional, diagnostic-specific source
+`config/rename-source-forms.json` records 49 additional, diagnostic-specific source
 contracts for existing analysis or transport operations that remain outside this
-grammar. Nineteen concern diagnostic text analysis; the remaining fourteen concern
+grammar. Thirty-two concern diagnostic text analysis; the remaining seventeen concern
 existing setting validation/output, authenticated dependency metadata replacement,
-lifecycle SQL rendering, warning-once bookkeeping and thread-object storage.
+lifecycle SQL rendering, warning-once bookkeeping, thread-object storage and two exact frozen dataclass namespaces carrying retained configuration or grammar defaults. Those two class receipts are not a general exemption for dataclasses.
 Each record names the exact path, complete module source digest, diagnostic line
 and text, semantic reason and validation suite. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
 The gate still scans every file and checks all literal and resolved identifiers.
 An extra diagnostic is blocked. Any source change invalidates that file's records,
-and records for diagnostics that are no longer emitted must be removed or reviewed.
+and records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or non-Python source cannot leave an unused receipt behind.
 No command automatically accepts a new finding or refreshes these records.
 
 Application migrations use new local dictionaries, pure set union and explicit
 contract calls instead of unsupported name-bearing mutation. The environment
-serializer retains its exact bytes and input ordering, including an empty mapping;
+serializer uses direct contract lookups instead of conditional name temporaries and retains its exact bytes and input ordering, including an empty mapping;
 unit generation retains the same two kinds in the same order. These changes do not
 change stored naming generations or relax installation, storage or publication
 checks. The source-form inventory makes the remaining limits visible to reviewers
@@ -243,6 +243,7 @@ while conflicting authentication headers fail closed.
 | --- | --- | --- | --- |
 | administrator | `recordbench.admin` | `exculpata.admin` | generation |
 | app_env | `recordbench.env` | `exculpata.env` | generation |
+| auth_mode_diagnostic | `recordbench/auth-mode-diagnostic/v1` | `recordbench/auth-mode-diagnostic/v1` | retained |
 | backup_shim | `recordbench-backup.sh` | `exculpata-backup.sh` | alias |
 | backup_status_default | `/srv/recordbench/.local/state/recordbench-backup/status.json` | `/srv/recordbench/.local/state/recordbench-backup/status.json` | retained |
 | backup_status_shim | `recordbench-backup-status.sh` | `exculpata-backup-status.sh` | alias |

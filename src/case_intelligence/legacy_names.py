@@ -58,6 +58,7 @@ NAME_CONTRACTS = MappingProxyType({
     "review_acceptance": NameContract("recordbench-review-acceptance-v1", "recordbench-review-acceptance-v1", "retained"),
     "question_draft_v1": NameContract("recordbench-question-draft-evaluation-v1", "recordbench-question-draft-evaluation-v1", "retained"),
     "question_draft_v2": NameContract("recordbench-question-draft-evaluation-v2", "recordbench-question-draft-evaluation-v2", "retained"),
+    "auth_mode_diagnostic": NameContract("recordbench/auth-mode-diagnostic/v1", "recordbench/auth-mode-diagnostic/v1", "retained"),
     "ocr_limit": NameContract("recordbench-ocr-limit", "recordbench-ocr-limit", "retained"),
     "legacy_generator_9b": NameContract("recordbench-qwen35-9b", "recordbench-qwen35-9b", "retained"),
     "gpu_lock": NameContract("/tmp/recordbench-transcription-gpu.lock", "/tmp/recordbench-transcription-gpu.lock", "retained"),
