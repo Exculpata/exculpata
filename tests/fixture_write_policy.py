@@ -54,6 +54,34 @@ _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
 _KNOWN_BUILTIN_CLASSES = {"type", "object", "dict", "list", "tuple", "set", "frozenset"}
+# Fixed Python 3.12 builtin identities; never infer identity from foreign names.
+_BUILTIN_CALLABLE_NAMES = frozenset({
+    'ArithmeticError', 'AssertionError', 'AttributeError', 'BaseException', 'BaseExceptionGroup', 'BlockingIOError',
+    'BrokenPipeError', 'BufferError', 'BytesWarning', 'ChildProcessError', 'ConnectionAbortedError', 'ConnectionError',
+    'ConnectionRefusedError', 'ConnectionResetError', 'DeprecationWarning', 'EOFError', 'EncodingWarning', 'EnvironmentError',
+    'Exception', 'ExceptionGroup', 'FileExistsError', 'FileNotFoundError', 'FloatingPointError', 'FutureWarning',
+    'GeneratorExit', 'IOError', 'ImportError', 'ImportWarning', 'IndentationError', 'IndexError',
+    'InterruptedError', 'IsADirectoryError', 'KeyError', 'KeyboardInterrupt', 'LookupError', 'MemoryError',
+    'ModuleNotFoundError', 'NameError', 'NotADirectoryError', 'NotImplementedError', 'OSError', 'OverflowError',
+    'PendingDeprecationWarning', 'PermissionError', 'ProcessLookupError', 'RecursionError', 'ReferenceError', 'ResourceWarning',
+    'RuntimeError', 'RuntimeWarning', 'StopAsyncIteration', 'StopIteration', 'SyntaxError', 'SyntaxWarning',
+    'SystemError', 'SystemExit', 'TabError', 'TimeoutError', 'TypeError', 'UnboundLocalError',
+    'UnicodeDecodeError', 'UnicodeEncodeError', 'UnicodeError', 'UnicodeTranslateError', 'UnicodeWarning', 'UserWarning',
+    'ValueError', 'Warning', 'ZeroDivisionError', '__build_class__', '__import__', 'abs',
+    'aiter', 'all', 'anext', 'any', 'ascii', 'bin',
+    'bool', 'breakpoint', 'bytearray', 'bytes', 'callable', 'chr',
+    'classmethod', 'compile', 'complex', 'copyright', 'credits', 'delattr',
+    'dict', 'dir', 'divmod', 'enumerate', 'eval', 'exec',
+    'exit', 'filter', 'float', 'format', 'frozenset', 'getattr',
+    'globals', 'hasattr', 'hash', 'help', 'hex', 'id',
+    'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+    'license', 'list', 'locals', 'map', 'max', 'memoryview',
+    'min', 'next', 'object', 'oct', 'open', 'ord',
+    'pow', 'print', 'property', 'quit', 'range', 'repr',
+    'reversed', 'round', 'set', 'setattr', 'slice', 'sorted',
+    'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
+    'vars', 'zip',
+})
 _NAMESPACE_PROVIDERS = {
     "globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars",
     "__import__", "builtins.__import__", "importlib.import_module",
@@ -223,6 +251,7 @@ class _Value:
     local_instance: bool = False
     class_operations: frozenset[str] = frozenset()
     builtin_classes: frozenset[str] = frozenset()
+    builtin_callable: bool = False
 
 
 class _Check(ast.NodeVisitor):
@@ -288,6 +317,21 @@ class _Check(ast.NodeVisitor):
             result = replace(result, class_operations=result.class_operations | {"copy"})
         if result.imported_function and result.symbol.startswith("builtins.") and symbol in _KNOWN_BUILTIN_CLASSES:
             result = replace(result, builtin_classes=frozenset({symbol}))
+        if (result.imported_function and result.symbol.startswith("builtins.")
+                and symbol in _BUILTIN_CALLABLE_NAMES):
+            result = replace(result, builtin_callable=True)
+        if (isinstance(node, ast.Attribute) and origin is not None
+                and (origin.imported_module and origin.symbol == "builtins" or origin.symbol == "<reflective-builtins>")
+                and node.attr in _BUILTIN_CALLABLE_NAMES):
+            result = replace(result, builtin_callable=True)
+        if isinstance(node, ast.Attribute) and origin is not None:
+            # Only native operations already recognized by this checker acquire
+            # identity here. Foreign methods and local class members stay opaque.
+            native_dictionary = ("dict" in origin.builtin_classes or self.is_dictionary(origin))
+            if (native_dictionary and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS | {"fromkeys"}
+                    or "type" in origin.builtin_classes and node.attr == "__call__"
+                    or "object" in origin.builtin_classes and node.attr == "__new__"):
+                result = replace(result, builtin_callable=True)
         if origin is not None and (origin.local_class or origin.local_instance):
             # Overlay provenance without discarding SQL/path ownership metadata.
             return replace(result, local_instance=True)
@@ -300,7 +344,8 @@ class _Check(ast.NodeVisitor):
             return self.evaluated_values[node]
         if isinstance(node, ast.Name):
             return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None,
-                                                   builtin_classes=frozenset({node.id}) if node.id in _KNOWN_BUILTIN_CLASSES else frozenset()))
+                                                   builtin_classes=frozenset({node.id}) if node.id in _KNOWN_BUILTIN_CLASSES else frozenset(),
+                                                   builtin_callable=node.id in _BUILTIN_CALLABLE_NAMES))
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
@@ -372,8 +417,7 @@ class _Check(ast.NodeVisitor):
                 return _Value(symbol=symbol, receiver=base)
             if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
-            if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"}
-                                            or self.is_dictionary(base)):
+            if node.attr == "fromkeys" and ("dict" in base.builtin_classes or self.is_dictionary(base)):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
@@ -594,7 +638,7 @@ class _Check(ast.NodeVisitor):
         else:
             resolved = self.mapping_lookup(value, self.value(node.slice))
         if resolved is None and value.elements is None and value.mapping is None and (
-                value.builtin_classes or value.class_operations or value.local_class or value.local_instance):
+                value.builtin_classes or value.class_operations or value.builtin_callable or value.local_class or value.local_instance):
             resolved = self.payload_value([value])
         if resolved is not None and isinstance(node.ctx, ast.Load):
             self.evaluated_values[node] = resolved
@@ -622,6 +666,8 @@ class _Check(ast.NodeVisitor):
         if isinstance(node.ctx, ast.Load):
             self.reject_dynamic_builtin(node)
         base = self.value(node.value)
+        if node.attr == "__call__" and self.is_builtin_callable(base):
+            self.flag(node, "builtin __call__ access is unsupported; use named calls with fixture_write()", structural=True)
         if base.elements is not None and self.known_ownership(base, shared_only=True):
             self.flag(node, "shared tuple attribute extraction is unsupported; unpack named handles and use fixture_write()", structural=True)
         if self.unresolved_ownership(self.value(node)):
@@ -748,6 +794,7 @@ class _Check(ast.NodeVisitor):
                       local_instance=any(self.has_local_class(value, instances=True) for value in values),
                       class_operations=frozenset().union(*(self.local_class_operations(value) for value in values)),
                       builtin_classes=frozenset().union(*(self.known_builtin_classes(value) for value in values)),
+                      builtin_callable=any(self.is_builtin_callable(value) for value in values),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
@@ -759,14 +806,15 @@ class _Check(ast.NodeVisitor):
             return value.dictionary_keys
         if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
             return replace(self.payload_value([value]), symbol="", callable_targets=frozenset(),
-                           local_class=False, local_instance=False, class_operations=frozenset(), builtin_classes=frozenset())
+                           local_class=False, local_instance=False, class_operations=frozenset(), builtin_classes=frozenset(), builtin_callable=False)
         return value
 
     def class_carrier_value(self, value: _Value) -> _Value:
         return _Value(local_class=self.has_local_class(value),
                       local_instance=self.has_local_class(value, instances=True),
                       class_operations=self.local_class_operations(value),
-                      builtin_classes=self.known_builtin_classes(value))
+                      builtin_classes=self.known_builtin_classes(value),
+                      builtin_callable=self.is_builtin_callable(value))
 
     def iteration_item(self, value: _Value) -> _Value:
         projected = self.iteration_value(value)
@@ -777,7 +825,7 @@ class _Check(ast.NodeVisitor):
     def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
         if receiver.elements is not None and (self.known_builtin_classes(receiver)
                 or self.local_class_operations(receiver) or self.has_local_class(receiver)
-                or self.has_local_class(receiver, instances=True)):
+                or self.has_local_class(receiver, instances=True) or self.is_builtin_callable(receiver)):
             return self.payload_value([receiver])
         if receiver.dictionary_keys is not None and receiver.mapping is None:
             values = replace(receiver, dictionary_keys=None, dictionary_instance=False)
@@ -794,7 +842,7 @@ class _Check(ast.NodeVisitor):
         if receiver.mapping is not None:
             return self.payload_value([*(item for _, item in receiver.mapping), *([] if default is None else [default])])
         if receiver.dictionary_instance and (receiver.builtin_classes or receiver.class_operations
-                                            or receiver.local_class or receiver.local_instance):
+                                            or receiver.local_class or receiver.local_instance or receiver.builtin_callable):
             return self.payload_value([receiver, *([] if default is None else [default])])
         return None
 
@@ -829,6 +877,27 @@ class _Check(ast.NodeVisitor):
                     *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return value.builtin_classes.union(*(_Check.known_builtin_classes(child) for child in children))
+
+    @staticmethod
+    def is_builtin_callable(value: _Value) -> bool:
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return value.builtin_callable or any(_Check.is_builtin_callable(child) for child in children)
+
+    @staticmethod
+    def literal_fromkeys_keys(node: ast.AST) -> bool:
+        def literal_key(item):
+            if isinstance(item, ast.Constant):
+                return isinstance(item.value, (str, bytes, int, float, complex, bool, type(None)))
+            if isinstance(item, ast.UnaryOp) and isinstance(item.op, (ast.UAdd, ast.USub)):
+                return isinstance(item.operand, ast.Constant) and isinstance(item.operand.value, (int, float, complex))
+            return isinstance(item, ast.Tuple) and all(literal_key(child) for child in item.elts)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return True
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return all(literal_key(item) for item in node.elts)
+        return isinstance(node, ast.Dict) and all(key is not None and literal_key(key) for key in node.keys)
 
     def copied_argument(self, actual_values, opaque_values, keyword_values):
         if opaque_values:
@@ -919,13 +988,14 @@ class _Check(ast.NodeVisitor):
                  [item.text for item in keys.elements] if keys.elements is not None
                  and all(item.complete_text for item in keys.elements) else None)
         return _Value(dictionary_instance=True,
-                      mapping=tuple((key, default) for key in dict.fromkeys(names)) if names is not None else None,
+                      mapping=tuple({key: default for key in names}.items()) if names is not None else None,
                       dictionary_keys=self.payload_value([self.iteration_value(keys)]),
                       callable_targets=self.local_callable_targets(default),
                       local_class=self.has_local_class(default),
                       local_instance=self.has_local_class(default, instances=True),
                       class_operations=self.local_class_operations(default),
                       builtin_classes=self.known_builtin_classes(default),
+                      builtin_callable=self.is_builtin_callable(default),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
@@ -1004,6 +1074,7 @@ class _Check(ast.NodeVisitor):
                                       local_instance=any(_Check.has_local_class(value, instances=True) for value in marker_values),
                                       class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in marker_values)),
                                       builtin_classes=frozenset().union(*(_Check.known_builtin_classes(value) for value in marker_values)),
+                                      builtin_callable=any(_Check.is_builtin_callable(value) for value in marker_values),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1368,6 +1439,14 @@ class _Check(ast.NodeVisitor):
         if any(self.unresolved_ownership(value) for value in [*actual_values, *opaque_values, *(v for _, v in keyword_values)]):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         operands = [*actual_values, *opaque_values, *(v for _, v in keyword_values)]
+        if not function.unannotated_parameter and function.symbol in {"getattr", "builtins.getattr"}:
+            if any(isinstance(argument, ast.Starred) for argument in node.args) or any(keyword.arg is None for keyword in node.keywords):
+                self.flag(node, "starred getattr arguments are unsupported; use explicit arguments with fixture_write()", structural=True)
+            if (len(actual_values) >= 2 and actual_values[1].complete_text
+                    and actual_values[1].text == "__call__" and self.is_builtin_callable(actual_values[0])):
+                self.flag(node, "builtin __call__ access is unsupported; use named calls with fixture_write()", structural=True)
+        if function.dictionary_fromkeys and (not node.args or not self.literal_fromkeys_keys(node.args[0])):
+            self.flag(node, "fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()", structural=True)
         if (not function.unannotated_parameter
                 and function.symbol.removeprefix("builtins.") in {"enumerate", "reversed", "zip"}):
             iterable_inputs = actual_values if function.symbol.removeprefix("builtins.") == "zip" else actual_values[:1]
@@ -1429,10 +1508,10 @@ class _Check(ast.NodeVisitor):
             carried = (replace(dictionary_receiver, dictionary_keys=None)
                        if dictionary_method == "values" else dictionary_receiver)
             marker = self.class_carrier_value(carried)
-            if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations:
+            if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations or marker.builtin_callable:
                 self.evaluated_values[node] = replace(self.value(node), local_class=marker.local_class,
                     local_instance=marker.local_instance, builtin_classes=marker.builtin_classes,
-                    class_operations=marker.class_operations)
+                    class_operations=marker.class_operations, builtin_callable=marker.builtin_callable)
         if function.dictionary_accessor or function.dictionary_method:
             accessor = self.container_accessor_value(dictionary_receiver, dictionary_method) if dictionary_receiver is not None else None
             defaults = dictionary_arguments[1:] if dictionary_method in {"get", "pop", "setdefault", "*"} else []
@@ -1598,7 +1677,7 @@ class _Check(ast.NodeVisitor):
             containers.append(self.payload_value([self.iteration_value(value) for value in construction_inputs]))
         if result is not None:
             self.evaluated_values[node] = result
-        elif self.has_local_class(copied) or self.has_local_class(copied, instances=True) or self.local_class_operations(copied) or self.known_builtin_classes(copied):
+        elif self.has_local_class(copied) or self.has_local_class(copied, instances=True) or self.local_class_operations(copied) or self.known_builtin_classes(copied) or self.is_builtin_callable(copied):
             # Known copies retain exact bounded shape; foreign builders do not.
             self.evaluated_values[node] = copied
         elif self.has_local_class(constructed):
@@ -1613,20 +1692,22 @@ class _Check(ast.NodeVisitor):
                     carried = [self.iteration_value(carried[0])]
                 marker = self.payload_value(carried)
                 if aggregate == "getattr":
-                    marker = replace(marker, builtin_classes=frozenset(), class_operations=frozenset())
+                    marker = replace(marker, builtin_classes=frozenset(), class_operations=frozenset(), builtin_callable=False)
                     if len(actual_values) >= 3:
                         existing, default = self.value(node), actual_values[2]
                         self.evaluated_values[node] = replace(existing,
                             builtin_classes=existing.builtin_classes | self.known_builtin_classes(default),
                             class_operations=existing.class_operations | self.local_class_operations(default),
+                            builtin_callable=existing.builtin_callable or self.is_builtin_callable(default),
                             local_class=existing.local_class or self.has_local_class(default),
                             local_instance=existing.local_instance or self.has_local_class(default, instances=True),
                             callable_targets=existing.callable_targets | self.local_callable_targets(default))
-                if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations:
+                if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations or marker.builtin_callable:
                     existing = self.value(node)
                     self.evaluated_values[node] = replace(existing, local_instance=existing.local_instance or marker.local_class or marker.local_instance,
                                                          builtin_classes=existing.builtin_classes | marker.builtin_classes,
-                                                         class_operations=existing.class_operations | marker.class_operations)
+                                                         class_operations=existing.class_operations | marker.class_operations,
+                                                         builtin_callable=existing.builtin_callable or marker.builtin_callable)
         self.reject_dynamic_builtin(node)
 
     def check_local_call(self, call, function):
@@ -1685,6 +1766,7 @@ class _Check(ast.NodeVisitor):
                     or self.has_active_path(value) or self.has_local_class(value)
                     or self.has_local_class(value, instances=True) or self.local_class_operations(value)
                     or self.known_builtin_classes(value) for value in values)
+        known = known or any(self.is_builtin_callable(value) for value in [*bindings.values(), *variadic_values])
         if not known and (call.args or call.keywords):
             return
         if namespace and (any(self.contains_namespace(value) for value in variadic_values)
@@ -2006,7 +2088,7 @@ class _Check(ast.NodeVisitor):
         iterable = self.value(node.generators[0].iter)
         inputs = [self.iteration_value(iterable), self.value(node.elt),
                   *(self.iteration_value(self.value(generator.iter)) for generator in node.generators[1:])]
-        if any(self.known_builtin_classes(value) or self.local_class_operations(value) for value in inputs):
+        if any(self.known_builtin_classes(value) or self.local_class_operations(value) or self.is_builtin_callable(value) for value in inputs):
             self.visit_comprehension_scope(node, deferred=True, analyzed=True, first_iterable=iterable)
         self.defer("generator", node, iterable)
 

@@ -53,16 +53,25 @@ one `fixture_write(workspace, media=True)` scope. Keep worker waits, HTTP calls 
 projection outside that scope. The media scope serializes the public methods;
 it does not turn their individual commits into one atomic transaction.
 
-The fixture inventory checks tracked Python files under test directories and
-the root `scripts` directory. It does not resolve imports: support modules under
-other roots are not included automatically. This coverage gap and demonstrated
-static-checker bypasses are tracked in
-[#333](https://github.com/Exculpata/exculpata/issues/333). A passing inventory is
-not proof that arbitrary fixture code obeys the rules below; those rules still apply.
+The fixture inventory checks tracked Python files under test directories,
+the root `scripts` and `benchmarks` directories, and
+`services/transcription/compatibility`. It scans these roots without executing
+imports. Review imports and file-based loaders when adding support elsewhere;
+include fixture support in the inventory before using it. Production modules
+retain their own write boundaries and are not fixture setup merely because a test
+imports them. A passing inventory is not proof about arbitrary Python reflection.
 Stage new fixture sources before running the inventory. Use explicit named
 handles and the supported syntax described in
 [development guidance](docs/DEVELOPMENT.md#synthetic-fixture-writes).
-Run `python -m pytest -q tests/test_fixture_write_policy.py tests/test_fixture_inventory.py`.
+Run `python -m pytest -q tests/test_fixture_write_policy.py tests/test_fixture_inventory.py tests/test_fixture_inventory_coverage.py tests/test_fixture_reflective_deny.py`.
+
+Fixture code must not access `__call__` on a builtin, pass starred positional
+arguments to builtin `getattr`, or use non-literal or callable keys with builtin
+dictionary `fromkeys`. These forms fail closed with `fixture_write()` guidance.
+Use direct builtin calls, explicit `getattr` arguments, literal keys, or an
+explicit synchronous loop for dynamic data. The fixture-specific denial contract
+is `tests/test_fixture_reflective_deny.py`; shared checker validation should run
+that module rather than duplicate its cases.
 
 Do not hide setup in `exec` or `eval`, including aliases and compiled payloads.
 References to these builtins are rejected before they can enter opaque callable
@@ -71,9 +80,9 @@ Async, generator and lambda results must not carry locally defined class
 constructors, instances or instance-derived attributes, including bound methods.
 The checker rejects these results without resolving constructors or members.
 Rewrite fixture setup with `tests.fixture_write.fixture_write` and explicit named handles,
-retaining equivalent runtime assertions. Full class resolution is tracked in
-[#333](https://github.com/Exculpata/exculpata/issues/333); this restriction remains
-until its reviewed replacement closes the bypass and passes the fixture gates.
+retaining equivalent runtime assertions. Optional precision work is tracked in
+[#333](https://github.com/Exculpata/exculpata/issues/333); strict restrictions remain
+until a reviewed replacement preserves their denial tests and fixture gates.
 Dynamic execution is a structural violation; `# fixture-write:` cannot waive it.
 Negative regression probes retain actual runtime effects and check rejection of
 the same source through `tests.fixture_probe` with fixed named inputs. Installer

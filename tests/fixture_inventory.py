@@ -1,4 +1,4 @@
-"""Check tracked test and script sources without executing their import graphs."""
+"""Check tracked fixture support sources without executing their import graphs."""
 import hashlib
 from pathlib import Path
 import subprocess
@@ -28,17 +28,18 @@ def check_inventory_source(source, filename):
 
 
 def inventory_paths(root):
-    """All tracked Python test trees and scripts share the fixture boundary.
+    """Tracked test, script, benchmark and compatibility support share the boundary.
 
     Git's inventory avoids temporary editor/sync copies and does not infer Python
-    imports or execute code. Newly added tests/scripts join the gate when staged.
+    imports or execute code. Newly added sources in these roots join when staged.
     """
     names = subprocess.check_output(
         ['git', 'ls-files', '-z', '--', '*.py'], cwd=root
     ).decode().split('\0')
     paths = [Path(name) for name in names if name]
     return [path for path in paths if path.as_posix() != 'tests/fixture_write.py'
-            and ('tests' in path.parts[:-1] or path.parts[0] == 'scripts')]
+            and ('tests' in path.parts[:-1] or path.parts[0] in {'scripts', 'benchmarks'}
+                 or path.parts[:3] == ('services', 'transcription', 'compatibility'))]
 
 
 def check_repository_fixtures(root):

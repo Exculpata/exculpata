@@ -21,6 +21,20 @@ FIXED_ADAPTER_CONTRACTS = {
     'answer': {'provider': 'CorpusExtractiveGenerator + ExtractiveAnswerProvider', 'model': None},
     'retrieval': {'provider': 'product lexical', 'model': None},
 }
+REVIEWED_V1_CASES = {
+    'documents': {'bicycle', 'parcel', 'scan-en', 'scan-es'},
+    'audio': {'audio-bicycle', 'audio-parcel'},
+    'search': {'search-bicycle', 'search-parcel', 'search-gate', 'search-locker',
+               'search-spoken', 'search-scan-en', 'search-scan-es'},
+    'answers': {'answer-bicycle', 'answer-time', 'answer-parcel', 'answer-locker', 'answer-spoken'},
+}
+REVIEWED_ASR = {
+    'model_id': 'Systran/faster-whisper-large-v3',
+    'revision': 'edaa852ec7e145841d8ffdb056a99866b5f0a478',
+    'license': 'MIT',
+    'runtime': 'faster-whisper==1.2.1',
+    'compute_type': 'int8',
+}
 REVIEWED_OCR = {
     'model_id': 'tesseract-ocr/tessdata_fast',
     'revision': '87416418657359cb625c412a48b6e1d6d41c29bd',
@@ -109,12 +123,15 @@ def load_corpus(root: Path):
     if manifest['schema_version'] != 1 or manifest['synthetic'] is not True:
         raise ValueError('Unsupported or non-synthetic corpus')
     ids = []
-    for group, minimum in [('documents', 3), ('audio', 2), ('search', 5), ('answers', 5)]:
-        if len(manifest[group]) < minimum:
-            raise ValueError(f'{group}: requires at least {minimum} cases')
+    for group in REVIEWED_V1_CASES:
         ids.extend(row['id'] for row in manifest[group])
     if len(set(ids)) != len(ids):
         raise ValueError('Duplicate case identities')
+    if manifest.get('id') != 'synthetic-discovery-v1':
+        raise ValueError('Corpus must use the exact reviewed v1 case inventory')
+    for group, reviewed in REVIEWED_V1_CASES.items():
+        if {row['id'] for row in manifest[group]} != reviewed:
+            raise ValueError(f'{group}: requires the exact reviewed v1 case inventory')
     if manifest['max_file_bytes'] != 10_000_000:
         raise ValueError('Media limit must remain 10 MB')
     for row in manifest['documents'] + manifest['audio']:
@@ -130,11 +147,15 @@ def load_corpus(root: Path):
     pin = manifest['models']['asr']
     if not any(m.get('model_id') == pin['model_id'] and m.get('revision') == pin['revision'] and m.get('license') == pin['license'] for m in approved):
         raise ValueError('ASR pin must match the reviewed model catalog')
+    if pin != REVIEWED_ASR:
+        raise ValueError('ASR identity must match the complete reviewed corpus ASR record')
     if manifest['models'].get('ocr') != REVIEWED_OCR:
         raise ValueError('OCR identity must match the complete reviewed corpus record')
     for adapter, contract in FIXED_ADAPTER_CONTRACTS.items():
         if manifest['models'].get(adapter) != contract:
             raise ValueError(f'{adapter} identity must match the fixed adapter contract')
+    if set(manifest['models']) != {'asr', 'ocr', *FIXED_ADAPTER_CONTRACTS}:
+        raise ValueError('Models must use the exact reviewed model inventory')
     for group in ('documents', 'audio', 'search', 'answers'):
         if set(expected[group]) != {row['id'] for row in manifest[group]}:
             raise ValueError(f'{group}: incomplete expected case inventory')
@@ -330,6 +351,8 @@ def compare(manifest, expected, actual, *, full=False):
                     if not any(valid_citation(c) and matches_span(c, support) for c in citations):
                         errors.append(f'missing validated search support: {support}')
             else:
+                if got.get('kind') != 'generated':
+                    errors.append(f"expected generated answer; observed {got.get('kind')!r}")
                 if got.get('answerable') is not True:
                     errors.append(f"expected answerable true; observed {got.get('answerable')!r}")
                 if got.get('route') != 'question' or got.get('dispatched') is not True:

@@ -98,7 +98,7 @@ def test_process_sampler_includes_children_started_by_other_threads(tmp_path):
     (tmp_path / '10/task/110/children').write_text('11')
     metrics = {'rss_bytes': 10240, 'threads': 4, 'fds': 0, 'processes': 2}
     assert process_tree(10, tmp_path) == {
-        **metrics, 'observed': metrics, 'partial': dict.fromkeys(metrics, False),
+        **metrics, 'observed': metrics, 'partial': {key: False for key in metrics},
         'tree_complete': True, 'truncated': False}
     assert process_tree(99, tmp_path) is None
 
@@ -182,7 +182,7 @@ def test_partial_and_unavailable_samples_do_not_become_healthy_peaks(tmp_path):
     folder = synthetic_process(tmp_path, 10)
     metrics = ('rss_bytes', 'threads', 'fds', 'processes')
     row = {'samples': 0, 'unavailable_samples': 0, 'latest': None,
-           'partial_samples': dict.fromkeys(metrics, 0), 'peak': dict.fromkeys(metrics)}
+           'partial_samples': {key: 0 for key in metrics}, 'peak': {key: None for key in metrics}}
     diagnostics.accumulate_sample(row, None)
     assert all(value is None for value in row['peak'].values())
     (folder / 'status').write_text('Threads: 2\n')

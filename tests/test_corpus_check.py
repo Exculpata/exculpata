@@ -32,6 +32,7 @@ def sample():
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
     actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation], 'claims':[{'text':'The parcel is blue.', 'citations':[citation]}]}}
     seed_document_support(actual, citation)
+    actual['answer']['kind'] = 'generated'
     seed_document_support(actual, actual['search']['citations'][0])
     expected['documents']['pdf']['pages'] = actual['pdf']['pages'] = 1
     expected['search']['search']['citations'] = [{'document_id':'pdf', 'span':'parcel is blue'}]
@@ -345,7 +346,7 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
         claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if c['evidence_kind'] == 'transcript' else '') + c['excerpt'],
                    'citations':[c]} for c in citations]
         actual[key] = {'text':' '.join(claim['text'] for claim in claims), 'route':'question',
-            'dispatched':True, 'answerable':True, 'citations':citations, 'claims':claims}
+            'kind':'generated', 'dispatched':True, 'answerable':True, 'citations':citations, 'claims':claims}
     assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))
     for key in expected['search']:
         actual[key]['document_ids'] = [s for s in actual[key]['document_ids'] if s != missing_source]
@@ -361,8 +362,9 @@ def test_manifest_cannot_remove_scanned_source_discovery_coverage(tmp_path, sour
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     gold = root/'expected.json'; expected = json.loads(gold.read_text())
     key = 'search-' + source
-    manifest['search'] = [case for case in manifest['search'] if case['id'] != key]
-    del expected['search'][key]
+    expected['search'][key]['document_ids'] = ['bicycle']
+    expected['search'][key]['citations'] = [
+        {'document_id':'bicycle', 'span':expected['documents']['bicycle']['text']}]
     path.write_text(json.dumps(manifest)); gold.write_text(json.dumps(expected))
     with pytest.raises(ValueError, match='Every OCR source'):
         gate.load_corpus(root)
@@ -721,3 +723,99 @@ def test_fixed_adapter_receipt_preserves_actual_fast_contract(tmp_path, monkeypa
     assert receipt['passed'] is True and receipt['mode'] == 'fast-contract'
     for adapter, record in fixed.items():
         assert receipt['models'][adapter] == record
+
+
+@pytest.mark.parametrize('record', [{'provider': 'not-run', 'model': 'mutable'}, None, []])
+def test_receipt_rejects_extra_top_level_model_records(tmp_path, monkeypatch, capsys, record):
+    monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
+    root = tmp_path / 'corpus'
+    shutil.copytree(gate.CORPUS, root)
+    path = root / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    manifest['models']['unexecuted'] = record
+    path.write_text(json.dumps(manifest))
+    report = tmp_path / 'receipt.json'
+    assert gate.main(['--corpus', str(root), '--report', str(report)]) == 1
+    assert not report.exists()
+    assert 'exact reviewed model inventory' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('group,identity', [
+    ('documents', 'scan-en'), ('documents', 'scan-es'),
+    ('search', 'search-bicycle'), ('search', 'search-gate'),
+    ('search', 'search-scan-en'), ('search', 'search-scan-es'),
+])
+def test_versioned_inventory_rejects_paired_manifest_and_gold_removal(tmp_path, group, identity):
+    root = tmp_path / 'corpus'
+    shutil.copytree(gate.CORPUS, root)
+    manifest = json.loads((root / 'manifest.json').read_text())
+    expected = json.loads((root / 'expected.json').read_text())
+    manifest[group] = [row for row in manifest[group] if row['id'] != identity]
+    del expected[group][identity]
+    if group == 'documents':
+        search_id = 'search-' + identity
+        manifest['search'] = [row for row in manifest['search'] if row['id'] != search_id]
+        del expected['search'][search_id]
+    elif identity.startswith('search-scan-'):
+        # Keep discovery coverage valid so the old minimum-count check accepts it.
+        source = identity.removeprefix('search-')
+        expected['search']['search-locker']['document_ids'].append(source)
+        expected['search']['search-locker']['citations'].append({
+            'document_id': source, 'span': expected['documents'][source]['text']})
+        next(row for row in manifest['search'] if row['id'] == 'search-locker')['full_only'] = True
+    (root / 'manifest.json').write_text(json.dumps(manifest))
+    (root / 'expected.json').write_text(json.dumps(expected))
+    with pytest.raises(ValueError, match='exact reviewed v1 case inventory'):
+        gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('group', ['documents', 'audio', 'search', 'answers'])
+def test_versioned_inventory_rejects_paired_case_rename(tmp_path, group):
+    root = tmp_path / 'corpus'
+    shutil.copytree(gate.CORPUS, root)
+    manifest = json.loads((root / 'manifest.json').read_text())
+    expected = json.loads((root / 'expected.json').read_text())
+    old = manifest[group][0]['id']
+    new = old + '-replacement'
+    manifest[group][0]['id'] = new
+    expected[group][new] = expected[group].pop(old)
+    for section in ('search', 'answers'):
+        for case in expected[section].values():
+            if 'document_ids' in case:
+                case['document_ids'] = [new if key == old else key for key in case['document_ids']]
+            for citation in case['citations']:
+                if citation['document_id'] == old:
+                    citation['document_id'] = new
+    if old in manifest['fast_transcripts']:
+        manifest['fast_transcripts'][new] = manifest['fast_transcripts'].pop(old)
+    (root / 'manifest.json').write_text(json.dumps(manifest))
+    (root / 'expected.json').write_text(json.dumps(expected))
+    with pytest.raises(ValueError, match='exact reviewed v1 case inventory'):
+        gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('kind', [None, 'not-supported', '', True, 1, [], {}, 'Generated', 'generated'])
+def test_answer_kind_matches_rendered_generated_branch(kind):
+    manifest, expected, actual = sample()
+    if kind is not None:
+        actual['answer']['kind'] = kind
+    else:
+        actual['answer'].pop('kind', None)
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is (kind == 'generated')
+    if kind != 'generated':
+        assert any('expected generated answer' in line for line in result['diff'])
+
+
+@pytest.mark.parametrize('field,value', [
+    ('unexecuted_setting', True), ('runtime', 'synthetic-runtime==1'), ('compute_type', 'float32'),
+])
+def test_asr_receipt_identity_rejects_unexecuted_settings(tmp_path, field, value):
+    root = tmp_path / 'corpus'
+    shutil.copytree(gate.CORPUS, root)
+    path = root / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    manifest['models']['asr'][field] = value
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='complete reviewed corpus ASR record'):
+        gate.load_corpus(root)

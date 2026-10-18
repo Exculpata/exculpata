@@ -1005,7 +1005,7 @@ def main() -> int:
     baseline_identities = _baseline_public_git_identities(
         args.allow_public_baseline_git_identity
     )
-    media_digests = tuple(dict.fromkeys((*REVIEWED_MEDIA_DIGESTS, *args.allow_reviewed_media_digest)))
+    media_digests = tuple({digest: None for digest in (*REVIEWED_MEDIA_DIGESTS, *args.allow_reviewed_media_digest)})
     merge_commits = tuple(args.allow_public_merge_commit)
     if any(re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) is None for value in merge_commits):
         raise RuntimeError("Public merge must be an exact commit")

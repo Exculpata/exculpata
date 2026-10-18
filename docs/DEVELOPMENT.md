@@ -227,15 +227,24 @@ Scalar conversion can discard handle ownership but must retain active database-p
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
 
-The inventory checks tracked Python files under test directories and the root
-`scripts` directory. Imported support under other roots is not automatically
-covered; this gap and demonstrated static-checker bypasses are tracked in
-[#333](https://github.com/Exculpata/exculpata/issues/333). A passing scan does not
-waive the fixture rules. Stage new sources before running it. Dynamic `exec`/`eval`
+The inventory checks tracked Python files under test directories, root `scripts`
+and `benchmarks`, and `services/transcription/compatibility`. It does not execute
+or resolve arbitrary import graphs. Inspect imports and file-based loaders when
+adding support elsewhere, and include fixture support in the inventory before
+using it. Stage new sources before running it. Dynamic `exec`/`eval`
 (including resolved aliases) is rejected without interpreting its payload. The
 fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
 dynamic-execution finding is allowed, and every other boundary check still runs.
 See the [fixture standard](../CODING_STANDARDS.md#synthetic-fixture-writes).
+
+Builtin `__call__` access, starred positional calls to builtin `getattr`, and
+builtin dictionary `fromkeys` with non-literal or callable keys are unsupported.
+Use direct calls, explicit arguments, literal keys, or synchronous loops, with
+`fixture_write()` around raw shared workspace writes. Run the fixture-specific
+denial contract with `python -m pytest -q tests/test_fixture_reflective_deny.py`.
+Shared checker harnesses reuse that module; they do not own a second fixture
+deny list. Optional precision improvements in
+[#333](https://github.com/Exculpata/exculpata/issues/333) must preserve these gates.
 
 Structural rejection cannot be suppressed with `# fixture-write:` comments.
 Exact-statement exceptions remain available for deliberate raw SQLite operations

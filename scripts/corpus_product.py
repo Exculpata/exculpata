@@ -140,6 +140,9 @@ def _citation(bench, matter, citation, aliases):
     excerpt = unit.text
     valid = (document.state == "ready" and document.version_id == value["source_version_id"]
              and unit.excerpt_digest == value["excerpt_digest"]
+             and all(field in value and type(value[field]) is type(locator)
+                     and value[field] == locator
+                     for field, locator in (("line_start", unit.line_start), ("line_end", unit.line_end)))
              and support.lines == tuple(excerpt.splitlines())
              and support.location == value["location"]
              and value.get("excerpt", excerpt) == excerpt)
@@ -274,7 +277,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                     continue
                 citations = [_citation(bench, matter, row, aliases)
                              for row in bench.search(matter, item["query"], limit=item.get("top_k", 5))]
-                results[item["id"]] = {"document_ids": list(dict.fromkeys(row["document_id"] for row in citations)),
+                results[item["id"]] = {"document_ids": list({row["document_id"]: None for row in citations}),
                                        "citations": citations}
             for item in manifest.get("answers", []):
                 question = item["question"]
@@ -286,6 +289,7 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                           for claim in answer.payload["claims"]]
                 citations = [citation for claim in claims for citation in claim["citations"]]
                 results[item["id"]] = {"text": " ".join(claim["text"] for claim in claims),
+                                       "kind": answer.payload.get("kind"),
                                        "answerable": answer.payload["answerable"], "question": question,
                                        "claims": claims, "citations": citations, "provider": "CorpusExtractiveGenerator",
                                        **dispatch[item["id"]]}

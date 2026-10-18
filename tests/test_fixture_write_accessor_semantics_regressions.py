@@ -25,7 +25,17 @@ def test_key_only_and_none_returning_mapping_methods_remain_nonowning(source):
     violations = check_fixture_writes(PREFIX + source)
     assert any(v.line == 1 and 'mutable shared fixture containers' in v.rule for v in violations)
     independent = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
-    assert check_fixture_writes(independent + PREFIX.replace('bench.workspace.connection', 'independent') + source) == []
+    independent_source = independent + PREFIX.replace('bench.workspace.connection', 'independent') + source
+    if 'fromkeys' in source:
+        # Key-only results remain non-owning, but reflective construction from a
+        # nonliteral argument now has its own structural syntax prohibition.
+        violations = check_fixture_writes(independent_source)
+        assert len(violations) == 1
+        assert violations[0].structural
+        assert violations[0].rule == 'fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()'
+        assert check_fixture_writes(independent_source.replace('fromkeys(holder)', 'fromkeys(["shared"])')) == []
+    else:
+        assert check_fixture_writes(independent_source) == []
 
 
 @pytest.mark.parametrize('source', [

@@ -9,6 +9,23 @@ from tests.fixture_probe import fixture_probe
 from tests.fixture_write_policy import check_fixture_writes
 
 
+def assert_only_explicit_reflective_denials(source):
+    """Retain scalar/key-only runtime controls under the stricter syntax contract.
+
+    These probes still must not acquire delayed-class, namespace or write errors.
+    Their explicit reflective spelling now requires supported explicit syntax even
+    where the runtime result is harmless; supported spellings have separate positive probes.
+    """
+    rules = {
+        'builtin __call__ access is unsupported; use named calls with fixture_write()',
+        'starred getattr arguments are unsupported; use explicit arguments with fixture_write()',
+        'fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()',
+    }
+    violations = check_fixture_writes(source)
+    assert violations
+    assert all(item.structural and item.rule in rules for item in violations)
+
+
 @pytest.mark.parametrize('source', [
     "exec(source)", "eval(source)", "execute = exec\nexecute(source)",
     "import builtins as b\nb.exec(source)",
@@ -425,7 +442,11 @@ def test_namespace_dictionary_remaining_copy_default_and_constructor_paths(sourc
     "dict.__getitem__({'one': 1}, 'one')",
 ])
 def test_namespace_dictionary_defaults_and_key_only_construction_controls(source):
-    assert check_fixture_writes(source) == []
+    if 'fromkeys' in source:
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 def run_isolated_namespace_probe(source, result='None', *, resource=None):
@@ -603,7 +624,11 @@ def test_namespace_runtime_probe_restores_module_registry_on_failure():
     "receiver = dict.fromkeys(resource)\nreceiver.copy()",
 ])
 def test_namespace_sequence_and_dictionary_identity_static_controls(source):
-    assert check_fixture_writes(source) == []
+    if 'fromkeys(resource)' in source:
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 @pytest.mark.parametrize('source,rejection_line', [
@@ -1095,7 +1120,11 @@ def test_namespace_delayed_callable_transport_safe_runtime_controls(transport, s
     observed, sink = run_isolated_namespace_probe(source, 'observed', resource='callback')
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    if 'fromkeys(list(' in transport:
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 @pytest.mark.parametrize('mapping', [
@@ -1318,7 +1347,11 @@ def test_indirect_local_class_safe_runtime_controls(expression):
     observed, sink = run_isolated_namespace_probe(source, 'observed')
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    if expression.startswith('type.__call__'):
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 @pytest.mark.parametrize('expression', [
@@ -1341,7 +1374,8 @@ def test_indirect_constructor_conversion_arguments_runtime_acceptance(expression
     accepted, sink = run_isolated_namespace_probe(source, 'accepted')
     assert accepted is True
     assert sink == []
-    assert check_fixture_writes(source) == []
+    assert_only_explicit_reflective_denials(source)
+
 
 
 @pytest.mark.parametrize('container', ['list', 'tuple', 'set', 'frozenset'])
@@ -1360,7 +1394,8 @@ def test_indirect_builtin_container_keys_runtime_acceptance(container, mode):
     accepted, sink = run_isolated_namespace_probe(source, 'accepted')
     assert accepted is True
     assert sink == []
-    assert check_fixture_writes(source) == []
+    assert_only_explicit_reflective_denials(source)
+
 
 
 @pytest.mark.parametrize('expression', [
@@ -1469,7 +1504,11 @@ def test_builtin_carrier_transport_safe_runtime_controls(body):
     observed, sink = run_isolated_namespace_probe(source, 'observed', resource=True)
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    if 'type.__call__' in body:
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 def test_builtin_generator_marker_preserves_creation_and_consumption_runtime_timing():
@@ -1576,7 +1615,8 @@ def test_fromkeys_key_carrier_scalar_value_runtime_acceptance(keys, lookup, mode
     observed, sink = run_isolated_namespace_probe(source, 'observed', resource=dict)
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    assert_only_explicit_reflective_denials(source)
+
 
 
 @pytest.mark.parametrize('body', [
@@ -1599,7 +1639,11 @@ def test_lookup_adapter_key_only_runtime_acceptance(body):
     observed, sink = run_isolated_namespace_probe(source, 'observed')
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    if 'type.__call__' in body:
+        assert_only_explicit_reflective_denials(source)
+    else:
+        assert check_fixture_writes(source) == []
+
 
 
 @pytest.mark.parametrize('name', ['enumerate', 'reversed', 'zip'])
@@ -1630,7 +1674,8 @@ def test_fromkeys_transport_keeps_scalar_values_runtime_acceptance(transport):
     observed, sink = run_isolated_namespace_probe(source, 'observed', resource=True)
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    assert_only_explicit_reflective_denials(source)
+
 
 
 @pytest.mark.parametrize('transport', _FROMKEYS_TRANSPORTS)
@@ -1671,7 +1716,8 @@ def test_fromkeys_value_enumeration_does_not_inherit_key_carriers():
     observed, sink = run_isolated_namespace_probe(source, 'observed')
     assert observed == 1
     assert sink == []
-    assert check_fixture_writes(source) == []
+    assert_only_explicit_reflective_denials(source)
+
 
 
 @pytest.mark.parametrize('operation', ['items', 'popitem'])

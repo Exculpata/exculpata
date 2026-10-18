@@ -15,6 +15,10 @@ SPEC = importlib.util.spec_from_file_location(
     "corpus_product", Path(__file__).parents[1] / "scripts" / "corpus_product.py")
 product = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(product)
+GATE_SPEC = importlib.util.spec_from_file_location(
+    "corpus_check", Path(__file__).parents[1] / "scripts" / "corpus_check.py")
+gate = importlib.util.module_from_spec(GATE_SPEC)
+GATE_SPEC.loader.exec_module(gate)
 
 
 def _inputs(root):
@@ -58,6 +62,7 @@ def test_fast_native_ingestion_and_transcript_citations_use_product_paths(tmp_pa
     assert answer["route"] == "question"
     assert answer["dispatched"] is True
     assert answer["answerable"] is True
+    assert answer["kind"] == "generated"
     assert "orange parcel" in answer["text"]
     assert "green suitcase" not in answer["text"]
     assert answer["provider"] == "CorpusExtractiveGenerator"
@@ -87,6 +92,105 @@ def test_fixture_generator_does_not_turn_unrelated_retrieval_hits_into_claims(qu
 def test_full_mode_never_substitutes_prepared_transcript_expectations(tmp_path):
     with pytest.raises(ValueError, match="independently observed transcripts"):
         product.observe(tmp_path, _inputs(tmp_path), full=True)
+
+
+@pytest.mark.parametrize('kind', ['generated', 'not-supported', 'corrupt', None, False])
+def test_observation_preserves_persisted_answer_kind(tmp_path, monkeypatch, kind):
+    original = product.CaseIntelligenceWorkbench._answer_payload
+
+    def changed_kind(answer, evidence):
+        payload = original(answer, evidence)
+        if kind is None:
+            del payload['kind']
+        else:
+            payload['kind'] = kind
+        return payload
+
+    monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_answer_payload', staticmethod(changed_kind))
+    answer = product.observe(tmp_path, _inputs(tmp_path))['answer']
+    assert 'kind' in answer
+    assert type(answer['kind']) is type(kind) and answer['kind'] == kind
+    assert answer['answerable'] is True
+    assert answer['claims']
+    assert all(citation['source_valid'] for citation in answer['citations'])
+
+
+@pytest.mark.parametrize('evidence_kind', ['document', 'transcript'])
+@pytest.mark.parametrize('field, value, remove', [
+    ('line_start', 999999, False),
+    ('line_end', 1000000, False),
+    ('line_start', None, True),
+    ('line_end', None, True),
+    ('line_start', False, False),
+    ('line_end', '2000', False),
+])
+def test_observation_rejects_persisted_citation_locator_corruption(
+        tmp_path, monkeypatch, evidence_kind, field, value, remove):
+    original = product.CaseIntelligenceWorkbench._saved_answer_citation_payload
+    modified = []
+
+    def changed_locator(citation):
+        payload = original(citation)
+        if payload['evidence_kind'] == evidence_kind:
+            assert field in payload
+            assert remove or type(payload[field]) is not type(value) or payload[field] != value
+            if remove:
+                del payload[field]
+            else:
+                payload[field] = value
+            modified.append(payload)
+        return payload
+
+    monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_saved_answer_citation_payload',
+                        staticmethod(changed_locator))
+    manifest = _inputs(tmp_path)
+    manifest['answers'][0]['question'] = 'What about the blue bicycle and orange parcel?'
+    actual = product.observe(tmp_path, manifest)
+    citations = actual['answer']['citations']
+    changed = [citation for citation in citations if citation['evidence_kind'] == evidence_kind]
+    unchanged = [citation for citation in citations if citation['evidence_kind'] != evidence_kind]
+    assert modified and changed and unchanged
+    assert all(citation['source_valid'] is False for citation in changed)
+    assert all(citation['source_valid'] is True for citation in unchanged)
+    assert all(citation['source_valid'] is True for citation in actual['search']['citations'])
+
+
+@pytest.mark.parametrize('corruption', ['answer-kind', 'citation-locator'])
+def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corruption):
+    original_answer = product.CaseIntelligenceWorkbench._answer_payload
+    original_citation = product.CaseIntelligenceWorkbench._saved_answer_citation_payload
+    modified = []
+
+    def changed_answer(answer, evidence):
+        payload = original_answer(answer, evidence)
+        payload['kind'] = 'not-supported'
+        modified.append(payload)
+        return payload
+
+    def changed_citation(citation):
+        payload = original_citation(citation)
+        payload['line_start'], payload['line_end'] = 999999, 1000000
+        modified.append(payload)
+        return payload
+
+    if corruption == 'answer-kind':
+        monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_answer_payload', staticmethod(changed_answer))
+    else:
+        monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_saved_answer_citation_payload',
+                            staticmethod(changed_citation))
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    results = gate.compare(manifest, expected, actual)
+    answer_ids = {case['id'] for case in manifest['answers']}
+    answers = [row for row in results if row['id'] in answer_ids]
+    unaffected = [row for row in results if row['id'] not in answer_ids]
+    assert modified
+    assert len(results) == 14 and len(answers) == 5 and len(unaffected) == 9
+    assert all(row['passed'] for row in unaffected), unaffected
+    print(f"{corruption}: {sum(row['passed'] for row in results)}/14 cases passed")
+    assert all(not row['passed'] for row in answers), answers
+    diagnostic = 'expected generated answer' if corruption == 'answer-kind' else 'invalid source span'
+    assert all(any(diagnostic in error for error in row['diff']) for row in answers), answers
 
 
 def test_adapter_refuses_configured_external_database_before_creating_runtime(tmp_path, monkeypatch):
@@ -422,3 +526,57 @@ def test_actual_split_transcript_requires_positional_unit_sequence(indexes):
     results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
     for key in ('audio-parcel', 'search-parcel', 'answer-parcel'):
         assert results[key]['passed'] is (indexes == [1, 2]), results[key]
+
+
+def test_transcript_projection_sqlite_writes_hold_their_owning_locks(tmp_path, monkeypatch):
+    from collections import Counter
+    import re
+    from tests.fixture_write import _current_scopes
+
+    original = product.CaseIntelligenceWorkbench._project_media_transcript
+    entries, statements = [], []
+
+    def project_with_trace(bench, matter, document, segments, degraded):
+        workspace = bench.workspace
+        store = bench.source_store(matter)
+        entries.append((workspace._lock._is_owned(), bool(_current_scopes()), bench.postgres_ready))
+
+        def record(database_label, sql):
+            verb = sql.lstrip().split(None, 1)[0].upper()
+            if verb in {'INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'CREATE', 'DROP', 'BEGIN', 'COMMIT', 'ROLLBACK'}:
+                table = re.search(r'(?:INTO|FROM|UPDATE|TABLE)\s+([a-zA-Z_][a-zA-Z_0-9]*)', sql)
+                statements.append((database_label, verb, table.group(1) if table else None,
+                                   workspace._lock._is_owned(), store._lock._is_owned(), bool(_current_scopes())))
+
+        def trace_workspace(sql):
+            record('workspace', sql)
+
+        def trace_registry(sql):
+            record('registry', sql)
+
+        with store.mutation_guard(), workspace._lock:
+            workspace.connection.set_trace_callback(trace_workspace)
+            store._registry.set_trace_callback(trace_registry)
+        try:
+            return original(bench, matter, document, segments, degraded)
+        finally:
+            with store.mutation_guard(), workspace._lock:
+                workspace.connection.set_trace_callback(None)
+                store._registry.set_trace_callback(None)
+
+    monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_project_media_transcript', project_with_trace)
+    result = product.observe(tmp_path, _inputs(tmp_path))
+    assert entries == [(False, False, False)]
+    assert statements
+    assert {row[0] for row in statements} == {'workspace', 'registry'}
+    assert all(row[3] for row in statements if row[0] == 'workspace')
+    assert all(row[4] for row in statements if row[0] == 'registry')
+    assert all(not row[5] for row in statements)
+    assert {'workbench_source_catalog', 'workbench_source_byte_match'} <= {
+        row[2] for row in statements if row[0] == 'workspace'}
+    assert {row[2] for row in statements if row[0] == 'registry' and row[2]} == {'source_document'}
+    for database in ('workspace', 'registry'):
+        assert {'BEGIN', 'COMMIT'} <= {row[1] for row in statements if row[0] == database}
+    assert result['spoken']['state'] == 'ready' and result['answer']['answerable'] is True
+    assert all(citation['source_valid'] for citation in result['answer']['citations'])
+    print('Projection SQLite trace events:', dict(Counter(row[:3] for row in statements)))

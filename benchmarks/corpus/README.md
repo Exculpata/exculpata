@@ -6,6 +6,9 @@ and five fact-and-citation answer cases. No real case material is used.
 `v1/manifest.json` pins every media byte count and SHA-256, model revisions,
 licenses, and fixture provenance. Every media file must be **strictly below
 10,000,000 bytes**. Models are downloaded separately and never committed.
+The gate also fixes the complete v1 case identities and model-record keys;
+paired manifest/gold edits cannot silently remove or rename coverage, and
+unexecuted model records cannot enter a passing receipt.
 
 `v1/expected.json` is reviewed gold, separate from inference inputs. Normalization
 uses Unicode NFKC, case folding, word characters, and collapsed whitespace.
@@ -15,7 +18,10 @@ Insertions, deletions, and substitutions all count. Search requires the named
 sources within top-k and their reviewed passage spans. Two full-only search cases require
 the English and Spanish scanned sources and their validated citation support,
 so accurate OCR alone cannot hide a missing searchable catalog entry. Each answer
-requires its facts, the question route, all named source spans, and valid product citation resolution.
+requires its facts, the question route, persisted `kind == 'generated'`, explicit
+answerability, all named source spans, and valid product citation resolution.
+Persisted citation locators must match the resolved source unit before the
+observer constructs normalized citation fields.
 Every attached passage must support its complete extractive claim; document or
 transcript status comes from the manifest, and observed labels must agree.
 Missing, unrelated, or invalid source/text support fails without a text tolerance.
