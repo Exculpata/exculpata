@@ -84,7 +84,7 @@ def matches_audio_layout(observation, expected):
             and type(unit.get('unit')) is int and unit['unit'] > 0
             and type(unit.get('start_ms')) is int and type(unit.get('end_ms')) is int
             and isinstance(unit.get('text'), str) for unit in units)
-            or len({unit['unit'] for unit in units}) != len(units)
+            or [unit['unit'] for unit in units] != list(range(1, len(units) + 1))
             or any(right['start_ms'] < left['end_ms'] for left, right in zip(units, units[1:]))
             or '\n'.join(unit['text'] for unit in units) != observation.get('text')):
         return False
@@ -247,6 +247,9 @@ def compare(manifest, expected, actual, *, full=False):
         kind = source_kinds.get(source)
         if kind is None or citation.get('source_valid') is not True or citation.get('evidence_kind') != kind:
             return False
+        observation = actual.get(source)
+        if not isinstance(observation, dict) or observation.get('state') != 'ready':
+            return False
         if (not isinstance(citation.get('excerpt'), str) or not citation['excerpt']
                 or type(citation.get('start')) is not int or citation['start'] != 0
                 or type(citation.get('end')) is not int or citation['end'] != len(citation['excerpt'])):
@@ -284,6 +287,8 @@ def compare(manifest, expected, actual, *, full=False):
             if not isinstance(got, dict):
                 errors.append('missing observed case')
             elif group in ('documents', 'audio'):
+                if got.get('state') != 'ready':
+                    errors.append(f"expected ready source; observed {got.get('state')!r}")
                 if group == 'documents' and (type(got.get('pages')) is not int or got['pages'] != want['pages']):
                     errors.append(f"expected {want['pages']} PDF pages; observed {got.get('pages')!r}")
                 if group == 'audio':

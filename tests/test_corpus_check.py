@@ -41,7 +41,7 @@ def sample():
 
 def seed_document_support(actual, citation):
     citation.update(unit=1, location='Page 1', start=0, end=len(citation['excerpt']))
-    actual[citation['document_id']] = {'pages':1, 'text':citation['excerpt']}
+    actual[citation['document_id']] = {'pages':1, 'text':citation['excerpt'], 'state':'ready'}
 
 
 def seed_audio_support(expected, actual, citation):
@@ -52,7 +52,7 @@ def seed_audio_support(expected, actual, citation):
     expected['audio'][source] = {'text':reference, 'wer':0.15,
         'locator':{'start_ms':0, 'end_ms':2000, 'tolerance_ms':500},
         'layouts':[[{'text':reference, 'start_ms':0, 'end_ms':2000}]]}
-    actual[source] = {'text':text, 'asr_text':reference,
+    actual[source] = {'text':text, 'asr_text':reference, 'state':'ready',
         'units':[{'unit':1, 'text':text, 'start_ms':0, 'end_ms':2000}]}
 
 
@@ -333,9 +333,9 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
     manifest, expected = gate.load_corpus(gate.CORPUS)
     actual = {}
     for source, want in expected['documents'].items():
-        actual[source] = {'text':want['text'], 'ocr_pages':1, 'pages':want['pages']}
+        actual[source] = {'text':want['text'], 'ocr_pages':1, 'pages':want['pages'], 'state':'ready'}
     for source, want in expected['audio'].items():
-        actual[source] = {'text':want['text'], 'asr_text':want['text'],
+        actual[source] = {'text':want['text'], 'asr_text':want['text'], 'state':'ready',
             'units':[dict(want['layouts'][0][0], unit=1)]}
     for key, want in expected['search'].items():
         actual[key] = {'document_ids':list(want['document_ids']), 'citations':[
@@ -632,3 +632,37 @@ def test_transcript_display_and_excerpt_range_require_exact_validated_values(fie
         else: observed[field] = value
     results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
     assert not results['answer']['passed'] and not results['search']['passed']
+
+
+@pytest.mark.parametrize('source', ['pdf', 'wav'])
+@pytest.mark.parametrize('state', ['ready', None, 'processing', 'needs_ocr', 'failed', '', True, 'READY'])
+def test_every_graded_source_and_its_citations_require_ready_state(source, state):
+    manifest, expected, actual = sample()
+    if source == 'wav':
+        citation = actual['answer']['citations'][0]
+        citation.update(document_id='wav', evidence_kind='transcript')
+        seed_audio_support(expected, actual, citation)
+        expected['answers']['answer']['citations'][0]['document_id'] = 'wav'
+        actual['answer']['text'] = actual['answer']['claims'][0]['text'] = gate.TRANSCRIPT_QUALIFIER + citation['excerpt']
+        expected['search']['search']['document_ids'] = ['wav']
+        expected['search']['search']['citations'][0]['document_id'] = 'wav'
+        actual['search'] = {'document_ids':['wav'], 'citations':[copy.deepcopy(citation)]}
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))
+    if state is None: del actual[source]['state']
+    else: actual[source]['state'] = state
+    for full in (False, True):
+        results = {row['id']:row for row in gate.compare(manifest, expected, actual, full=full)}
+        for key in (source, 'search', 'answer'):
+            assert results[key]['passed'] is (state == 'ready'), results[key]
+
+
+@pytest.mark.parametrize('state', [None, 'processing', 'needs_ocr', 'failed'])
+def test_full_ocr_text_and_page_success_cannot_hide_nonready_source(state):
+    manifest, expected, actual = sample()
+    manifest['documents'][0]['ocr'] = True
+    actual['pdf']['ocr_pages'] = 1
+    if state is None: del actual['pdf']['state']
+    else: actual['pdf']['state'] = state
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual, full=True)}
+    assert not results['pdf']['passed']
+    assert any('expected ready source' in line for line in results['pdf']['diff'])

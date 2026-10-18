@@ -41,7 +41,9 @@ jobs:
               result = subprocess.run(['git', 'diff', '--no-renames', '--name-only', '-z', base+'...HEAD'], capture_output=True)
               if result.returncode == 0:
                   paths = result.stdout.split(b'\0')
-                  full = any(p.startswith((b'benchmarks/corpus/', b'scripts/corpus')) or p in {b'.github/workflows/corpus.yml', b'Makefile'} for p in paths)
+                  documentation = {b'README.md', b'CONTRIBUTING.md', b'CHANGELOG.md', b'LICENSE', b'NOTICE'}
+                  full = any(p and not (p in documentation or
+                      p.startswith(b'docs/') and p.endswith((b'.md', b'.rst'))) for p in paths)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write('full_required='+str(full).lower()+'\n')
           PY

@@ -219,6 +219,7 @@ class _Value:
     # Delayed results carrying either marker require the supported fixture helper.
     local_class: bool = False
     local_instance: bool = False
+    class_operations: frozenset[str] = frozenset()
 
 
 class _Check(ast.NodeVisitor):
@@ -279,6 +280,11 @@ class _Check(ast.NodeVisitor):
     def value(self, node: ast.AST | None) -> _Value:
         origin = self.value(node.value) if isinstance(node, ast.Attribute) else self.value(node.func) if isinstance(node, ast.Call) else None
         result = self.expression_value(node, origin)
+        symbol = result.symbol.removeprefix("builtins.").removeprefix("<reflective-builtins>.")
+        operation = ("construct" if symbol in {"type.__call__", "object.__new__"} else
+                     "copy" if symbol in {"copy.copy", "copy.deepcopy"} else None)
+        if operation is not None:
+            result = replace(result, class_operations=result.class_operations | {operation})
         if origin is not None and (origin.local_class or origin.local_instance):
             # Overlay provenance without discarding SQL/path ownership metadata.
             return replace(result, local_instance=True)
@@ -724,6 +730,7 @@ class _Check(ast.NodeVisitor):
                       callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in values)),
                       local_class=any(self.has_local_class(value) for value in values),
                       local_instance=any(self.has_local_class(value, instances=True) for value in values),
+                      class_operations=frozenset().union(*(self.local_class_operations(value) for value in values)),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
@@ -733,7 +740,7 @@ class _Check(ast.NodeVisitor):
         # preserve the existing conservative SQL/path provenance checks.
         if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
             return replace(self.payload_value([value]), symbol="", callable_targets=frozenset(),
-                           local_class=False, local_instance=False)
+                           local_class=False, local_instance=False, class_operations=frozenset())
         return value
 
     def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
@@ -765,6 +772,25 @@ class _Check(ast.NodeVisitor):
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return (value.local_instance if instances else value.local_class) or any(
             _Check.has_local_class(child, instances=instances) for child in children)
+
+    @staticmethod
+    def local_class_operations(value: _Value) -> frozenset[str]:
+        children = [*([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return value.class_operations.union(*(_Check.local_class_operations(child) for child in children))
+
+    def copied_argument(self, actual_values, opaque_values, keyword_values):
+        if opaque_values:
+            return self.payload_value([*actual_values, *opaque_values, *(value for _, value in keyword_values)])
+        if actual_values:
+            return actual_values[0]
+        candidates = []
+        for name, value in keyword_values:
+            if name == "x":
+                candidates.append(value)
+            elif name is None:
+                candidates.append(dict(value.mapping).get("x", _Value()) if value.mapping is not None else value)
+        return self.merge_aliases(*({"x": value} for value in candidates))["x"] if candidates else _Value()
 
     @staticmethod
     def is_dictionary(value: _Value) -> bool:
@@ -823,6 +849,7 @@ class _Check(ast.NodeVisitor):
                       callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in inputs)),
                       local_class=any(self.has_local_class(value) for value in inputs),
                       local_instance=any(self.has_local_class(value, instances=True) for value in inputs),
+                      class_operations=frozenset().union(*(self.local_class_operations(value) for value in inputs)),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
@@ -894,6 +921,7 @@ class _Check(ast.NodeVisitor):
                                       callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in values)),
                                       local_class=any(_Check.has_local_class(value) for value in values),
                                       local_instance=any(_Check.has_local_class(value, instances=True) for value in values),
+                                      class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in values)),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1463,8 +1491,14 @@ class _Check(ast.NodeVisitor):
             elif receiver.symbol not in self.media_protected:
                 self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
         result = self.check_local_call(node, function)
+        copied = self.copied_argument(actual_values, opaque_values, keyword_values) if "copy" in function.class_operations else _Value()
         if result is not None:
             self.evaluated_values[node] = result
+        elif self.has_local_class(copied) or self.has_local_class(copied, instances=True) or self.local_class_operations(copied):
+            # Known copies retain exact bounded shape; foreign builders do not.
+            self.evaluated_values[node] = copied
+        elif "construct" in function.class_operations and any(self.has_local_class(value) for value in operands):
+            self.evaluated_values[node] = replace(self.value(node), local_instance=True)
         elif node.args and not function.unannotated_parameter:
             aggregate = function.symbol.removeprefix("builtins.")
             if aggregate in {"iter", "list", "tuple", "set", "frozenset", "next", "getattr"}:
@@ -1530,7 +1564,7 @@ class _Check(ast.NodeVisitor):
                         [*bindings.values(), *namespace_captures, *variadic_values])
         known = any(self.contains_namespace(value) or self.known_ownership(value)
                     or self.has_active_path(value) or self.has_local_class(value)
-                    or self.has_local_class(value, instances=True) for value in values)
+                    or self.has_local_class(value, instances=True) or self.local_class_operations(value) for value in values)
         if not known and (call.args or call.keywords):
             return
         if namespace and (any(self.contains_namespace(value) for value in variadic_values)

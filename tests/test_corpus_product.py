@@ -376,3 +376,49 @@ def test_actual_transcript_citation_display_and_character_locators_are_bound(mut
                 'wrong-time-label':'00:01–00:01', 'hyphen-label':'00:00-00:05', 'numeric-label':5615}[mutation]
     results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
     assert not results['search-gate']['passed'] and not results['answer-spoken']['passed']
+
+
+@pytest.mark.parametrize('mutation', ['failed-sources', 'consistent-unit-99'])
+def test_actual_corpus_rejects_failed_sources_and_consistently_wrong_unit_indexes(mutation):
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    if mutation == 'failed-sources':
+        for source in manifest['documents'] + manifest['audio']:
+            if source['id'] in actual: actual[source['id']]['state'] = 'failed'
+    else:
+        for unit in actual['audio-bicycle']['units']: unit['unit'] = 99
+        for observation in actual.values():
+            for citation in observation.get('citations', []):
+                if citation['document_id'] == 'audio-bicycle': citation['unit'] = 99
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    if mutation == 'failed-sources':
+        assert all(not row['passed'] for row in results.values()), results
+    else:
+        for key in ('audio-bicycle', 'search-gate', 'answer-spoken'):
+            assert not results[key]['passed'], results[key]
+
+
+@pytest.mark.parametrize('indexes', [[1, 2], [99, 100], [1, 3], [2, 1], [1, 1]])
+def test_actual_split_transcript_requires_positional_unit_sequence(indexes):
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    transcripts = copy.deepcopy(manifest['fast_transcripts'])
+    transcripts['audio-parcel'] = [
+        {'start':0, 'end':2.04, 'text':'This is a synthetic recording.', 'speaker':'SPEAKER_00'},
+        {'start':2.04, 'end':4.48, 'text':'The orange parcel was stored in Locker 7.', 'speaker':'SPEAKER_00'},
+    ]
+    actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    assert [unit['unit'] for unit in actual['audio-parcel']['units']] == [1, 2]
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    for unit in actual['audio-parcel']['units']: unit['unit'] = indexes[unit['unit'] - 1]
+    for observation in actual.values():
+        for citation in observation.get('citations', []):
+            if citation['document_id'] == 'audio-parcel': citation['unit'] = indexes[citation['unit'] - 1]
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    for key in ('audio-parcel', 'search-parcel', 'answer-parcel'):
+        assert results[key]['passed'] is (indexes == [1, 2]), results[key]

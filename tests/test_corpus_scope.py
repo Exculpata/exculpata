@@ -72,6 +72,11 @@ def classify(repository, base):
     ('scripts/corpus_check.py', 'tools/synthetic-check.py', True),
     ('.github/workflows/corpus.yml', 'archive/synthetic-workflow.yml', True),
     ('docs/synthetic-before.md', 'docs/synthetic-after.md', False),
+    ('src/case_intelligence/pilot_uploads.py', 'docs/archived-ingestion.md', True),
+    ('services/ocr/Dockerfile', 'docs/archived-runtime.md', True),
+    ('config/models.json', 'docs/archived-models.md', True),
+    ('docs/synthetic-before.md', 'src/synthetic_new_runtime.py', True),
+    ('future-runtime/dependency.lock', 'docs/archived-lock.md', True),
 ])
 def test_rename_preserves_original_corpus_scope(repository, before, after, required):
     root, git = repository
@@ -103,3 +108,51 @@ def test_makefile_recipe_change_requires_full_corpus(repository):
     recipe.write_text('corpus-check-full:\n\tpython scripts/corpus_check.py\n')
     commit(git)
     assert classify(repository, base) == 'full_required=true\n'
+
+
+@pytest.mark.parametrize('path', [
+    'src/case_intelligence/pilot_uploads.py', 'src/case_intelligence/media_evidence.py',
+    'src/case_intelligence/workbench.py', 'services/transcription/Dockerfile',
+    'services/ocr/requirements.txt', 'config/models.json', 'pyproject.toml',
+    'uv.lock', 'Dockerfile', 'compose.yml', 'scripts/bootstrap-dev.py',
+    '.github/actions/runtime/action.yml',
+])
+def test_product_and_runtime_dependency_changes_require_full_corpus(repository, path):
+    root, git = repository
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text('Synthetic original runtime dependency.\n')
+    base = commit(git)
+    target.write_text('Synthetic changed runtime dependency.\n')
+    commit(git)
+    assert classify(repository, base) == 'full_required=true\n'
+
+
+@pytest.mark.parametrize('path,required', [
+    ('docs/synthetic.md', False), ('docs/nested/synthetic.rst', False), ('README.md', False),
+    ('CONTRIBUTING.md', False), ('CHANGELOG.md', False), ('LICENSE', False), ('NOTICE', False),
+    ('docs/runtime.py', True), ('docs/settings.json', True), ('future-runtime/dependency.lock', True),
+    ('tests/test_synthetic.py', True), ('benchmarks/corpus/README.md', True),
+])
+@pytest.mark.parametrize('operation', ['add', 'delete'])
+def test_only_explicit_documentation_changes_may_skip_full(repository, path, required, operation):
+    root, git = repository
+    (root / 'sentinel.txt').write_text('Synthetic unchanged sentinel.\n')
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if operation == 'delete': target.write_text('Synthetic removable content.\n')
+    base = commit(git)
+    if operation == 'delete': target.unlink()
+    else: target.write_text('Synthetic added content.\n')
+    commit(git)
+    assert classify(repository, base) == 'full_required=' + str(required).lower() + '\n'
+
+
+def test_fast_and_full_workflow_lanes_keep_distinct_recognition_contracts():
+    workflow = WORKFLOW.read_text()
+    fast, full = workflow.split('\n  full:\n', 1)
+    assert 'make corpus-check PYTHON=python' in fast
+    assert 'make corpus-check-full' not in fast
+    assert 'make corpus-check-full PYTHON=python' in full
+    assert "if: github.event_name != 'pull_request' || needs.fast.outputs.full_required == 'true'" in full
+    assert 'HF_HUB_OFFLINE:' in full and 'Stage pinned ASR snapshot' in full

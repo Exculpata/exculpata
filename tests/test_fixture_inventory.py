@@ -1215,3 +1215,82 @@ def test_local_class_argument_does_not_make_external_result_a_local_instance():
     assert observed == 1
     assert sink == []
     assert check_fixture_writes(source) == []
+
+
+_INDIRECT_LOCAL_CLASS_RESULTS = [
+    ('type.__call__(Callback)', ''), ('object.__new__(Callback)', ''),
+    ('builtins.type.__call__(Callback)', ''), ('builtins.object.__new__(Callback)', ''),
+    ('allocate(Callback)', ''), ('construct(Callback)', ''),
+    ('getattr(object, "__new__")(Callback)', ''),
+    ('getattr(builtins, "type").__call__(Callback)', ''),
+    ('__import__("builtins").object.__new__(Callback)', ''),
+    ('modules.import_module("builtins").type.__call__(Callback)', ''),
+    ('{"new": object.__new__}["new"](Callback)', ''),
+    ('object.__new__({"callback": Callback}[resource])', ''),
+    ('allocate(*(Callback,))', ''),
+    ('copies.copy(Callback())', ''), ('copies.deepcopy(Callback())', ''),
+    ('clone(Callback())', ''), ('deep_clone(Callback())', ''),
+    ('getattr(copies, "copy")(Callback())', ''),
+    ('{"copy": copies.deepcopy}["copy"](Callback())', ''),
+    ('copies.copy(Callback().selected)', ''),
+    ('copies.deepcopy({"callback": Callback()})', '["callback"]'),
+    ('copies.copy(Callback)', '()'),
+    ('(type.__call__ if resource else object.__new__)(Callback)', ''),
+    ('{"callback": object.__new__}[resource](Callback)', ''),
+    ('dict.fromkeys(["callback"], object.__new__)[resource](Callback)', ''),
+    ('(copies.copy if resource else copies.deepcopy)(Callback())', ''),
+    ('{"callback": copies.copy}.get(resource)(Callback())', ''),
+    ('{}.get("missing", copies.deepcopy)(Callback())', ''),
+    ('apply(allocate, Callback)', ''), ('apply(clone, Callback())', ''),
+    ('clone(x=Callback())', ''), ('deep_clone(**{"x": Callback()})', ''),
+    ('deep_clone(memo={}, x=Callback())', ''),
+    ('deep_clone(**{"memo": {}, "x": Callback()})', ''),
+]
+
+
+@pytest.mark.parametrize('expression,selection', _INDIRECT_LOCAL_CLASS_RESULTS)
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_indirect_local_class_delayed_result_runtime_rejection(expression, selection, mode):
+    source = (_LOCAL_CALLBACK_CLASS + '\nimport builtins\nimport importlib as modules\nimport copy as copies\n'
+              'from copy import copy as clone, deepcopy as deep_clone\n'
+              'allocate = object.__new__\nconstruct = getattr(type, "__call__")\n'
+              'def apply(operation, value):\n    return operation(value)')
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nimport asyncio\nselected = asyncio.run(provider())' + selection
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = next(provider())' + selection
+    else:
+        source += '\nprovider = lambda: ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = provider()' + selection
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source, resource='callback')
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('expression', [
+    'type.__call__(Callback)()', 'object.__new__(Callback)()',
+    'copies.copy(Callback())()', 'copies.deepcopy(Callback())()',
+    '(lambda: copies.copy({"answer": 1}))()["answer"]',
+    '(lambda: copies.deepcopy({"answer": 1}))()["answer"]',
+    '(lambda: [*copies.copy({"callback": Callback()})])() == ["callback"]',
+    '(lambda: isinstance(Callback(), Callback))()',
+    '(lambda: external.answer)()',
+    '(lambda: [*{"callback": object.__new__}])() == ["callback"]',
+    '(lambda: [*{"callback": copies.deepcopy}])() == ["callback"]',
+    '(lambda: copies.deepcopy(memo={"unused": Callback()}, x={"answer": 1}))()["answer"]',
+])
+def test_indirect_local_class_safe_runtime_controls(expression):
+    source = ('import copy as copies\nfrom types import SimpleNamespace\nclass Callback:\n'
+              '    def __call__(self):\n        return getattr(1, "real")\n'
+              'external = SimpleNamespace(callback=Callback(), answer=1)\nobserved = ' + expression)
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []

@@ -130,3 +130,11 @@ original media bytes, transcript and speaker revisions, and retained metadata
 in the full archive. Only that media test-node/file and aggregate content digests
 were refreshed. Case definitions, fixture bytes and their fingerprints remain
 unchanged; the integrity checks still reject undeclared changes.
+
+October 18, 2026 fixture-boundary correction: an upload test now constructs its
+synthetic connection through a named synchronous helper instead of a lambda.
+All runtime assertions and connection behavior are unchanged. Only the upload-test file
+digest and aggregate content fingerprint were refreshed; all acceptance nodes,
+case definitions, case fingerprint and fixture bytes retain their original pins.
+Earlier receipts remain distinguishable by content fingerprint, and undeclared
+test or fixture changes still fail the integrity checks.

@@ -75,10 +75,15 @@ fixtures. CPU ASR is limited to two threads and one worker. The clips have one
 synthetic voice each, so diarization is not evaluated. Full recognition can need
 several GB of RAM/model storage and runs separately from ordinary PR checks.
 
-`Synthetic discovery corpus` runs the fast gate on every PR, covering ingestion,
-OCR, transcription, search, and answer changes without fragile path exclusions.
-Full runs nightly, on workflow dispatch, and on PR changes to the corpus,
-its runners, its workflow, or the Makefile. Actions are commit-pinned, permissions read-only,
+`Synthetic discovery corpus` runs the fast application-contract gate on every PR.
+Fast skips image-only OCR and imports prepared transcripts, so it cannot validate
+recognition changes. Full runs nightly, on workflow dispatch, and on every PR
+except changes limited to `docs/*.md`/`docs/*.rst` (including subdirectories) or
+root `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE`, and `NOTICE`.
+All product, service, runtime, configuration, dependency, script, test, workflow,
+and unknown paths require full recognition. Rename classification checks both
+old and new paths; an unavailable diff base also requires full recognition.
+Actions are commit-pinned, permissions read-only,
 and hosted jobs use only synthetic inputs. Existing quality/publication/security
 checks remain unchanged. No model cache, workspace, database, or media artifacts
 are uploaded.
