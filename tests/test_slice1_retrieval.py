@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from tests.fixture_write import fixture_write
-
 
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
@@ -67,7 +65,8 @@ def test_exact_citation_tamper_fails_whole_run_and_projection_is_safe(tmp_path):
     flattened = repr(projected).casefold()
     for forbidden in ("relative_path", "sha256", "synthetic_root", "unc", "rrf", "score", "processor", "lane", "traceback"):
         assert forbidden not in flattened
-    with fixture_write(store):
+    with store.transaction():
+        # fixture-write: Isolated SQLiteStore citation tampering uses its public explicit transaction in native legacy-autocommit mode.
         store.connection.execute("UPDATE segment SET text=text||'tampered' WHERE matter_id='matter-alpha'")
     with pytest.raises(RetrievalIntegrityError):
         service.search("actor-alpha", SearchRequest("tampered", "matter-alpha", "shared red bicycle"))

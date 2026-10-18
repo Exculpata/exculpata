@@ -213,7 +213,8 @@ def test_source_delimiters_remain_prose_and_compilation_basis_survives_restore(w
     assert updated.prose == replacement and updated.compilation_basis == basis
     destination = tmp_path / "clean-basis-restore.sqlite"
     with sqlite3.connect(destination) as restored:
-        bench.workspace.connection.backup(restored)
+        with bench.workspace._lock:
+            bench.workspace.connection.backup(restored)
     with_store = WorkspaceStore(destination)
     try:
         retained = with_store.report_sections(matter.matter_id, report.report_id)[0]

@@ -228,7 +228,8 @@ def test_online_backup_and_clean_restore_preserve_lease_and_snapshot_basis(tmp_p
     claimed = jobs.claim("synthetic-worker")
     jobs.record_input_fingerprint(claimed, FINGERPRINT)
     backup = sqlite3.connect(restored_path)
-    store.connection.backup(backup)
+    with store._lock:
+        store.connection.backup(backup)
     backup.close()
     store.close()
     restored = WorkspaceStore(restored_path)

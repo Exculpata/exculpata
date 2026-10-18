@@ -141,7 +141,8 @@ def test_durable_coverage_resume_attempt_fencing_and_clean_restore(frozen, tmp_p
     assert len(rows) == 15 and rows[-1]['rationale'] == 'The amber bicycle appears.'
     restored_path = tmp_path / 'clean-restore.sqlite'
     with sqlite3.connect(restored_path) as backup:
-        store.connection.backup(backup)
+        with store._lock:
+            store.connection.backup(backup)
     restored = WorkspaceStore(restored_path)
     try:
         assert FullTextReviewLedger(restored).coverage(matter.matter_id, ACTOR, run.run_id)['units'] == {'failed':1, 'processed':14}

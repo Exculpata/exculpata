@@ -166,7 +166,8 @@ def test_migration_backup_clean_restore_restart_export_and_purge(case, tmp_path)
     expected = service.repository.export(matter.matter_id)
     backup = tmp_path / 'stopped-backup.sqlite'
     with sqlite3.connect(backup) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     restore = tmp_path / 'clean' / 'workspace.sqlite'
     restore.parent.mkdir()
     with sqlite3.connect(backup) as source, sqlite3.connect(restore) as target:

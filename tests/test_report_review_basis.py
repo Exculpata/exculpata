@@ -179,7 +179,8 @@ def test_converted_sections_survive_backup_and_clean_restore(workspace, tmp_path
         origin_id="synthetic-run", sections=[{"heading": "Coverage", "body": "One unavailable source remains."}])
     path = tmp_path / "restored.sqlite"
     with sqlite3.connect(path) as target:
-        bench.workspace.connection.backup(target)
+        with bench.workspace._lock:
+            bench.workspace.connection.backup(target)
     restored = WorkspaceStore(path)
     try:
         assert restored.report_sections(matter.matter_id, report.report_id)[0].body == "One unavailable source remains."

@@ -142,7 +142,8 @@ def test_sqlite_backup_restore_export_remove_and_purge(case, tmp_path):
     path = tmp_path / 'clean' / 'workspace.sqlite'
     path.parent.mkdir()
     with sqlite3.connect(path) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     for _ in range(2):
         restored = WorkspaceStore(path)
         assert snapshot(restored, matter.matter_id) == expected

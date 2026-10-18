@@ -109,7 +109,8 @@ def test_additional_budget_backup_restore_and_duplicate_submission(chain, tmp_pa
     assert queued.result['passes'] == saved.result['passes']
     destination = tmp_path / 'restored.sqlite'
     connection = sqlite3.connect(destination)
-    bench.workspace.connection.backup(connection)
+    with bench.workspace._lock:
+        bench.workspace.connection.backup(connection)
     connection.close()
     restored = WorkspaceStore(destination)
     recovered = restored.research_job(matter.matter_id, matter.owner_id, queued.job_id)

@@ -142,7 +142,8 @@ def test_mirror_backup_clean_restore_and_entity_deletion(tmp_path):
     original = entities.detail(matter.matter_id, ACTOR, entity['entity_id'])
     backup = tmp_path / 'backup.sqlite'
     with sqlite3.connect(backup) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     restore = tmp_path / 'clean' / 'workspace.sqlite'
     restore.parent.mkdir()
     with sqlite3.connect(backup) as source, sqlite3.connect(restore) as target:

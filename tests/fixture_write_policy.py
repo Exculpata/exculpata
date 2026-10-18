@@ -31,6 +31,8 @@ _READ_ARGUMENT_PRAGMAS = {
 }
 _SQL_METHODS = {"execute", "executemany", "executescript"}
 _TRANSACTION_METHODS = {"commit", "rollback"}
+_UNSUPPORTED_SQLITE_METHODS = {"deserialize", "blobopen", "setconfig", "enable_load_extension", "load_extension"}
+_NON_SQL_METHODS = _UNSUPPORTED_SQLITE_METHODS | {"backup", "setlimit", "interrupt"}
 _CALLBACK_METHODS = {
     "set_trace_callback", "set_authorizer", "set_progress_handler",
     "create_function", "create_aggregate", "create_collation", "create_window_function",
@@ -160,7 +162,7 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
-            if node.attr == "__set__" and base.setter_attribute is not None:
+            if node.attr in {"__set__", "__delete__"} and base.setter_attribute is not None:
                 return replace(base, symbol=symbol)
             if base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"} and node.attr in {"row_factory", "text_factory", "isolation_level", "autocommit"}:
                 return _Value(symbol=symbol, setter_attribute=node.attr)
@@ -169,7 +171,7 @@ class _Check(ast.NodeVisitor):
                               fixture_handle=base.fixture_handle)
             if node.attr == "_lock":
                 return _Value(symbol=symbol, lock_owner=base.symbol)
-            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _MEDIA_SEED | {"cursor", "close"}:
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | _MEDIA_SEED | {"cursor", "close"}:
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
                               methods=frozenset({node.attr}), receiver=base,
                               descriptor=base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"})
@@ -203,7 +205,7 @@ class _Check(ast.NodeVisitor):
                     # A dynamically selected callable on a known SQL connection
                     # must not discard ownership just because its name is unknown.
                     return _Value(connection=receiver.connection, fixture_handle=receiver.fixture_handle,
-                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | {"close"}), receiver=receiver)
+                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | {"close"}), receiver=receiver)
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
                 return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
                                sqlite_cursor=True)
@@ -466,6 +468,8 @@ class _Check(ast.NodeVisitor):
                 item = pending.pop()
                 if isinstance(item, (ast.Tuple, ast.List)):
                     pending.extend(item.elts)
+                elif isinstance(item, ast.Attribute):
+                    self.check_factory_deletion(item)
                 elif isinstance(item, ast.Name):
                     self.aliases.pop(item.id, None)
                     if self.class_outer_aliases is not None and item.id in self.class_outer_aliases:
@@ -513,6 +517,13 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         self.check_transaction_assignment(node.target)
         self.bind(node.target, self.value(ast.BinOp(left=node.target, op=node.op, right=node.value)))
+
+    def check_factory_deletion(self, target: ast.Attribute) -> None:
+        if target.attr not in {"row_factory", "text_factory"}:
+            return
+        receiver = self.value(target.value)
+        if receiver.connection is not None and not receiver.connection.startswith("sqlite@"):
+            self.flag(target, "shared factory deletion is unsupported by fixture_write")
 
     def check_transaction_assignment(self, target: ast.AST) -> None:
         if isinstance(target, ast.Attribute) and target.attr == "text_factory":
@@ -581,6 +592,16 @@ class _Check(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         function = self.value(node.func)
+        if function.setter_attribute is not None and function.symbol.endswith(".__delete__") and node.args:
+            target = ast.copy_location(ast.Attribute(value=node.args[0], attr=function.setter_attribute, ctx=ast.Del()), node)
+            self.parents[target] = node
+            self.check_factory_deletion(target)
+        if function.symbol in {"delattr", "builtins.delattr"} and len(node.args) >= 2:
+            attribute = self.value(node.args[1])
+            if attribute.complete_text:
+                target = ast.copy_location(ast.Attribute(value=node.args[0], attr=attribute.text, ctx=ast.Del()), node)
+                self.parents[target] = node
+                self.check_factory_deletion(target)
         if function.setter_attribute is not None and function.symbol.endswith(".__set__") and node.args:
             target = ast.copy_location(ast.Attribute(value=node.args[0], attr=function.setter_attribute, ctx=ast.Store()), node)
             self.parents[target] = node
@@ -609,6 +630,23 @@ class _Check(ast.NodeVisitor):
                 self.flag(node, "shared connection close bypasses workspace lifetime")
             if methods & _CALLBACK_METHODS and (receiver.connection is not None or receiver.unannotated_parameter) and receiver.connection not in self.protected | self.held_locks:
                 self.flag(node, "connection callback change requires the owning lock or fixture_write")
+        if receiver.connection is not None and not independent_connection:
+            if methods & _UNSUPPORTED_SQLITE_METHODS:
+                # Unsupported database/configuration APIs have no scoped
+                # equivalent; an owning lock does not license them.
+                self.flag(node, "shared non-SQL SQLite operation is unsupported by fixture_write")
+            if methods & {"setlimit", "interrupt"} and receiver.connection not in self.protected | self.held_locks:
+                self.flag(node, "connection configuration/cancellation requires the owning lock or fixture_write")
+        if "backup" in methods:
+            destination = self.value(arguments[0] if arguments else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "target"), None))
+            if destination.connection is not None and not destination.connection.startswith("sqlite@"):
+                self.flag(node, "backup into a shared connection is unsupported by fixture_write")
+            if receiver.fixture_handle or receiver.connection in self.protected:
+                self.flag(node, "backup inside the owning fixture_write boundary is unsupported")
+            elif (receiver.connection is not None and not independent_connection
+                  and receiver.connection not in self.protected | self.held_locks):
+                self.flag(node, "backup from a shared connection requires the owning lock or fixture_write")
         if methods & _SQL_METHODS and not imported_function:
             argument = arguments[0] if arguments else next(
                 (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
@@ -666,8 +704,8 @@ class _Check(ast.NodeVisitor):
         self.check_local_call(node, function)
 
     def check_local_call(self, call, function):
-        # Specialize direct local helpers only when an actual SQLite handle or
-        # bound method is supplied. Generic resource.close remains ordinary
+        # Specialize direct local helpers only when a known workspace, SQLite
+        # handle or bound method is supplied. Generic resource.close remains ordinary
         # cleanup, while aliases and helper chains retain shared ownership.
         if function.symbol not in self.local_functions or function.symbol in self.active_calls:
             return
@@ -692,7 +730,7 @@ class _Check(ast.NodeVisitor):
                 mapping = self.value(keyword.value).mapping
                 if mapping is not None:
                     supplied.update(mapping)
-        if not any(value.connection is not None for value in supplied.values()):
+        if not any(value.connection is not None or value.live_workspace or value.workspace for value in supplied.values()):
             return
         bindings = {**defaults, **supplied}
         previous = self.aliases

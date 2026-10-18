@@ -126,16 +126,24 @@ SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=Tr
 is unsupported and rejected before entry or assignment. Legacy transaction control
 with `isolation_level=None` is also rejected at entry and on scoped mode changes,
 because raw DML in that mode commits before an exception can roll it back.
-PEP249 `autocommit=False` remains supported when its ignored isolation level is `None`. Custom row factories
-receive scoped cursors, including through public workspace queries, and scoped
+PEP249 `autocommit=False` remains supported when its ignored isolation level is `None`.
+Custom row factories receive scoped cursors, including through public workspace queries, and scoped
 connection factories are always restored before releasing the lock, including raw
 in-boundary replacements. Set shared connection and cursor row factories through
 their yielded handles, even while holding the workspace lock: a raw callback can expose
 the underlying connection beyond that lock. Custom cursor
 factories are rejected before they can receive a raw connection. Unsupported
 connection methods such as closing the shared database, blob access, deserialize,
-backup and deferred dumps
-fail closed rather than returning an unscoped object.
+backup and deferred dumps fail closed rather than returning an unscoped object.
+Deleting connection or cursor attributes is unsupported on yielded handles.
+The inventory rejects shared row/text factory deletion, database deserialization,
+blob handles, backups into a shared destination, `setconfig`, and extension-loading
+operations, including SQLite descriptor forms. A raw backup from the shared source to an independent destination must
+hold the source workspace lock outside a fixture transaction. Backups inside
+`fixture_write` remain unsupported even through the raw connection.
+Connection-limit changes and interruption also
+require the owning lock or fixture boundary; deliberate cross-thread cancellation
+experiments need an exact-statement concurrency reason.
 Use the yielded handle for scripts, connection contexts and explicit transaction
 control. DDL, transactional metadata PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
 require that handle, which begins a transaction before SQLite can execute them
@@ -162,7 +170,10 @@ while holding the helper. Keep source mutation guards outside it.
 CI suite and names `fixture_write` when a write bypasses the boundary. Deliberate
 independent-connection contention, caller-owned transaction assertions, and
 stopped-database migration/restore tests require a narrowly documented exception
-at the specific statement; ordinary fixture setup must use the helper.
+at the specific statement; ordinary fixture setup must use the helper. The separate
+`SQLiteStore` adapter deliberately uses legacy autocommit; isolated integrity and
+corruption fixtures for that adapter use its public explicit `transaction()`
+context with exact-statement reasons, preserving the adapter's native mode.
 Generator bodies are deferred work even when created inside the helper. Put
 their writes in a function that acquires its own fixture boundary, or use an
 eager operation while holding the helper. Function decorators, defaults and
@@ -185,10 +196,13 @@ Deferred bodies include later global and closure bindings while preserving
 definition-time defaults. Unannotated helper parameters that mutate SQLite
 callbacks must establish ownership inside the helper or document the exact
 independent operation; parameter spelling does not establish safety.
-Known local helper calls also retain SQLite handle and saved-method ownership,
+Known local helper calls also retain SQLite handle, live-workspace and saved-method ownership,
 including statically known tuple/list positional unpacking and dictionary keyword
 unpacking, so a generic cleanup helper cannot hide closure of a shared database.
 Ordinary resource and independently owned connection cleanup remain supported.
+A helper that receives a known live workspace must establish explicit media mode
+for a manual media seed; passing the workspace as an argument does not hide
+missing or nested media ownership.
 Writable PRAGMAs, including parenthesized forms and action PRAGMAs without
 arguments and prepare-time settings inside `EXPLAIN`, require the same boundary
 as other mutations.

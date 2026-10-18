@@ -160,7 +160,8 @@ def test_extraction_backup_reopen_preserves_coverage_and_decisions(frozen, tmp_p
     expected = store.entity_repository().discovery_export(matter.matter_id)
     target = tmp_path / 'restored.sqlite'
     with sqlite3.connect(target) as backup:
-        store.connection.backup(backup)
+        with store._lock:
+            store.connection.backup(backup)
     restored = WorkspaceStore(target)
     assert restored.entity_repository().discovery_export(matter.matter_id) == expected
     assert restored.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
@@ -348,7 +349,8 @@ def test_aggregate_budget_survives_retries_versions_and_clean_restore(frozen, tm
         assert store.entity_repository().discovery_storage_bytes(matter.matter_id) == before
     target = tmp_path / 'budget-restore.sqlite'
     with sqlite3.connect(target) as backup:
-        store.connection.backup(backup)
+        with store._lock:
+            store.connection.backup(backup)
     restored = WorkspaceStore(target)
     try:
         assert restored.entity_repository().discovery_storage_bytes(matter.matter_id) == before

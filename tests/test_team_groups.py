@@ -102,7 +102,8 @@ def test_mirrored_migration_backup_clean_restore(tmp_path):
     store.add_member(a.matter_id, 'principal-reviewer', 'principal-owner')
     backup = tmp_path / 'backup.sqlite'
     with sqlite3.connect(backup) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     store.set_team_group_member(first, 'principal-reviewer', 'principal-administrator', present=False, administrator_override=True)
     clean = tmp_path / 'clean'
     clean.mkdir()

@@ -166,9 +166,11 @@ def test_media_mode_does_not_leak_to_deferred_seed_body():
     'with fixture_write(bench.workspace, media=True):\n    bench.workspace.queue_media_job(synthetic)',
     'with fixture_write(other.workspace):\n    with fixture_write(bench.workspace, media=True):\n        bench.workspace.finish_media_job(synthetic)',
     'with fixture_write(bench.workspace, media=True):\n    with fixture_write(bench.workspace) as connection:\n        connection.execute("DELETE FROM workbench_synthetic")',
-    'def seed(store):\n    with fixture_write(store, media=True):\n        store.queue_media_job(synthetic)\nwith fixture_write(bench.workspace):\n    seed(bench.workspace)',
 ])
-def test_explicit_media_mode_preserves_safe_sql_and_runtime_entry_checks(source):
-    # The last helper cannot infer its caller statically. Runtime media entry
-    # rejects the active same-connection boundary before any product API runs.
+def test_explicit_media_mode_preserves_safe_sql(source):
     assert check_fixture_writes(source) == []
+
+
+def test_known_workspace_helper_cannot_hide_nested_media_entry():
+    source = 'def seed(store):\n    with fixture_write(store, media=True):\n        store.queue_media_job(synthetic)\nwith fixture_write(bench.workspace):\n    seed(bench.workspace)'
+    assert check_fixture_writes(source)

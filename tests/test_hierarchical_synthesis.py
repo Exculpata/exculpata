@@ -188,7 +188,8 @@ def test_live_workflow_backup_clean_restore_and_exports(tmp_path):
         bench.workspace.checkpoint_research_job = original_checkpoint
         destination = tmp_path / "clean-restore.sqlite"
         with sqlite3.connect(destination) as output:
-            bench.workspace.connection.backup(output)
+            with bench.workspace._lock:
+                bench.workspace.connection.backup(output)
         restored = WorkspaceStore(destination)
         assert restored.recover_running_research_jobs() == 1
         assert restored.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

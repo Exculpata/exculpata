@@ -106,7 +106,8 @@ def test_budget_checkpoint_and_terminal_reason_survive_clean_backup_restore(tmp_
     store.checkpoint_research_job(job.job_id, {"budget": budget, "passes": [{"query": "Generated question"}], "evidence": []})
     destination = tmp_path / "restored.sqlite"
     connection = sqlite3.connect(destination)
-    store.connection.backup(connection)
+    with store._lock:
+        store.connection.backup(connection)
     connection.close()
     store.close()
     restored = WorkspaceStore(destination)

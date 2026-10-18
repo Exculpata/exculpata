@@ -223,6 +223,10 @@ class _FixtureConnection:
             value = _scoped_factory(self, value)
         setattr(self._connection, name, value)
 
+    def __delattr__(self, name):
+        self._check_active()
+        raise RuntimeError("fixture_write does not support attribute deletion")
+
     def execute(self, sql, *args, **kwargs):
         self._check_sql(sql)
         return _FixtureCursor(self, self._connection.execute(sql, *args, **kwargs))
@@ -335,6 +339,10 @@ class _FixtureCursor:
         if name == "row_factory":
             value = _scoped_factory(self._connection, value)
         setattr(self._cursor, name, value)
+
+    def __delattr__(self, name):
+        self._connection._check_active()
+        raise RuntimeError("fixture_write does not support attribute deletion")
 
     def __iter__(self):
         self.connection._check_active()

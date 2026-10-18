@@ -276,7 +276,8 @@ def test_saved_investigation_discloses_shared_unit_omission_in_page_and_exports(
     from case_intelligence.workspace_store import WorkspaceStore
     destination = tmp_path / "synthetic-clean-restore.sqlite"
     with sqlite3.connect(destination) as output:
-        bench.workspace.connection.backup(output)
+        with bench.workspace._lock:
+            bench.workspace.connection.backup(output)
     original_workspace = bench.workspace
     restored = WorkspaceStore(destination)
     try:

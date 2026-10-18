@@ -131,7 +131,9 @@ def test_source_check_basis_survives_online_backup_and_clean_restore(tmp_path):
     # fixture-write: Open a new isolated backup destination before its first WorkspaceStore.
     destination = sqlite3.connect(restored_path)
     try:
-        store.connection.backup(destination)
+        with store._lock:
+            # fixture-write: Copy under the source lock to a new isolated backup destination before its first WorkspaceStore.
+            store.connection.backup(destination)
     finally:
         destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.
         store.close()
@@ -184,6 +186,7 @@ def test_pre_basis_active_source_check_fails_closed_after_backup_restore(tmp_pat
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
         legacy.commit()  # fixture-write: Commit the offline legacy schema before copying the closed database.
+        # fixture-write: Copy the offline legacy fixture after its store closed to a new isolated destination before its first WorkspaceStore.
         legacy.backup(destination)
     finally:
         destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.

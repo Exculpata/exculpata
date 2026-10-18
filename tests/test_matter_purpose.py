@@ -146,7 +146,8 @@ def test_backup_clean_instance_and_migration_mirror(case, tmp_path):
     restored_path = tmp_path / 'clean' / 'workspace.sqlite'
     restored_path.parent.mkdir()
     with sqlite3.connect(restored_path) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     for _ in range(2):
         restored = WorkspaceStore(restored_path)
         assert snapshot(restored, matter.matter_id) == expected
