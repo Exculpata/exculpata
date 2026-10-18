@@ -423,3 +423,81 @@ def test_namespace_dictionary_remaining_copy_default_and_constructor_paths(sourc
 ])
 def test_namespace_dictionary_defaults_and_key_only_construction_controls(source):
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('receiver', [
+    'globals()', 'locals()', 'vars()', 'sys.modules',
+    'function.__globals__', '{}', 'dict', 'builtins.dict',
+])
+@pytest.mark.parametrize('access', [
+    'construct = RECEIVER.fromkeys',
+    "construct = getattr(RECEIVER, 'fromkeys')",
+    'construct = RECEIVER.fromkeys\nalias = construct\nconstruct = alias',
+])
+def test_namespace_accessor_fromkeys_receiver_matrix(receiver, access):
+    source = 'import sys\nimport builtins\n' + access.replace('RECEIVER', receiver)
+    source += "\nscopes = construct(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)"
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('receiver,arguments', [
+    ('scope', 'globals()'), ('globals()', '{}'),
+    ('sys.modules', '{}'), ('dict', 'scope, globals()'),
+    ('builtins.dict', 'scope, globals()'),
+])
+@pytest.mark.parametrize('access', [
+    'initialize = RECEIVER.__init__',
+    "initialize = getattr(RECEIVER, '__init__')",
+    'initialize = RECEIVER.__init__\nalias = initialize\ninitialize = alias',
+])
+def test_namespace_accessor_init_receiver_matrix(receiver, arguments, access):
+    source = 'import sys\nimport builtins\nscope = {}\n' + access.replace('RECEIVER', receiver)
+    source += '\ninitialize(' + arguments + ')'
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('accessor', [
+    'globals().copy', 'sys.modules.copy',
+    'globals().__or__', 'sys.modules.__ror__',
+    'globals().get', 'sys.modules.__getitem__',
+    'globals().values', 'sys.modules.items',
+])
+@pytest.mark.parametrize('store', [
+    "holder = {}\nholder['method'] = ACCESSOR",
+    "holder = {}\nholder.update(method=ACCESSOR)",
+    "holder = {}\nholder.setdefault('method', ACCESSOR)",
+])
+def test_namespace_accessor_bound_receiver_survives_mutation_carriers(accessor, store):
+    source = 'import sys\n' + store.replace('ACCESSOR', accessor)
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "holder = {'copy': globals().copy}\ncopy = holder.get('copy')\ncopy()['__builtins__']['exec'](payload)",
+    "import sys\nholder = {'copy': sys.modules.copy}\nholder.get('copy')()['builtins'].eval(payload)",
+    "holder = {'nested': {'copy': globals().copy}}\nholder.get('nested').get('copy')()['__builtins__']['exec'](payload)",
+    "holder = {'copy': (globals().copy,)}\nholder.get('copy')[0]()['__builtins__']['exec'](payload)",
+    "holder = {'copy': globals().copy} | {}\nholder.get('copy')()['__builtins__']['exec'](payload)",
+    "holder = {}\nholder['copy'] = globals().copy  # fixture-write: Deliberately transport a synthetic bound callable.",
+])
+def test_namespace_accessor_bound_receiver_survives_literal_carriers(source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "construct = globals().fromkeys\nconstruct(['scope'], ordinary)",
+    "import sys\nsys.modules.fromkeys(['scope'], ordinary)",
+    "construct = globals().fromkeys\nholder = {}\nholder['construct'] = construct",
+    "scope = {}\nscope.__init__({'ordinary': 1})",
+    "scope = {}\ndict.__init__(scope, {'ordinary': 1})",
+    "scope = {}\ninitialize = getattr(scope, '__init__')\ninitialize(ordinary=1)",
+    "ordinary = {'value': 1}\nholder = {}\nholder['copy'] = ordinary.copy",
+    "ordinary = {'value': 1}\nholder = {}\nholder.update(copy=ordinary.copy)",
+    "ordinary = {'value': 1}\nholder = {'copy': ordinary.copy}\nholder.get('copy')()",
+])
+def test_namespace_accessor_receiver_controls_remain_supported(source):
+    assert check_fixture_writes(source) == []

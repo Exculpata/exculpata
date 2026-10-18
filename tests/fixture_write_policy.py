@@ -51,7 +51,7 @@ _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
 _NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
-_NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault"}
+_NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault", "__init__"}
 _NAMESPACE_ENUMERATIONS = {"values", "items", "popitem"}
 
 
@@ -328,12 +328,13 @@ class _Check(ast.NodeVisitor):
                 return _Value(symbol=symbol, receiver=base)
             if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
-            if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
+            if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"}
+                                            or base.symbol in _BUILTIN_NAMESPACE_KEYS or base.mapping is not None):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
                 return replace(accessor, symbol=symbol, receiver=base, dictionary_method=node.attr)
-            if base.mapping is not None and node.attr in _DICT_VALUE_METHODS | {"update"}:
+            if base.mapping is not None and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
                 return _Value(symbol=symbol, scalar_converter=True)
@@ -699,6 +700,7 @@ class _Check(ast.NodeVisitor):
     def contains_namespace(value: _Value) -> bool:
         return (value.symbol in _BUILTIN_NAMESPACE_KEYS or value.symbol == "<reflective-builtins>"
                 or any(_Check.contains_namespace(item) for item in (
+                    *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ()),
                 )))
 
