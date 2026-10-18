@@ -92,7 +92,7 @@ def test_network_smoke_runs_for_merge_groups_and_weekly():
 
 @pytest.fixture
 def contract_tree(tmp_path):
-    for name in ("src", "services", "deploy", "config"):
+    for name in ("src", "services", "deploy", "scripts", "config"):
         shutil.copytree(ROOT / name, tmp_path / name,
                         ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
     for path in ROOT.glob("compose*.yaml"):
@@ -273,3 +273,14 @@ def test_contract_rejects_proxy_routing_overrides(contract_tree, key, value):
     path.write_text(yaml.safe_dump(data))
     result = run_contract(contract_tree)
     assert result.returncode == 1 and 'compose.local-accounts.yaml:' in result.stderr
+
+
+@pytest.mark.parametrize("relative", ["scripts/synthetic_probe.py", "scripts/nested/synthetic_probe.py"])
+def test_network_contract_reviews_operational_script_clients(contract_tree, relative):
+    path = contract_tree / relative
+    path.parent.mkdir(exist_ok=True)
+    path.write_text('import httpx\nhttpx.get("https://new-script.example.invalid")\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert relative + ":2:" in result.stderr and "outbound client" in result.stderr
+    assert "new-script.example.invalid" in result.stderr

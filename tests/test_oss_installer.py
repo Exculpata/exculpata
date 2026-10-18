@@ -1786,6 +1786,10 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
     ("oidc", ["--oidc-issuer", 'https://identity.example.test:000443/realm'], True),
     ("oidc", ["--oidc-issuer", 'https://[2001:db8::1]:8443/realm'], True),
     ("oidc", ["--oidc-issuer", 'https://identity.example.test/real%20m'], True),
+    ("oidc", ["--oidc-issuer", 'https://☃.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://iss\u200buer.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://issuer\u202e.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://ｅｘａｍｐｌｅ.test/realm'], False),
     ("oidc", ["--oidc-issuer", "http://identity.example.test"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test?query=yes"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/#fragment"], False),
@@ -3656,3 +3660,54 @@ def test_preflight_warns_about_unknown_dns_engine_without_version_veto(tmp_path,
     check = checks_by_name(result)["docker-dns-version"]
     assert result.ready and not check.blocking and check.state == "warn"
     assert "challenge" in check.remedy
+
+
+@pytest.mark.parametrize("mode", ["resume", "update"])
+@pytest.mark.parametrize("pins", [
+    "{bad-json", "null", "[]",
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": []}),
+    json.dumps({"issuer": "https://other.example.test/realm", "addresses": ["8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["127.0.0.1"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": "8.8.8.8"}),
+])
+def test_retained_oidc_pins_fail_before_resume_or_update_writes(tmp_path, request, monkeypatch, mode, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    args.command = "install" if mode == "resume" else "update"
+    monkeypatch.setattr(installer, "_run", lambda *a, **k: pytest.fail("invalid pins reached an external command"))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: pytest.fail("invalid pins reached release staging"))
+    monkeypatch.setattr(installer, "_provision", lambda *a, **k: pytest.fail("invalid pins reached provisioning"))
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    operation = installer._resume_node if mode == "resume" else installer._update
+    with pytest.raises(RuntimeError, match="prerequisites"):
+        operation(installer.Console(color=False, quiet=True), args, root)
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("pins", ["", json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "1.1.1.1"]})])
+def test_retained_oidc_pins_accept_valid_or_absent_policy_without_writes(tmp_path, request, monkeypatch, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "pass"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_fresh_oidc_preflight_rejects_reference_adapter_interpolation_before_writes(tmp_path, ready_host):
+    args = preflight_args(tmp_path, "--auth", "oidc", "--dry-run", "--oidc-issuer", "https://identity.example.test/$realm")
+    result = installer._collect_preflight("none", args)
+    assert checks_by_name(result)["identity-options"].state == "fail"
+    assert not args.root.exists()
+
+
+def test_saved_oidc_preflight_uses_the_reference_adapter_literal_rules(tmp_path, request, monkeypatch):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_ISSUER", "https://identity.example.test/$realm")
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before

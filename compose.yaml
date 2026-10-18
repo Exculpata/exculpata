@@ -410,7 +410,8 @@ services:
   egress-proxy:
     image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/egress-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
-      context: ./deploy/egress-proxy
+      context: .
+      dockerfile: deploy/egress-proxy/Dockerfile
     restart: unless-stopped
     user: "65532:65532"
     read_only: true

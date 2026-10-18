@@ -92,8 +92,15 @@ def main():
         private.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
         private.chmod(0o600)
         proxy_context=root/'proxy'
-        shutil.copytree(ROOT/'deploy/egress-proxy',proxy_context)
-        (proxy_context/'proxy.py').chmod(0o600)
+        shutil.copytree(ROOT/'deploy/egress-proxy',proxy_context/'deploy/egress-proxy')
+        policy = proxy_context/'src/case_intelligence'
+        policy.mkdir(parents=True)
+        for name in ('__init__.py', 'oidc_network_policy.py'):
+            shutil.copy(ROOT/'src/case_intelligence'/name, policy/name)
+        shutil.copytree(ROOT/'src/case_intelligence/_idna', policy/'_idna',
+                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        for path in proxy_context.rglob('*'):
+            path.chmod(0o700 if path.is_dir() else 0o600)
         data=production_graph(project,proxy_context)
         original_dns=copy.deepcopy(data['services']['app']['dns'])
         limits={'cpus':.5,'mem_limit':'128m','pids_limit':64,'read_only':True,

@@ -64,7 +64,8 @@ def source_inventory(root):
     found = []
     paths = sorted(set((root / "src").rglob("*.py")) |
                    set(root.glob("services/*/src/**/*.py")) |
-                   set(root.glob("deploy/**/*.py")))
+                   set(root.glob("deploy/**/*.py")) |
+                   set(root.glob("scripts/**/*.py")))
     for path in paths:
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():

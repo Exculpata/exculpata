@@ -8,6 +8,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from case_intelligence.oidc_network_policy import validated_https_url
+
 import asyncio
 import base64
 import grp
@@ -117,45 +119,10 @@ class LocalAuthenticationError(WorkspaceProblem):
 
 
 def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> str:
-    candidate = (value or "").strip().rstrip("/")
-    if (not candidate or len(candidate) > 1_024 or "\\" in candidate
-            or any(c in (value or "") for c in ("\x00", "\r", "\n"))
-            or any(ord(c) <= 32 or ord(c) == 127 for c in candidate)):
-        raise RuntimeError(f"{label} is missing or invalid")
     try:
-        parsed = urlsplit(candidate)
-        port = parsed.port
-    except ValueError:
-        raise RuntimeError(f"{label} must be an exact HTTPS URL") from None
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise RuntimeError(f"{label} must be an exact HTTPS URL")
-    if origin_only and parsed.path not in {"", "/"}:
-        raise RuntimeError(f"{label} must not contain a path")
-    hostname = parsed.hostname.casefold()
-    if (port == 0 or hostname.endswith(".") or ".." in hostname
-            or (hostname.isascii() and re.fullmatch(r"[a-zA-Z0-9._:-]+", hostname) is None)):
-        raise RuntimeError(f"{label} has an invalid authority")
-    if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", hostname):
-        try:
-            if str(ipaddress.IPv4Address(hostname)) != hostname:
-                raise ValueError()
-        except ValueError:
-            raise RuntimeError(f"{label} must use a canonical numeric host") from None
-    if hostname == "localhost":
-        raise RuntimeError(f"{label} must not use a loopback host")
-    try:
-        if ipaddress.ip_address(hostname).is_loopback:
-            raise RuntimeError(f"{label} must not use a loopback host")
-    except ValueError:
-        pass
-    return candidate
+        return validated_https_url(value or "", origin_only=origin_only)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} must be an exact non-loopback HTTPS URL") from exc
 
 
 def _regular_file(path: Path, *, label: str, exact_mode: int | None = None) -> Path:
@@ -629,7 +596,7 @@ class AuthlibOidcClient:
             raise OidcAuthenticationError("Organization sign-in configuration could not be verified.") from exc
         # Compare the authority used by the transport. Unicode casefold can
         # conflate distinct IDNA hosts (for example, sharp-s and double-s).
-        return parsed.scheme, parsed.raw_host.decode("ascii"), parsed.port or 443
+        return parsed.scheme, parsed.raw_host.decode("ascii").lower(), parsed.port or 443
 
     async def _validated_metadata(self) -> Mapping[str, Any]:
         # Authlib mutates one shared mapping after discovery completes. Do

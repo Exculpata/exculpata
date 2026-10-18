@@ -93,6 +93,10 @@ HTTPS ports retain their existing treatment. DNS, certificate and provider metad
 acceptance remain runtime checks.
 Existing ASCII issuer names containing underscores retain literal, exact-host
 matching; replacing an underscore or adding a suffix does not gain access.
+Installer, application settings and relay use the same offline issuer/pin policy.
+A pinned, hash-verified source archive supplies IDNA2008 without host package
+installation or a preflight network request; its license and reproduction manifest
+ship with the source. Invalid Unicode names fail before configuration writes.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for
 token/discovery validation or explicit pin binding. The relay's IDNA dependency
@@ -126,7 +130,8 @@ is restricted to approved protocol fields before Authlib can merge it into clien
 options, so it cannot replace proxy, TLS, redirect, timeout, header or secret policy.
 Initial discovery and sanitization are serialized: a delayed concurrent response
 cannot restore raw transport options after validation. Failed or cancelled loads
-release the lock. Endpoint origins use HTTPX's ASCII wire host, so Unicode and
+release the lock. Endpoint origins use HTTPX's lowercased ASCII wire host (including
+case-insensitive IPv6 hexadecimal), so Unicode and
 its IDNA spelling agree while distinct names that Unicode casefold conflates do
 not gain access. The live fixture also exercises concurrent malicious metadata.
 TLS verification, SNI and optional custom CA handling stay in the app;
@@ -139,7 +144,12 @@ in the selected app env file: a single-quoted JSON object containing `issuer`
 application settings) and `addresses` (1–16 distinct IP
 address strings). Pins authorize only that issuer authority. Every resolved
 address must be in the pin set; a changed issuer URL or mixed/unpinned DNS answer
-fails closed. DNS is still required; pins do not replace name resolution or TLS
+fails closed. Retained pin JSON is validated by the same parser during blocking
+resume/update provider preflight, before release staging or configuration changes.
+Malformed, duplicate-key, empty, mismatched and unsafe-address pins fail closed.
+Fresh and retained provider preflight also apply the reference adapter's existing
+resolved-literal rule, so interpolation syntax is rejected before writes.
+DNS is still required; pins do not replace name resolution or TLS
 verification. Public unicast, RFC1918 and IPv6 ULA addresses can be pinned;
 loopback, link-local/metadata, shared-address space, multicast, unspecified,
 reserved and IPv6 transition destinations cannot. CIDRs and wildcards are not
@@ -216,9 +226,9 @@ controlled live acceptance before treating a node as isolated.
 `make check-fast` and the full Quality gates application job include it. The
 reviewed `config/egress-allowlist.toml` records Compose network definitions,
 per-service memberships, published ports, mounts, proxy-routing environment and
-network-escape settings,
-plus exact
-Python networking expressions and literal URL/DNS-name occurrences. New Compose files,
+network-escape settings, plus exact first-party Python networking expressions and literal URL/DNS-name occurrences
+under `src/`, `services/*/src/`, `deploy/` and `scripts/` (including nested
+operational scripts). New Compose files,
 implicit/default networks, host/service network modes, capabilities and changed
 ports require review. Duplicate YAML keys and unparseable sources fail closed.
 Service volumes (short and long syntax), `volumes_from`, `use_api_socket` and
@@ -228,7 +238,10 @@ The inventory detects changed mount expressions, external volumes and driver
 options; it cannot prove what an operator variable resolves to, follow a host
 symlink, or inspect the contents of an approved mount. Installer path checks and
 private rendered-graph/host review remain necessary.
-Source findings include file/line reasons. No whole source file is exempted.
+Source findings include file/line reasons. No first-party Python source file in
+those roots is exempted. Pinned third-party
+internals remain dependency review material; the offline IDNA source archive has
+its own hash/license manifest and is inspected by the publication archive gate.
 
 The AST inventory follows ordinary imports, aliases, client construction and
 sync/async with-bindings. It includes inert XML/provenance URLs and DNS-shaped

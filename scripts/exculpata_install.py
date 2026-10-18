@@ -48,6 +48,7 @@ from installer_terminal import (
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
+from case_intelligence.oidc_network_policy import issuer_pins as _oidc_issuer_pins, validated_https_url
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
     CURRENT_PRODUCT,
@@ -1730,41 +1731,19 @@ def _identity_options_valid(args: argparse.Namespace) -> bool:
             principals.append(selected)
         return bool(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", realm)
                     and "." in realm and (any(groups) or any(principals)))
+    # The reference Compose adapter accepts resolved issuer literals only.
+    if "$" in values["oidc_issuer"]:
+        return False
     client = values["oidc_client_id"].strip()
     if not client or len(client) > 512 or any(ord(character) < 32 for character in client):
         return False
     for value, origin_only in ((values["oidc_issuer"], False),
                                (f"https://{(args.server_name or _default_server_name(args.names)).strip().casefold()}:{args.https_port}", True)):
-        candidate = value.strip().rstrip("/")
-        if (not candidate or len(candidate) > 1024 or "\\" in candidate
-                or any(ord(c) <= 32 or ord(c) == 127 for c in candidate)):
-            return False
         try:
-            parsed = urllib.parse.urlsplit(candidate)
-            if (parsed.scheme != "https" or not parsed.hostname
-                    or parsed.username is not None or parsed.password is not None
-                    or parsed.query or parsed.fragment
-                    or (origin_only and parsed.path not in {"", "/"})):
-                return False
-            hostname = parsed.hostname.casefold()
-            if (parsed.port == 0 or hostname.endswith(".") or ".." in hostname
-                    or (hostname.isascii() and re.fullmatch(r"[a-zA-Z0-9._:-]+", hostname) is None)):
-                return False
-            if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", hostname):
-                try:
-                    if str(ipaddress.IPv4Address(hostname)) != hostname:
-                        return False
-                except ValueError:
-                    return False
-            if hostname == "localhost":
-                return False
-            try:
-                if ipaddress.ip_address(hostname).is_loopback:
-                    return False
-            except ValueError:
-                pass
+            validated_https_url(value, origin_only=origin_only)
         except ValueError:
             return False
+
     return True
 
 
@@ -1797,7 +1776,10 @@ def _saved_oidc_ca_valid(root: Path, value: str) -> bool:
 def _saved_provider_options_valid(args: argparse.Namespace) -> bool:
     """Validate retained provider choices, never substitute new CLI defaults."""
     try:
-        environment = _dotenv(_app_env(args.root))
+        environment = _dotenv(_app_env(args.root), literal_keys={
+            "CASE_INTELLIGENCE_AUTH_MODE", "CASE_INTELLIGENCE_OIDC_ISSUER",
+            "CASE_INTELLIGENCE_OIDC_EGRESS_PINS",
+        })
         compose = _dotenv(args.root / "compose.env")
         options = argparse.Namespace(**vars(args))
         for name, _prompt, _default in IDENTITY_FIELDS[args.auth]:
@@ -1810,6 +1792,7 @@ def _saved_provider_options_valid(args: argparse.Namespace) -> bool:
         if args.auth == "kerberos":
             return (environment.get("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "").strip() == f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret"
                     and _env(f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL", environ=compose) == f"HTTP/{args.server_name}@{options.kerberos_realm.strip().upper()}")
+        _oidc_issuer_pins(environment.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", ""), options.oidc_issuer)
         origin = environment.get("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", "").strip().rstrip("/")
         origins = {f"https://{args.server_name}:{args.https_port}"}
         if args.https_port == 443:

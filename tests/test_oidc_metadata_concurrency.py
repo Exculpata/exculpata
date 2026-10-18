@@ -118,3 +118,18 @@ def test_unicode_and_ascii_idna_endpoints_share_the_exact_wire_origin(monkeypatc
         client.remote.client_kwargs["transport"] = httpx.MockTransport(lambda request: httpx.Response(200, json=metadata))
         assert (await client._validated_metadata())["issuer"] == settings.issuer
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("key", ["authorization_endpoint", "token_endpoint", "jwks_uri"])
+def test_ipv6_hex_case_does_not_change_endpoint_origin(monkeypatch, key):
+    async def exercise():
+        _, metadata = configured_client(monkeypatch)
+        settings = OidcSettings(issuer="https://[2001:DB8::1]/realm", external_origin="https://app.example.test",
+                                client_id="synthetic", client_secret="synthetic-secret")
+        client = AuthlibOidcClient(settings)
+        metadata.update(issuer=settings.issuer, authorization_endpoint=settings.issuer + "/authorize",
+                        token_endpoint=settings.issuer + "/token", jwks_uri=settings.issuer + "/jwks")
+        metadata[key] = metadata[key].replace("DB8", "db8")
+        client.remote.client_kwargs["transport"] = httpx.MockTransport(lambda request: httpx.Response(200, json=metadata))
+        assert (await client._validated_metadata())[key] == metadata[key]
+    asyncio.run(exercise())
