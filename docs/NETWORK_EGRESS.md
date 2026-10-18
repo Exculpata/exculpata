@@ -106,6 +106,14 @@ A pinned, hash-verified source archive supplies IDNA2008 without host package
 installation or a preflight network request; its license and reproduction manifest
 ship with the source. Extra sibling modules fail closed; relative imports are loaded
 only from the verified in-memory archive, including deferred IDNA dependencies.
+A finder in the trusted parent package intercepts only this private package's
+normal imports and reloads. It compares this interpreter's cache payload hashes against freshly compiled
+trusted loader source, rejects unknown/symlinked cache artifacts, and
+executes source bytes without ever executing a cache payload. Timestamp, size
+and source-hash cache headers cannot authorize different code. Canonical loader caches tagged for another CPython version are inert: they are
+not read or executed by this interpreter, and that version validates them against
+its own compiled source if it later uses the checkout. Other Python imports are unchanged; this does not protect a compromised parent package or
+arbitrary code already running in the process.
 Invalid Unicode names fail before configuration writes.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for
@@ -122,6 +130,8 @@ intentional. Legacy Docker builders use the root `.dockerignore`, which separate
 excludes all unreviewed IDNA siblings; the Dockerfile copies only exact reviewed
 IDNA files. The native smoke exports a never-started scratch image to check actual
 legacy and BuildKit context contents, with a failing baseline negative control.
+That control vendors the exact historical root ignore file and runs from a
+synthetic source archive without Git history or an old-commit fetch.
 A `.dockerignore` inside the relay directory alone would not filter
 the repository-root context. See [Docker's context rules](https://docs.docker.com/build/concepts/context/#dockerignore-files).
 

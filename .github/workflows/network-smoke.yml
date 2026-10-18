@@ -29,8 +29,6 @@ jobs:
           python-version: "3.12"
       - name: Install locked smoke harness dependencies
         run: python -m pip install --require-hashes -r requirements/network-smoke.lock
-      - name: Fetch the fixed legacy-context regression baseline
-        run: git fetch --no-tags --depth=1 origin 93f21856c2d824e68b7d9f5c97b5d8ff9dc5f196
       - name: Exercise isolated synthetic OIDC and direct-egress denials
         env:
           RUN_NETWORK_SMOKE: "1"

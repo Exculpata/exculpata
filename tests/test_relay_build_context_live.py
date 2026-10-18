@@ -1,5 +1,6 @@
 """Actual Docker context filtering; no container is started or port published."""
 import io
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -26,7 +27,7 @@ def context_files(tmp_path, builder, *, baseline=False):
         destination=root/relative; destination.parent.mkdir(parents=True,exist_ok=True)
         shutil.copyfile(ROOT/relative,destination)
     if baseline:
-        (root/'.dockerignore').write_bytes(subprocess.check_output(['git','show','93f21856:.dockerignore'],cwd=ROOT))
+        shutil.copyfile(ROOT/'tests/fixtures/network/root-93f21856.dockerignore', root/'.dockerignore')
     path=root/'deploy/egress-proxy/Dockerfile'
     path.write_text('FROM scratch\nCOPY . /context/\nCMD ["/never-started"]\n')
     for relative in ('src/case_intelligence/_idna/core.py','src/case_intelligence/_idna/extra/module.py',
@@ -56,7 +57,16 @@ def test_actual_legacy_and_buildkit_context_exclude_unreviewed_idna(tmp_path,bui
     assert_reviewed_context(context_files(tmp_path,builder))
 
 
-def test_93f21856_legacy_context_negative_control(tmp_path):
+def test_93f21856_legacy_context_negative_control(tmp_path, monkeypatch):
+    archive=tmp_path/'source-archive'
+    for relative in ('.dockerignore','deploy/egress-proxy/Dockerfile.dockerignore',
+                     'tests/fixtures/network/root-93f21856.dockerignore',
+                     *(f'src/case_intelligence/_idna/{name}' for name in PUBLIC)):
+        destination=archive/relative; destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(ROOT/relative,destination)
+    historical=(archive/'tests/fixtures/network/root-93f21856.dockerignore').read_bytes()
+    assert hashlib.sha256(historical).hexdigest() == 'b08f17c51e2059441ae086bf9d4e16dbec4a4ec3b41f3377c26b96a2dc2fcad5'
+    monkeypatch.setitem(globals(), 'ROOT', archive)
     files=context_files(tmp_path,'0',baseline=True)
     assert 'context/src/case_intelligence/_idna/core.py' in files
     with pytest.raises(AssertionError):
