@@ -101,6 +101,17 @@ def validate_record(record, sources, *, resolve_support=True):
                 "mention surface differs from cited occurrence")
 
 
+def validate_relations(record, by_key):
+    for relation in record["relations"]:
+        key = (relation["record_id"], relation["revision"])
+        require(key in by_key and key != (record["record_id"], record["revision"]),
+                "unresolved or self relation")
+        target = by_key[key]
+        require(target["matter_id"] == record["matter_id"], "foreign matter relation")
+        require(target["record_type"] in ("event", "statement"),
+                "conflict target is not an assertion")
+
+
 def append_revision(history, candidate, sources, *, scope=None, resolve_support=True):
     """Copy on append; old review/evidence snapshots are never edited in place."""
     validate_record(candidate, sources, resolve_support=resolve_support)
@@ -132,6 +143,11 @@ def append_revision(history, candidate, sources, *, scope=None, resolve_support=
                 "review targets a different proposal")
         for field in ("producer", "payload", "citations", "relations"):
             require(candidate[field] == previous[field], "review changed the proposed evidence")
+    if resolve_support:
+        combined = [*history, candidate]
+        by_key = {(r["record_id"], r["revision"]): r for r in combined}
+        require(len(by_key) == len(combined), "duplicate relation target identity")
+        validate_relations(candidate, by_key)
     return [*deepcopy(history), deepcopy(candidate)]
 
 
@@ -145,12 +161,7 @@ def validate_history(records, sources, matter_id):
         history = append_revision(history, record, sources, resolve_support=False)
     by_key = {(r["record_id"], r["revision"]): r for r in history}
     for record in history:
-        for relation in record["relations"]:
-            key = (relation["record_id"], relation["revision"])
-            require(key in by_key and key != (record["record_id"], record["revision"]),
-                    "unresolved or self relation")
-            require(by_key[key]["record_type"] in ("event", "statement"),
-                    "conflict target is not an assertion")
+        validate_relations(record, by_key)
     return history
 
 

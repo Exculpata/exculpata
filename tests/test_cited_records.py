@@ -660,3 +660,50 @@ def test_fresh_quote_free_acceptance_rejects_invalid_coverage_basis(unreadable_b
     history = validate_history([record(bundle, "coverage-capture")], bundle["sources"], bundle["matter_id"])
     with pytest.raises(ValueError, match=message):
         append_revision(history, record(bundle, "coverage-capture", 2), bundle["sources"], scope=bundle["scope"])
+
+
+@pytest.mark.parametrize("status", ["proposed", "accepted"])
+@pytest.mark.parametrize(("invalid_target", "message"), [
+    ("missing-revision", "unresolved"), ("foreign-matter", "foreign|matter"),
+    ("non-assertion", "assertion"), ("self", "unresolved|self"),
+    ("duplicate-key", "duplicate"),
+])
+def test_fresh_append_resolves_conflict_targets_before_accepting_snapshot(bundle, status, invalid_target, message):
+    history = [record(bundle, "event-arrival", revision) for revision in (1, 2)]
+    proposal = record(bundle, "event-witness")
+    relation = proposal["relations"][0]
+    if invalid_target == "missing-revision":
+        relation["revision"] = 99
+    elif invalid_target == "foreign-matter":
+        for target in history:
+            target["matter_id"] = "foreign-matter"
+    elif invalid_target == "non-assertion":
+        target = record(bundle, "mention-rowan-report")
+        history.append(target)
+        relation.update(record_id=target["record_id"], revision=target["revision"])
+    elif invalid_target == "self":
+        relation.update(record_id=proposal["record_id"], revision=1 if status == "proposed" else 2)
+    else:
+        history.append(deepcopy(history[-1]))
+    # These are valid-shaped inputs, including an identical proposed basis for
+    # acceptance; neither changed evidence nor missing proposal explains rejection.
+    validate_record(proposal, bundle["sources"])
+    candidate = proposal
+    if status == "accepted":
+        history.append(deepcopy(proposal))
+        candidate = decision(proposal)
+        assert candidate["relations"] == history[-1]["relations"]
+    with pytest.raises(ValueError, match=message):
+        append_revision(history, candidate, bundle["sources"])
+
+
+def test_fresh_conflicting_proposal_and_acceptance_preserve_exact_target_revision(bundle):
+    history = [record(bundle, "event-arrival", revision) for revision in (1, 2, 3)]
+    proposal = record(bundle, "event-witness")
+    history = append_revision(history, proposal, bundle["sources"])
+    history = append_revision(history, decision(proposal), bundle["sources"])
+    accepted = next(r for r in selected(history) if r["record_id"] == "event-witness")
+    assert accepted["status"] == "accepted" and accepted["revision"] == 2
+    assert accepted["relations"] == proposal["relations"]
+    assert accepted["relations"][0]["record_id"] == "event-arrival"
+    assert accepted["relations"][0]["revision"] == 2  # Never retarget the newer proposal.

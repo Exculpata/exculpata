@@ -81,6 +81,9 @@ helper; passing JSON Schema alone cannot authorize or establish a valid acceptan
   discovery or choose a winner. A later revision does not silently retarget a link.
   The projection labels each target's review status and whether that revision is
   current or historical/superseded; a rejected target is not rendered as evidence.
+  Fresh proposals and review decisions resolve these exact targets against the
+  supplied history before append; missing, foreign-matter and non-assertion targets
+  fail at that boundary, not only during later chronology compilation.
 
 Existing runtime states (`needs_review`, `confirmed`, `disputed`, `dismissed`)
 are not interchangeable with this proposal's review decisions. Runtime adoption
