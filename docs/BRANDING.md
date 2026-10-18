@@ -216,6 +216,22 @@ lifecycle SQL rendering, warning-once bookkeeping, thread-object storage and two
 The unknown-call restriction adds 77 exact records: four scanner-analysis operations and 73 existing consumer operations, primarily argparse configuration, storage-marker reads and validation, thread startup, logger calls, regex/query parsing and settings or metadata validation. The existing publication-selector result inspection has its own additional record; its implementation is unchanged. All preceding 100 records remain. Additional diagnostic records cover empty-placeholder and captured-callable scanner analysis, export serialization, diagnostic-proof validation and the existing upload-admission scope hash. These do not authorize additional operational names. The local-call restriction adds 43 exact call-site records for existing diagnostic, selector, command, serialization, export and audit consumers. Their implementations are unchanged, including the publication guard; there is no general helper-name exemption or argument interpreter. Each record names the exact path, complete module source digest, diagnostic line
 and text, semantic reason and validation suite. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
+Source hashes prove identity, not semantic safety. Operational key and path
+receipts identify the input origin, fixed namespace or path boundary, and intended
+consumer. Their focused executable checks cover matter/checkpoint isolation,
+previous-key migration, receipt identity rejection, route encoding, fixed artifact
+leaves and lexical static-site containment. Asset-presence tests alone are not
+evidence for those behaviors. A path join normalizes a selected root and leaf;
+it does not establish a sandbox or resolve symlink containment. These consumer
+checks preserve existing behavior and do not claim that arbitrary JavaScript
+helpers or every source-locked display expression have been semantically proved.
+Python parse rejection is blocking, including the contract authority module and
+Python shebangs. Extensionless files still receive Python semantic checks when
+they parse; known non-Python text formats and shell shebangs retain raw checks,
+while other unparseable extensionless source fails closed. Shell ANSI-C quoting
+is unsupported as a whole family. Shell text is also scanned after conservatively
+removing backslash-newline pairs, retaining raw checks even inside quoted text.
+These parse and shell diagnostics cannot receive source receipts.
 The gate still scans every file and checks all literal and resolved identifiers.
 An extra diagnostic is blocked. Any source change invalidates that file's records,
 and records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.

@@ -186,6 +186,11 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
     placeholder_pattern = r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}"
     shell_source = Path(location).suffix == ".sh" or Path(location).name.endswith(".env") or bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", text))
     if shell_source:
+        if "$'" in text:
+            found.append(Finding(f"{location}:1", "unsupported shell ANSI-C quoting"))
+        continued = text.replace("\\\n", "")
+        if continued != text:
+            found.extend(scan_text(location, continued, contracts, literal=literal))
         unquoted = re.sub(r"['\"]", "", text)
         if re.search(r"\$\{[^}\n]*\$\{", unquoted):
             found.append(Finding(f"{location}:1", "unsupported nested shell parameter composition"))
@@ -347,8 +352,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     """Inspect constant string compositions without importing or executing source."""
     try:
         tree = tree if tree is not None else ast.parse(text.removeprefix("\ufeff"))
-    except SyntaxError:
-        return []  # Compilation is enforced separately.
+    except (SyntaxError, ValueError, RecursionError):
+        return [Finding(f"{location}:1", f"unsupported Python parse; use {RENAME_COMPAT_HELPER}")]
     env = {name: ContainerValue("callable", ("builtins." + name,)) for name in ("str", "repr", "ascii", "len", "bool", "int", "float", "dict", "list", "tuple", "set")}
     unresolved_stems: set[str] = set()
     binding_events: list[tuple[str, str | ContainerValue | None]] = []
@@ -1903,7 +1908,8 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             lines = [bytearray(line.encode("utf-8")) for line in text.splitlines(keepends=True)]
             try:
                 authority = ast.parse(text.removeprefix("\ufeff"))
-            except SyntaxError:
+            except (SyntaxError, ValueError, RecursionError):
+                found.append(Finding(f"{relative.as_posix()}:1", f"unsupported Python parse; use {RENAME_COMPAT_HELPER}"))
                 authority = ast.Module(body=[], type_ignores=[])
             remaining = []
             for statement in authority.body:
@@ -1936,7 +1942,23 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             found.extend(apply_source_forms(relative.as_posix(), text, syntactic, source_forms,
                                             require_current=root.resolve() == ROOT.resolve()))
         shebang = text.removeprefix("\ufeff").partition("\n")[0]
-        if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
+        python_source = path.suffix == ".py" or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang))
+        if not path.suffix and not python_source:
+            # Preserve semantic checks for valid extensionless Python, while
+            # treating known non-Python formats as text rather than malformed Python.
+            try:
+                authority = ast.parse(text.removeprefix("\ufeff"))
+            except (SyntaxError, ValueError, RecursionError):
+                known_text_format = path.name in {
+                    ".dockerignore", ".gitignore", ".assetsignore", "Dockerfile",
+                    "Makefile", "LICENSE", "NOTICE", "CODEOWNERS", "_headers",
+                }
+                shell_shebang = bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", shebang))
+                if not known_text_format and not shell_shebang:
+                    found.append(Finding(f"{relative.as_posix()}:1", f"unsupported Python parse; use {RENAME_COMPAT_HELPER}"))
+            else:
+                python_source = True
+        if python_source:
             consumed_source_forms.add(relative.as_posix())
             syntactic = scan_python(relative.as_posix(), text, contracts, tree=authority)
             found.extend(apply_source_forms(relative.as_posix(), text, syntactic, source_forms,

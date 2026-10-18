@@ -50,6 +50,8 @@ def test_legacy_filenames_are_checked_before_content_filters(tmp_path, filename,
     expected = [checker.Finding(f"scripts/{filename}:1", filename)]
     if data.startswith(b"\xff"):
         expected.append(checker.Finding(f"scripts/{filename}:1", "unsupported undecodable operational source"))
+    if filename.endswith('.py') and b'\x00' in data:
+        expected.append(checker.Finding(f"scripts/{filename}:1", 'unsupported Python parse; use case_intelligence.legacy_names.name_value'))
     assert checker.findings(tmp_path) == expected
 
 
@@ -1824,3 +1826,116 @@ def test_unmodeled_type_alias_and_type_parameter_syntax_is_rejected(source):
     source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + source
     found = checker.scan_python('synthetic.py', source, NAME_CONTRACTS)
     assert any('unsupported Python AST node' in item.identifier for item in found)
+
+
+@pytest.mark.parametrize('source', ['def broken(:\n pass', 'value = "unterminated', '\x00'])
+@pytest.mark.parametrize('relative', ['synthetic.py', 'synthetic', 'synthetic-tool'])
+def test_python_parse_uncertainty_is_blocking(tmp_path, source, relative):
+    (tmp_path / relative).write_text(source)
+    found = checker.findings(tmp_path)
+    assert any('unsupported Python parse' in item.identifier for item in found)
+    assert any('case_intelligence.legacy_names.name_value' in item.identifier for item in found)
+    assert any('unsupported Python parse' in item.identifier
+               for item in checker.scan_python(relative, source, NAME_CONTRACTS))
+
+
+def test_python_authority_parse_failure_is_not_replaced_by_a_clean_empty_tree(tmp_path):
+    path = tmp_path / 'src/case_intelligence/legacy_names.py'
+    path.parent.mkdir(parents=True)
+    path.write_text('NAME_CONTRACTS = {\n')
+    assert any('unsupported Python parse' in item.identifier for item in checker.findings(tmp_path))
+
+
+def test_python_parse_failure_retains_raw_identifier_findings(tmp_path):
+    identifier = LEGACY_STEM + '-unregistered-v99'
+    (tmp_path / 'synthetic.py').write_text('def broken(:\n# ' + identifier)
+    found = checker.findings(tmp_path)
+    assert any('unsupported Python parse' in item.identifier for item in found)
+    assert any(item.identifier == identifier for item in found)
+
+
+@pytest.mark.parametrize('error_type', [SyntaxError, ValueError, RecursionError])
+def test_python_parser_rejection_fails_closed_without_exception_text(monkeypatch, error_type):
+    def fail(*args, **kwargs):
+        raise error_type('synthetic parser detail')
+    rejected = None
+    with monkeypatch.context() as patch:
+        patch.setattr(checker.ast, 'parse', fail)
+        try:
+            found = checker.scan_python('synthetic.py', 'synthetic', NAME_CONTRACTS)
+        except error_type as error:
+            rejected = error
+    assert rejected is None
+    assert any('unsupported Python parse' in item.identifier for item in found)
+    assert all('synthetic parser detail' not in item.identifier for item in found)
+
+
+@pytest.mark.parametrize('source', [
+    r"VALUE=$'\x72ecordbench-unregistered-v99'",
+    r"VALUE=$'\162ecordbench-unregistered-v99'",
+    'VALUE=rec\\\nordbench-unregistered-v99',
+    'VALUE="rec\\\nordbench-unregistered-v99"',
+])
+def test_shell_encoded_and_continued_names_are_blocked_with_bash_runtime_proof(tmp_path, source):
+    import shutil
+    import subprocess
+    bash = shutil.which('bash')
+    if bash is None:
+        pytest.skip('Bash is required for the synthetic shell behavior proof')
+    actual = subprocess.run([bash, '--noprofile', '--norc', '-c', source + '\nprintf "%s" "$VALUE"'],
+                            capture_output=True, text=True, timeout=5, check=True)
+    assert actual.stdout == LEGACY_STEM + '-unregistered-v99'
+    (tmp_path / 'synthetic.sh').write_text(source)
+    assert checker.findings(tmp_path)
+    assert checker.scan_text('synthetic.sh', source)
+
+
+@pytest.mark.parametrize('source', [r"VALUE=$'\u0072ecordbench-unregistered-v99'",
+                                  r"VALUE=$'\U00000072ecordbench-unregistered-v99'",
+                                  "VALUE=$'synthetic'", "VALUE=$'unfinished"])
+def test_ansi_c_quoting_is_a_consistently_unsupported_shell_family(source):
+    assert any('unsupported shell ANSI-C quoting' in item.identifier
+               for item in checker.scan_text('synthetic.sh', source))
+
+
+@pytest.mark.parametrize('relative,source', [
+    ('Dockerfile', 'FROM synthetic\nRUN echo synthetic'),
+    ('Makefile', 'check:\n\t@echo synthetic'),
+    ('.gitignore', '*.synthetic\n'),
+    ('install', '#!/bin/sh\necho synthetic'),
+])
+def test_known_non_python_extensionless_sources_keep_literal_checks(tmp_path, relative, source):
+    path = tmp_path / relative
+    path.write_text(source)
+    assert checker.findings(tmp_path) == []
+    path.write_text(source + '\n# ' + LEGACY_STEM + '-unregistered-v99\n')
+    assert any(item.identifier == LEGACY_STEM + '-unregistered-v99' for item in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('relative', ['Dockerfile', 'Makefile', 'install'])
+def test_valid_python_in_extensionless_source_still_gets_semantic_checks(tmp_path, relative):
+    (tmp_path / relative).write_text('VALUE = "record" + "bench-unregistered-v99"')
+    assert any(item.identifier == LEGACY_STEM + '-unregistered-v99' for item in checker.findings(tmp_path))
+
+
+def test_python_shebang_remains_binding_for_known_other_filename(tmp_path):
+    (tmp_path / 'Dockerfile').write_text('#!/usr/bin/env python3\ndef broken(:\n pass')
+    assert any('unsupported Python parse' in item.identifier for item in checker.findings(tmp_path))
+
+
+@pytest.mark.parametrize('source', ['VALUE=synthetic\\\n-value', 'VALUE="record\\\nbench.env"'])
+def test_shell_continuation_controls_keep_registered_names_and_plain_text(source):
+    assert checker.scan_text('synthetic.sh', source) == []
+
+
+@pytest.mark.parametrize('diagnostic', ['unsupported Python parse; use case_intelligence.legacy_names.name_value',
+                                      'unsupported shell ANSI-C quoting'])
+def test_parse_and_shell_rejections_cannot_receive_source_receipts(tmp_path, monkeypatch, diagnostic):
+    import json
+    manifest = tmp_path / 'forms.json'
+    manifest.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
+        'source_sha256': 'a' * 64,
+        'diagnostics': [{'line': 1, 'identifier': diagnostic, 'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
+    with pytest.raises(ValueError, match='diagnostic contract'):
+        checker.source_form_contracts()
