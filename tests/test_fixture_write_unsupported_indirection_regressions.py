@@ -1,4 +1,5 @@
 """Unsupported shared indirection rejects without expanding the interpreter."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -76,7 +77,9 @@ def test_unsupported_indirection_actually_closes_shared_connection_before_reject
     raw, independent = sqlite3.connect(':memory:'), sqlite3.connect(':memory:')
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     try:
-        exec(source, {'bench': bench, 'independent': independent})
+        error, _ = fixture_probe(source, bench=bench, independent=independent)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)
@@ -95,9 +98,10 @@ def test_target_walrus_rebinds_real_setter_and_commits_pending_work(tmp_path):
         raw.execute('CREATE TABLE synthetic_fixture(value TEXT)')
         # fixture-write: Deliberately retain pending synthetic data for the target expression transaction termination probe.
         raw.execute("INSERT INTO synthetic_fixture VALUES ('pending')")
-        namespace = {'bench': bench, 'handle': independent, 'sink': [0]}
-        exec(action, namespace)
-        assert namespace['sink'] == [1]
+        error, changed_sink = fixture_probe(action, 'sink', bench=bench, handle=independent, sink=[0])
+        if error is not None:
+            raise error
+        assert changed_sink == [1]
         with sqlite3.connect(path) as observer:
             assert observer.execute('SELECT value FROM synthetic_fixture').fetchall() == [('pending',)]
         assert check_fixture_writes(source)

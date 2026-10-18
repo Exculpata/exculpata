@@ -1038,6 +1038,8 @@ class _Check(ast.NodeVisitor):
         # bound method retains ownership at its immediate invocation.
         self.visit(node.func)
         function = self.value(node.func)
+        if function.symbol in {"exec", "eval", "builtins.exec", "builtins.eval"}:
+            self.flag(node, "dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()", structural=True)
         if self.unresolved_ownership(function):
             self.flag(node, "shared container accessors are unsupported; use explicit named handles", structural=True)
             self.evaluated_values[node] = function

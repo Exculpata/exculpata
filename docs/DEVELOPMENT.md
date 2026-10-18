@@ -104,6 +104,8 @@ repository extraction. A new feature should strengthen those boundaries while
 preserving atomic authorization, source validation, and saving. Update linked
 capability claims when behavior changes; keep historical receipts dated.
 
+### Synthetic fixture writes
+
 Tests that start background workers must respect their job ownership and the
 workspace transaction lock. Prefer public workflow transitions over direct SQL
 to establish retry states. If a fixture manually claims and completes a job,
@@ -224,6 +226,13 @@ Ordinary scalar data and proven independent-resource containers remain supported
 Scalar conversion can discard handle ownership but must retain active database-path
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
+
+The inventory checks all tracked Python tests and scripts, including helpers
+imported by tests. Stage new sources before running it. Dynamic `exec`/`eval`
+(including resolved aliases) is rejected without interpreting its payload. The
+fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
+dynamic-execution finding is allowed, and every other boundary check still runs.
+See the [fixture standard](../CODING_STANDARDS.md#synthetic-fixture-writes).
 
 Structural rejection cannot be suppressed with `# fixture-write:` comments.
 Exact-statement exceptions remain available for deliberate raw SQLite operations

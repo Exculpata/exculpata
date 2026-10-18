@@ -15,9 +15,13 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 import uuid
 import wave
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tests.fixture_write import fixture_write
 
 from case_intelligence.answer_evidence import _terms
 from case_intelligence.managed_storage import StoragePolicy
@@ -106,21 +110,22 @@ def _prepared_media(store, path):
 
 
 def _import_transcript(bench, matter, document, segments, actor):
-    job = bench.workspace.queue_media_job(
-        matter.matter_id, document.document_id, document.version_id, actor,
-        source_sha256=document.digest, byte_size=document.size,
-        media_type=document.media_type, duration_ms=document.duration_ms)
-    claimed = bench.workspace.claim_media_job("synthetic-corpus-worker")
-    if claimed is None or claimed.media_job_id != job.media_job_id:
-        raise RuntimeError("Corpus transcript job could not be claimed")
-    bench.workspace.import_media_transcript(job.media_job_id, segments=[{
-        "external_segment_id": f"corpus-segment-{index}",
-        "start_ms": round(segment["start"] * 1000),
-        "end_ms": round(segment["end"] * 1000),
-        "speaker_cluster": segment.get("speaker", "UNKNOWN"),
-        "model_text": segment["text"],
-    } for index, segment in enumerate(segments, 1)], warnings=[], quality={}, provenance={})
-    bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="Synthetic corpus projection")
+    with fixture_write(bench.workspace, media=True):
+        job = bench.workspace.queue_media_job(
+            matter.matter_id, document.document_id, document.version_id, actor,
+            source_sha256=document.digest, byte_size=document.size,
+            media_type=document.media_type, duration_ms=document.duration_ms)
+        claimed = bench.workspace.claim_media_job("synthetic-corpus-worker")
+        if claimed is None or claimed.media_job_id != job.media_job_id:
+            raise RuntimeError("Corpus transcript job could not be claimed")
+        bench.workspace.import_media_transcript(job.media_job_id, segments=[{
+            "external_segment_id": f"corpus-segment-{index}",
+            "start_ms": round(segment["start"] * 1000),
+            "end_ms": round(segment["end"] * 1000),
+            "speaker_cluster": segment.get("speaker", "UNKNOWN"),
+            "model_text": segment["text"],
+        } for index, segment in enumerate(segments, 1)], warnings=[], quality={}, provenance={})
+        bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="Synthetic corpus projection")
     bench._project_media_transcript(matter, document, (), degraded=False)
     return bench.source_store(matter).get(document.document_id)
 

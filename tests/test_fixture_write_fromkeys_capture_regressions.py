@@ -1,4 +1,5 @@
 """fromkeys must retain evaluated key ownership as well as its default."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -43,7 +44,9 @@ def test_fromkeys_iteration_closes_real_shared_connection_before_rejection():
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     source = 'holder = dict.fromkeys([bench.workspace.connection])\nfor handle in holder:\n    handle.close()'
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

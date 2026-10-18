@@ -44,3 +44,28 @@ CASE_INTELLIGENCE_AUTH_MODE=preview .venv/bin/exculpata-workbench --host 127.0.0
 ```
 
 Sign in with a synthetic preview identity and create a synthetic matter. Keep this mode on loopback.
+
+## Synthetic fixture writes
+
+Use `tests.fixture_write.fixture_write(workspace)` for raw writes to a shared
+workspace connection. Manual media queue/claim/import/finish sequences belong in
+one `fixture_write(workspace, media=True)` scope. Keep worker waits, HTTP calls and
+projection outside that scope. The media scope serializes the public methods;
+it does not turn their individual commits into one atomic transaction.
+
+The fixture inventory checks every tracked Python test and `scripts/*.py`, a
+conservative superset of scripts imported by tests, including transitive imports.
+Stage new fixture sources before running the inventory. Use explicit named
+handles and the supported syntax described in
+[development guidance](docs/DEVELOPMENT.md#synthetic-fixture-writes).
+Run `python -m pytest -q tests/test_fixture_write_policy.py tests/test_fixture_inventory.py`.
+
+Do not hide setup in `exec` or `eval`, including aliases and compiled payloads.
+Dynamic execution is a structural violation; `# fixture-write:` cannot waive it.
+Negative regression probes retain actual runtime effects and check rejection of
+the same source through `tests.fixture_probe` with fixed named inputs. Installer
+and workflow probes use fixed repository-source entry points in
+`tests.runtime_probes`, with no caller-provided executable source or namespace.
+The inventory pins these two reviewed harnesses and suppresses only their dynamic
+execution finding; all other fixture rules still apply. Changes to a harness
+require review of its fixed inputs, retained runtime assertions and updated pin.

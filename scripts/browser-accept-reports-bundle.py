@@ -33,6 +33,8 @@ from selenium.webdriver.support import expected_conditions as EC
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
+from tests.fixture_write import fixture_write
 
 from case_intelligence.generation import UnavailableGenerator  # noqa: E402
 from case_intelligence.identity import PREVIEW_IDENTITIES, SESSION_COOKIE  # noqa: E402
@@ -470,7 +472,7 @@ def main():
                 record_check("Failed-close readiness retains Report details without unavailable edit links; Close matter recovery opens and deliberate retry completes")
 
             # Synthetic legacy matter: viewing the invitation must not enroll it.
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL WHERE matter_id=?",
                     (matter.matter_id,))

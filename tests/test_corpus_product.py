@@ -131,3 +131,27 @@ def test_corpus_citations_accept_observed_spoken_numeral_without_inference_from_
     assert 'search-scan-en' not in actual and 'search-scan-es' not in actual
     results = gate.compare(manifest, expected, actual)
     assert all(row['passed'] for row in results), results
+
+
+def test_manual_media_seed_holds_owning_lock_across_all_public_steps(tmp_path, monkeypatch):
+    from case_intelligence.workspace_store import WorkspaceStore
+
+    import threading
+
+    seed_thread = threading.current_thread()
+    seen = []
+    for name in ('queue_media_job', 'claim_media_job', 'import_media_transcript', 'finish_media_job'):
+        original = getattr(WorkspaceStore, name)
+
+        def observed(workspace, *args, _original=original, _name=name, **kwargs):
+            if threading.current_thread() is seed_thread:
+                assert workspace._lock._is_owned(), f'{_name} escaped the media fixture scope'
+                seen.append(_name)
+            return _original(workspace, *args, **kwargs)
+
+        monkeypatch.setattr(WorkspaceStore, name, observed)
+    result = product.observe(tmp_path, _inputs(tmp_path))
+    assert seen == ['queue_media_job', 'claim_media_job', 'import_media_transcript', 'finish_media_job']
+    assert result['spoken']['mode'] == 'prepared-transcript-fixture'
+    assert result['answer']['answerable'] is True
+    assert all(citation['source_valid'] for citation in result['answer']['citations'])

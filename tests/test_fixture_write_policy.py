@@ -113,12 +113,8 @@ def test_exception_cannot_license_deferred_lambda_write():
     assert check_fixture_writes(source)
 
 
-def test_test_modules_observe_fixture_write_boundary():
-    root = Path(__file__).parent
-    violations = []
-    for path in sorted(root.rglob("*.py")):
-        # The implementation is the sole owner of the underlying raw boundary.
-        if path == root / "fixture_write.py":
-            continue
-        violations.extend(check_fixture_writes(path.read_text(encoding="utf-8"), str(path.relative_to(root.parent))))
+def test_test_modules_and_scripts_observe_fixture_write_boundary():
+    from tests.fixture_inventory import check_repository_fixtures
+
+    violations = check_repository_fixtures(Path(__file__).resolve().parents[1])
     assert not violations, "\n" + "\n".join(map(str, violations))
