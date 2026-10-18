@@ -1460,3 +1460,71 @@ def test_dynamic_callable_member_selection_retains_restriction(tmp_path, selecti
     source = 'from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n' + selection + '\nFORMAT=Alias(LEGACY_STEM)'
     (tmp_path/'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('selection', [
+    'choices={"yes":build,"no":str}\nAlias=choices.get(selected,str)',
+    'choices={"yes":build}\nAlias=choices.get("yes",str)',
+    'choices={}\nAlias=choices.get(selected,build)',
+])
+def test_dictionary_callable_selectors_preserve_identity(tmp_path, selection):
+    source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+selection+'\nFORMAT=Alias(LEGACY_STEM)'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('line_break', ['\x85','\u2028','\u2029'])
+def test_yaml_unicode_continuation_breaks_fail_closed(tmp_path, line_break):
+    source='key: "record\\'+line_break+'  bench-unregistered-v99"\n'
+    (tmp_path/'compose.yaml').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'const FORMAT = "record" + "bench-unregistered-v99";',
+    'const FORMAT = ("record") + ("bench-unregistered-v99");',
+    'const FORMAT = "record" /* synthetic */ + "bench-unregistered-v99";',
+])
+def test_plain_javascript_literal_composition_is_unsupported(tmp_path, source):
+    (tmp_path/'synthetic.js').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'VALUE=rec${EMPTY}ordbench-unregistered-v99',
+    'KNOWN=recordbench.env\nVALUE=rec${EMPTY}ordbench-unregistered-v99',
+    'VALUE=r${FIRST}ec${SECOND}ordbench-unregistered-v99',
+])
+def test_empty_placeholders_cannot_hide_assembled_legacy_stem(tmp_path, source):
+    (tmp_path/'synthetic.sh').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('selection', [
+    'choices={"yes":build,"no":str}\nAlias=choices.get("no",build)',
+    'choices={}\nAlias=choices.get("missing",str)',
+])
+def test_exact_dictionary_callable_selection_preserves_supported_choice(tmp_path, selection):
+    source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+selection+'\nFORMAT=Alias(LEGACY_STEM)'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('source', [
+    'VALUE=rec${EMPTY}ordbench.env',
+    'VALUE=recordbench-backup-{NODE_ID}.service',
+    'VALUE=synthetic${EMPTY}text',
+])
+def test_empty_placeholder_controls_preserve_registered_and_nonlegacy_names(source):
+    assert checker.scan_text('synthetic.sh',source) == []
+
+
+@pytest.mark.parametrize('selection', [
+    'def select(callback):\n return callback\nAlias=select(build)',
+    'choices={"yes":build}\nAlias=choices.pop("yes")',
+    'Alias=build.__call__',
+])
+def test_unmodeled_callable_consumers_preserve_possible_identity(tmp_path, selection):
+    source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+selection+'\nFORMAT=Alias(LEGACY_STEM)'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
