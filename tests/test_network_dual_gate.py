@@ -10,7 +10,7 @@ from case_intelligence.legacy_names import CURRENT_PRODUCT
 from tests.test_oss_installer import ROOT, installer, ready_host, preflight_args, checks_by_name
 from tests.test_first_run_handoff import configured_node
 
-ENGINE_CHECK = installer._dns_engine_known_fix
+ENGINE_CHECK = installer._docker_engine_meets_floor
 
 
 @pytest.mark.parametrize('version,allowed', [
@@ -19,7 +19,7 @@ ENGINE_CHECK = installer._dns_engine_known_fix
     ('26.0.0-rc1', False), ('99.0.0-dev', False), ('unknown', False), ('26', False),
 ])
 def test_preflight_engine_floor_is_blocking_before_writes(tmp_path, ready_host, monkeypatch, version, allowed):
-    monkeypatch.setattr(installer, '_dns_engine_known_fix', ENGINE_CHECK)
+    monkeypatch.setattr(installer, '_docker_engine_meets_floor', ENGINE_CHECK)
     original = installer._probe
     monkeypatch.setattr(installer, '_probe', lambda command:
         subprocess.CompletedProcess(command, 0, version, '') if '{{.ServerVersion}}' in command else original(command))
@@ -78,10 +78,10 @@ def test_only_legacy_rollback_skips_live_proof_but_never_engine_floor(tmp_path, 
     monkeypatch.setattr(installer.urllib.request, 'urlopen', lambda *a,**kw:io.BytesIO(json.dumps(payload).encode()))
     def reject(root): raise RuntimeError('synthetic DNS proof rejected')
     monkeypatch.setattr(installer, '_verify_installed_dns', reject)
-    monkeypatch.setattr(installer, '_dns_engine_known_fix', lambda:True)
+    monkeypatch.setattr(installer, '_docker_engine_meets_floor', lambda:True)
     if rollback and contract == 'legacy':
         installer._wait_health(installer.Console(color=False, quiet=True),root,rollback=rollback)
-        monkeypatch.setattr(installer, '_dns_engine_known_fix', lambda:False)
+        monkeypatch.setattr(installer, '_docker_engine_meets_floor', lambda:False)
         with pytest.raises(RuntimeError, match='Docker Engine 26'):
             installer._wait_health(installer.Console(color=False, quiet=True),root,rollback=rollback)
     else:
@@ -109,7 +109,7 @@ def test_unsupported_engine_stops_saved_lifecycle_before_mutation(tmp_path, requ
     root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, 'oidc')
     args.command = 'install' if mode == 'resume' else 'update'
     before = {p.relative_to(root):p.read_bytes() for p in root.rglob('*') if p.is_file()}
-    monkeypatch.setattr(installer, '_dns_engine_known_fix', lambda:False)
+    monkeypatch.setattr(installer, '_docker_engine_meets_floor', lambda:False)
     monkeypatch.setattr(installer, '_verify_installed_dns', lambda root:None)
     monkeypatch.setattr(installer, '_run', lambda *a,**k:pytest.fail('unsupported engine reached runtime mutation'))
     monkeypatch.setattr(installer, '_stage_release', lambda *a,**k:pytest.fail('unsupported engine staged a release'))
@@ -122,7 +122,7 @@ def test_unsupported_engine_stops_saved_lifecycle_before_mutation(tmp_path, requ
 def test_unsupported_engine_stops_fresh_install_before_mutation(tmp_path, ready_host, monkeypatch):
     import sys
     root=tmp_path/'fresh-node'
-    monkeypatch.setattr(installer, '_dns_engine_known_fix', lambda:False)
+    monkeypatch.setattr(installer, '_docker_engine_meets_floor', lambda:False)
     monkeypatch.setattr(installer, '_verify_installed_dns', lambda root:None)
     monkeypatch.setattr(installer, '_prepare_directories', lambda *a,**k:pytest.fail('unsupported engine prepared state'))
     monkeypatch.setattr(installer, '_stage_release', lambda *a,**k:pytest.fail('unsupported engine staged a release'))

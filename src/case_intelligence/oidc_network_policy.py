@@ -142,6 +142,6 @@ def validated_https_url(value, *, origin_only=False):
         address = ipaddress.ip_address(host)
     except ValueError:
         address = None
-    if address is not None and address.is_loopback:
-        raise Denied("loopback host denied")
+    if address is not None and not pinnable(address):
+        raise Denied("unsafe literal host denied")
     return candidate

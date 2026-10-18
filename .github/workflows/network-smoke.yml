@@ -29,12 +29,14 @@ jobs:
           python-version: "3.12"
       - name: Install locked smoke harness dependencies
         run: python -m pip install --require-hashes -r requirements/network-smoke.lock
+      - name: Fetch the fixed legacy-context regression baseline
+        run: git fetch --no-tags --depth=1 origin 93f21856c2d824e68b7d9f5c97b5d8ff9dc5f196
       - name: Exercise isolated synthetic OIDC and direct-egress denials
         env:
           RUN_NETWORK_SMOKE: "1"
           NETWORK_SMOKE_DOCKER_CONTEXT: default
           NETWORK_SMOKE_OUTPUT: network-smoke-results
-        run: python -m pytest -q tests/test_egress_proxy_live.py -o faulthandler_timeout=1200
+        run: python -m pytest -q tests/test_relay_build_context_live.py tests/test_egress_proxy_live.py -o faulthandler_timeout=1200
       - name: Retain content-free smoke summary
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

@@ -93,8 +93,9 @@ before writing configuration, matching the application and relay. Structural URL
 checks also reject trailing-dot/double-dot hosts, backslashes, embedded controls
 or spaces, unsupported ASCII host characters, and invalid/zero ports before writes.
 Unicode/ASCII-IDNA names, literal underscores, encoded path characters and valid
-HTTPS ports retain their existing treatment. DNS, certificate and provider metadata
-acceptance remain runtime checks.
+HTTPS ports retain their existing treatment. Literal URLs also reject mapped IPv6, 6to4, Teredo, metadata and other
+non-pinnable addresses. Ordinary RFC1918 and ULA literals retain explicit-pin
+support. DNS, certificate and provider metadata acceptance remain runtime checks.
 Existing ASCII issuer names containing underscores retain literal, exact-host
 matching for compatibility with existing private issuers accepted by HTTPX. This
 is an ASCII-only compatibility rule, not permission to normalize underscores
@@ -103,7 +104,9 @@ or adding a suffix does not gain access.
 Installer, application settings and relay use the same offline issuer/pin policy.
 A pinned, hash-verified source archive supplies IDNA2008 without host package
 installation or a preflight network request; its license and reproduction manifest
-ship with the source. Invalid Unicode names fail before configuration writes.
+ship with the source. Extra sibling modules fail closed; relative imports are loaded
+only from the verified in-memory archive, including deferred IDNA dependencies.
+Invalid Unicode names fail before configuration writes.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for
 token/discovery validation or explicit pin binding. The relay's IDNA dependency
@@ -115,7 +118,11 @@ The relay builds from the repository root to share that offline policy. Its
 ignore file: it excludes everything except the relay code, shared policy and
 explicit licensed IDNA files. Runtime/configuration data, credentials, caches and
 unrelated application sources stay outside the relay build context. The name is
-intentional: a `.dockerignore` inside the relay directory alone would not filter
+intentional. Legacy Docker builders use the root `.dockerignore`, which separately
+excludes all unreviewed IDNA siblings; the Dockerfile copies only exact reviewed
+IDNA files. The native smoke exports a never-started scratch image to check actual
+legacy and BuildKit context contents, with a failing baseline negative control.
+A `.dockerignore` inside the relay directory alone would not filter
 the repository-root context. See [Docker's context rules](https://docs.docker.com/build/concepts/context/#dockerignore-files).
 
 The relay rejects all other destinations, plain HTTP forwarding, malformed authorities,

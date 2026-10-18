@@ -7767,3 +7767,21 @@ path = "scripts/run-browser-acceptance.py"
 kind = "host"
 digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
 detail = "navigation-timeouts.json"
+
+[[source]]
+path = "src/case_intelligence/_idna/__init__.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/_idna/__init__.py"
+kind = "host"
+digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
+detail = "license.md"
+
+[[source]]
+path = "src/case_intelligence/_idna/__init__.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"

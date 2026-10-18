@@ -2,7 +2,7 @@ FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e6
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 # Copy only the shared public policy and its pinned, offline IDNA source.
 COPY src/case_intelligence/__init__.py src/case_intelligence/oidc_network_policy.py /opt/policy/case_intelligence/
-COPY src/case_intelligence/_idna /opt/policy/case_intelligence/_idna
+COPY src/case_intelligence/_idna/__init__.py src/case_intelligence/_idna/idna-3.20.pyz src/case_intelligence/_idna/manifest.json src/case_intelligence/_idna/LICENSE.md src/case_intelligence/_idna/README.md /opt/policy/case_intelligence/_idna/
 RUN python -c "import shutil,sysconfig; shutil.copytree('/opt/policy/case_intelligence',sysconfig.get_path('purelib')+'/case_intelligence')" \
     && chmod -R a+rX /usr/local/lib/python3.12/site-packages/case_intelligence
 # Owner-only release capsules must remain readable by the non-root runtime user.
