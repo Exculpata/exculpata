@@ -1116,3 +1116,102 @@ def test_namespace_generator_returned_callable_runtime_rejection():
     source += '\ntry:\n    next(provider())\nexcept StopIteration as finished:\n    selected = finished.value'
     source += "\nselected()['__builtins__']['exec'](payload)"
     assert_namespace_runtime_effect_and_rejection(source, rejection_line=4)
+
+
+_LOCAL_CALLBACK_CLASS = ('class Callback:\n    def __call__(self):\n        return globals()\n'
+                         '    def selected(self):\n        return globals()\nclass Other(Callback):\n    pass')
+
+
+@pytest.mark.parametrize('expression,selection', [
+    ('Callback()', ''), ('Callback().selected', ''), ('Alias()', ''),
+    ('{"callback": Callback()}[resource]', ''),
+    ('{"callback": Callback().selected}.get(resource)', ''),
+    ('[item for item in [Callback()]]', '[0]'),
+    ('Callback() if resource else Alias()', ''),
+    ('{"nested": (Callback().selected,)}', '["nested"][0]'),
+    ('{"callback": Callback()}.copy()', '["callback"]'),
+    ('{}.get("missing", Callback().selected)', ''),
+    ('construct(Alias)', ''),
+    ('(Callback if resource else Other)()', ''),
+    ('next(iter([Alias]))()', ''),
+    ('getattr(Callback(), "selected")', ''),
+    ('(lambda factory=Alias: factory())()', ''),
+    ('dict.fromkeys(["callback"], Callback())', '["callback"]'),
+    ('Callback', '()'), ('Alias', '()'), ('Callback if resource else Other', '()'),
+])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_delayed_local_class_runtime_rejection(expression, selection, mode):
+    source = _LOCAL_CALLBACK_CLASS + '\nAlias = Callback\ndef construct(factory):\n    return factory()'
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nimport asyncio\nselected = asyncio.run(provider())' + selection
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = next(provider())' + selection
+    else:
+        source += '\nprovider = lambda: ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = provider()' + selection
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source, resource='callback')
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+@pytest.mark.parametrize('value', ['Callback()', 'Callback'])
+def test_delayed_local_class_key_iteration_runtime_acceptance(mode, value):
+    source = _LOCAL_CALLBACK_CLASS
+    expression = '[*{"callback": ' + value + '}]'
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression + '\nimport asyncio\nkeys = asyncio.run(provider())'
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield from ' + expression + '\nkeys = list(provider())'
+    else:
+        source += '\nprovider = lambda: ' + expression + '\nkeys = provider()'
+    keys, sink = run_isolated_namespace_probe(source, 'keys')
+    assert keys == ['callback']
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('source', [
+    'class Callback:\n    def __call__(self):\n        return getattr(1, "real")\nobserved = Callback()()',
+    'async def provider():\n    return lambda: getattr(1, "real")\nimport asyncio\nobserved = asyncio.run(provider())()',
+    'def provider():\n    yield lambda: getattr(1, "real")\nobserved = next(provider())()',
+    'def helper():\n    return getattr(1, "real")\nprovider = lambda: helper\nobserved = provider()()',
+])
+def test_delayed_local_class_supported_helper_runtime_controls(source):
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+def test_local_class_marker_preserves_fixture_ownership_runtime_control():
+    source = ('from types import SimpleNamespace\nfrom threading import RLock\nimport sqlite3\n'
+              'from tests.fixture_write import fixture_write\nclass Holder:\n    pass\nholder = Holder()\n'
+              'connection = sqlite3.connect(":memory:")\n'
+              'holder.workspace = SimpleNamespace(connection=connection, _lock=RLock())\n'
+              'with fixture_write(holder.workspace) as handle:\n'
+              '    handle.execute("CREATE TABLE synthetic (value INTEGER)")\n'
+              '    holder.workspace.connection.execute("INSERT INTO synthetic VALUES (1)")\n'
+              'observed = holder.workspace.connection.execute("SELECT value FROM synthetic").fetchone()[0]\n'
+              'connection.close()')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+def test_local_class_argument_does_not_make_external_result_a_local_instance():
+    source = ('from types import SimpleNamespace\nclass Callback:\n    pass\n'
+              'external = SimpleNamespace(callback=Callback(), answer=1)\n'
+              'provider = lambda: external.answer\nobserved = provider()')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []

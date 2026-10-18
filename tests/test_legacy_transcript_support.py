@@ -56,7 +56,10 @@ def _transcript_fixture():
 
     history: dict[int, tuple[str, ...]] = {}
     workbench = object.__new__(CaseIntelligenceWorkbench)
-    workbench.source_store = lambda _matter: Store()
+    def source_store(_matter):
+        return Store()
+
+    workbench.source_store = source_store
     workbench.workspace = SimpleNamespace(
         transcript_support_history=lambda matter_id, document_id, version_id: (
             history

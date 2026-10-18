@@ -78,8 +78,11 @@ def test_usage_projection_tolerates_an_atomic_file_rename(tmp_path, monkeypatch)
         def __exit__(self, *_args):
             return False
 
+    def scan_generated_entries(_directory):
+        return GeneratedScan()
+
     monkeypatch.setattr(
-        "case_intelligence.managed_storage.os.scandir", lambda _directory: GeneratedScan()
+        "case_intelligence.managed_storage.os.scandir", scan_generated_entries
     )
     assert ManagedMatterStorage._tree_usage(root) == 0
 

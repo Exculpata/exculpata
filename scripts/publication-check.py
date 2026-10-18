@@ -312,7 +312,7 @@ def _scan_bytes(
     for rule, marker in PEM_MARKERS:
         if marker.lower() in lowered:
             pem_rules.add(rule)
-    findings.extend(Finding(location, rule) for rule in sorted(pem_rules))
+    findings.extend([Finding(location, rule) for rule in sorted(pem_rules)])
     network_data = data
     logical_path = re.sub(r"^git:[0-9a-f]{12}:", "", location)
     reviewed_cuda_versions = {

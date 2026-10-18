@@ -214,8 +214,10 @@ def test_task_enumeration_stops_before_materializing_all_entries(tmp_path, monke
         def __exit__(self, *args):
             pass
 
-    monkeypatch.setattr(os, 'scandir', lambda path:
-                        TaskEntries() if Path(path) == folder / 'task' else original(path))
+    def scan_tasks(path):
+        return TaskEntries() if Path(path) == folder / 'task' else original(path)
+
+    monkeypatch.setattr(os, 'scandir', scan_tasks)
     sample = process_tree(10, tmp_path)
     assert len(consumed) == 513
     assert sample['truncated'] and not sample['tree_complete']

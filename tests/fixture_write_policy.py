@@ -215,6 +215,10 @@ class _Value:
     dictionary_fromkeys: bool = False
     dictionary_method: str = ""
     callable_targets: frozenset[str] = frozenset()
+    # Provenance only: never resolve constructors, descriptors, or class members.
+    # Delayed results carrying either marker require the supported fixture helper.
+    local_class: bool = False
+    local_instance: bool = False
 
 
 class _Check(ast.NodeVisitor):
@@ -273,6 +277,14 @@ class _Check(ast.NodeVisitor):
                 self.exempt.add(max(candidates, key=lambda node: (node.lineno, node.col_offset)))
 
     def value(self, node: ast.AST | None) -> _Value:
+        origin = self.value(node.value) if isinstance(node, ast.Attribute) else self.value(node.func) if isinstance(node, ast.Call) else None
+        result = self.expression_value(node, origin)
+        if origin is not None and (origin.local_class or origin.local_instance):
+            # Overlay provenance without discarding SQL/path ownership metadata.
+            return replace(result, local_instance=True)
+        return result
+
+    def expression_value(self, node: ast.AST | None, origin: _Value | None) -> _Value:
         if node is None:
             return _Value()
         if node in self.evaluated_values:
@@ -329,7 +341,7 @@ class _Check(ast.NodeVisitor):
                 return self.opaque_dictionary_value(inputs)
             return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
-            base = self.value(node.value)
+            base = origin
             symbol = base.symbol + "." + node.attr
             if node.attr in {"__globals__", "f_globals", "f_locals"}:
                 return _Value(symbol="<python-scope>")
@@ -388,7 +400,7 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Call):
             if node in self.evaluated_values:
                 return self.evaluated_values[node]
-            function = self.value(node.func)
+            function = origin
             if not function.unannotated_parameter:
                 if (function.symbol in {"globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars"}
                         and not node.args and not node.keywords):
@@ -710,6 +722,8 @@ class _Check(ast.NodeVisitor):
         # Opaque aggregates lose element layout, never protected provenance.
         return _Value(symbol="<reflective-builtins>" if any(self.contains_namespace(value) for value in values) else "",
                       callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in values)),
+                      local_class=any(self.has_local_class(value) for value in values),
+                      local_instance=any(self.has_local_class(value, instances=True) for value in values),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
@@ -718,7 +732,8 @@ class _Check(ast.NodeVisitor):
         # not their namespace-bearing values. Keep cardinality unknown and
         # preserve the existing conservative SQL/path provenance checks.
         if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
-            return replace(self.payload_value([value]), symbol="", callable_targets=frozenset())
+            return replace(self.payload_value([value]), symbol="", callable_targets=frozenset(),
+                           local_class=False, local_instance=False)
         return value
 
     def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
@@ -743,6 +758,13 @@ class _Check(ast.NodeVisitor):
         children = [*([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return targets.union(*(_Check.local_callable_targets(child) for child in children))
+
+    @staticmethod
+    def has_local_class(value: _Value, *, instances=False) -> bool:
+        children = [*([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return (value.local_instance if instances else value.local_class) or any(
+            _Check.has_local_class(child, instances=instances) for child in children)
 
     @staticmethod
     def is_dictionary(value: _Value) -> bool:
@@ -799,6 +821,8 @@ class _Check(ast.NodeVisitor):
         return _Value(dictionary_instance=True,
                       mapping=tuple((key, default) for key in dict.fromkeys(names)) if names is not None else None,
                       callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in inputs)),
+                      local_class=any(self.has_local_class(value) for value in inputs),
+                      local_instance=any(self.has_local_class(value, instances=True) for value in inputs),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
@@ -868,6 +892,8 @@ class _Check(ast.NodeVisitor):
                                       values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       nonstring_constant=all(value.nonstring_constant for value in values),
                                       callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in values)),
+                                      local_class=any(_Check.has_local_class(value) for value in values),
+                                      local_instance=any(_Check.has_local_class(value, instances=True) for value in values),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1439,6 +1465,15 @@ class _Check(ast.NodeVisitor):
         result = self.check_local_call(node, function)
         if result is not None:
             self.evaluated_values[node] = result
+        elif node.args and not function.unannotated_parameter:
+            aggregate = function.symbol.removeprefix("builtins.")
+            if aggregate in {"iter", "list", "tuple", "set", "frozenset", "next", "getattr"}:
+                carried = [self.value(argument) for argument in node.args]
+                if aggregate in {"iter", "list", "tuple", "set", "frozenset"}:
+                    carried = [self.iteration_value(carried[0])]
+                if any(self.has_local_class(value) or self.has_local_class(value, instances=True)
+                       for value in carried):
+                    self.evaluated_values[node] = replace(self.value(node), local_instance=True)
         self.reject_dynamic_builtin(node)
 
     def check_local_call(self, call, function):
@@ -1494,7 +1529,8 @@ class _Check(ast.NodeVisitor):
         namespace = any(self.contains_namespace(value) for value in
                         [*bindings.values(), *namespace_captures, *variadic_values])
         known = any(self.contains_namespace(value) or self.known_ownership(value)
-                    or self.has_active_path(value) for value in values)
+                    or self.has_active_path(value) or self.has_local_class(value)
+                    or self.has_local_class(value, instances=True) for value in values)
         if not known and (call.args or call.keywords):
             return
         if namespace and (any(self.contains_namespace(value) for value in variadic_values)
@@ -1639,11 +1675,14 @@ class _Check(ast.NodeVisitor):
             self.flag(node, "dynamic execution namespace results from async/generator helpers are unsupported; use synchronous fixed-parameter helpers", structural=True)
 
     def delayed_result_contains_namespace(self, node, value):
+        if self.has_local_class(value) or self.has_local_class(value, instances=True):
+            self.flag(node, "delayed local class values are unsupported; use fixture_write() with synchronous fixed-parameter helpers", structural=True)
+            return False
         if self.contains_namespace(value):
             return True
         children = [*([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ()),
-                    *(_Value(symbol=target) for target in value.callable_targets if target != value.symbol)]
+                    *[_Value(symbol=target) for target in value.callable_targets if target != value.symbol]]
         if any(self.delayed_result_contains_namespace(node, child) for child in children):
             return True
         if value.symbol not in self.local_functions:
@@ -1760,7 +1799,7 @@ class _Check(ast.NodeVisitor):
         self.class_outer_names = outer_names
         self.aliases, self.class_outer_aliases = aliases, class_outer
         self.eager_variable_annotations = eager_annotations
-        self.aliases[node.name] = _Value(symbol=f"class@{node.lineno}:{node.name}")
+        self.aliases[node.name] = _Value(symbol=f"class@{node.lineno}:{node.name}", local_class=True)
         self.outer_write_names = outer_write_names
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
@@ -1796,6 +1835,8 @@ class _Check(ast.NodeVisitor):
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.visit(node.body)
         result = self.value(node.body)
+        if self.has_local_class(result) or self.has_local_class(result, instances=True):
+            self.reject_delayed_namespace_result(node.body, result)
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus

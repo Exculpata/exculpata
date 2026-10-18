@@ -485,7 +485,10 @@ def test_download_is_bounded_and_stays_on_pinned_url(runner, tmp_path, monkeypat
     class Response(io.BytesIO):
         def geturl(self):
             return url if kind != 'redirected' else 'https://example.test/unexpected'
-    monkeypatch.setattr(runner.urllib.request, 'urlopen', lambda *a, **kw: Response(b'Generated archive'))
+    def open_generated_archive(*args, **kwargs):
+        return Response(b'Generated archive')
+
+    monkeypatch.setattr(runner.urllib.request, 'urlopen', open_generated_archive)
     monkeypatch.setattr(runner, 'MAX_ARCHIVE_BYTES', 2 if kind == 'oversized' else 100)
     if kind == 'good':
         runner.download_archive(url, tmp_path / 'archive.zip')
