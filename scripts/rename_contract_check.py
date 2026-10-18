@@ -215,10 +215,11 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
         return {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "v": "\v", "0": "\0", "\n": "", "\r\n": ""}.get(token, token)
     # Also inspect decoded text conservatively: regex literals can resemble
     # comment/string boundaries, so lexical ambiguity must not hide escapes.
+    found = scan_text(location, text, contracts)
     try:
-        found = scan_text(location, escapes.sub(decode, text), contracts)
+        found.extend(scan_text(location, escapes.sub(decode, text), contracts))
     except ValueError:
-        found = []  # A comment/regex may not follow string-escape grammar.
+        found.append(Finding(f"{location}:1", "unsupported ambiguous JavaScript escape"))
     for literal_match in literals.finditer(text):
         body = literal_match.group("body")
         if body is None:
@@ -286,6 +287,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     expansion_budget = 4096
     shadowed_qualified = set()
     loop_carried_names = []
+    loop_written_names = []
 
     def unsupported(node: ast.AST, form: str) -> None:
         if active_visitors and active_visitors[-1].reviewed_analysis:
@@ -877,12 +879,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             root = re.split(r"[.\[]", name, maxsplit=1)[0]
             if any(root in names for names in loop_carried_names) and (legacy_value(resolved) or unresolved):
                 accumulator = False
+                prior_state_names = {root}.union(*loop_written_names)
                 if isinstance(target, ast.Name) and isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
                     own = [part for part in (expression.left, expression.right) if isinstance(part, ast.Name) and part.id == target.id]
                     other = expression.right if own and own[0] is expression.left else expression.left
-                    accumulator = bool(own) and isinstance(resolved, ContainerValue) and resolved.kind == "set" and not any(isinstance(part, ast.Name) and part.id == target.id for part in ast.walk(other))
+                    accumulator = bool(own) and isinstance(resolved, ContainerValue) and resolved.kind == "set" and not any(isinstance(part, ast.Name) and part.id in prior_state_names for part in ast.walk(other))
                 if isinstance(target, ast.Name) and isinstance(expression, ast.Call) and qualified(expression.func) == "builtins.dict":
-                    accumulator = len(expression.args) == 1 and isinstance(expression.args[0], ast.Name) and expression.args[0].id == target.id and not any(isinstance(part, ast.Name) and part.id == target.id for keyword in expression.keywords for part in ast.walk(keyword.value))
+                    accumulator = len(expression.args) == 1 and isinstance(expression.args[0], ast.Name) and expression.args[0].id == target.id and not any(isinstance(part, ast.Name) and part.id in prior_state_names for keyword in expression.keywords for part in ast.walk(keyword.value))
                 if not accumulator:
                     unsupported(target, "loop-carried legacy binding")
             if not class_scopes and function_declarations and root in function_declarations[-1] and (legacy_value(resolved) or unresolved):
@@ -1023,6 +1026,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                                  if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Store))
             return carried
 
+        def loop_writes(self, node):
+            return {part.id for statement in node.body for part in ast.walk(statement)
+                    if isinstance(part, ast.Name) and isinstance(part.ctx, ast.Store)}
+
         def visit_For(self, node: ast.For | ast.AsyncFor) -> None:
             self.visit(node.iter)
             event_offset = len(binding_events)
@@ -1055,8 +1062,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             assignment = ast.Assign(targets=[node.target], value=literal(iteration))
             ast.fix_missing_locations(ast.copy_location(assignment, node))
             loop_carried_names.append(self.loop_reads(node))
+            loop_written_names.append(self.loop_writes(node))
             self.alternatives([[], [assignment, *node.body]])
             loop_carried_names.pop()
+            loop_written_names.pop()
             # A break can bypass the else suite; retain both possibilities.
             self.alternatives([[], node.orelse])
             if binding_events[event_offset:] and any(isinstance(part, (ast.Break, ast.Continue)) for statement in node.body for part in ast.walk(statement)):
@@ -1067,9 +1076,11 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         def visit_While(self, node: ast.While) -> None:
             event_offset = len(binding_events)
             loop_carried_names.append(self.loop_reads(node))
+            loop_written_names.append(self.loop_writes(node))
             self.visit(node.test)
             self.alternatives([[], node.body])
             loop_carried_names.pop()
+            loop_written_names.pop()
             self.alternatives([[], node.orelse])
             if binding_events[event_offset:] and any(isinstance(part, (ast.Break, ast.Continue)) for statement in node.body for part in ast.walk(statement)):
                 unsupported(node, "abrupt loop with legacy bindings")

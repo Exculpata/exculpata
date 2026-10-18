@@ -1207,3 +1207,36 @@ def test_json_escape_keys_and_single_decoding(tmp_path):
     assert checker.findings(tmp_path)
     path.write_text(r'{"format":"\\u0072ecordbench-unregistered-v99"}')
     assert checker.findings(tmp_path) == []
+
+
+
+def test_javascript_malformed_comment_does_not_disable_escape_inspection(tmp_path):
+    source = r'const regex = /\//; const FORMAT = "\x72ecordbench-unregistered-v99"; // \uZZZZ'
+    (tmp_path / 'synthetic.js').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+def test_loop_accumulator_alias_does_not_hide_prior_iteration(tmp_path):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\nsettings = {"stem": LEGACY_STEM}\nfor _ in range(2):\n previous = settings\n settings = dict(settings, stem=previous["stem"] + ".env")\n'
+    namespace = {}
+    exec(compile(source, 'synthetic.py', 'exec'), namespace)
+    assert namespace['settings']['stem'] == 'record' + 'bench.env.env'
+    assert checker.scan_component('synthetic.py', namespace['settings']['stem'], NAME_CONTRACTS)
+    (tmp_path / 'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'settings = {"stem": LEGACY_STEM}\nfor _ in range(2):\n first = settings\n previous = first\n settings = dict(settings, stem=previous["stem"] + ".env")',
+    'names = {LEGACY_STEM}\nfor _ in range(2):\n previous = names\n names = names | {item + ".env" for item in previous}',
+])
+def test_accumulator_inputs_written_in_loop_are_unsupported(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source)
+    assert any('unsupported legacy syntax' in item.identifier for item in checker.findings(tmp_path))
+
+
+def test_javascript_decode_uncertainty_preserves_raw_findings():
+    token = 'record' + 'bench-unregistered-v99'
+    found = checker.scan_javascript('synthetic.js', 'const FORMAT = "' + token + r'"; // \uZZZZ', NAME_CONTRACTS)
+    assert any(item.identifier == token for item in found)
+    assert any('ambiguous JavaScript escape' in item.identifier for item in found)

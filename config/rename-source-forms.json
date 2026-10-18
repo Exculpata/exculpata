@@ -136,7 +136,7 @@
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "0de225c86f52e3df5603a44d67c2f95a1084a1f3dd61ed5cc387833d701339dc",
+      "source_sha256": "c9bfbd17e0c341d489d43b65dbd16400fc4623252035d1f4a94e11d1a8f452de",
       "diagnostics": [
         {
           "line": 169,
