@@ -17,6 +17,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'benchmarks/corpus/v1'
 TRANSCRIPT_QUALIFIER = 'The machine transcript appears to say that '
+FIXED_ADAPTER_CONTRACTS = {
+    'answer': {'provider': 'CorpusExtractiveGenerator + ExtractiveAnswerProvider', 'model': None},
+    'retrieval': {'provider': 'product lexical', 'model': None},
+}
 REVIEWED_OCR = {
     'model_id': 'tesseract-ocr/tessdata_fast',
     'revision': '87416418657359cb625c412a48b6e1d6d41c29bd',
@@ -128,6 +132,9 @@ def load_corpus(root: Path):
         raise ValueError('ASR pin must match the reviewed model catalog')
     if manifest['models'].get('ocr') != REVIEWED_OCR:
         raise ValueError('OCR identity must match the complete reviewed corpus record')
+    for adapter, contract in FIXED_ADAPTER_CONTRACTS.items():
+        if manifest['models'].get(adapter) != contract:
+            raise ValueError(f'{adapter} identity must match the fixed adapter contract')
     for group in ('documents', 'audio', 'search', 'answers'):
         if set(expected[group]) != {row['id'] for row in manifest[group]}:
             raise ValueError(f'{group}: incomplete expected case inventory')

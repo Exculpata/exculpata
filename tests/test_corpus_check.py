@@ -666,3 +666,58 @@ def test_full_ocr_text_and_page_success_cannot_hide_nonready_source(state):
     results = {row['id']:row for row in gate.compare(manifest, expected, actual, full=True)}
     assert not results['pdf']['passed']
     assert any('expected ready source' in line for line in results['pdf']['diff'])
+
+
+@pytest.mark.parametrize('adapter', ['answer', 'retrieval'])
+@pytest.mark.parametrize('mutation', ['provider', 'model', 'missing-provider', 'missing-model',
+    'missing-record', 'null-record', 'nonmapping-record', 'revision', 'null-revision', 'extra-field'])
+def test_fixed_adapter_manifest_contract_rejects_unexecuted_identity(tmp_path, adapter, mutation):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'manifest.json'; manifest = json.loads(path.read_text())
+    record = manifest['models'][adapter]
+    if mutation == 'provider': record['provider'] = 'Synthetic unexecuted provider'
+    elif mutation == 'model': record['model'] = 'synthetic/unexecuted-model'
+    elif mutation == 'missing-provider': del record['provider']
+    elif mutation == 'missing-model': del record['model']
+    elif mutation == 'missing-record': del manifest['models'][adapter]
+    elif mutation == 'null-record': manifest['models'][adapter] = None
+    elif mutation == 'nonmapping-record': manifest['models'][adapter] = []
+    elif mutation == 'revision': record['revision'] = 'a'*40
+    elif mutation == 'null-revision': record['revision'] = None
+    else: record['unexecuted_setting'] = True
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match=adapter + '.*fixed adapter contract'):
+        gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('adapter,field,value', [
+    ('answer', 'provider', 'Synthetic unexecuted generator'),
+    ('retrieval', 'model', 'synthetic/unexecuted-embedding'),
+])
+def test_fixed_adapter_receipt_cannot_attest_to_unexecuted_metadata(tmp_path, monkeypatch, capsys, adapter, field, value):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'manifest.json'; manifest = json.loads(path.read_text())
+    manifest['models'][adapter][field] = value
+    path.write_text(json.dumps(manifest))
+    report = tmp_path/'receipt.json'
+    assert gate.main(['--corpus', str(root), '--report', str(report)]) == 1
+    assert not report.exists()
+    assert adapter + ' identity must match the fixed adapter contract' in capsys.readouterr().err
+
+
+def test_fixed_adapter_receipt_preserves_actual_fast_contract(tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    manifest, _ = gate.load_corpus(gate.CORPUS)
+    fixed = {
+        'answer':{'provider':'CorpusExtractiveGenerator + ExtractiveAnswerProvider', 'model':None},
+        'retrieval':{'provider':'product lexical', 'model':None},
+    }
+    for adapter, record in fixed.items():
+        assert manifest['models'][adapter] == record
+    report = tmp_path/'receipt.json'
+    assert gate.main(['--report', str(report)]) == 0
+    receipt = json.loads(report.read_text())
+    assert receipt['passed'] is True and receipt['mode'] == 'fast-contract'
+    for adapter, record in fixed.items():
+        assert receipt['models'][adapter] == record

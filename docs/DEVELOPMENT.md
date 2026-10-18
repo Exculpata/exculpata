@@ -227,8 +227,11 @@ Scalar conversion can discard handle ownership but must retain active database-p
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
 
-The inventory checks all tracked Python tests and scripts, including helpers
-imported by tests. Stage new sources before running it. Dynamic `exec`/`eval`
+The inventory checks tracked Python files under test directories and the root
+`scripts` directory. Imported support under other roots is not automatically
+covered; this gap and demonstrated static-checker bypasses are tracked in
+[#333](https://github.com/Exculpata/exculpata/issues/333). A passing scan does not
+waive the fixture rules. Stage new sources before running it. Dynamic `exec`/`eval`
 (including resolved aliases) is rejected without interpreting its payload. The
 fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
 dynamic-execution finding is allowed, and every other boundary check still runs.

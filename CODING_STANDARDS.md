@@ -53,8 +53,12 @@ one `fixture_write(workspace, media=True)` scope. Keep worker waits, HTTP calls 
 projection outside that scope. The media scope serializes the public methods;
 it does not turn their individual commits into one atomic transaction.
 
-The fixture inventory checks every tracked Python test and `scripts/*.py`, a
-conservative superset of scripts imported by tests, including transitive imports.
+The fixture inventory checks tracked Python files under test directories and
+the root `scripts` directory. It does not resolve imports: support modules under
+other roots are not included automatically. This coverage gap and demonstrated
+static-checker bypasses are tracked in
+[#333](https://github.com/Exculpata/exculpata/issues/333). A passing inventory is
+not proof that arbitrary fixture code obeys the rules below; those rules still apply.
 Stage new fixture sources before running the inventory. Use explicit named
 handles and the supported syntax described in
 [development guidance](docs/DEVELOPMENT.md#synthetic-fixture-writes).
