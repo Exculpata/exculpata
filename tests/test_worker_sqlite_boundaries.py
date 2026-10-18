@@ -23,15 +23,17 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             return getattr(original, name)
 
         def __enter__(self):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             return original.__enter__()
 
         def __exit__(self, *args):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             return original.__exit__(*args)
 
         def set_trace_callback(self, callback):
             assert store._lock._is_owned(), 'callback mutation must serialize with live report claims'
             observations.append('callback')
-            return original.set_trace_callback(callback)
+            return original.set_trace_callback(callback)  # fixture-write: Forward after asserting caller lock ownership; acquiring a lock here would mask the regression.
 
         def execute(self, sql, *args, **kwargs):
             if threading.get_ident() == caller and (
@@ -41,7 +43,7 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             ):
                 assert store._lock._is_owned(), 'read must serialize with live ingestion/report SQL'
                 observations.append('plan' if sql.startswith('EXPLAIN QUERY PLAN ') else 'read')
-                cursor = original.execute(sql, *args, **kwargs)
+                cursor = original.execute(sql, *args, **kwargs)  # fixture-write: Forward the inspected read without acquiring a lock; the assertions above must detect missing caller locking.
 
                 class CheckedCursor:
                     def __iter__(self):
@@ -55,7 +57,7 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
                         return cursor.fetchone()
 
                 return CheckedCursor()
-            return original.execute(sql, *args, **kwargs)
+            return original.execute(sql, *args, **kwargs)  # fixture-write: Transparent instrumentation forwards product SQL; adding a fixture boundary would mask the lock regression.
 
     get, post = client.get, client.post
 

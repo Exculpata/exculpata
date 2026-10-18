@@ -1,4 +1,6 @@
 """Synthetic chain, scope, continuation, and durable planner regressions."""
+
+from tests.fixture_write import fixture_write
 import json
 import sqlite3
 from types import SimpleNamespace
@@ -107,7 +109,8 @@ def test_additional_budget_backup_restore_and_duplicate_submission(chain, tmp_pa
     assert queued.result['passes'] == saved.result['passes']
     destination = tmp_path / 'restored.sqlite'
     connection = sqlite3.connect(destination)
-    bench.workspace.connection.backup(connection)
+    with bench.workspace._lock:
+        bench.workspace.connection.backup(connection)
     connection.close()
     restored = WorkspaceStore(destination)
     recovered = restored.research_job(matter.matter_id, matter.owner_id, queued.job_id)
@@ -236,7 +239,7 @@ def test_extension_ceiling_and_stale_form_are_rejected_without_mutation(chain):
     saved = bench.workspace.research_job(matter.matter_id, matter.owner_id, job.job_id)
     assert saved.state == 'succeeded' and saved.plan['budget']['effective']['passes'] == 1
     plan['budget'] = ReviewBudget(passes=15, search_seconds=2700).metadata()
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET plan_json=? WHERE job_id=?',
                                             (json.dumps(plan), job.job_id))
     with pytest.raises(WorkspaceProblem, match='at most 15'):
@@ -317,7 +320,7 @@ def test_extension_requires_room_for_another_search(chain, blocked):
 def test_continuation_preserves_each_conversation_result_target(chain):
     bench, client, matter, job, _, _ = chain
     conversation = bench.workspace.create_conversation(matter.matter_id, actor_id=matter.owner_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET conversation_id=? WHERE job_id=?', (conversation.conversation_id, job.job_id))
     bench.workspace.claim_research_job('synthetic-worker')
     plan = bench._research_plan(job.question, job.title)
@@ -341,7 +344,7 @@ def test_source_set_membership_only_change_hides_checkpoint(chain):
     bench, client, matter, job, _, citations = chain
     source_set = bench.workspace.create_source_set(matter.matter_id, 'Synthetic scope',
         tuple(value.document_id for value in citations.values()), matter.owner_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET source_set_id=? WHERE job_id=?', (source_set.source_set_id, job.job_id))
     bench.workspace.claim_research_job('synthetic-worker')
     plan = bench._research_plan(job.question, job.title)
@@ -350,7 +353,7 @@ def test_source_set_membership_only_change_hides_checkpoint(chain):
     saved = bench._finish_research_job(claimed, bench._process_research_job(claimed, lambda: False))
     url = f'/matters/{matter.slug}/research?job={job.job_id}'
     assert 'Continue from checkpoint' in client.get(url).text
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_source_set_item WHERE source_set_id=? AND document_id=?', (source_set.source_set_id, citations['third'].document_id))
     assert bench._current_workflow_citation(matter, bench._workflow_citation(saved.result['evidence'][0])) is not None
     page = client.get(url)
@@ -545,7 +548,7 @@ def test_unrelated_sources_do_not_invalidate_scoped_findings(chain):
     bench, client, matter, job, _, citations = chain
     source_set = bench.workspace.create_source_set(matter.matter_id, 'Synthetic selected scope',
         (citations['first'].document_id,), matter.owner_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET source_set_id=? WHERE job_id=?',
             (source_set.source_set_id, job.job_id))
     claimed = bench.workspace.claim_research_job('synthetic-worker')
@@ -554,7 +557,7 @@ def test_unrelated_sources_do_not_invalidate_scoped_findings(chain):
     assert client.post(f'/matters/{matter.slug}/uploads', files=[('files', ('outside.txt',
         b'Synthetic unrelated source outside the selected set.', 'text/plain'))]).status_code == 200
     assert bench.workspace.source_availability_fingerprint(matter.matter_id, source_set.source_set_id) == before
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_source_catalog SET source_state=? WHERE matter_id=? AND document_id=?',
             ('failed', matter.matter_id, citations['third'].document_id))
     assert bench.workspace.source_availability_fingerprint(matter.matter_id, source_set.source_set_id) == before
@@ -569,7 +572,7 @@ def test_stale_completed_run_can_rebuild_without_overwriting_parent(chain, passe
     bench, client, matter, job, calls, citations = chain
     source_set = bench.workspace.create_source_set(matter.matter_id, 'Synthetic rebuild scope',
         (citations['first'].document_id,), matter.owner_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET source_set_id=? WHERE job_id=?',
             (source_set.source_set_id, job.job_id))
     bench.workspace.claim_research_job('synthetic-worker')
@@ -579,7 +582,7 @@ def test_stale_completed_run_can_rebuild_without_overwriting_parent(chain, passe
     saved = bench._finish_research_job(claimed, bench._process_research_job(claimed, lambda: False))
     with pytest.raises(WorkspaceProblem, match='does not need'):
         bench.workspace.retry_research_job(matter.matter_id, matter.owner_id, job.job_id, expected_passes=passes)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('INSERT INTO workbench_source_set_item(source_set_id,matter_id,document_id,added_by,added_at) VALUES (?,?,?,?,?)',
             (source_set.source_set_id, matter.matter_id, citations['second'].document_id, matter.owner_id, saved.updated_at))
     url = f'/matters/{matter.slug}/research?job={job.job_id}'
@@ -667,7 +670,7 @@ def test_unresolved_locator_uses_same_staleness_for_display_and_rebuild(chain, m
     assert not saved.result['pending_searches']
     changed = json.loads(json.dumps(saved.result))
     changed['evidence'][0]['chunk_id'] = 'synthetic-unresolved-chunk'
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET result_json=? WHERE job_id=?',
             (json.dumps(changed), job.job_id))
     assert bench.workspace.source_availability_fingerprint(matter.matter_id) == changed['retrieval_source_fingerprint']
@@ -693,12 +696,12 @@ def test_empty_stale_scope_does_not_offer_or_accept_rebuild_budget(chain):
     bench, client, matter, job, _, citations = chain
     source_set = bench.workspace.create_source_set(matter.matter_id, 'Synthetic removed scope',
         (citations['first'].document_id,), matter.owner_id)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_research_job SET source_set_id=? WHERE job_id=?',
             (source_set.source_set_id, job.job_id))
     claimed = bench.workspace.claim_research_job('synthetic-worker')
     saved = bench._finish_research_job(claimed, bench._process_research_job(claimed, lambda: False))
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_source_set_item WHERE source_set_id=?', (source_set.source_set_id,))
     page = client.get(f'/matters/{matter.slug}/research?job={job.job_id}')
     assert 'Saved findings and search proposals are no longer current' in page.text

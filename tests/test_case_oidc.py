@@ -1,4 +1,6 @@
 """Synthetic provider callbacks and central operation authority; no live IdP."""
+
+from tests.fixture_write import fixture_write
 import io
 import re
 from datetime import datetime, timedelta, timezone
@@ -157,7 +159,7 @@ def test_forced_reauth_rejects_unsupported_or_stale_claims_without_starting_clos
     elif failure == 'revoked':
         bench.workspace.revoke_session(context(client).session.session_id)
     elif failure == 'disabled':
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?',
                 (context(client).principal_id,))
     elif failure == 'config':

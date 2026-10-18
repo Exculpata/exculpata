@@ -1,4 +1,6 @@
 """Synthetic persistence, legacy migration and clean backup/restore coverage."""
+
+from tests.fixture_write import fixture_write
 import sqlite3
 from pathlib import Path
 
@@ -59,8 +61,11 @@ def test_legacy_dusk_migration_backup_clean_restore_and_rollback(tmp_path):
     store.close()
     # Recreate the exact shipped preference schema, including its old CHECK.
     with sqlite3.connect(path) as conn:
+        # fixture-write: Remove the preference table only after closing the original WorkspaceStore.
         conn.execute("DROP TABLE workbench_principal_preference")
+        # fixture-write: Recreate the shipped legacy schema after closing the original WorkspaceStore.
         conn.executescript((ROOT / "migrations/sqlite/0017_matter_retention_and_preferences.sql").read_text())
+        # fixture-write: Seed legacy preference values in the closed database before restoration.
         conn.executemany("INSERT INTO workbench_principal_preference VALUES (?,?,?)",
                          [(actor, "dusk", "2026-01-01T00:00:00Z"), (light, "light", "2026-01-01T00:00:00Z")])
     snapshot = tmp_path / "before-backup.sqlite"
@@ -133,7 +138,7 @@ def test_matter_archive_accepts_accent_schema_without_exporting_personal_prefere
     workspace.set_principal_accent(OWNER, "amber")
     workspace.set_principal_accent(OTHER, "green")
     preference_timestamp = "2098-04-17T03:26:51Z"
-    with workspace._lock, workspace.connection:
+    with fixture_write(workspace):
         workspace.connection.execute(
             "UPDATE workbench_principal_preference SET updated_at=?", (preference_timestamp,)
         )
