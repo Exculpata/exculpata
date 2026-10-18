@@ -741,3 +741,159 @@ def test_namespace_mapping_computed_lookup_safe_runtime_controls(mapping, key_so
     assert observed == 'safe'
     assert sink == []
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('helper,call,rejection_line', [
+    ('lookup = lambda mapping, key: mapping[key]', 'lookup(mapping, key)', 1),
+    ('lookup = lambda mapping, key: mapping.get(key)', 'lookup(mapping, key)', 1),
+    ('def lookup(mapping, key):\n    return mapping[key]', 'lookup(mapping, key)', 2),
+    ('def lookup(mapping, *, key):\n    return mapping[key]', 'lookup(mapping, key=key)', 2),
+    ('def lookup(mapping, key):\n    return mapping[key]', 'lookup(*(mapping, key))', 2),
+    ('def lookup(mapping, key):\n    return mapping[key]', "lookup(**{'mapping': mapping, 'key': key})", 2),
+])
+def test_namespace_local_lookup_runtime_rejection(helper, call, rejection_line):
+    source = helper + "\nmapping = {'copy': globals().copy}\nkey = resource\ncopy = " + call
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource='copy', rejection_line=rejection_line)
+
+
+@pytest.mark.parametrize('helper,call', [
+    ('lookup = lambda mapping: [*mapping]', 'lookup(mapping)'),
+    ('def lookup(mapping):\n    return [key for key in mapping]', 'lookup(mapping)'),
+    ('def lookup(mapping, key):\n    return mapping[key]', "lookup(mapping, 'ordinary')"),
+])
+def test_namespace_local_lookup_safe_runtime_controls(helper, call):
+    source = helper + "\nmapping = {'copy': globals().copy, 'ordinary': 'safe'}\nobserved = " + call
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed in (['copy', 'ordinary'], 'safe')
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('helper,call,rejection_line', [
+    ('lookup = lambda *values: values[0]', 'lookup(mapping)', 3),
+    ('async def lookup(mapping):\n    return mapping\nimport asyncio', 'asyncio.run(lookup(mapping))', 5),
+    ('def lookup(mapping):\n    yield mapping', 'next(lookup(mapping))', 4),
+    ('def lookup(mapping, repeat):\n    if repeat:\n        return lookup(mapping, False)\n    return mapping', 'lookup(mapping, True)', 3),
+])
+def test_namespace_local_transport_unsupported_runtime_rejection(helper, call, rejection_line):
+    source = helper + "\nmapping = {'copy': globals().copy}\ncopy = " + call + "['copy']"
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=rejection_line)
+
+
+@pytest.mark.parametrize('source', [
+    'def helper(value):\n    yield getattr(value, "real")\nobserved = next(helper(resource))',
+    'import asyncio\nasync def helper(value):\n    return getattr(value, "real")\nobserved = asyncio.run(helper(resource))',
+    'def helper(value, repeat):\n    if repeat:\n        return helper(value, False)\n    return getattr(value, "real")\nobserved = helper(resource, True)',
+    'import builtins\ndef helper(value):\n    yield builtins.int(value)\nobserved = next(helper(resource))',
+])
+def test_namespace_local_ambient_provider_safe_runtime_controls(source):
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=1)
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('provider,invoke', [
+    ('globals', "()['__builtins__']['exec'](payload)"),
+    ('builtins', '.exec(payload)'),
+])
+def test_namespace_local_returned_provider_runtime_rejection(provider, invoke):
+    source = 'import builtins\ndef lookup(ignored):\n    return ' + provider
+    source += '\nselected = lookup(resource)\nselected' + invoke
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=5)
+
+
+_NAMESPACE_PROVIDERS = [
+    ('builtins', '.exec(payload)'),
+    ('globals', "()['__builtins__']['exec'](payload)"),
+    ('locals', "()['builtins'].exec(payload)"),
+    ('vars', "()['builtins'].exec(payload)"),
+    ('builtins.globals', "()['__builtins__']['exec'](payload)"),
+    ('builtins.locals', "()['builtins'].exec(payload)"),
+    ('builtins.vars', "()['builtins'].exec(payload)"),
+    ('__import__', "('builtins').exec(payload)"),
+    ('builtins.__import__', "('builtins').exec(payload)"),
+    ('importlib.import_module', "('builtins').exec(payload)"),
+    ('namespace_provider', "()['__builtins__']['exec'](payload)"),
+    ('module_provider', "('builtins').exec(payload)"),
+    ('getattr', "(builtins, 'exec')(payload)"),
+    ('builtins.getattr', "(builtins, 'exec')(payload)"),
+    ('builtins.__getattribute__', "('exec')(payload)"),
+]
+
+
+@pytest.mark.parametrize('provider,invoke', _NAMESPACE_PROVIDERS)
+def test_namespace_provider_mapping_runtime_rejection(provider, invoke):
+    source = 'import builtins\nimport importlib\nfrom builtins import globals as namespace_provider'
+    source += '\nfrom importlib import import_module as module_provider\nmapping = {"provider": ' + provider + '}'
+    source += '\nkeys = [*mapping]\nselected = mapping[keys[0]]\nselected' + invoke
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=7)
+
+
+@pytest.mark.parametrize('provider,invoke', _NAMESPACE_PROVIDERS)
+def test_namespace_provider_mapping_safe_runtime_controls(provider, invoke):
+    source = 'import builtins\nimport importlib\nfrom builtins import globals as namespace_provider'
+    source += '\nfrom importlib import import_module as module_provider\nmapping = {"ordinary": "safe", "provider": ' + provider + '}'
+    source += '\nkeys = [*mapping]\nobserved = mapping["ordinary"]'
+    (keys, observed), sink = run_isolated_namespace_probe(source, '(keys, observed)')
+    assert keys == ['ordinary', 'provider']
+    assert observed == 'safe'
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('key', ['0', 'None', "b'copy'", 'False', '1.0', '1j', '...'])
+@pytest.mark.parametrize('lookup_expression', _COMPUTED_MAPPING_LOOKUPS)
+def test_namespace_mapping_nonstring_key_runtime_acceptance(key, lookup_expression):
+    source = "from operator import getitem as lookup\nmapping = {'copy': globals().copy}\nget = mapping.get\nunbound = dict.get\nkey = " + key
+    source += '\ntry:\n    observed = ' + lookup_expression
+    source += "\nexcept KeyError:\n    observed = None"
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed is None
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('key_expression,actual_key', [
+    ('f"{\'copyX\':.4}"', 'copy'),
+    ('f"{\'copy\'!r}"', "'copy'"),
+    ('f"{\'copé\'!a}"', "'cop\\xe9'"),
+    ('f"{\'copy\':>6}"', '  copy'),
+])
+@pytest.mark.parametrize('lookup_expression', ['mapping[key]', 'mapping.get(key)', 'dict.get(mapping, key)'])
+def test_namespace_mapping_formatted_key_runtime_rejection(key_expression, actual_key, lookup_expression):
+    source = 'mapping = {' + repr(actual_key) + ': globals().copy}\nkey = ' + key_expression
+    source += '\ncopy = ' + lookup_expression + "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=3)
+
+
+def test_namespace_mapping_empty_formatted_literal_runtime_rejection():
+    source = "mapping = {'copy': globals}\nkey = f\"{''}copy\"\nselected = mapping[key]"
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=4)
+
+
+@pytest.mark.parametrize('branch', [
+    'key = 0 if resource else None',
+    'if resource:\n    key = 0\nelse:\n    key = None',
+])
+@pytest.mark.parametrize('condition', [True, False])
+def test_namespace_mapping_nonstring_branch_runtime_acceptance(branch, condition):
+    source = "mapping = {'copy': globals().copy}\n" + branch + '\nobserved = mapping.get(key)'
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=condition)
+    assert observed is None
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('branch', [
+    'key = 0 if False else resource',
+    'if False:\n    key = 0\nelse:\n    key = resource',
+])
+def test_namespace_mapping_mixed_branch_runtime_rejection(branch):
+    source = "mapping = {'copy': globals().copy}\n" + branch
+    rejection_line = len(source.splitlines()) + 1
+    source += "\ncopy = mapping.get(key)\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource='copy', rejection_line=rejection_line)

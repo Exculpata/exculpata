@@ -53,6 +53,11 @@ _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault", "copy",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
+_NAMESPACE_PROVIDERS = {
+    "globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars",
+    "__import__", "builtins.__import__", "importlib.import_module",
+    "getattr", "builtins.getattr", "builtins.__getattribute__",
+}
 _NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
 _NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault", "__init__"}
 _NAMESPACE_ENUMERATIONS = {"values", "items", "popitem"}
@@ -185,6 +190,7 @@ class _Value:
     symbol: str = ""
     text: str = ""
     complete_text: bool = False
+    nonstring_constant: bool = False
     connection: str | None = None
     live_workspace: bool = False
     workspace: bool = False
@@ -276,7 +282,7 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Constant):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
-                          complete_text=isinstance(node.value, str))
+                          complete_text=isinstance(node.value, str), nonstring_constant=not isinstance(node.value, str))
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             elements = []
             inputs = []
@@ -364,8 +370,10 @@ class _Check(ast.NodeVisitor):
                           receiver=base if not active_path and (base.workspace or base.live_workspace or (base.symbol and base.symbol in self.protected)) else None)
         if isinstance(node, ast.JoinedStr):
             parts = [self.value(part.value if isinstance(part, ast.FormattedValue) else part) for part in node.values]
-            return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts),
-                          complete_text=all(part.complete_text for part in parts))
+            return _Value(text="".join(part.text if part.complete_text else "?" for part in parts), active_path=any(part.active_path for part in parts),
+                          complete_text=all(part.complete_text for part in parts)
+                          and all(not isinstance(part, ast.FormattedValue)
+                                  or part.conversion == -1 and part.format_spec is None for part in node.values))
         if isinstance(node, ast.BinOp):
             left, right = self.value(node.left), self.value(node.right)
             return self.binary_value(left, right, node.op)
@@ -710,7 +718,8 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def mapping_lookup(receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
-        if not key.complete_text and receiver.mapping is not None and _Check.contains_namespace(receiver):
+        if (not key.complete_text and not key.nonstring_constant
+                and receiver.mapping is not None and _Check.contains_namespace(receiver)):
             return _Value(symbol="<reflective-builtins>")
         if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
             return _Value(symbol="<reflective-builtins>")
@@ -727,6 +736,7 @@ class _Check(ast.NodeVisitor):
     @staticmethod
     def contains_namespace(value: _Value) -> bool:
         return (value.symbol in _BUILTIN_NAMESPACE_KEYS or value.symbol == "<reflective-builtins>"
+                or not value.unannotated_parameter and value.symbol in _NAMESPACE_PROVIDERS | {"builtins"}
                 or any(_Check.contains_namespace(item) for item in (
                     *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ()),
@@ -838,6 +848,7 @@ class _Check(ast.NodeVisitor):
                     not owner.startswith("sqlite@") for owner in connections) else
                     f"sqlite@merged:{name}" if connections else None)
                 result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
+                                      nonstring_constant=all(value.nonstring_constant for value in values),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1412,9 +1423,8 @@ class _Check(ast.NodeVisitor):
         self.reject_dynamic_builtin(node)
 
     def check_local_call(self, call, function):
-        # Specialize direct local helpers only when a known workspace, SQLite
-        # handle or bound method is supplied. Generic resource.close remains ordinary
-        # cleanup, while aliases and helper chains retain shared ownership.
+        # Specialize direct local helpers with known fixture or namespace
+        # provenance using the existing fixed-parameter body analysis.
         if function.symbol not in self.local_functions:
             return
         kind, node, defaults, annotations, lexical, history, local_names = self.local_functions[function.symbol]
@@ -1458,9 +1468,21 @@ class _Check(ast.NodeVisitor):
         # Fixed workspace parameters and ordinary keyword options keep the
         # existing direct-helper analysis, even if the signature is variadic.
         values = [*bindings.values(), *captures, *variadic_values]
-        known = any(self.known_ownership(value) or self.has_active_path(value) for value in values)
+        # Bare lexical providers are ordinary body references, not transported
+        # namespace state. Containers/defaults/actual arguments retain carriers.
+        namespace_captures = [value for value in captures
+                              if value.symbol not in _NAMESPACE_PROVIDERS | {"builtins"}]
+        namespace = any(self.contains_namespace(value) for value in
+                        [*bindings.values(), *namespace_captures, *variadic_values])
+        known = any(self.contains_namespace(value) or self.known_ownership(value)
+                    or self.has_active_path(value) for value in values)
         if not known and (call.args or call.keywords):
             return
+        if namespace and (any(self.contains_namespace(value) for value in variadic_values)
+                          or isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)
+                          or function.symbol in self.active_calls):
+            self.flag(call, "dynamic execution namespace transport requires a nonrecursive synchronous helper with fixed parameters", structural=True)
+            return self.payload_value(values)
         shared = any(self.known_ownership(value, shared_only=True) for value in values)
         if any(self.known_ownership(value, shared_only=True) for value in variadic_values):
             self.flag(call, "variadic helpers with shared fixture ownership are unsupported; use explicit named parameters", structural=True)
