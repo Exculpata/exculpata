@@ -82,6 +82,8 @@ loopback health probes also disable ambient proxies. The relay has no host ports
 volumes, application environment file or secrets.
 
 The proxy permits CONNECT only to the configured issuer's exact host and port.
+Existing ASCII issuer names containing underscores retain literal, exact-host
+matching; replacing an underscore or adding a suffix does not gain access.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for
 token/discovery validation or explicit pin binding. The relay's IDNA dependency

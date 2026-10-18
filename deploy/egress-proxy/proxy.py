@@ -103,7 +103,9 @@ def resolve(host, port, deadline):
 
 def authority(value: str) -> tuple[str, int]:
     # CONNECT uses an authority, never a URL, path, userinfo or wildcard.
-    if not re.fullmatch(r"(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\]):[0-9]{1,5}", value):
+    # Underscores occur in existing private issuer names accepted by HTTPX.
+    # They remain literal characters in one exact configured authority.
+    if not re.fullmatch(r"(?:[a-zA-Z0-9._-]+|\[[0-9a-fA-F:]+\]):[0-9]{1,5}", value):
         raise Denied("invalid authority")
     parsed = urlsplit("//" + value)
     host, port = parsed.hostname, parsed.port

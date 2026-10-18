@@ -7,6 +7,7 @@ import socket
 import httpx
 import pytest
 
+
 ROOT = Path(__file__).parents[1]
 
 
@@ -48,6 +49,24 @@ def test_unicode_issuer_matches_httpx_ascii_connect_authority(host):
 def test_invalid_idna_issuer_stays_denied(host):
     with pytest.raises(ValueError):
         relay.issuer_authority("https://" + host)
+
+
+@pytest.mark.parametrize("host", ["login_eu.example.test", "_identity.example.test", "login_eu_2.example.test"])
+def test_existing_ascii_underscore_issuer_matches_transport(host):
+    from case_intelligence.identity import OidcSettings
+    issuer = "https://" + host + ":8443/realm"
+    settings = OidcSettings(issuer=issuer, external_origin="https://app.example.test",
+                            client_id="synthetic", client_secret="synthetic-secret")
+    expected = (httpx.URL(settings.issuer).raw_host.decode("ascii"), 8443)
+    assert relay.issuer_authority(settings.issuer) == expected
+    class Request:
+        def __init__(self, target):
+            self.data = iter(f"CONNECT {target}:8443 HTTP/1.1\r\n\r\n".encode())
+        def recv(self, _): return bytes([next(self.data)])
+    assert relay.read_connect(Request(host), expected) == expected
+    for other in (host + ".evil.test", host.replace("_", "-"), "other.example.test"):
+        with pytest.raises(relay.Denied):
+            relay.read_connect(Request(other), expected)
 
 
 def test_stalled_first_address_leaves_budget_for_healthy_fallback(monkeypatch):
