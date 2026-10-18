@@ -7785,3 +7785,15 @@ path = "src/case_intelligence/_idna/__init__.py"
 kind = "host"
 digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
 detail = "readme.md"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "47250fde870fa4580111354ae25c52239059edbcc5880ee1b68de47de643e721"
+detail = "installed-package.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
+detail = "installed-package-control.log"

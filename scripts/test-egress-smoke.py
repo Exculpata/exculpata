@@ -165,6 +165,25 @@ def main():
                 fields=json.loads(run([*docker,'inspect','--format',
                     '{"mounts":{{json .Mounts}},"ports":{{json .HostConfig.PortBindings}},"privileged":{{json .HostConfig.Privileged}},"readonly":{{json .HostConfig.ReadonlyRootfs}}}',identifier]))
                 assert not fields['mounts'] and not fields['ports'] and not fields['privileged'] and fields['readonly']
+            results.update(json.loads(run([*compose,'exec','-T','app','python','-I','-S','-B','-'],
+                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename='installed-package.log')))
+            package_control = r"""import json,sys,tempfile
+from pathlib import Path
+namespace={'__name__':'synthetic_package_probe'}
+exec(sys.stdin.read(),namespace)
+with tempfile.TemporaryDirectory(prefix='synthetic-package-') as temporary:
+    package=Path(temporary)/'case_intelligence';package.mkdir()
+    (package/'__init__.py').write_text('# synthetic fixture\n')
+    try:
+        namespace['verify_package'](package)
+    except namespace['BoundaryError'] as error:
+        assert str(error)=='package-writable'
+    else:
+        raise RuntimeError('writable package control was accepted')
+print(json.dumps({'app_writable_package_control_rejected':True}))
+"""
+            results.update(json.loads(run([*compose,'exec','-T','app','python','-I','-S','-B','-c',package_control],
+                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename='installed-package-control.log')))
             stream()
             command=[*compose,'exec','-T','-e','ISSUER_ADDRESS='+issuer_address,'-e','FOREIGN_ADDRESS='+foreign_address,
                      '-e','DNS_RECORDER_ADDRESS='+recorder_address,'app','python']

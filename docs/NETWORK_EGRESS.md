@@ -118,8 +118,33 @@ hash. Filename strings are limited to 16 KiB and 128 distinct candidates per cac
 the cache read is bounded by the canonical payload size plus that filename allowance.
 Canonical loader caches tagged for another CPython version are inert: they are
 not read or executed by this interpreter, and that version validates them against
-its own compiled source if it later uses the checkout. Other Python imports are unchanged; this does not protect a compromised parent package or
-arbitrary code already running in the process.
+its own compiled source if it later uses the checkout. Other Python imports are unchanged.
+
+This IDNA integrity boundary assumes a **root-owned, read-only installed package**
+and **does not protect parent-package bytecode**. In particular,
+`case_intelligence/__pycache__/__init__*.pyc` can run before the private IDNA finder
+is installed. A writable parent package, interpreter, launcher or trusted source
+can therefore defeat the boundary. No additional import hook can establish trust
+in code that already ran before it. The regression suite deliberately demonstrates
+execution of a harmless synthetic parent-cache payload; it does not claim to block it.
+
+Live `doctor` checks the running app container, then streams a metadata-only probe
+as its normal non-root user. The probe uses `python -I -S -B` without importing
+`case_intelligence`, compares its effective UID/GID/groups with the app process,
+and checks the effective root mount's read-only flag. It checks the installed
+venv package, its ancestors and package entries for root ownership, read-only
+mounts and effective app-user write access, including nested mounts and ACL-aware
+access checks. Symlinks, missing/inaccessible metadata, unexpected identities and
+unverified results fail closed with a bounded diagnostic. Compose's `user` and
+`read_only` declarations alone are not proof; a declared read-only container must
+also pass the live probe. Dry-run doctor explicitly leaves this check unverified.
+
+Doctor does not write probe files, change ownership/permissions, repair a node,
+or attest an already compromised process, interpreter, image or privileged host.
+The trusted operator must rebuild/recreate an unprotected installation from trusted
+inputs before retrying doctor. These checks supplement the independent Docker
+version and live DNS gates; they do not replace either gate or installed sign-in
+acceptance.
 Invalid Unicode names fail before configuration writes.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for

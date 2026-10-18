@@ -1642,6 +1642,50 @@ def _verify_installed_dns(root: Path) -> None:
         raise RuntimeError(remedy) from exc
 
 
+def _verify_installed_package(root: Path) -> None:
+    """Check the running container and installed metadata as its normal app user."""
+    reasons = {
+        "app-user-root": "the application runs as root",
+        "app-user-unverified": "the diagnostic user does not match the running app user",
+        "app-root-writable": "the app container root is writable",
+        "package-writable": "the installed case_intelligence package or its ancestor is writable by the app user",
+        "package-not-root-owned": "the installed package or its ancestor is not root-owned",
+        "package-mount-writable": "the installed package is on a writable mount",
+    }
+    detail = "effective installed package protection could not be verified"
+    try:
+        installation, _ = _installed_release(root)
+        compose = _compose(root, list(installation.get("profiles", [])))
+        inventory = _probe([*compose, "ps", "-q", "app"])
+        identifier = inventory.stdout.strip()
+        if inventory.returncode or not re.fullmatch(r"[0-9a-f]{12,64}", identifier):
+            raise ValueError("app inventory unavailable")
+        result = _probe(["docker", "inspect", "--type", "container", "--format",
+            '{"running":{{json .State.Running}},"read_only":{{json .HostConfig.ReadonlyRootfs}}}', identifier])
+        state = json.loads(result.stdout)
+        if (result.returncode or not isinstance(state, dict) or set(state) != {"running", "read_only"}
+                or not all(value is True for value in state.values())):
+            detail = "the running app container is unavailable or does not declare a read-only root"
+            raise ValueError("container protection unavailable")
+        command = ["docker", "exec", "-i", identifier, "python", "-I", "-S", "-B", "-"]
+        result = subprocess.run(command, input=(PROJECT / "scripts/installed_package_probe.py").read_text(),
+            env=_compose_environment(command), text=True, capture_output=True, timeout=30, check=False)
+        proof = json.loads(result.stdout)
+        expected = {"app_user_non_root": True, "app_root_read_only": True,
+                    "installed_package_root_owned": True, "installed_package_not_writable": True}
+        if (result.returncode or not isinstance(proof, dict) or set(proof) != set(expected)
+                or not all(value is True for value in proof.values())):
+            if isinstance(proof, dict):
+                detail = reasons.get(proof.get("reason"), detail)
+            raise ValueError("installed package probe failed")
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(
+            "Installed package trust is unverified: " + detail + ". Rebuild and recreate from a trusted image "
+            "with a root-owned, read-only package and a non-root app user; then rerun doctor. "
+            "Doctor changes no permissions or ownership. See docs/NETWORK_EGRESS.md."
+        ) from exc
+
+
 def _storage_ancestors_safe(ancestor: Path) -> bool:
     """Require a private creation point and a non-replaceable parent chain."""
     uid = os.geteuid()
@@ -3834,9 +3878,11 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     _run(console, [*compose, "config", "--quiet"], dry_run=args.dry_run)
     _run(console, [*compose, "ps"], dry_run=args.dry_run)
     if not args.dry_run:
+        _verify_installed_package(root)
+        console.ok("Installed package trust :: non-root app user, read-only container root and protected root-owned package verified")
         _wait_health(console, root)
     else:
-        console.note("Dry run: running authentication mode, DNS boundary and live health are not verified")
+        console.note("Dry run: installed package protection, running authentication mode, DNS boundary and live health are not verified")
     if not args.dry_run:
         installation, _ = _installed_release(root)
         _record_prepared_phases(root, installation)
