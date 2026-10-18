@@ -24,8 +24,12 @@ seven” and “Locker 7”; other numbers do not match. This is a reviewed span
 alternative, not number substitution in recognition scoring or source validation.
 
 Audio timing gold uses the original WAV durations (5,615 ms and 4,861 ms, rounded
-to the nearest millisecond) and explicit transcript-unit layouts. Both clips
-allow a single passage. The parcel clip also retains the existing reviewed
+to the nearest millisecond) as file bounds and explicit transcript-unit layouts.
+Both clips allow a single passage whose reference end is the last source-signal
+block: 5,400 ms for bicycle and 4,650 ms for parcel. These source-derived endpoints
+use 10 ms PCM16 blocks with RMS at least 32 amplitude units, excluding trailing
+file padding; a regression checks them directly against the pinned WAV bytes.
+The parcel clip also retains the existing reviewed
 two-unit layout: introduction at 0–2,040 ms and parcel sentence at 2,040–4,480 ms.
 Each observed unit must match one complete reviewed layout in order, including
 its text within the existing WER limit and both endpoints within 500 ms.

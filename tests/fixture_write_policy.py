@@ -5,7 +5,9 @@ It follows ordinary assignment aliases, SQL literals/concatenation/f-strings and
 SQLite imports, and direct local helper arguments with known SQLite provenance.
 Known reflective builtin namespaces are rejected at exposure, before aliases or
 opaque containers can hide dynamic execution. Explicit safe builtin attributes
-remain supported; computed imports and arbitrary reflection are not interpreted.
+remain supported. Scope dictionaries and the module registry retain their known
+builtin entry through deterministic key lookups and shallow copies; computed
+imports and arbitrary reflection are not interpreted.
 Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
@@ -45,6 +47,8 @@ _CONNECTION_PARAMETERS = {"connection", "conn", "db", "database"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault", "copy",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
+_BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
+_NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
 
 
 # Reviewed Python AST shapes; unknown nodes or fields fail closed before data flow.
@@ -292,7 +296,7 @@ class _Check(ast.NodeVisitor):
                 value = self.value(item)
                 inputs.append(value)
                 if key is None:
-                    expanded = value.mapping
+                    expanded = self.namespace_mapping(value)
                     if expanded is None:
                         opaque = True
                     else:
@@ -312,6 +316,12 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
+            if node.attr in {"__globals__", "f_globals", "f_locals"}:
+                return _Value(symbol="<python-scope>")
+            if node.attr == "f_builtins":
+                return _Value(symbol="<reflective-builtins>")
+            if base.symbol in _BUILTIN_NAMESPACE_KEYS and node.attr in _NAMESPACE_LOOKUPS | {"copy"}:
+                return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if node.attr in {"append", "extend", "insert", "add", "__setitem__", "__iadd__"}:
                 return _Value(symbol=symbol, receiver=base)
             if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | {"update"}:
@@ -362,6 +372,9 @@ class _Check(ast.NodeVisitor):
                 return self.evaluated_values[node]
             function = self.value(node.func)
             if not function.unannotated_parameter:
+                if (function.symbol in {"globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars"}
+                        and not node.args and not node.keywords):
+                    return _Value(symbol="<python-scope>")
                 if function.symbol in {"__import__", "builtins.__import__", "importlib.import_module"}:
                     argument = node.args[0] if node.args else next(
                         (kw.value for kw in node.keywords if kw.arg == "name"), None)
@@ -375,6 +388,16 @@ class _Check(ast.NodeVisitor):
                     name = self.value(node.args[0])
                     return _Value(symbol="builtins." + name.text if name.complete_text
                                   else "<reflective-builtins>")
+            if function.receiver is not None and self.contains_namespace(function.receiver):
+                if function.dictionary_method == "copy" and not node.args:
+                    return function.receiver
+                if function.dictionary_method in _NAMESPACE_LOOKUPS and node.args:
+                    return self.namespace_lookup(function.receiver, self.value(node.args[0])) or _Value()
+            if (function.dictionary_accessor and function.dictionary_method in _NAMESPACE_LOOKUPS
+                    or function.symbol == "operator.getitem") and len(node.args) >= 2:
+                resolved = self.namespace_lookup(self.value(node.args[0]), self.value(node.args[1]))
+                if resolved is not None:
+                    return resolved
             if function.symbol in {"dict", "builtins.dict"}:
                 return self.dictionary_value([self.value(arg) for arg in node.args],
                                              [(kw.arg, self.value(kw.value)) for kw in node.keywords])
@@ -508,6 +531,10 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
+        resolved = self.namespace_lookup(value, self.value(node.slice))
+        if resolved is not None and isinstance(node.ctx, ast.Load):
+            self.evaluated_values[node] = resolved
+            self.reject_dynamic_builtin(node, resolved)
         if isinstance(node.slice, ast.Constant):
             index = node.slice.value
             if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
@@ -613,8 +640,9 @@ class _Check(ast.NodeVisitor):
             value = self.value(item)
             inputs.append(value)
             if key is None:
-                opaque |= value.mapping is None
-                mapping.update(value.mapping or ())
+                expanded = self.namespace_mapping(value)
+                opaque |= expanded is None
+                mapping.update(expanded or ())
             elif name.complete_text:
                 mapping[name.text] = value
         shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
@@ -649,20 +677,46 @@ class _Check(ast.NodeVisitor):
         return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
+    @staticmethod
+    def namespace_lookup(receiver: _Value, key: _Value) -> _Value | None:
+        if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
+            return _Value(symbol="<reflective-builtins>")
+        if key.complete_text and receiver.mapping is not None:
+            selected = dict(receiver.mapping).get(key.text)
+            if selected is not None and _Check.contains_namespace(selected):
+                return selected
+        return None
+
+    @staticmethod
+    def contains_namespace(value: _Value) -> bool:
+        return (value.symbol in _BUILTIN_NAMESPACE_KEYS or value.symbol == "<reflective-builtins>"
+                or any(_Check.contains_namespace(item) for item in (
+                    *(value.elements or ()), *(item for _, item in value.mapping or ()),
+                )))
+
+    @staticmethod
+    def namespace_mapping(value: _Value) -> tuple[tuple[str, _Value], ...] | None:
+        key = _BUILTIN_NAMESPACE_KEYS.get(value.symbol)
+        return ((key, _Value(symbol="<reflective-builtins>")),) if key else value.mapping
+
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
+        if len(arguments) == 1 and not keywords and arguments[0].symbol in _BUILTIN_NAMESPACE_KEYS:
+            return arguments[0]
         mapping = {}
         opaque = False
         inputs = [*arguments, *(value for _, value in keywords)]
         for value in arguments:
-            if value.mapping is None:
+            expanded = self.namespace_mapping(value)
+            if expanded is None:
                 opaque = True
             else:
-                mapping.update(value.mapping)
+                mapping.update(expanded)
         for key, value in keywords:
+            expanded = self.namespace_mapping(value)
             if key is not None:
                 mapping[key] = value
-            elif value.mapping is not None:
-                mapping.update(value.mapping)
+            elif expanded is not None:
+                mapping.update(expanded)
             else:
                 opaque = True
         return self.payload_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))

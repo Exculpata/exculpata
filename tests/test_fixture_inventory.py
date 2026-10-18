@@ -201,3 +201,115 @@ def test_unresolved_builtin_reflection_and_comments_cannot_hide_dynamic_access(s
 ])
 def test_reflection_rejection_preserves_explicit_safe_builtins_and_ordinary_resources(source):
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('operation', ['exec', 'eval'])
+@pytest.mark.parametrize('scope', [
+    'globals()', 'locals()', 'vars()',
+    'function.__globals__', 'frame.f_globals', 'frame.f_locals',
+])
+@pytest.mark.parametrize('lookup', [
+    "SCOPE['__builtins__']",
+    "SCOPE.get('__builtins__')",
+    "SCOPE.__getitem__('__builtins__')",
+    "dict.get(SCOPE, '__builtins__')",
+    "SCOPE.copy()['__builtins__']",
+])
+def test_namespace_lookup_rejects_builtin_scope_extraction(operation, scope, lookup):
+    source = lookup.replace('SCOPE', scope) + f"['{operation}'](payload)"
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('operation', ['exec', 'eval'])
+@pytest.mark.parametrize('source', [
+    "import sys\nsys.modules['builtins'].OP(payload)",
+    "import sys as system\nsystem.modules.get('builtins').OP(payload)",
+    "from sys import modules as registry\nregistry.__getitem__('builtins').OP(payload)",
+    "import sys\nlookup = sys.modules.get\nlookup('builtins').OP(payload)",
+    "import sys\nlookup = sys.modules.__getitem__\nlookup('builtins').OP(payload)",
+    "import sys\nregistry = sys.modules.copy()\nregistry['builtins'].OP(payload)",
+    "import sys\nregistry = dict(sys.modules)\nregistry.get('builtins').OP(payload)",
+    "import sys\nlookup = dict.get\nlookup(sys.modules, 'builtins').OP(payload)",
+    "import operator as op\nimport sys\nop.getitem(sys.modules, 'builtins').OP(payload)",
+    "from operator import getitem as lookup\nlookup(globals(), '__builtins__')['OP'](payload)",
+    "from builtins import globals as scope\nscope()['__builtins__']['OP'](payload)",
+    "import builtins as b\nscope = b.locals\nscope().get('__builtins__')['OP'](payload)",
+    "scope = vars\nlookup = scope().__getitem__\nlookup('__builtins__')['OP'](payload)",
+    "scope = globals()\nlookup = scope.get\nlookup('__builtins__')['OP'](payload)",
+    "lookup = getattr(globals(), 'get')\nlookup('__builtins__')['OP'](payload)",
+    "import sys\nregistry = getattr(sys, 'modules')\nregistry['builtins'].OP(payload)",
+    "registries = (globals(),)\nregistries[0]['__builtins__']['OP'](payload)",
+    "registry = {'scope': globals()}\nregistry['scope']['__builtins__']['OP'](payload)",
+    "import sys\nkey = 'built' + 'ins'\nsys.modules[key].OP(payload)",
+    "scope = dict(globals())\nscope['__builtins__']['OP'](payload)",
+    "frame.f_builtins['OP'](payload)",
+    "getattr(frame, 'f_builtins')['OP'](payload)",
+    "import inspect\ninspect.currentframe().f_builtins['OP'](payload)",
+    "import sys\nsys._getframe().f_builtins['OP'](payload)",
+    "import sys\nconsume(sys.modules['builtins'])",
+    "callback = lambda: globals()['__builtins__']",
+    "def callback(namespace=globals()['__builtins__']):\n    return namespace",
+    "namespace = globals()['__builtins__']  # fixture-write: Deliberately capture an isolated synthetic mapping.",
+])
+def test_namespace_lookup_retains_imports_accessors_and_transports(operation, source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source.replace('OP', operation)))
+
+
+@pytest.mark.parametrize('source', [
+    "monkeypatch.setitem(globals(), 'ROOT', tmp_path)",
+    "value = globals().get('ROOT')",
+    "value = locals()['root']",
+    "value = vars().get('root')",
+    "value = vars(args)",
+    "import sys\nsys.modules[__name__] = module",
+    "import sys\nmonkeypatch.setitem(sys.modules, 'synthetic_module', module)",
+    "import sys\nvalue = sys.modules[__name__]",
+    "import sys\nvalue = sys.modules.get('synthetic_module')",
+    "import sys\nbefore = set(sys.modules)",
+    "monkeypatch.setitem(function.__globals__, 'generator_from_environment', forbidden)",
+    "value = function.__globals__['ROOT']",
+    "value = frame.f_globals.get('ROOT')",
+    "value = frame.f_locals['root']",
+    "def read(globals):\n    return globals()['__builtins__']",
+    "def read(vars):\n    return vars()['__builtins__']",
+    "class Ordinary:\n    def globals(self):\n        return {'__builtins__': 1}\nvalue = Ordinary().globals()['__builtins__']",
+    "registry = {'builtins': ordinary}\nregistry['builtins'].run()",
+])
+def test_namespace_lookup_preserves_ordinary_introspection(source):
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('source', [
+    "getattr(function, '__globals__')['__builtins__']['exec'](payload)",
+    "getattr(function, '__globals__', None).get('__builtins__')['eval'](payload)",
+    "getattr(frame, 'f_globals', None)['__builtins__']['exec'](payload)",
+    "getattr(frame, 'f_builtins', None)['eval'](payload)",
+    "import sys\ngetattr(sys, 'modules', {}).get('builtins').exec(payload)",
+    "scope = {'scope': globals()}\nscope.get('scope')['__builtins__']['exec'](payload)",
+    "import sys\nmodules = {'modules': sys.modules}\nmodules.get('modules').get('builtins').eval(payload)",
+    "scope = {**globals()}\nscope['__builtins__']['exec'](payload)",
+    "import sys\nmodules = {**sys.modules}\nmodules['builtins'].eval(payload)",
+    "scope = dict(scope=globals())\nscope.get('scope')['__builtins__']['exec'](payload)",
+    "scope = {'scope': globals()}\nscope.copy().get('scope')['__builtins__']['exec'](payload)",
+    "scope = {'nested': {'scope': globals()}}\nscope.get('nested').get('scope')['__builtins__']['exec'](payload)",
+    "scope = dict(**globals())\nscope.get('__builtins__')['exec'](payload)",
+    "scope = {**globals()}\nlookup = scope.get\nlookup('__builtins__')['eval'](payload)",
+])
+def test_namespace_lookup_literal_reflection_and_mapping_copies(source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "import builtins as b\ngetattr(b, 'len', None)(values)",
+    "value = getattr(function, '__globals__', {}).get('ROOT')",
+    "scope = {'scope': {'__builtins__': ordinary}}\nscope.get('scope')['__builtins__'].run()",
+    "scope = {**{'__builtins__': ordinary}}\nscope.get('__builtins__').run()",
+    "scope = dict(scope=ordinary)\nscope.copy().get('scope').run()",
+    "value = {**globals()}['ROOT']",
+    "import sys\nvalue = {**sys.modules}.get('synthetic_module')",
+])
+def test_namespace_lookup_literal_reflection_preserves_safe_values(source):
+    assert check_fixture_writes(source) == []

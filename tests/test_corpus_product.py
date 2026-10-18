@@ -306,3 +306,19 @@ def test_actual_split_audio_requires_each_reviewed_passage_interval(mutation):
     actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
     results = gate.compare(manifest, expected, actual)
     assert all(not row['passed'] for row in results if row['id'] in ('audio-parcel', 'answer-parcel', 'search-parcel'))
+
+
+def test_observed_bicycle_numeral_and_speech_endpoint_fit_source_signal_layout():
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    transcripts = copy.deepcopy(manifest['fast_transcripts'])
+    transcripts['audio-bicycle'] = [{'start':0, 'end':5.08, 'speaker':'SPEAKER_00',
+        'text':'This is a synthetic recording. The blue bicycle arrived at Cedar Gate at 9.15.'}]
+    actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    results = gate.compare(manifest, expected, actual)
+    assert all(row['passed'] for row in results), results
+    assert actual['audio-bicycle']['units'][0]['end_ms'] == 5080
+    assert gate.error_rate(gate.normalize(expected['audio']['audio-bicycle']['text']).split(),
+                           gate.normalize(transcripts['audio-bicycle'][0]['text']).split()) == pytest.approx(2/15)

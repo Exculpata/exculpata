@@ -441,7 +441,7 @@ def test_reviewed_page_search_and_timing_metadata_is_required(tmp_path, mutation
     elif mutation == 'empty-layouts': audio['layouts'] = []
     elif mutation == 'layout-missing-time': del audio['layouts'][0][0]['start_ms']
     elif mutation == 'layout-boolean-time': audio['layouts'][0][0]['start_ms'] = False
-    elif mutation == 'layout-out-of-bounds': audio['layouts'][0][0]['end_ms'] += 1
+    elif mutation == 'layout-out-of-bounds': audio['layouts'][0][0]['end_ms'] = audio['locator']['end_ms'] + 1
     else: audio['layouts'][0][0]['text'] = ' '
     path.write_text(json.dumps(expected))
     with pytest.raises(ValueError): gate.load_corpus(root)
@@ -463,3 +463,32 @@ def test_reviewed_split_cannot_overlap_even_within_endpoint_tolerance():
     assert gate.matches_audio_layout(observation, expected['audio']['audio-parcel'])
     units[1]['start_ms'] -= 1
     assert not gate.matches_audio_layout(observation, expected['audio']['audio-parcel'])
+
+
+@pytest.mark.parametrize('source,signal_end_ms', [('audio-bicycle', 5400), ('audio-parcel', 4650)])
+def test_baseline_audio_layout_ends_at_pinned_source_signal_envelope(source, signal_end_ms):
+    from array import array
+    import math
+    import sys
+    import wave
+
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    clip = next(item for item in manifest['audio'] if item['id'] == source)
+    with wave.open(str(gate.CORPUS/clip['path'])) as recording:
+        assert recording.getnchannels() == 1 and recording.getsampwidth() == 2
+        rate = recording.getframerate()
+        assert rate % 100 == 0
+        samples = array('h', recording.readframes(recording.getnframes()))
+        if sys.byteorder != 'little':
+            samples.byteswap()
+    block_size = rate // 100
+    last_signal_end = 0
+    for start in range(0, len(samples), block_size):
+        block = samples[start:start + block_size]
+        rms = math.sqrt(sum(value * value for value in block) / len(block))
+        if rms >= 32:
+            last_signal_end = round((start + len(block)) * 1000 / rate)
+    assert last_signal_end == signal_end_ms
+    assert expected['audio'][source]['layouts'][0][0]['end_ms'] == last_signal_end
+    assert expected['audio'][source]['locator']['end_ms'] == round(len(samples) * 1000 / rate)
+    assert expected['audio'][source]['locator']['tolerance_ms'] == 500
