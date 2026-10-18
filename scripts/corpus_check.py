@@ -117,9 +117,11 @@ def matches_audio_layout(observation, expected):
     return False
 
 
-def load_corpus(root: Path):
-    manifest = json.loads((root / 'manifest.json').read_text())
-    expected = json.loads((root / 'expected.json').read_text())
+def load_corpus(root: Path, *, source_bytes=None):
+    if source_bytes is None:
+        source_bytes = {name: (root / name).read_bytes() for name in ('manifest.json', 'expected.json')}
+    manifest = json.loads(source_bytes['manifest.json'])
+    expected = json.loads(source_bytes['expected.json'])
     if manifest['schema_version'] != 1 or manifest['synthetic'] is not True:
         raise ValueError('Unsupported or non-synthetic corpus')
     ids = []
@@ -445,7 +447,7 @@ def repository_code_basis(outputs=()):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--corpus', type=Path, default=CORPUS)
-    parser.add_argument('--full', action='store_true', help='Require real OCR and pinned offline ASR; no substitution')
+    parser.add_argument('--full', action='store_true', help='Product OCR plus independent pinned faster-whisper recognition; excludes production transcription service')
     parser.add_argument('--report', type=Path)
     parser.add_argument('--update-expected', action='store_true', help='Write a proposal only; never overwrite reviewed gold')
     parser.add_argument('--proposal', type=Path)
@@ -459,20 +461,41 @@ def main(argv=None):
         if args.report and args.proposal and args.report.resolve() == args.proposal.resolve():
             raise ValueError('Report and proposal must use different paths')
         code_basis = repository_code_basis((args.report, args.proposal)) if args.report else None
-        manifest, expected = load_corpus(args.corpus)
+        source_bytes = {name: (args.corpus / name).read_bytes()
+                        for name in ('manifest.json', 'expected.json')}
+        manifest, expected = load_corpus(args.corpus, source_bytes=source_bytes)
+        input_hashes = {name: hashlib.sha256(data).hexdigest() for name, data in source_bytes.items()}
+        input_hashes.update({row['path']: row['sha256'] for row in manifest['documents'] + manifest['audio']})
         from corpus_product import observe
+        from corpus_recognition import coverage_contract, coverage_summary
+        coverage = coverage_contract(full=args.full)
         transcripts = manifest['fast_transcripts']
         audio = {}
         if args.full:
             from corpus_recognition import recognize
             audio, transcripts = recognize(args.corpus, manifest)
+            if any(row.get('recognition_adapter') != coverage['recognition']['adapter'] for row in audio.values()):
+                raise ValueError('Recognition adapter differs from the declared coverage')
         actual = observe(args.corpus, manifest, full=args.full, observed_transcripts=transcripts)
         for key, observation in audio.items():
             actual[key]['asr_text'] = observation['text']
         results = compare(manifest, expected, actual, full=args.full)
+        if args.report and any(hashlib.sha256((args.corpus / name).read_bytes()).hexdigest() != digest
+                               for name, digest in input_hashes.items()):
+            raise ValueError('Corpus inputs changed during observation')
         if args.report and repository_code_basis((args.report, args.proposal)) != code_basis:
             raise ValueError('Repository code changed during corpus observation')
-        receipt = {'schema_version': 1, 'corpus': manifest['id'], 'manifest_sha256': hashlib.sha256((args.corpus/'manifest.json').read_bytes()).hexdigest(), 'expected_sha256': hashlib.sha256((args.corpus/'expected.json').read_bytes()).hexdigest(), 'head': code_basis['base_head'] if code_basis and not code_basis['dirty'] else None, 'code_basis': code_basis, 'mode': 'full' if args.full else 'fast-contract', 'models': manifest['models'], 'cases': results, 'passed': all(r['passed'] for r in results)}
+        receipt = {
+            'schema_version': 1, 'corpus': manifest['id'],
+            'manifest_sha256': input_hashes['manifest.json'],
+            'expected_sha256': input_hashes['expected.json'],
+            'corpus_files_sha256': input_hashes,
+            'head': code_basis['base_head'] if code_basis and not code_basis['dirty'] else None,
+            'code_basis': code_basis, 'coverage': coverage,
+            'mode': 'full' if args.full else 'fast-contract',
+            'models': manifest['models'], 'cases': results,
+            'passed': all(r['passed'] for r in results),
+        }
         if args.report:
             args.report.write_text(json.dumps(receipt, indent=2)+'\n')
         if args.proposal:
@@ -487,6 +510,7 @@ def main(argv=None):
             for line in row['diff']:
                 print('  '+line.rstrip())
         print(f"{sum(r['passed'] for r in results)}/{len(results)} cases passed ({receipt['mode']})")
+        print(coverage_summary(full=args.full))
         if not args.full:
             print('OCR scans and ASR excluded; transcript fixtures exercise application contracts only.')
         return 0 if receipt['passed'] else 1

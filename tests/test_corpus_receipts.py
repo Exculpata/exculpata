@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -13,15 +14,17 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER_SOURCE = (ROOT / 'scripts/corpus_check.py').read_text()
+RECOGNITION_SOURCE = (ROOT / 'scripts/corpus_recognition.py').read_text()
 
 
-def checkout(tmp_path, *, change_during_run=False):
+def checkout(tmp_path, *, change_during_run=False, change_corpus_during_run=None):
     root = tmp_path / 'checkout'
     root.mkdir()
     archive = subprocess.check_output(['git', 'archive', 'HEAD'], cwd=ROOT)
     with tarfile.open(fileobj=BytesIO(archive)) as source:
         source.extractall(root, filter='data')
     (root / 'scripts/corpus_check.py').write_text(CHECKER_SOURCE)
+    (root / 'scripts/corpus_recognition.py').write_text(RECOGNITION_SOURCE)
     if change_during_run:
         product = root / 'scripts/corpus_product.py'
         product.write_text(product.read_text() + '''
@@ -30,6 +33,16 @@ def observe(*args, **kwargs):
     result = _original_observe(*args, **kwargs)
     path = Path(__file__)
     path.write_text(path.read_text() + '\\nSYNTHETIC_RUNTIME_CHANGE = True\\n')
+    return result
+''')
+    if change_corpus_during_run:
+        product = root / 'scripts/corpus_product.py'
+        product.write_text(product.read_text() + f'''
+_original_observe = observe
+def observe(root, *args, **kwargs):
+    result = _original_observe(root, *args, **kwargs)
+    path = root / {change_corpus_during_run!r}
+    path.write_bytes(path.read_bytes() + b' ')
     return result
 ''')
     for command in (
@@ -41,9 +54,9 @@ def observe(*args, **kwargs):
     return root
 
 
-def run_receipt(root, report):
+def run_receipt(root, report, *, corpus=None):
     return subprocess.run([sys.executable, str(root / 'scripts/corpus_check.py'),
-                           '--report', str(report)], cwd=root, capture_output=True, text=True,
+                           '--report', str(report), *(['--corpus', str(corpus)] if corpus else [])], cwd=root, capture_output=True, text=True,
                           env={**os.environ, 'PYTHONPATH': str(root / 'src')}, timeout=90)
 
 
@@ -82,3 +95,25 @@ def test_receipt_refuses_code_changes_during_observation(tmp_path):
     assert result.returncode == 1
     assert not report.exists()
     assert 'Repository code changed during corpus observation' in result.stderr
+
+
+@pytest.mark.parametrize('location', ['external', 'ignored'])
+@pytest.mark.parametrize('changed_input', [None, 'manifest.json', 'expected.json', 'media/bicycle.pdf'])
+def test_receipt_refuses_corpus_input_changes_outside_repository_inventory(tmp_path, location, changed_input):
+    root = checkout(tmp_path, change_corpus_during_run=changed_input)
+    corpus = tmp_path / 'external-corpus' if location == 'external' else root / '.corpus-receipt-input'
+    if location == 'ignored':
+        (root / '.git/info/exclude').write_text('.corpus-receipt-input/\n')
+    shutil.copytree(root / 'benchmarks/corpus/v1', corpus)
+    report = tmp_path / 'receipt.json'
+    result = run_receipt(root, report, corpus=corpus)
+    if changed_input is None:
+        assert result.returncode == 0, result.stderr
+        receipt = json.loads(report.read_text())
+        assert receipt['passed'] is True
+        for name in ('manifest.json', 'expected.json', 'media/bicycle.pdf'):
+            assert receipt['corpus_files_sha256'][name] == hashlib.sha256((corpus / name).read_bytes()).hexdigest()
+        return
+    assert result.returncode == 1
+    assert not report.exists()
+    assert 'Corpus inputs changed during observation' in result.stderr

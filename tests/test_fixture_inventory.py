@@ -95,6 +95,81 @@ def test_runtime_probe_pin_is_narrow_and_fails_closed(filename, monkeypatch):
     assert any('SQL fixture write' in item.rule for item in check_inventory_source(raw_write, filename))
 
 
+@pytest.mark.parametrize('payload_kind', ['effect', 'empty', 'comment'])
+def test_auth_runtime_probe_rejects_changed_executed_source_before_effect(tmp_path, monkeypatch, payload_kind):
+    from tests.fixture_inventory import check_inventory_source
+    from tests.runtime_probes import run_auth_mode_probe
+
+    root = Path(__file__).resolve().parents[1]
+    monkeypatch.syspath_prepend(str(root / 'scripts'))
+    import exculpata_install as installer
+
+    marker = tmp_path / 'synthetic-probe-effect'
+    source = (f'from pathlib import Path\nPath({str(marker)!r}).write_text("synthetic")\n'
+              if payload_kind == 'effect' else '' if payload_kind == 'empty' else '# synthetic replacement\n')
+    monkeypatch.setattr(installer, '_AUTH_MODE_PROBE', source)
+    wrapper = (root / 'tests/runtime_probes.py').read_text()
+    assert check_inventory_source(wrapper, 'tests/runtime_probes.py') == []
+    error = None
+    try:
+        run_auth_mode_probe()
+    except RuntimeError as failure:
+        error = failure
+    assert not marker.exists(), 'unreviewed synthetic installer source executed'
+    assert error is not None
+    assert 'review' in str(error) and 'pin' in str(error)
+
+
+@pytest.mark.parametrize('condition', ["fromJSON('[]') or True", 'True', ' True '])
+def test_workflow_runtime_probe_rejects_changed_executed_source_before_effect(monkeypatch, condition):
+    from types import SimpleNamespace
+    from tests.fixture_inventory import check_inventory_source
+    from tests import runtime_probes
+
+    root = Path(__file__).resolve().parents[1]
+    target = root / '.github/workflows/quality-gates.yml'
+    workflow = target.read_text()
+    original_condition = workflow.split('\n  synthetic-browser:\n', 1)[1].split('${{', 1)[1].split('}}', 1)[0]
+    changed = workflow.replace(original_condition, condition, 1)
+    original_read = Path.read_text
+
+    def read(path, *args, **kwargs):
+        return changed if path == target else original_read(path, *args, **kwargs)
+
+    effects = []
+
+    def decode(value):
+        effects.append(value)
+        return []
+
+    monkeypatch.setattr(Path, 'read_text', read)
+    monkeypatch.setattr(runtime_probes, 'json', SimpleNamespace(loads=decode))
+    wrapper = (root / 'tests/runtime_probes.py').read_text()
+    assert check_inventory_source(wrapper, 'tests/runtime_probes.py') == []
+    error = None
+    try:
+        runtime_probes.browser_workflow_condition('pull_request', 'success', 'false', 'true')
+    except RuntimeError as failure:
+        error = failure
+    assert effects == [], 'unreviewed synthetic workflow source evaluated'
+    assert error is not None
+    assert 'review' in str(error) and 'pin' in str(error)
+
+
+@pytest.mark.parametrize('pin', ['_AUTH_MODE_PROBE_SHA256', '_BROWSER_CONDITION_SHA256'])
+def test_changing_an_executed_source_pin_requires_wrapper_review(pin):
+    from tests.fixture_inventory import check_inventory_source
+    from tests import runtime_probes
+
+    filename = 'tests/runtime_probes.py'
+    source = (Path(__file__).resolve().parents[1] / filename).read_text()
+    changed = source.replace(getattr(runtime_probes, pin), '0' * 64, 1)
+    assert changed != source
+    violations = check_inventory_source(changed, filename)
+    assert any(item.structural and 'reviewed runtime probe changed' in item.rule for item in violations)
+    assert any(item.structural and 'dynamic execution' in item.rule for item in violations)
+
+
 @pytest.mark.parametrize('source', [
     '(lambda operation: operation)(exec)(payload)',
     'consume(exec)',

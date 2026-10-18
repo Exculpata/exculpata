@@ -66,7 +66,13 @@ learned hybrid retrieval or generative-model quality. Those remain separate from
 this corpus and from the diagnostics/scale work in issues #285 and #287.
 
 The full lane additionally ingests the two image PDFs and the original WAVs,
-using real OCR and local pinned ASR. This requires the Linux product dependencies
+using product OCR and an independent pinned `faster_whisper.WhisperModel` CPU
+recognizer. Its segments enter the application's transcript import/projection
+path. It does not call the production transcription service, worker, WhisperX
+audio loader or decoding options, VAD, forced alignment, diarization, translation,
+or service segment conversion. A full pass therefore establishes this bounded
+recognizer-and-application contract, not production transcription-service acceptance.
+This requires the Linux product dependencies
 (`/usr/bin/pdftoppm`, Tesseract, ffprobe), exact English/Spanish and orientation OCR data hashes
 from the manifest at `/usr/share/tesseract-ocr/5/tessdata`, and the existing
 approved large-v3 snapshot. Install `faster-whisper==1.2.1`,
@@ -85,16 +91,32 @@ several GB of RAM/model storage and runs separately from ordinary PR checks.
 
 `Synthetic discovery corpus` runs the fast application-contract gate on every PR.
 Fast skips image-only OCR and imports prepared transcripts, so it cannot validate
-recognition changes. Full runs nightly, on workflow dispatch, and on every PR
+recognition changes. Full independently checks pinned faster-whisper recognition
+and the exercised application paths. It runs nightly, on workflow dispatch, and on every PR
 except changes limited to `docs/*.md`/`docs/*.rst` (including subdirectories) or
 root `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md`, `LICENSE`, and `NOTICE`.
 All product, service, runtime, configuration, dependency, script, test, workflow,
-and unknown paths require full recognition. Rename classification checks both
+and unknown paths still trigger the full corpus conservatively. Triggering on a
+service change does not establish coverage of production service inference.
+The separate production transcription CI and runtime qualification gates remain
+required; neither corpus lane substitutes for them. Rename classification checks both
 old and new paths; an unavailable diff base also requires full recognition.
 Actions are commit-pinned, permissions read-only,
 and hosted jobs use only synthetic inputs. Existing quality/publication/security
 checks remain unchanged. No model cache, workspace, database, or media artifacts
 are uploaded.
+
+CLI summaries and receipt `coverage` metadata distinguish the exercised product
+paths and independent recognizer from `not_exercised` production paths. Full audio
+observations identify their actual recognition adapter. No model or service
+acceptance claim follows merely from a passing case count.
+
+This bounded choice preserves the current runtime and model gates. The production
+WhisperX worker selects CUDA, registered profiles use float16, and the full
+pipeline attempts forced alignment even when diarization is disabled. A hosted
+CPU substitution would require separately qualified runtime/profile behavior and
+alignment resources, including the tokenizer's existing terms-acknowledgement
+gate. This corpus does not bypass those requirements.
 
 ## Deliberate updates
 
@@ -105,6 +127,9 @@ the commit in `head`; edited trees set `head` to null and record `base_head`,
 paths are excluded and cannot overwrite tracked files. Repository changes during
 observation block receipt creation. This identifies repository inputs, not
 third-party dependencies or the complete runtime environment.
+Manifest and expected-output digests bind the exact bytes loaded for the run.
+All pinned media hashes are checked again before receipt creation, including
+when the corpus lives outside the repository or in an ignored directory.
 
 A normal run is read-only. To collect a proposal, explicitly choose a new file
 outside the corpus:

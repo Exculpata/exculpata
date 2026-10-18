@@ -1,4 +1,4 @@
-"""Full-lane offline recognition with immutable model identities; no fixture fallback."""
+"""Independent pinned faster-whisper recognition; production service is not exercised."""
 from __future__ import annotations
 
 import hashlib
@@ -8,6 +8,38 @@ from pathlib import Path
 
 
 ASR_FILES = ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
+INDEPENDENT_ASR_ADAPTER = 'faster_whisper.WhisperModel'
+
+
+def coverage_contract(*, full):
+    """Describe the executed corpus paths, independently of a passing score."""
+    product_paths = [
+        'native_pdf_ingestion', 'media_transcript_import_and_projection', 'search',
+        'question_dispatch_admission', 'extractive_answer_service', 'saved_citation_validation',
+    ]
+    if full:
+        product_paths.extend(['image_pdf_ocr', 'media_ingestion_preflight'])
+    return {
+        'schema_version': 1,
+        'product_paths': product_paths,
+        'recognition': {
+            'adapter': INDEPENDENT_ASR_ADAPTER if full else None,
+            'mode': 'independent-offline-cpu' if full else 'prepared-transcript-fixture',
+        },
+        'not_exercised': [
+            'production_transcription_service', 'production_transcription_worker',
+            'production_audio_loading', 'production_decoding_options', 'production_segment_conversion',
+            'whisperx_pipeline', 'whisperx_vad', 'forced_alignment', 'diarization',
+            'translation', 'gpu_execution', 'learned_retrieval_quality', 'generative_model_quality',
+        ],
+    }
+
+
+def coverage_summary(*, full):
+    recognition = 'product OCR and independent faster-whisper recognition' if full else 'prepared transcripts; OCR and ASR excluded'
+    return ('Coverage: product ingestion/search/projection and extractive answers; '
+            + recognition + '; production transcription service: not exercised '
+            '(worker, audio loading, decoding options, segment conversion, WhisperX, alignment, diarization).')
 
 
 def snapshot(pin, *, offline):
@@ -50,7 +82,8 @@ def recognize(root, manifest):
         if not rows:
             raise ValueError('ASR returned no segments')
         transcripts[case['id']] = rows
-        observations[case['id']] = {'text':' '.join(s['text'] for s in rows), 'language':info.language, 'segments':rows}
+        observations[case['id']] = {'text':' '.join(s['text'] for s in rows), 'language':info.language,
+                                   'segments':rows, 'recognition_adapter':INDEPENDENT_ASR_ADAPTER}
     return observations, transcripts
 
 

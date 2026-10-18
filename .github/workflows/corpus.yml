@@ -71,7 +71,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      - name: Install bounded CPU recognition dependencies
+      - name: Install independent CPU recognizer dependencies (not production service runtime)
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
@@ -89,9 +89,9 @@ jobs:
                   assert hashlib.sha256(target.read_bytes()).hexdigest() == digest
                   subprocess.run(['sudo','install','-m','644',str(target),'/usr/share/tesseract-ocr/5/tessdata/'+target.name],check=True)
           PY
-      - name: Stage pinned ASR snapshot
+      - name: Stage pinned ASR snapshot for independent recognition
         run: python scripts/corpus_recognition.py --stage-models
-      - name: Full offline recognition and product corpus
+      - name: Product OCR and independent faster-whisper corpus (production service not exercised)
         env:
           CASE_INTELLIGENCE_TEST_MODE: '1'
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: '0'
