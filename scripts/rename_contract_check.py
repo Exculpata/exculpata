@@ -200,9 +200,11 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
 def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
     """Decode bounded quoted/template string escapes without executing source."""
     literals = re.compile(r"//[^\n]*|/\*[\s\S]*?\*/|(?P<quote>['\"`])(?P<body>(?:\\[\s\S]|(?!(?P=quote))[\s\S])*)(?P=quote)")
-    escapes = re.compile(r"\\(?:x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|\r\n|[\s\S])")
+    escapes = re.compile(r"\\(?:[0-7]{1,3}|x[0-9a-fA-F]{2}|u\{[0-9a-fA-F]{1,6}\}|u[0-9a-fA-F]{4}|\r\n|[\s\S])")
     def decode(match):
         token = match.group()[1:]
+        if token.isdigit() and token != "0" and token[0] in "01234567":
+            raise ValueError("unsupported legacy octal escape")
         if token.startswith("x") and len(token) == 3:
             return chr(int(token[1:], 16))
         if token.startswith("u") and len(token) > 1:
@@ -288,6 +290,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     shadowed_qualified = set()
     loop_carried_names = []
     loop_written_names = []
+    unsupported_path_builders = {"os.path.join", "posixpath.join", "ntpath.join", "pathlib.PurePath", "pathlib.PurePosixPath", "pathlib.PureWindowsPath", "pathlib.PosixPath", "pathlib.WindowsPath"}
 
     def unsupported(node: ast.AST, form: str) -> None:
         if active_visitors and active_visitors[-1].reviewed_analysis:
@@ -406,6 +409,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         nonlocal env, unresolved_stems
         if isinstance(node, FrozenDomainValue):
             return node.item
+        if isinstance(node, ast.Lambda):
+            return ContainerValue("local_callable", ())
+        if isinstance(node, (ast.Name, ast.Attribute)) and qualified(node) in unsupported_path_builders | {"pathlib.Path"}:
+            return ContainerValue("callable", (qualified(node),))
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
             left, right = structure(node.left), structure(node.right)
             if left is not None and right is not None and left.kind == right.kind == "set":
@@ -515,7 +522,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
     def literal(item: str | ContainerValue | None) -> ast.AST:
         if isinstance(item, ContainerValue):
-            if item.kind in {"path", "string", "module", "callable", "object"}:
+            if item.kind in {"path", "string", "module", "callable", "local_callable", "object"}:
                 return FrozenDomainValue(item)
             if item.kind == "dict":
                 return ast.Dict(keys=[ast.Constant(value=key) for key, _ in item.items], values=[literal(value) for _, value in item.items])
@@ -986,6 +993,17 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                         if legacy_value(item):
                             binding_events.append((f"{name}.{key}", item))
 
+        def visit_Delete(self, node: ast.Delete) -> None:
+            for target in node.targets:
+                self.visit(target)
+                for part in ast.walk(target):
+                    if isinstance(part, ast.Attribute):
+                        shadowed_qualified.add(ast.unparse(part))
+                    if isinstance(part, (ast.Attribute, ast.Subscript)) and contains_stem(part):
+                        unsupported(part, "deletion of legacy-bearing mutable state")
+                    if isinstance(part, (ast.Name, ast.Attribute, ast.Subscript)) and isinstance(part.ctx, ast.Del):
+                        unbind(ast.unparse(part))
+
         def visit_Assign(self, node: ast.Assign) -> None:
             self.generic_visit(node)
             if len(node.targets) == 1:
@@ -1321,6 +1339,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 if expression is not None:
                     self.visit(expression)
             bind(ast.Name(id=node.name), None)
+            env[node.name] = ContainerValue("local_callable", ())
             scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
             parameters = [*node.args.posonlyargs, *node.args.args]
             defaults = {arg.arg: frozen(default) for arg, default in zip(parameters[len(parameters) - len(node.args.defaults):], node.args.defaults)}
@@ -1517,7 +1536,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.composition(node)
 
         def visit_Call(self, node: ast.Call) -> None:
-            if qualified(node.func) in {"os.path.join", "posixpath.join", "ntpath.join", "pathlib.PurePath", "pathlib.PurePosixPath", "pathlib.PureWindowsPath", "pathlib.PosixPath", "pathlib.WindowsPath"} and any(contains_stem(item) for item in call_inputs(node)):
+            callee = structure(node.func)
+            if callee is not None and callee.kind == "local_callable" and any(contains_stem(item) for item in call_inputs(node)):
+                unsupported(node, "explicit legacy arguments to local callable")
+            if qualified(node.func) in unsupported_path_builders and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "legacy path builder output")
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend", "insert", "update", "setdefault", "add", "__setitem__"} and any(contains_stem(item) for item in [node.func.value, *node.args, *(arg.value for arg in node.keywords)]):
                 unsupported(node, "legacy-bearing mutator call")
@@ -1629,7 +1651,18 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         # rglob visits each directory and file, so every relative-path component
         # is checked once, independently of its descendants or content type.
         found.extend(scan_component(relative.as_posix(), path.name, contracts))
-        if path.is_symlink() or not path.is_file():
+        if path.is_symlink():
+            try:
+                target = str(path.readlink())
+                target.encode("utf-8")
+            except (OSError, UnicodeEncodeError):
+                found.append(Finding(f"{relative.as_posix()}:1", "unsupported unreadable symlink target"))
+                continue
+            found.extend(scan_text(relative.as_posix(), target, contracts, literal=True))
+            for part in Path(target).parts:
+                found.extend(scan_component(relative.as_posix(), part, contracts))
+            continue
+        if not path.is_file():
             continue
         data = path.read_bytes()
         try:
@@ -1665,6 +1698,8 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             authority.body = remaining
             text = b"".join(lines).decode("utf-8")
         found.extend(scan_text(relative.as_posix(), text, contracts))
+        if path.suffix.lower() in {".yaml", ".yml", ".toml"} and re.search(r"\\[xuU]", text):
+            found.append(Finding(f"{relative.as_posix()}:1", "unsupported encoded configuration string"))
         if path.suffix.lower() == ".json":
             found.extend(scan_json(relative.as_posix(), text, contracts))
         if path.suffix.lower() in {".js", ".cjs", ".mjs"}:

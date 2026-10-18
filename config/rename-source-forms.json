@@ -94,6 +94,41 @@
           "function": "_code_corpus",
           "reason": "Build the documentation evidence corpus from source and QA settings; the resulting strings are analysis evidence.",
           "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 269,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_parametrize",
+          "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 410,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_walk_python",
+          "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 423,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "apply",
+          "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 430,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "visit_Call",
+          "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
+          "validation": "tests/test_documentation.py"
+        },
+        {
+          "line": 431,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "visit_Call",
+          "reason": "Transport candidate values through the documentation analysis corpus; these helper results are diagnostic evidence, not operational names.",
+          "validation": "tests/test_documentation.py"
         }
       ]
     },
@@ -105,6 +140,34 @@
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "status",
           "reason": "Decode and display stdout from the external backup command. Command tag selectors are not interpreted as output text.",
+          "validation": "tests/test_backup_contract.py"
+        },
+        {
+          "line": 600,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "backup",
+          "reason": "Execute the existing PostgreSQL backup command using registered database coordinates; command arguments and retained names remain scanned.",
+          "validation": "tests/test_backup_contract.py"
+        },
+        {
+          "line": 604,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "backup",
+          "reason": "Execute the existing PostgreSQL backup command using registered database coordinates; command arguments and retained names remain scanned.",
+          "validation": "tests/test_backup_contract.py"
+        },
+        {
+          "line": 737,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "status",
+          "reason": "Pass existing registered backup coordinates to the unchanged restic adapter for status or restore; no new identifier is constructed at this call.",
+          "validation": "tests/test_backup_contract.py"
+        },
+        {
+          "line": 773,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "restore",
+          "reason": "Pass existing registered backup coordinates to the unchanged restic adapter for status or restore; no new identifier is constructed at this call.",
           "validation": "tests/test_backup_contract.py"
         }
       ]
@@ -132,11 +195,144 @@
           "function": "_replace_env",
           "reason": "Append a serialized setting already constructed from the registered environment family; preserve the original file ordering and line endings.",
           "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 160,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_default_root",
+          "reason": "Detect an existing naming generation from the registered legacy root; the helper restricts the result to the declared generations.",
+          "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 2308,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_collect_preflight",
+          "reason": "Inspect credential-path metadata and return a boolean without reading credential contents.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 2309,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_collect_preflight",
+          "reason": "Record existing preflight observations and remedies; legacy-bearing text is diagnostic output and all names remain scanned.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 2364,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_collect_preflight",
+          "reason": "Record existing preflight observations and remedies; legacy-bearing text is diagnostic output and all names remain scanned.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 2373,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_collect_preflight",
+          "reason": "Record existing preflight observations and remedies; legacy-bearing text is diagnostic output and all names remain scanned.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 2829,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Write the already constructed database connection value to its selected private file; preserve existing bytes and permissions.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 2981,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Copy the credential to the already selected registered destination using the unchanged private-file checks.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3035,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Update an existing environment key through the registered alias family; preserve serialization and the saved naming generation.",
+          "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 3037,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Serialize and write the selected environment mapping and heading using existing registered paths; preserve bytes, order and naming generation.",
+          "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 3038,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Serialize and write the selected environment mapping and heading using existing registered paths; preserve bytes, order and naming generation.",
+          "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 3039,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Serialize and write the selected environment mapping and heading using existing registered paths; preserve bytes, order and naming generation.",
+          "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 3375,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_provision",
+          "reason": "Execute existing provisioning commands with registered container coordinates through the unchanged command adapter.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3382,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_provision",
+          "reason": "Execute existing provisioning commands with registered container coordinates through the unchanged command adapter.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3399,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_provision",
+          "reason": "Execute existing provisioning commands with registered container coordinates through the unchanged command adapter.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3408,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_provision",
+          "reason": "Execute existing provisioning commands with registered container coordinates through the unchanged command adapter.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3592,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_running_auth_mode",
+          "reason": "Run the bounded authentication-mode diagnostic command; the command path is input and the process result is external diagnostic data.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3979,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_schedule_backup",
+          "reason": "Enable the already selected registered backup timer name through the existing command adapter.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 3980,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_schedule_backup",
+          "reason": "Write the already constructed registered backup-unit template atomically; no new naming generation or unit kind is introduced.",
+          "validation": "tests/test_oss_installer.py"
+        },
+        {
+          "line": 4119,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_update",
+          "reason": "Update an existing environment key through the registered alias family; preserve serialization and the saved naming generation.",
+          "validation": "tests/test_install_naming.py"
         }
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "de82f0a9cffc4d7765df804f43a3c16a51f2add931dcca99f9a554c5be00ae5b",
+      "source_sha256": "5ef3c41c1ae820ec67e825eb16d4af63924ee0ee35869b0fde68d6dc0a54aa92",
       "diagnostics": [
         {
           "line": 169,
@@ -289,6 +485,13 @@
           "function": "patch_metadata",
           "reason": "Replace fixed dependency/version entries in bytes authenticated by the existing metadata digest. The complete replacement version is checked normally.",
           "validation": "services/transcription/tests/test_compatibility_build.py"
+        },
+        {
+          "line": 116,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "build",
+          "reason": "Hash existing wheel bytes with SHA-256; the input wheel coordinate is not returned identifier text.",
+          "validation": "services/transcription/tests/test_compatibility_build.py"
         }
       ]
     },
@@ -339,6 +542,20 @@
           "function": "env",
           "reason": "Store already constructed setting names solely for once-per-setting deprecation/conflict warnings under the existing lock.",
           "validation": "tests/test_compat_env.py"
+        },
+        {
+          "line": 82,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "kerberos_headers",
+          "reason": "Select authentication header values using registered aliases; the selector name is not returned data and conflict rejection stays unchanged.",
+          "validation": "tests/test_compat_env.py"
+        },
+        {
+          "line": 83,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "kerberos_headers",
+          "reason": "Select authentication header values using registered aliases; the selector name is not returned data and conflict rejection stays unchanged.",
+          "validation": "tests/test_compat_env.py"
         }
       ]
     },
@@ -350,6 +567,13 @@
           "identifier": "unsupported legacy syntax (legacy-bearing class namespace); use immutable contract-based construction",
           "function": "ParsedQuery",
           "reason": "Frozen parsed-query dataclass stores the retained grammar version default; serialization and parsing keep their existing contract. This receipt covers only this complete unchanged module.",
+          "validation": "tests/test_exact_search.py"
+        },
+        {
+          "line": 410,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "parse_query",
+          "reason": "Use the retained grammar version as a parser selector; the unchanged lexer returns query tokens rather than the selector name.",
           "validation": "tests/test_exact_search.py"
         }
       ]
@@ -382,6 +606,13 @@
           "function": "__init__",
           "reason": "Store a Thread object whose complete maintenance/discovery name was already checked; preserve scheduling, locking and lifecycle behavior.",
           "validation": "tests/test_matter_continuity_lifecycle.py"
+        },
+        {
+          "line": 11524,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "loose_file_upload_preflight",
+          "reason": "Record the existing loose-file preflight audit detail through the unchanged audit adapter; the retained format marker remains scanned.",
+          "validation": "tests/test_milestone_a_workbench.py"
         }
       ]
     },
@@ -401,6 +632,101 @@
           "function": "__init__",
           "reason": "Keep a started Thread object whose name was already checked against the research/review family; the list is worker lifecycle state.",
           "validation": "tests/test_answer_jobs.py"
+        }
+      ]
+    },
+    "scripts/browser-accept-briefing.py": {
+      "source_sha256": "9be56b8e66ad42bdc4c56ef41157136b94adb99b61c4d74e709758c6be6a0b2b",
+      "diagnostics": [
+        {
+          "line": 368,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "main",
+          "reason": "Dispatch the already registered readiness event through the local WebDriver adapter; script text is unchanged and remains scanned.",
+          "validation": "tests/test_browser_acceptance_runner.py"
+        },
+        {
+          "line": 372,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "main",
+          "reason": "Dispatch the already registered readiness event through the local WebDriver adapter; script text is unchanged and remains scanned.",
+          "validation": "tests/test_browser_acceptance_runner.py"
+        }
+      ]
+    },
+    "scripts/pre-push-publication.py": {
+      "source_sha256": "fcec6502751a5d3c5a490838d7fac61570d638403e00f366ad6515c00682bdf4",
+      "diagnostics": [
+        {
+          "line": 33,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_prefer_current",
+          "reason": "Read the legacy configuration selector through the unchanged publication guard. This exact call receipt changes neither guard implementation nor policy; selected values remain subject to the guard.",
+          "validation": "tests/test_publication_pre_push.py"
+        }
+      ]
+    },
+    "src/case_intelligence/answer_context.py": {
+      "source_sha256": "73af6d19159d7d3ea9a170f30df818f48784beef18a7c7567881c34353f73a21",
+      "diagnostics": [
+        {
+          "line": 45,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "freeze",
+          "reason": "Validate serialization of the selected context snapshot through the unchanged orientation helper, whose format marker is independently registered.",
+          "validation": "tests/test_answer_context.py"
+        }
+      ]
+    },
+    "src/case_intelligence/evaluation.py": {
+      "source_sha256": "ff4120a6d0300629289d82d770985e7d8dfaf45a7fbea6cb2bf6362fce5d4c50",
+      "diagnostics": [
+        {
+          "line": 404,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "attempt",
+          "reason": "Exercise existing synthetic ticket rejection cases through the local redemption adapter; the retained malformed test URI contracts are intentional.",
+          "validation": "tests/test_evaluation.py"
+        },
+        {
+          "line": 406,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "attempt",
+          "reason": "Exercise existing synthetic ticket rejection cases through the local redemption adapter; the retained malformed test URI contracts are intentional.",
+          "validation": "tests/test_evaluation.py"
+        }
+      ]
+    },
+    "src/case_intelligence/work_product_exports.py": {
+      "source_sha256": "2778c7f855eff4fa80a21a060a79a340fd86a17844d4c117004572e98575c508",
+      "diagnostics": [
+        {
+          "line": 2073,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "export_matter_bundle",
+          "reason": "Write existing serialized export members with independently registered format markers; the unchanged helper enforces the bundle size boundary.",
+          "validation": "tests/test_work_product_exports.py"
+        },
+        {
+          "line": 2160,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "export_matter_bundle",
+          "reason": "Write existing serialized export members with independently registered format markers; the unchanged helper enforces the bundle size boundary.",
+          "validation": "tests/test_work_product_exports.py"
+        },
+        {
+          "line": 2246,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "export_matter_bundle",
+          "reason": "Write existing serialized export members with independently registered format markers; the unchanged helper enforces the bundle size boundary.",
+          "validation": "tests/test_work_product_exports.py"
+        },
+        {
+          "line": 2250,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "export_matter_bundle",
+          "reason": "Write existing serialized export members with independently registered format markers; the unchanged helper enforces the bundle size boundary.",
+          "validation": "tests/test_work_product_exports.py"
         }
       ]
     }

@@ -1284,3 +1284,82 @@ def test_unhandled_try_exit_reaches_finally_with_known_origin(tmp_path):
     source = 'from case_intelligence.legacy_names import LEGACY_STEM\ntry:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"\nfinally:\n FORMAT = f"{stem}-unregistered-v99"\n'
     (tmp_path / 'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'other="synthetic"\ndel other\ntry:\n operation()\nexcept Exception:\n stem=LEGACY_STEM\n stem=other\nfinally:\n FORMAT=f"{stem}-unregistered-v99"',
+    'import pathlib\nBuilder=pathlib.PurePath\nFORMAT=Builder(LEGACY_STEM,"unregistered-v99")',
+    'def build(stem):\n return stem+"-unregistered-v99"\nFORMAT=build(LEGACY_STEM)',
+    'build=lambda stem: stem+"-unregistered-v99"\nFORMAT=build(LEGACY_STEM)',
+])
+def test_reviewed_deletion_callable_alias_and_explicit_arguments(tmp_path, source):
+    (tmp_path/'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n'+source)
+    assert checker.findings(tmp_path)
+
+
+def test_commonjs_legacy_octal_escape_is_not_safe_unknown(tmp_path):
+    (tmp_path/'synthetic.cjs').write_text(r'const FORMAT="\162ecordbench-unregistered-v99";')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('target', ['recordbench-unregistered-v99','/synthetic/recordbench-unregistered-v99'])
+def test_operational_symlink_target_names_are_checked_without_following(tmp_path, target):
+    (tmp_path/'current').symlink_to(target)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('filename,source', [('compose.yaml',r'key: "\x72ecordbench-unregistered-v99"'),('config.toml',r'key = "\u0072ecordbench-unregistered-v99"')])
+def test_escaped_configuration_identifiers_fail_closed(tmp_path, filename, source):
+    (tmp_path/filename).write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'import pathlib\nFirst=pathlib.PurePath\nBuilder=First\nFORMAT=Builder(LEGACY_STEM,"unregistered-v99")',
+    'def build(stem):\n return stem+"-unregistered-v99"\nAlias=build\nFORMAT=Alias(stem=LEGACY_STEM)',
+    'FORMAT=(lambda stem: stem+"-unregistered-v99")(LEGACY_STEM)',
+    'other="synthetic"\ndel (other,)\ntry:\n operation()\nexcept Exception:\n stem=LEGACY_STEM\n stem=other\nfinally:\n FORMAT=f"{stem}-unregistered-v99"',
+])
+def test_deleted_tuple_and_transitive_callables_remain_restricted(tmp_path, source):
+    (tmp_path/'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n'+source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'from pathlib import Path\nBuilder=Path\nFORMAT=Builder(LEGACY_STEM+".env")',
+    'def build(stem):\n return stem+"-example"\nFORMAT=build("synthetic")',
+    'other="synthetic"\ndel other\nother="synthetic"\ntry:\n operation()\nexcept Exception:\n stem=LEGACY_STEM\n stem=other\nfinally:\n FORMAT=f"{stem}-unregistered-v99"',
+])
+def test_recognized_path_alias_and_fresh_nonlegacy_values_remain_valid(tmp_path, source):
+    (tmp_path/'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n'+source)
+    assert checker.findings(tmp_path)==[]
+
+
+def test_symlink_target_contents_are_not_followed(tmp_path):
+    destination=tmp_path/'tests'/'synthetic.txt'
+    destination.parent.mkdir()
+    destination.write_text('recordbench-unregistered-v99')
+    (tmp_path/'current').symlink_to(destination)
+    assert checker.findings(tmp_path)==[]
+
+
+
+def test_registered_dangling_symlink_target_remains_valid(tmp_path):
+    (tmp_path/'current').symlink_to('recordbench.env')
+    assert checker.findings(tmp_path)==[]
+
+
+
+def test_delete_target_expressions_still_scan_decoded_literals(tmp_path):
+    (tmp_path/'synthetic.py').write_text(r'del mapping["\x72ecordbench-unregistered-v99"]')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('tail', [
+    'def use(callback=build):\n return callback(LEGACY_STEM)\nFORMAT=use()',
+    'for callback in [build]:\n FORMAT=callback(LEGACY_STEM)',
+])
+def test_local_callable_kind_survives_captured_and_iterated_values(tmp_path, tail):
+    source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+tail
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)

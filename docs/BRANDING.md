@@ -175,14 +175,14 @@ checked value or an explicit diagnostic; unsupported syntax must not erase it.
 
 | Form | Supported boundary |
 | --- | --- |
-| Authority imports | Absolute imports from `case_intelligence.legacy_names`, aliases, and package-relative imports within that package. Foreign imports do not inherit authority constants. |
+| Authority imports | Immutable aliases preserve recognized path-builder identity. Deleted bindings are invalidated. Absolute imports from `case_intelligence.legacy_names`, aliases, and package-relative imports within that package. Foreign imports do not inherit authority constants. |
 | Bindings and containers | Local bindings and literal lists, tuples, sets and mappings; verified pure collection constructors, dictionary replacement and set union; known mapping keys and static positive or negative integer member indexes. |
 | String construction | Bounded concatenation, simple f-strings, simple positional formatting, declared `name_value` calls, statically resolved string operations and finite JSON serialization. Unknown fields without a known legacy origin are checked as symbolic family members. |
 | Comprehensions | One synchronous generator over a finite known container, with simple name or tuple/list targets. Filtered selections lose positional precision; predicates using calls must be verified path-status operations when they carry a known origin. At most 256 members per expansion, a 4096-member analysis budget and 65536-character composed values. Comprehension targets stay local; their bodies use lexical scope rather than a surrounding class namespace. Legacy-bearing assignment expressions and deferred generator outputs are rejected. Known function defaults are captured at definition time; annotations without values do not overwrite bindings. Function parameter/return annotations are checked in their defining scope. A nonfinite input without a tracked origin may carry resolved literal/record output, but not an opaque legacy-derived result. |
 | Branches and scopes | Conservative `if`, unguarded `match` and simple try-body exception-path merges. Legacy-bearing handler/else suites feeding a `finally` block are restricted to direct literal or known-name assignments; other forms are rejected. Loop-carried legacy bindings and side-effecting conditional/exception-sensitive expressions are rejected. Direct fresh per-iteration resets, pure set union and dictionary accumulation from inputs not assigned in the loop remain supported. Accumulator updates cannot consume per-iteration aliases of prior state. Class headers execute in their enclosing scope. Enclosing function global/nonlocal declarations do not create closure locals. |
 | Input roles | Roles require a verified callable or receiver. Verified `Path` reads return external data, not their filename; numeric builtins do not return identifier text. Known dictionary lookups return values/defaults rather than selector keys. The environment reader returns environment values/defaults rather than key names; this summary is pinned to the entire helper module source and rejects changed implementations. Arbitrary helper or method results retain known input provenance. Parser and regular-expression objects may expose their inputs through attributes. |
 
-Legacy-bearing attribute/subscript mutations, mutator calls, chained mutable
+Explicit legacy-bearing arguments to local functions and lambdas are unsupported; the gate does not infer arbitrary function arguments or returns. Legacy-bearing attribute/subscript mutations, mutator calls, chained mutable
 assignments, starred collection displays, mapping unpacking, global/nonlocal
 writes, guarded captures, abrupt loops with legacy bindings and compound
 exception paths with legacy bindings are rejected. Nonfinite legacy-bearing iterables, asynchronous comprehensions, unverified
@@ -199,19 +199,19 @@ paths permit ordinary descendants, while legacy-named descendants must have thei
 own contract. The authority module is scanned outside the table declaration;
 only its exact source span is covered by the separate contract-table validation,
 so neighboring statements remain checked. URI query, fragment and percent-encoded
-suffixes remain part of the identifier and require an explicit contract. Path punctuation and decoded source-literal dots remain exact. Prose punctuation, source member access and explicit Compose mount modes are syntax boundaries, not literal-name exemptions. Bounded JavaScript and JSON string escapes are decoded without executing source. Ambiguous JavaScript escapes produce a blocking diagnostic without discarding raw findings. Malformed relevant escapes, invalid JSON and non-UTF-8 operational source are rejected, including configuration and extensionless files. Only explicit binary image/font/document/media formats are excluded from UTF-8 decoding. Imported path builders with legacy-bearing outputs outside the verified Path constructor boundary are rejected.
+suffixes remain part of the identifier and require an explicit contract. Path punctuation and decoded source-literal dots remain exact. Prose punctuation, source member access and explicit Compose mount modes are syntax boundaries, not literal-name exemptions. Bounded JavaScript and JSON string escapes are decoded without executing source. Legacy octal JavaScript escapes are rejected. YAML/TOML hexadecimal or Unicode escapes require explicit treatment rather than a raw-text-only pass. Symlink target text and path components are inspected without following the link. Ambiguous JavaScript escapes produce a blocking diagnostic without discarding raw findings. Malformed relevant escapes, invalid JSON and non-UTF-8 operational source are rejected, including configuration and extensionless files. Only explicit binary image/font/document/media formats are excluded from UTF-8 decoding. Imported path builders with legacy-bearing outputs outside the verified Path constructor boundary are rejected.
 The documentation checker's `_swap` helper translates candidate text rather than
 emitting operational names. Its exact normalized source body has a recorded SHA-256 disposition for
 unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
 does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
 
-`config/rename-source-forms.json` records 49 additional, diagnostic-specific source
+`config/rename-source-forms.json` records 92 additional, diagnostic-specific source
 contracts for existing analysis or transport operations that remain outside this
-grammar. Thirty-two concern diagnostic text analysis; the remaining seventeen concern
+grammar. Thirty-seven concern diagnostic text analysis; the remaining fifty-five concern
 existing setting validation/output, authenticated dependency metadata replacement,
 lifecycle SQL rendering, warning-once bookkeeping, thread-object storage and two exact frozen dataclass namespaces carrying retained configuration or grammar defaults. Those two class receipts are not a general exemption for dataclasses.
-Each record names the exact path, complete module source digest, diagnostic line
+The local-call restriction adds 43 exact call-site records for existing diagnostic, selector, command, serialization, export and audit consumers. Their implementations are unchanged, including the publication guard; there is no general helper-name exemption or argument interpreter. Each record names the exact path, complete module source digest, diagnostic line
 and text, semantic reason and validation suite. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
 The gate still scans every file and checks all literal and resolved identifiers.
