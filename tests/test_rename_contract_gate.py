@@ -1902,6 +1902,7 @@ def test_ansi_c_quoting_is_a_consistently_unsupported_shell_family(source):
     ('Dockerfile', 'FROM synthetic\nRUN echo synthetic'),
     ('Makefile', 'check:\n\t@echo synthetic'),
     ('.gitignore', '*.synthetic\n'),
+    ('.env', 'VALUE=synthetic:environment'),
     ('install', '#!/bin/sh\necho synthetic'),
 ])
 def test_known_non_python_extensionless_sources_keep_literal_checks(tmp_path, relative, source):

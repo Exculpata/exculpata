@@ -1950,7 +1950,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
                 authority = ast.parse(text.removeprefix("\ufeff"))
             except (SyntaxError, ValueError, RecursionError):
                 known_text_format = path.name in {
-                    ".dockerignore", ".gitignore", ".assetsignore", "Dockerfile",
+                    ".dockerignore", ".gitignore", ".assetsignore", ".env", "Dockerfile",
                     "Makefile", "LICENSE", "NOTICE", "CODEOWNERS", "_headers",
                 }
                 shell_shebang = bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", shebang))
