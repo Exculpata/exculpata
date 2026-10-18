@@ -176,10 +176,10 @@ def test_long_question_windows_keep_candidate_and_modality_scope_limits(primary_
     supplemental = [call for call in harness.calls if call[2] == frozenset({"recording"})]
     assert len(primary) == len(supplemental) == 7
     assert all(len(query) <= 512 for query, *_ in harness.calls)
-    assert " ".join(query for query, *_ in primary) == question
-    assert " ".join(query for query, *_ in supplemental) == question
-    assert sum(limit for _, limit, *_ in primary) == primary_limit
-    assert sum(limit for _, limit, *_ in supplemental) == 12
+    assert " ".join([query for query, *_ in primary]) == question
+    assert " ".join([query for query, *_ in supplemental]) == question
+    assert sum([limit for _, limit, *_ in primary]) == primary_limit
+    assert sum([limit for _, limit, *_ in supplemental]) == 12
     assert sum(row.evidence_kind == "document" for row in rows) == primary_limit
     assert sum(row.evidence_kind == "transcript" for row in rows) == 12
     assert primary[0][3] is callback

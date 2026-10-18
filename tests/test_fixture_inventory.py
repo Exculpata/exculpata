@@ -1481,3 +1481,228 @@ def test_builtin_generator_marker_preserves_creation_and_consumption_runtime_tim
     assert observed == ([], True)
     assert sink == ['consumed']
     assert check_fixture_writes(source) == []
+
+
+_LOOKUP_DEFAULT_CARRIER_RESULTS = [
+    ('[dict][resource]', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('(dict, int)[resource]', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('[{"factory": dict}][resource]["factory"]', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('operator.getitem([dict], resource)', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('[type.__call__][resource]', 'constructor(Callback)', ''),
+    ('[copies.copy][resource]', 'constructor(Callback())', ''),
+    ('[Callback][resource]', 'constructor()', ''),
+    ('getattr(object(), "missing", dict)', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('getattr(object(), "missing", type.__call__)', 'constructor(Callback)', ''),
+    ('getattr(object(), "missing", copies.copy)', 'constructor(Callback())', ''),
+    ('getattr(object(), "missing", Callback)', 'constructor()', ''),
+    ('next(iter(dict.fromkeys([dict], int)))', 'type.__call__(constructor, callback=Callback())', '["callback"]'),
+    ('list(dict.fromkeys([type.__call__], int))[resource]', 'constructor(Callback)', ''),
+]
+
+
+@pytest.mark.parametrize('lookup,expression,selection', _LOOKUP_DEFAULT_CARRIER_RESULTS)
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_lookup_default_carrier_runtime_rejection(lookup, expression, selection, mode):
+    source = (_LOCAL_CALLBACK_CLASS + '\nimport operator\nimport copy as copies\n'
+              'constructor = ' + lookup)
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nimport asyncio\nselected = asyncio.run(provider())' + selection
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = next(provider())' + selection
+    else:
+        source += '\nprovider = lambda: ' + expression
+        rejection_line = len(source.splitlines())
+        source += '\nselected = provider()' + selection
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source, resource=0)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('adapter,target,iterable,expression', [
+    ('enumerate', 'index, constructor', '[dict]', 'type.__call__(constructor, callback=Callback())'),
+    ('reversed', 'constructor', '[dict]', 'type.__call__(constructor, callback=Callback())'),
+    ('zip', 'constructor, index', '[dict], [0]', 'type.__call__(constructor, callback=Callback())'),
+    ('builtins.enumerate', 'index, constructor', '[dict]', 'type.__call__(constructor, callback=Callback())'),
+    ('reverse', 'constructor', '[dict]', 'type.__call__(constructor, callback=Callback())'),
+    ('pair', 'constructor, index', '[dict], [0]', 'type.__call__(constructor, callback=Callback())'),
+    ('enumerate', 'index, constructor', '[type.__call__]', 'constructor(Callback)'),
+    ('reversed', 'constructor', '[copies.copy]', 'constructor(Callback())'),
+    ('zip', 'constructor, index', '[Callback], [0]', 'constructor()'),
+    ('enumerate', 'index, constructor', '[Callback()]', 'constructor'),
+    ('reversed', 'constructor', '[Callback().selected]', 'constructor'),
+    ('reversed', 'constructor', 'dict.fromkeys([dict], int)', 'type.__call__(constructor, callback=Callback())'),
+])
+def test_iterator_adapter_carrier_runtime_rejection(adapter, target, iterable, expression):
+    source = (_LOCAL_CALLBACK_CLASS + '\nimport builtins\nimport copy as copies\n'
+              'from builtins import reversed as reverse, zip as pair\n'
+              'async def provider():\n    for ' + target + ' in ' + adapter + '(' + iterable + '):')
+    rejection_line = len(source.splitlines())
+    source += '\n        return ' + expression + '\nimport asyncio\nselected = asyncio.run(provider())'
+    if 'callback=' in expression:
+        source += '["callback"]'
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'iterator adapter' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('keys,lookup', [
+    ('[dict]', '[dict]'), ('[dict]', '.get(dict)'),
+    ('[type.__call__]', '[type.__call__]'), ('[Numeric]', '[Numeric]'),
+    ('[numeric]', '[numeric]'), ('[dict]', '.get(resource)'),
+    ('[dict, list]', '.copy().get(dict)'),
+    ('[type.__call__]', '.copy()[type.__call__]'),
+])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_fromkeys_key_carrier_scalar_value_runtime_acceptance(keys, lookup, mode):
+    source = ('class Numeric:\n    def __int__(self):\n        return 1\n'
+              'numeric = Numeric()\nmapping = dict.fromkeys(' + keys + ', int)\n'
+              'constructor = mapping' + lookup)
+    expression = 'type.__call__(constructor, numeric)'
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        source += '\nimport asyncio\nobserved = asyncio.run(provider())'
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression + '\nobserved = next(provider())'
+    else:
+        source += '\nprovider = lambda: ' + expression + '\nobserved = provider()'
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=dict)
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('body', [
+    'return type.__call__([dict, int][1], numeric)',
+    'return [dict, globals][0].__name__ == "dict"',
+    'return type.__call__(getattr(object(), "missing", int), numeric)',
+    'return getattr(dict, "__name__", "missing") == "dict"',
+    'return list(enumerate([1])) == [(0, 1)]',
+    'return list(reversed([1])) == [1]',
+    'return list(zip([1], [2])) == [(1, 2)]',
+    'return list(enumerate({"key": dict})) == [(0, "key")]',
+    'return list(reversed({"key": type.__call__})) == ["key"]',
+    'return list(zip({"key": Numeric}, [1])) == [("key", 1)]',
+    'return list(reversed(dict.fromkeys({"key": dict}, int))) == ["key"]',
+    'return list(enumerate(dict.fromkeys(["key"], Numeric))) == [(0, "key")]',
+])
+def test_lookup_adapter_key_only_runtime_acceptance(body):
+    source = ('class Numeric:\n    def __int__(self):\n        return 1\nnumeric = Numeric()\n'
+              'async def provider():\n    ' + body + '\nimport asyncio\nobserved = asyncio.run(provider())')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('name', ['enumerate', 'reversed', 'zip'])
+def test_iterator_adapter_local_parameter_identity_runtime_acceptance(name):
+    source = ('class Callback:\n    pass\ndef ordinary(values):\n    return [1]\n'
+              'async def provider(' + name + '):\n    return ' + name + '([Callback()])[0]\n'
+              'import asyncio\nobserved = asyncio.run(provider(ordinary))')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+_FROMKEYS_TRANSPORTS = [
+    'mapping', 'mapping.copy()', 'copies.copy(mapping)', 'dict(mapping)',
+    'mapping | {}', '{} | mapping', 'mapping.__or__({})',
+    'mapping if resource else dict.fromkeys([list], int)',
+]
+
+
+@pytest.mark.parametrize('transport', _FROMKEYS_TRANSPORTS)
+def test_fromkeys_transport_keeps_scalar_values_runtime_acceptance(transport):
+    source = ('import copy as copies\nclass Numeric:\n    def __int__(self):\n        return 1\n'
+              'numeric = Numeric()\nmapping = dict.fromkeys([dict], int)\n'
+              'selected = ' + transport + '\nconstructor = selected.get(dict)\n'
+              'async def provider():\n    return type.__call__(constructor, numeric)\n'
+              'import asyncio\nobserved = asyncio.run(provider())')
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=True)
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('transport', _FROMKEYS_TRANSPORTS)
+def test_fromkeys_transport_keeps_key_carriers_runtime_rejection(transport):
+    source = (_LOCAL_CALLBACK_CLASS + '\nimport copy as copies\nmapping = dict.fromkeys([dict], int)\n'
+              'selected = ' + transport + '\nconstructor = next(iter(selected))\n'
+              'async def provider():\n    return type.__call__(constructor, callback=Callback())')
+    rejection_line = len(source.splitlines())
+    source += "\nimport asyncio\nasyncio.run(provider())['callback']()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source, resource=True)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('expression,selection', [
+    ('dict.fromkeys(["key"], dict).values()', '[0]'),
+    ('dict.fromkeys([dict], int).items()', '[0][0]'),
+    ('dict.fromkeys([dict], int).popitem()', '[0]'),
+])
+def test_fromkeys_enumeration_carrier_runtime_rejection(expression, selection):
+    source = _LOCAL_CALLBACK_CLASS + '\nselected = ' + expression
+    source += ('\nconstructor = list(selected)' + selection + '\n'
+               'async def provider():\n    return type.__call__(constructor, callback=Callback())')
+    rejection_line = len(source.splitlines())
+    source += "\nimport asyncio\nasyncio.run(provider())['callback']()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+def test_fromkeys_value_enumeration_does_not_inherit_key_carriers():
+    source = ('class Numeric:\n    def __int__(self):\n        return 1\n'
+              'mapping = dict.fromkeys([dict], int)\nconstructor = next(iter(mapping.values()))\n'
+              'async def provider():\n    return type.__call__(constructor, Numeric())\n'
+              'import asyncio\nobserved = asyncio.run(provider())')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('operation', ['items', 'popitem'])
+@pytest.mark.parametrize('placement', ['key', 'value'])
+def test_fromkeys_destructured_carrier_runtime_rejection(operation, placement):
+    entry = 'dict.fromkeys([dict], int)' if placement == 'key' else 'dict.fromkeys(["key"], dict)'
+    source = _LOCAL_CALLBACK_CLASS + '\nmapping = ' + entry + '\nasync def provider():\n'
+    if operation == 'items':
+        source += '    for key, value in mapping.items():\n        return type.__call__(' + placement + ', callback=Callback())'
+    else:
+        source += '    key, value = mapping.popitem()\n    return type.__call__(' + placement + ', callback=Callback())'
+    rejection_line = len(source.splitlines())
+    source += "\nimport asyncio\nasyncio.run(provider())['callback']()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('operation', ['items', 'popitem', 'values'])
+def test_dictionary_enumeration_scalar_consumption_runtime_acceptance(operation):
+    source = ('class Number:\n    def __str__(self):\n        return "1"\n'
+              'mapping = {"VALUE": Number()}\noutput = []\n')
+    if operation == 'items':
+        source += 'for key, value in mapping.items():\n    output.append((str(key), str(value)))'
+    elif operation == 'popitem':
+        source += 'key, value = mapping.popitem()\noutput.append((str(key), str(value)))'
+    else:
+        source += 'for value in mapping.values():\n    output.append(("VALUE", str(value)))'
+    source += '\nobserved = output'
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == [('VALUE', '1')]
+    assert sink == []
+    assert check_fixture_writes(source) == []

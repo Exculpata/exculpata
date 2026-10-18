@@ -201,6 +201,7 @@ class _Value:
     elements: tuple[_Value, ...] | None = None
     mapping: tuple[tuple[str, _Value], ...] | None = None
     dictionary_instance: bool = False
+    dictionary_keys: _Value | None = None
     methods: frozenset[str] = frozenset()
     receiver: _Value | None = None
     sqlite_cursor: bool = False
@@ -547,7 +548,7 @@ class _Check(ast.NodeVisitor):
             stars = [i for i, item in enumerate(target.elts) if isinstance(item, ast.Starred)]
             if values is None or (not stars and len(values) != len(target.elts)) or (stars and len(values) < len(target.elts) - 1):
                 for item in target.elts:
-                    self.bind(item, _Value())
+                    self.bind(item, self.class_carrier_value(value))
             elif stars:
                 index = stars[0]
                 end = len(values) - (len(target.elts) - index - 1)
@@ -585,19 +586,19 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
-        resolved = self.mapping_lookup(value, self.value(node.slice))
+        index = node.slice.value if isinstance(node.slice, ast.Constant) else None
+        if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
+            resolved = value.elements[index]
+        elif value.mapping is not None and isinstance(index, str):
+            resolved = dict(value.mapping).get(index, _Value())
+        else:
+            resolved = self.mapping_lookup(value, self.value(node.slice))
         if resolved is None and value.elements is None and value.mapping is None and (
                 value.builtin_classes or value.class_operations or value.local_class or value.local_instance):
             resolved = self.payload_value([value])
         if resolved is not None and isinstance(node.ctx, ast.Load):
             self.evaluated_values[node] = resolved
             self.reject_dynamic_builtin(node, resolved)
-        if isinstance(node.slice, ast.Constant):
-            index = node.slice.value
-            if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
-                self.evaluated_values[node] = value.elements[index]
-            elif value.mapping is not None and isinstance(index, str):
-                self.evaluated_values[node] = dict(value.mapping).get(index, _Value())
         if (self.unresolved_ownership(value) or
                 ((value.elements is not None or value.mapping is not None)
                  and self.known_ownership(value, shared_only=True))):
@@ -754,21 +755,33 @@ class _Check(ast.NodeVisitor):
         # Scope/module registries and exact string-key mappings yield keys,
         # not their namespace-bearing values. Keep cardinality unknown and
         # preserve the existing conservative SQL/path provenance checks.
+        if value.dictionary_keys is not None:
+            return value.dictionary_keys
         if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
             return replace(self.payload_value([value]), symbol="", callable_targets=frozenset(),
                            local_class=False, local_instance=False, class_operations=frozenset(), builtin_classes=frozenset())
         return value
 
+    def class_carrier_value(self, value: _Value) -> _Value:
+        return _Value(local_class=self.has_local_class(value),
+                      local_instance=self.has_local_class(value, instances=True),
+                      class_operations=self.local_class_operations(value),
+                      builtin_classes=self.known_builtin_classes(value))
+
     def iteration_item(self, value: _Value) -> _Value:
         projected = self.iteration_value(value)
         if projected.elements is None:
-            return _Value(local_class=self.has_local_class(projected),
-                          local_instance=self.has_local_class(projected, instances=True),
-                          class_operations=self.local_class_operations(projected),
-                          builtin_classes=self.known_builtin_classes(projected))
+            return self.class_carrier_value(projected)
         return self.merge_aliases(*({"item": item} for item in projected.elements))["item"] if projected.elements else _Value()
 
     def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
+        if receiver.elements is not None and (self.known_builtin_classes(receiver)
+                or self.local_class_operations(receiver) or self.has_local_class(receiver)
+                or self.has_local_class(receiver, instances=True)):
+            return self.payload_value([receiver])
+        if receiver.dictionary_keys is not None and receiver.mapping is None:
+            values = replace(receiver, dictionary_keys=None, dictionary_instance=False)
+            return self.payload_value([values, *([] if default is None else [default])])
         if (not key.complete_text and not key.nonstring_constant
                 and receiver.mapping is not None and _Check.contains_namespace(receiver)):
             return _Value(symbol="<reflective-builtins>")
@@ -790,26 +803,30 @@ class _Check(ast.NodeVisitor):
         targets = value.callable_targets
         if value.symbol.startswith(("function@", "lambda@")):
             targets |= {value.symbol}
-        children = [*([value.receiver] if value.receiver is not None else []),
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return targets.union(*(_Check.local_callable_targets(child) for child in children))
 
     @staticmethod
     def has_local_class(value: _Value, *, instances=False) -> bool:
-        children = [*([value.receiver] if value.receiver is not None else []),
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return (value.local_instance if instances else value.local_class) or any(
             _Check.has_local_class(child, instances=instances) for child in children)
 
     @staticmethod
     def local_class_operations(value: _Value) -> frozenset[str]:
-        children = [*([value.receiver] if value.receiver is not None else []),
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return value.class_operations.union(*(_Check.local_class_operations(child) for child in children))
 
     @staticmethod
     def known_builtin_classes(value: _Value) -> frozenset[str]:
-        children = [*([value.receiver] if value.receiver is not None else []),
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
                     *(value.elements or ()), *(item for _, item in value.mapping or ())]
         return value.builtin_classes.union(*(_Check.known_builtin_classes(child) for child in children))
 
@@ -887,6 +904,11 @@ class _Check(ast.NodeVisitor):
                 mapping.update(expanded)
             else:
                 opaque = True
+        if opaque and arguments and all(value.dictionary_keys is not None or value.mapping is not None for value in arguments) and all(key is not None for key, _ in keywords):
+            values = [replace(value, dictionary_keys=None) for value in arguments]
+            values.extend(value for _, value in keywords)
+            return replace(self.opaque_dictionary_value(values),
+                           dictionary_keys=self.payload_value([self.iteration_value(value) for value in arguments]))
         return self.opaque_dictionary_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
 
     def fromkeys_value(self, keys: _Value, default: _Value) -> _Value:
@@ -898,11 +920,12 @@ class _Check(ast.NodeVisitor):
                  and all(item.complete_text for item in keys.elements) else None)
         return _Value(dictionary_instance=True,
                       mapping=tuple((key, default) for key in dict.fromkeys(names)) if names is not None else None,
-                      callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in inputs)),
-                      local_class=any(self.has_local_class(value) for value in inputs),
-                      local_instance=any(self.has_local_class(value, instances=True) for value in inputs),
-                      class_operations=frozenset().union(*(self.local_class_operations(value) for value in inputs)),
-                      builtin_classes=frozenset().union(*(self.known_builtin_classes(value) for value in inputs)),
+                      dictionary_keys=self.payload_value([self.iteration_value(keys)]),
+                      callable_targets=self.local_callable_targets(default),
+                      local_class=self.has_local_class(default),
+                      local_instance=self.has_local_class(default, instances=True),
+                      class_operations=self.local_class_operations(default),
+                      builtin_classes=self.known_builtin_classes(default),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
@@ -961,6 +984,11 @@ class _Check(ast.NodeVisitor):
                 result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}",
                                       sqlite_cursor=all(value.sqlite_cursor for value in values))
             else:
+                split_keys = (any(value.dictionary_keys is not None for value in values)
+                              and all(value.dictionary_keys is not None or value.mapping is not None for value in values))
+                marker_values = [replace(value, dictionary_keys=None) for value in values] if split_keys else values
+                keys = (_Check.merge_aliases(*[{"keys": value.dictionary_keys or _Value()} for value in values])["keys"]
+                        if split_keys else None)
                 receivers = [value.receiver for value in values if value.receiver is not None]
                 same_owner = all(value.connection == values[0].connection for value in values)
                 connections = [str(value.connection) for value in values if value.connection is not None]
@@ -971,17 +999,18 @@ class _Check(ast.NodeVisitor):
                                       "<reflective-builtins>" if any(_Check.contains_namespace(value) for value in values) else
                                       values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       nonstring_constant=all(value.nonstring_constant for value in values),
-                                      callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in values)),
-                                      local_class=any(_Check.has_local_class(value) for value in values),
-                                      local_instance=any(_Check.has_local_class(value, instances=True) for value in values),
-                                      class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in values)),
-                                      builtin_classes=frozenset().union(*(_Check.known_builtin_classes(value) for value in values)),
+                                      callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in marker_values)),
+                                      local_class=any(_Check.has_local_class(value) for value in marker_values),
+                                      local_instance=any(_Check.has_local_class(value, instances=True) for value in marker_values),
+                                      class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in marker_values)),
+                                      builtin_classes=frozenset().union(*(_Check.known_builtin_classes(value) for value in marker_values)),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
                                       dictionary_accessor=any(value.dictionary_accessor for value in values),
                                       dictionary_fromkeys=any(value.dictionary_fromkeys for value in values),
                                       dictionary_instance=all(_Check.is_dictionary(value) for value in values),
+                                      dictionary_keys=keys,
                                       dictionary_method=values[0].dictionary_method if all(value.dictionary_method == values[0].dictionary_method for value in values) else "",
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
@@ -1339,6 +1368,13 @@ class _Check(ast.NodeVisitor):
         if any(self.unresolved_ownership(value) for value in [*actual_values, *opaque_values, *(v for _, v in keyword_values)]):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         operands = [*actual_values, *opaque_values, *(v for _, v in keyword_values)]
+        if (not function.unannotated_parameter
+                and function.symbol.removeprefix("builtins.") in {"enumerate", "reversed", "zip"}):
+            iterable_inputs = actual_values if function.symbol.removeprefix("builtins.") == "zip" else actual_values[:1]
+            projected = [self.iteration_value(value) for value in [*iterable_inputs, *opaque_values]]
+            if any(self.known_builtin_classes(value) or self.local_class_operations(value)
+                   or self.has_local_class(value) or self.has_local_class(value, instances=True) for value in projected):
+                self.flag(node, "iterator adapter transport of local class or constructor values is unsupported; use synchronous fixed-parameter helpers with fixture_write()", structural=True)
         shared_tuples = [v for v in operands if v.elements is not None and self.known_ownership(v, shared_only=True)]
         thread_arguments = (function.symbol == "threading.Thread"
                             and not any(v.elements is not None and self.known_ownership(v, shared_only=True)
@@ -1389,6 +1425,14 @@ class _Check(ast.NodeVisitor):
                     self.evaluated_values[node] = self.dictionary_value(pair, [])
                 else:
                     self.evaluated_values[node] = self.opaque_dictionary_value(namespace_inputs)
+        if dictionary_receiver is not None and dictionary_method in _NAMESPACE_ENUMERATIONS:
+            carried = (replace(dictionary_receiver, dictionary_keys=None)
+                       if dictionary_method == "values" else dictionary_receiver)
+            marker = self.class_carrier_value(carried)
+            if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations:
+                self.evaluated_values[node] = replace(self.value(node), local_class=marker.local_class,
+                    local_instance=marker.local_instance, builtin_classes=marker.builtin_classes,
+                    class_operations=marker.class_operations)
         if function.dictionary_accessor or function.dictionary_method:
             accessor = self.container_accessor_value(dictionary_receiver, dictionary_method) if dictionary_receiver is not None else None
             defaults = dictionary_arguments[1:] if dictionary_method in {"get", "pop", "setdefault", "*"} else []
@@ -1570,6 +1614,14 @@ class _Check(ast.NodeVisitor):
                 marker = self.payload_value(carried)
                 if aggregate == "getattr":
                     marker = replace(marker, builtin_classes=frozenset(), class_operations=frozenset())
+                    if len(actual_values) >= 3:
+                        existing, default = self.value(node), actual_values[2]
+                        self.evaluated_values[node] = replace(existing,
+                            builtin_classes=existing.builtin_classes | self.known_builtin_classes(default),
+                            class_operations=existing.class_operations | self.local_class_operations(default),
+                            local_class=existing.local_class or self.has_local_class(default),
+                            local_instance=existing.local_instance or self.has_local_class(default, instances=True),
+                            callable_targets=existing.callable_targets | self.local_callable_targets(default))
                 if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations:
                     existing = self.value(node)
                     self.evaluated_values[node] = replace(existing, local_instance=existing.local_instance or marker.local_class or marker.local_instance,
