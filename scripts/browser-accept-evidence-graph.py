@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -206,7 +208,7 @@ def main():
                             ratio = driver.execute_script(TEXT_CONTRAST, element)
                             assert ratio >= 4.5, f'{selector}: contrast {ratio:.2f}:1'
 
-            driver.get(base + prefix + '/entities/' + context['person'])
+            navigate_to(driver, base + prefix + '/entities/' + context['person'], diagnostics=args.output)
             keyboard_link(lambda element: element.text == 'Explore connections')
             graph_ready(context['person'])
             # Entry omits the default page; original links expose the canonical
@@ -216,7 +218,7 @@ def main():
             assert context['unrelated'] not in driver.page_source
             record('Keyboard entry from the entity opens source-backed connections, with disputed review status and the raw uncertain date')
 
-            driver.get(graph_url)
+            navigate_to(driver, graph_url, diagnostics=args.output)
             keyboard_link(lambda element: '/connections?' in (element.get_attribute('href') or '')
                 and parse_qs(urlparse(element.get_attribute('href')).query).get('entity_id') == [context['place']])
             graph_ready(context['place'])
@@ -225,7 +227,7 @@ def main():
 
             for stance, expected in (('supporting', ORIGINALS['Generated supporting account.txt']),
                                      ('competing', ORIGINALS['Generated competing account.txt'])):
-                driver.get(graph_url)
+                navigate_to(driver, graph_url, diagnostics=args.output)
                 account = driver.find_element(By.CSS_SELECTOR, '.graph-account-' + stance)
                 summary = account.find_element(By.TAG_NAME, 'summary')
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", summary)
@@ -254,7 +256,7 @@ def main():
             from browser_appearance import APPEARANCES, select_appearance
             for theme, accent in APPEARANCES:
                 label = f'{theme}-{accent}'
-                driver.get(graph_url)
+                navigate_to(driver, graph_url, diagnostics=args.output)
                 select_appearance(driver, wait, theme, accent)
                 graph_ready(context['person'])
                 assert_no_page_overflow()
@@ -270,7 +272,7 @@ def main():
 
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(
                 width=390, height=844, deviceScaleFactor=1, mobile=False))
-            driver.get(graph_url)
+            navigate_to(driver, graph_url, diagnostics=args.output)
             graph_ready(context['person'])
             assert_no_page_overflow()
             diagram = driver.find_element(By.CSS_SELECTOR, '.graph-diagram-scroll')

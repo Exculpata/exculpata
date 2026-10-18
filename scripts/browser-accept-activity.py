@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import asyncio
 import json
@@ -117,7 +119,7 @@ def main():
             wait.until(lambda _: server.started)
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
                 'width': 1024, 'height': 768, 'deviceScaleFactor': 1, 'mobile': False})
-            driver.get(base + f'/matters/{matter.slug}/notebook')
+            navigate_to(driver, base + f'/matters/{matter.slug}/notebook', diagnostics=args.output)
             find = lambda selector: driver.find_element(By.CSS_SELECTOR, selector)
             js = driver.execute_script
             active = lambda: driver.switch_to.active_element
@@ -254,7 +256,7 @@ def main():
             assert active() == find('#main-content')
             checks.append('If the opener disappears, closing returns focus to main content instead of a detached control')
             driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': True})
-            driver.get(base + f'/matters/{matter.slug}/notebook')
+            navigate_to(driver, base + f'/matters/{matter.slug}/notebook', diagnostics=args.output)
             assert not driver.find_elements(By.CSS_SELECTOR, '.matter-section-disclosure')
             ActionChains(driver).send_keys(Keys.TAB).perform()
             assert active() == find('.skip-link')

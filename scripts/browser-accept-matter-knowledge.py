@@ -8,6 +8,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to, refresh_page
+
 import argparse
 from collections import deque
 import json
@@ -222,7 +224,7 @@ def main():
                     }};
                 }})();
             """})['identifier']
-            driver.get(base + path)
+            navigate_to(driver, base + path, diagnostics=args.output)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'main')))
             assert bool(driver.find_elements(By.CSS_SELECTOR, 'script[src*="/briefing.js"]')) == args.briefing
             wait.until(lambda current: current.execute_script('return !!window.__readinessFocusFixture.pending'))
@@ -289,7 +291,7 @@ def main():
             record('Readiness action replacement leaves unrelated keyboard focus untouched')
             driver.execute_cdp_cmd('Page.removeScriptToEvaluateOnNewDocument', {'identifier':harness})
 
-            driver.get(base + path)
+            navigate_to(driver, base + path, diagnostics=args.output)
             assert 'Working note about Alex' in body() and TITLE in body()
             assert driver.find_element(By.ID, 'knowledge-' + context['person'])
             assert driver.find_element(By.ID, 'knowledge-' + context['other'])
@@ -327,7 +329,7 @@ def main():
             record('Keyboard disclosure and complete-account navigation work; instruction-like source text remains quoted evidence')
 
             for stance in ('supporting', 'competing'):
-                driver.get(base + path + '?q=Working&status=confirmed')
+                navigate_to(driver, base + path + '?q=Working&status=confirmed', diagnostics=args.output)
                 open_support()
                 link = driver.find_element(By.CSS_SELECTOR, f'.knowledge-{stance} .knowledge-source a')
                 expected_return = parse_qs(urlparse(link.get_attribute('href')).query)['entity_return_to'][0]
@@ -342,10 +344,10 @@ def main():
                 assert driver.current_url == base + expected_return
             record('Both account stances reach originals; source pane and full reader return to the same notebook filters')
 
-            driver.get(base + path)
+            navigate_to(driver, base + path, diagnostics=args.output)
             click(driver.find_element(By.LINK_TEXT, 'Next identities'))
             assert 'Showing 2 of 10 identities' in body()
-            driver.refresh()
+            refresh_page(driver, wait)
             assert 'Showing 2 of 10 identities' in body() and 'Page 2 of 2' in body()
             click(driver.find_element(By.LINK_TEXT, 'Next records'))
             assert 'Showing 1 of 7 records' in body()
@@ -368,7 +370,7 @@ def main():
             from browser_appearance import APPEARANCES, select_appearance
             for mode, accent in APPEARANCES:
                 theme = f'{mode}-{accent}'
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 select_appearance(driver, wait, mode, accent)
                 open_support()
                 no_overflow()
@@ -377,7 +379,7 @@ def main():
                 driver.save_screenshot(str(output / f'knowledge-{theme}-desktop.png'))
             record('All six mode/accent combinations render saved identities and both source stances without desktop overflow')
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', dict(width=390, height=844, deviceScaleFactor=1, mobile=False))
-            driver.get(base + path)
+            navigate_to(driver, base + path, diagnostics=args.output)
             open_support()
             no_overflow()
             section = driver.find_element(By.ID, 'knowledge-assertions')

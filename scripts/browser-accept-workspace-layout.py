@@ -8,6 +8,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -137,7 +139,7 @@ def main(argv=None):
                 wait.until(lambda _: js("return document.fonts.status === 'loaded'"))
 
             def open_page(suffix):
-                driver.get(base + prefix + suffix)
+                navigate_to(driver, base + prefix + suffix, diagnostics=args.output)
                 settle_fonts()
 
             def go(suffix):

@@ -576,21 +576,25 @@ def test_a_status_poll_never_creates_the_system_principal(workbench):
     client, bench, matter, _runtime = workbench
     connection = bench.workspace.connection
     principal = "SELECT COUNT(*) FROM workbench_principal WHERE principal_id=?"
-    assert connection.execute(principal, (AUTOMATIC_DISCOVERY_PRINCIPAL,)).fetchone()[0] == 0
+    with bench.workspace._lock:
+        assert connection.execute(principal, (AUTOMATIC_DISCOVERY_PRINCIPAL,)).fetchone()[0] == 0
     statements = []
-    connection.set_trace_callback(statements.append)
+    with bench.workspace._lock:
+        connection.set_trace_callback(statements.append)
     try:
         progress = bench.automatic_entity_discovery(matter).automatic_progress(matter.matter_id)
         status = client.get(f"/matters/{matter.slug}/processing-status")
     finally:
-        connection.set_trace_callback(None)
+        with bench.workspace._lock:
+            connection.set_trace_callback(None)
     assert status.status_code == 200 and progress["sources_complete"] == 0
     # Only writes whose target is the principal table count; background work on the
     # shared connection may join it (for example a report-job membership check).
     principal_write = re.compile(r"^\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)"
                                  r"\s+workbench_principal\b", re.I)
     assert not [sql for sql in statements if principal_write.match(sql)]
-    assert connection.execute(principal, (AUTOMATIC_DISCOVERY_PRINCIPAL,)).fetchone()[0] == 0
+    with bench.workspace._lock:
+        assert connection.execute(principal, (AUTOMATIC_DISCOVERY_PRINCIPAL,)).fetchone()[0] == 0
 
 
 def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
@@ -606,11 +610,13 @@ def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
     def trace_poll(sql):
         if threading.get_ident() == poll_thread:
             statements.append(sql)
-    connection.set_trace_callback(trace_poll)
+    with bench.workspace._lock:
+        connection.set_trace_callback(trace_poll)
     try:
         bench.automatic_entity_discovery(matter).automatic_progress(matter.matter_id)
     finally:
-        connection.set_trace_callback(None)
+        with bench.workspace._lock:
+            connection.set_trace_callback(None)
     queries = [sql for sql in statements if sql.lstrip().upper().startswith("SELECT")]
     assert queries, "the readiness poll must be traced"
     assert not [sql for sql in statements if "BEGIN IMMEDIATE" in sql.upper()]
@@ -620,7 +626,8 @@ def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
                 if sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "REPLACE"))]
     assert "GROUP BY" not in " ".join(queries).upper()
     for sql in queries:
-        plan = " ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
+        with bench.workspace._lock:
+            plan = " ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
         assert "SCAN a" not in plan and "SCAN workbench_entity_auto_discovery_unit" not in plan, (sql, plan)
 
 

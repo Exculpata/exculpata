@@ -134,7 +134,10 @@ def test_legacy_http_resume_preserves_received_offsets_and_selection(workspace):
     assert repeated['items'][0]['received_size'] == 7
     put(client, resumed['items'][0], body[7:], 7)
     assert client.post(resumed['items'][0]['finalize_url']).status_code == 200
-    assert bench.workspace.connection.execute('SELECT count(*) FROM workbench_upload_session WHERE matter_id=?', (matter.matter_id,)).fetchone()[0] == 1
+    # Ingestion is still live after finalize. Reads must share its workspace
+    # lock too, through cursor consumption, not just writes/transactions.
+    with bench.workspace._lock:
+        assert bench.workspace.connection.execute('SELECT count(*) FROM workbench_upload_session WHERE matter_id=?', (matter.matter_id,)).fetchone()[0] == 1
 
 
 def test_all_skipped_receipts_remain_discoverable_and_csv_safe(workspace):

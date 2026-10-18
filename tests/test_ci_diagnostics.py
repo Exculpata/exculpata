@@ -1,6 +1,7 @@
 """Exercise the hosted command, including an abruptly exiting xdist worker."""
 
 import os
+import json
 from pathlib import Path
 import re
 import shlex
@@ -31,10 +32,12 @@ def run_synthetic(tmp_path, source):
     env.pop('PYTEST_ADDOPTS', None)
     env.pop('PYTEST_PLUGINS', None)
     env['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
-    # Load only the required distribution plugin. Bound this nested synthetic
+    # Load the distribution and diagnostics plugins explicitly, just as the
+    # hosted suite discovers them. Bound this nested synthetic
     # run independently of the outer suite's worker count to avoid oversubscription.
     env['PYTEST_XDIST_AUTO_NUM_WORKERS'] = '2'
-    command = application_command(tmp_path) + ['-p', 'xdist.plugin']
+    env['PYTHONPATH'] = str(ROOT)
+    command = application_command(tmp_path) + ['-p', 'xdist.plugin', '-p', 'tests.worker_diagnostics']
     return subprocess.run(command, cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=30)
 
@@ -66,6 +69,10 @@ def test_after_failure():
     assert 'SYNTHETIC_CAPTURE_MARKER' not in report
     assert suite.findall('.//system-out') == []
     assert suite.findall('.//system-err') == []
+    diagnostics = tmp_path / 'application-workers'
+    assert (diagnostics / 'runner-start.json').is_file()
+    exits = [json.loads(path.read_text()) for path in diagnostics.glob('*-exit.json')]
+    assert len(exits) == 2 and not any(row['crashed'] for row in exits)
 
 
 @pytest.mark.parametrize('phase', ['setup', 'call', 'teardown'])
@@ -106,3 +113,32 @@ def test_abrupt_exit():
                for case in cases)
     assert any('test_abrupt_exit' in case.attrib['name'] and
                case.find('error') is not None for case in cases)
+    exits = [json.loads(path.read_text()) for path in
+             (tmp_path / 'application-workers').glob('*-exit.json')]
+    crashes = [row for row in exits if row['crashed']]
+    assert len(crashes) == 1 and crashes[0]['returncode'] == 7
+    assert crashes[0]['active']['test'].startswith('test_synthetic.py::test_abrupt_exit')
+
+
+def test_diagnostics_do_not_consume_a_test_clock(tmp_path):
+    result = run_synthetic(tmp_path, '''import time
+import pytest
+
+pytestmark = pytest.mark.xdist_group("synthetic-clock-sequence")
+
+@pytest.fixture
+def finite_clock(monkeypatch):
+    clock = iter([123.0])
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    yield
+
+def test_clock(finite_clock):
+    assert time.monotonic() == 123.0
+
+def test_after_clock():
+    assert time.monotonic() > 0
+''')
+    assert result.returncode == 0, result.stdout + result.stderr
+    suite = ET.parse(tmp_path / 'application-results.xml').getroot().find('testsuite')
+    assert suite.attrib['tests'] == '2'
+    assert suite.attrib['errors'] == suite.attrib['failures'] == '0'

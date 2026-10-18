@@ -87,6 +87,49 @@ missing, failed and truncated C2 receipts fail the aggregate result. The
 and adjacent screenshots record the editor and conflict recovery; this does not
 replace the complete pinned Linux suite.
 
+After reloading the reader, the source-role journey waits for the old document
+to detach and its replacement to finish loading before opening the editor.
+The pinned driver can acknowledge refresh before the reader commits; immediately
+navigating again can leave the editor request pending until its page-load timeout.
+The wait uses the existing deadline, never repeats navigation, and propagates
+unexpected driver errors. A stalled old or replacement document still fails.
+
+All `browser-accept-*.py` journeys use `browser_navigation.navigate_to` for
+URL navigation. It applies the existing 30-second page-load bound (20 seconds
+for loose-file preflight) and explicitly waits for a complete document. Only a
+nonblocking (`page_load_strategy='none'`) driver needs an additional transition
+check: the previous document must detach before its replacement can be accepted.
+Same-document fragment navigation instead waits for the canonical target URL;
+navigating to the same URL without a fragment still requires replacement. Both
+transition and readiness share the existing readiness deadline. Each permitted
+retry captures its own previous document. Only a
+Selenium `TimeoutException` identifying a renderer timeout permits one retry.
+Each such failure writes a bounded, content-free `navigation-timeouts.json`
+artifact before recovery; a second failure propagates. Other errors and readiness
+stalls fail without retrying navigation. The runner retains this
+artifact within its existing limits. Its CI contract tests cover recovery,
+exhaustion, unrelated errors, readiness, artifact retention and raw-call rejection.
+The source-role reload synchronization above remains required independently.
+
+Journey reloads use `browser_navigation.refresh_page(driver, wait)`: one refresh,
+then detachment of the previous document and completion of the replacement,
+using the caller's existing wait. The intake and source-role journeys share this
+implementation. Reloads are never retried. The navigation lint follows Selenium
+constructors, aliases, helper parameters, annotated drivers, and wait callbacks;
+it rejects raw `get` and `refresh` references regardless of the driver's variable
+name while permitting mapping, HTTP-client, and source-store `get` calls.
+
+Outside pull-request CI, the runner emits a GitHub warning annotation when a
+journey records a renderer retry:
+`::warning title=Renderer navigation retry::<journey> recorded N renderer navigation retry event(s); inspect navigation-timeouts.json`.
+Dynamic message text escapes percent signs, carriage returns and newlines using
+GitHub workflow-command data escaping. The diagnostic remains in the existing bounded artifact set.
+This warning does not change acceptance: process, receipt, and existing PR CI
+checks retain their failure behavior. Snapshot, navigation, and readiness renderer
+timeouts share the same two-attempt bound; other errors still propagate. The
+full-text-synthesis and workflow-handoff journeys retain their original 45-second
+readiness budgets.
+
 The Ask-heading journey uses the offline Harbor Street demo with one box,
 briefing, deeper investigation and automatic discovery enabled. At 1440 and
 390 CSS pixels it measures the rendered heading against its composited background
@@ -278,5 +321,24 @@ the existing bounded browser wait.
 The pinned runner retains the historical `dusk` journey/artifact identifier for compatibility, but `browser-accept-dusk.py` now validates all six mode/accent combinations. Its disposable library has 26 synthetic text sources and a generated collection. It checks rendered text and placeholder contrast of at least 4.5:1 for status cards, collection chips, filters, bulk actions, and disabled controls. Source-library filter and bulk-action placeholders use the muted text token. The browser default placeholder gray is about 4.22:1 on the dark canvas, which is below that check. Disabled text uses the same readability target even though inactive controls are exempt from WCAG text contrast requirements. The calculation composites ancestor backgrounds and opacity.
 
 The detailed Dark/Amber journey also checks hover, selected cards, paged navigation, mobile filters, and keyboard focus (solid outline at least 2px and 3:1 against the control and its parent surface). A final Light/Cyan round trip compares the complete computed-style snapshot with the original, including foreground, background, opacity, borders and element count. Timeouts and thresholds remain strict.
+
+In every Dark/Light and Cyan/Green/Amber combination, the same journey requires
+4.5:1 for the Review, Sources and Matching sources headings, both visibly empty
+source-library placeholders, and the first source row after native checkbox
+selection (name, type, collection, metadata, review state, status, length and
+actions). The heading target deliberately exceeds the AA large-text minimum.
+The filter value is restored without submitting, and no bulk action is saved.
+The runner requires all 164 checks, including the existing snapshot, focus,
+disabled-control and mobile assertions. Real-browser probes verify inherited
+dark surfaces, translucent backgrounds, alpha text, nested group opacity and
+placeholder opacity. Unsupported color formats, images, gradients, filters and
+blending fail explicitly instead of yielding a misleading color-only ratio.
+
+For the historical placeholder regression, apply only the journey's test changes
+to a disposable checkout of `6ebc292^` and run it with the same verified browser
+and driver. Its source-library placeholder must fail the 4.5:1 assertion; current
+main with the test changes must pass. Keep historical application and stylesheet
+sources intact and record the browser version, revision, failing selector and
+measured ratio. A navigation or setup failure is not a contrast regression result.
 
 Account controls exercise independently persisted mode and accent through the mobile account menu. Ask heading, matter context, Case file, graph, full-text review and layout journeys cover all six combinations. The standalone journeys clear deployment settings before constructing their disposable application. All fixtures and screenshot artifacts are synthetic.
