@@ -1,8 +1,11 @@
 """Fixture helpers and imported scripts share a fail-closed write boundary."""
 from pathlib import Path
+import sys
+from unittest.mock import patch
 
 import pytest
 
+from tests.fixture_probe import fixture_probe
 from tests.fixture_write_policy import check_fixture_writes
 
 
@@ -425,6 +428,28 @@ def test_namespace_dictionary_defaults_and_key_only_construction_controls(source
     assert check_fixture_writes(source) == []
 
 
+def assert_namespace_runtime_effect_and_rejection(source, result='None', *, resource=None, rejection_line=None):
+    sink = []
+    registry_before = (tuple(sys.modules), sys.modules.get('__builtins__'),
+                       sys.modules.get('probe'), sys.modules.get('synthetic_fixture_namespace_probe'))
+    try:
+        with patch.dict(sys.modules):
+            error, observed = fixture_probe(source, result, sink=sink, resource=resource,
+                                            payload="sink.append('synthetic payload executed')")
+    finally:
+        assert tuple(sys.modules) == registry_before[0]
+        assert sys.modules.get('__builtins__') is registry_before[1]
+        assert sys.modules.get('probe') is registry_before[2]
+        assert sys.modules.get('synthetic_fixture_namespace_probe') is registry_before[3]
+    if error is not None:
+        raise error
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and 'dynamic execution' in item.rule
+               and (rejection_line is None or item.line == rejection_line)
+               for item in check_fixture_writes(source))
+    return observed
+
+
 @pytest.mark.parametrize('receiver', [
     'globals()', 'locals()', 'vars()', 'sys.modules',
     'function.__globals__', '{}', 'dict', 'builtins.dict',
@@ -435,10 +460,10 @@ def test_namespace_dictionary_defaults_and_key_only_construction_controls(source
     'construct = RECEIVER.fromkeys\nalias = construct\nconstruct = alias',
 ])
 def test_namespace_accessor_fromkeys_receiver_matrix(receiver, access):
-    source = 'import sys\nimport builtins\n' + access.replace('RECEIVER', receiver)
+    source = 'import sys\nimport builtins\ndef function():\n    pass\n' + access.replace('RECEIVER', receiver)
+    constructor_line = len(source.splitlines()) + 1
     source += "\nscopes = construct(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)"
-    assert any(item.structural and 'dynamic execution' in item.rule
-               for item in check_fixture_writes(source))
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=constructor_line)
 
 
 @pytest.mark.parametrize('receiver,arguments', [
@@ -454,8 +479,11 @@ def test_namespace_accessor_fromkeys_receiver_matrix(receiver, access):
 def test_namespace_accessor_init_receiver_matrix(receiver, arguments, access):
     source = 'import sys\nimport builtins\nscope = {}\n' + access.replace('RECEIVER', receiver)
     source += '\ninitialize(' + arguments + ')'
-    assert any(item.structural and 'dynamic execution' in item.rule
-               for item in check_fixture_writes(source))
+    initialization_line = len(source.splitlines())
+    source += ("\nsys.modules['builtins'].exec(payload)" if receiver == 'sys.modules'
+               else "\nglobals()['__builtins__']['exec'](payload)" if receiver == 'globals()'
+               else "\nscope['__builtins__']['exec'](payload)")
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=initialization_line)
 
 
 @pytest.mark.parametrize('accessor', [
@@ -471,8 +499,18 @@ def test_namespace_accessor_init_receiver_matrix(receiver, arguments, access):
 ])
 def test_namespace_accessor_bound_receiver_survives_mutation_carriers(accessor, store):
     source = 'import sys\n' + store.replace('ACCESSOR', accessor)
-    assert any(item.structural and 'dynamic execution' in item.rule
-               for item in check_fixture_writes(source))
+    store_line = len(source.splitlines())
+    invocations = {
+        'globals().copy': "holder['method']()['__builtins__']['exec'](payload)",
+        'sys.modules.copy': "holder['method']()['builtins'].exec(payload)",
+        'globals().__or__': "holder['method']({})['__builtins__']['exec'](payload)",
+        'sys.modules.__ror__': "holder['method']({})['builtins'].exec(payload)",
+        'globals().get': "holder['method']('__builtins__')['exec'](payload)",
+        'sys.modules.__getitem__': "holder['method']('builtins').exec(payload)",
+        'globals().values': "next(value for value in holder['method']() if isinstance(value, dict) and 'exec' in value)['exec'](payload)",
+        'sys.modules.items': "next(value for key, value in holder['method']() if key == 'builtins').exec(payload)",
+    }
+    assert_namespace_runtime_effect_and_rejection(source + '\n' + invocations[accessor], rejection_line=store_line)
 
 
 @pytest.mark.parametrize('source', [
@@ -481,11 +519,10 @@ def test_namespace_accessor_bound_receiver_survives_mutation_carriers(accessor, 
     "holder = {'nested': {'copy': globals().copy}}\nholder.get('nested').get('copy')()['__builtins__']['exec'](payload)",
     "holder = {'copy': (globals().copy,)}\nholder.get('copy')[0]()['__builtins__']['exec'](payload)",
     "holder = {'copy': globals().copy} | {}\nholder.get('copy')()['__builtins__']['exec'](payload)",
-    "holder = {}\nholder['copy'] = globals().copy  # fixture-write: Deliberately transport a synthetic bound callable.",
+    "holder = {}\nholder['copy'] = globals().copy  # fixture-write: Deliberately transport a synthetic bound callable.\nholder['copy']()['__builtins__']['exec'](payload)",
 ])
 def test_namespace_accessor_bound_receiver_survives_literal_carriers(source):
-    assert any(item.structural and 'dynamic execution' in item.rule
-               for item in check_fixture_writes(source))
+    assert_namespace_runtime_effect_and_rejection(source)
 
 
 @pytest.mark.parametrize('source', [
@@ -500,4 +537,65 @@ def test_namespace_accessor_bound_receiver_survives_literal_carriers(source):
     "ordinary = {'value': 1}\nholder = {'copy': ordinary.copy}\nholder.get('copy')()",
 ])
 def test_namespace_accessor_receiver_controls_remain_supported(source):
+    """Static acceptance controls; these do not claim forbidden runtime effects."""
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('store,extract', [
+    ('holder = []\nholder.append(globals().copy)', 'holder[0]'),
+    ('holder = []\nappend = holder.append\nappend(globals().copy)', 'holder[0]'),
+    ('holder = []\nlist.append(holder, globals().copy)', 'holder[0]'),
+    ('holder = []\nholder.extend([globals().copy])', 'holder[0]'),
+    ('holder = []\nholder.insert(0, globals().copy)', 'holder[0]'),
+    ('holder = []\nholder.__iadd__([globals().copy])', 'holder[0]'),
+    ('holder = []\nholder.append((globals().copy,))', 'holder[0][0]'),
+    ('holder = set()\nholder.add(globals().copy)', 'next(iter(holder))'),
+    ('holder = set()\nholder.update([globals().copy])', 'next(iter(holder))'),
+    ('holder = set()\nupdate = holder.update\nupdate([globals().copy])', 'next(iter(holder))'),
+    ('holder = set()\nset.update(holder, [globals().copy])', 'next(iter(holder))'),
+    ('holder = []\nholder += [globals().copy]', 'holder[0]'),
+])
+def test_namespace_sequence_store_executes_before_rejection(store, extract):
+    source = store + '\ncopy = ' + extract + "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source)
+
+
+@pytest.mark.parametrize('expression', [
+    '{}.copy()', 'dict.copy({})', '{}.get("receiver", {})',
+    '{"receiver": {}}.get("receiver")', 'dict.get({"receiver": {}}, "receiver")',
+    '{} | {}', '{}.__or__({})', '{}.__ror__({})',
+    'dict.__or__({}, {})', 'dict.__ror__({}, {})',
+    '{}.fromkeys([])', 'dict.fromkeys(["ordinary"])',
+    'dict.fromkeys(["receiver"], {}).get("receiver")',
+])
+def test_namespace_dictionary_identity_executes_before_rejection(expression):
+    source = 'receiver = ' + expression
+    source += "\nscopes = receiver.fromkeys(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source)
+
+
+def test_namespace_dictionary_unknown_keys_preserve_type_without_inventing_entries():
+    source = "receiver = dict.fromkeys(resource)\nscopes = receiver.fromkeys(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)"
+    receiver = assert_namespace_runtime_effect_and_rejection(source, 'receiver', resource=('ordinary',))
+    assert receiver == {'ordinary': None}
+
+
+def test_namespace_runtime_probe_restores_module_registry_on_failure():
+    source = "import sys\nsys.modules['synthetic_fixture_namespace_probe'] = object()\nraise RuntimeError('synthetic probe failure')"
+    before = sys.modules.get('synthetic_fixture_namespace_probe')
+    with pytest.raises(RuntimeError, match='synthetic probe failure'):
+        assert_namespace_runtime_effect_and_rejection(source)
+    assert sys.modules.get('synthetic_fixture_namespace_probe') is before
+
+
+@pytest.mark.parametrize('source', [
+    'holder = []\nholder.append(resource)\nholder.extend([resource])\nholder.insert(0, resource)',
+    'holder = set()\nholder.add(resource)\nholder.update([resource])',
+    "holder = []\nordinary = {}.copy\nholder.append(ordinary)\nholder[0]()",
+    "receiver = {}.copy()\nresult = receiver.fromkeys(['ordinary'], resource)",
+    "receiver = {'receiver': {}}.get('receiver')\nreceiver.__init__({'ordinary': resource})",
+    "receiver = {} | {}\nreceiver.update({'ordinary': resource})",
+    "receiver = dict.fromkeys(resource)\nreceiver.copy()",
+])
+def test_namespace_sequence_and_dictionary_identity_static_controls(source):
     assert check_fixture_writes(source) == []

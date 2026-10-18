@@ -9,7 +9,8 @@ remain supported. Scope dictionaries and the module registry retain their known
 builtin entry through deterministic key lookups, shallow copies and pure dictionary
 unions. Namespace-bearing mutations and value enumeration are rejected rather
 than interpreting aliased mutable state. Computed imports and arbitrary reflection
-are not interpreted.
+are not interpreted. Supported pure dictionary operations retain dictionary type
+separately from exact literal entries; unknown keys never become an empty mapping.
 Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
@@ -53,6 +54,7 @@ _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "bui
 _NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
 _NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault", "__init__"}
 _NAMESPACE_ENUMERATIONS = {"values", "items", "popitem"}
+_NAMESPACE_SEQUENCE_STORES = {"append", "extend", "insert", "add", "update", "__iadd__"}
 
 
 # Reviewed Python AST shapes; unknown nodes or fields fail closed before data flow.
@@ -189,6 +191,7 @@ class _Value:
     fixture_handle: bool = False
     elements: tuple[_Value, ...] | None = None
     mapping: tuple[tuple[str, _Value], ...] | None = None
+    dictionary_instance: bool = False
     methods: frozenset[str] = frozenset()
     receiver: _Value | None = None
     sqlite_cursor: bool = False
@@ -329,12 +332,12 @@ class _Check(ast.NodeVisitor):
             if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
             if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"}
-                                            or base.symbol in _BUILTIN_NAMESPACE_KEYS or base.mapping is not None):
+                                            or self.is_dictionary(base)):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
                 return replace(accessor, symbol=symbol, receiver=base, dictionary_method=node.attr)
-            if base.mapping is not None and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
+            if self.is_dictionary(base) and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
                 return _Value(symbol=symbol, scalar_converter=True)
@@ -391,14 +394,16 @@ class _Check(ast.NodeVisitor):
                     name = self.value(node.args[0])
                     return _Value(symbol="builtins." + name.text if name.complete_text
                                   else "<reflective-builtins>")
-            if function.receiver is not None and self.contains_namespace(function.receiver):
+            if function.receiver is not None and (self.contains_namespace(function.receiver) or self.is_dictionary(function.receiver)):
                 if function.dictionary_method == "copy" and not node.args:
                     return function.receiver
                 if function.dictionary_method in _NAMESPACE_LOOKUPS and node.args:
-                    return self.namespace_lookup(function.receiver, self.value(node.args[0])) or _Value()
+                    default = self.value(node.args[1]) if len(node.args) > 1 else None
+                    return self.mapping_lookup(function.receiver, self.value(node.args[0]), default) or _Value()
             if (function.dictionary_accessor and function.dictionary_method in _NAMESPACE_LOOKUPS
                     or function.symbol == "operator.getitem") and len(node.args) >= 2:
-                resolved = self.namespace_lookup(self.value(node.args[0]), self.value(node.args[1]))
+                default = self.value(node.args[2]) if len(node.args) > 2 else None
+                resolved = self.mapping_lookup(self.value(node.args[0]), self.value(node.args[1]), default)
                 if resolved is not None:
                     return resolved
             if function.symbol in {"dict", "builtins.dict"}:
@@ -536,7 +541,7 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
-        resolved = self.namespace_lookup(value, self.value(node.slice))
+        resolved = self.mapping_lookup(value, self.value(node.slice))
         if resolved is not None and isinstance(node.ctx, ast.Load):
             self.evaluated_values[node] = resolved
             self.reject_dynamic_builtin(node, resolved)
@@ -599,7 +604,8 @@ class _Check(ast.NodeVisitor):
                              for value in (left, right))
         if shared or container_path:
             return _Value(unresolved_shared_container=shared, unresolved_active_path=container_path)
-        if isinstance(operator, ast.BitOr) and any(self.contains_namespace(value) for value in (left, right)):
+        if isinstance(operator, ast.BitOr) and (any(self.contains_namespace(value) for value in (left, right))
+                                               or all(self.is_dictionary(value) for value in (left, right))):
             return self.dictionary_value([left, right], [])
         return _Value(symbol=left.symbol + "/" + right.symbol,
                       text=left.text + right.text, active_path=left.active_path or right.active_path,
@@ -687,14 +693,18 @@ class _Check(ast.NodeVisitor):
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
     @staticmethod
-    def namespace_lookup(receiver: _Value, key: _Value) -> _Value | None:
+    def mapping_lookup(receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
         if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
             return _Value(symbol="<reflective-builtins>")
         if key.complete_text and receiver.mapping is not None:
-            selected = dict(receiver.mapping).get(key.text)
-            if selected is not None and _Check.contains_namespace(selected):
+            selected = dict(receiver.mapping).get(key.text, default)
+            if selected is not None and (_Check.contains_namespace(selected) or _Check.is_dictionary(selected)):
                 return selected
         return None
+
+    @staticmethod
+    def is_dictionary(value: _Value) -> bool:
+        return value.dictionary_instance or value.mapping is not None or value.symbol in _BUILTIN_NAMESPACE_KEYS
 
     @staticmethod
     def contains_namespace(value: _Value) -> bool:
@@ -710,7 +720,9 @@ class _Check(ast.NodeVisitor):
         return ((key, _Value(symbol="<reflective-builtins>")),) if key else value.mapping
 
     def opaque_dictionary_value(self, values: list[_Value]) -> _Value:
-        marker = self.payload_value(values)
+        # Dictionary type is known even when keys are not; mapping=None must
+        # remain distinct from the exact empty mapping used by literal {}.
+        marker = replace(self.payload_value(values), dictionary_instance=True)
         return replace(marker, symbol="<reflective-builtins>") if any(self.contains_namespace(value) for value in values) else marker
 
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
@@ -739,7 +751,12 @@ class _Check(ast.NodeVisitor):
         # A known mapping has literal string keys, independent of its values.
         # Other supported key inputs retain their already-evaluated ownership.
         inputs = [default] if keys.mapping is not None else [keys, default]
-        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
+        names = ([key for key, _ in keys.mapping] if keys.mapping is not None else
+                 [item.text for item in keys.elements] if keys.elements is not None
+                 and all(item.complete_text for item in keys.elements) else None)
+        return _Value(dictionary_instance=True,
+                      mapping=tuple((key, default) for key in dict.fromkeys(names)) if names is not None else None,
+                      unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
@@ -809,6 +826,7 @@ class _Check(ast.NodeVisitor):
                                       False if any(value.scalar_converter is not None for value in values) else None,
                                       dictionary_accessor=any(value.dictionary_accessor for value in values),
                                       dictionary_fromkeys=any(value.dictionary_fromkeys for value in values),
+                                      dictionary_instance=all(_Check.is_dictionary(value) for value in values),
                                       dictionary_method=values[0].dictionary_method if all(value.dictionary_method == values[0].dictionary_method for value in values) else "",
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
@@ -1175,6 +1193,8 @@ class _Check(ast.NodeVisitor):
         if shared_tuples and function.symbol not in self.local_functions and not thread_arguments:
             self.flag(node, "opaque shared tuple consumers are unsupported; use fixed helper parameters and fixture_write()", structural=True)
         method_name = function.symbol.rsplit(".", 1)[-1]
+        if method_name in _NAMESPACE_SEQUENCE_STORES and any(self.contains_namespace(value) for value in operands):
+            self.flag(node, "dynamic execution namespace stores are unsupported; use pure container expressions", structural=True)
         if (function.receiver is not None or function.dictionary_accessor) and method_name in {"append", "extend", "insert", "add", "update", "setdefault", "__setitem__", "__ior__", "__iadd__"}:
             if any(self.known_ownership(v, shared_only=True) or self.has_active_path(v) for v in operands):
                 self.flag(node, "shared or active-path container mutation is unsupported; use named handles and fixture_write()", structural=True)
@@ -1194,8 +1214,10 @@ class _Check(ast.NodeVisitor):
         namespace_inputs = [*dictionary_arguments, *opaque_values, *(value for _, value in keyword_values)]
         if dictionary_receiver is not None:
             namespace_inputs.append(dictionary_receiver)
-        if (function.dictionary_accessor or function.dictionary_method or method_name == "__setitem__") and any(
-                self.contains_namespace(value) for value in namespace_inputs):
+        if ((function.dictionary_accessor or function.dictionary_method or method_name == "__setitem__") and any(
+                self.contains_namespace(value) for value in namespace_inputs)
+                or dictionary_method in {"copy", "__or__", "__ror__"} and dictionary_receiver is not None
+                and self.is_dictionary(dictionary_receiver)):
             if dictionary_method in _NAMESPACE_MUTATIONS or method_name == "__setitem__":
                 self.flag(node, "dynamic execution namespace mutation is unsupported; use pure dictionary expressions", structural=True)
             elif dictionary_method in _NAMESPACE_ENUMERATIONS:
