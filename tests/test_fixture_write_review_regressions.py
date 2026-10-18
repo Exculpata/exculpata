@@ -96,7 +96,7 @@ def test_nested_connection_methods_preserve_pending_work(tmp_path, method):
             connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
             with fixture_write(store) as nested:
                 with pytest.raises(RuntimeError, match="fixture_write"):
-                    getattr(nested, method)()
+                    getattr(nested, method)()  # fixture-write: Deliberately attempt nested transaction termination or closure and require rejection.
                 assert connection.in_transaction
                 assert nested.execute("SELECT value FROM synthetic_fixture").fetchone()[0] == "caller"
     finally:

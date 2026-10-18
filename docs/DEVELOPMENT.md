@@ -123,9 +123,11 @@ thread during the boundary; expired or transferred handles raise before touching
 SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=True`
 is unsupported and rejected before entry or assignment. Custom row factories
 receive scoped cursors, including through public workspace queries, and scoped
-connection factories are restored before releasing the lock; custom cursor
+connection factories are always restored before releasing the lock, including raw
+in-boundary replacements; custom cursor
 factories are rejected before they can receive a raw connection. Unsupported
-connection methods such as blob access, deserialize, backup and deferred dumps
+connection methods such as closing the shared database, blob access, deserialize,
+backup and deferred dumps
 fail closed rather than returning an unscoped object.
 Use the yielded handle for scripts, connection contexts and explicit transaction
 control. DDL, writable PRAGMAs, CTE writes and semicolon/BOM-prefixed writes

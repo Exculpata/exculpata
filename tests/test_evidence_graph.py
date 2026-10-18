@@ -126,9 +126,11 @@ def test_record_pagination_is_stable_bounded_and_does_not_load_histories(graph_c
     monkeypatch.setattr(entities.repository, 'mentions', forbidden)
     graph = EvidenceGraphService(assertions)
     traced = []
-    store.connection.set_trace_callback(traced.append)
+    with store._lock:
+        store.connection.set_trace_callback(traced.append)
     first = graph.neighborhood(matter.matter_id, ACTOR, center['entity_id'])
-    store.connection.set_trace_callback(None)
+    with store._lock:
+        store.connection.set_trace_callback(None)
     second = graph.neighborhood(matter.matter_id, ACTOR, center['entity_id'], page=2)
     assert [row['record']['assertion_id'] for row in first['records']] == expected[:8]
     assert [row['record']['assertion_id'] for row in second['records']] == expected[8:]

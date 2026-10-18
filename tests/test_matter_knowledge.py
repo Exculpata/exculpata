@@ -66,9 +66,11 @@ def test_independent_pages_clamp_after_deletion_and_no_histories(knowledge_case,
     monkeypatch.setattr(assertions, 'detail', forbidden)
     projection = MatterKnowledgeService(assertions)
     traced = []
-    store.connection.set_trace_callback(traced.append)
+    with store._lock:
+        store.connection.set_trace_callback(traced.append)
     first = projection.page(matter.matter_id, ACTOR)
-    store.connection.set_trace_callback(None)
+    with store._lock:
+        store.connection.set_trace_callback(None)
     second = projection.page(matter.matter_id, ACTOR, entity_page=2, assertion_page=2)
     assert len(first['entities']['items']) == 8 and first['entities']['omitted'] == 3
     assert len(second['entities']['items']) == 3 and second['entities']['omitted'] == 8

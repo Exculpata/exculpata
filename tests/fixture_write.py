@@ -54,8 +54,7 @@ def fixture_write(workspace):
                     yield handle
         finally:
             # Restore scoped callbacks before workers regain the workspace lock.
-            if isinstance(connection.row_factory, _ScopedRowFactory):
-                connection.row_factory = original_factory
+            connection.row_factory = original_factory
             scope.active = False
             _active_scopes.stack = active
 
@@ -214,8 +213,8 @@ class _FixtureConnection:
         self._connection.rollback()
 
     def close(self):
-        self._check_transaction_control()
-        self._connection.close()
+        self._check_active()
+        raise RuntimeError("fixture_write does not own the shared connection lifetime; close the workspace after its workers stop")
 
     def __enter__(self):
         self._check_transaction_control()

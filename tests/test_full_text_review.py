@@ -461,9 +461,11 @@ def test_compact_locator_utf8_charge_zero_units_and_constant_poll(frozen):
     assert coverage['zero_unit_sources'] == 1 and coverage['has_gaps']
     assert coverage['inventory_complete']
     trace = []
-    store.connection.set_trace_callback(trace.append)
+    with store._lock:
+        store.connection.set_trace_callback(trace.append)
     ledger.coverage(matter.matter_id,ACTOR,run.run_id)
-    store.connection.set_trace_callback(None)
+    with store._lock:
+        store.connection.set_trace_callback(None)
     assert not any('FROM workbench_text_review_unit ' in sql or 'FROM workbench_text_review_chunk ' in sql or 'FROM workbench_text_review_source ' in sql for sql in trace)
     text = 'Synthetic long text ' * 10000
     locator = compact_locator({'excerpt':text, 'source_name':'café🟠'}, 1, text)

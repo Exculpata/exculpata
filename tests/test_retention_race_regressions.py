@@ -109,12 +109,14 @@ def test_check_in_cannot_report_success_after_other_connection_claims_purge(due_
         except Exception as exc:
             errors.append(exc)
 
-    primary.connection.set_trace_callback(claim_before_writer_lock)
+    with primary._lock:
+        primary.connection.set_trace_callback(claim_before_writer_lock)
     try:
         with pytest.raises((KeyError, WorkspaceProblem)):
             primary.case_lifecycle.check_in(matter.matter_id, ACTOR, session_id=lifecycle_session(primary, ACTOR, administrator_override=False).session_id)
     finally:
-        primary.connection.set_trace_callback(None)
+        with primary._lock:
+            primary.connection.set_trace_callback(None)
 
     assert not errors
     assert len(claims) == 1 and claims[0] is not None
@@ -176,7 +178,8 @@ def test_work_admission_cannot_cross_other_connection_purge_claim(due_matter, wo
         except Exception as exc:
             errors.append(exc)
 
-    primary.connection.set_trace_callback(claim_before_writer_lock)
+    with primary._lock:
+        primary.connection.set_trace_callback(claim_before_writer_lock)
     try:
         with pytest.raises((KeyError, WorkspaceProblem)):
             if work_kind == "ingest":
@@ -195,7 +198,8 @@ def test_work_admission_cannot_cross_other_connection_purge_claim(due_matter, wo
             else:
                 primary.start_analysis_run(matter.matter_id, ACTOR)
     finally:
-        primary.connection.set_trace_callback(None)
+        with primary._lock:
+            primary.connection.set_trace_callback(None)
 
     assert not errors
     assert len(claims) == 1 and claims[0] is not None
@@ -283,12 +287,14 @@ def test_retry_cannot_cross_purge_claim_or_failed_close_recovery(
         except Exception as exc:
             errors.append(exc)
 
-    primary.connection.set_trace_callback(claim_before_retry_writer_lock)
+    with primary._lock:
+        primary.connection.set_trace_callback(claim_before_retry_writer_lock)
     try:
         with pytest.raises((KeyError, WorkspaceProblem)):
             retry()
     finally:
-        primary.connection.set_trace_callback(None)
+        with primary._lock:
+            primary.connection.set_trace_callback(None)
 
     assert not errors
     assert len(claims) == 1 and claims[0] is not None

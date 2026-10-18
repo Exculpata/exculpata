@@ -35,7 +35,7 @@ def test_workflow_trace_changes_are_serialized_but_http_is_not_locked(
         def set_trace_callback(self, callback):
             assert workspace._lock._is_owned(), 'Trace callback change lacks workspace lock'
             observed.append(callback is not None)
-            return original.set_trace_callback(callback)
+            return original.set_trace_callback(callback)  # fixture-write: Forward after asserting caller lock ownership; acquiring a lock here would mask the regression.
 
     original_get = client.get
 

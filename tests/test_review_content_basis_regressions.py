@@ -461,7 +461,7 @@ def test_postgres_retention_failure_does_not_skip_legacy_basis_repair(
         )
         database.commit()  # fixture-write: Commit the offline migration fixture while the original workbench is closed.
     finally:
-        database.close()
+        database.close()  # fixture-write: Close the offline migration connection while the original workbench and workers remain stopped.
 
     postgres = _PostgresConnection(rollback_failure=rollback_failure)
     monkeypatch.setattr(
@@ -566,7 +566,7 @@ def test_postgres_projection_and_rollback_failure_keeps_repairing_catalogs(
         )
         database.commit()  # fixture-write: Commit the offline migration fixture while the original workbench is closed.
     finally:
-        database.close()
+        database.close()  # fixture-write: Close the offline migration connection while the original workbench and workers remain stopped.
 
     postgres = _PostgresConnection(
         projection_failure=True,

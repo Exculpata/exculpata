@@ -192,11 +192,13 @@ def test_inbox_work_grows_linearly_with_suggestions(workbench):  # noqa: F811
         def tick():
             counted[0] += 1
             return 0
-        connection.set_progress_handler(tick, 1000)
+        with bench.workspace._lock:
+            connection.set_progress_handler(tick, 1000)
         try:
             items, total, _kinds = service.inbox(matter.matter_id, WEB_ACTOR)
         finally:
-            connection.set_progress_handler(None, 0)
+            with bench.workspace._lock:
+                connection.set_progress_handler(None, 0)
         assert len(items) == 25
         return counted[0], total
 

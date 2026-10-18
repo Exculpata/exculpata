@@ -189,7 +189,7 @@ def test_snapshot_does_not_mix_concurrent_report_edits(workspace, monkeypatch):
     def edit_between_reads(matter_id, report_id):
         # fixture-write: Independent writer deliberately edits reports during the snapshot transaction.
         with sqlite3.connect(bench.workspace.path) as other:
-            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)  # fixture-write: Configure only this independent competing SQLite writer, never the shared workspace connection.
             # fixture-write: Independent writer deliberately edits reports during the snapshot transaction.
             other.execute("UPDATE workbench_report SET title='Concurrent title' WHERE report_id=?",
                           (report_id,))

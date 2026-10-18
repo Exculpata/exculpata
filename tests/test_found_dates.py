@@ -157,11 +157,13 @@ def test_found_date_work_grows_linearly(workbench):  # noqa: F811
         def tick():
             counted[0] += 1
             return 0
-        connection.set_progress_handler(tick, 1000)
+        with bench.workspace._lock:
+            connection.set_progress_handler(tick, 1000)
         try:
             items, total, _ordered = service.date_draft(matter.matter_id, WEB_ACTOR)
         finally:
-            connection.set_progress_handler(None, 0)
+            with bench.workspace._lock:
+                connection.set_progress_handler(None, 0)
         assert len(items) == 25
         return counted[0], total
 
@@ -238,11 +240,13 @@ def test_calendar_validity_does_not_depend_on_the_sqlite_build(workbench):  # no
     ))
     connection = bench.workspace.connection
     # Some SQLite builds return an impossible day from date() unchanged; behave like one.
-    connection.create_function("date", 1, lambda value: value, deterministic=True)
+    with bench.workspace._lock:
+        connection.create_function("date", 1, lambda value: value, deterministic=True)
     try:
         draft = section(client.get(f"/matters/{matter.slug}/chronology").text)
     finally:
-        connection.create_function("date", 1, None)
+        with bench.workspace._lock:
+            connection.create_function("date", 1, None)
     ordered = re.search(r"<h3>In date order</h3><ol class=\"found-date-list\">(.*?)</ol>", draft, re.S)[1]
     unordered = re.search(r"<h3>Order not established</h3><ul class=\"found-date-list\">(.*?)</ul>", draft, re.S)[1]
     assert stated(ordered) == ["2026-12-31", "2028-02-29"]

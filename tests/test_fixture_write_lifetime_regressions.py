@@ -32,7 +32,8 @@ def test_outer_script_cannot_escape_exception_rollback(tmp_path, cursor_script):
 def test_writable_connection_attributes_change_query_results(tmp_path, attribute, value):
     store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
     try:
-        store.connection.row_factory = None
+        with store._lock:
+            store.connection.row_factory = None
         with fixture_write(store) as connection:
             connection.row_factory = None
             setattr(connection, attribute, value)
@@ -84,7 +85,7 @@ def test_expired_handle_cannot_touch_a_worker_transaction(tmp_path, operation):
                 elif operation == 'cursor':
                     cursor.execute("INSERT INTO synthetic_fixture VALUES ('expired')")  # fixture-write: Deliberately attempt an expired cursor write against the worker transaction.
                 else:
-                    saved_method(None)
+                    saved_method(None)  # fixture-write: Deliberately invoke an expired callback setter against the worker transaction and require rejection.
         finally:
             release.set()
             thread.join(5)

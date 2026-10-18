@@ -184,7 +184,7 @@ def test_restore_export_purge_and_idempotent_migration(workbench, tmp_path):
     database = restored / "workbench.sqlite"
     # fixture-write: Stopped restored database schema is inspected before and after reopening.
     before_schema = sqlite3.connect(database).execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall()
-    WorkspaceStore(database).connection.close()
+    WorkspaceStore(database).close()
     # fixture-write: Stopped restored database schema is inspected before and after reopening.
     after_schema = sqlite3.connect(database).execute("SELECT sql FROM sqlite_master ORDER BY name").fetchall()
     assert before_schema == after_schema

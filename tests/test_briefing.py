@@ -245,9 +245,11 @@ def test_catalog_streams_beyond_one_page_and_counts_root_and_nested_folders(work
     monkeypatch.setattr(bench.workspace, 'ingest_job', no_library_pages)
     monkeypatch.setattr(bench.workspace, 'media_job', no_library_pages)
     queries = []
-    bench.workspace.connection.set_trace_callback(queries.append)
+    with bench.workspace._lock:
+        bench.workspace.connection.set_trace_callback(queries.append)
     briefing = assemble(bench, matter)
-    bench.workspace.connection.set_trace_callback(None)
+    with bench.workspace._lock:
+        bench.workspace.connection.set_trace_callback(None)
     job_reads = [query for query in queries if query.startswith('SELECT j.* FROM workbench_')]
     assert len(job_reads) == 2
     assert briefing.section('arrived').total == 105
@@ -396,7 +398,7 @@ def test_external_change_and_short_receipt_page_refuse_partial_briefing(workbenc
         result = date_draft(*args, **kwargs)
         # fixture-write: Independent writer deliberately changes the database during briefing reads.
         with sqlite3.connect(bench.workspace.path) as other:
-            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)  # fixture-write: Configure only this independent competing SQLite writer, never the shared workspace connection.
             # fixture-write: Independent writer deliberately changes the database during briefing reads.
             other.execute("UPDATE workbench_matter SET descriptor='Synthetic concurrent edit' WHERE matter_id=?", (matter.matter_id,))
         return result

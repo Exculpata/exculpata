@@ -31,7 +31,7 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
         def set_trace_callback(self, callback):
             assert store._lock._is_owned(), 'callback mutation must serialize with live report claims'
             observations.append('callback')
-            return original.set_trace_callback(callback)
+            return original.set_trace_callback(callback)  # fixture-write: Forward after asserting caller lock ownership; acquiring a lock here would mask the regression.
 
         def execute(self, sql, *args, **kwargs):
             if threading.get_ident() == caller and (

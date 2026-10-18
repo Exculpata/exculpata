@@ -30,6 +30,11 @@ _READ_ARGUMENT_PRAGMAS = {
 }
 _SQL_METHODS = {"execute", "executemany", "executescript"}
 _TRANSACTION_METHODS = {"commit", "rollback"}
+_CALLBACK_METHODS = {
+    "set_trace_callback", "set_authorizer", "set_progress_handler",
+    "create_function", "create_aggregate", "create_collation", "create_window_function",
+}
+_CONNECTION_PARAMETERS = {"connection", "conn", "db", "database"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 
 
@@ -57,6 +62,8 @@ class _Value:
     elements: tuple[_Value, ...] | None = None
     methods: frozenset[str] = frozenset()
     receiver: _Value | None = None
+    sqlite_cursor: bool = False
+    lock_owner: str | None = None
 
 
 class _Check(ast.NodeVisitor):
@@ -67,6 +74,9 @@ class _Check(ast.NodeVisitor):
         self.class_outer_names: set[str] = set()
         self.eager_variable_annotations = True
         self.protected: set[str] = set()
+        # Owning locks permit connection configuration, not SQL transactions.
+        self.held_locks: set[str] = set()
+        self.eager_walrus: dict[str, list[_Value]] | None = None
         self.violations: list[Violation] = []
         self.postponed_annotations = any(
             isinstance(node, ast.ImportFrom) and node.module == "__future__"
@@ -115,7 +125,9 @@ class _Check(ast.NodeVisitor):
             if node.attr == "connection":
                 return _Value(symbol=symbol, connection=base.connection or base.symbol,
                               fixture_handle=base.fixture_handle)
-            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _MEDIA_SEED | {"cursor"}:
+            if node.attr == "_lock":
+                return _Value(symbol=symbol, lock_owner=base.symbol)
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _MEDIA_SEED | {"cursor", "close"}:
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
                               methods=frozenset({node.attr}), receiver=base)
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
@@ -146,9 +158,10 @@ class _Check(ast.NodeVisitor):
                     # A dynamically selected callable on a known SQL connection
                     # must not discard ownership just because its name is unknown.
                     return _Value(connection=receiver.connection, fixture_handle=receiver.fixture_handle,
-                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS), receiver=receiver)
+                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | {"close"}), receiver=receiver)
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
-                return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None)
+                return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
+                               sqlite_cursor=True)
             if function.symbol in {"str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath"} and node.args:
                 return self.value(node.args[0])
             if function.symbol == "sqlite3.connect":
@@ -225,13 +238,20 @@ class _Check(ast.NodeVisitor):
                     _Check.merge_aliases(*({"item": value.elements[index]} for value in values))["item"]
                     for index in range(len(values[0].elements))))
             elif all(value.connection is not None and value.connection.startswith("sqlite@") for value in values):
-                result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}")
+                result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}",
+                                      sqlite_cursor=all(value.sqlite_cursor for value in values))
             else:
                 receivers = [value.receiver for value in values if value.receiver is not None]
-                result[name] = _Value(symbol=name, active_path=any(value.active_path for value in values),
-                                      connection=f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None,
+                same_owner = all(value.connection == values[0].connection for value in values)
+                result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
+                                      active_path=any(value.active_path for value in values),
+                                      connection=(values[0].connection if same_owner else
+                                                  f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None),
+                                      fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
                                       workspace=any(value.workspace for value in values),
+                                      sqlite_cursor=all(value.sqlite_cursor for value in values),
+                                      lock_owner=values[0].lock_owner if all(value.lock_owner == values[0].lock_owner for value in values) else None,
                                       methods=frozenset().union(*(value.methods for value in values)),
                                       receiver=_Check.merge_aliases(*({"receiver": value} for value in receivers))["receiver"] if receivers else None)
         return result
@@ -399,7 +419,10 @@ class _Check(ast.NodeVisitor):
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
         self.visit(node.value)
-        self.bind(node.target, self.value(node.value))
+        value = self.value(node.value)
+        self.bind(node.target, value)
+        if self.eager_walrus is not None and isinstance(node.target, ast.Name):
+            self.eager_walrus.setdefault(node.target.id, []).append(value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
         self.visit(node.value)
@@ -407,6 +430,16 @@ class _Check(ast.NodeVisitor):
         self.bind(node.target, self.value(ast.BinOp(left=node.target, op=node.op, right=node.value)))
 
     def check_transaction_assignment(self, target: ast.AST) -> None:
+        if isinstance(target, ast.Attribute) and target.attr == "row_factory":
+            receiver = self.value(target.value)
+            if receiver.connection is None or receiver.sqlite_cursor or receiver.connection.startswith("sqlite@"):
+                return
+            if receiver.connection in self.protected:
+                if not receiver.fixture_handle:
+                    self.flag(target, "row_factory change requires the yielded fixture_write handle")
+            elif receiver.connection not in self.held_locks:
+                self.flag(target, "row_factory change requires the owning lock or fixture_write")
+            return
         if isinstance(target, ast.Attribute) and target.attr in {"autocommit", "isolation_level"}:
             receiver = self.value(target.value)
             if receiver.connection is not None and receiver.connection.startswith("sqlite@"):
@@ -418,11 +451,14 @@ class _Check(ast.NodeVisitor):
 
     def visit_With(self, node: ast.With) -> None:
         previous = self.protected.copy()
+        previous_locks = self.held_locks.copy()
         for item in node.items:
             expression = item.context_expr
             value = self.value(expression)
             is_helper = isinstance(expression, ast.Call) and self.value(expression.func).symbol in {"fixture_write", "tests.fixture_write.fixture_write"}
             self.visit(expression)
+            if value.lock_owner is not None:
+                self.held_locks.add(value.lock_owner)
             workspace_argument = (expression.args[0] if expression.args else next(
                 (kw.value for kw in expression.keywords if kw.arg == "workspace"), None)) if is_helper else None
             if is_helper and workspace_argument is not None:
@@ -439,6 +475,7 @@ class _Check(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
         self.protected = previous
+        self.held_locks = previous_locks
 
     visit_AsyncWith = visit_With
 
@@ -453,6 +490,12 @@ class _Check(ast.NodeVisitor):
         methods = function.methods | {method}
         receiver = function.receiver or (self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function)
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
+        independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
+        if receiver.connection is not None and not independent_connection and not imported_function:
+            if "close" in methods and not receiver.sqlite_cursor:
+                self.flag(node, "shared connection close bypasses workspace lifetime")
+            if methods & _CALLBACK_METHODS and receiver.connection not in self.protected | self.held_locks:
+                self.flag(node, "connection callback change requires the owning lock or fixture_write")
         if methods & _SQL_METHODS and not imported_function:
             argument = node.args[0] if node.args else next(
                 (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
@@ -518,6 +561,8 @@ class _Check(ast.NodeVisitor):
                 self.visit(node.returns)
         annotated = {argument.arg: self.value(argument.annotation).symbol for argument in [*positional, *node.args.kwonlyargs]}
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
+        held_locks, eager_walrus = self.held_locks, self.eager_walrus
+        self.held_locks, self.eager_walrus = set(), None
         eager_annotations = self.eager_variable_annotations
         self.eager_variable_annotations = False
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
@@ -530,10 +575,15 @@ class _Check(ast.NodeVisitor):
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
             elif annotated.get(argument.arg) in {"WorkspaceStore", "case_intelligence.workspace_store.WorkspaceStore"}:
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, workspace=True)
+            if argument.annotation is None and argument.arg.strip("_") in _CONNECTION_PARAMETERS:
+                existing = self.aliases.get(argument.arg)
+                if existing is None or existing.connection is None:
+                    self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.declare_functions(node.body)
         for statement in node.body:
             self.visit(statement)
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
+        self.held_locks, self.eager_walrus = held_locks, eager_walrus
         self.eager_variable_annotations = eager_annotations
 
     visit_AsyncFunctionDef = visit_FunctionDef
@@ -565,12 +615,17 @@ class _Check(ast.NodeVisitor):
             self.visit(default)
         default_values = {name: self.value(default) for name, default in defaults.items()}
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
+        held_locks, eager_walrus = self.held_locks, self.eager_walrus
+        self.held_locks, self.eager_walrus = set(), None
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
         self.protected, self.class_outer_aliases = set(), None
         for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
             self.aliases[argument.arg] = default_values.get(argument.arg, _Value())
+            if argument.arg.strip("_") in _CONNECTION_PARAMETERS and self.aliases[argument.arg].connection is None:
+                self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.visit(node.body)
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
+        self.held_locks, self.eager_walrus = held_locks, eager_walrus
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self.visit_comprehension_scope(node, deferred=True)
@@ -587,6 +642,9 @@ class _Check(ast.NodeVisitor):
         # Eager comprehensions keep protection but bind their own loop names.
         self.visit(node.generators[0].iter)
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
+        held_locks, eager_walrus = self.held_locks, self.eager_walrus
+        self.held_locks = set() if deferred else held_locks.copy()
+        self.eager_walrus = None if deferred else {}
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
         self.protected, self.class_outer_aliases = set() if deferred else protected.copy(), None
         for index, generator in enumerate(node.generators):
@@ -600,7 +658,18 @@ class _Check(ast.NodeVisitor):
             self.visit(node.value)
         else:
             self.visit(node.elt)
+        assignments = self.eager_walrus or {}
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
+        self.held_locks, self.eager_walrus = held_locks, eager_walrus
+        for name, values in assignments.items():
+            # Assignment expressions bind in the containing non-comprehension
+            # scope. Include the old value for zero iterations/filtered rows,
+            # and every assignment because a later filter can skip a rewrite.
+            merged = self.merge_aliases({name: aliases.get(name, _Value(symbol=name))},
+                                        *({name: value} for value in values))[name]
+            self.bind(ast.Name(id=name), merged)
+            if self.eager_walrus is not None:
+                self.eager_walrus.setdefault(name, []).extend(values)
 
 
 def check_fixture_writes(source: str, filename: str = "<fixture>") -> list[Violation]:

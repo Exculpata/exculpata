@@ -23,7 +23,8 @@ class SyntheticLedger:
     def __init__(self):
         self._lock = RLock()
         self.connection = sqlite3.connect(":memory:")
-        self.connection.row_factory = sqlite3.Row
+        with self._lock:
+            self.connection.row_factory = sqlite3.Row
         self.allowed = True
         self.originals = {}
         self.resolutions = []
@@ -106,7 +107,7 @@ class SyntheticLedger:
 def ledger():
     value = SyntheticLedger()
     yield value
-    value.connection.close()
+    value.connection.close()  # fixture-write: Close this test-owned in-memory ledger after its fixture finishes; it has no workspace workers.
 
 
 class Echo:

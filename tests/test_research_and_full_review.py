@@ -133,7 +133,7 @@ def test_source_check_basis_survives_online_backup_and_clean_restore(tmp_path):
     try:
         store.connection.backup(destination)
     finally:
-        destination.close()
+        destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.
         store.close()
 
     restored = WorkspaceStore(restored_path)
@@ -186,8 +186,8 @@ def test_pre_basis_active_source_check_fails_closed_after_backup_restore(tmp_pat
         legacy.commit()  # fixture-write: Commit the offline legacy schema before copying the closed database.
         legacy.backup(destination)
     finally:
-        destination.close()
-        legacy.close()
+        destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.
+        legacy.close()  # fixture-write: Close the offline legacy migration connection after its backup completes.
 
     restored = WorkspaceStore(restored_path)
     try:
