@@ -175,7 +175,11 @@ Unsupported stem compositions, including mapping-style
 interpolation, must use a contract key instead. String methods, container lookups,
 conditional and short-circuit aliases, local attribute assignments, and tuple
 assignments preserve known legacy origins. Both `if` and `match` alternatives merge
-possible bindings. Methods use their enclosing lexical scope, not class locals. Unicode letters and combining marks stay part of source identifiers. Search
+possible bindings, and match captures retain their subject or member provenance.
+Methods use their enclosing lexical scope; class suites preserve writes through
+enclosing objects while class-local bindings stay separate. UTF-8 bytes aliases,
+compositions and ordinary encode/decode calls retain string provenance.
+Unicode letters and combining marks stay part of source identifiers. Search
 patterns and parser inputs do not become generated identifiers. This is a bounded
 syntax check, not whole-program execution: arbitrary function return values and
 runtime loop values are not inferred. Use contract keys for generated operational
@@ -184,7 +188,9 @@ Complete symbolic templates are checked against their family; bare template
 prefixes are examples only in Markdown unless explicitly registered. Registered
 paths permit ordinary descendants, while legacy-named descendants must have their
 own contract. The authority module is scanned outside the table declaration;
-only that declaration is covered by the separate contract-table validation.
+only its exact source span is covered by the separate contract-table validation,
+so neighboring statements remain checked. URI query, fragment and percent-encoded
+suffixes remain part of the identifier and require an explicit contract.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
@@ -340,6 +346,7 @@ while conflicting authentication headers fail closed.
 | temporary_zoom | `recordbench-zoom-` | `recordbench-zoom-` | retained |
 | ticket_uri | `recordbench://ticket/{token}` | `recordbench://ticket/{token}` | retained |
 | ticket_uri_prefix | `recordbench://ticket/` | `recordbench://ticket/` | retained |
+| ticket_uri_rejection_fixture | `recordbench://ticket/bad?query` | `recordbench://ticket/bad?query` | retained |
 | transcription_notice | `/usr/share/licenses/recordbench-transcription` | `/usr/share/licenses/recordbench-transcription` | retained |
 | whisperx_build | `3.8.6+recordbench.1` | `3.8.6+recordbench.1` | retained |
 | whisperx_wheel | `3.8.6+recordbench.1-py3-none-any.whl` | `3.8.6+recordbench.1-py3-none-any.whl` | retained |

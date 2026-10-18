@@ -25,7 +25,7 @@ from case_intelligence import legacy_names as naming  # noqa: E402
 KNOWN_VALUES = {key: item for key, item in vars(naming).items()
                 if key.startswith(("LEGACY_", "CURRENT_")) and isinstance(item, str)}
 STRING_METHODS = {"format", "format_map", "join", "replace", "lower", "upper", "casefold",
-                  "capitalize", "title", "swapcase", "strip", "lstrip", "rstrip", "removeprefix", "removesuffix"}
+                  "encode", "decode", "capitalize", "title", "swapcase", "strip", "lstrip", "rstrip", "removeprefix", "removesuffix"}
 
 SKIP_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
@@ -38,7 +38,7 @@ HISTORICAL_ASSET = f"{LEGACY_STEM}-banner.svg"
 
 _STEM = re.escape(LEGACY_STEM)
 _TOKENS = re.compile(
-    rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/-]*)"
+    rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/?%#&=+~!$,*@;-]*)"
     rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
@@ -145,16 +145,17 @@ def scan_component(location: str, component: str, contracts: Mapping[str, NameCo
     return [Finding(f"{location}:1", component)]
 
 
-def scan_python(location: str, text: str, contracts: Mapping[str, NameContract]) -> list[Finding]:
+def scan_python(location: str, text: str, contracts: Mapping[str, NameContract], *, tree: ast.Module | None = None) -> list[Finding]:
     """Inspect constant string compositions without importing or executing source."""
     try:
-        tree = ast.parse(text.removeprefix("\ufeff"))
+        tree = tree if tree is not None else ast.parse(text.removeprefix("\ufeff"))
     except SyntaxError:
         return []  # Compilation is enforced separately.
     env = dict(KNOWN_VALUES)
     unresolved_stems: set[str] = set()
     binding_events: list[tuple[str, str | None]] = []
     found = []
+    class_scopes = []
 
     def joined(parts: list[str]) -> str | None:
         return "".join(parts) if sum(map(len, parts)) <= 65536 else None
@@ -166,8 +167,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         unresolved_stems.discard(name)
 
     def value(node: ast.AST) -> str | None:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, str):
+                return node.value
+            if isinstance(node.value, bytes):
+                try:
+                    return node.value.decode("utf-8")
+                except UnicodeDecodeError:
+                    return None
         if isinstance(node, ast.Name):
             return env.get(node.id)
         if isinstance(node, ast.Attribute):
@@ -277,7 +284,18 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             receiver = value(node.func.value)
             arguments = [value(arg) for arg in node.args]
-            if receiver is not None and node.func.attr in STRING_METHODS - {"format", "format_map", "join"}:
+            if receiver is not None and node.func.attr in {"encode", "decode"}:
+                encoding = arguments[0] if arguments else "utf-8"
+                errors = arguments[1] if len(arguments) > 1 else "strict"
+                keywords = {arg.arg: value(arg.value) for arg in node.keywords}
+                encoding = keywords.get("encoding", encoding)
+                errors = keywords.get("errors", errors)
+                if (len(arguments) <= 2 and keywords.keys() <= {"encoding", "errors"}
+                        and encoding in {"utf-8", "utf8", "UTF-8", "ascii"} and errors == "strict"):
+                    if encoding != "ascii" or receiver.isascii():
+                        return receiver
+                return None
+            if receiver is not None and node.func.attr in STRING_METHODS - {"format", "format_map", "join", "encode", "decode"}:
                 if not node.keywords and all(arg is not None for arg in arguments):
                     try:
                         if node.func.attr == "replace" and len(arguments) >= 2:
@@ -367,6 +385,25 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
 
         collect(target, expression)
         for name, resolved, unresolved in pending:
+            if class_scopes:
+                outer_env, outer_unresolved, outer_events, local_names = class_scopes[-1]
+                root, separator, _ = name.partition(".")
+                if not separator:
+                    local_names.add(root)
+                elif root not in local_names:
+                    # Class suites execute immediately. Mutating an enclosing
+                    # object updates the namespace seen by methods and callers.
+                    for key in list(outer_env):
+                        if key == name or key.startswith(name + "."):
+                            outer_env.pop(key)
+                    outer_unresolved.discard(name)
+                    if resolved is not None:
+                        outer_env[name] = resolved
+                        if LEGACY_STEM in resolved.casefold():
+                            outer_events.append((name, resolved))
+                    elif unresolved:
+                        outer_unresolved.add(name)
+                        outer_events.append((name, None))
             unbind(name)
             if resolved is not None:
                 env[name] = resolved
@@ -395,6 +432,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
 
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
+                if class_scopes:
+                    class_scopes[-1][3].add(alias.asname or alias.name.split(".")[0])
                 if alias.name == "case_intelligence.legacy_names":
                     env.update({f"{alias.asname or alias.name}.{key}": item for key, item in KNOWN_VALUES.items()})
                     for key, item in KNOWN_VALUES.items():
@@ -402,6 +441,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
                             binding_events.append((f"{alias.asname or alias.name}.{key}", item))
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            if class_scopes:
+                class_scopes[-1][3].update(alias.asname or alias.name for alias in node.names)
             if node.module and node.module.rsplit(".", 1)[-1] == "legacy_names":
                 for alias in node.names:
                     if alias.name in KNOWN_VALUES:
@@ -446,15 +487,66 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
 
         def visit_Match(self, node: ast.Match) -> None:
             self.visit(node.subject)
+
+            def captures(pattern: ast.pattern, subject: ast.AST) -> list[ast.Assign]:
+                result = []
+                def capture(name: str | None, source: ast.AST) -> None:
+                    if name:
+                        result.append(ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=source))
+                if isinstance(pattern, ast.MatchAs):
+                    capture(pattern.name, subject)
+                    if pattern.pattern:
+                        result.extend(captures(pattern.pattern, subject))
+                elif isinstance(pattern, ast.MatchStar):
+                    capture(pattern.name, subject)
+                elif isinstance(pattern, ast.MatchMapping):
+                    remaining = list(zip(subject.keys, subject.values)) if isinstance(subject, ast.Dict) else []
+                    for key, child in zip(pattern.keys, pattern.patterns):
+                        source = ast.Subscript(value=subject, slice=key, ctx=ast.Load())
+                        for pair in remaining:
+                            if pair[0] is not None and ast.dump(pair[0]) == ast.dump(key):
+                                source = pair[1]
+                                remaining.remove(pair)
+                                break
+                        result.extend(captures(child, source))
+                    rest = ast.Dict(keys=[key for key, _ in remaining], values=[item for _, item in remaining]) if isinstance(subject, ast.Dict) else subject
+                    capture(pattern.rest, rest)
+                elif isinstance(pattern, ast.MatchSequence):
+                    items = subject.elts if isinstance(subject, (ast.List, ast.Tuple)) else None
+                    star = next((index for index, child in enumerate(pattern.patterns) if isinstance(child, ast.MatchStar)), None)
+                    for index, child in enumerate(pattern.patterns):
+                        source = subject
+                        if items is not None:
+                            if isinstance(child, ast.MatchStar):
+                                end = len(items) - (len(pattern.patterns) - index - 1)
+                                source = ast.List(elts=items[index:end], ctx=ast.Load())
+                            else:
+                                offset = index if star is None or index < star else index - len(pattern.patterns)
+                                if -len(items) <= offset < len(items):
+                                    source = items[offset]
+                        result.extend(captures(child, source))
+                elif isinstance(pattern, ast.MatchClass):
+                    for child in pattern.patterns:
+                        result.extend(captures(child, subject))
+                    for attribute, child in zip(pattern.kwd_attrs, pattern.kwd_patterns):
+                        result.extend(captures(child, ast.Attribute(value=subject, attr=attribute, ctx=ast.Load())))
+                elif isinstance(pattern, ast.MatchOr):
+                    by_name = {}
+                    for option in pattern.patterns:
+                        for assignment in captures(option, subject):
+                            name = assignment.targets[0].id
+                            previous = by_name.get(name)
+                            by_name[name] = assignment.value if previous is None else ast.IfExp(test=ast.Constant(value=None), body=previous, orelse=assignment.value)
+                    for name, source in by_name.items():
+                        capture(name, source)
+                return result
+
             choices = []
             exhaustive = False
             for case in node.cases:
-                captures = []
-                for pattern in ast.walk(case.pattern):
-                    name = getattr(pattern, "name", None) or getattr(pattern, "rest", None)
-                    if name:
-                        captures.append(ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=ast.Constant(value=None)))
-                choices.append([case.pattern, *captures, *([case.guard] if case.guard else []), *case.body])
+                # Captures bind matched values, including structural members;
+                # they are not unknown values that erase existing provenance.
+                choices.append([case.pattern, *captures(case.pattern, node.subject), *([case.guard] if case.guard else []), *case.body])
                 exhaustive |= isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None and case.guard is None
             self.alternatives(choices if exhaustive else [*choices, []])
 
@@ -483,7 +575,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append((node, *(self.method_scope or (dict(env), set(unresolved_stems), len(binding_events)))))
+            scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
+            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events)))
+            if class_scopes:
+                class_scopes[-1][3].add(node.name)
 
         visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -491,7 +586,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append((node, *(self.method_scope or (dict(env), set(unresolved_stems), len(binding_events)))))
+            scope_env, scope_unresolved, scope_events = self.method_scope or (env, unresolved_stems, binding_events)
+            self.deferred.append((node, dict(scope_env), set(scope_unresolved), len(scope_events)))
 
         def finish(self) -> None:
             nonlocal env, unresolved_stems, binding_events
@@ -536,15 +632,20 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             outer_unresolved = unresolved_stems
             outer_events = binding_events
             outer_method_scope = self.method_scope
-            self.method_scope = self.method_scope or (dict(outer), set(outer_unresolved), len(outer_events))
-            env = dict(env)
-            unresolved_stems = set(unresolved_stems)
+            self.method_scope = self.method_scope or (outer, outer_unresolved, outer_events)
+            scope_env, scope_unresolved, scope_events = self.method_scope
+            env = dict(scope_env)
+            unresolved_stems = set(scope_unresolved)
             binding_events = []
+            class_scopes.append((scope_env, scope_unresolved, scope_events, set()))
             self.generic_visit(node)
+            class_scopes.pop()
             env = outer
             unresolved_stems = outer_unresolved
             binding_events = outer_events
             self.method_scope = outer_method_scope
+            if class_scopes:
+                class_scopes[-1][3].add(node.name)
 
         def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
             self.composition(node)
@@ -610,23 +711,36 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
+        authority = None
         if relative.as_posix() == "src/case_intelligence/legacy_names.py":
             # The table is validated above; every other declaration in its
             # module remains subject to the same operational-name checks.
-            lines = text.splitlines(keepends=True)
+            text = text.removeprefix("\ufeff")
+            lines = [bytearray(line.encode("utf-8")) for line in text.splitlines(keepends=True)]
             try:
                 authority = ast.parse(text.removeprefix("\ufeff"))
             except SyntaxError:
                 authority = ast.Module(body=[], type_ignores=[])
+            remaining = []
             for statement in authority.body:
                 targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target] if isinstance(statement, ast.AnnAssign) else []
-                if any(isinstance(target, ast.Name) and target.id == "NAME_CONTRACTS" for target in targets):
-                    lines[statement.lineno - 1:statement.end_lineno] = ["\n"] * (statement.end_lineno - statement.lineno + 1)
-            text = "".join(lines)
+                if len(targets) == 1 and isinstance(targets[0], ast.Name) and targets[0].id == "NAME_CONTRACTS":
+                    # AST columns count UTF-8 bytes. Preserve other statements
+                    # and comments even when they share a table boundary line.
+                    for index in range(statement.lineno - 1, statement.end_lineno):
+                        start = statement.col_offset if index == statement.lineno - 1 else 0
+                        end = statement.end_col_offset if index == statement.end_lineno - 1 else len(lines[index])
+                        for column in range(start, end):
+                            if lines[index][column] not in (10, 13):
+                                lines[index][column] = 32
+                else:
+                    remaining.append(statement)
+            authority.body = remaining
+            text = b"".join(lines).decode("utf-8")
         found.extend(scan_text(relative.as_posix(), text, contracts))
         shebang = text.removeprefix("\ufeff").partition("\n")[0]
         if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
-            found.extend(scan_python(relative.as_posix(), text, contracts))
+            found.extend(scan_python(relative.as_posix(), text, contracts, tree=authority))
     return list(dict.fromkeys(found))
 
 

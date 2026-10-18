@@ -82,6 +82,8 @@ NAME_CONTRACTS = MappingProxyType({
     "browser_name": NameContract("recordbench:{suffix}", "exculpata:{suffix}", "alias"),
     "cli_error_label": NameContract("recordbench:", "recordbench:", "retained"),
     "ticket_uri": NameContract("recordbench://ticket/{token}", "recordbench://ticket/{token}", "retained"),
+    # Exact malformed input retained by the synthetic ticket rejection evaluation.
+    "ticket_uri_rejection_fixture": NameContract("recordbench://ticket/bad?query", "recordbench://ticket/bad?query", "retained"),
     "ticket_uri_prefix": NameContract("recordbench://ticket/", "recordbench://ticket/", "retained"),
     "backup_status_default": NameContract("/srv/recordbench/.local/state/recordbench-backup/status.json", "/srv/recordbench/.local/state/recordbench-backup/status.json", "retained"),
     "browser_source_note": NameContract("recordbenchSourceNote", "exculpataSourceNote", "alias"),
