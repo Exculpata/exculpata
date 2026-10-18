@@ -101,6 +101,8 @@ without requiring withdrawn historical representations to remain available.
 History remains subject to the application's authorized retention lifecycle.
 Fresh coverage appends also require their frozen scope and validate its receipt,
 target resolution and partition before returning any new acceptance snapshot.
+The fresh append entrypoint cannot disable contextual validation; only the private
+history-reconstruction helper defers it while loading a historical chain.
 
 ## Citations and support validity
 

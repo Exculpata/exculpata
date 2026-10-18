@@ -707,3 +707,10 @@ def test_fresh_conflicting_proposal_and_acceptance_preserve_exact_target_revisio
     assert accepted["relations"] == proposal["relations"]
     assert accepted["relations"][0]["record_id"] == "event-arrival"
     assert accepted["relations"][0]["revision"] == 2  # Never retarget the newer proposal.
+
+
+def test_fresh_append_cannot_disable_support_and_relation_checks(bundle):
+    proposal = record(bundle, "event-witness")
+    proposal["relations"][0]["revision"] = 99
+    with pytest.raises(TypeError, match="resolve_support"):
+        append_revision([], proposal, bundle["sources"], resolve_support=False)

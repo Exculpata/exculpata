@@ -74,6 +74,7 @@ def validate_citation(record, citation, sources):
 
 
 def validate_record(record, sources, *, resolve_support=True):
+    """Check shape/direct support, not revision history or acceptance authority."""
     VALIDATOR.validate(record)
     created = clock(record["created_at"])
     if record["review"] is not None:
@@ -112,8 +113,13 @@ def validate_relations(record, by_key):
                 "conflict target is not an assertion")
 
 
-def append_revision(history, candidate, sources, *, scope=None, resolve_support=True):
-    """Copy on append; old review/evidence snapshots are never edited in place."""
+def append_revision(history, candidate, sources, *, scope=None):
+    """Validate a fresh snapshot completely before returning a copied history."""
+    return _append_snapshot(history, candidate, sources, scope=scope, resolve_support=True)
+
+
+def _append_snapshot(history, candidate, sources, *, scope=None, resolve_support):
+    """Shared chain mechanics; only history reconstruction may defer context checks."""
     validate_record(candidate, sources, resolve_support=resolve_support)
     if resolve_support and candidate["record_type"] == "coverage":
         require(scope is not None, "fresh coverage append requires its frozen scope")
@@ -158,7 +164,7 @@ def validate_history(records, sources, matter_id):
         # Historical review is an input snapshot, not a new acceptance decision.
         # Resolve selected output against present support; fresh appends use the
         # default strict support check above. This is not a historical attestation.
-        history = append_revision(history, record, sources, resolve_support=False)
+        history = _append_snapshot(history, record, sources, resolve_support=False)
     by_key = {(r["record_id"], r["revision"]): r for r in history}
     for record in history:
         validate_relations(record, by_key)
