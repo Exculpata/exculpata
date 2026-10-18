@@ -47,7 +47,10 @@ def test_legacy_filenames_are_checked_before_content_filters(tmp_path, filename,
     path = tmp_path / "scripts" / filename
     path.parent.mkdir()
     path.write_bytes(data)
-    assert checker.findings(tmp_path) == [checker.Finding(f"scripts/{filename}:1", filename)]
+    expected = [checker.Finding(f"scripts/{filename}:1", filename)]
+    if data.startswith(b"\xff"):
+        expected.append(checker.Finding(f"scripts/{filename}:1", "unsupported undecodable operational source"))
+    assert checker.findings(tmp_path) == expected
 
 
 @pytest.mark.parametrize("child", [None, "config.py", "config", "config.bin"])
@@ -1240,3 +1243,44 @@ def test_javascript_decode_uncertainty_preserves_raw_findings():
     found = checker.scan_javascript('synthetic.js', 'const FORMAT = "' + token + r'"; // \uZZZZ', NAME_CONTRACTS)
     assert any(item.identifier == token for item in found)
     assert any('ambiguous JavaScript escape' in item.identifier for item in found)
+
+
+@pytest.mark.parametrize('source', [
+    'from pathlib import PurePath\nFORMAT = PurePath(LEGACY_STEM, "unregistered-v99")',
+    'from pathlib import PosixPath\nFORMAT = PosixPath(LEGACY_STEM, "unregistered-v99")',
+    'import pathlib\nFORMAT = pathlib.PureWindowsPath(LEGACY_STEM, "unregistered-v99")',
+    'FORMAT = LEGACY_STEM + "@unregistered-v99"',
+    'stem = "synthetic"\ntry:\n raise ValueError()\nexcept ValueError:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"\nfinally:\n FORMAT = f"{stem}-unregistered-v99"',
+])
+def test_latest_review_path_and_handler_boundaries(tmp_path, source):
+    (tmp_path / 'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('filename', ['compose.yaml', 'config.toml', '.env', 'Dockerfile', 'synthetic.sh', 'synthetic'])
+def test_undecodable_configuration_and_extensionless_source_is_rejected(tmp_path, filename):
+    (tmp_path / filename).write_bytes(b'key: recordbench-unregistered-v99\xff')
+    assert checker.findings(tmp_path)
+
+
+def test_javascript_quote_regex_and_malformed_comment_remains_blocked(tmp_path):
+    (tmp_path / 'synthetic.js').write_text(r'// \uZZZZ' + '\n' + r'const regex = /"/; const FORMAT = "\x72ecordbench-unregistered-v99";')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('suite', [
+    'except Exception:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"',
+    'except Exception:\n stem = LEGACY_STEM\n unused = undefined_name\n stem = "synthetic"',
+    'except Exception:\n pass\nelse:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"',
+])
+def test_exception_suite_unsupported_exits_are_not_modeled_safe(tmp_path, suite):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\nstem = "synthetic"\ntry:\n operation()\n' + suite + '\nfinally:\n FORMAT = f"{stem}-unregistered-v99"\n'
+    (tmp_path / 'synthetic.py').write_text(source)
+    assert any('exceptional handler or else' in item.identifier for item in checker.findings(tmp_path))
+
+
+
+def test_unhandled_try_exit_reaches_finally_with_known_origin(tmp_path):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\ntry:\n stem = LEGACY_STEM\n operation()\n stem = "synthetic"\nfinally:\n FORMAT = f"{stem}-unregistered-v99"\n'
+    (tmp_path / 'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)

@@ -72,6 +72,8 @@ NAME_CONTRACTS = MappingProxyType({
     "worker_name": NameContract("recordbench-transcription-worker-1", "recordbench-transcription-worker-1", "retained"),
     "ignored_node_directory": NameContract("recordbench-node", "recordbench-node", "retained"),
     "keytab": NameContract("recordbench.keytab", "recordbench.keytab", "retained"),
+    "kerberos_users_example": NameContract("recordbench_users@example.test", "recordbench_users@example.test", "retained"),
+    "kerberos_admin_example": NameContract("recordbench_administrators@example.test", "recordbench_administrators@example.test", "retained"),
     "local_users_group": NameContract("recordbench_users", "recordbench_users", "retained"),
     "local_admin_group": NameContract("recordbench_administrators", "recordbench_administrators", "retained"),
     "oidc_users_group": NameContract("RecordBench_Users", "RecordBench_Users", "retained"),

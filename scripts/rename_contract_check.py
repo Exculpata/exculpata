@@ -59,7 +59,7 @@ _TOKENS = re.compile(
     rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/+:%-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
-    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.+%/-]*)",
+    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.@+%/-]*)",
     re.IGNORECASE,
 )
 
@@ -916,6 +916,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.reviewed_analysis = reviewed_analysis
             self.comprehension_depth = 0
             self.try_depth = 0
+            self.finally_depth = 0
 
         def visit(self, node):
             active_visitors.append(self)
@@ -1095,19 +1096,32 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         visit_AsyncWith = visit_With
 
+        def visit_exception_suite(self, statements, owner):
+            event_offset = len(binding_events)
+            simple = True
+            for statement in statements:
+                simple &= isinstance(statement, ast.Pass) or (
+                    isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                    and isinstance(statement.targets[0], ast.Name)
+                    and (isinstance(statement.value, ast.Constant) or
+                         (isinstance(statement.value, ast.Name) and value(statement.value) is not None)))
+                self.visit(statement)
+            if self.finally_depth and binding_events[event_offset:] and not simple:
+                unsupported(owner, "exceptional handler or else suite with legacy bindings")
+
         def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
             if node.type is not None:
                 self.visit(node.type)
             if node.name:
                 bind(ast.Name(id=node.name, ctx=ast.Store()), None)
-            for statement in node.body:
-                self.visit(statement)
+            self.visit_exception_suite(node.body, node)
             if node.name:
                 unbind(node.name)
                 if class_scopes:
                     class_scopes[-1][3].discard(node.name)
 
         def visit_Try(self, node: ast.Try | ast.TryStar) -> None:
+            self.finally_depth += bool(node.finalbody)
             # Visit each statement once. An exception can occur before or after
             # any statement; merge those inputs for the handler paths while
             # preserving the precise successful body result for the else path.
@@ -1120,6 +1134,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 if isinstance(statement, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.With, ast.AsyncWith, ast.Try, ast.TryStar, ast.Match)) and binding_events[offset:]:
                     unsupported(statement, "compound exception path with legacy bindings")
                 exceptional.append(self.snapshot())
+            self.visit_exception_suite(node.orelse, node)
             normal = self.snapshot()
             self.merge_states(exceptional)
             handler_input = self.snapshot()
@@ -1128,12 +1143,15 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 # subgroups, so each later handler sees earlier possible writes.
                 for handler in node.handlers:
                     self.alternatives([[], [handler]])
-                self.alternatives([node.orelse, []], starts=[normal, self.snapshot()])
+                self.alternatives([[], []], starts=[normal, self.snapshot()])
             else:
-                self.alternatives([node.orelse, *[[handler] for handler in node.handlers]],
+                self.alternatives([[], *[[handler] for handler in node.handlers]],
                                   starts=[normal, *[handler_input for _ in node.handlers]])
+            if node.finalbody:
+                self.merge_states([self.snapshot(), *exceptional])
             for statement in node.finalbody:
                 self.visit(statement)
+            self.finally_depth -= bool(node.finalbody)
 
         visit_TryStar = visit_Try
 
@@ -1499,7 +1517,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.composition(node)
 
         def visit_Call(self, node: ast.Call) -> None:
-            if qualified(node.func) in {"os.path.join", "posixpath.join", "ntpath.join"} and any(contains_stem(item) for item in call_inputs(node)):
+            if qualified(node.func) in {"os.path.join", "posixpath.join", "ntpath.join", "pathlib.PurePath", "pathlib.PurePosixPath", "pathlib.PureWindowsPath", "pathlib.PosixPath", "pathlib.WindowsPath"} and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "legacy path builder output")
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend", "insert", "update", "setdefault", "add", "__setitem__"} and any(contains_stem(item) for item in [node.func.value, *node.args, *(arg.value for arg in node.keywords)]):
                 unsupported(node, "legacy-bearing mutator call")
@@ -1617,7 +1635,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
-            if path.suffix.lower() in {".py", ".js", ".cjs", ".mjs", ".json"}:
+            if path.suffix.lower() not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".woff", ".woff2", ".ttf", ".otf", ".pdf", ".wav", ".mp3", ".mp4", ".webm", ".ogg"}:
                 found.append(Finding(f"{relative.as_posix()}:1", "unsupported undecodable operational source"))
             continue
         authority = None
