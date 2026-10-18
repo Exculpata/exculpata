@@ -204,8 +204,10 @@ def test_cursor_factories_remain_real_attributes_and_expire(tmp_path):
             saved_factory = connection.cursor
             with pytest.raises(AttributeError, match='read-only'):
                 cursor.connection = connection
+        def change_expired_factory():
+            setattr(connection, 'row_factory', None)  # fixture-write: Deliberately invoke an expired handle setter and require rejection before SQLite is touched.
         for operation in [lambda: cursor.fetchone(), saved_fetch, saved_factory, lambda: next(cursor),
-                          lambda: setattr(cursor, 'arraysize', 3), lambda: setattr(connection, 'row_factory', None)]:
+                          lambda: setattr(cursor, 'arraysize', 3), change_expired_factory]:
             with pytest.raises(RuntimeError, match='fixture_write'):
                 operation()
     finally:

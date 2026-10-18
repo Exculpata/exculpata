@@ -64,6 +64,8 @@ class _Value:
     receiver: _Value | None = None
     sqlite_cursor: bool = False
     lock_owner: str | None = None
+    unannotated_parameter: bool = False
+    descriptor: bool = False
 
 
 class _Check(ast.NodeVisitor):
@@ -77,6 +79,10 @@ class _Check(ast.NodeVisitor):
         # Owning locks permit connection configuration, not SQL transactions.
         self.held_locks: set[str] = set()
         self.eager_walrus: dict[str, list[_Value]] | None = None
+        self.deferred: list[tuple] = []
+        self.late_bindings: dict[str, list[_Value]] = {}
+        self.collect_bindings = True
+        self.comprehension_locals: set[str] = set()
         self.violations: list[Violation] = []
         self.postponed_annotations = any(
             isinstance(node, ast.ImportFrom) and node.module == "__future__"
@@ -129,7 +135,8 @@ class _Check(ast.NodeVisitor):
                 return _Value(symbol=symbol, lock_owner=base.symbol)
             if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _MEDIA_SEED | {"cursor", "close"}:
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
-                              methods=frozenset({node.attr}), receiver=base)
+                              methods=frozenset({node.attr}), receiver=base,
+                              descriptor=base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"})
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
                           active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
         if isinstance(node, ast.JoinedStr):
@@ -149,6 +156,8 @@ class _Check(ast.NodeVisitor):
             return self.merge_aliases(*({"value": self.value(value)} for value in node.values))["value"]
         if isinstance(node, ast.Call):
             function = self.value(node.func)
+            if function.descriptor and node.args and function.methods & {"cursor", "execute", "executemany"}:
+                return replace(self.value(node.args[0]), sqlite_cursor=True)
             if function.symbol == "getattr" and len(node.args) >= 2:
                 name = self.value(node.args[1])
                 if name.complete_text:
@@ -197,6 +206,8 @@ class _Check(ast.NodeVisitor):
     def bind(self, target: ast.AST, value: _Value) -> None:
         if isinstance(target, ast.Name):
             self.aliases[target.id] = value
+            if self.collect_bindings and (self.class_outer_aliases is None or target.id in self.class_outer_names):
+                self.late_bindings.setdefault(target.id, []).append(value)
             if self.class_outer_aliases is not None and target.id in self.class_outer_names:
                 self.class_outer_aliases[target.id] = value
         elif isinstance(target, (ast.Tuple, ast.List)):
@@ -224,7 +235,31 @@ class _Check(ast.NodeVisitor):
         # its callers are not connection methods just because of that spelling.
         for statement in body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.aliases[statement.name] = _Value(symbol=f"function@{statement.lineno}:{statement.name}")
+                self.bind(ast.Name(id=statement.name), _Value(symbol=f"function@{statement.lineno}:{statement.name}"))
+
+    def defer(self, kind, node, defaults=None, annotations=None):
+        lexical = self.class_outer_aliases if self.class_outer_aliases is not None else self.aliases
+        self.deferred.append((kind, node, defaults, annotations, lexical.copy(), self.comprehension_locals.copy()))
+
+    def flush_deferred(self):
+        # Python resolves globals/closure cells when a deferred body runs. Keep
+        # every observed binding in its lexical scope, including an intermediate
+        # live connection later replaced by an independent one. Defaults remain
+        # the values captured separately when the definition was encountered.
+        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+                for name, values in self.late_bindings.items()}
+        while self.deferred:
+            jobs, self.deferred = self.deferred, []
+            for kind, node, defaults, annotations, lexical, local_names in jobs:
+                previous = self.aliases
+                self.aliases = {**lexical, **{name: value for name, value in late.items() if name not in local_names}}
+                if kind == "function":
+                    self.analyze_function(node, defaults, annotations)
+                elif kind == "lambda":
+                    self.analyze_lambda(node, defaults)
+                else:
+                    self.visit_comprehension_scope(node, deferred=True, analyzed=True, first_iterable=defaults)
+                self.aliases = previous
 
     @staticmethod
     def merge_aliases(*states: dict[str, _Value]) -> dict[str, _Value]:
@@ -250,6 +285,8 @@ class _Check(ast.NodeVisitor):
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
                                       workspace=any(value.workspace for value in values),
+                                      unannotated_parameter=any(value.unannotated_parameter for value in values),
+                                      descriptor=any(value.descriptor for value in values),
                                       sqlite_cursor=all(value.sqlite_cursor for value in values),
                                       lock_owner=values[0].lock_owner if all(value.lock_owner == values[0].lock_owner for value in values) else None,
                                       methods=frozenset().union(*(value.methods for value in values)),
@@ -390,15 +427,16 @@ class _Check(ast.NodeVisitor):
     def visit_Module(self, node: ast.Module) -> None:
         self.declare_functions(node.body)
         self.generic_visit(node)
+        self.flush_deferred()
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            self.aliases[alias.asname or alias.name] = _Value(symbol=alias.name)
+            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=alias.name))
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
             symbol = f"{node.module}.{alias.name}" if node.module else alias.name
-            self.aliases[alias.asname or alias.name] = _Value(symbol=symbol, imported_function=True)
+            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=symbol, imported_function=True))
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -432,7 +470,10 @@ class _Check(ast.NodeVisitor):
     def check_transaction_assignment(self, target: ast.AST) -> None:
         if isinstance(target, ast.Attribute) and target.attr == "row_factory":
             receiver = self.value(target.value)
-            if receiver.connection is None or receiver.sqlite_cursor or receiver.connection.startswith("sqlite@"):
+            if receiver.connection is None or receiver.connection.startswith("sqlite@"):
+                return
+            if receiver.sqlite_cursor and not receiver.fixture_handle:
+                self.flag(target, "row_factory change on shared cursor requires the yielded fixture_write handle")
                 return
             if receiver.connection in self.protected:
                 if not receiver.fixture_handle:
@@ -481,6 +522,12 @@ class _Check(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         function = self.value(node.func)
+        if function.symbol in {"setattr", "builtins.setattr"} and len(node.args) >= 3:
+            attribute = self.value(node.args[1])
+            if attribute.complete_text:
+                target = ast.copy_location(ast.Attribute(value=node.args[0], attr=attribute.text, ctx=ast.Store()), node)
+                self.parents[target] = node
+                self.check_transaction_assignment(target)
         if function.symbol == "sqlite3.connect":
             argument = node.args[0] if node.args else next((kw.value for kw in node.keywords if kw.arg == "database"), None)
             path = self.value(argument)
@@ -489,15 +536,18 @@ class _Check(ast.NodeVisitor):
         method = function.symbol.rsplit(".", 1)[-1]
         methods = function.methods | {method}
         receiver = function.receiver or (self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function)
+        arguments = node.args
+        if function.descriptor and arguments:
+            receiver, arguments = self.value(arguments[0]), arguments[1:]
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
         independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
-        if receiver.connection is not None and not independent_connection and not imported_function:
-            if "close" in methods and not receiver.sqlite_cursor:
+        if not independent_connection and not imported_function:
+            if "close" in methods and receiver.connection is not None and not receiver.sqlite_cursor:
                 self.flag(node, "shared connection close bypasses workspace lifetime")
-            if methods & _CALLBACK_METHODS and receiver.connection not in self.protected | self.held_locks:
+            if methods & _CALLBACK_METHODS and (receiver.connection is not None or receiver.unannotated_parameter) and receiver.connection not in self.protected | self.held_locks:
                 self.flag(node, "connection callback change requires the owning lock or fixture_write")
         if methods & _SQL_METHODS and not imported_function:
-            argument = node.args[0] if node.args else next(
+            argument = arguments[0] if arguments else next(
                 (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
             sql_value = self.value(argument)
             sql = sql_value.text
@@ -560,6 +610,12 @@ class _Check(ast.NodeVisitor):
             if node.returns is not None:
                 self.visit(node.returns)
         annotated = {argument.arg: self.value(argument.annotation).symbol for argument in [*positional, *node.args.kwonlyargs]}
+        self.defer("function", node, default_values, annotated)
+
+    def analyze_function(self, node, default_values, annotated):
+        positional = [*node.args.posonlyargs, *node.args.args]
+        outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
+        self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
         self.held_locks, self.eager_walrus = set(), None
@@ -579,12 +635,16 @@ class _Check(ast.NodeVisitor):
                 existing = self.aliases.get(argument.arg)
                 if existing is None or existing.connection is None:
                     self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
+            elif argument.annotation is None and argument.arg not in default_values:
+                self.aliases[argument.arg] = _Value(symbol=argument.arg, unannotated_parameter=True)
         self.declare_functions(node.body)
         for statement in node.body:
             self.visit(statement)
+        self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
         self.eager_variable_annotations = eager_annotations
+        self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -614,6 +674,12 @@ class _Check(ast.NodeVisitor):
         for default in defaults.values():
             self.visit(default)
         default_values = {name: self.value(default) for name, default in defaults.items()}
+        self.defer("lambda", node, default_values)
+
+    def analyze_lambda(self, node, default_values):
+        positional = [*node.args.posonlyargs, *node.args.args]
+        outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
+        self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
         self.held_locks, self.eager_walrus = set(), None
@@ -621,14 +687,19 @@ class _Check(ast.NodeVisitor):
         self.protected, self.class_outer_aliases = set(), None
         for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
             self.aliases[argument.arg] = default_values.get(argument.arg, _Value())
+            if argument.arg not in default_values:
+                self.aliases[argument.arg] = _Value(symbol=argument.arg, unannotated_parameter=True)
             if argument.arg.strip("_") in _CONNECTION_PARAMETERS and self.aliases[argument.arg].connection is None:
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.visit(node.body)
+        self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
+        self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        self.visit_comprehension_scope(node, deferred=True)
+        self.visit(node.generators[0].iter)
+        self.defer("generator", node, self.value(node.generators[0].iter))
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self.visit_comprehension_scope(node, deferred=False)
@@ -636,11 +707,16 @@ class _Check(ast.NodeVisitor):
     visit_SetComp = visit_ListComp
     visit_DictComp = visit_ListComp
 
-    def visit_comprehension_scope(self, node, *, deferred):
+    def visit_comprehension_scope(self, node, *, deferred, analyzed=False, first_iterable=None):
         # Python evaluates only the first iterable at generator creation. The
         # remaining clauses and result expression execute when it is consumed.
         # Eager comprehensions keep protection but bind their own loop names.
-        self.visit(node.generators[0].iter)
+        if not analyzed:
+            self.visit(node.generators[0].iter)
+            first_iterable = self.value(node.generators[0].iter)
+        collecting, self.collect_bindings = self.collect_bindings, False
+        outer_locals = self.comprehension_locals
+        self.comprehension_locals = outer_locals.copy()
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
         self.held_locks = set() if deferred else held_locks.copy()
@@ -650,7 +726,11 @@ class _Check(ast.NodeVisitor):
         for index, generator in enumerate(node.generators):
             if index:
                 self.visit(generator.iter)
-            self.bind(generator.target, _Value())
+            iterable = self.value(generator.iter) if index else first_iterable
+            elements = iterable.elements if iterable is not None else None
+            value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
+            self.bind(generator.target, value)
+            self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
             for condition in generator.ifs:
                 self.visit(condition)
         if isinstance(node, ast.DictComp):
@@ -661,6 +741,8 @@ class _Check(ast.NodeVisitor):
         assignments = self.eager_walrus or {}
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
+        self.collect_bindings = collecting
+        self.comprehension_locals = outer_locals
         for name, values in assignments.items():
             # Assignment expressions bind in the containing non-comprehension
             # scope. Include the old value for zero iterations/filtered rows,

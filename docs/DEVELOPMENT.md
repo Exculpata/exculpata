@@ -124,7 +124,9 @@ SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=Tr
 is unsupported and rejected before entry or assignment. Custom row factories
 receive scoped cursors, including through public workspace queries, and scoped
 connection factories are always restored before releasing the lock, including raw
-in-boundary replacements; custom cursor
+in-boundary replacements. Set shared cursor row factories through the yielded
+cursor, even while holding the workspace lock: a raw cursor callback can expose
+the underlying connection beyond that lock. Custom cursor
 factories are rejected before they can receive a raw connection. Unsupported
 connection methods such as closing the shared database, blob access, deserialize,
 backup and deferred dumps
@@ -158,7 +160,8 @@ eager operation while holding the helper. Function decorators, defaults and
 annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
-The inventory follows constant-name getattr methods and element-wise tuple/list
+The inventory follows constant-name getattr/setattr operations, SQLite method
+descriptors called with an explicit receiver, and element-wise tuple/list
 unpacking, including nested and starred assignments. It merges match cases conservatively, propagates explicit class
 global/nonlocal assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
@@ -169,6 +172,10 @@ creation does not exempt subsequent writes, contexts or transaction control.
 Alias assignments across branches, loops and exception paths are merged
 conservatively. Dynamic SQL must use the yielded handle so transaction-ending
 statements cannot bypass its runtime checks.
+Deferred bodies include later global and closure bindings while preserving
+definition-time defaults. Unannotated helper parameters that mutate SQLite
+callbacks must establish ownership inside the helper or document the exact
+independent operation; parameter spelling does not establish safety.
 Writable PRAGMAs, including parenthesized forms and action PRAGMAs without
 arguments, require the same boundary as other mutations.
 Unannotated SQL callback parameters
