@@ -32,7 +32,7 @@ _READ_ARGUMENT_PRAGMAS = {
 _SQL_METHODS = {"execute", "executemany", "executescript"}
 _TRANSACTION_METHODS = {"commit", "rollback"}
 _CONTEXT_METHODS = {"__enter__", "__exit__"}
-_UNSUPPORTED_SQLITE_METHODS = {"deserialize", "blobopen", "setconfig", "enable_load_extension", "load_extension"}
+_UNSUPPORTED_SQLITE_METHODS = {"deserialize", "blobopen", "setconfig", "enable_load_extension", "load_extension", "__call__"}
 _NON_SQL_METHODS = _UNSUPPORTED_SQLITE_METHODS | {"backup", "setlimit", "interrupt"}
 _CALLBACK_METHODS = {
     "set_trace_callback", "set_authorizer", "set_progress_handler",
@@ -434,7 +434,10 @@ class _Check(ast.NodeVisitor):
     def visit_loop(self, node, target=None):
         before = self.aliases.copy()
         if target is not None:
-            self.bind(target, _Value())
+            elements = self.value(node.iter).elements
+            value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
+            self.check_transaction_assignment(target)
+            self.bind(target, value)
         for statement in node.body:
             self.visit(statement)
         self.aliases = self.merge_aliases(before, self.aliases)
@@ -541,6 +544,13 @@ class _Check(ast.NodeVisitor):
             self.flag(target, "shared factory deletion is unsupported by fixture_write")
 
     def check_transaction_assignment(self, target: ast.AST) -> None:
+        if isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                self.check_transaction_assignment(item)
+            return
+        if isinstance(target, ast.Starred):
+            self.check_transaction_assignment(target.value)
+            return
         if isinstance(target, ast.Attribute) and target.attr == "text_factory":
             receiver = self.value(target.value)
             if receiver.connection is not None and not receiver.connection.startswith("sqlite@"):
@@ -664,6 +674,12 @@ class _Check(ast.NodeVisitor):
         method = function.symbol.rsplit(".", 1)[-1]
         methods = function.methods | {method}
         receiver = function.receiver or (self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function)
+        if (function.connection is not None and not function.methods
+                and function.receiver is None and not function.sqlite_cursor):
+            # Calling a Connection prepares a raw Statement; preparation alone
+            # can mutate PRAGMAs. There is no scoped callable-handle contract.
+            methods = methods | {"__call__"}
+            receiver = function
         arguments = node.args
         if function.descriptor and arguments:
             receiver, arguments = self.value(arguments[0]), arguments[1:]
@@ -928,6 +944,9 @@ class _Check(ast.NodeVisitor):
             if node.returns is not None:
                 self.visit(node.returns)
         annotated = {argument.arg: self.value(argument.annotation).symbol for argument in [*positional, *node.args.kwonlyargs]}
+        # Definitions can also occur inside a with/loop/branch body, where no
+        # enclosing module/function declaration pass prebound their names.
+        self.bind(ast.Name(id=node.name), _Value(symbol=f"function@{node.lineno}:{node.name}"))
         self.defer("function", node, default_values, annotated)
 
     def analyze_function(self, node, default_values, annotated, *, invoked=False):
@@ -1073,6 +1092,7 @@ class _Check(ast.NodeVisitor):
             iterable = self.value(generator.iter) if index else first_iterable
             elements = iterable.elements if iterable is not None else None
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
+            self.check_transaction_assignment(generator.target)
             self.bind(generator.target, value)
             self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
             for condition in generator.ifs:

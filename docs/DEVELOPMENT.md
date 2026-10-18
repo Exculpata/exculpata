@@ -151,6 +151,9 @@ the underlying connection beyond that lock. Custom cursor
 factories are rejected before they can receive a raw connection. Unsupported
 connection methods such as closing the shared database, blob access, deserialize,
 backup and deferred dumps fail closed rather than returning an unscoped object.
+Calling a shared connection itself, including explicit `__call__` descriptors,
+is unsupported: preparing a raw SQLite statement can change PRAGMA state. Use
+the yielded handle's ordinary SQL methods instead.
 Deleting connection or cursor attributes is unsupported on yielded handles.
 The inventory rejects shared row/text factory deletion, database deserialization,
 blob handles, backups into a shared destination, `setconfig`, and extension-loading
@@ -199,8 +202,12 @@ at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
 The inventory follows constant-name getattr/setattr operations, SQLite method
 and writable-attribute descriptors called with an explicit receiver, and element-wise tuple/list
-unpacking, including nested and starred assignments. It merges match cases conservatively, propagates explicit class
-global/nonlocal assignments, and recognizes keyword workspace arguments. Dynamic
+unpacking, including nested and starred assignments.
+Literal tuple/list iteration preserves element ownership, including nested loop
+targets and saved methods. Attribute setters in unpacked assignments, loops and
+comprehensions follow the same boundary rules as direct assignments.
+It merges match cases conservatively, propagates explicit class global/nonlocal
+assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
 for dynamic schema inspection. Class-local aliases remain separate from module and enclosing function aliases;
 methods and comprehensions resolve names through their lexical scope. A direct
