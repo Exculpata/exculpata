@@ -314,6 +314,21 @@ def test_export_restores_complete_contract_from_separate_artifact(bundle, tmp_pa
     assert text_digest(record(restored)["citations"][0]["quote"]) == record(restored)["citations"][0]["locator"]["excerpt_sha256"]
 
 
+def test_coverage_media_inventory_cannot_move_backwards_even_with_matching_final_extent(bundle):
+    source = bundle["sources"][1]
+    source["units"].extend([
+        {"locator": {"timestamp_start_ms": 2500, "timestamp_end_ms": 2000}, "text": "Backwards unit."},
+        {"locator": {"timestamp_start_ms": 2000, "timestamp_end_ms": 2500}, "text": "Overlapping unit."},
+    ])
+    target = next(t for t in bundle["scope"]["targets"] if t["target_id"] == "target-audio")
+    target["content_basis_sha256"] = digest(source["units"])
+    for item in bundle["records"]:
+        if item["record_type"] == "coverage":
+            item["payload"]["scope_sha256"] = digest(bundle["scope"])
+    with pytest.raises(ValueError, match="end must exceed start"):
+        compile_chronology(bundle)
+
+
 @pytest.mark.parametrize(("field", "value"), [
     ("stage", "different-operation"), ("inventory_complete", True), ("scope_id", "scope-v2"),
 ])

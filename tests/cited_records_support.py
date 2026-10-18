@@ -216,14 +216,18 @@ def validate_coverage(record, scope, sources):
                 "invalid coverage denominator")
         # The fixture inventory supplies known physical/extracted unit bounds.
         if target["unit"] == "page":
-            require([u["locator"].get("page") for u in source["units"]] == list(range(start, end)),
+            require([u["locator"] for u in source["units"]] ==
+                    [{"page": page} for page in range(start, end)],
                     "page denominator differs from frozen units")
         else:
             unit_cursor = start
             for unit in source["units"]:
-                require(unit["locator"].get("timestamp_start_ms") == unit_cursor,
+                require(set(unit["locator"]) == {"timestamp_start_ms", "timestamp_end_ms"},
+                        "media inventory needs exact time bounds")
+                locator = SourceLocator(**unit["locator"])
+                require(locator.timestamp_start_ms == unit_cursor,
                         "media inventory has a gap or overlap")
-                unit_cursor = unit["locator"].get("timestamp_end_ms")
+                unit_cursor = locator.timestamp_end_ms
             require(unit_cursor == end, "media denominator differs from frozen units")
         require(all(p["start"] is not None and p["end"] is not None for p in parts),
                 "known coverage range has unknown bounds")
