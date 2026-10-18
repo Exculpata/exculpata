@@ -48,7 +48,7 @@ from installer_terminal import (
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
-from case_intelligence.oidc_network_policy import issuer_pins as _oidc_issuer_pins, validated_https_url
+from case_intelligence.oidc_network_policy import issuer_pins as _oidc_issuer_pins, public_ip as _public_oidc_ip, validated_https_url
 from case_intelligence.compat_env import env as _env, required_env as _required_env
 from case_intelligence.legacy_names import (
     CURRENT_PRODUCT,
@@ -378,6 +378,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--admin-username")
     parser.add_argument("--admin-display-name")
     parser.add_argument("--oidc-issuer")
+    parser.add_argument("--oidc-egress-pins", default="",
+                        help="reviewed issuer-bound JSON pins for a fresh OIDC installation; private issuers require explicit exact IPs")
     parser.add_argument("--oidc-client-id")
     parser.add_argument("--oidc-client-secret-file", type=Path)
     parser.add_argument("--oidc-allowed-groups")
@@ -1743,7 +1745,20 @@ def _identity_options_valid(args: argparse.Namespace) -> bool:
             validated_https_url(value, origin_only=origin_only)
         except ValueError:
             return False
-
+    try:
+        raw_pins = getattr(args, "oidc_egress_pins", "")
+        if any(character in raw_pins for character in ("$", "\x00", "\r", "\n")):
+            return False
+        pins = _oidc_issuer_pins(raw_pins, values["oidc_issuer"])
+        host = urllib.parse.urlsplit(values["oidc_issuer"].strip()).hostname
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        if address is not None and address not in pins and (pins or not _public_oidc_ip(address)):
+            return False
+    except (TypeError, ValueError):
+        return False
     return True
 
 
@@ -1784,6 +1799,7 @@ def _saved_provider_options_valid(args: argparse.Namespace) -> bool:
         options = argparse.Namespace(**vars(args))
         for name, _prompt, _default in IDENTITY_FIELDS[args.auth]:
             setattr(options, name, environment.get("CASE_INTELLIGENCE_" + name.upper(), ""))
+        options.oidc_egress_pins = environment.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
         if args.auth == "kerberos":
             for name in ("kerberos_allowed_principals", "kerberos_admin_principals"):
                 setattr(options, name, environment.get("CASE_INTELLIGENCE_" + name.upper(), ""))
@@ -2403,7 +2419,7 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                 add("identity-options", valid,
                     "Identity provider settings are valid" if valid else "Identity provider settings are invalid",
                     "Configure an identity provider accepted by the runtime",
-                    "Use an HTTPS issuer and non-loopback server name for OIDC, a nonempty client ID of at most 512 characters, and group names of at most 256 characters. Kerberos requires a dotted realm and at least one valid admission group. Limit allowed/admin groups to 100/50; omit control characters. See docs/INSTALL.md.")
+                    "Use an HTTPS issuer and non-loopback server name for OIDC, a nonempty client ID of at most 512 characters, and group names of at most 256 characters. Supply reviewed issuer-bound --oidc-egress-pins JSON for private issuer addresses; unsafe addresses remain denied. Kerberos requires a dotted realm and at least one valid admission group. Limit allowed/admin groups to 100/50; omit control characters. See docs/INSTALL.md.")
             for auth, source, name, option in (
                 ("oidc", args.oidc_client_secret_file, "oidc-secret-input", "--oidc-client-secret-file"),
                 ("kerberos", args.kerberos_keytab, "kerberos-keytab-input", "--kerberos-keytab"),
@@ -3023,6 +3039,7 @@ def _configure(
             {
                 "CASE_INTELLIGENCE_EXTERNAL_ORIGIN": f"https://{server_name}" + (f":{args.https_port}" if args.https_port != 443 else ""),
                 "CASE_INTELLIGENCE_OIDC_ISSUER": args.oidc_issuer,
+                "CASE_INTELLIGENCE_OIDC_EGRESS_PINS": args.oidc_egress_pins,
                 "CASE_INTELLIGENCE_OIDC_CLIENT_ID": args.oidc_client_id,
                 "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/oidc-client-secret",
                 "CASE_INTELLIGENCE_OIDC_ALLOWED_GROUPS": args.oidc_allowed_groups,

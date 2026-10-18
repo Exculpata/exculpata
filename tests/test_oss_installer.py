@@ -1784,7 +1784,7 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
     ("oidc", ["--oidc-issuer", 'https://faß.example.test/realm'], True),
     ("oidc", ["--oidc-issuer", 'https://xn--fa-hia.example.test/realm'], True),
     ("oidc", ["--oidc-issuer", 'https://identity.example.test:000443/realm'], True),
-    ("oidc", ["--oidc-issuer", 'https://[2001:db8::1]:8443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://[2606:4700:4700::1111]:8443/realm'], True),
     ("oidc", ["--oidc-issuer", 'https://identity.example.test/real%20m'], True),
     ("oidc", ["--oidc-issuer", 'https://☃.example.test/realm'], False),
     ("oidc", ["--oidc-issuer", 'https://iss\u200buer.example.test/realm'], False),

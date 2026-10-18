@@ -236,13 +236,15 @@ def check(root):
             network_fields = {key: definition[key] for key in (
                 "networks", "network_mode", "ports", "privileged", "cap_add", "devices",
                 "sysctls", "extra_hosts", "dns", "dns_search", "dns_opt", "extends", "cap_drop",
-                "security_opt", "volumes", "volumes_from", "use_api_socket") if key in definition}
+                "security_opt", "volumes", "volumes_from", "use_api_socket", "env_file",
+                "pid", "ipc", "userns_mode", "uts", "cgroup", "isolation") if key in definition}
             environment = definition.get("environment", {})
             if not isinstance(environment, dict):
                 raise ValueError("transport environment must be a mapping")
             routing = {key: value for key, value in environment.items()
                        if key.lower() in {"http_proxy", "https_proxy", "all_proxy", "no_proxy"}
-                       or key == "CASE_INTELLIGENCE_OIDC_PROXY"}
+                       or key in {"CASE_INTELLIGENCE_OIDC_PROXY", "OIDC_ISSUER", "OIDC_ISSUER_PINS",
+                                  "CASE_INTELLIGENCE_OIDC_ISSUER", "CASE_INTELLIGENCE_OIDC_EGRESS_PINS"}}
             if routing:
                 network_fields["proxy_environment"] = routing
             expected = approved["services"].get(service)

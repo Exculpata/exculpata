@@ -138,8 +138,11 @@ TLS verification, SNI and optional custom CA handling stay in the app;
 the proxy never receives a CA file or client secret.
 
 By default the relay accepts globally routable issuer addresses only. An operator
-using a private issuer must explicitly save `CASE_INTELLIGENCE_OIDC_EGRESS_PINS`
-in the selected app env file: a single-quoted JSON object containing `issuer`
+using a private issuer must supply reviewed exact pins explicitly. Fresh installation
+accepts `--oidc-egress-pins` as one-line JSON and validates it before writes, then
+saves `CASE_INTELLIGENCE_OIDC_EGRESS_PINS` in the selected app env file. Existing
+nodes retain that setting; resume/update never replace it from command-line defaults.
+The value is a single-quoted JSON object in the env file containing `issuer`
 (the full issuer URL after the same outer-whitespace/trailing-slash trimming as
 application settings) and `addresses` (1–16 distinct IP
 address strings). Pins authorize only that issuer authority. Every resolved
@@ -147,6 +150,11 @@ address must be in the pin set; a changed issuer URL or mixed/unpinned DNS answe
 fails closed. Retained pin JSON is validated by the same parser during blocking
 resume/update provider preflight, before release staging or configuration changes.
 Malformed, duplicate-key, empty, mismatched and unsafe-address pins fail closed.
+Private literal issuers without matching pins fail fresh preflight; a literal
+issuer with nonmatching explicit pins also fails. Hostname preflight remains
+offline and does not resolve or automatically pin any address. Operators must
+review private hostname destinations and supply their pins before installation;
+DNS and actual provider sign-in still need deployment validation.
 Fresh and retained provider preflight also apply the reference adapter's existing
 resolved-literal rule, so interpolation syntax is rejected before writes.
 DNS is still required; pins do not replace name resolution or TLS
@@ -225,12 +233,15 @@ controlled live acceptance before treating a node as isolated.
 `make network-contract` runs `scripts/network-contract.py`; `make check`,
 `make check-fast` and the full Quality gates application job include it. The
 reviewed `config/egress-allowlist.toml` records Compose network definitions,
-per-service memberships, published ports, mounts, proxy-routing environment and
-network-escape settings, plus exact first-party Python networking expressions and literal URL/DNS-name occurrences
+per-service memberships, published ports, mounts, environment-file sources,
+proxy-routing and issuer/pin environment, and namespace/escape settings, plus exact first-party Python networking expressions and literal URL/DNS-name occurrences
 under `src/`, `services/*/src/`, `deploy/` and `scripts/` (including nested
 operational scripts). New Compose files,
 implicit/default networks, host/service network modes, capabilities and changed
 ports require review. Duplicate YAML keys and unparseable sources fail closed.
+Issuer or pin removal, replacement or rewiring requires review, as do `pid`,
+`ipc`, `userns_mode`, `uts`, `cgroup` and `isolation` changes. Mutation tests
+exercise these selectors as data only; they never join host namespaces.
 Service volumes (short and long syntax), `volumes_from`, `use_api_socket` and
 named-volume definitions are inventoried because Docker/container-runtime sockets
 and host binds can defeat container isolation, even when mounted read-only.
@@ -272,7 +283,8 @@ independent of routing failure. The actual Authlib adapter performs signed-token
 success, missing-CA denial, same-authority discovery/token/JWKS redirect denial,
 and malicious-metadata transport checks. Each redirect stage must be observed,
 and the foreign TLS endpoint must answer from the relay network before its app
-denials count. Numeric direct TCP/HTTPX denials, causal
+denials count. The relay's observed IPv4 default route must select the existing
+`front` gateway. Numeric direct TCP/HTTPX denials, causal
 DNS challenges and the known-forwarding negative control are independent checks.
 The harness cleans up only its unique project and images. The caller must supply
 an approved disposable runtime and remove it after retaining evidence.

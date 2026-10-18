@@ -598,7 +598,15 @@ For missing prerequisites:
   Kerberos also requires the host SSSD and Kerberos paths.
   Non-secret OIDC settings require an HTTPS issuer, non-loopback external server
   name, and a nonempty client ID of at most 512 characters. OIDC group names can
-  contain at most 256 characters. Kerberos requires a dotted realm, valid group
+  contain at most 256 characters. For a private issuer, supply `--oidc-egress-pins`
+  with one-line JSON containing the exact full `issuer` URL and an `addresses`
+  list of reviewed individual IPs. The shared relay parser validates it before
+  writes; private literal issuers without matching pins, malformed/mismatched
+  JSON and unsafe addresses fail preflight. No DNS lookup or automatic pinning
+  occurs. The installer saves the validated value in the selected application
+  environment, and resume/update preserve it. See [issuer destination policy](NETWORK_EGRESS.md)
+  for safe-address exclusions and private hostname deployment validation.
+  Kerberos requires a dotted realm, valid group
   names (letters, digits, spaces, dots, underscores, dashes, @ or backslashes,
   starting with a letter or digit, at most 255 characters), and at least one
   allowed or administrator group. Both modes allow up to 100 allowed groups and

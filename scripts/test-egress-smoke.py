@@ -171,7 +171,9 @@ def main():
             run([*compose,'exec','-T','app','python','-c',
                  "import httpx,ssl,time; c=ssl.create_default_context(cafile='/tmp/issue319-fixture/issuer.pem'); exec(\"for attempt in range(30):\\n try:\\n  httpx.get('https://issuer.example.test:8443/',verify=c,timeout=3).raise_for_status(); break\\n except httpx.HTTPError:\\n  time.sleep(.2)\\nelse: raise RuntimeError('issuer unavailable')\")"],filename='readiness.log')
             # A live foreign TLS port is required before accepting app denials.
-            results.update(json.loads(run([*compose,'exec','-T','egress-proxy','python','-I','-',foreign_address],
+            relay_id = run([*compose,'ps','-q','egress-proxy']).strip()
+            front_gateway = run([*docker,'inspect','--format','{{(index .NetworkSettings.Networks "'+project+'_front").Gateway}}',relay_id]).strip()
+            results.update(json.loads(run([*compose,'exec','-T','egress-proxy','python','-I','-',foreign_address,front_gateway],
                 input_value=(ROOT/'tests/network_smoke/front_control.py').read_text(),filename='foreign-tls-control.log')))
             results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py'],filename='probe.log')))
             for mode in ('controls','production'):

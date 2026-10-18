@@ -121,6 +121,9 @@
       "dns_search": [
         "."
       ],
+      "env_file": [
+        "${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}"
+      ],
       "networks": [
         "app-egress",
         "services",
@@ -220,6 +223,10 @@
         "app-egress",
         "front"
       ],
+      "proxy_environment": {
+        "OIDC_ISSUER": "${OIDC_EGRESS_ISSUER:-}",
+        "OIDC_ISSUER_PINS": "${OIDC_EGRESS_PINS:-}"
+      },
       "security_opt": [
         "no-new-privileges:true"
       ]
@@ -338,6 +345,9 @@
       "dns_search": [
         "."
       ],
+      "env_file": [
+        "${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/transcription.env"
+      ],
       "networks": [
         "services"
       ],
@@ -365,6 +375,9 @@
       ]
     },
     "transcription-cleanup": {
+      "env_file": [
+        "${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/transcription.env"
+      ],
       "network_mode": "none",
       "volumes": [
         "${EXCULPATA_TRANSCRIPTION_ROOT:-${RECORDBENCH_TRANSCRIPTION_ROOT:-}}:/var/lib/recordbench/transcription",
@@ -375,6 +388,9 @@
     "transcription-cleanup-daemon": {
       "cap_drop": [
         "ALL"
+      ],
+      "env_file": [
+        "${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/transcription.env"
       ],
       "network_mode": "none",
       "security_opt": [
@@ -389,6 +405,9 @@
     "transcription-worker": {
       "cap_drop": [
         "ALL"
+      ],
+      "env_file": [
+        "${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/transcription.env"
       ],
       "network_mode": "none",
       "security_opt": [
