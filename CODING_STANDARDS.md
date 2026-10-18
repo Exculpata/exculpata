@@ -29,6 +29,26 @@ sanitizer before committing. Keep deployment overlays external and release tags
 immutable; corrections get new commits and releases. See [Contributing](CONTRIBUTING.md)
 and [development guidance](docs/DEVELOPMENT.md).
 
+## Restricted static analyzers
+
+The rename-compatibility and import-boundary analyzers enforce documented syntax
+contracts. Unmodeled syntax must produce a blocking diagnostic naming the
+supported helper or boundary API; never treat an unknown node as safe or keep
+adding per-construct inference to accommodate a caller. Rename callers use
+`case_intelligence.legacy_names.name_value` and the registered name contract.
+Migrate callers to supported forms while preserving behavior. Each analyzer needs
+a synthetic regression for a reported failure and a meta-test showing an unknown
+AST node fails closed, including when no known origin has been detected.
+
+Keep literal checks, ambiguity and resource-limit failures active. Any permitted
+source receipt must identify one reviewed diagnostic in exact source, include a
+semantic reason and validation, and fail on changed source or extra diagnostics;
+it is never a file exclusion or automatic acceptance of unknown syntax. After
+required validation, request one final review. Consolidate precision-only
+suggestions into one follow-up issue; correctness, security and required
+acceptance failures still block readiness. This rule does not waive publication
+guards or change either analyzer's task-specific acceptance requirements.
+
 ## Cursor Cloud development environment
 
 Python 3.12, ffmpeg, ImageMagick, poppler, English and Spanish Tesseract, the Docker CLI with Compose v2, and Gitleaks 8.30.1 are installed for contributor checks. PostgreSQL 17 with pgvector is installed as a disposable loopback database. The environment start command brings that cluster up; it is not left running by install.

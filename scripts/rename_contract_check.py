@@ -21,12 +21,32 @@ import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+from rename_javascript_policy import constructions as javascript_constructions
 from case_intelligence.legacy_names import (  # noqa: E402
     LEGACY_STEM, NAME_CONTRACTS, NameContract, contract_errors,
 )
 from case_intelligence import legacy_names as naming  # noqa: E402
 
 MAX_ANALYSIS_STEPS = 500000
+
+# Exact classes are intentional: a future node or subclass must receive an
+# explicit syntax-policy decision before it can participate in analysis.
+SUPPORTED_PYTHON_AST_NAMES = frozenset("""
+Module Expression Interactive FunctionType FunctionDef AsyncFunctionDef ClassDef
+Return Delete Assign TypeAlias AugAssign AnnAssign For AsyncFor While If With
+AsyncWith Match Raise Try TryStar Assert Import ImportFrom Global Nonlocal Expr
+Pass Break Continue BoolOp NamedExpr BinOp UnaryOp Lambda IfExp Dict Set ListComp
+SetComp DictComp GeneratorExp Await Yield YieldFrom Compare Call FormattedValue
+JoinedStr Constant Attribute Subscript Starred Name List Tuple Slice Load Store
+Del And Or Add Sub Mult MatMult Div Mod Pow LShift RShift BitOr BitXor BitAnd
+FloorDiv Invert Not UAdd USub Eq NotEq Lt LtE Gt GtE Is IsNot In NotIn
+comprehension ExceptHandler arguments arg keyword alias withitem match_case
+MatchValue MatchSingleton MatchSequence MatchMapping MatchClass MatchStar MatchAs
+MatchOr TypeIgnore TypeVar ParamSpec TypeVarTuple
+""".split())
+SUPPORTED_PYTHON_AST_TYPES = frozenset(getattr(ast, name) for name in SUPPORTED_PYTHON_AST_NAMES)
+RENAME_COMPAT_HELPER = "case_intelligence.legacy_names.name_value"
 
 
 class AnalysisBudgetExceeded(Exception):
@@ -252,6 +272,7 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
     # Also inspect decoded text conservatively: regex literals can resemble
     # comment/string boundaries, so lexical ambiguity must not hide escapes.
     found = scan_text(location, text, contracts)
+    found.extend(Finding(f"{location}:{line}", identifier) for line, identifier in javascript_constructions(text))
     gap = r"(?:\s|[()]|/\*[\s\S]*?\*/|//[^\n]*(?:\n|$))*"
     if re.search(r"['\"`]" + gap + r"\+|[A-Za-z_$][\w.$\[\]]*" + gap + r"\+" + gap + r"['\"`]", text):
         found.append(Finding(f"{location}:1", "unsupported JavaScript literal composition"))
@@ -1767,6 +1788,23 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
     visitor = Visitor()
     try:
+        # Check the whole syntax tree before value resolution can skip children.
+        # Unknown syntax is not a legacy-origin question or a receiptable finding.
+        unknown_nodes = False
+        for node in ast.walk(tree):
+            consume_analysis_step()
+            if type(node) not in SUPPORTED_PYTHON_AST_TYPES:
+                unknown_nodes = True
+                found.append(Finding(f"{location}:{getattr(node, 'lineno', 1)}",
+                                     f"unsupported Python AST node ({type(node).__name__}); use {RENAME_COMPAT_HELPER}"))
+        if unknown_nodes:
+            for node in ast.walk(tree):
+                consume_analysis_step()
+                if isinstance(node, ast.Constant):
+                    if isinstance(node.value, (str, bytes)):
+                        consume_analysis_step((len(node.value) + 63) // 64)
+                    visitor.visit_Constant(node)
+            return found
         visitor.visit(tree)
         module_scope = env, unresolved_stems, binding_events
         visitor.finish()
@@ -1794,8 +1832,11 @@ def source_form_contracts() -> dict:
         for item in record.get("diagnostics", []):
             if (type(item.get("line")) is not int or item["line"] < 1
                     or not item.get("reason") or not item.get("validation")
-                    or not item.get("identifier", "").startswith(("unsupported legacy syntax (", "unsupported legacy composition;"))):
+                    or not item.get("identifier", "").startswith(("unsupported legacy syntax (", "unsupported legacy composition;", "unsupported JavaScript construction ("))):
                 raise ValueError("invalid source-form diagnostic contract")
+            if item["identifier"].startswith("unsupported JavaScript construction (") and not re.fullmatch(
+                    r"unsupported JavaScript construction \((?:\+|\+=|interpolated template|\.join\(\)|\.concat\(\)|computed member call)\) at [1-9][0-9]*-[1-9][0-9]*:[1-9][0-9]* sha256=[a-f0-9]{64}; use the rename-compat contract helper", item["identifier"]):
+                raise ValueError("invalid JavaScript source-form diagnostic contract")
     return records
 
 
@@ -1890,7 +1931,10 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
         if path.suffix.lower() == ".json":
             found.extend(scan_json(relative.as_posix(), text, contracts))
         if path.suffix.lower() in {".js", ".cjs", ".mjs"}:
-            found.extend(scan_javascript(relative.as_posix(), text, contracts))
+            consumed_source_forms.add(relative.as_posix())
+            syntactic = scan_javascript(relative.as_posix(), text, contracts)
+            found.extend(apply_source_forms(relative.as_posix(), text, syntactic, source_forms,
+                                            require_current=root.resolve() == ROOT.resolve()))
         shebang = text.removeprefix("\ufeff").partition("\n")[0]
         if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
             consumed_source_forms.add(relative.as_posix())
@@ -1909,6 +1953,8 @@ def main() -> int:
         print("RENAME CONTRACT GATE: BLOCKED", file=sys.stderr)
         for item in found:
             print(f"  {item.location}: {item.identifier}", file=sys.stderr)
+        if any(item.identifier.startswith("unsupported") for item in found):
+            print(f"  Use the rename-compat helper {RENAME_COMPAT_HELPER} and its registered contract; unsupported syntax requires explicit review.", file=sys.stderr)
         return 1
     count = sum(len(record["diagnostics"]) for record in source_form_contracts().values())
     print(f"RENAME CONTRACT GATE: CLEAN ({count} exact source-form contracts; literal/resolved names still checked)")

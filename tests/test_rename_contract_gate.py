@@ -1680,9 +1680,8 @@ def test_shell_parameter_operator_contents_are_still_checked(source):
 
 @pytest.mark.parametrize('source', [
     'const badge = "99+";',
-    'const path = `${origin}/auth/login`;',
 ])
-def test_javascript_literal_plus_data_and_complete_templates_remain_valid(source):
+def test_javascript_literal_plus_data_remains_valid(source):
     assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS) == []
 
 
@@ -1733,3 +1732,83 @@ def test_delimited_shell_defaults_and_nonlegacy_backslashes_are_valid(source):
 
 def test_nonlegacy_assignment_expression_callee_remains_valid():
     assert checker.scan_python('synthetic.py', '(Alias := str)("synthetic")', NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize('base', ['AST', 'expr', 'stmt', 'Constant', 'Add'])
+def test_unknown_python_ast_node_types_fail_closed_even_without_known_origins(base):
+    import ast
+    future_type = type('FutureSyntax', (getattr(ast, base),), {'_fields': ('payload',)})
+    future = future_type()
+    future.payload = ast.Constant(value='synthetic')
+    future.value = 'synthetic'
+    future.lineno = 1
+    tree = ast.Module(body=[ast.Expr(value=future)], type_ignores=[])
+    ast.fix_missing_locations(tree)
+    found = checker.scan_python('synthetic.py', '', NAME_CONTRACTS, tree=tree)
+    assert any('unsupported Python AST node (FutureSyntax)' in item.identifier for item in found)
+    assert any('case_intelligence.legacy_names.name_value' in item.identifier for item in found)
+
+
+def test_unknown_python_ast_node_preserves_decoded_literal_findings():
+    import ast
+    class FutureSyntax(ast.expr):
+        _fields = ('payload',)
+    future = FutureSyntax()
+    future.payload = ast.Constant(value=LEGACY_STEM + '-unregistered-v99')
+    tree = ast.fix_missing_locations(ast.Module(body=[ast.Expr(value=future)], type_ignores=[]))
+    found = checker.scan_python('synthetic.py', '', NAME_CONTRACTS, tree=tree)
+    assert any('unsupported Python AST node' in item.identifier for item in found)
+    assert any(item.identifier == LEGACY_STEM + '-unregistered-v99' for item in found)
+
+
+@pytest.mark.parametrize('expression', ['left + right', '`${left}${right}`', '[left, right].join("")'])
+def test_javascript_unknown_composition_families_fail_closed(expression):
+    source = 'const left="record"; const right="bench-unregistered-v99"; const FORMAT=' + expression + ';'
+    assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS)
+
+
+def test_unknown_python_ast_diagnostic_cannot_receive_source_receipt(tmp_path, monkeypatch):
+    import json
+    manifest = tmp_path / 'forms.json'
+    manifest.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
+        'source_sha256': 'a' * 64,
+        'diagnostics': [{'line': 1,
+                         'identifier': 'unsupported Python AST node (FutureSyntax); use case_intelligence.legacy_names.name_value',
+                         'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
+    with pytest.raises(ValueError, match='diagnostic contract'):
+        checker.source_form_contracts()
+
+
+def test_unsupported_syntax_cli_names_rename_compat_helper(monkeypatch, capsys):
+    monkeypatch.setattr(checker, 'findings', lambda: [checker.Finding('synthetic.sh:1', 'unsupported shell operator-word composition')])
+    assert checker.main() == 1
+    assert 'case_intelligence.legacy_names.name_value' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('kind', ['addition', 'call'])
+def test_unknown_python_ast_child_is_checked_before_value_resolution(kind):
+    import ast
+    class FutureSyntax(ast.expr):
+        _fields = ()
+    child = FutureSyntax()
+    expression = (ast.BinOp(left=ast.Constant(value='synthetic'), op=ast.Add(), right=child)
+                  if kind == 'addition' else
+                  ast.Call(func=ast.Name(id='str', ctx=ast.Load()), args=[child], keywords=[]))
+    tree = ast.fix_missing_locations(ast.Module(body=[ast.Expr(value=expression)], type_ignores=[]))
+    found = checker.scan_python('synthetic.py', '', NAME_CONTRACTS, tree=tree)
+    assert any('unsupported Python AST node (FutureSyntax)' in item.identifier for item in found)
+
+
+def test_unknown_python_ast_preflight_obeys_existing_budget(monkeypatch):
+    import ast
+    monkeypatch.setattr(checker, 'MAX_ANALYSIS_STEPS', 2)
+    tree = ast.parse('value = "synthetic"')
+    assert checker.scan_python('synthetic.py', '', NAME_CONTRACTS, tree=tree) == [
+        checker.Finding('synthetic.py:1', 'unsupported Python analysis budget exhausted')]
+
+
+def test_javascript_route_template_requires_explicit_source_contract():
+    source = 'const path = `${origin}/auth/login`;'
+    assert any('unsupported JavaScript construction (interpolated template)' in item.identifier
+               for item in checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS))

@@ -169,6 +169,8 @@ spellings;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
+The Python gate rejects unknown AST classes before value resolution, even without a known legacy origin. This preflight uses the existing per-file budget; unknown-node diagnostics cannot receive source receipts. Decoded literals remain checked when syntax is rejected. Diagnostics direct callers to `case_intelligence.legacy_names.name_value`.
+
 The Python gate has a restricted syntax contract. It is a source policy, not a
 proof of arbitrary Python execution. A known legacy origin must remain either a
 checked value or an explicit diagnostic; unsupported syntax must not erase it.
@@ -199,14 +201,14 @@ paths permit ordinary descendants, while legacy-named descendants must have thei
 own contract. The authority module is scanned outside the table declaration;
 only its exact source span is covered by the separate contract-table validation,
 so neighboring statements remain checked. URI query, fragment and percent-encoded
-suffixes remain part of the identifier and require an explicit contract. Path punctuation and decoded source-literal dots remain exact. Prose punctuation, source member access and explicit Compose mount modes are syntax boundaries, not literal-name exemptions. Bounded JavaScript and JSON string escapes are decoded without executing source. Legacy octal JavaScript escapes are rejected. JavaScript literal concatenation is unsupported, including mixed variable/literal operands, parentheses and intervening comments. Existing browser routes, labels and serialized-body assembly use equivalent interpolation forms; no assignment or expression interpreter is added. A conservative raw-boundary pass preserves that restriction when regex quotes make string tokenization ambiguous. Encoded character, identity and continuation escapes that could form unchecked JavaScript fragments are rejected, including fragments assigned before composition; ordinary control and escaped-delimiter literals retain single-decoding behavior. YAML/TOML hexadecimal or Unicode escapes require explicit treatment rather than a raw-text-only pass. Configuration continuation text is also scanned after conservative backslash/newline/indent removal, including YAML NEL, line separator and paragraph separator, so line splitting cannot conceal identifiers. Symlink target text and path components are inspected without following the link. Ambiguous JavaScript escapes produce a blocking diagnostic without discarding raw findings. Malformed relevant escapes, invalid JSON and non-UTF-8 operational source are rejected, including configuration and extensionless files. Only explicit binary image/font/document/media formats are excluded from UTF-8 decoding. Imported path builders with legacy-bearing outputs outside the verified Path constructor boundary are rejected.
+suffixes remain part of the identifier and require an explicit contract. Path punctuation and decoded source-literal dots remain exact. Prose punctuation, source member access and explicit Compose mount modes are syntax boundaries, not literal-name exemptions. Bounded JavaScript and JSON string escapes are decoded without executing source. Legacy octal JavaScript escapes are rejected. JavaScript addition and addition assignment, interpolated templates, direct join/concat calls and computed member calls are unsupported construction forms. A pinned syntax parser identifies them without inferring operand types or interpreting assignments or helper returns. This is not an operational-sink-only check: a standalone constructed value is checked. Literal plus signs and regex operators remain data. Ordinary calls and arbitrary helper/runtime behavior remain outside this bounded construction policy; it is not comprehensive JavaScript analysis. Existing routes, labels, arithmetic and serialization require individually reviewed exact-source contracts; interpolation is not an escape from the policy. A conservative raw-boundary pass preserves that restriction when regex quotes make string tokenization ambiguous. Encoded character, identity and continuation escapes that could form unchecked JavaScript fragments are rejected, including fragments assigned before composition; ordinary control and escaped-delimiter literals retain single-decoding behavior. YAML/TOML hexadecimal or Unicode escapes require explicit treatment rather than a raw-text-only pass. Configuration continuation text is also scanned after conservative backslash/newline/indent removal, including YAML NEL, line separator and paragraph separator, so line splitting cannot conceal identifiers. Symlink target text and path components are inspected without following the link. Ambiguous JavaScript escapes produce a blocking diagnostic without discarding raw findings. Malformed relevant escapes, invalid JSON and non-UTF-8 operational source are rejected, including configuration and extensionless files. Only explicit binary image/font/document/media formats are excluded from UTF-8 decoding. Imported path builders with legacy-bearing outputs outside the verified Path constructor boundary are rejected.
 The documentation checker's `_swap` helper translates candidate text rather than
 emitting operational names. Its exact normalized source body has a recorded SHA-256 disposition for
 unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
 does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
 
-`config/rename-source-forms.json` records 177 additional, diagnostic-specific source
+`config/rename-source-forms.json` records 177 Python and 365 JavaScript diagnostic-specific source
 contracts for existing analysis or transport operations that remain outside this
 grammar. Forty-five concern diagnostic text analysis; the remaining 132 concern
 existing setting validation/output, authenticated dependency metadata replacement,
@@ -216,8 +218,28 @@ and text, semantic reason and validation suite. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
 The gate still scans every file and checks all literal and resolved identifiers.
 An extra diagnostic is blocked. Any source change invalidates that file's records,
-and records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or non-Python source cannot leave an unused receipt behind.
+and records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.
 No command automatically accepts a new finding or refreshes these records.
+
+The JavaScript records cover the reviewed inventory of 67 additions, 24 addition
+assignments, 234 interpolated templates and 40 joins in twelve files. They retain
+existing source bytes: native coercion, operand order, assignment behavior,
+Node path normalization, array separators, generated QA fallback and upload JSON
+bytes are not rewritten to satisfy the checker. Each construction additionally
+pins its source span and expression digest, so two same-line sites remain distinct.
+Twenty-nine joins use the source-locked Node `path.join` import; eleven are array
+joins. These are proposed diagnostic-specific contracts for explicit review, not
+a blanket file, helper-name, numeric-expression or template exemption. New sites
+and any source change require review. Literal/escape findings remain active.
+
+JavaScript parsing is admitted only below 2,000,000 UTF-8 bytes, has a one-second
+parser limit and a 100,000-node traversal budget. Unknown syntax, malformed input,
+missing pinned development dependencies, parser timeout and exhausted budgets
+remain blocking and cannot receive source contracts. Both Python and JavaScript
+have unknown-node meta-tests. Further precision-only proposals belong in the
+consolidated follow-up after the final review; correctness and security defects
+continue to block readiness.
+
 
 Application migrations use new local dictionaries, pure set union and explicit
 contract calls instead of unsupported name-bearing mutation. The environment
