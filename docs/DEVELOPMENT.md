@@ -229,7 +229,8 @@ unresolved-ownership rejection as assigned containers. Synthesized capture and c
 locations; propagation after a comprehension does not count as another write.
 Call checks inspect starred operands before expansion. Opaque tuple/list or
 dictionary expansions and dynamic dictionary keys cannot erase a known shared
-member: such containers retain unresolved ownership and reject explicitly.
+member, whether carried by a dictionary key or value: such containers retain
+unresolved ownership and reject explicitly.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

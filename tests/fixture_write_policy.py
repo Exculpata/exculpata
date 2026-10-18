@@ -175,6 +175,7 @@ class _Check(ast.NodeVisitor):
                         mapping.update(expanded)
                 else:
                     name = self.value(key)
+                    inputs.append(name)
                     if not name.complete_text:
                         opaque = True
                     else:
