@@ -399,11 +399,6 @@ def test_string_provenance_survives_expression_and_binding_forms(tmp_path, sourc
     'FORMAT = f"{LEGACY_STEM.lower()}-exact-v1"',
     'FORMAT = name_value("environment", LEGACY_STEM, suffix="")',
     'FORMAT = f"{name_value("stem", LEGACY_STEM)}-exact-v1"',
-    'value = reader(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
-    'parser = Parser(prog=LEGACY_STEM)\nFORMAT = f"{parser.read()}-synthetic"',
-    'value = text.removeprefix(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
-    'value = text.replace(LEGACY_STEM, "synthetic")\nFORMAT = f"{value}-synthetic"',
-    'value = mapping.get(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
     'key = "synthetic"\nif condition:\n key = name_value("environment", LEGACY_STEM, suffix="TEST")\nFORMAT = f"{key}=value"',
     'value = json.dumps({"format": f"{LEGACY_STEM}-exact-v1"}) + "\\n"',
 ])
@@ -539,8 +534,6 @@ def test_authority_module_declarations_outside_table_are_checked(tmp_path):
 
 
 @pytest.mark.parametrize("source", [
-    'settings.stem = LEGACY_STEM\nFORMAT = f"{settings.stem}-exact-v1"',
-    'settings.stem = LEGACY_STEM\nsettings.stem = "synthetic"\nFORMAT = f"{settings.stem}-unregistered-v99"',
     'match selected:\n case "legacy":\n  stem = LEGACY_STEM\n case _:\n  stem = "synthetic"\nFORMAT = f"{stem}-exact-v1"',
     'stem = LEGACY_STEM\nmatch selected:\n case _:\n  stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
     'stem = LEGACY_STEM\nmatch selected:\n case {"stem": stem}:\n  FORMAT = f"{stem}-unregistered-v99"',
@@ -642,10 +635,6 @@ def test_nested_capture_mutation_and_bytes_provenance(tmp_path, source):
     'match [LEGACY_STEM, "synthetic"]:\n case [_, captured]:\n  FORMAT = f"{captured}-unregistered-v99"',
     'match {"stem": LEGACY_STEM, "safe": "synthetic"}:\n case {"stem": _, **captured}:\n  FORMAT = captured["safe"] + "-unregistered-v99"',
     'match [LEGACY_STEM, "synthetic"]:\n case [_, *captured]:\n  FORMAT = "".join(captured) + "-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n settings = SimpleNamespace()\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n import synthetic as settings\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n from synthetic import settings\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = LEGACY_STEM\nclass Builder:\n settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
     'stem = b"\\x72ecordbench"\nFORMAT = stem + b"-exact-v1"',
     'stem = b"\\x72ecordbench"\nFORMAT = stem.decode(encoding="utf-8") + "-exact-v1"',
     'stem = LEGACY_STEM.encode("ascii")\nFORMAT = stem + b"-exact-v1"',
@@ -680,9 +669,6 @@ def test_branch_mutations_and_simultaneous_captures_preserve_provenance(tmp_path
 
 
 @pytest.mark.parametrize("source", [
-    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings = first\n else:\n  settings = second\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = LEGACY_STEM\nclass Builder:\n if selected:\n  settings.stem = "synthetic"\n else:\n  settings.stem = "also-synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings.stem = LEGACY_STEM\n else:\n  settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-exact-v1"',
     'stem = "synthetic"\nmatch {"first":LEGACY_STEM, "second":stem}:\n case {"first":stem,"second":captured}:\n  FORMAT=f"{captured}-unregistered-v99"',
 ])
 def test_branch_overwrites_and_simultaneous_captures_keep_valid_names(tmp_path, source):
@@ -710,8 +696,6 @@ def test_declared_scopes_container_writes_and_control_paths_are_checked(tmp_path
 @pytest.mark.parametrize("source", [
     'parts = (LEGACY_STEM, "synthetic")\nmatch parts:\n case [_, captured]:\n  FORMAT = f"{captured}-unregistered-v99"',
     'parts = {"stem":LEGACY_STEM, "safe":"synthetic"}\nmatch parts:\n case {"safe": captured}:\n  FORMAT = f"{captured}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n try:\n  operation()\n except Exception as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
 ])
 def test_container_capture_aliases_and_implicit_class_locals_stay_valid(tmp_path, source):
     (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
@@ -740,15 +724,11 @@ def test_container_and_control_flow_uncertainty_keeps_legacy_origin(tmp_path, so
 
 
 @pytest.mark.parametrize("source", [
-    'settings = "synthetic"\ndef outer():\n settings = "synthetic-local"\n class Builder:\n  global settings\n  settings = LEGACY_STEM\n  def build(self):\n   return f"{settings}-unregistered-v99"',
-    'settings = {"stem":LEGACY_STEM}\nalias = settings\nclass Builder:\n alias["stem"] = "synthetic"\n def build(self):\n  return settings["stem"] + "-unregistered-v99"',
-    'settings = [LEGACY_STEM]\nalias = settings\nclass Builder:\n alias[0] = "synthetic"\n def build(self):\n  return settings[0] + "-unregistered-v99"',
     'first, *captured = (LEGACY_STEM, "synthetic")\nFORMAT = captured[0] + "-unregistered-v99"',
     'first, *captured, tail = (LEGACY_STEM, "synthetic", LEGACY_STEM)\nFORMAT = captured[0] + "-unregistered-v99"',
     'try:\n stem = LEGACY_STEM\nexcept Exception:\n stem = LEGACY_STEM\nfinally:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
     'try:\n stem = LEGACY_STEM\n stem = "synthetic"\nexcept Exception:\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
     'stem = LEGACY_STEM\nfor item in selected:\n stem = "synthetic"\nstem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
-    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-exact-v1"',
 ])
 def test_explicit_overwrites_and_safe_members_remain_valid(tmp_path, source):
     (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
@@ -799,7 +779,7 @@ def test_analysis_helper_disposition_is_exact_and_keeps_literal_scanning(tmp_pat
     source = (ROOT / "scripts/doc_identifier_check.py").read_text()
     module = ast.parse(source)
     helper = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
-    source = ast.get_source_segment(source, helper) + "\n"
+    source = "from case_intelligence.legacy_names import *\n" + ast.get_source_segment(source, helper) + "\n"
     if mutation == "count":
         source = source.replace("token.replace(old, new, 1)", "token.replace(old, new, 2)")
     elif mutation == "body":
@@ -816,5 +796,180 @@ def test_analysis_helper_disposition_does_not_follow_another_path(tmp_path):
     import ast
     source = (ROOT / "scripts/doc_identifier_check.py").read_text()
     helper = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
-    (tmp_path / "synthetic.py").write_text(ast.get_source_segment(source, helper) + "\n")
+    (tmp_path / "synthetic.py").write_text("from case_intelligence.legacy_names import *\n" + ast.get_source_segment(source, helper) + "\n")
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'parts = [LEGACY_STEM]\ncopied = [*parts]\nFORMAT = copied[0] + "-unregistered-v99"',
+    'settings = {"nested":{"stem":"synthetic"}}\nalias = settings["nested"]\nalias["stem"] = LEGACY_STEM\nFORMAT = settings["nested"]["stem"] + "-unregistered-v99"',
+    'stem = "synthetic"\nfor item in ["synthetic"]:\n stem = LEGACY_STEM\n break\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic"\nfor item in ["synthetic"]:\n stem = LEGACY_STEM\n continue\n stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'a = b = {"stem":"synthetic"}\na["stem"] = LEGACY_STEM\nFORMAT = b["stem"] + "-unregistered-v99"',
+    'a = b = ["synthetic"]\na[0] = LEGACY_STEM\nFORMAT = b[0] + "-unregistered-v99"',
+    'settings = "synthetic"\ndef outer():\n global settings\n settings = "synthetic"\n class Builder:\n  global settings\n  settings = LEGACY_STEM\n  def build(self):\n   return f"{settings}-unregistered-v99"',
+    'settings = {LEGACY_STEM:"synthetic"}\nfor stem in settings:\n FORMAT = f"{stem}-unregistered-v99"',
+    'stem = "synthetic"\nvalues = [f"{stem}-unregistered-v99" for stem in [LEGACY_STEM]]',
+    'stem = "synthetic"\nvalues = {f"{stem}-unregistered-v99" for stem in [LEGACY_STEM]}',
+    'stem = "synthetic"\nvalues = {stem:f"{stem}-unregistered-v99" for stem in [LEGACY_STEM]}',
+    'stem = "synthetic"\nvalues = (f"{stem}-unregistered-v99" for stem in [LEGACY_STEM])',
+    'stem = "synthetic"\ntry:\n if selected:\n  stem = LEGACY_STEM\n  operation()\n  stem = "synthetic"\nexcept Exception:\n pass\nFORMAT = f"{stem}-unregistered-v99"',
+    'captured = "synthetic"\nmatch LEGACY_STEM:\n case captured if selected:\n  captured = "synthetic"\nFORMAT = f"{captured}-unregistered-v99"',
+    'stem = "synthetic"\n@deco(stem := LEGACY_STEM)\nclass Builder:\n pass\nFORMAT = f"{stem}-unregistered-v99"',
+])
+def test_reviewed_unsupported_or_undeclared_forms_fail_closed(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'parts = ["synthetic", LEGACY_STEM]\nFORMAT = parts[-2] + "-unregistered-v99"',
+    'from other_module import LEGACY_STEM\nFORMAT = f"{LEGACY_STEM}-unregistered-v99"',
+    'stem = LEGACY_STEM\nvalues = [f"{stem}-unregistered-v99" for stem in ["synthetic"]]',
+    'stem = LEGACY_STEM\nvalues = {f"{stem}-unregistered-v99" for stem in ["synthetic"]}',
+    'stem = LEGACY_STEM\nvalues = {stem:f"{stem}-unregistered-v99" for stem in ["synthetic"]}',
+    'stem = LEGACY_STEM\nvalues = (f"{stem}-unregistered-v99" for stem in ["synthetic"])',
+])
+def test_reviewed_safe_members_and_foreign_scopes_do_not_inherit_origins(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+def test_reviewed_helper_fingerprint_is_independent_of_ast_schema(monkeypatch, tmp_path):
+    import ast
+    source = (ROOT / "scripts/doc_identifier_check.py").read_text()
+    helper = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
+    source = 'from case_intelligence.legacy_names import *\n' + ast.get_source_segment(source, helper) + '\n'
+    path = tmp_path / "scripts/doc_identifier_check.py"
+    path.parent.mkdir()
+    path.write_text(source)
+    original = checker.ast.dump
+    monkeypatch.setattr(checker.ast, "dump", lambda *a, **kw: original(*a, **kw) + ",new_optional_ast_field=[]")
+    assert checker.findings(tmp_path) == []
+
+
+# The approved grammar rejects these formerly modeled mutations at their source,
+# even where a later overwrite could make a particular runtime path safe.
+@pytest.mark.parametrize("source", [
+    'settings.stem = LEGACY_STEM\nFORMAT = f"{settings.stem}-exact-v1"',
+    'settings.stem = LEGACY_STEM\nsettings.stem = "synthetic"\nFORMAT = f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n settings = SimpleNamespace()\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n import synthetic as settings\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n from synthetic import settings\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = LEGACY_STEM\nclass Builder:\n settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings = first\n else:\n  settings = second\n settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = LEGACY_STEM\nclass Builder:\n if selected:\n  settings.stem = "synthetic"\n else:\n  settings.stem = "also-synthetic"\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n if selected:\n  settings.stem = LEGACY_STEM\n else:\n  settings.stem = "synthetic"\n def build(self):\n  return f"{settings.stem}-exact-v1"',
+    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n try:\n  operation()\n except Exception as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-unregistered-v99"',
+    'settings = "synthetic"\ndef outer():\n settings = "synthetic-local"\n class Builder:\n  global settings\n  settings = LEGACY_STEM\n  def build(self):\n   return f"{settings}-unregistered-v99"',
+    'settings = {"stem":LEGACY_STEM}\nalias = settings\nclass Builder:\n alias["stem"] = "synthetic"\n def build(self):\n  return settings["stem"] + "-unregistered-v99"',
+    'settings = [LEGACY_STEM]\nalias = settings\nclass Builder:\n alias[0] = "synthetic"\n def build(self):\n  return settings[0] + "-unregistered-v99"',
+    'settings.stem = "synthetic"\nclass Builder:\n with context as settings:\n  settings.stem = LEGACY_STEM\n def build(self):\n  return f"{settings.stem}-exact-v1"',
+])
+def test_mutable_and_outer_writes_require_explicit_review(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from types import SimpleNamespace\nfrom case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    found = checker.findings(tmp_path)
+    assert any("unsupported legacy syntax" in item.identifier for item in found)
+
+
+@pytest.mark.parametrize("source", [
+    'stem = LEGACY_STEM\nFORMAT = f"{stem}-exact-v1"',
+    'settings = {"stem": LEGACY_STEM}\nFORMAT = settings["stem"] + "-exact-v1"',
+    'stem = LEGACY_STEM\nstem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+])
+def test_immutable_alternatives_to_mutation_remain_supported(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("source", [
+    'value = reader(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'parser = Parser(prog=LEGACY_STEM)\nFORMAT = f"{parser.read()}-synthetic"',
+])
+def test_opaque_helper_results_keep_known_legacy_origins(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text("from case_intelligence.legacy_names import LEGACY_STEM\n" + source + "\n")
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'value = text.removeprefix(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'value = text.replace(LEGACY_STEM, "synthetic")\nFORMAT = f"{value}-synthetic"',
+    'value = mapping.get(LEGACY_STEM)\nFORMAT = f"{value}-synthetic"',
+    'import argparse\nparser = argparse.ArgumentParser(prog=LEGACY_STEM)\nFORMAT = f"{parser.prog}-unregistered-v99"',
+    'import re\npattern = re.compile(LEGACY_STEM)\nFORMAT = f"{pattern.pattern}-unregistered-v99"',
+    'def len(value):\n return value\nFORMAT = f"{len(LEGACY_STEM)}-unregistered-v99"',
+])
+def test_unverified_consumers_and_exposed_input_attributes_fail_closed(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text("from case_intelligence.legacy_names import LEGACY_STEM\n" + source + "\n")
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'settings = "synthetic"\ndef configure():\n global settings\n settings = LEGACY_STEM',
+    'def outer():\n settings = "synthetic"\n def configure():\n  nonlocal settings\n  settings = LEGACY_STEM',
+    'keys = {LEGACY_STEM: "synthetic"}\nvalue = reader(keys)\nFORMAT = f"{value}-unregistered-v99"',
+])
+def test_outer_function_writes_and_mapping_keys_preserve_restriction(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text("from case_intelligence.legacy_names import LEGACY_STEM\n" + source + "\n")
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source, blocked", [
+    ('from case_intelligence.compat_env import env\nvalue = env(LEGACY_STEM, "synthetic")\nFORMAT = f"{value}-unregistered-v99"', False),
+    ('from case_intelligence.compat_env import env as read\nvalue = read("SYNTHETIC", LEGACY_STEM)\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('from case_intelligence.compat_env import required_env\nvalue = required_env("SYNTHETIC", environ={"SYNTHETIC": LEGACY_STEM})\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('from other_module import env\nvalue = env(LEGACY_STEM)\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('import case_intelligence.compat_env as config\nconfig.env = foreign\nvalue = config.env(LEGACY_STEM)\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('mapping = {LEGACY_STEM: "synthetic"}\nvalue = mapping.get(key)\nFORMAT = f"{value}-unregistered-v99"', False),
+    ('mapping = {"synthetic": LEGACY_STEM}\nvalue = mapping.get(key)\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('from pathlib import Path\nvalue = Path(name_value("app_env", LEGACY_STEM)).read_text()\nFORMAT = f"{value}-unregistered-v99"', False),
+    ('from foreign import Path\nvalue = Path(LEGACY_STEM).read_text()\nFORMAT = f"{value}-unregistered-v99"', True),
+    ('values = [item for item in ["synthetic", LEGACY_STEM] if selected]\nFORMAT = f"{values[0]}-unregistered-v99"', True),
+    ('values = [item for item in [LEGACY_STEM] if foreign(item)]', True),
+    ('values = dict(stem=LEGACY_STEM)\ncopy = dict(values, other="synthetic")\nFORMAT = f"{copy["stem"]}-unregistered-v99"', True),
+    ('values = set()\nvalues = values | {LEGACY_STEM}\nfor stem in values:\n FORMAT = f"{stem}-unregistered-v99"', True),
+])
+def test_declared_helper_and_pure_container_roles(tmp_path, source, blocked):
+    (tmp_path / 'synthetic.py').write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM, name_value\n' + source + '\n'
+    )
+    assert bool(checker.findings(tmp_path)) is blocked
+
+
+def test_environment_selector_contract_requires_unchanged_implementation(tmp_path, monkeypatch):
+    implementation = tmp_path / 'src/case_intelligence/compat_env.py'
+    implementation.parent.mkdir(parents=True)
+    implementation.write_text('def env(name, default=None):\n return name\n')
+    monkeypatch.setattr(checker, 'ROOT', tmp_path)
+    found = checker.scan_python('synthetic.py',
+        'from case_intelligence.compat_env import env\nvalue = env("SYNTHETIC")\n', NAME_CONTRACTS)
+    assert any('changed environment selector implementation' in item.identifier for item in found)
+
+
+def test_source_form_receipts_are_exact_and_cannot_hide_names():
+    import hashlib
+    text = 'synthetic source\n'
+    location = 'src/synthetic.py'
+    diagnostic = 'unsupported legacy composition; use a contract key'
+    records = {location: {'source_sha256': hashlib.sha256(text.encode()).hexdigest(),
+                         'diagnostics': [{'line': 2, 'identifier': diagnostic}]}}
+    allowed = checker.Finding(location + ':2', diagnostic)
+    extra = checker.Finding(location + ':3', diagnostic)
+    literal = checker.Finding(location + ':2', 'recordbench-unregistered-v99')
+    assert checker.apply_source_forms(location, text, [allowed, extra, literal], records) == [extra, literal]
+    assert checker.apply_source_forms('other.py', text, [allowed], records) == [allowed]
+    assert checker.apply_source_forms(location, text + '# changed\n', [allowed], records) == [allowed]
+    found = checker.apply_source_forms(location, text + '# changed\n', [], records, require_current=True)
+    assert len(found) == 1 and 'explicit review required' in found[0].identifier
+
+
+def test_source_form_contracts_never_accept_literal_diagnostics(tmp_path, monkeypatch):
+    import json
+    source = tmp_path / 'forms.json'
+    source.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
+        'source_sha256': 'a' * 64, 'diagnostics': [{'line': 1, 'identifier': 'recordbench-unregistered-v99',
+                                                 'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', source)
+    with pytest.raises(ValueError, match='diagnostic contract'):
+        checker.source_form_contracts()

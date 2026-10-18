@@ -63,17 +63,17 @@ def required_env(name: str, *, environ: Mapping[str, str]) -> str:
 
 
 def header_conflicts(headers: Mapping[str, str], legacy: str) -> bool:
-    new = legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
+    new = str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
     return new in headers and legacy in headers and headers[new] != headers[legacy]
 
 
 def header(headers: Mapping[str, str], legacy: str) -> str | None:
     """Accept either header; ambiguous proof never grants authority."""
     if legacy in headers:
-        _warn_once(legacy, legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1))
+        _warn_once(legacy, str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1))
     if header_conflicts(headers, legacy):
         return None
-    new = legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
+    new = str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
     return headers[new] if new in headers else headers.get(legacy)
 
 

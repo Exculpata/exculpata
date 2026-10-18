@@ -11507,13 +11507,14 @@ def create_workbench_app(
             ),
         )
         try:
-            result["matter_capacity"] = await run_in_threadpool(
+            capacity = await run_in_threadpool(
                 bench.upload_preflight_capacity_projection,
                 matter,
                 context.principal_id,
                 checkpoint_session_id=checkpoint_session_id,
                 checkpoint_collection_id=checkpoint_collection_id,
             )
+            result = dict(result, matter_capacity=capacity)
         except (OSError, RuntimeError):
             return JSONResponse(
                 {"message": "Matter upload capacity is temporarily unavailable."},

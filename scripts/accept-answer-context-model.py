@@ -35,8 +35,7 @@ def run():
                                 disable_thinking=getattr(client, 'disable_thinking', None)),
                   model_gate='outstanding', scenarios=[])
     if not client.available:
-        result['limitation'] = 'Configured runtime unavailable. No semantic model acceptance was executed; deterministic tests are separate.'
-        return result
+        return dict(result, limitation='Configured runtime unavailable. No semantic model acceptance was executed; deterministic tests are separate.')
     with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-context-model-") as temp:
         app = create_workbench_app(Path(temp)/'runtime', generator=client, auth_mode='test')
         with TestClient(app) as http:
@@ -99,8 +98,8 @@ def run():
                 result['scenarios'].append(dict(name=name, passed=passed, state=job.state,
                     latency_seconds=round(time.monotonic()-started, 3), answer=text,
                     payload=answer.payload if answer else None, citation_checks=citations, context_receipt=receipt))
-            result['model_gate'] = 'passed_fixed_synthetic_corpus' if all(s['passed'] for s in result['scenarios']) else 'failed_fixed_synthetic_corpus'
-            result['limitation'] = 'Three fixed synthetic questions only; manual review must confirm useful citations, preserved disagreement and identity separation. This is not general model quality or deployment acceptance.'
+            result = dict(result, model_gate='passed_fixed_synthetic_corpus' if all(s['passed'] for s in result['scenarios']) else 'failed_fixed_synthetic_corpus')
+            result = dict(result, limitation='Three fixed synthetic questions only; manual review must confirm useful citations, preserved disagreement and identity separation. This is not general model quality or deployment acceptance.')
     return result
 
 

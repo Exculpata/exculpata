@@ -169,31 +169,30 @@ spellings;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
-Function bodies retain possible legacy bindings from their containing scope,
-including aliases assigned after a definition or rebound after an earlier call.
-Unsupported stem compositions, including mapping-style
-interpolation, must use a contract key instead. String methods, container lookups,
-conditional and short-circuit aliases, local attribute assignments, and tuple
-assignments preserve known legacy origins. Both `if` and `match` alternatives merge
-possible bindings, including class-suite mutations of enclosing objects. Match
-captures retain their subject or member provenance and bind simultaneously.
-Methods use their enclosing lexical scope; class suites preserve writes through
-enclosing objects while class-local bindings stay separate. UTF-8 bytes aliases,
-compositions and ordinary encode/decode calls retain string provenance.
-Known sequence and mapping aliases retain member values; starred assignments and
-subscript writes preserve those values or a conservative unknown legacy origin.
-Class global/nonlocal declarations and implicit with/exception targets determine
-where bindings belong. Shared state merging covers normal and exceptional try
-paths, applies finally afterward, permits ordered exception-group handlers, and
-retains zero-iteration loop paths. Known iterable members retain their origins;
-unknown runtime iteration values are not evaluated.
-Unicode letters and combining marks stay part of source identifiers. Search
-patterns and parser inputs do not become generated identifiers. This is a bounded
-syntax check, not whole-program execution: arbitrary function return values and
-runtime loop values are not inferred. Once a supported expression has a known
-legacy origin, loss of its precise value remains review-required instead of
-clearing that origin. This bounded analysis cannot prove arbitrary Python safe. Use contract keys for generated operational
-names, including names assembled through helpers; review still checks that usage.
+The Python gate has a restricted syntax contract. It is a source policy, not a
+proof of arbitrary Python execution. A known legacy origin must remain either a
+checked value or an explicit diagnostic; unsupported syntax must not erase it.
+
+| Form | Supported boundary |
+| --- | --- |
+| Authority imports | Absolute imports from `case_intelligence.legacy_names`, aliases, and package-relative imports within that package. Foreign imports do not inherit authority constants. |
+| Bindings and containers | Local bindings and literal lists, tuples, sets and mappings; verified pure collection constructors, dictionary replacement and set union; known mapping keys and static positive or negative integer member indexes. |
+| String construction | Bounded concatenation, simple f-strings, simple positional formatting, declared `name_value` calls, statically resolved string operations and finite JSON serialization. Unknown fields without a known legacy origin are checked as symbolic family members. |
+| Comprehensions | One synchronous generator over a finite known container, with simple name or tuple/list targets. Filtered selections lose positional precision; predicates using calls must be verified path-status operations when they carry a known origin. At most 256 members per expansion, a 4096-member analysis budget and 65536-character composed values. Comprehension targets stay local. A nonfinite input without a tracked origin may carry resolved literal/record output, but not an opaque legacy-derived result. |
+| Branches and scopes | Conservative `if`, unguarded `match`, simple loop and simple exception-path merges. Class headers execute in their enclosing scope. Enclosing function global/nonlocal declarations do not create closure locals. |
+| Input roles | Roles require a verified callable or receiver. Verified `Path` reads return external data, not their filename; numeric builtins do not return identifier text. Known dictionary lookups return values/defaults rather than selector keys. The environment reader returns environment values/defaults rather than key names; this summary is pinned to the entire helper module source and rejects changed implementations. Arbitrary helper or method results retain known input provenance. Parser and regular-expression objects may expose their inputs through attributes. |
+
+Legacy-bearing attribute/subscript mutations, mutator calls, chained mutable
+assignments, starred collection displays, mapping unpacking, global/nonlocal
+writes, guarded captures, abrupt loops with legacy bindings and compound
+exception paths with legacy bindings are rejected. Nonfinite legacy-bearing iterables, asynchronous comprehensions, unverified
+predicates and unresolved legacy-derived comprehension outputs are also rejected. A safe later overwrite does not authorize an unsupported earlier form.
+Use immutable contract-based construction, or propose a narrow disposition for
+review; do not add a helper-name exemption or clear provenance to make the gate
+pass. Arbitrary helper return values without a tracked input origin and arbitrary
+runtime inputs are not inferred. Review must still check generated operational
+names at those boundaries.
+Unicode letters and combining marks stay part of source identifiers.
 Complete symbolic templates are checked against their family; bare template
 prefixes are examples only in Markdown unless explicitly registered. Registered
 paths permit ordinary descendants, while legacy-named descendants must have their
@@ -202,9 +201,31 @@ only its exact source span is covered by the separate contract-table validation,
 so neighboring statements remain checked. URI query, fragment and percent-encoded
 suffixes remain part of the identifier and require an explicit contract.
 The documentation checker's `_swap` helper translates candidate text rather than
-emitting operational names. Its exact function AST has a recorded disposition for
-unresolved-composition diagnostics only. Literal and resolved-name scanning still
+emitting operational names. Its exact normalized source body has a recorded SHA-256 disposition for
+unresolved-composition and unsupported-syntax diagnostics only. The fingerprint
+does not depend on the Python interpreter's AST schema. Literal and resolved-name scanning still
 applies; a changed function body or another file does not inherit the disposition.
+
+`config/rename-source-forms.json` records 33 additional, diagnostic-specific source
+contracts for existing analysis or transport operations that remain outside this
+grammar. Nineteen concern diagnostic text analysis; the remaining fourteen concern
+existing setting validation/output, authenticated dependency metadata replacement,
+lifecycle SQL rendering, warning-once bookkeeping and thread-object storage.
+Each record names the exact path, complete module source digest, diagnostic line
+and text, semantic reason and validation suite. These are proposed for explicit
+review with this gate; they do not establish a general permission for similar code.
+The gate still scans every file and checks all literal and resolved identifiers.
+An extra diagnostic is blocked. Any source change invalidates that file's records,
+and records for diagnostics that are no longer emitted must be removed or reviewed.
+No command automatically accepts a new finding or refreshes these records.
+
+Application migrations use new local dictionaries, pure set union and explicit
+contract calls instead of unsupported name-bearing mutation. The environment
+serializer retains its exact bytes and input ordering, including an empty mapping;
+unit generation retains the same two kinds in the same order. These changes do not
+change stored naming generations or relax installation, storage or publication
+checks. The source-form inventory makes the remaining limits visible to reviewers
+rather than treating unknown helpers as safe consumers.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
