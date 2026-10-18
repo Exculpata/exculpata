@@ -341,10 +341,12 @@ def compare(manifest, expected, actual, *, full=False):
                 if group == 'documents' and case['ocr'] and not got.get('ocr_pages'):
                     errors.append('image-only PDF did not exercise OCR')
             elif group == 'search':
-                hits = got.get('document_ids', [])[:case['top_k']]
+                hits = got.get('document_ids', [])
+                citations = got.get('citations', [])
+                if len(hits) > case['top_k'] or len(citations) > case['top_k']:
+                    errors.append(f"search returned more than requested top-k={case['top_k']}")
                 if not set(want['document_ids']).issubset(hits):
                     errors.append(f"expected top-{case['top_k']} sources {want['document_ids']}; observed {hits}")
-                citations = got.get('citations', [])
                 if any(not valid_citation(c) for c in citations):
                     errors.append('invalid search citation')
                 for support in want['citations']:
@@ -413,6 +415,33 @@ def compare(manifest, expected, actual, *, full=False):
     return results
 
 
+def repository_code_basis(outputs=()):
+    """Identify repository bytes, including local edits, before writing a receipt."""
+    def git(*args):
+        return subprocess.check_output(['git', *args], cwd=ROOT)
+
+    tracked = set(git('ls-files', '-z').decode().split('\0')) - {''}
+    excluded = {path.resolve() for path in outputs if path}
+    if any((ROOT / name).resolve() in excluded for name in tracked):
+        raise ValueError('Outputs must not overwrite tracked repository files')
+    names = set(git('ls-files', '-z', '--cached', '--others', '--exclude-standard').decode().split('\0')) - {''}
+    hashes = {}
+    for name in sorted(names):
+        path = ROOT / name
+        if path.resolve() in excluded:
+            continue
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise ValueError(f'Cannot attest nonregular repository file: {name}')
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    return {
+        'base_head': git('rev-parse', 'HEAD').decode().strip(),
+        'dirty': bool(git('status', '--porcelain', '-z', '--untracked-files=all')),
+        'files_sha256': hashes,
+        'implementation_sha256': hashlib.sha256(
+            json.dumps(hashes, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--corpus', type=Path, default=CORPUS)
@@ -429,6 +458,7 @@ def main(argv=None):
                 raise ValueError('Outputs must be outside the reviewed corpus')
         if args.report and args.proposal and args.report.resolve() == args.proposal.resolve():
             raise ValueError('Report and proposal must use different paths')
+        code_basis = repository_code_basis((args.report, args.proposal)) if args.report else None
         manifest, expected = load_corpus(args.corpus)
         from corpus_product import observe
         transcripts = manifest['fast_transcripts']
@@ -440,7 +470,9 @@ def main(argv=None):
         for key, observation in audio.items():
             actual[key]['asr_text'] = observation['text']
         results = compare(manifest, expected, actual, full=args.full)
-        receipt = {'schema_version': 1, 'corpus': manifest['id'], 'manifest_sha256': hashlib.sha256((args.corpus/'manifest.json').read_bytes()).hexdigest(), 'expected_sha256': hashlib.sha256((args.corpus/'expected.json').read_bytes()).hexdigest(), 'head': subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(), 'mode': 'full' if args.full else 'fast-contract', 'models': manifest['models'], 'cases': results, 'passed': all(r['passed'] for r in results)}
+        if args.report and repository_code_basis((args.report, args.proposal)) != code_basis:
+            raise ValueError('Repository code changed during corpus observation')
+        receipt = {'schema_version': 1, 'corpus': manifest['id'], 'manifest_sha256': hashlib.sha256((args.corpus/'manifest.json').read_bytes()).hexdigest(), 'expected_sha256': hashlib.sha256((args.corpus/'expected.json').read_bytes()).hexdigest(), 'head': code_basis['base_head'] if code_basis and not code_basis['dirty'] else None, 'code_basis': code_basis, 'mode': 'full' if args.full else 'fast-contract', 'models': manifest['models'], 'cases': results, 'passed': all(r['passed'] for r in results)}
         if args.report:
             args.report.write_text(json.dumps(receipt, indent=2)+'\n')
         if args.proposal:

@@ -24,14 +24,27 @@ CASES = (
     {"id": "transcript-edit-restart", "fix": "f656f132548e2f1f281df485fb99d86b67d92998",
      "test": "test_crash_after_edit_before_projection_is_repaired_from_durable_revision",
      "file": "tests/test_transcript_search_freshness.py", "expected_tests": 1, "historical_failures": 1,
+     "expected_node_ids": (
+         "test_history_probe::test_crash_after_edit_before_projection_is_repaired_from_durable_revision",
+     ),
      "failure_marker": "orange unicycle"},
     {"id": "missing-text-chunk", "fix": "00922fcb3d6dad198b3d8fbbdffc2adf78287f8f",
      "test": "test_missing_middle_production_text_chunk_invalidates_exact_total",
      "file": "tests/test_exact_search_results.py", "expected_tests": 2, "historical_failures": 2,
+     "expected_node_ids": (
+         "test_history_probe::test_missing_middle_production_text_chunk_invalidates_exact_total[cancelled]",
+         "test_history_probe::test_missing_middle_production_text_chunk_invalidates_exact_total[neutral NOT cancelled]",
+     ),
      "failure_marker": "DID NOT RAISE"},
     {"id": "ask-routing", "fix": "b0cae56bac07b3e6c5ec47afa02397ee567f6ea4",
      "test": "test_router_benchmark_accuracy", "file": "tests/test_ask_router_benchmark.py",
      "expected_tests": 4, "historical_failures": 3, "failure_marker": "expected question, got exact",
+     "expected_node_ids": (
+         "test_history_probe::test_router_benchmark_accuracy[exact]",
+         "test_history_probe::test_router_benchmark_accuracy[question]",
+         "test_history_probe::test_router_benchmark_accuracy[every_source]",
+         "test_history_probe::test_router_benchmark_accuracy[overall]",
+     ),
      "failure_marker_by_test": {
          "test_router_benchmark_accuracy[every_source]": "expected every_source, got question"}},
 )
@@ -120,15 +133,16 @@ def evaluate_report(report: Path, case: dict, returncode: int, historical: bool)
                             for node in failures)
     only_assertions = all(node.get("message", "").startswith(("AssertionError", "Failed: DID NOT RAISE"))
                           for node in failures)
+    node_ids = [node.get("classname", "") + "::" + node.get("name", "") for node in tests]
     correct_tests = (len(tests) == case["expected_tests"] and
-                     all(node.get("name", "").split("[")[0] == case["test"] for node in tests))
+                     sorted(node_ids) == sorted(case["expected_node_ids"]))
     accepted = correct_tests and not errors and not skips
     if historical:
         accepted = accepted and returncode == 1 and len(failures) == case["historical_failures"] and only_assertions
         accepted = accepted and intended_failures
     else:
         accepted = accepted and returncode == 0 and not failures
-    return {"accepted": bool(accepted), "tests": len(tests), "failures": len(failures),
+    return {"accepted": bool(accepted), "tests": len(tests), "node_ids": node_ids, "failures": len(failures),
             "errors": len(errors), "skipped": len(skips), "returncode": returncode}
 
 

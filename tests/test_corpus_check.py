@@ -819,3 +819,16 @@ def test_asr_receipt_identity_rejects_unexecuted_settings(tmp_path, field, value
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='complete reviewed corpus ASR record'):
         gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('excess', ['citations', 'sources', 'both'])
+def test_search_rejects_unsliced_results_exceeding_top_k(excess):
+    manifest, expected, actual = sample()
+    search = actual['search']
+    if excess in {'citations', 'both'}:
+        search['citations'].append(copy.deepcopy(search['citations'][0]))
+    if excess in {'sources', 'both'}:
+        search['document_ids'].append('wav')
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'search')
+    assert result['passed'] is False
+    assert any('top-k' in line for line in result['diff'])

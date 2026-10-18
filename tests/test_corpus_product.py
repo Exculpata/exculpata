@@ -155,7 +155,10 @@ def test_observation_rejects_persisted_citation_locator_corruption(
     assert all(citation['source_valid'] is True for citation in actual['search']['citations'])
 
 
-@pytest.mark.parametrize('corruption', ['answer-kind', 'citation-locator'])
+@pytest.mark.parametrize('corruption', [
+    'answer-kind', 'citation-locator', 'chunk-wrong', 'chunk-empty',
+    'chunk-missing', 'chunk-null', 'chunk-nonstring',
+])
 def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corruption):
     original_answer = product.CaseIntelligenceWorkbench._answer_payload
     original_citation = product.CaseIntelligenceWorkbench._saved_answer_citation_payload
@@ -169,7 +172,15 @@ def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corrupti
 
     def changed_citation(citation):
         payload = original_citation(citation)
-        payload['line_start'], payload['line_end'] = 999999, 1000000
+        if corruption == 'citation-locator':
+            payload['line_start'], payload['line_end'] = 999999, 1000000
+        elif corruption == 'chunk-missing':
+            del payload['chunk_id']
+        else:
+            payload['chunk_id'] = {
+                'chunk-wrong': 'chunk-999999', 'chunk-empty': '',
+                'chunk-null': None, 'chunk-nonstring': 1,
+            }[corruption]
         modified.append(payload)
         return payload
 
@@ -197,6 +208,33 @@ def test_adapter_refuses_configured_external_database_before_creating_runtime(tm
     monkeypatch.setenv("CASE_INTELLIGENCE_POSTGRES_DSN", "synthetic-connection-sentinel")
     with pytest.raises(ValueError, match="isolated environment"):
         product.observe(tmp_path, {"synthetic": True})
+
+
+def test_actual_corpus_rejects_product_search_exceeding_requested_limit(monkeypatch):
+    original = product.CaseIntelligenceWorkbench.search
+
+    def expanded_search(bench, *args, **kwargs):
+        kwargs['limit'] = 20
+        return original(bench, *args, **kwargs)
+
+    monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'search', expanded_search)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    results = gate.compare(manifest, expected, actual)
+    over_limit = {case['id'] for case in manifest['search'] if case['id'] in actual
+                  and (len(actual[case['id']]['citations']) > case['top_k']
+                       or len(actual[case['id']]['document_ids']) > case['top_k'])}
+    assert 'search-spoken' in over_limit
+    assert len(actual['search-spoken']['citations']) == 4
+    assert next(case['top_k'] for case in manifest['search'] if case['id'] == 'search-spoken') == 2
+    assert len(results) == 14
+    print(f"expanded search: {sum(row['passed'] for row in results)}/14 cases passed; over limit: {sorted(over_limit)}")
+    for row in results:
+        if row['id'] in over_limit:
+            assert row['passed'] is False, row
+            assert any('top-k' in error for error in row['diff']), row
+        else:
+            assert row['passed'] is True, row
 
 
 def test_adapter_rejects_non_synthetic_inputs_and_path_escape(tmp_path):

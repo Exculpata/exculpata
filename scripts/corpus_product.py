@@ -28,7 +28,9 @@ from case_intelligence.managed_storage import StoragePolicy
 from case_intelligence.pilot_uploads import PilotDocument, canonical_media_type
 from case_intelligence.review_bench import Citation, ExtractiveAnswerProvider
 from case_intelligence.review_bench_v2 import DeterministicEmbeddingAdapter, DeterministicReranker
+from case_intelligence.report_materials import resolve_saved_answer_references
 from case_intelligence.workbench import CaseIntelligenceWorkbench, create_workbench_app
+from case_intelligence.workspace_store import WorkspaceProblem
 
 
 class CorpusExtractiveGenerator:
@@ -133,12 +135,19 @@ def _import_transcript(bench, matter, document, segments, actor):
 def _citation(bench, matter, citation, aliases):
     """Resolve every persisted token against the current source and exact span."""
     value = asdict(citation) if not isinstance(citation, dict) else citation
+    store = bench.source_store(matter)
+    try:
+        with store.mutation_guard(), bench.workspace._lock:
+            canonical, = resolve_saved_answer_references(bench, matter, [value])
+    except WorkspaceProblem:
+        canonical = None
     support = bench.support(matter, value["support_token"])
-    document = bench.source_store(matter).get(value["document_id"])
+    document = store.get(value["document_id"])
     unit = next(unit for unit in document.parsed_units()
                 if unit.number == value["unit_number"])
     excerpt = unit.text
-    valid = (document.state == "ready" and document.version_id == value["source_version_id"]
+    valid = (canonical is not None and value.get("chunk_id") == canonical["chunk_id"]
+             and document.state == "ready" and document.version_id == value["source_version_id"]
              and unit.excerpt_digest == value["excerpt_digest"]
              and all(field in value and type(value[field]) is type(locator)
                      and value[field] == locator

@@ -13,13 +13,34 @@ spec = importlib.util.spec_from_file_location("corpus_history_check", SCRIPT)
 history = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(history)
 
+EXPECTED_NODE_IDS = {
+    "transcript-edit-restart": (
+        "test_history_probe::test_crash_after_edit_before_projection_is_repaired_from_durable_revision",
+    ),
+    "missing-text-chunk": (
+        "test_history_probe::test_missing_middle_production_text_chunk_invalidates_exact_total[cancelled]",
+        "test_history_probe::test_missing_middle_production_text_chunk_invalidates_exact_total[neutral NOT cancelled]",
+    ),
+    "ask-routing": (
+        "test_history_probe::test_router_benchmark_accuracy[exact]",
+        "test_history_probe::test_router_benchmark_accuracy[question]",
+        "test_history_probe::test_router_benchmark_accuracy[every_source]",
+        "test_history_probe::test_router_benchmark_accuracy[overall]",
+    ),
+}
+
 
 def report(tmp_path, case, *, failure=None, error=None, skipped=False, count=None, name=None):
     suite = ET.Element("testsuite")
+    expected = EXPECTED_NODE_IDS[case["id"]]
     for index in range(case["expected_tests"] if count is None else count):
-        test = ET.SubElement(suite, "testcase", name=name or f'{case["test"]}[{index}]')
-        if failure and index < case["historical_failures"]:
-            ET.SubElement(test, "failure", message=failure).text = failure
+        classname, test_name = expected[index % len(expected)].split("::", 1)
+        test = ET.SubElement(suite, "testcase", classname=classname, name=name or test_name)
+        if failure and index >= case["expected_tests"] - case["historical_failures"]:
+            message = failure
+            if failure == "AssertionError: " + case["failure_marker"]:
+                message = "AssertionError: " + case.get("failure_marker_by_test", {}).get(test_name, case["failure_marker"])
+            ET.SubElement(test, "failure", message=message).text = message
         if error and index == 0:
             ET.SubElement(test, "error", message=error)
         if skipped and index == 0:
@@ -27,6 +48,57 @@ def report(tmp_path, case, *, failure=None, error=None, skipped=False, count=Non
     path = tmp_path / "report.xml"
     ET.ElementTree(suite).write(path)
     return path
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+@pytest.mark.parametrize("historical", [False, True], ids=["current", "historical"])
+@pytest.mark.parametrize("mutation", ["replacement-parameter", "replacement-module"])
+def test_exact_node_population_rejects_same_count_replacements(tmp_path, case, historical, mutation):
+    path = report(tmp_path, case, failure="AssertionError: " + case["failure_marker"] if historical else None)
+    tree = ET.parse(path)
+    test = list(tree.getroot().iter("testcase"))[-1]
+    if mutation == "replacement-parameter":
+        test.set("name", case["test"] + "[synthetic-replacement]")
+    else:
+        test.set("classname", "tests.test_unrelated_probe")
+    tree.write(path)
+    outcome = history.evaluate_report(path, case, int(historical), historical)
+    assert outcome["tests"] == case["expected_tests"]
+    assert outcome["failures"] == (case["historical_failures"] if historical else 0)
+    assert not outcome["accepted"]
+
+
+@pytest.mark.parametrize("case", [case for case in history.CASES if case["expected_tests"] > 1],
+                         ids=lambda case: case["id"])
+@pytest.mark.parametrize("historical", [False, True], ids=["current", "historical"])
+def test_exact_node_population_rejects_duplicate_replacing_required_parameter(tmp_path, case, historical):
+    path = report(tmp_path, case, failure="AssertionError: " + case["failure_marker"] if historical else None)
+    tree = ET.parse(path)
+    tests = list(tree.getroot().iter("testcase"))
+    tests[-1].set("name", tests[0].get("name"))
+    tree.write(path)
+    outcome = history.evaluate_report(path, case, int(historical), historical)
+    assert outcome["tests"] == case["expected_tests"]
+    assert outcome["failures"] == (case["historical_failures"] if historical else 0)
+    assert not outcome["accepted"]
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+@pytest.mark.parametrize("historical", [False, True], ids=["current", "historical"])
+def test_exact_node_population_accepts_reordered_complete_report(tmp_path, case, historical):
+    path = report(tmp_path, case, failure="AssertionError: " + case["failure_marker"] if historical else None)
+    tree = ET.parse(path)
+    suite = tree.getroot()
+    suite[:] = list(reversed(list(suite)))
+    tree.write(path)
+    outcome = history.evaluate_report(path, case, int(historical), historical)
+    assert outcome["accepted"]
+
+
+@pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])
+def test_pinned_node_population_is_exact_and_unique(case):
+    assert case["expected_node_ids"] == EXPECTED_NODE_IDS[case["id"]]
+    assert len(set(case["expected_node_ids"])) == case["expected_tests"]
 
 
 @pytest.mark.parametrize("case", history.CASES, ids=lambda case: case["id"])

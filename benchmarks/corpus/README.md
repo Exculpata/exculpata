@@ -22,6 +22,8 @@ requires its facts, the question route, persisted `kind == 'generated'`, explici
 answerability, all named source spans, and valid product citation resolution.
 Persisted citation locators must match the resolved source unit before the
 observer constructs normalized citation fields.
+Persisted chunk IDs must also exactly match that unit. Search observations
+retain all returned hits and citations; exceeding the requested top-k fails.
 Every attached passage must support its complete extractive claim; document or
 transcript status comes from the manifest, and observed labels must agree.
 Missing, unrelated, or invalid source/text support fails without a text tolerance.
@@ -96,6 +98,14 @@ are uploaded.
 
 ## Deliberate updates
 
+An optional `--report /tmp/corpus-receipt.json` records hashes of tracked and
+nonignored untracked repository files before observation. Clean receipts name
+the commit in `head`; edited trees set `head` to null and record `base_head`,
+`dirty`, per-file hashes and their aggregate in `code_basis`. Generated output
+paths are excluded and cannot overwrite tracked files. Repository changes during
+observation block receipt creation. This identifies repository inputs, not
+third-party dependencies or the complete runtime environment.
+
 A normal run is read-only. To collect a proposal, explicitly choose a new file
 outside the corpus:
 
@@ -121,6 +131,8 @@ the expected marker in every assertion failure on `f656f13^`, `00922fc^`, and
 The probes cover durable transcript corrections, missing text chunks in exact
 search, and reviewer-language Ask routing. Import/setup errors, skips, timeouts,
 wrong test populations, and unrelated failures cannot count as proof.
+The accepted population pins each JUnit module and exact parameterized test name;
+same-count substitutions and duplicate cases fail.
 PostgreSQL transport remains replaced in the transcript probe. No shared runtime
 is started. The default requires locally available history; `--current-only`
 checks just the present tree. These probes complement the small media corpus.
