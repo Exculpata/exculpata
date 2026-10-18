@@ -41,7 +41,7 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             ):
                 assert store._lock._is_owned(), 'read must serialize with live ingestion/report SQL'
                 observations.append('plan' if sql.startswith('EXPLAIN QUERY PLAN ') else 'read')
-                cursor = original.execute(sql, *args, **kwargs)
+                cursor = original.execute(sql, *args, **kwargs)  # fixture-write: Forward the inspected read without acquiring a lock; the assertions above must detect missing caller locking.
 
                 class CheckedCursor:
                     def __iter__(self):
@@ -55,7 +55,7 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
                         return cursor.fetchone()
 
                 return CheckedCursor()
-            return original.execute(sql, *args, **kwargs)
+            return original.execute(sql, *args, **kwargs)  # fixture-write: Transparent instrumentation forwards product SQL; adding a fixture boundary would mask the lock regression.
 
     get, post = client.get, client.post
 

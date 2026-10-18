@@ -55,6 +55,8 @@ class _Value:
     imported_function: bool = False
     fixture_handle: bool = False
     elements: tuple[_Value, ...] | None = None
+    methods: frozenset[str] = frozenset()
+    receiver: _Value | None = None
 
 
 class _Check(ast.NodeVisitor):
@@ -113,8 +115,9 @@ class _Check(ast.NodeVisitor):
             if node.attr == "connection":
                 return _Value(symbol=symbol, connection=base.connection or base.symbol,
                               fixture_handle=base.fixture_handle)
-            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | {"cursor"}:
-                return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle)
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _MEDIA_SEED | {"cursor"}:
+                return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
+                              methods=frozenset({node.attr}), receiver=base)
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
                           active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
         if isinstance(node, ast.JoinedStr):
@@ -138,8 +141,14 @@ class _Check(ast.NodeVisitor):
                 name = self.value(node.args[1])
                 if name.complete_text:
                     return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
+                receiver = self.value(node.args[0])
+                if receiver.connection is not None:
+                    # A dynamically selected callable on a known SQL connection
+                    # must not discard ownership just because its name is unknown.
+                    return _Value(connection=receiver.connection, fixture_handle=receiver.fixture_handle,
+                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS), receiver=receiver)
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
-                return replace(function, symbol=function.symbol.rsplit(".", 1)[0])
+                return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None)
             if function.symbol in {"str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath"} and node.args:
                 return self.value(node.args[0])
             if function.symbol == "sqlite3.connect":
@@ -211,11 +220,20 @@ class _Check(ast.NodeVisitor):
             values = [state.get(name, _Value(symbol=name)) for state in states]
             if all(value == values[0] for value in values):
                 result[name] = values[0]
+            elif all(value.elements is not None for value in values) and len({len(value.elements) for value in values}) == 1:
+                result[name] = _Value(elements=tuple(
+                    _Check.merge_aliases(*({"item": value.elements[index]} for value in values))["item"]
+                    for index in range(len(values[0].elements))))
             elif all(value.connection is not None and value.connection.startswith("sqlite@") for value in values):
                 result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}")
             else:
+                receivers = [value.receiver for value in values if value.receiver is not None]
                 result[name] = _Value(symbol=name, active_path=any(value.active_path for value in values),
-                                      connection=f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None)
+                                      connection=f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None,
+                                      live_workspace=any(value.live_workspace for value in values),
+                                      workspace=any(value.workspace for value in values),
+                                      methods=frozenset().union(*(value.methods for value in values)),
+                                      receiver=_Check.merge_aliases(*({"receiver": value} for value in receivers))["receiver"] if receivers else None)
         return result
 
     def visit_If(self, node: ast.If) -> None:
@@ -432,9 +450,10 @@ class _Check(ast.NodeVisitor):
             if path.active_path or "workbench.sqlite" in path.text:
                 self.flag(node, "direct SQLite connection to workspace database")
         method = function.symbol.rsplit(".", 1)[-1]
-        receiver = self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function
+        methods = function.methods | {method}
+        receiver = function.receiver or (self.value(node.func.value) if isinstance(node.func, ast.Attribute) else function)
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
-        if method in _SQL_METHODS and not imported_function:
+        if methods & _SQL_METHODS and not imported_function:
             argument = node.args[0] if node.args else next(
                 (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
             sql_value = self.value(argument)
@@ -457,7 +476,7 @@ class _Check(ast.NodeVisitor):
             # are checked at their definitions, not mistaken for SQL methods.
             # Unknown SQL therefore needs an explicit boundary or a precise audit
             # annotation; losing receiver provenance must not silently permit it.
-            unknown_write = (not known_read and not writes) or method == "executescript"
+            unknown_write = (not known_read and not writes) or "executescript" in methods
             # A literal DELETE/UPDATE is still a write when the callback's
             # parameter is unannotated or its table has no workbench_ prefix.
             if (unknown_write or (writes and (not independent_connection or _TABLE.search(sql)))) and receiver.connection not in self.protected:
@@ -466,7 +485,7 @@ class _Check(ast.NodeVisitor):
             needs_handle = nonimplicit_write or re.match(r"(?:CREATE|DROP|ALTER|REINDEX|ATTACH|DETACH|VACUUM)\b", commands.lstrip(";\ufeff \t\r\n\v\f"), re.I) or (pragma and writes)
             if (unknown_write or needs_handle or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f")) or _ROLLBACK_CONFLICT.search(commands)) and receiver.connection in self.protected and not receiver.fixture_handle:
                 self.flag(node, "transaction control requires the yielded fixture_write handle")
-        if method in _TRANSACTION_METHODS and not imported_function:
+        if methods & _TRANSACTION_METHODS and not imported_function:
             # Product rollback APIs take domain arguments; a connection's
             # commit/rollback accepts none. Retain bound-method provenance too.
             connection_call = receiver.connection is not None or (not node.args and not node.keywords)
@@ -476,9 +495,8 @@ class _Check(ast.NodeVisitor):
                     self.flag(node, "transaction termination outside fixture_write")
                 elif not receiver.fixture_handle:
                     self.flag(node, "transaction control requires the yielded fixture_write handle")
-        if isinstance(node.func, ast.Attribute):
-            if node.func.attr in _MEDIA_SEED and receiver.live_workspace and receiver.symbol not in self.protected:
-                self.flag(node, "manual media fixture seed outside fixture_write")
+        if methods & _MEDIA_SEED and receiver.live_workspace and receiver.symbol not in self.protected:
+            self.flag(node, "manual media fixture seed outside fixture_write")
         self.generic_visit(node)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:

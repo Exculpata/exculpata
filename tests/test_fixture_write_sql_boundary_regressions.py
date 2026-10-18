@@ -238,3 +238,21 @@ def test_nested_custom_factories_restore_outer_and_keep_caller_transaction(tmp_p
         assert store.connection.row_factory is sqlite3.Row
     finally:
         store.close()
+
+
+@pytest.mark.parametrize('assignment', [
+    'if choice:\n    pair = (bench.workspace.connection,)\nelse:\n    pair = (other.workspace.connection,)\nconnection, = pair',
+    'pair = (bench.workspace.connection,) if choice else (other.workspace.connection,)\nconnection, = pair',
+])
+def test_guard_keeps_unpacked_connection_provenance_across_branches(assignment):
+    assert check_fixture_writes(assignment + '\nwith connection:\n    pass')
+
+
+@pytest.mark.parametrize('source', [
+    'if flag:\n    write = left.workspace.connection.execute\nelse:\n    write = right.workspace.connection.execute\nwrite("DELETE FROM workbench_matter")',
+    'import sqlite3\nif flag:\n    workspace = left.workspace\nelse:\n    workspace = right.workspace\nsqlite3.connect(workspace.path)\nworkspace.queue_media_job("synthetic")',
+    'if flag:\n    method = "execute"\nelse:\n    method = "executemany"\ngetattr(bench.workspace.connection, method)("DELETE FROM workbench_matter", [])',
+    'getattr(bench.workspace, "queue_media_job")("synthetic")',
+])
+def test_guard_retains_operation_and_workspace_aliases(source):
+    assert check_fixture_writes(source)
