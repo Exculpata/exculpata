@@ -141,28 +141,47 @@ class _Check(ast.NodeVisitor):
                           complete_text=isinstance(node.value, str))
         if isinstance(node, (ast.Tuple, ast.List)):
             elements = []
+            inputs = []
+            opaque = False
             for item in node.elts:
                 if isinstance(item, ast.Starred):
-                    expanded = self.value(item.value).elements
+                    value = self.value(item.value)
+                    inputs.append(value)
+                    expanded = value.elements
                     if expanded is None:
-                        return _Value()
-                    elements.extend(expanded)
+                        opaque = True
+                    else:
+                        elements.extend(expanded)
                 else:
-                    elements.append(self.value(item))
+                    value = self.value(item)
+                    inputs.append(value)
+                    elements.append(value)
+            if opaque:
+                return _Value(unresolved_shared_container=any(
+                    self.known_ownership(value, shared_only=True) for value in inputs))
             return _Value(elements=tuple(elements))
         if isinstance(node, ast.Dict):
             mapping = {}
+            inputs = []
+            opaque = False
             for key, item in zip(node.keys, node.values):
+                value = self.value(item)
+                inputs.append(value)
                 if key is None:
-                    expanded = self.value(item).mapping
+                    expanded = value.mapping
                     if expanded is None:
-                        return _Value()
-                    mapping.update(expanded)
+                        opaque = True
+                    else:
+                        mapping.update(expanded)
                 else:
                     name = self.value(key)
                     if not name.complete_text:
-                        return _Value()
-                    mapping[name.text] = self.value(item)
+                        opaque = True
+                    else:
+                        mapping[name.text] = value
+            if opaque:
+                return _Value(unresolved_shared_container=any(
+                    self.known_ownership(value, shared_only=True) for value in inputs))
             return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
@@ -697,7 +716,8 @@ class _Check(ast.NodeVisitor):
         # bound method retains ownership at its immediate invocation.
         self.visit(node.func)
         function = self.value(node.func)
-        arguments_before = [self.value(argument) for argument in node.args]
+        arguments_before = [self.value(argument.value if isinstance(argument, ast.Starred) else argument)
+                            for argument in node.args]
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
         if any(self.unresolved_ownership(value) for value in arguments_before):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
