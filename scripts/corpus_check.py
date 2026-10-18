@@ -108,14 +108,15 @@ def matches_span(citation, required):
             and any(contains_tokens(citation.get('excerpt', ''), span) for span in spans))
 
 
-def supports_complete_claim(citation, text):
+def supports_complete_claim(citation, text, kind):
     """The extractive adapter may add only its exact transcript qualifier.
 
     Each attached passage must contain the entire remaining normalized claim,
     including details beyond the required gold facts. Never borrow support from
     another claim or treat reviewed numeral alternatives as interchangeable text.
     """
-    kind = citation.get('evidence_kind', 'document')
+    if kind not in {'document', 'transcript'} or citation.get('evidence_kind') != kind:
+        return False
     if kind == 'transcript':
         if not text.startswith(TRANSCRIPT_QUALIFIER):
             return False
@@ -127,6 +128,12 @@ def supports_complete_claim(citation, text):
 
 def compare(manifest, expected, actual, *, full=False):
     """Return per-case diagnostics; no aggregate or caller-supplied pass flag is trusted."""
+    source_kinds = {}
+    for group, kind in (('documents', 'document'), ('audio', 'transcript')):
+        for source in manifest[group]:
+            if source['id'] in source_kinds:
+                raise ValueError(f"Duplicate or ambiguous corpus source identity: {source['id']}")
+            source_kinds[source['id']] = kind
     results = []
     for group in ('documents', 'audio', 'search', 'answers'):
         for case in manifest[group]:
@@ -185,7 +192,8 @@ def compare(manifest, expected, actual, *, full=False):
                     else:
                         valid_claims.append(claim)
                         for citation in claim['citations']:
-                            if not supports_complete_claim(citation, claim['text']):
+                            if not supports_complete_claim(citation, claim['text'],
+                                                           source_kinds.get(citation.get('document_id'))):
                                 errors.append(f"complete claim {index} is not supported by its attached passage: "
                                               f"{citation.get('document_id')}")
                 # Aggregates are compatibility summaries, never a substitute for

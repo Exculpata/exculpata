@@ -28,7 +28,7 @@ def test_normalization_keeps_fact_changes():
 
 def sample():
     manifest = {'documents':[{'id':'pdf','ocr':False}], 'audio':[{'id':'wav'}], 'search':[{'id':'search','top_k':1}], 'answers':[{'id':'answer'}]}
-    citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True}
+    citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True, 'evidence_kind':'document'}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
     actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation], 'claims':[{'text':'The parcel is blue.', 'citations':[citation]}]}}
     return manifest, expected, actual
@@ -39,7 +39,7 @@ def sample():
 def test_answer_fact_requires_whole_normalized_tokens(fact, wrong):
     manifest, expected, actual = sample()
     expected['answers']['answer'] = {'facts':[fact], 'citations':[{'document_id':'pdf', 'span':fact}]}
-    citation = {'document_id':'pdf', 'excerpt':fact, 'source_valid':True}
+    citation = {'document_id':'pdf', 'excerpt':fact, 'source_valid':True, 'evidence_kind':'document'}
     actual['answer'].update(text=wrong, citations=[citation], claims=[{'text':wrong, 'citations':[citation]}])
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is False
@@ -51,10 +51,12 @@ def test_answer_facts_require_their_own_claim_citations(mutation):
     manifest, expected, actual = sample()
     required = [{'document_id':'pdf', 'span':'blue bicycle'}, {'document_id':'wav', 'span':'orange parcel'}]
     expected['answers']['answer'] = {'facts':['blue bicycle', 'orange parcel'], 'citations':required}
-    citations = [{'document_id':item['document_id'], 'excerpt':item['span'], 'source_valid':True}
+    citations = [{'document_id':item['document_id'], 'excerpt':item['span'], 'source_valid':True,
+                  'evidence_kind':'transcript' if item['document_id'] == 'wav' else 'document'}
                  for item in required]
-    claims = [{'text':item['excerpt'], 'citations':[item]} for item in citations]
-    actual['answer'].update(text='blue bicycle orange parcel', citations=citations, claims=claims)
+    claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if item['evidence_kind'] == 'transcript' else '') + item['excerpt'],
+               'citations':[item]} for item in citations]
+    actual['answer'].update(text=' '.join(claim['text'] for claim in claims), citations=citations, claims=claims)
     assert next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')['passed']
     if mutation == 'missing': del actual['answer']['claims']
     elif mutation == 'empty': actual['answer']['claims'] = []
@@ -78,7 +80,7 @@ def test_answer_facts_require_their_own_claim_citations(mutation):
 def test_answer_fact_normalization_preserves_case_and_punctuation(fact, text):
     manifest, expected, actual = sample()
     expected['answers']['answer'] = {'facts':[fact], 'citations':[{'document_id':'pdf', 'span':fact}]}
-    citation = {'document_id':'pdf', 'excerpt':text, 'source_valid':True}
+    citation = {'document_id':'pdf', 'excerpt':text, 'source_valid':True, 'evidence_kind':'document'}
     actual['answer'].update(text=text, citations=[citation], claims=[{'text':text, 'citations':[citation]}])
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is True
@@ -98,6 +100,8 @@ def test_complete_claim_requires_own_passage_with_only_exact_transcript_qualifie
     manifest, expected, actual = sample()
     citation = actual['answer']['citations'][0]
     citation['evidence_kind'] = kind
+    if kind == 'transcript':
+        citation['document_id'] = expected['answers']['answer']['citations'][0]['document_id'] = 'wav'
     actual['answer']['text'] = actual['answer']['claims'][0]['text'] = text
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is passes
@@ -117,6 +121,26 @@ def test_complete_claim_cannot_change_details_beyond_required_gold_fact(claimed,
     assert result['passed'] is passes
     if not passes:
         assert any('complete claim' in difference for difference in result['diff'])
+
+
+@pytest.mark.parametrize('source', ['pdf', 'wav'])
+@pytest.mark.parametrize('observed_kind', ['document', 'transcript', None], ids=['document', 'transcript', 'missing'])
+@pytest.mark.parametrize('qualified', [False, True], ids=['plain', 'qualified'])
+def test_claim_kind_and_attribution_are_bound_to_manifest_source(source, observed_kind, qualified):
+    manifest, expected, actual = sample()
+    expected['answers']['answer']['citations'][0]['document_id'] = source
+    citation = actual['answer']['citations'][0]
+    citation['document_id'] = source
+    if observed_kind is None:
+        citation.pop('evidence_kind', None)
+    else:
+        citation['evidence_kind'] = observed_kind
+    text = (gate.TRANSCRIPT_QUALIFIER if qualified else '') + 'The parcel is blue.'
+    actual['answer']['text'] = actual['answer']['claims'][0]['text'] = text
+    expected_kind = 'transcript' if source == 'wav' else 'document'
+    passes = observed_kind == expected_kind and qualified == (source == 'wav')
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is passes
 
 
 @pytest.mark.parametrize('present,answerable', [(False, None), (True, None), (True, False),
@@ -258,7 +282,8 @@ def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, v
         'alternative_spans': ['parcel is in locker 7'],
     }]
     actual['answer']['text'] = excerpt
-    actual['answer']['citations'] = [{'document_id':'pdf', 'excerpt':excerpt, 'source_valid':valid}]
+    actual['answer']['citations'] = [{'document_id':'pdf', 'excerpt':excerpt, 'source_valid':valid,
+                                     'evidence_kind':'document'}]
     actual['answer']['claims'] = [{'text':excerpt, 'citations':actual['answer']['citations']}]
     result = next(r for r in gate.compare(manifest, expected, actual) if r['id'] == 'answer')
     assert result['passed'] is passes
@@ -286,9 +311,12 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
             {'document_id':source, 'excerpt':'Synthetic search support', 'source_valid':True}
             for source in want['document_ids']]}
     for key, want in expected['answers'].items():
-        citations = [{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True}
+        audio_ids = {source['id'] for source in manifest['audio']}
+        citations = [{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True,
+                      'evidence_kind':'transcript' if c['document_id'] in audio_ids else 'document'}
                      for c in want['citations']]
-        claims = [{'text':c['excerpt'], 'citations':[c]} for c in citations]
+        claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if c['evidence_kind'] == 'transcript' else '') + c['excerpt'],
+                   'citations':[c]} for c in citations]
         actual[key] = {'text':' '.join(claim['text'] for claim in claims), 'route':'question',
             'dispatched':True, 'answerable':True, 'citations':citations, 'claims':claims}
     assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))

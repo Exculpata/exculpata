@@ -211,3 +211,30 @@ def test_actual_corpus_shared_facts_cannot_hide_swapped_full_claim_support():
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer-bicycle')
     assert result['passed'] is False
     assert any('complete claim' in difference for difference in result['diff'])
+
+
+@pytest.mark.parametrize('kind', ['document', None], ids=['mislabeled', 'missing'])
+def test_actual_spoken_source_kind_cannot_remove_transcript_attribution(kind):
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    positive = gate.compare(manifest, expected, actual)
+    assert len(positive) == 12 and all(row['passed'] for row in positive), positive
+    answer = actual['answer-spoken']
+    assert len(answer['claims']) == 1
+    claim = answer['claims'][0]
+    assert claim['text'].startswith(gate.TRANSCRIPT_QUALIFIER)
+    assert {citation['document_id'] for citation in claim['citations']} == {'audio-bicycle'}
+    claim['text'] = claim['text'][len(gate.TRANSCRIPT_QUALIFIER):]
+    for citation in claim['citations']:
+        assert citation['evidence_kind'] == 'transcript'
+        if kind is None:
+            del citation['evidence_kind']
+        else:
+            citation['evidence_kind'] = kind
+    answer['text'] = claim['text']
+    answer['citations'] = claim['citations']
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer-spoken')
+    assert result['passed'] is False
+    assert any('complete claim' in difference for difference in result['diff'])
