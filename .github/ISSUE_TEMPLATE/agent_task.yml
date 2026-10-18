@@ -17,8 +17,8 @@ body:
   - type: textarea
     id: restate_goal
     attributes:
-      label: Restate the goal and user-visible outcome
-      description: Before coding, the agent posts its own restatement as its first kickoff comment, checks it matches this issue, and resolves any mismatch with the issue author.
+      label: Issue author's goal and user-visible outcome
+      description: The issue author records the requested outcome here. Before coding, the agent posts its own restatement as its first kickoff comment, checks it matches this issue, and resolves any mismatch with the issue author. This form entry does not replace that comment; link the agent's comment in the PR for review.
     validations: {required: true}
   - type: dropdown
     id: level

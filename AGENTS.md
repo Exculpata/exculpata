@@ -13,6 +13,16 @@ existing work and holds. In your first kickoff comment, restate the goal and
 user-visible outcome in your own words. Compare it with the issue's scope and
 acceptance criteria; code starts only after they match. Resolve any mismatch
 with the issue author before proceeding. Keep changes focused on that outcome.
+The issue author's form entry is not the agent's kickoff. Link the agent's first
+kickoff comment in the PR. Before marking it ready, the reviewer checks the
+comment's author, timestamp before the first implementation commit, and scope
+against the issue; an absent or mismatched kickoff blocks readiness.
+
+## Keep public language neutral
+
+Use neutral criminal-defense terminology in code, comments, docs, commits and
+PR text. Never disclose private organizational affiliations, employer details,
+office names or professional titles. Use synthetic examples only.
 
 ## Correct the environment, not the agent
 
@@ -39,7 +49,8 @@ behavioral guarantees into tests or track the remaining work in an issue.
 
 | Rule | Enforced by |
 | --- | --- |
-| Match the kickoff goal and user-visible outcome to the issue before coding. | Required `restate_goal` in `.github/ISSUE_TEMPLATE/agent_task.yml`; `tests/test_issue_templates.py` checks the form; kickoff review checks meaning because scope alignment requires judgment. |
+| Match the agent's kickoff goal and user-visible outcome to the issue before coding. | The issue form records the author's goal; the PR template requires the agent's kickoff permalink. Before readiness, a reviewer verifies its author, timing and scope. `tests/test_issue_templates.py` checks these prompts, not the later comment; human review verifies the actual evidence. |
+| Keep public language neutral and exclude private organizational details. | The installed publication guard checks configured private terms; review checks terminology and public text outside Git because a generic scan cannot identify every private affiliation. `tests/test_issue_templates.py` guards the guidance and this enforcement row. |
 | Fix repeated mistakes at the highest effective level and explain lower-level choices. | Required fix-level field; PR review checks the choice because effectiveness depends on the failure. |
 | Supply a synthetic regression and name the failing commit. | Required regression field; the application CI suite runs tests; PR review verifies the historical failure evidence. |
 | Encode intent in implementation; give workaround comments an issue and expiry. | Code review checks intent, workaround relevance and expiry because syntax alone cannot establish them. |

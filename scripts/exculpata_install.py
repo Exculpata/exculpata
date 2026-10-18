@@ -224,6 +224,7 @@ RELEASE_FILES = (
     "AGENTS.md",
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
+    "CODING_STANDARDS.md",
     "CONTRIBUTING.md",
     "Dockerfile",
     "LICENSE",

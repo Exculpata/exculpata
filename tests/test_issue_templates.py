@@ -104,3 +104,38 @@ def test_agent_guidance_links_standards_and_preserves_safeguards() -> None:
                       'QUALITY_GATES.md#review-policy', 'backup', 'restore drill',
                       'Python 3.12', 'scripts/bootstrap-dev.py'):
         assert safeguard in detailed
+
+
+def test_agent_kickoff_is_verified_separately_from_the_authors_form_entry() -> None:
+    fields = {field['id']: field for field in agent_form()['body'] if 'id' in field}
+    kickoff = fields['restate_goal']['attributes']
+    assert "Issue author's goal" in kickoff['label']
+    assert 'This form entry does not replace that comment' in kickoff['description']
+    guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
+    pr = (ROOT / '.github/pull_request_template.md').read_text(encoding='utf-8')
+    assert 'Kickoff permalink:' in pr
+    for text in (guide, pr):
+        assert "comment's author" in text
+        assert 'first implementation commit' in text
+        assert 'blocks readiness' in text
+    assert 'human review verifies the actual evidence' in guide
+
+
+def test_neutral_language_rule_has_a_durable_enforcement_contract() -> None:
+    guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
+    assert '## Keep public language neutral' in guide
+    for text in (guide, (TEMPLATES / 'agent_task.yml').read_text(encoding='utf-8')):
+        for requirement in ('neutral criminal-defense terminology',
+                            'private organizational affiliations', 'synthetic examples only'):
+            assert requirement in text
+    rows = [line for line in guide.splitlines() if line.startswith('| Keep public language neutral')]
+    assert len(rows) == 1
+    assert 'installed publication guard' in rows[0]
+    assert 'public text outside Git' in rows[0]
+
+
+def test_hash_locked_test_environment_includes_the_yaml_parser() -> None:
+    lock = (ROOT / 'requirements/application-test.lock').read_text(encoding='utf-8')
+    match = re.search(r'^pyyaml==6\.[^\n]+\n(?:[ \t]+[^\n]+\n)+', lock, re.MULTILINE)
+    assert match, 'Regenerate application-test.lock when adding the YAML parser'
+    assert '--hash=sha256:' in match.group()
