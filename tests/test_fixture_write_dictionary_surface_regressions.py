@@ -46,8 +46,10 @@ def test_scalar_or_path_keys_do_not_carry_reachable_connection_ownership(key):
 def test_dictionary_controls_preserve_the_supported_distinction(source):
     prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
     # A shared value remains explicitly unsupported even when its key is independent.
-    if 'handle :=' in source:
+    if 'handle :=' in source or '[bench.workspace.connection]' in source:
         assert check_fixture_writes(prefix + source)
+        if '[bench.workspace.connection]' in source:
+            assert check_fixture_writes(prefix + source.replace('[bench.workspace.connection]', '(bench.workspace.connection,)')) == []
     else:
         assert check_fixture_writes(prefix + source) == []
 

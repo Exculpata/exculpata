@@ -83,7 +83,9 @@ def test_group_writes_authority_uniqueness_attribution_and_concurrency(tmp_path)
     def grant(connection):
         connection.set_matter_group_grant(a.matter_id, first, 'principal-owner', present=True)
     with ThreadPoolExecutor(2) as pool:
-        list(pool.map(grant, (store, other)))
+        pending = [pool.submit(grant, workspace) for workspace in (store, other)]
+        for future in pending:
+            future.result()
     assert len(store.matter_group_grants(a.matter_id)) == 1
     events = [e for e in store.audit_events(a.matter_id) if e.action == 'membership.group_add']
     assert len(events) == 1 and events[0].actor_principal_id == 'principal-owner' and events[0].object_id == first

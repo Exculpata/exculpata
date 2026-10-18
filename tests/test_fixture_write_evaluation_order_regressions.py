@@ -28,7 +28,10 @@ def test_subscript_uses_the_container_captured_before_its_index(action):
 
 def test_subscript_rebinding_does_not_retroactively_change_an_independent_base():
     source = "import sqlite3\nindependent = sqlite3.connect(':memory:')\nholder = [independent]\nshared = [bench.workspace.connection]\nhandle = holder[(holder := shared) and 0]\nhandle.close()"
-    assert check_fixture_writes(source) == []
+    violations = check_fixture_writes(source)
+    assert violations and {v.line for v in violations} == {4}
+    assert not any('close' in v.rule for v in violations)
+    assert check_fixture_writes(source.replace('shared = [bench.workspace.connection]', 'shared = (bench.workspace.connection,)')) == []
 
 
 @pytest.mark.parametrize('action', [
@@ -125,4 +128,9 @@ def test_argument_walrus_executes_through_original_shared_connection_before_reje
     'def inspect():\n    global handle\n    class Local:\n        handle = bench.workspace.connection\ninspect()',
 ])
 def test_nested_local_bindings_do_not_inherit_outer_global_declaration(source):
-    assert check_fixture_writes(source) == []
+    if 'return [handle' in source:
+        violations = check_fixture_writes(source)
+        assert violations and {v.line for v in violations} == {3}
+        assert not any('global/nonlocal' in v.rule for v in violations)
+    else:
+        assert check_fixture_writes(source) == []

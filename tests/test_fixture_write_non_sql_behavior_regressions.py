@@ -1,3 +1,4 @@
+from tests.fixture_probe import fixture_probe
 """Actual isolated SQLite mutations behind the non-SQL ownership inventory."""
 import sqlite3
 import threading
@@ -110,7 +111,9 @@ def test_yielded_proxy_rejects_factory_deletion_without_touching_raw_state(sqlit
         operation = (f'sqlite3.{descriptor_type}.{attribute}.__delete__(handle)' if descriptor
                      else f'del handle.{attribute}')
         with pytest.raises(TypeError if descriptor else RuntimeError):
-            exec(operation, {'handle': handle, 'sqlite3': sqlite3})
+            error, _ = fixture_probe(operation, handle=handle, sqlite3=sqlite3)
+            if error is not None:
+                raise error
         assert getattr(raw, attribute) is original
         assert connection.execute("SELECT 'synthetic untouched'").fetchone()[0] == 'synthetic untouched'
 

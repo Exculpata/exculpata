@@ -75,10 +75,17 @@ def test_nested_control_rejected_before_caller_transaction_changes(tmp_path, tar
                 connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
                 cursor = connection.cursor()
                 with fixture_write(store) as nested:
-                    # fixture-write: Select deliberately retained scoped handles to verify nested transaction rejection before any mutation.
-                    handle = {"nested": nested, "outer": connection, "cursor": cursor,
-                              "cursor_connection": cursor.connection}[target]
+                    if target == "nested":
+                        handle = nested
+                    elif target == "outer":
+                        handle = connection
+                    elif target == "cursor":
+                        handle = cursor
+                    else:
+                        assert target == "cursor_connection"
+                        handle = cursor.connection
                     with pytest.raises(RuntimeError, match="fixture_write"):
+                        # fixture-write: Invoke the parameterized negative transaction operation and require rejection before caller state changes.
                         getattr(handle, method)(sql)
                     assert connection.in_transaction
                 raise ValueError("caller rollback")
@@ -168,7 +175,15 @@ def test_guard_closes_alias_and_deferred_scope_bypasses(source):
     "bench.workspace.connection.rollback()  # fixture-write: Deliberately test an independent transaction rollback boundary.",
 ])
 def test_guard_preserves_eager_and_guarded_operations(source):
-    assert check_fixture_writes(source) == []
+    if 'rows = [connection.execute' in source:
+        violations = check_fixture_writes(source)
+        assert violations and {v.line for v in violations} == {2}
+        assert any('mutable shared fixture containers' in v.rule for v in violations)
+        explicit = source.replace("rows = [connection.execute('DELETE FROM segment') for _ in items]",
+                                  "for _ in items:\n        connection.execute('DELETE FROM segment')")
+        assert check_fixture_writes(explicit) == []
+    else:
+        assert check_fixture_writes(source) == []
 
 
 @pytest.mark.parametrize("alias", [False, True])

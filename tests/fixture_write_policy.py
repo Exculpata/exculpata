@@ -44,13 +44,124 @@ _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 
 
+# Reviewed Python AST shapes; unknown nodes or fields fail closed before data flow.
+_AST_FIELDS = {
+    ast.Module: ('body', 'type_ignores'),
+    ast.FunctionDef: ('name', 'args', 'body', 'decorator_list', 'returns', 'type_comment', 'type_params'),
+    ast.AsyncFunctionDef: ('name', 'args', 'body', 'decorator_list', 'returns', 'type_comment', 'type_params'),
+    ast.ClassDef: ('name', 'bases', 'keywords', 'body', 'decorator_list', 'type_params'),
+    ast.Return: ('value',),
+    ast.Delete: ('targets',),
+    ast.Assign: ('targets', 'value', 'type_comment'),
+    ast.AnnAssign: ('target', 'annotation', 'value', 'simple'),
+    ast.AugAssign: ('target', 'op', 'value'),
+    ast.For: ('target', 'iter', 'body', 'orelse', 'type_comment'),
+    ast.AsyncFor: ('target', 'iter', 'body', 'orelse', 'type_comment'),
+    ast.While: ('test', 'body', 'orelse'),
+    ast.If: ('test', 'body', 'orelse'),
+    ast.With: ('items', 'body', 'type_comment'),
+    ast.AsyncWith: ('items', 'body', 'type_comment'),
+    ast.Match: ('subject', 'cases'),
+    ast.Raise: ('exc', 'cause'),
+    ast.Try: ('body', 'handlers', 'orelse', 'finalbody'),
+    ast.Assert: ('test', 'msg'),
+    ast.Import: ('names',),
+    ast.ImportFrom: ('module', 'names', 'level'),
+    ast.Global: ('names',),
+    ast.Nonlocal: ('names',),
+    ast.Expr: ('value',),
+    ast.Pass: (),
+    ast.Break: (),
+    ast.Continue: (),
+    ast.BoolOp: ('op', 'values'),
+    ast.NamedExpr: ('target', 'value'),
+    ast.BinOp: ('left', 'op', 'right'),
+    ast.UnaryOp: ('op', 'operand'),
+    ast.Lambda: ('args', 'body'),
+    ast.IfExp: ('test', 'body', 'orelse'),
+    ast.Dict: ('keys', 'values'),
+    ast.Set: ('elts',),
+    ast.ListComp: ('elt', 'generators'),
+    ast.SetComp: ('elt', 'generators'),
+    ast.DictComp: ('key', 'value', 'generators'),
+    ast.GeneratorExp: ('elt', 'generators'),
+    ast.Await: ('value',),
+    ast.Yield: ('value',),
+    ast.YieldFrom: ('value',),
+    ast.Compare: ('left', 'ops', 'comparators'),
+    ast.Call: ('func', 'args', 'keywords'),
+    ast.FormattedValue: ('value', 'conversion', 'format_spec'),
+    ast.JoinedStr: ('values',),
+    ast.Constant: ('value', 'kind'),
+    ast.Attribute: ('value', 'attr', 'ctx'),
+    ast.Subscript: ('value', 'slice', 'ctx'),
+    ast.Starred: ('value', 'ctx'),
+    ast.Name: ('id', 'ctx'),
+    ast.List: ('elts', 'ctx'),
+    ast.Tuple: ('elts', 'ctx'),
+    ast.Slice: ('lower', 'upper', 'step'),
+    ast.Load: (),
+    ast.Store: (),
+    ast.Del: (),
+    ast.And: (),
+    ast.Or: (),
+    ast.Add: (),
+    ast.Sub: (),
+    ast.Mult: (),
+    ast.MatMult: (),
+    ast.Div: (),
+    ast.Mod: (),
+    ast.Pow: (),
+    ast.LShift: (),
+    ast.RShift: (),
+    ast.BitOr: (),
+    ast.BitXor: (),
+    ast.BitAnd: (),
+    ast.FloorDiv: (),
+    ast.Invert: (),
+    ast.Not: (),
+    ast.UAdd: (),
+    ast.USub: (),
+    ast.Eq: (),
+    ast.NotEq: (),
+    ast.Lt: (),
+    ast.LtE: (),
+    ast.Gt: (),
+    ast.GtE: (),
+    ast.Is: (),
+    ast.IsNot: (),
+    ast.In: (),
+    ast.NotIn: (),
+    ast.comprehension: ('target', 'iter', 'ifs', 'is_async'),
+    ast.ExceptHandler: ('type', 'name', 'body'),
+    ast.arguments: ('posonlyargs', 'args', 'vararg', 'kwonlyargs', 'kw_defaults', 'kwarg', 'defaults'),
+    ast.arg: ('arg', 'annotation', 'type_comment'),
+    ast.keyword: ('arg', 'value'),
+    ast.alias: ('name', 'asname'),
+    ast.withitem: ('context_expr', 'optional_vars'),
+    ast.match_case: ('pattern', 'guard', 'body'),
+    ast.MatchValue: ('value',),
+    ast.MatchSingleton: ('value',),
+    ast.MatchSequence: ('patterns',),
+    ast.MatchMapping: ('keys', 'patterns', 'rest'),
+    ast.MatchClass: ('cls', 'patterns', 'kwd_attrs', 'kwd_patterns'),
+    ast.MatchStar: ('name',),
+    ast.MatchAs: ('pattern', 'name'),
+    ast.MatchOr: ('patterns',),
+    ast.TypeIgnore: ('lineno', 'tag'),
+}
+
+
 @dataclass(frozen=True)
 class Violation:
     filename: str
     line: int
     rule: str
+    structural: bool = False
 
     def __str__(self) -> str:
+        if self.structural:
+            return f"{self.filename}:{self.line}: {self.rule}; use explicit named handles with fixture_write(); comments cannot exempt unsupported syntax"
         return f"{self.filename}:{self.line}: {self.rule}; use fixture_write(workspace) or document this exact intentional raw operation"
 
 
@@ -97,7 +208,6 @@ class _Check(ast.NodeVisitor):
         self.active_calls: set[str] = set()
         # Evaluated calls and literal containers capture values before later rebindings.
         self.evaluated_values: dict[ast.AST, _Value] = {}
-        self.container_updates: dict[int, tuple[_Value, _Value]] = {}
         self.return_values: list[_Value] = []
         self.outer_write_names: set[str] | None = None
         # Owning locks permit connection configuration, not SQL transactions.
@@ -142,9 +252,9 @@ class _Check(ast.NodeVisitor):
         if node is None:
             return _Value()
         if node in self.evaluated_values:
-            return self.current_value(self.evaluated_values[node])
+            return self.evaluated_values[node]
         if isinstance(node, ast.Name):
-            return self.current_value(self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None)))
+            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None))
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
@@ -198,6 +308,8 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
+            if node.attr in {"append", "extend", "insert", "add", "__setitem__", "__iadd__"}:
+                return _Value(symbol=symbol, receiver=base)
             if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | {"update"}:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
             if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
@@ -313,25 +425,25 @@ class _Check(ast.NodeVisitor):
     def workspace_symbols(self) -> set[str]:
         return {value.symbol for value in self.aliases.values() if value.workspace}
 
-    def flag(self, node: ast.AST, rule: str) -> None:
+    def flag(self, node: ast.AST, rule: str, *, structural: bool = False) -> None:
         statement = node
         while not isinstance(statement, ast.stmt) and statement in self.parents:
             if isinstance(statement, (ast.Lambda, ast.GeneratorExp)):
                 break
             statement = self.parents[statement]
-        if statement not in self.exempt:
-            violation = Violation(self.filename, node.lineno, rule)
+        if structural or statement not in self.exempt:
+            violation = Violation(self.filename, getattr(node, "lineno", getattr(statement, "lineno", 1)), rule, structural)
             if violation not in self.violations:
                 self.violations.append(violation)
 
     def bind(self, target: ast.AST, value: _Value, *, check_outer_write: bool = True) -> None:
         if self.unresolved_ownership(value) and hasattr(target, "lineno"):
-            self.flag(target, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(target, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         if isinstance(target, ast.Name):
             if (check_outer_write and self.outer_write_names is not None and target.id in self.outer_write_names
                     and target.id not in self.comprehension_locals
                     and self.known_ownership(value, shared_only=True)):
-                self.flag(target, "shared global/nonlocal fixture writes are unsupported; return an explicit handle")
+                self.flag(target, "shared global/nonlocal fixture writes are unsupported; return an explicit handle", structural=True)
             self.aliases[target.id] = value
             if self.collect_bindings and (self.class_outer_aliases is None or target.id in self.class_outer_names):
                 self.late_bindings.setdefault(target.id, []).append(value)
@@ -348,7 +460,10 @@ class _Check(ast.NodeVisitor):
                 end = len(values) - (len(target.elts) - index - 1)
                 for item, element in zip(target.elts[:index], values[:index]):
                     self.bind(item, element)
-                self.bind(target.elts[index], _Value(elements=values[index:end]))
+                rest = _Value(elements=values[index:end])
+                if self.known_ownership(rest, shared_only=True) or self.has_active_path(rest):
+                    self.flag(target.elts[index], "starred assignment creates an unsupported fixture list; use fixed unpacking and fixture_write()", structural=True)
+                self.bind(target.elts[index], rest)
                 for item, element in zip(target.elts[index + 1:], values[end:]):
                     self.bind(item, element)
             else:
@@ -367,8 +482,7 @@ class _Check(ast.NodeVisitor):
             self.visit(target.slice)
             marker = self.payload_value([value])
             if self.unresolved_ownership(marker):
-                self.taint_container(receiver, marker)
-                self.flag(target, "shared or active-path container stores are unsupported; use explicit named handles")
+                self.flag(target, "shared or active-path container stores are unsupported; use explicit named handles", structural=True)
             else:
                 self.visit(target)
 
@@ -385,16 +499,19 @@ class _Check(ast.NodeVisitor):
         if (self.unresolved_ownership(value) or
                 ((value.elements is not None or value.mapping is not None)
                  and self.known_ownership(value, shared_only=True))):
-            self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles")
+            self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles", structural=True)
 
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, ast.Load) and self.unresolved_ownership(self.value(node)):
-            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self.visit(node.value)
+        base = self.value(node.value)
+        if base.elements is not None and self.known_ownership(base, shared_only=True):
+            self.flag(node, "shared tuple attribute extraction is unsupported; unpack named handles and use fixture_write()", structural=True)
         if self.unresolved_ownership(self.value(node)):
-            self.flag(node, "attributes of unresolved shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node, "attributes of unresolved shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     def visit_Tuple(self, node: ast.Tuple) -> None:
         inputs, elements = [], []
@@ -411,11 +528,21 @@ class _Check(ast.NodeVisitor):
                 elements.append(value)
         self.evaluated_values[node] = (self.payload_value(inputs)
             if opaque else _Value(elements=tuple(elements)))
+        if opaque and self.unresolved_ownership(self.evaluated_values[node]):
+            self.flag(node, "opaque fixture tuple expansion is unsupported; use fixed tuples and fixture_write()", structural=True)
 
-    visit_List = visit_Tuple
+    def visit_List(self, node: ast.List) -> None:
+        self.visit_Tuple(node)
+        self.reject_mutable_carrier(node, self.value(node))
+
+    def reject_mutable_carrier(self, node, value):
+        if self.known_ownership(value, shared_only=True):
+            self.flag(node, "mutable shared fixture containers are unsupported; use fixed tuples and fixture_write()", structural=True)
+
 
     def visit_Set(self, node: ast.Set) -> None:
         self.visit_Tuple(node)
+        self.reject_mutable_carrier(node, self.value(node))
         marker = self.payload_value([self.evaluated_values[node]])
         if self.unresolved_ownership(marker):
             # Set iteration has no positional correspondence to source order.
@@ -444,8 +571,9 @@ class _Check(ast.NodeVisitor):
         shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
         self.evaluated_values[node] = (_Value(unresolved_shared_container=shared) if opaque
                                   else _Value(mapping=tuple(mapping.items())))
-        if opaque and shared:
-            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+        self.reject_mutable_carrier(node, self.evaluated_values[node])
+        if shared:
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     @staticmethod
     def unresolved_ownership(value: _Value) -> bool:
@@ -455,7 +583,6 @@ class _Check(ast.NodeVisitor):
         ))
 
     def container_accessor_value(self, receiver: _Value, method: str) -> _Value | None:
-        receiver = self.current_value(receiver)
         if method not in _DICT_VALUE_METHODS | {"*"}:
             return None
         if (self.unresolved_ownership(receiver) or
@@ -467,25 +594,9 @@ class _Check(ast.NodeVisitor):
                               unresolved_active_path=active_path, active_path=active_path)
         return None
 
-    def current_value(self, value: _Value) -> _Value:
-        update = self.container_updates.get(id(value))
-        if update is not None and update[0] is value:
-            return self.current_value(update[1])
-        receiver = self.current_value(value.receiver) if value.receiver is not None else None
-        elements = tuple(self.current_value(item) for item in value.elements) if value.elements is not None else None
-        mapping = tuple((key, self.current_value(item)) for key, item in value.mapping) if value.mapping is not None else None
-        if receiver is not value.receiver or elements != value.elements or mapping != value.mapping:
-            return replace(value, receiver=receiver, elements=elements, mapping=mapping)
-        return value
-
     def payload_value(self, values: list[_Value]) -> _Value:
-        values = [self.current_value(value) for value in values]
         return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
-
-    def taint_container(self, receiver: _Value, marker: _Value) -> None:
-        receiver = self.current_value(receiver)
-        self.container_updates[id(receiver)] = (receiver, self.payload_value([receiver, marker]))
 
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
         mapping = {}
@@ -630,7 +741,7 @@ class _Check(ast.NodeVisitor):
             destructures = any(isinstance(pattern, (ast.MatchSequence, ast.MatchMapping, ast.MatchClass))
                                for pattern in ast.walk(case.pattern))
             if self.known_ownership(subject, shared_only=True) and destructures:
-                self.flag(case.pattern, "destructuring a known shared fixture value is unsupported; use explicit named handles")
+                self.flag(case.pattern, "destructuring a known shared fixture value is unsupported; use explicit named handles", structural=True)
             self.visit(case.pattern)
             for pattern in ast.walk(case.pattern):
                 name = getattr(pattern, "name", None) or getattr(pattern, "rest", None)
@@ -666,7 +777,7 @@ class _Check(ast.NodeVisitor):
             ends.append(self.aliases.copy())
         self.aliases = self.merge_aliases(*ends)
         if self.unresolved_ownership(self.value(node)):
-            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     def visit_BoolOp(self, node: ast.BoolOp) -> None:
         ends = []
@@ -678,7 +789,7 @@ class _Check(ast.NodeVisitor):
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
         if self.unresolved_ownership(self.value(node.iter)):
-            self.flag(node.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         self.visit_loop(node, target=node.target)
 
     visit_AsyncFor = visit_For
@@ -902,13 +1013,13 @@ class _Check(ast.NodeVisitor):
         self.visit(node.func)
         function = self.value(node.func)
         if self.unresolved_ownership(function):
-            self.flag(node, "shared container accessors are unsupported; use explicit named handles")
+            self.flag(node, "shared container accessors are unsupported; use explicit named handles", structural=True)
             self.evaluated_values[node] = function
         arguments_before = [self.value(argument.value if isinstance(argument, ast.Starred) else argument)
                             for argument in node.args]
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
         if any(self.unresolved_ownership(value) for value in arguments_before):
-            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         actual_values, opaque_values = [], []
         for argument in node.args:
             operand = argument.value if isinstance(argument, ast.Starred) else argument
@@ -926,7 +1037,28 @@ class _Check(ast.NodeVisitor):
             self.visit(keyword.value)
             keyword_values.append((keyword.arg, self.value(keyword.value)))
         if any(self.unresolved_ownership(value) for value in [*actual_values, *opaque_values, *(v for _, v in keyword_values)]):
-            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
+        operands = [*actual_values, *opaque_values, *(v for _, v in keyword_values)]
+        shared_tuples = [v for v in operands if v.elements is not None and self.known_ownership(v, shared_only=True)]
+        thread_arguments = (function.symbol == "threading.Thread"
+                            and not any(v.elements is not None and self.known_ownership(v, shared_only=True)
+                                        for v in [*actual_values, *opaque_values])
+                            and all(key == "args" for key, v in keyword_values
+                                    if v.elements is not None and self.known_ownership(v, shared_only=True)))
+        if shared_tuples and function.symbol not in self.local_functions and not thread_arguments:
+            self.flag(node, "opaque shared tuple consumers are unsupported; use fixed helper parameters and fixture_write()", structural=True)
+        method_name = function.symbol.rsplit(".", 1)[-1]
+        if (function.receiver is not None or function.dictionary_accessor) and method_name in {"append", "extend", "insert", "add", "update", "setdefault", "__setitem__", "__ior__", "__iadd__"}:
+            if any(self.known_ownership(v, shared_only=True) or self.has_active_path(v) for v in operands):
+                self.flag(node, "shared or active-path container mutation is unsupported; use named handles and fixture_write()", structural=True)
+        if function.symbol in {"tuple", "list", "set", "frozenset", "dict", "builtins.tuple", "builtins.list", "builtins.set", "builtins.frozenset", "builtins.dict"}:
+            materializes_rows = (function.symbol in {"tuple", "list", "builtins.tuple", "builtins.list"}
+                                 and len(actual_values) == 1 and not opaque_values and not keyword_values
+                                 and actual_values[0].sqlite_cursor)
+            transports_path = (function.symbol not in {"dict", "builtins.dict"}
+                               and any(self.has_active_path(v) for v in operands))
+            if not materializes_rows and (transports_path or any(self.known_ownership(v, shared_only=True) for v in operands)):
+                self.flag(node, "shared fixture container constructors are unsupported; use literal tuples and fixture_write()", structural=True)
         explicit_receiver = actual_values[0] if actual_values and not opaque_values else None
         owner, _, method = function.symbol.rpartition('.')
         dictionary_method = function.dictionary_method or (method if owner in {"dict", "builtins.dict"} else "*")
@@ -939,29 +1071,26 @@ class _Check(ast.NodeVisitor):
             if dictionary_method == "update":
                 marker = self.payload_value([*dictionary_arguments, *opaque_values, *(v for _, v in keyword_values)])
                 if dictionary_receiver is not None and self.unresolved_ownership(marker):
-                    self.taint_container(dictionary_receiver, marker)
-                    self.flag(node, "shared or active-path container updates are unsupported; use explicit named handles")
+                    self.flag(node, "shared or active-path container updates are unsupported; use explicit named handles", structural=True)
                 self.evaluated_values[node] = _Value()
             elif self.unresolved_ownership(marker):
                 self.evaluated_values[node] = marker
-                self.flag(node, "container accessors with shared handles or active workspace paths are unsupported")
-                if dictionary_method == "setdefault" and dictionary_receiver is not None:
-                    self.taint_container(dictionary_receiver, marker)
+                self.flag(node, "container accessors with shared handles or active workspace paths are unsupported", structural=True)
         if function.dictionary_fromkeys and explicit_receiver is not None:
             result = self.fromkeys_value(explicit_receiver, actual_values[1] if len(actual_values) > 1 else _Value())
             self.evaluated_values[node] = result
             if self.unresolved_ownership(result):
-                self.flag(node, "dictionary keys/defaults with shared handles or active workspace paths are unsupported")
+                self.flag(node, "dictionary keys/defaults with shared handles or active workspace paths are unsupported", structural=True)
         if function.symbol in {"dict", "builtins.dict"}:
             result = self.dictionary_value([*actual_values, *opaque_values], keyword_values)
             self.evaluated_values[node] = result
             if self.unresolved_ownership(result):
-                self.flag(node, "opaque dictionary construction with fixture provenance is unsupported")
+                self.flag(node, "opaque dictionary construction with fixture provenance is unsupported", structural=True)
         argument_nodes = [*node.args, *(keyword.value for keyword in node.keywords)]
         if (any(isinstance(item, ast.NamedExpr) for argument in argument_nodes for item in ast.walk(argument))
                 and any(self.known_ownership(value, shared_only=True)
                         for value in [function, *arguments_before, *(self.value(argument) for argument in argument_nodes)])):
-            self.flag(node, "assignment expressions in shared fixture call arguments are unsupported; bind values before the call")
+            self.flag(node, "assignment expressions in shared fixture call arguments are unsupported; bind values before the call", structural=True)
         if function.setter_attribute is not None and function.symbol.endswith(".__delete__") and node.args:
             target = ast.copy_location(ast.Attribute(value=node.args[0], attr=function.setter_attribute, ctx=ast.Del()), node)
             self.parents[target] = node
@@ -1143,14 +1272,14 @@ class _Check(ast.NodeVisitor):
             return
         shared = any(self.known_ownership(value, shared_only=True) for value in values)
         if any(self.known_ownership(value, shared_only=True) for value in variadic_values):
-            self.flag(call, "variadic helpers with shared fixture ownership are unsupported; use explicit named parameters")
+            self.flag(call, "variadic helpers with shared fixture ownership are unsupported; use explicit named parameters", structural=True)
             return None
         if shared and (isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)):
-            self.flag(call, "async/generator helper results with shared ownership are unsupported by fixture_write")
+            self.flag(call, "async/generator helper results with shared ownership are unsupported by fixture_write", structural=True)
             return None
         if function.symbol in self.active_calls:
             if shared and not isinstance(self.parents.get(call), ast.Expr):
-                self.flag(call, "recursive helper results with shared ownership are unsupported by fixture_write")
+                self.flag(call, "recursive helper results with shared ownership are unsupported by fixture_write", structural=True)
             return None
         previous = self.aliases
         self.aliases = environment
@@ -1438,7 +1567,7 @@ class _Check(ast.NodeVisitor):
                 self.visit(generator.iter)
             iterable = self.value(generator.iter) if index else first_iterable
             if iterable is not None and self.unresolved_ownership(iterable):
-                self.flag(generator.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+                self.flag(generator.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
             elements = iterable.elements if iterable is not None else None
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
             self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
@@ -1452,11 +1581,12 @@ class _Check(ast.NodeVisitor):
             shared = any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value)))
             self.evaluated_values[node] = _Value(unresolved_shared_container=shared)
             if shared:
-                self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles")
+                self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles", structural=True)
         else:
             self.visit(node.elt)
             if not deferred:
                 element = self.value(node.elt)
+                self.reject_mutable_carrier(node, element)
                 self.evaluated_values[node] = (_Value(receiver=element)
                     if element.fixture_handle and element.connection in self.protected
                     else self.payload_value([element]))
@@ -1485,7 +1615,15 @@ class _Check(ast.NodeVisitor):
 
 def check_fixture_writes(source: str, filename: str = "<fixture>") -> list[Violation]:
     """Return actionable boundary violations without importing the test module."""
-    tree = ast.parse(source, filename=filename)
+    try:
+        tree = ast.parse(source, filename=filename)
+    except SyntaxError as error:
+        return [Violation(filename, error.lineno or 1, "unsupported syntax; use fixture_write() and supported Python syntax", True)]
     checker = _Check(source, filename, tree)
-    checker.visit(tree)
+    for node in ast.walk(tree):
+        fields = _AST_FIELDS.get(type(node))
+        if fields is None or tuple(node._fields) != fields or getattr(node, "type_params", ()):
+            checker.flag(node, "unsupported syntax requires an explicit fixture_write() boundary and reviewed AST support", structural=True)
+    if not checker.violations:
+        checker.visit(tree)
     return checker.violations

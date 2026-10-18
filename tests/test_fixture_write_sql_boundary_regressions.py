@@ -1,3 +1,5 @@
+from textwrap import dedent
+from tests.fixture_probe import fixture_probe
 """Synthetic SQL state and alias boundary regressions."""
 import sqlite3
 
@@ -170,25 +172,35 @@ def test_empty_context_cannot_hide_read_first_outer_fixture(tmp_path):
 
 def test_public_workspace_query_uses_scoped_row_factory(tmp_path):
     store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
-    captured = []
-    def factory(cursor, row):
-        captured.append(cursor.connection)
-        return dict(zip([column[0] for column in cursor.description], row))
-    try:
-        principal = store.upsert_principal('local', 'synthetic', 'Synthetic reviewer', 'synthetic')
-        original = store.connection.row_factory
-        with fixture_write(store) as connection:
-            connection.row_factory = factory
-            assert connection.row_factory is factory
-            # fixture-write: Probe a public query on an isolated synthetic store to verify scoped callback handles.
+    source = dedent("""\
+        import pytest
+        import sqlite3
+        from tests.fixture_write import fixture_write
+        store = workspace
+        captured = []
+        def factory(cursor, row):
+            captured.append(cursor.connection)
+            return dict(zip([column[0] for column in cursor.description], row))
+        try:
+            principal = store.upsert_principal('local', 'synthetic', 'Synthetic reviewer', 'synthetic')
+            original = store.connection.row_factory
+            with fixture_write(store) as connection:
+                connection.row_factory = factory
+                assert connection.row_factory is factory
+                # fixture-write: Probe a public query on an isolated synthetic store to verify scoped callback handles.
+                assert store.principal_preference(principal.principal_id).theme == 'dark'
+            assert captured
+            with pytest.raises(RuntimeError, match='fixture_write'):
+                captured[0].execute('SELECT 1')
+            assert store.connection.row_factory is original
             assert store.principal_preference(principal.principal_id).theme == 'dark'
-        assert captured
-        with pytest.raises(RuntimeError, match='fixture_write'):
-            captured[0].execute('SELECT 1')
-        assert store.connection.row_factory is original
-        assert store.principal_preference(principal.principal_id).theme == 'dark'
-    finally:
-        store.close()
+        finally:
+            store.close()
+    """)
+    assert check_fixture_writes(source)
+    error, _ = fixture_probe(source, workspace=store)
+    if error is not None:
+        raise error
 
 
 @pytest.mark.parametrize('configured_before', [False, True])
@@ -218,27 +230,37 @@ def test_guard_requires_handle_for_nonimplicit_sql(sql):
 
 def test_nested_custom_factories_restore_outer_and_keep_caller_transaction(tmp_path):
     store = WorkspaceStore(tmp_path / 'synthetic.sqlite')
-    captured = []
-    def factory(cursor, row):
-        captured.append(cursor.connection)
-        return row
-    try:
-        with fixture_write(store) as outer:
-            outer.execute('CREATE TABLE synthetic_fixture(value TEXT)')
-            outer.row_factory = factory
-            with fixture_write(store) as nested:
-                assert nested.row_factory is factory
-                nested.execute("INSERT INTO synthetic_fixture VALUES ('inner')")
-                nested.execute('SELECT 1').fetchone()
-                with pytest.raises(RuntimeError, match='fixture_write'):
-                    captured[-1].commit()  # fixture-write: Negative regression deliberately invokes the callback-captured handle and requires rejection.
-            assert outer.row_factory is factory
-            outer.execute('SELECT 1').fetchone()
-            assert captured[-1] is outer
-            assert outer.in_transaction
-        assert store.connection.row_factory is sqlite3.Row
-    finally:
-        store.close()
+    source = dedent("""\
+        import pytest
+        import sqlite3
+        from tests.fixture_write import fixture_write
+        store = workspace
+        captured = []
+        def factory(cursor, row):
+            captured.append(cursor.connection)
+            return row
+        try:
+            with fixture_write(store) as outer:
+                outer.execute('CREATE TABLE synthetic_fixture(value TEXT)')
+                outer.row_factory = factory
+                with fixture_write(store) as nested:
+                    assert nested.row_factory is factory
+                    nested.execute("INSERT INTO synthetic_fixture VALUES ('inner')")
+                    nested.execute('SELECT 1').fetchone()
+                    with pytest.raises(RuntimeError, match='fixture_write'):
+                        captured[-1].commit()  # fixture-write: Negative regression deliberately invokes the callback-captured handle and requires rejection.
+                assert outer.row_factory is factory
+                outer.execute('SELECT 1').fetchone()
+                assert captured[-1] is outer
+                assert outer.in_transaction
+            assert store.connection.row_factory is sqlite3.Row
+        finally:
+            store.close()
+    """)
+    assert check_fixture_writes(source)
+    error, _ = fixture_probe(source, workspace=store)
+    if error is not None:
+        raise error
 
 
 @pytest.mark.parametrize('assignment', [

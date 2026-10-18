@@ -138,12 +138,13 @@ def test_zero_iterations_cannot_erase_existing_connection_provenance():
 ])
 def test_comprehension_iteration_names_and_deferred_walrus_do_not_leak(expression):
     source = f"import sqlite3\nconnection = sqlite3.connect(':memory:')\n{expression}\nwith connection:\n    pass"
-    if expression == "{connection: None for connection in [bench.workspace.connection]}":
-        # The result now rejects explicitly, but its local name still must not
-        # turn the independent outer connection context into another violation.
-        assert [(v.line, v.rule) for v in check_fixture_writes(source)] == [
-            (3, "shared dictionary comprehension results are unsupported; use explicit named handles")
-        ]
+    if '[bench.workspace.connection]' in expression:
+        # Construction rejects; comprehension locals still cannot taint the
+        # independent outer connection context on subsequent lines.
+        violations = check_fixture_writes(source)
+        assert violations
+        assert {v.line for v in violations} == {3}
+        assert any('mutable shared fixture containers' in v.rule for v in violations)
     else:
         assert check_fixture_writes(source) == []
 

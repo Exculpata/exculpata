@@ -200,66 +200,43 @@ eager operation while holding the helper. Function decorators, defaults and
 annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
-The inventory follows constant-name getattr/setattr operations, SQLite method
-and writable-attribute descriptors called with an explicit receiver, and element-wise tuple/list
-unpacking, including nested and starred assignments.
-Literal tuple/list iteration preserves element ownership, including nested loop
-targets and saved methods. Attribute setters in unpacked assignments, loops and
-comprehensions follow the same boundary rules as direct assignments, evaluating
-and binding leaves left to right. A cleanup container containing only independent
-connections and ordinary resources remains non-shared; any known shared member
-retains the shared boundary requirement.
-Target expressions are visited before the following assignment leaf, so their
-explicit local bindings cannot hide a later shared setter. Subscripting literal
-containers with known shared values, destructuring known shared match subjects,
-and passing shared values through variadic helper parameters are unsupported by the inventory. Use explicit named
-handles and fixed helper parameters for fixture setup; independent-resource
-controls and simple match captures remain supported.
-Non-destructuring literal and whole-subject match aliases remain supported.
-Subscripts capture their base before evaluating the index, and calls capture the
-callee before evaluating arguments. Assignment expressions in call arguments
-involving known shared ownership are unsupported; bind those values explicitly
-before calling. Heterogeneous container merges that lose a known shared shape
-and shared global/nonlocal writes from helpers also reject explicitly. Return
-named handles from fixed-parameter helpers instead of changing outer bindings.
-Comprehension, lambda and class locals retain their separate binding scopes.
-Class bodies track their own explicit global/nonlocal declarations. Direct
-Boolean values used as iterables, arguments or subscript bases receive the same
-unresolved-ownership rejection as assigned containers. Synthesized capture and comprehension targets retain source
-locations; propagation after a comprehension does not count as another write.
-Call checks inspect starred operands before expansion. Opaque tuple/list or
-dictionary expansions and dynamic dictionary keys cannot erase a known shared
-member, whether carried by a dictionary key or value: such containers retain
-unresolved ownership and reject explicitly.
-Dictionary inputs are checked in key/value evaluation order. Shared dictionary
-comprehension results and attribute/view access on unresolved shared containers
-are unsupported; use explicit named handles. String and path conversions retain
-active-database path provenance without retaining a reachable workspace handle.
-Literal elements and comprehension results retain their evaluated ownership;
-an exception on construction does not exempt later unannotated consumption.
-Known shared mappings reject value-returning accessors while literal-key iteration
-remains allowed. Only proven scalar converters discard handle ownership; ambiguous
-rebindings remain conservative. Active workspace paths still specialize fixed
-local helper parameters so indirect database opens cannot lose path provenance.
-Accessor results retain unsupported provenance after exact extraction exceptions,
-and unbound dictionary descriptors check their explicit receiver. Value-returning
-views over known active workspace paths are also unsupported; literal keys remain
-non-owning. Branches composed entirely of proven scalar converters stay proven.
-Dictionary handling uses a finite set of value-returning methods. Key-only
-`fromkeys` and None-returning mutators do not invent escaped handles; known shared
-or active-path defaults remain unsupported. Unbound receivers are captured before
-later arguments, dynamically selected accessors retain conservative identity,
-and heterogeneous merges preserve nested active-path provenance.
-`fromkeys` retains evaluated key-input ownership before its default evaluates;
-only the literal string keys of a known mapping discard that mapping's values.
-Known starred argument lists expand before receiver/default selection. Mapping
-accessor defaults, supported dictionary construction, constant descriptor selection,
-set literals and eager comprehension results retain fixture provenance. Unsupported
-shared/active-path updates and subscript stores reject explicitly and retain a
-marker for known receiver aliases; their None return does not inherit that marker.
-Shared set results retain an unordered marker rather than source-order positions.
-Eager comprehensions of yielded scoped fixture handles retain that protected
-provenance and remain allowed within their owning boundary.
+The inventory supports direct named workspace/SQLite handles, saved methods,
+fixed-parameter local helpers and their synchronous returns. For shared handles,
+the only supported container is a literal, fixed-shape tuple (including nested
+tuples), consumed through named aliases, fixed unpacking or iteration. Tuple
+fixture returns and explicit thread argument tuples remain supported. A list-shaped
+assignment target with fixed arity only unpacks; a starred assignment target creates
+a new list and is rejected when that list would contain fixture ownership.
+Materializing cursor rows with `list(cursor)` or `tuple(cursor)` is a read operation,
+not a container containing the cursor itself.
+
+Shared lists, sets, dictionaries, container constructors, container-result
+comprehensions, subscript extraction/stores, mutable-container insertion, opaque
+expansion, and variadic ownership transport are unsupported. Use explicit named
+handles and `fixture_write(workspace)` instead. This applies to yielded scoped
+handles as well as raw handles; a lock does not make unsupported syntax analyzable.
+Ordinary scalar data and proven independent-resource containers remain supported.
+Scalar conversion can discard handle ownership but must retain active database-path
+provenance. Known active-path container stores and opaque path extraction remain
+rejected; exact-operation exceptions cannot hide a later workspace database open.
+
+Structural rejection cannot be suppressed with `# fixture-write:` comments.
+Exact-statement exceptions remain available for deliberate raw SQLite operations
+in isolated synthetic contention, corruption, migration and lifetime tests. They
+never establish ownership for later operations. Negative runtime probes that need
+unsupported syntax use fixed named inputs through `tests.fixture_probe`; their
+same source is both executed and checked for rejection. Callback identity,
+expiration, transaction rollback and actual raw side effects remain asserted.
+
+The checker captures evaluated inputs in Python order and joins local bindings
+conservatively. It does not maintain mutable-container identity or a shared heap
+across branches. A rejected store cannot taint a mutually exclusive independent
+branch. Shared global/nonlocal writes, destructive match patterns and assignment
+expressions in shared call arguments also reject structurally; return named values
+and bind arguments before calling. A fixed AST node/field manifest rejects unknown
+syntax before ownership analysis, even inside an annotated operation. New Python
+syntax needs deliberate checker support and regression coverage before acceptance.
+
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

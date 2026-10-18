@@ -21,7 +21,10 @@ PREFIX = "holder = {'shared': bench.workspace.connection}\nsafe = {'shared': ind
     'result = dict.update(holder, {}) ' + REASON + '\nassert result is None',
 ])
 def test_key_only_and_none_returning_mapping_methods_remain_nonowning(source):
-    assert check_fixture_writes(PREFIX + source) == []
+    violations = check_fixture_writes(PREFIX + source)
+    assert any(v.line == 1 and 'mutable shared fixture containers' in v.rule for v in violations)
+    independent = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
+    assert check_fixture_writes(independent + PREFIX.replace('bench.workspace.connection', 'independent') + source) == []
 
 
 @pytest.mark.parametrize('source', [
@@ -54,7 +57,9 @@ def test_nested_active_paths_survive_heterogeneous_merges_after_exact_exception(
 ])
 def test_independent_receiver_and_default_controls(source):
     prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
-    assert check_fixture_writes(prefix + PREFIX + source) == []
+    assert any(v.line == 3 and 'mutable shared fixture containers' in v.rule
+               for v in check_fixture_writes(prefix + PREFIX + source))
+    assert check_fixture_writes(prefix + PREFIX.replace('bench.workspace.connection', 'independent') + source) == []
 
 
 @pytest.mark.parametrize('expression', [

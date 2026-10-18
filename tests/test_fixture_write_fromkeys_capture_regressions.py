@@ -30,7 +30,12 @@ def test_fromkeys_shared_keys_and_active_paths_retain_provenance(source):
     'holder = dict.fromkeys([bench.workspace.connection]) ' + REASON,
 ])
 def test_literal_mapping_keys_independent_keys_and_exact_construction_exception(source):
-    assert check_fixture_writes("import sqlite3\nindependent = sqlite3.connect(':memory:')\n" + source) == []
+    prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
+    if 'bench.workspace.connection' in source:
+        assert any('unsupported' in v.rule for v in check_fixture_writes(prefix + source))
+        assert check_fixture_writes(prefix + source.replace('bench.workspace.connection', 'independent')) == []
+    else:
+        assert check_fixture_writes(prefix + source) == []
 
 
 def test_fromkeys_iteration_closes_real_shared_connection_before_rejection():

@@ -103,7 +103,7 @@ def test_manual_media_sequence_inside_local_helper_retains_live_workspace_proven
               '    store.import_media_transcript(synthetic)\n'
               '    store.finish_media_job(synthetic)\n'
               f'seed({arguments})')
-    assert {item.line for item in check_fixture_writes(source)} == {2, 4, 5}
+    assert {item.line for item in check_fixture_writes(source)} == ({2, 4, 5, 6} if arguments.startswith('**') else {2, 4, 5})
 
 
 @pytest.mark.parametrize('source', [

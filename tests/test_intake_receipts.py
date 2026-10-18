@@ -189,7 +189,8 @@ def test_concurrent_metadata_creation_and_upload_binding_make_one_record(tmp_pat
         return create(IntakeReceipts(store), m, 1, (0,))['receipt_id']
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            ids = list(pool.map(begin, [w, peer]))
+            pending = [pool.submit(begin, store) for store in (w, peer)]
+            ids = [future.result() for future in pending]
         assert ids[0] == ids[1]
         receipt = receipts.get(m.matter_id, OWNER, ids[0])
         append(receipts, m, receipt, [descriptor('one.txt')])
@@ -200,7 +201,8 @@ def test_concurrent_metadata_creation_and_upload_binding_make_one_record(tmp_pat
                 [{'display_name': 'one.txt', 'relative_path': 'one.txt', 'media_type': 'text/plain', 'expected_size': 48}],
                 intake_receipt_id=ids[0], intake_ordinals=[0])[0].upload_session_id
         with ThreadPoolExecutor(max_workers=2) as pool:
-            sessions = list(pool.map(bind, [w, peer]))
+            pending = [pool.submit(bind, store) for store in (w, peer)]
+            sessions = [future.result() for future in pending]
         assert sessions[0] == sessions[1]
     finally:
         peer.close(); w.close()

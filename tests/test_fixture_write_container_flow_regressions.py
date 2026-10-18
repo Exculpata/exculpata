@@ -55,7 +55,10 @@ def test_known_container_flows_retain_shared_or_active_path_provenance(source):
     "holder = {}\nholder['item'] = independent\nholder['item'].close()",
 ])
 def test_independent_resources_safe_keys_and_none_results_remain_controls(source):
-    assert check_fixture_writes(PREFIX + source) == []
+    assert any(v.line == 3 and 'mutable shared fixture containers' in v.rule
+               for v in check_fixture_writes(PREFIX + source))
+    independent_source = (PREFIX + source).replace('bench.workspace.connection', 'independent')
+    assert check_fixture_writes(independent_source) == []
 
 
 def test_shared_set_unpacking_does_not_assume_iteration_order():

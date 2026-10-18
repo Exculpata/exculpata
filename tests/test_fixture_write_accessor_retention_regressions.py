@@ -55,7 +55,11 @@ def test_active_paths_in_mapping_views_cannot_hide_indirect_opens(iteration, tar
     "handle = holder.get('shared') " + REASON,
 ])
 def test_safe_keys_independent_resources_and_exact_extraction_exception(source):
-    assert check_fixture_writes("import sqlite3\nindependent = sqlite3.connect(':memory:')\n" + SHARED + source) == []
+    prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
+    violations = check_fixture_writes(prefix + SHARED + source)
+    assert any(v.line == 3 and 'mutable shared fixture containers' in v.rule for v in violations)
+    # Preserve non-owning consumers with a genuinely independent construction.
+    assert check_fixture_writes(prefix + SHARED.replace('bench.workspace.connection', 'independent') + source) == []
 
 
 @pytest.mark.parametrize('source', [

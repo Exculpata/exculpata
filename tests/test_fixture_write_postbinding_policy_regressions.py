@@ -78,7 +78,12 @@ def test_known_expansion_aliases_retain_shared_close_provenance(assignment, call
 @pytest.mark.parametrize('arguments', ['*({receiver},)', "**{{'handle': {receiver}}}"])
 def test_expansion_controls_preserve_nonshared_close(receiver, arguments):
     source = f'import sqlite3\ndef dispose(handle):\n    handle.close()\ndispose({arguments.format(receiver=receiver)})'
-    assert check_fixture_writes(source) == []
+    if arguments.startswith('**') and receiver.startswith('bench.workspace'):
+        violations = check_fixture_writes(source)
+        assert violations and {v.line for v in violations} == {4}
+        assert any('mutable shared fixture containers' in v.rule for v in violations)
+    else:
+        assert check_fixture_writes(source) == []
 
 
 @pytest.mark.parametrize('mutation', [

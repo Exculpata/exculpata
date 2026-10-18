@@ -56,7 +56,11 @@ def test_active_workspace_paths_specialize_fixed_parameter_helpers(path):
     'holder = {item: 0 for item in [handle]} ' + REASON,
 ])
 def test_nonowning_keys_independent_handles_and_exact_construction_exception(source):
-    assert check_fixture_writes(PREFIX + source) == []
+    if "holder = {'shared': handle}" in source or 'for item in [handle]' in source:
+        assert any('mutable shared fixture containers' in v.rule for v in check_fixture_writes(PREFIX + source))
+        assert check_fixture_writes(PREFIX.replace('handle = bench.workspace.connection', 'handle = independent') + source) == []
+    else:
+        assert check_fixture_writes(PREFIX + source) == []
 
 
 @pytest.mark.parametrize('source', [

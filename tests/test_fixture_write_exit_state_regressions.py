@@ -1,3 +1,6 @@
+from textwrap import dedent
+from tests.fixture_write_policy import check_fixture_writes
+from tests.fixture_probe import fixture_probe
 """Synthetic transaction replacement and retained-cursor lifetime regressions."""
 import sqlite3
 from threading import RLock
@@ -107,18 +110,28 @@ def test_scoped_factory_preserves_row_types_and_restores_factory(store, factory)
 
 
 def test_custom_factory_still_receives_scoped_cursor_and_connection(store):
-    captured = []
-    def factory(cursor, row):
-        captured.append((cursor, cursor.connection))
-        return row
-    with fixture_write(store) as connection:
-        connection.row_factory = factory
-        assert connection.execute('SELECT 7').fetchone() == (7,)
-        cursor, callback_connection = captured[0]
-        assert callback_connection is connection
-    for handle in (cursor, callback_connection):
-        with pytest.raises(RuntimeError, match='owning boundary'):
-            handle.execute('SELECT 8')
+    source = dedent("""\
+        import pytest
+        import sqlite3
+        from tests.fixture_write import fixture_write
+        store = workspace
+        captured = []
+        def factory(cursor, row):
+            captured.append((cursor, cursor.connection))
+            return row
+        with fixture_write(store) as connection:
+            connection.row_factory = factory
+            assert connection.execute('SELECT 7').fetchone() == (7,)
+            cursor, callback_connection = captured[0]
+            assert callback_connection is connection
+        for handle in (cursor, callback_connection):
+            with pytest.raises(RuntimeError, match='owning boundary'):
+                handle.execute('SELECT 8')
+    """)
+    assert check_fixture_writes(source)
+    error, _ = fixture_probe(source, workspace=store)
+    if error is not None:
+        raise error
 
 
 @pytest.mark.parametrize('factory', [None, sqlite3.Row])

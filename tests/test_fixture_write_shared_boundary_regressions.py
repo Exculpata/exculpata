@@ -1,3 +1,4 @@
+from tests.fixture_probe import fixture_probe
 """Inventory regressions backed by actual shared-connection side effects."""
 import sqlite3
 
@@ -20,10 +21,11 @@ def test_owner_lock_alone_cannot_scope_a_connection_factory(tmp_path, assignment
         "    leaked = workspace.connection.execute('SELECT 1').fetchone()\n"
     )
     try:
-        namespace = {'workspace': workspace, 'factory': lambda cursor, row: cursor.connection}
-        exec(source, namespace)
+        error, leaked = fixture_probe(source, 'leaked', workspace=workspace, factory=lambda cursor, row: cursor.connection)
+        if error is not None:
+            raise error
         # fixture-write: Inspect the isolated raw escape probe namespace to prove the callback exposed its connection.
-        assert namespace['leaked'] is workspace.connection
+        assert leaked is workspace.connection
         assert [v.line for v in check_fixture_writes(source)] == [2]
     finally:
         workspace.close()
@@ -53,14 +55,14 @@ def test_nested_media_calls_that_destroy_caller_ownership_are_inventoried(tmp_pa
     try:
         with fixture_write(workspace) as connection:
             connection.execute('CREATE TABLE synthetic_pending (value TEXT)')
-        namespace = {'workspace': workspace, 'fixture_write': fixture_write,
-                     'sqlite3': sqlite3, 'matter': matter, 'actor': actor}
+        error, transaction_survived = fixture_probe(source, 'transaction_survived', workspace=workspace,
+            fixture_write=fixture_write, sqlite3=sqlite3, matter=matter, actor=actor)
         with pytest.raises(ValueError, match='synthetic caller rollback'):
-            exec(source, namespace)
+            raise error
         # The raw media APIs own transactions: queue rolled back the caller;
         # finish committed it. The inventory must reject either nested seed.
         # fixture-write: Inspect the isolated negative probe namespace to verify the recorded caller transaction was terminated.
-        assert not namespace['transaction_survived']
+        assert not transaction_survived
         assert workspace.connection.execute('SELECT count(*) FROM synthetic_pending').fetchone()[0] == expected_rows
         violations = check_fixture_writes(source)
         assert any(v.line == 5 and 'nested' in v.rule for v in violations)

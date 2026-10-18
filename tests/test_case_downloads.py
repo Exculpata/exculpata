@@ -82,7 +82,7 @@ def test_concurrent_overlapping_completions_merge_without_lost_coverage(setup):
             workspace.case_lifecycle.downloads.complete(value)
         except BaseException as exc:
             errors.append(exc)
-    threads = [threading.Thread(target=complete, args=args) for args in zip((store, other), values)]
+    threads = [threading.Thread(target=complete, args=args) for args in ((store, values[0]), (other, values[1]))]
     for thread in threads:
         thread.start()
     for thread in threads:
