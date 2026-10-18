@@ -7,6 +7,11 @@ on [core evolution](../CORE_EVOLUTION.md), [Ideal Exculpata](../IDEAL.md) and th
 already emit this format. The separate core/components draft and report appendices
 were unavailable; no requirement or implemented behavior is attributed to them.
 
+The purpose is to help defense teams uncover evidence and buried connections that
+can exculpate, challenge allegations or change understanding, while preserving
+contrary evidence and uncertainty. This enables stronger honest investigation;
+it does not promise a legal outcome or manufacture a conclusion of innocence.
+
 ## The invariant comes before capacity
 
 A useful core can accept manually captured, cited assertions and deterministically
