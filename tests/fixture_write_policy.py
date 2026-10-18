@@ -73,6 +73,8 @@ class _Value:
     descriptor: bool = False
     setter_attribute: str | None = None
     unresolved_shared_container: bool = False
+    imported_module: bool = False
+    scalar_converter: bool | None = None
 
 
 class _Check(ast.NodeVisitor):
@@ -87,7 +89,8 @@ class _Check(ast.NodeVisitor):
         self.media_protected: set[str] = set()
         self.local_functions: dict[str, tuple] = {}
         self.active_calls: set[str] = set()
-        self.call_values: dict[ast.Call, _Value] = {}
+        # Evaluated calls and literal containers capture values before later rebindings.
+        self.evaluated_values: dict[ast.AST, _Value] = {}
         self.return_values: list[_Value] = []
         self.outer_write_names: set[str] | None = None
         # Owning locks permit connection configuration, not SQL transactions.
@@ -131,8 +134,10 @@ class _Check(ast.NodeVisitor):
     def value(self, node: ast.AST | None) -> _Value:
         if node is None:
             return _Value()
+        if node in self.evaluated_values:
+            return self.evaluated_values[node]
         if isinstance(node, ast.Name):
-            return self.aliases.get(node.id, _Value(symbol=node.id))
+            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None))
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
@@ -187,6 +192,12 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
+            if self.unresolved_ownership(base) or (
+                    base.mapping is not None and self.known_ownership(base, shared_only=True)
+                    and node.attr not in {"keys", "__iter__", "__len__", "__contains__"}):
+                return _Value(symbol=symbol, unresolved_shared_container=True)
+            if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
+                return _Value(symbol=symbol, scalar_converter=True)
             if node.attr in {"__set__", "__delete__"} and base.setter_attribute is not None:
                 return replace(base, symbol=symbol)
             if base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"} and node.attr in {"row_factory", "text_factory", "isolation_level", "autocommit"}:
@@ -222,8 +233,8 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.BoolOp):
             return self.merge_aliases(*({"value": self.value(value)} for value in node.values))["value"]
         if isinstance(node, ast.Call):
-            if node in self.call_values:
-                return self.call_values[node]
+            if node in self.evaluated_values:
+                return self.evaluated_values[node]
             function = self.value(node.func)
             if "__enter__" in function.methods:
                 return self.value(node.args[0]) if function.descriptor and node.args else function.receiver or _Value()
@@ -246,8 +257,11 @@ class _Check(ast.NodeVisitor):
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
                 return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
                                sqlite_cursor=True)
-            if function.symbol in {"str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath"} and node.args:
+            if (function.scalar_converter is not None or function.symbol in {
+                    "str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath", "builtins.str"}) and node.args:
                 argument = self.value(node.args[0])
+                if function.scalar_converter is not True:
+                    return argument
                 # Paths/text retain source provenance for active-database opens,
                 # but do not expose the original workspace or SQL handle.
                 return _Value(symbol=ast.unparse(node), text=argument.text,
@@ -339,13 +353,33 @@ class _Check(ast.NodeVisitor):
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self.visit(node.value)
-        if self.unresolved_ownership(self.value(node.value)):
+        if self.unresolved_ownership(self.value(node)):
             self.flag(node, "attributes of unresolved shared fixture containers are unsupported; use explicit named handles")
+
+    def visit_Tuple(self, node: ast.Tuple) -> None:
+        inputs, elements = [], []
+        opaque = False
+        for item in node.elts:
+            operand = item.value if isinstance(item, ast.Starred) else item
+            self.visit(operand)
+            value = self.value(operand)
+            inputs.append(value)
+            if isinstance(item, ast.Starred):
+                opaque |= value.elements is None
+                elements.extend(value.elements or ())
+            else:
+                elements.append(value)
+        self.evaluated_values[node] = (_Value(unresolved_shared_container=any(
+            self.known_ownership(value, shared_only=True) for value in inputs))
+            if opaque else _Value(elements=tuple(elements)))
+
+    visit_List = visit_Tuple
 
     def visit_Dict(self, node: ast.Dict) -> None:
         # Capture each input when Python evaluates it. A later key or value
         # may rebind an alias, but cannot change a key already in the dictionary.
         inputs = []
+        mapping = {}
         opaque = False
         for key, item in zip(node.keys, node.values):
             if key is not None:
@@ -358,7 +392,13 @@ class _Check(ast.NodeVisitor):
             inputs.append(value)
             if key is None:
                 opaque |= value.mapping is None
-        if opaque and any(self.known_ownership(value, shared_only=True) for value in inputs):
+                mapping.update(value.mapping or ())
+            elif name.complete_text:
+                mapping[name.text] = value
+        shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
+        self.evaluated_values[node] = (_Value(unresolved_shared_container=shared) if opaque
+                                  else _Value(mapping=tuple(mapping.items())))
+        if opaque and shared:
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
 
     @staticmethod
@@ -407,7 +447,7 @@ class _Check(ast.NodeVisitor):
     def merge_aliases(*states: dict[str, _Value]) -> dict[str, _Value]:
         result = {}
         for name in set().union(*(state.keys() for state in states)):
-            values = [state.get(name, _Value(symbol=name)) for state in states]
+            values = [state.get(name, _Value(symbol=name, scalar_converter=True if name == "str" else None)) for state in states]
             if all(value == values[0] for value in values):
                 result[name] = values[0]
             elif all(value.elements is not None for value in values) and len({len(value.elements) for value in values}) == 1:
@@ -431,6 +471,7 @@ class _Check(ast.NodeVisitor):
                     f"sqlite@merged:{name}" if connections else None)
                 result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       active_path=any(value.active_path for value in values),
+                                      scalar_converter=False if any(value.scalar_converter is not None for value in values) else None,
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
@@ -603,12 +644,13 @@ class _Check(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=alias.name))
+            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=alias.name, imported_module=True))
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
             symbol = f"{node.module}.{alias.name}" if node.module else alias.name
-            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=symbol, imported_function=True))
+            self.bind(ast.Name(id=alias.asname or alias.name), _Value(symbol=symbol, imported_function=True,
+                      scalar_converter=True if symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"} else None))
 
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
@@ -746,6 +788,8 @@ class _Check(ast.NodeVisitor):
         # bound method retains ownership at its immediate invocation.
         self.visit(node.func)
         function = self.value(node.func)
+        if self.unresolved_ownership(function):
+            self.flag(node, "shared container accessors are unsupported; use explicit named handles")
         arguments_before = [self.value(argument.value if isinstance(argument, ast.Starred) else argument)
                             for argument in node.args]
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
@@ -887,7 +931,7 @@ class _Check(ast.NodeVisitor):
                 self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
         result = self.check_local_call(node, function)
         if result is not None:
-            self.call_values[node] = result
+            self.evaluated_values[node] = result
 
     def check_local_call(self, call, function):
         # Specialize direct local helpers only when a known workspace, SQLite
@@ -936,7 +980,7 @@ class _Check(ast.NodeVisitor):
         # Fixed workspace parameters and ordinary keyword options keep the
         # existing direct-helper analysis, even if the signature is variadic.
         values = [*bindings.values(), *captures, *variadic_values]
-        known = any(self.known_ownership(value) for value in values)
+        known = any(self.known_ownership(value) or self.has_active_path(value) for value in values)
         if not known and (call.args or call.keywords):
             return
         shared = any(self.known_ownership(value, shared_only=True) for value in values)
@@ -960,6 +1004,12 @@ class _Check(ast.NodeVisitor):
         self.active_calls.remove(function.symbol)
         self.aliases = previous
         return result
+
+    @staticmethod
+    def has_active_path(value):
+        return value.active_path or any(_Check.has_active_path(item) for item in (
+            *(value.elements or ()), *(item for _, item in value.mapping or ()),
+        ))
 
     @staticmethod
     def known_ownership(value, *, shared_only=False):
@@ -1084,8 +1134,8 @@ class _Check(ast.NodeVisitor):
 
     def analyze_function(self, node, default_values, annotated, *, invoked=False):
         outer_write_names, self.outer_write_names = self.outer_write_names, set()
-        outer_returns, outer_calls = self.return_values, self.call_values
-        self.return_values, self.call_values = [], {}
+        outer_returns, outer_calls = self.return_values, self.evaluated_values
+        self.return_values, self.evaluated_values = [], {}
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
@@ -1125,7 +1175,7 @@ class _Check(ast.NodeVisitor):
         self.media_protected = media
         self.eager_variable_annotations = eager_annotations
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
-        self.return_values, self.call_values = outer_returns, outer_calls
+        self.return_values, self.evaluated_values = outer_returns, outer_calls
         self.outer_write_names = outer_write_names
         return result
 
@@ -1163,8 +1213,8 @@ class _Check(ast.NodeVisitor):
 
     def analyze_lambda(self, node, default_values, *, invoked=False):
         outer_write_names, self.outer_write_names = self.outer_write_names, None
-        outer_returns, outer_calls = self.return_values, self.call_values
-        self.return_values, self.call_values = [], {}
+        outer_returns, outer_calls = self.return_values, self.evaluated_values
+        self.return_values, self.evaluated_values = [], {}
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
@@ -1191,7 +1241,7 @@ class _Check(ast.NodeVisitor):
         self.nested_protected = nested
         self.media_protected = media
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
-        self.return_values, self.call_values = outer_returns, outer_calls
+        self.return_values, self.evaluated_values = outer_returns, outer_calls
         self.outer_write_names = outer_write_names
         return result
 
@@ -1241,7 +1291,9 @@ class _Check(ast.NodeVisitor):
             self.visit(node.key)
             key = self.value(node.key)
             self.visit(node.value)
-            if any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value))):
+            shared = any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value)))
+            self.evaluated_values[node] = _Value(unresolved_shared_container=shared)
+            if shared:
                 self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles")
         else:
             self.visit(node.elt)

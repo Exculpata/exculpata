@@ -235,6 +235,12 @@ Dictionary inputs are checked in key/value evaluation order. Shared dictionary
 comprehension results and attribute/view access on unresolved shared containers
 are unsupported; use explicit named handles. String and path conversions retain
 active-database path provenance without retaining a reachable workspace handle.
+Literal elements and comprehension results retain their evaluated ownership;
+an exception on construction does not exempt later unannotated consumption.
+Known shared mappings reject value-returning accessors while literal-key iteration
+remains allowed. Only proven scalar converters discard handle ownership; ambiguous
+rebindings remain conservative. Active workspace paths still specialize fixed
+local helper parameters so indirect database opens cannot lose path provenance.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
