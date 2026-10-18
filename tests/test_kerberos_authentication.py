@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 from case_intelligence.legacy_names import (
+    CURRENT_ENV_PREFIX,
     LEGACY_ENV_PREFIX,
     LEGACY_HEADER_PREFIX,
     LEGACY_PRODUCT,
@@ -26,6 +27,27 @@ from case_intelligence.workbench import create_workbench_app
 
 PROXY_SECRET = f"synthetic_{LEGACY_STEM}_proxy_secret_0000000000000000"
 REVIEWER_PRINCIPAL = "alice.reviewer@EXAMPLE.TEST"
+
+
+@pytest.mark.parametrize('suffix', ['SERVER_NAME', 'KERBEROS_PRINCIPAL'])
+@pytest.mark.parametrize('current_state', ['unset', 'empty', 'set'])
+@pytest.mark.parametrize('legacy_state', ['unset', 'empty', 'set'])
+def test_kerberos_entrypoint_env_selection_preserves_empty_fallback(suffix, current_state, legacy_state):
+    import subprocess
+    source = (Path(__file__).parents[1] / 'deploy/kerberos-proxy/entrypoint').read_text()
+    assert source.count('\nsource_keytab=') == 1
+    preamble = source.split('\nsource_keytab=', 1)[0]
+    values = ['current.example.test', 'legacy.example.test']
+    if suffix == 'KERBEROS_PRINCIPAL':
+        values = [f'HTTP/{value}@EXAMPLE.TEST' for value in values]
+    environment = {}
+    for prefix, state, value in zip([CURRENT_ENV_PREFIX, LEGACY_ENV_PREFIX], [current_state, legacy_state], values):
+        if state != 'unset':
+            environment[prefix + suffix] = value if state == 'set' else ''
+    result = subprocess.check_output(['/bin/bash', '--noprofile', '--norc', '-c', preamble + '\nprintf "%s\\0%s\\0" "$server_name" "$expected_principal"'], env=environment, timeout=5)
+    expected = values[0] if current_state == 'set' else values[1] if legacy_state == 'set' else ''
+    selected = result.split(b'\0')[:2]
+    assert selected == ([expected.encode(), b''] if suffix == 'SERVER_NAME' else [b'', expected.encode()])
 
 
 def _settings(

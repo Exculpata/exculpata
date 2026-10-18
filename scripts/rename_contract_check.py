@@ -63,10 +63,10 @@ REVIEWED_ANALYSIS_FUNCTIONS = {
 _STEM = re.escape(LEGACY_STEM)
 _TOKENS = re.compile(
     rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/%&=+~!$,*@;-]*(?:[?#][A-Za-z0-9_.:/?%#&=+~!$,*@;()'-]*)?)"
-    rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/+:%-]*)"
+    rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/+:%\\-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
-    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.@+%/-]*)",
+    rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.@+%/\\-]*)",
     re.IGNORECASE,
 )
 
@@ -166,6 +166,13 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
     placeholder_pattern = r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}"
     shell_source = Path(location).suffix == ".sh" or Path(location).name.endswith(".env") or bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", text))
     if shell_source:
+        unquoted = re.sub(r"['\"]", "", text)
+        if re.search(r"\$\{[^}\n]*\$\{", unquoted):
+            found.append(Finding(f"{location}:1", "unsupported nested shell parameter composition"))
+        for parameter in re.finditer(r"\$\{[A-Za-z_]\w*(?::?[-+=?]|[%#]{1,2}|[/^,]{1,2})[^{}\n]+\}", unquoted):
+            neighbors = unquoted[max(0, parameter.start() - 1):parameter.start()] + unquoted[parameter.end():parameter.end() + 1]
+            if any(character.isalnum() or character in "_$}" for character in neighbors):
+                found.append(Finding(f"{location}:1", "unsupported shell operator-word composition"))
         placeholder_pattern += r"|\$\{[^{}\n]*\}|\$[A-Za-z_]\w*"
     removal_pattern = placeholder_pattern + r"|[\"']" if shell_source else placeholder_pattern
     cuts, removed = set(), 0
@@ -1700,7 +1707,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.composition(node)
 
         def visit_Call(self, node: ast.Call) -> None:
-            callee = frozen(node.func) if isinstance(node.func, ast.Call) else structure(node.func)
+            callee = structure(node.func)
+            if callee is None and not isinstance(node.func, (ast.Name, ast.Attribute, ast.Subscript)):
+                captured = frozen(node.func)
+                callee = captured if isinstance(captured, ContainerValue) else None
             if callee == ContainerValue("unknown", ()):
                 unsupported(node, "invocation of legacy-carrying unknown value")
             if callee is not None and callee.kind == "local_callable" and any(contains_stem(item) for item in call_inputs(node)):

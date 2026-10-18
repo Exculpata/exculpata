@@ -7,7 +7,7 @@ from string import Formatter
 
 import pytest
 
-from case_intelligence.legacy_names import NAME_CONTRACTS, NameContract
+from case_intelligence.legacy_names import LEGACY_STEM, NAME_CONTRACTS, NameContract
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -1684,3 +1684,52 @@ def test_shell_parameter_operator_contents_are_still_checked(source):
 ])
 def test_javascript_literal_plus_data_and_complete_templates_remain_valid(source):
     assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize('source', [
+    'EMPTY=; VALUE=rec${EMPTY:-ord}bench-unregistered-v99',
+    'EMPTY=; VALUE="rec"${EMPTY:-ord}"bench-unregistered-v99"',
+    'EMPTY=; VALUE=${EMPTY:-rec}${EMPTY:-ordbench-unregistered-v99}',
+])
+def test_shell_operator_words_cannot_compose_unchecked_names(source):
+    assert checker.scan_text('synthetic.sh', source)
+
+
+@pytest.mark.parametrize('callee', [
+    '(Alias := operator.methodcaller("format", LEGACY_STEM))',
+    '(operator.methodcaller("format", LEGACY_STEM) if condition else other)',
+    '(operator.methodcaller("format", LEGACY_STEM) or other)',
+])
+def test_composite_callable_expressions_preserve_unknown_legacy_origin(callee):
+    source = 'import operator\nfrom case_intelligence.legacy_names import LEGACY_STEM\nFORMAT=' + callee + '("{}-unregistered-v99")'
+    assert checker.scan_python('synthetic.py', source, NAME_CONTRACTS)
+
+
+@pytest.mark.parametrize('source', [
+    r"VALUE='{stem}\unregistered-v99'",
+    r"VALUE='C:\{stem}\unregistered-v99'",
+    r"VALUE='/synthetic/{stem}\unregistered-v99'",
+])
+def test_backslashes_remain_in_operational_tokens(source):
+    source = source.replace('{stem}', LEGACY_STEM)
+    assert checker.scan_text('synthetic.sh', source)
+
+
+@pytest.mark.parametrize('source', [
+    'EMPTY=; VALUE=rec${EMPTY:-ord}bench.env',
+    'VALUE=${FIRST:-${SECOND:-synthetic}}',
+])
+def test_unsupported_shell_operator_families_reject_consistently(source):
+    assert checker.scan_text('synthetic.sh', source)
+
+
+@pytest.mark.parametrize('source', [
+    'VALUE=${EMPTY:-recordbench.env}',
+    r"VALUE='C:\synthetic\file.txt'",
+])
+def test_delimited_shell_defaults_and_nonlegacy_backslashes_are_valid(source):
+    assert checker.scan_text('synthetic.sh', source) == []
+
+
+def test_nonlegacy_assignment_expression_callee_remains_valid():
+    assert checker.scan_python('synthetic.py', '(Alias := str)("synthetic")', NAME_CONTRACTS) == []
