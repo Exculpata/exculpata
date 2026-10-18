@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
+  and source-coverage rows plus coverage/schema columns. Importers must select
+  `row_type == 'citation'` when importing timeline citations. Exact totals are
+  reported only for complete coverage; named unreadable-source gaps remain
+  visible while later readable sources are included. Export limits and output
+  are deterministic, and CSV/Markdown presentation protections are strengthened.
+
 - The supporting-source drawer no longer highlights OCR noise, such as a line
   reading `=3s .`, as cited text. Low-content runs stay visible but unmarked,
   readable sentences in the same cited section keep their highlight, and the

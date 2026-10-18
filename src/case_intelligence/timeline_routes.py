@@ -5,6 +5,7 @@ from fastapi import BackgroundTasks, Depends, Form, HTTPException, Query, Reques
 from fastapi.responses import RedirectResponse, Response
 
 from .timeline_builder import build_timeline
+from .timeline_coverage import collect_timeline_units
 from .timeline_exports import export_timeline
 from .timeline_jobs import TimelineJobs
 from .timeline_promotion import promote_entry
@@ -15,21 +16,22 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
                             templates, base_context, audit, require_response_lease, transfer_response_lease):
     jobs = TimelineJobs()
 
-    def snapshot(matter, actor):
+    def snapshot(matter, actor, *, for_export=False):
         # Resolve cache before entering source/workspace locks (see DEVELOPMENT).
         store = bench.source_store(matter)
         service = bench.assertion_service(matter)
         with service.entities.source_guard(), service.repository.transaction(matter.matter_id, actor):
-            units = []
-            for document in store.ready_documents():
-                for ordinal, unit in enumerate(document.parsed_units(), 1):
-                    units.append(bench._candidate(matter, document, unit, ordinal))
-                    if len(units) >= 2501:
-                        break
-                if len(units) >= 2501:
-                    break
-            payload = build_timeline(units, support_token=bench._support_token).payload()
-            payload['generated_at'] = datetime.now(timezone.utc).isoformat()
+            coverage_records = []
+            units, total_unit_count, coverage_complete = collect_timeline_units(
+                store.ready_documents(),
+                lambda document, unit, ordinal: bench._candidate(matter, document, unit, ordinal),
+                coverage_records=coverage_records)
+            payload = build_timeline(units, support_token=bench._support_token,
+                                     total_unit_count=total_unit_count,
+                                     coverage_complete=coverage_complete,
+                                     coverage_records=coverage_records).payload()
+            if not for_export:
+                payload['generated_at'] = datetime.now(timezone.utc).isoformat()
             return payload
 
     def access(request, slug):
@@ -38,10 +40,10 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
         bench.workspace.membership(matter.matter_id, actor)
         return matter, actor
 
-    def current(request, slug):
+    def current(request, slug, *, for_export=False):
         try:
             matter, actor = access(request, slug)
-            return matter, actor, snapshot(matter, actor)
+            return matter, actor, snapshot(matter, actor, for_export=for_export)
         except KeyError as exc:
             raise HTTPException(404, 'Matter or source is no longer available') from exc
 
@@ -76,7 +78,7 @@ def install_timeline_routes(app, *, bench, authorized_matter, auth_context, requ
 
     @app.get('/matters/{slug}/timeline/draft/export', dependencies=[Depends(require_response_lease)])
     def export(request: Request, slug: str, format: str = Query('json', pattern='^(json|csv|markdown)$')):
-        matter, actor, payload = current(request, slug)
+        matter, actor, payload = current(request, slug, for_export=True)
         body = export_timeline(payload, format)
         from .assertion_repository import MAX_STORAGE_BYTES
         if len(body.encode()) > MAX_STORAGE_BYTES:
