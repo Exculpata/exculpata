@@ -93,3 +93,13 @@ def test_unavailable_base_keeps_full_corpus_required(repository, base):
     (root / 'README.md').write_text('Synthetic base fixture.\n')
     commit(git)
     assert classify(repository, base) == 'full_required=true\n'
+
+
+def test_makefile_recipe_change_requires_full_corpus(repository):
+    root, git = repository
+    recipe = root / 'Makefile'
+    recipe.write_text('corpus-check-full:\n\tpython scripts/corpus_check.py --full\n')
+    base = commit(git)
+    recipe.write_text('corpus-check-full:\n\tpython scripts/corpus_check.py\n')
+    commit(git)
+    assert classify(repository, base) == 'full_required=true\n'

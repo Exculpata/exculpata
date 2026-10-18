@@ -17,11 +17,16 @@ def snapshot(pin, *, offline):
 
 
 def recognize(root, manifest):
-    from faster_whisper import WhisperModel
-
     models = manifest['models']
-    if importlib.metadata.version('faster-whisper') != '1.2.1':
-        raise ValueError('Full corpus requires faster-whisper==1.2.1')
+    pin = models['asr']
+    # Unsupported declarations must fail before any inference can attest to them.
+    if pin.get('runtime') != 'faster-whisper==1.2.1':
+        raise ValueError('Unsupported corpus manifest ASR runtime')
+    if pin.get('compute_type') != 'int8':
+        raise ValueError('Unsupported corpus manifest ASR compute_type')
+    package, version = pin['runtime'].split('==')
+    if importlib.metadata.version(package) != version:
+        raise ValueError('Full corpus requires ' + pin['runtime'])
     if importlib.metadata.version('ctranslate2') != '4.8.2':
         raise ValueError('Full corpus requires ctranslate2==4.8.2')
     if importlib.metadata.version('av') != '18.1.0':
@@ -31,11 +36,11 @@ def recognize(root, manifest):
     for language, digest in models['ocr']['sha256'].items():
         if hashlib.sha256((data_root / (language+'.traineddata')).read_bytes()).hexdigest() != digest:
             raise ValueError('OCR data does not match the pinned corpus revision')
-    pin = models['asr']
     model_path = snapshot(pin, offline=True)
     if Path(model_path).name != pin['revision']:
         raise ValueError('ASR snapshot is not the pinned revision')
-    model = WhisperModel(model_path, device='cpu', compute_type='int8', cpu_threads=2, num_workers=1, local_files_only=True)
+    from faster_whisper import WhisperModel
+    model = WhisperModel(model_path, device='cpu', compute_type=pin['compute_type'], cpu_threads=2, num_workers=1, local_files_only=True)
     observations, transcripts = {}, {}
     for case in manifest['audio']:
         if case['diarization'] is not False:

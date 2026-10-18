@@ -277,11 +277,14 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                 question = item["question"]
                 conversation = bench.workspace.create_conversation(matter.matter_id, item["id"])
                 answer = bench.ask(matter, conversation, question)
-                citations = [_citation(bench, matter, citation, aliases)
-                             for claim in answer.payload["claims"] for citation in claim["citations"]]
-                results[item["id"]] = {"text": " ".join(claim["text"] for claim in answer.payload["claims"]),
+                claims = [{"text": claim["text"],
+                           "citations": [_citation(bench, matter, citation, aliases)
+                                         for citation in claim["citations"]]}
+                          for claim in answer.payload["claims"]]
+                citations = [citation for claim in claims for citation in claim["citations"]]
+                results[item["id"]] = {"text": " ".join(claim["text"] for claim in claims),
                                        "answerable": answer.payload["answerable"], "question": question,
-                                       "citations": citations, "provider": "CorpusExtractiveGenerator",
+                                       "claims": claims, "citations": citations, "provider": "CorpusExtractiveGenerator",
                                        **dispatch[item["id"]]}
             return results
         finally:

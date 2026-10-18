@@ -28,15 +28,17 @@ def check_inventory_source(source, filename):
 
 
 def inventory_paths(root):
-    """All tracked scripts conservatively cover direct and transitive test imports.
+    """All tracked Python test trees and scripts share the fixture boundary.
 
     Git's inventory avoids temporary editor/sync copies and does not infer Python
     imports or execute code. Newly added tests/scripts join the gate when staged.
     """
     names = subprocess.check_output(
-        ['git', 'ls-files', '-z', '--', 'tests/*.py', 'scripts/*.py'], cwd=root
+        ['git', 'ls-files', '-z', '--', '*.py'], cwd=root
     ).decode().split('\0')
-    return [Path(name) for name in names if name and name != 'tests/fixture_write.py']
+    paths = [Path(name) for name in names if name]
+    return [path for path in paths if path.as_posix() != 'tests/fixture_write.py'
+            and ('tests' in path.parts[:-1] or path.parts[0] == 'scripts')]
 
 
 def check_repository_fixtures(root):

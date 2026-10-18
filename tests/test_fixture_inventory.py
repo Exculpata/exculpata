@@ -94,3 +94,37 @@ def test_dynamic_builtin_references_cannot_escape_through_callables(source):
 
 def test_local_callable_parameter_does_not_name_the_dynamic_builtin():
     assert check_fixture_writes('def consume(exec):\n    return exec(1)') == []
+
+
+@pytest.mark.parametrize('filename', [
+    'services/transcription/tests/test_synthetic.py',
+    'packages/synthetic/tests/support.py',
+    'services/transcription/tests/fixture_write.py',
+])
+def test_all_tracked_test_trees_observe_fixture_boundary(tmp_path, filename):
+    import subprocess
+    from tests.fixture_inventory import check_repository_fixtures, inventory_paths
+
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True, timeout=15)
+    source = "bench.workspace.queue_media_job('synthetic')\nexec(source)\n"
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True)
+    target.write_text(source)
+    raw_owner = tmp_path / 'tests/fixture_write.py'
+    raw_owner.parent.mkdir()
+    raw_owner.write_text(source)
+    # Untracked editor copies never join the inventory; the exact raw owner
+    # exemption does not extend to an identically named service helper.
+    target.with_name('untracked copy.py').write_text(source)
+    subprocess.run(['git', 'add', '--', filename, 'tests/fixture_write.py'],
+                   cwd=tmp_path, check=True, timeout=15)
+    assert inventory_paths(tmp_path) == [Path(filename)]
+    violations = check_repository_fixtures(tmp_path)
+    assert {item.filename for item in violations} == {filename}
+    assert any('manual media fixture seed' in item.rule for item in violations)
+    assert any('dynamic execution' in item.rule for item in violations)
+    target.write_text(
+        "from tests.fixture_write import fixture_write\n"
+        "with fixture_write(bench.workspace, media=True):\n"
+        "    bench.workspace.queue_media_job('synthetic')\n")
+    assert check_repository_fixtures(tmp_path) == []

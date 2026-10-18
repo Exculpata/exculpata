@@ -21,6 +21,12 @@ def normalize(text: str) -> str:
     return ' '.join(re.findall(r'\w+', unicodedata.normalize('NFKC', text).casefold()))
 
 
+def contains_tokens(text: str, phrase: str) -> bool:
+    """Match a normalized phrase without accepting part of a word or numeral."""
+    normalized = normalize(phrase)
+    return bool(normalized) and (' ' + normalized + ' ') in (' ' + normalize(text) + ' ')
+
+
 def error_rate(expected, actual) -> float:
     """Levenshtein errors/reference length; insertions can exceed one."""
     row = list(range(len(actual) + 1))
@@ -98,8 +104,7 @@ def load_corpus(root: Path):
 def matches_span(citation, required):
     spans = [required['span'], *required.get('alternative_spans', [])]
     return (citation.get('document_id') == required['document_id']
-            and any((' ' + normalize(span) + ' ') in
-                    (' ' + normalize(citation.get('excerpt', '')) + ' ') for span in spans))
+            and any(contains_tokens(citation.get('excerpt', ''), span) for span in spans))
 
 
 def compare(manifest, expected, actual, *, full=False):
@@ -149,10 +154,35 @@ def compare(manifest, expected, actual, *, full=False):
                     errors.append(f"expected answerable true; observed {got.get('answerable')!r}")
                 if got.get('route') != 'question' or got.get('dispatched') is not True:
                     errors.append(f"expected question route; observed {got.get('route')}")
+                claims = got.get('claims')
+                if not isinstance(claims, list) or not claims:
+                    errors.append('missing observed answer claims')
+                    claims = []
+                valid_claims = []
+                for index, claim in enumerate(claims, 1):
+                    if (not isinstance(claim, dict) or not isinstance(claim.get('text'), str)
+                            or not normalize(claim['text']) or not isinstance(claim.get('citations'), list)
+                            or not claim['citations'] or not all(isinstance(c, dict) for c in claim['citations'])):
+                        errors.append(f'invalid observed claim {index}')
+                    else:
+                        valid_claims.append(claim)
+                # Aggregates are compatibility summaries, never a substitute for
+                # the actual per-claim support returned by the product.
+                citations = [citation for claim in valid_claims for citation in claim['citations']]
+                if got.get('text') != ' '.join(claim['text'] for claim in valid_claims):
+                    errors.append('answer text differs from observed claims')
+                if got.get('citations') != citations:
+                    errors.append('answer citations differ from observed claim citations')
                 for fact in want['facts']:
-                    if normalize(fact) not in normalize(got.get('text', '')):
-                        errors.append(f'missing answer fact: {fact}')
-                citations = got.get('citations', [])
+                    matching = [claim for claim in valid_claims if contains_tokens(claim['text'], fact)]
+                    if not matching:
+                        errors.append(f'missing answer fact in observed claims: {fact}')
+                    for claim in matching:
+                        if not any(citation.get('source_valid') is True
+                                   and contains_tokens(citation.get('excerpt', ''), fact)
+                                   and any(matches_span(citation, item) for item in want['citations'])
+                                   for citation in claim['citations']):
+                            errors.append(f'answer fact lacks support attached to its claim: {fact}')
                 for citation in citations:
                     if citation.get('source_valid') is not True:
                         errors.append(f'invalid source span: {citation}')

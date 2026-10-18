@@ -155,3 +155,38 @@ def test_manual_media_seed_holds_owning_lock_across_all_public_steps(tmp_path, m
     assert result['spoken']['mode'] == 'prepared-transcript-fixture'
     assert result['answer']['answerable'] is True
     assert all(citation['source_valid'] for citation in result['answer']['citations'])
+
+
+def test_observation_preserves_wrong_claim_attachment_for_gate_rejection(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest = _inputs(tmp_path)
+    manifest['answers'][0]['question'] = 'What about the blue bicycle and orange parcel?'
+    original = product.CaseIntelligenceWorkbench.ask
+    observed_claims = []
+
+    def swapped(bench, *args, **kwargs):
+        answer = original(bench, *args, **kwargs)
+        claims = answer.payload['claims']
+        assert len(claims) == 2
+        assert claims[0]['citations'][0]['document_id'] != claims[1]['citations'][0]['document_id']
+        claims[0]['citations'], claims[1]['citations'] = claims[1]['citations'], claims[0]['citations']
+        observed_claims.extend(claims)
+        return answer
+
+    monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'ask', swapped)
+    actual = product.observe(tmp_path, manifest)
+    expected = {'documents':{'written':{'text':actual['written']['text'], 'cer':0}},
+        'audio':{}, 'search':{'search':{'document_ids':['spoken']}},
+        'answers':{'answer':{'facts':['blue bicycle', 'orange parcel'], 'citations':[
+            {'document_id':'written', 'span':'blue bicycle'},
+            {'document_id':'spoken', 'span':'orange parcel'}]}}}
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is False
+    assert [claim['text'] for claim in actual['answer']['claims']] == [claim['text'] for claim in observed_claims]
+    for claim in actual['answer']['claims']:
+        assert all(citation['source_valid'] for citation in claim['citations'])
+        if 'blue bicycle' in claim['text']:
+            assert [citation['document_id'] for citation in claim['citations']] == ['spoken']
+        else:
+            assert [citation['document_id'] for citation in claim['citations']] == ['written']

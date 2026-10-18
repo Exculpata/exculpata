@@ -30,8 +30,58 @@ def sample():
     manifest = {'documents':[{'id':'pdf','ocr':False}], 'audio':[{'id':'wav'}], 'search':[{'id':'search','top_k':1}], 'answers':[{'id':'answer'}]}
     citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
-    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation]}}
+    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation], 'claims':[{'text':'The parcel is blue.', 'citations':[citation]}]}}
     return manifest, expected, actual
+
+
+@pytest.mark.parametrize('fact,wrong', [('09:15', '109:150'), ('09:15', '09:150'),
+                                     ('blue', 'blueberry'), ('locker seven', 'locker seventeen')])
+def test_answer_fact_requires_whole_normalized_tokens(fact, wrong):
+    manifest, expected, actual = sample()
+    expected['answers']['answer'] = {'facts':[fact], 'citations':[{'document_id':'pdf', 'span':fact}]}
+    citation = {'document_id':'pdf', 'excerpt':fact, 'source_valid':True}
+    actual['answer'].update(text=wrong, citations=[citation], claims=[{'text':wrong, 'citations':[citation]}])
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is False
+    assert any('fact' in difference for difference in result['diff'])
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'empty', 'swapped', 'unattached', 'duplicate-unsupported'])
+def test_answer_facts_require_their_own_claim_citations(mutation):
+    manifest, expected, actual = sample()
+    required = [{'document_id':'pdf', 'span':'blue bicycle'}, {'document_id':'wav', 'span':'orange parcel'}]
+    expected['answers']['answer'] = {'facts':['blue bicycle', 'orange parcel'], 'citations':required}
+    citations = [{'document_id':item['document_id'], 'excerpt':item['span'], 'source_valid':True}
+                 for item in required]
+    claims = [{'text':item['excerpt'], 'citations':[item]} for item in citations]
+    actual['answer'].update(text='blue bicycle orange parcel', citations=citations, claims=claims)
+    assert next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')['passed']
+    if mutation == 'missing': del actual['answer']['claims']
+    elif mutation == 'empty': actual['answer']['claims'] = []
+    elif mutation == 'swapped':
+        claims[0]['citations'], claims[1]['citations'] = claims[1]['citations'], claims[0]['citations']
+    elif mutation == 'unattached': claims[0]['citations'] = []
+    else: claims.append({'text':'blue bicycle', 'citations':[citations[1]]})
+    if mutation not in {'missing', 'empty'}:
+        actual['answer']['text'] = ' '.join(claim['text'] for claim in claims)
+        actual['answer']['citations'] = [citation for claim in claims for citation in claim['citations']]
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is False
+    assert any('claim' in difference for difference in result['diff'])
+    if mutation in {'swapped', 'unattached', 'duplicate-unsupported'}:
+        assert any('lacks support attached to its claim' in difference or 'invalid observed claim' in difference
+                   for difference in result['diff'])
+
+
+@pytest.mark.parametrize('fact,text', [('09:15', 'Arrived at (09:15).'),
+    ('blue bicycle', 'The BLUE—BICYCLE arrived.'), ('locker seven', 'Locker SEVEN!')])
+def test_answer_fact_normalization_preserves_case_and_punctuation(fact, text):
+    manifest, expected, actual = sample()
+    expected['answers']['answer'] = {'facts':[fact], 'citations':[{'document_id':'pdf', 'span':fact}]}
+    citation = {'document_id':'pdf', 'excerpt':text, 'source_valid':True}
+    actual['answer'].update(text=text, citations=[citation], claims=[{'text':text, 'citations':[citation]}])
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is True
 
 
 @pytest.mark.parametrize('present,answerable', [(False, None), (True, None), (True, False),
@@ -174,6 +224,7 @@ def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, v
     }]
     actual['answer']['text'] = excerpt
     actual['answer']['citations'] = [{'document_id':'pdf', 'excerpt':excerpt, 'source_valid':valid}]
+    actual['answer']['claims'] = [{'text':excerpt, 'citations':actual['answer']['citations']}]
     result = next(r for r in gate.compare(manifest, expected, actual) if r['id'] == 'answer')
     assert result['passed'] is passes
 
@@ -200,9 +251,11 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
             {'document_id':source, 'excerpt':'Synthetic search support', 'source_valid':True}
             for source in want['document_ids']]}
     for key, want in expected['answers'].items():
-        actual[key] = {'text':' '.join(want['facts']), 'route':'question', 'dispatched':True, 'answerable':True,
-            'citations':[{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True}
-                         for c in want['citations']]}
+        citations = [{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True}
+                     for c in want['citations']]
+        claims = [{'text':c['excerpt'], 'citations':[c]} for c in citations]
+        actual[key] = {'text':' '.join(claim['text'] for claim in claims), 'route':'question',
+            'dispatched':True, 'answerable':True, 'citations':citations, 'claims':claims}
     assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))
     for key in expected['search']:
         actual[key]['document_ids'] = [s for s in actual[key]['document_ids'] if s != missing_source]
