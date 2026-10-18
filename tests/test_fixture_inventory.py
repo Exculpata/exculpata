@@ -599,3 +599,65 @@ def test_namespace_runtime_probe_restores_module_registry_on_failure():
 ])
 def test_namespace_sequence_and_dictionary_identity_static_controls(source):
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('source,rejection_line', [
+    ("holder = []\nholder.extend(item for item in [globals().copy])\ncopy = holder[0]", 2),
+    ("holder = set()\nholder.update(item for item in [globals().copy])\ncopy = next(iter(holder))", 2),
+    ("holder = []\nholder.extend([item for item in [globals().copy]])\ncopy = holder[0]", 2),
+    ("holder = set()\nholder.update({item for item in [globals().copy]})\ncopy = next(iter(holder))", 2),
+    ("holder = {'copy': item for item in [globals().copy]}\ncopy = holder['copy']", 1),
+    ("holder = {item: None for item in [globals().copy]}\ncopy = next(iter(holder))", 1),
+    ("holder = []\nholder.extend(item for group in [[globals().copy]] for item in group)\ncopy = holder[0]", 2),
+    ("holder = []\nholder.extend(item for item in (nested for nested in [globals().copy]))\ncopy = holder[0]", 2),
+    ("holder = [item for item in (nested for nested in [globals().copy])]\ncopy = holder[0]", 1),
+    ("holder = {key: value for key, value in [('copy', globals().copy)]}\ncopy = holder['copy']", 1),
+    ("holder = [item for item in [globals().copy] if resource]\ncopy = holder[0]", 1),
+    ("holder = [item for item in {nested for nested in [globals().copy]}]\ncopy = holder[0]", 1),
+    ("holder = []\nholder.extend(globals().copy for item in resource)\ncopy = holder[0]", 2),
+    ("holder = {'copy': [item for item in [globals().copy]]}\ncopy = holder['copy'][0]", 1),
+])
+def test_namespace_comprehension_carrier_executes_before_rejection(source, rejection_line):
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource=('synthetic',), rejection_line=rejection_line)
+
+
+@pytest.mark.parametrize('expression', [
+    '{item: None for item in resource}',
+    '{item: None for item in (nested for nested in resource)}',
+    '{item: {nested: None for nested in resource} for item in resource}',
+    '{item: None for item in resource if item}',
+    '{item: None for item in resource}.copy()',
+])
+def test_namespace_comprehension_dictionary_type_executes_before_rejection(expression):
+    source = 'receiver = ' + expression
+    source += "\nscopes = receiver.fromkeys(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource=('synthetic',), rejection_line=2)
+
+
+@pytest.mark.parametrize('source', [
+    "holder = [*resource, globals().copy]\ncopy = holder[-1]",
+    "holder = (*resource, globals().copy)\ncopy = holder[-1]",
+    "holder = {*resource, globals().copy}\ncopy = next(item for item in holder if callable(item))",
+])
+def test_namespace_comprehension_payload_boundary_retains_opaque_carriers(source):
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource=('synthetic',), rejection_line=1)
+
+
+@pytest.mark.parametrize('source', [
+    'holder = []\nholder.extend(item for item in resource)',
+    'holder = set()\nholder.update(item for item in resource)',
+    'holder = [item for item in resource]',
+    'holder = {item for item in resource}',
+    'holder = {item: None for item in resource}',
+    'holder = [item for item in (nested for nested in resource)]',
+    'holder = [key for key in globals()]',
+    'holder = {key: None for key in globals()}',
+    'holder = {*resource, 1}',
+    'holder = (*resource, 1)',
+    "receiver = {item: None for item in resource}\nreceiver.fromkeys(['ordinary'], None)",
+])
+def test_namespace_comprehension_static_ordinary_controls(source):
+    """Static acceptance controls make no claim of forbidden runtime effects."""
+    assert check_fixture_writes(source) == []

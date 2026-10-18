@@ -594,6 +594,7 @@ class _Check(ast.NodeVisitor):
                 elements.append(value)
         self.evaluated_values[node] = (self.payload_value(inputs)
             if opaque else _Value(elements=tuple(elements)))
+        self.reject_dynamic_builtin(node)
         if opaque and self.unresolved_ownership(self.evaluated_values[node]):
             self.flag(node, "opaque fixture tuple expansion is unsupported; use fixed tuples and fixture_write()", structural=True)
 
@@ -634,9 +635,10 @@ class _Check(ast.NodeVisitor):
         self.visit_Tuple(node)
         self.reject_mutable_carrier(node, self.value(node))
         marker = self.payload_value([self.evaluated_values[node]])
-        if self.unresolved_ownership(marker):
+        if self.unresolved_ownership(marker) or self.contains_namespace(marker):
             # Set iteration has no positional correspondence to source order.
             self.evaluated_values[node] = marker
+        self.reject_dynamic_builtin(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:
         # Capture each input when Python evaluates it. A later key or value
@@ -689,7 +691,9 @@ class _Check(ast.NodeVisitor):
         return None
 
     def payload_value(self, values: list[_Value]) -> _Value:
-        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
+        # Opaque aggregates lose element layout, never protected provenance.
+        return _Value(symbol="<reflective-builtins>" if any(self.contains_namespace(value) for value in values) else "",
+                      unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
     @staticmethod
@@ -722,8 +726,7 @@ class _Check(ast.NodeVisitor):
     def opaque_dictionary_value(self, values: list[_Value]) -> _Value:
         # Dictionary type is known even when keys are not; mapping=None must
         # remain distinct from the exact empty mapping used by literal {}.
-        marker = replace(self.payload_value(values), dictionary_instance=True)
-        return replace(marker, symbol="<reflective-builtins>") if any(self.contains_namespace(value) for value in values) else marker
+        return replace(self.payload_value(values), dictionary_instance=True)
 
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
         if len(arguments) == 1 and not keywords and arguments[0].symbol in _BUILTIN_NAMESPACE_KEYS:
@@ -1752,8 +1755,9 @@ class _Check(ast.NodeVisitor):
             key = self.value(node.key)
             self.visit(node.value)
             shared = any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value)))
-            result = self.payload_value([key, self.value(node.value)])
+            result = self.opaque_dictionary_value([key, self.value(node.value)])
             self.evaluated_values[node] = result
+            self.reject_dynamic_builtin(node, result)
             if shared:
                 self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles", structural=True)
             if result.unresolved_active_path:
@@ -1763,11 +1767,14 @@ class _Check(ast.NodeVisitor):
             element = self.value(node.elt)
             if deferred and (self.known_ownership(element, shared_only=True) or self.has_active_path(element)):
                 self.flag(node, "generator transport of fixture values is unsupported; use fixed named inputs and fixture_write()", structural=True)
+            result = self.payload_value([element])
+            self.evaluated_values[node] = result
+            self.reject_dynamic_builtin(node, result)
             if not deferred:
                 self.reject_mutable_carrier(node, element)
                 self.evaluated_values[node] = (_Value(receiver=element)
                     if element.fixture_handle and element.connection in self.protected
-                    else self.payload_value([element]))
+                    else result)
         assignments = self.eager_walrus or {}
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
