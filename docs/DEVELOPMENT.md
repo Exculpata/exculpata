@@ -125,7 +125,8 @@ public mutators can enter their own connection contexts and commit pending fixtu
 SQL. Prepare pure timestamp values before entry and perform public workflow
 transitions outside the SQL fixture. The inventory rejects workspace method calls
 inside SQL scopes, including private methods and saved aliases, rather than guessing
-which public methods commit. Explicit media mode retains its separate non-atomic
+which public methods commit. An unknown method name selected with `getattr` still
+retains a known workspace receiver for this rule. Explicit media mode retains its separate non-atomic
 seed contract. Deliberate isolated callback probes need an exact-statement reason.
 Yielded connections, cursors and saved methods are valid only on the owning
 thread during the boundary; expired or transferred handles raise before touching

@@ -206,7 +206,7 @@ class _Check(ast.NodeVisitor):
                 return self.value(node.args[0]) if function.descriptor and node.args else function.receiver or _Value()
             if function.descriptor and node.args and function.methods & {"cursor", "execute", "executemany"}:
                 return replace(self.value(node.args[0]), sqlite_cursor=True)
-            if function.symbol == "getattr" and len(node.args) >= 2:
+            if function.symbol in {"getattr", "builtins.getattr"} and len(node.args) >= 2:
                 name = self.value(node.args[1])
                 if name.complete_text:
                     return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
@@ -216,6 +216,10 @@ class _Check(ast.NodeVisitor):
                     # must not discard ownership just because its name is unknown.
                     return _Value(connection=receiver.connection, fixture_handle=receiver.fixture_handle,
                                   methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CONTEXT_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | {"close"}), receiver=receiver)
+                if receiver.workspace or receiver.live_workspace or (receiver.symbol and receiver.symbol in self.protected):
+                    # The SQL-scope rule rejects every workspace method, so an
+                    # unknown name must retain its known receiver as well.
+                    return _Value(receiver=receiver)
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
                 return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
                                sqlite_cursor=True)
