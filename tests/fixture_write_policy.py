@@ -281,7 +281,7 @@ class _Check(ast.NodeVisitor):
             opaque = False
             for item in node.elts:
                 if isinstance(item, ast.Starred):
-                    value = self.value(item.value)
+                    value = self.iteration_value(self.value(item.value))
                     inputs.append(value)
                     expanded = value.elements
                     if expanded is None:
@@ -586,6 +586,8 @@ class _Check(ast.NodeVisitor):
             operand = item.value if isinstance(item, ast.Starred) else item
             self.visit(operand)
             value = self.value(operand)
+            if isinstance(item, ast.Starred):
+                value = self.iteration_value(value)
             inputs.append(value)
             if isinstance(item, ast.Starred):
                 opaque |= value.elements is None
@@ -695,6 +697,14 @@ class _Check(ast.NodeVisitor):
         return _Value(symbol="<reflective-builtins>" if any(self.contains_namespace(value) for value in values) else "",
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
+
+    def iteration_value(self, value: _Value) -> _Value:
+        # Scope/module registries and exact string-key mappings yield keys,
+        # not their namespace-bearing values. Keep cardinality unknown and
+        # preserve the existing conservative SQL/path provenance checks.
+        if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
+            return replace(self.payload_value([value]), symbol="")
+        return value
 
     @staticmethod
     def mapping_lookup(receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
@@ -941,7 +951,7 @@ class _Check(ast.NodeVisitor):
     def visit_loop(self, node, target=None):
         before = self.aliases.copy()
         if target is not None:
-            elements = self.value(node.iter).elements
+            elements = self.iteration_value(self.value(node.iter)).elements
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
             self.bind(target, value)
         for statement in node.body:
@@ -1174,6 +1184,7 @@ class _Check(ast.NodeVisitor):
             self.visit(operand)
             value = self.value(operand)
             if isinstance(argument, ast.Starred):
+                value = self.iteration_value(value)
                 if value.elements is None:
                     opaque_values.append(value)
                 else:
@@ -1408,11 +1419,11 @@ class _Check(ast.NodeVisitor):
         unresolved_actual = []
         for index, argument in enumerate(call.args):
             if isinstance(argument, ast.Starred):
-                elements = self.value(argument.value).elements
+                elements = self.iteration_value(self.value(argument.value)).elements
                 if elements is None:
                     # Dynamic iterable cardinality is outside this bounded
                     # literal/alias expansion; do not guess later positions.
-                    unresolved_actual = [self.value(item.value if isinstance(item, ast.Starred) else item)
+                    unresolved_actual = [self.iteration_value(self.value(item.value)) if isinstance(item, ast.Starred) else self.value(item)
                                          for item in call.args[index:]]
                     break
                 actual.extend(elements)
@@ -1742,6 +1753,8 @@ class _Check(ast.NodeVisitor):
             if index:
                 self.visit(generator.iter)
             iterable = self.value(generator.iter) if index else first_iterable
+            if iterable is not None:
+                iterable = self.iteration_value(iterable)
             if iterable is not None and self.unresolved_ownership(iterable):
                 self.flag(generator.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
             elements = iterable.elements if iterable is not None else None

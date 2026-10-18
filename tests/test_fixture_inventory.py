@@ -428,7 +428,7 @@ def test_namespace_dictionary_defaults_and_key_only_construction_controls(source
     assert check_fixture_writes(source) == []
 
 
-def assert_namespace_runtime_effect_and_rejection(source, result='None', *, resource=None, rejection_line=None):
+def run_isolated_namespace_probe(source, result='None', *, resource=None):
     sink = []
     registry_before = (tuple(sys.modules), sys.modules.get('__builtins__'),
                        sys.modules.get('probe'), sys.modules.get('synthetic_fixture_namespace_probe'))
@@ -443,6 +443,11 @@ def assert_namespace_runtime_effect_and_rejection(source, result='None', *, reso
         assert sys.modules.get('synthetic_fixture_namespace_probe') is registry_before[3]
     if error is not None:
         raise error
+    return observed, sink
+
+
+def assert_namespace_runtime_effect_and_rejection(source, result='None', *, resource=None, rejection_line=None):
+    observed, sink = run_isolated_namespace_probe(source, result, resource=resource)
     assert sink == ['synthetic payload executed']
     assert any(item.structural and 'dynamic execution' in item.rule
                and (rejection_line is None or item.line == rejection_line)
@@ -661,3 +666,38 @@ def test_namespace_comprehension_payload_boundary_retains_opaque_carriers(source
 def test_namespace_comprehension_static_ordinary_controls(source):
     """Static acceptance controls make no claim of forbidden runtime effects."""
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('mapping', [
+    'globals()', 'sys.modules', 'globals().copy()', 'dict(globals())',
+    'sys.modules.copy()', 'dict.copy(sys.modules)',
+    "{'copy': globals().copy}", "{'namespace': globals()}",
+    "{'nested': {'copy': globals().copy}}", 'globals() | {}',
+])
+@pytest.mark.parametrize('expansion', [
+    '[*mapping]', '(*mapping,)', '{*mapping}',
+    '[*(*mapping,)]', '(*[*mapping],)', '{*[*mapping]}',
+    'capture(*mapping)', '[key for key in mapping]',
+])
+def test_namespace_mapping_key_expansion_runtime_acceptance(mapping, expansion):
+    source = 'import sys\ndef capture(*names):\n    return names\nmapping = ' + mapping
+    source += '\nexpected = set(mapping)\nkeys = ' + expansion
+    (keys, expected), sink = run_isolated_namespace_probe(source, '(keys, expected)')
+    assert all(isinstance(key, str) for key in keys)
+    assert set(keys) == expected
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('source,rejection_line', [
+    ("holder = [*{'copy': globals().copy}.values()]\ncopy = holder[0]", 1),
+    ("holder = (*{'copy': globals().copy}.values(),)\ncopy = holder[0]", 1),
+    ("holder = {*{'copy': globals().copy}.values()}\ncopy = next(iter(holder))", 1),
+    ("key = globals().copy\nmapping = {key: None}\nholder = [*mapping]\ncopy = holder[0]", 2),
+    ("holder = [*[globals().copy]]\ncopy = holder[0]", None),
+    ("holder = (*[globals().copy],)\ncopy = holder[0]", None),
+    ("holder = {*[globals().copy]}\ncopy = next(iter(holder))", 1),
+])
+def test_namespace_mapping_key_expansion_retains_actual_carriers(source, rejection_line):
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=rejection_line)
