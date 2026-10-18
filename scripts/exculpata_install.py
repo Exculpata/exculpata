@@ -1591,20 +1591,22 @@ def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 
 def _dns_engine_known_fix() -> bool:
-    """Version hint only: behavioral acceptance is mandatory on every engine."""
+    """Conservative Engine floor; live DNS acceptance remains independently required."""
     try:
         result = _probe(["docker", "info", "--format", "{{.ServerVersion}}"])
         match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?", result.stdout.strip())
         if result.returncode or not match:
             return False
         version = tuple(map(int, match.groups()))
-        return version >= (26, 0, 0) or (version[:2] == (25, 0) and version[2] >= 5) or (version[:2] == (23, 0) and version[2] >= 11)
+        return version >= (26, 0, 0)
     except (OSError, subprocess.TimeoutExpired):
         return False
 
 
 def _verify_installed_dns(root: Path) -> None:
     """Inspect only network fields, then probe synthetic DNS as the normal app UID."""
+    if not _dns_engine_known_fix():
+        raise RuntimeError("Docker Engine 26.0.0 or newer is required; older, prerelease, unknown or unavailable versions fail closed. Live DNS success cannot replace this floor.")
     remedy = "DNS isolation is unverified: recreate restricted services with container-local upstream DNS and internal networks, ensure the app can bind its ephemeral loopback DNS challenge, and rerun doctor. Engine version alone cannot satisfy this check. See docs/NETWORK_EGRESS.md."
     try:
         installation, _ = _installed_release(root)
@@ -2285,10 +2287,10 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
             passed = False
         add(name, passed, "Available" if passed else "Unavailable or diagnostic timed out", capability, remedy)
     dns_engine = docker and _dns_engine_known_fix()
-    checks.append(PreflightCheck("docker-dns-version", "pass" if dns_engine else "warn",
-        "Version includes a known upstream fix; behavioral acceptance still required" if dns_engine else "Version is older, prerelease or unknown; behavioral acceptance still required",
-        "Provide a version hint without substituting for runtime DNS proof", False,
-        "Use a maintained Engine; backports may contain the fix. Startup and doctor must pass the container-local DNS challenge regardless of version. See docs/NETWORK_EGRESS.md."))
+    add("docker-dns-version", dns_engine,
+        "Docker Engine 26.0.0 or newer; live DNS acceptance still required" if dns_engine else "Docker Engine version is below 26.0.0, prerelease, unknown or unavailable",
+        "Require the supported Engine floor independently of live DNS proof",
+        "Use Docker Engine 26.0.0 or newer with a recognized release version. Older-engine backports are not an exception. Startup, update and doctor must also pass the container-local DNS challenge. See docs/NETWORK_EGRESS.md.")
     storage_plan = _storage_plan(models, args)
     if docker:
         try:
@@ -3784,6 +3786,8 @@ def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> Non
                     _verify_installed_dns(root)
                     console.ok("DNS boundary :: internal memberships and container-local UDP/TCP A/AAAA/TXT challenges passed")
                 else:
+                    if not _dns_engine_known_fix():
+                        raise RuntimeError("Docker Engine 26.0.0 or newer is required even for legacy rollback; only the live DNS proof may be skipped.")
                     console.warn("Legacy rollback restored pre-egress health; DNS egress isolation is not verified")
                 _install_phase(root, "selected_capabilities", "complete")
                 console.ok(f"Application health, selected capabilities and sign-in endpoint passed; authentication mode :: {expected_auth}")

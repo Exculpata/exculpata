@@ -14,13 +14,13 @@ sys.path.pop(0)
 
 
 @pytest.mark.parametrize("version,allowed", [
-    ("25.0.5", True), ("23.0.11", True), ("24.0.9", False),
+    ("25.0.5", False), ("23.0.11", False), ("24.0.9", False),
     ("26.0.0", True), ("28.5.1", True), ("29.5.2", True),
     ("29.5.2+package1", True), ("29.5.2-rc1", False), ("unknown", False),
     ("30.0.0-dev", False), ("29.5", False), ("29.5.2\nprivate-data", False),
     ("26.0.0~rc1", False), ("30.0.0~dev", False), ("29.5.2+vendor~rc1", False),
 ])
-def test_engine_version_is_only_a_conservative_hint(monkeypatch, version, allowed):
+def test_engine_version_enforces_conservative_minimum(monkeypatch, version, allowed):
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, version, ""))
     assert installer._dns_engine_known_fix() is allowed
 
@@ -58,7 +58,7 @@ def test_doctor_accepts_only_verified_runtime_and_streams_public_probe(monkeypat
 
 @pytest.mark.parametrize("failure", ["dns", "search", "network", "services", "probe"])
 def test_doctor_blocks_unknown_dns_runtime(monkeypatch, failure, tmp_path):
-    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: failure != "version")
+    monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: True)
     monkeypatch.setattr(installer, "_installed_release", lambda root: ({"profiles": []}, ROOT))
     monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
     def run(command):

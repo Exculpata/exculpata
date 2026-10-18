@@ -3654,11 +3654,11 @@ def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, re
     assert _control_bytes(root) == before
 
 
-def test_preflight_warns_about_unknown_dns_engine_without_version_veto(tmp_path, ready_host, monkeypatch):
+def test_preflight_blocks_unknown_dns_engine(tmp_path, ready_host, monkeypatch):
     monkeypatch.setattr(installer, "_dns_engine_known_fix", lambda: False)
     result = installer._collect_preflight("none", preflight_args(tmp_path))
     check = checks_by_name(result)["docker-dns-version"]
-    assert result.ready and not check.blocking and check.state == "warn"
+    assert not result.ready and check.blocking and check.state == "fail"
     assert "challenge" in check.remedy
 
 

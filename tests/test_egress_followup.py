@@ -118,8 +118,8 @@ def test_live_smoke_uses_production_compose_and_keeps_routing_environment():
     assert '"NO_PROXY": ""' not in source  # harness must inherit the production policy
 
 
-@pytest.mark.parametrize('version,behavior', [('25.0.5', True), ('23.0.11', True), ('99.0.0', False)])
-def test_doctor_uses_observed_behavior_not_version(monkeypatch, tmp_path, version, behavior):
+@pytest.mark.parametrize('version,behavior', [('26.0.0', True), ('29.0.0', True), ('99.0.0', False)])
+def test_supported_engine_still_requires_observed_behavior(monkeypatch, tmp_path, version, behavior):
     sys.path.insert(0,str(ROOT/'scripts'))
     import exculpata_install as installer
     sys.path.pop(0)

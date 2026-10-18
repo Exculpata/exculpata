@@ -27,10 +27,14 @@ setting prevents inherited host search suffixes. OIDC issuer resolution happens
 in the constrained relay; its DNS settings are unchanged. Existing gateway,
 model-stager, updater and Kerberos proxy DNS settings are unchanged.
 
-The installer uses Engine version only as a nonblocking advisory. Known upstream
-fixes include 23.0.11, 25.0.5 and 26.0.0; backports and unrecognized versions must
-meet the same behavioral check. A new version cannot bypass that check. Preflight
-checks configuration and reports the advisory; it cannot certify live isolation.
+The installer requires **Docker Engine 26.0.0 or newer AND live DNS verification**.
+Preflight blocks older, prerelease, malformed, unknown or unavailable Engine versions
+before installation/update writes. Recognized versions have three numeric components
+and may include `+` build metadata. Older-engine backports are not a supported
+exception, even if they include an upstream fix or pass the live check. A supported
+version cannot bypass the live check either. Preflight is offline with respect to
+application traffic and cannot certify live isolation; startup/update acceptance
+and doctor must independently observe the runtime behavior below.
 
 Startup, update acceptance and live doctor inspect each running restricted
 service's exact DNS/search settings and internal-only memberships. From the actual
@@ -45,8 +49,8 @@ returns. Doctor therefore performs transient container-local network probes; it
 does not change host DNS or daemon settings. Dry-run reports DNS unverified.
 
 Failed updates can roll back to a capsule that predates this network contract.
-Only that rollback path may accept the prior release's application, storage,
-authentication and selected-capability health without the new DNS proof. It
+The Docker 26.0.0 floor still applies. Only that rollback path may accept the prior
+release's application, storage, authentication and selected-capability health without the new DNS proof. It
 explicitly warns that DNS egress isolation is **not verified**; it does not print
 a DNS success. New capsules declare network contract version 1 in their manifest.
 Earlier unmarked egress capsules are recognized by their relay, inventory, DNS
@@ -92,7 +96,10 @@ Unicode/ASCII-IDNA names, literal underscores, encoded path characters and valid
 HTTPS ports retain their existing treatment. DNS, certificate and provider metadata
 acceptance remain runtime checks.
 Existing ASCII issuer names containing underscores retain literal, exact-host
-matching; replacing an underscore or adding a suffix does not gain access.
+matching for compatibility with existing private issuers accepted by HTTPX. This
+is an ASCII-only compatibility rule, not permission to normalize underscores
+into other characters; Unicode names must pass IDNA2008. Replacing an underscore
+or adding a suffix does not gain access.
 Installer, application settings and relay use the same offline issuer/pin policy.
 A pinned, hash-verified source archive supplies IDNA2008 without host package
 installation or a preflight network request; its license and reproduction manifest
@@ -100,8 +107,18 @@ ship with the source. Invalid Unicode names fail before configuration writes.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
 does not authorize similar-looking names or change the issuer string used for
 token/discovery validation or explicit pin binding. The relay's IDNA dependency
-is version- and hash-locked to the application's version.
-It rejects all other destinations, plain HTTP forwarding, malformed authorities,
+is version- and hash-locked to the application's version. This prevents the standard
+library's older IDNA mapping from silently changing the permitted authority.
+
+The relay builds from the repository root to share that offline policy. Its
+`deploy/egress-proxy/Dockerfile.dockerignore` is the active Dockerfile-specific
+ignore file: it excludes everything except the relay code, shared policy and
+explicit licensed IDNA files. Runtime/configuration data, credentials, caches and
+unrelated application sources stay outside the relay build context. The name is
+intentional: a `.dockerignore` inside the relay directory alone would not filter
+the repository-root context. See [Docker's context rules](https://docs.docker.com/build/concepts/context/#dockerignore-files).
+
+The relay rejects all other destinations, plain HTTP forwarding, malformed authorities,
 userinfo, paths, body headers and conflicting Host headers. Noncanonical numeric
 IPv4 authorities (octal, hexadecimal, shortened and integer forms) are rejected
 before resolution, even when a resolver would interpret one as a public IP. DNS is resolved for

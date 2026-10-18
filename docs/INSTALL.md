@@ -469,11 +469,12 @@ passwords and staging tokens are never passed to the build logger.
 
 ## Hardware and capability profiles
 
-Exculpata targets a modern x86-64 Linux host with maintained Docker Engine and Docker
-Compose v2. Engine versions are advisory; startup and doctor require the
-[container-local behavioral DNS check](NETWORK_EGRESS.md#dns-boundary-and-supported-runtime),
-including on patched older releases. The figures below are starting targets for alpha evaluation, not
-validated minimums:
+Exculpata targets a modern x86-64 Linux host with Docker Compose v2 and maintained
+Docker Engine 26.0.0 or newer. Preflight blocks older, prerelease,
+unknown or unavailable versions; no older-engine backport exception is supported.
+Independently, startup, update acceptance and doctor require the
+[container-local behavioral DNS check](NETWORK_EGRESS.md#dns-boundary-and-supported-runtime).
+The figures below are starting targets for alpha evaluation, not validated minimums:
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
