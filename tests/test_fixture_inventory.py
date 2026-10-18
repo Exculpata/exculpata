@@ -73,3 +73,24 @@ def test_runtime_probe_pin_is_narrow_and_fails_closed(filename, monkeypatch):
     raw_write = source + "\nbench.workspace.connection.execute('DELETE FROM workbench_matter')\n"
     monkeypatch.setitem(REVIEWED_DYNAMIC_PROBES, filename, hashlib.sha256(raw_write.encode()).hexdigest())
     assert any('SQL fixture write' in item.rule for item in check_inventory_source(raw_write, filename))
+
+
+@pytest.mark.parametrize('source', [
+    '(lambda operation: operation)(exec)(payload)',
+    'consume(exec)',
+    'callback = lambda: eval\ncallback()(payload)',
+    'import builtins as b\nconsume(b.eval)',
+    'from builtins import exec as execute\nconsume(execute)',
+    "import builtins\nconsume(getattr(builtins, 'eval'))",
+    'def relay(operation):\n    return operation\nrelay(exec)(payload)',
+    'def callback(operation=exec):\n    return operation',
+    'operation = exec if flag else ordinary\noperation(payload)',
+    'operation = exec  # fixture-write: Deliberately capture a synthetic executable callback.',
+])
+def test_dynamic_builtin_references_cannot_escape_through_callables(source):
+    violations = check_fixture_writes(source)
+    assert any('dynamic execution' in item.rule and item.structural for item in violations)
+
+
+def test_local_callable_parameter_does_not_name_the_dynamic_builtin():
+    assert check_fixture_writes('def consume(exec):\n    return exec(1)') == []

@@ -38,7 +38,7 @@ jobs:
           base = os.environ.get('BASE_SHA')
           full = True
           if base:
-              result = subprocess.run(['git', 'diff', '--name-only', '-z', base+'...HEAD'], capture_output=True)
+              result = subprocess.run(['git', 'diff', '--no-renames', '--name-only', '-z', base+'...HEAD'], capture_output=True)
               if result.returncode == 0:
                   paths = result.stdout.split(b'\0')
                   full = any(p.startswith((b'benchmarks/corpus/', b'scripts/corpus')) or p == b'.github/workflows/corpus.yml' for p in paths)
@@ -54,7 +54,7 @@ jobs:
         run: |
           make corpus-check PYTHON=python
           python scripts/corpus-history-check.py
-          python -m pytest -q tests/test_corpus_check.py tests/test_corpus_product.py tests/test_corpus_history.py
+          python -m pytest -q tests/test_corpus_check.py tests/test_corpus_product.py tests/test_corpus_history.py tests/test_corpus_scope.py
 
   full:
     needs: fast

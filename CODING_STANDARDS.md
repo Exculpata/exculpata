@@ -61,6 +61,8 @@ handles and the supported syntax described in
 Run `python -m pytest -q tests/test_fixture_write_policy.py tests/test_fixture_inventory.py`.
 
 Do not hide setup in `exec` or `eval`, including aliases and compiled payloads.
+References to these builtins are rejected before they can enter opaque callable
+arguments, defaults or containers; ordinary local callables remain supported.
 Dynamic execution is a structural violation; `# fixture-write:` cannot waive it.
 Negative regression probes retain actual runtime effects and check rejection of
 the same source through `tests.fixture_probe` with fixed named inputs. Installer

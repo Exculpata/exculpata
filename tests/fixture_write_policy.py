@@ -500,12 +500,22 @@ class _Check(ast.NodeVisitor):
                  and self.known_ownership(value, shared_only=True))):
             self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles", structural=True)
 
+    def reject_dynamic_builtin(self, node: ast.AST, value: _Value | None = None) -> None:
+        value = self.value(node) if value is None else value
+        if (value.symbol in {"exec", "eval", "builtins.exec", "builtins.eval"}
+                and not value.unannotated_parameter):
+            self.flag(node, "dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()", structural=True)
+
     def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Load):
+            self.reject_dynamic_builtin(node)
         if isinstance(node.ctx, ast.Load) and self.unresolved_ownership(self.value(node)):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self.visit(node.value)
+        if isinstance(node.ctx, ast.Load):
+            self.reject_dynamic_builtin(node)
         base = self.value(node.value)
         if base.elements is not None and self.known_ownership(base, shared_only=True):
             self.flag(node, "shared tuple attribute extraction is unsupported; unpack named handles and use fixture_write()", structural=True)
@@ -1038,8 +1048,7 @@ class _Check(ast.NodeVisitor):
         # bound method retains ownership at its immediate invocation.
         self.visit(node.func)
         function = self.value(node.func)
-        if function.symbol in {"exec", "eval", "builtins.exec", "builtins.eval"}:
-            self.flag(node, "dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()", structural=True)
+        self.reject_dynamic_builtin(node.func, function)
         if self.unresolved_ownership(function):
             self.flag(node, "shared container accessors are unsupported; use explicit named handles", structural=True)
             self.evaluated_values[node] = function
@@ -1247,6 +1256,7 @@ class _Check(ast.NodeVisitor):
         result = self.check_local_call(node, function)
         if result is not None:
             self.evaluated_values[node] = result
+        self.reject_dynamic_builtin(node)
 
     def check_local_call(self, call, function):
         # Specialize direct local helpers only when a known workspace, SQLite

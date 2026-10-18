@@ -30,8 +30,22 @@ def sample():
     manifest = {'documents':[{'id':'pdf','ocr':False}], 'audio':[{'id':'wav'}], 'search':[{'id':'search','top_k':1}], 'answers':[{'id':'answer'}]}
     citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
-    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'citations':[citation]}}
+    actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation]}}
     return manifest, expected, actual
+
+
+@pytest.mark.parametrize('present,answerable', [(False, None), (True, None), (True, False),
+    (True, 0), (True, 1), (True, 'true'), (True, 'false'), (True, []), (True, {})],
+    ids=['missing', 'null', 'false', 'zero', 'one', 'true-string', 'false-string', 'list', 'dict'])
+def test_answer_requires_explicit_true_despite_valid_facts_and_citations(present, answerable):
+    manifest, expected, actual = sample()
+    if not present:
+        del actual['answer']['answerable']
+    else:
+        actual['answer']['answerable'] = answerable
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is False
+    assert any('answerable' in difference for difference in result['diff'])
 
 
 @pytest.mark.parametrize('mutation', ['missing','fact','wrong-source','missing-citation','extra-citation','invalid-span','route','dispatch','rank','search-support','search-invalid','text','transcript','projection'])
@@ -186,7 +200,7 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
             {'document_id':source, 'excerpt':'Synthetic search support', 'source_valid':True}
             for source in want['document_ids']]}
     for key, want in expected['answers'].items():
-        actual[key] = {'text':' '.join(want['facts']), 'route':'question', 'dispatched':True,
+        actual[key] = {'text':' '.join(want['facts']), 'route':'question', 'dispatched':True, 'answerable':True,
             'citations':[{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True}
                          for c in want['citations']]}
     assert all(row['passed'] for row in gate.compare(manifest, expected, actual, full=True))
