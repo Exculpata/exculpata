@@ -115,16 +115,24 @@ fixture writes and hold it across a complete manual media seed sequence
 before entering the connection transaction and keeps it through commit or
 rollback. Nested SQL fixtures use a savepoint without committing their caller's
 transaction, even when the outer fixture has only read or created a table before
-entering the nested fixture. Finished scopes do not retain ownership in copied
-contexts. Public media methods may commit individually; the outer helper
+entering the nested fixture. Ownership follows the locked thread, so copied or empty Python contexts cannot
+hide an active nested scope; finished handles lose ownership. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
 Yielded connections, cursors and saved methods are valid only on the owning
 thread during the boundary; expired or transferred handles raise before touching
-SQLite. Writable connection/cursor attributes delegate to SQLite. Unsupported
+SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=True`
+is unsupported and rejected before entry or assignment. Custom row factories
+receive scoped cursors, including through public workspace queries, and scoped
+connection factories are restored before releasing the lock; custom cursor
+factories are rejected before they can receive a raw connection. Unsupported
 connection methods such as blob access, deserialize, backup and deferred dumps
 fail closed rather than returning an unscoped object.
 Use the yielded handle for scripts, connection contexts and explicit transaction
-control. Outer scripts execute complete SQLite statements within the fixture
+control. DDL, writable PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
+require that handle, which begins a transaction before SQLite can execute them
+without an implicit transaction. ATTACH, DETACH and VACUUM
+are rejected; deliberate raw attachment injection is limited to explicitly
+annotated negative tests on isolated synthetic connections. Outer scripts execute complete SQLite statements within the fixture
 transaction, without sqlite3's implicit pre-script commit; explicit transaction
 commands and rollback conflict policies in scripts are rejected before execution.
 A nested handle rejects `executescript`, commit/rollback, transaction-control SQL, rollback conflict clauses and
@@ -148,7 +156,8 @@ eager operation while holding the helper. Function decorators, defaults and
 annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
-The inventory merges match cases conservatively, propagates explicit class
+The inventory follows constant-name getattr methods and element-wise tuple/list
+unpacking, including nested and starred assignments. It merges match cases conservatively, propagates explicit class
 global/nonlocal assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
 for dynamic schema inspection. Class-local aliases remain separate from module and enclosing function aliases;

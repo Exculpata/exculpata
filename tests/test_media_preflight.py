@@ -644,8 +644,8 @@ def test_audit_failure_leaves_recording_decision_unadmitted(tmp_path):
         bench, matter, document, token = upload(client, slug, source)
         job = wait_job(bench, matter, document)
         bench.media.close()
-        with fixture_write(bench.workspace):
-            bench.workspace.connection.execute("""CREATE TRIGGER synthetic_audit_failure
+        with fixture_write(bench.workspace) as fixture_connection:
+            fixture_connection.execute("""CREATE TRIGGER synthetic_audit_failure
                 BEFORE INSERT ON workbench_audit_event WHEN NEW.action LIKE 'media.preflight_%'
                 BEGIN SELECT RAISE(ABORT, 'Synthetic audit failure'); END""")
         response = client.post(f'/matters/{slug}/sources/{token}/recording-check', data={
@@ -655,8 +655,8 @@ def test_audit_failure_leaves_recording_decision_unadmitted(tmp_path):
         assert document.state == 'needs_review'
         assert response.status_code == 503
         assert processor.submissions == 0
-        with fixture_write(bench.workspace):
-            bench.workspace.connection.execute('DROP TRIGGER synthetic_audit_failure')
+        with fixture_write(bench.workspace) as fixture_connection:
+            fixture_connection.execute('DROP TRIGGER synthetic_audit_failure')
         retried = client.post(f'/matters/{slug}/sources/{token}/recording-check', data={
             'action': 'continue', 'inspection_id': job.preflight['inspection_id']}, follow_redirects=False)
         assert retried.status_code == 303

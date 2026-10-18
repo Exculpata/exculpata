@@ -216,9 +216,9 @@ def test_v41_backup_clean_restore_and_atomic_oidc_upgrade(tmp_path):
     store = WorkspaceStore(path, clock=lambda: NOW)
     owner = store.upsert_principal('test', 'synthetic-owner', 'Synthetic Owner', 'owner')
     matter = store.create_matter('Synthetic preserved case', '', owner.principal_id)
-    with fixture_write(store):
-        store.connection.execute('DROP TABLE workbench_case_oidc_request')
-        store.connection.execute('DROP TABLE workbench_case_oidc_authorization')
+    with fixture_write(store) as fixture_connection:
+        fixture_connection.execute('DROP TABLE workbench_case_oidc_request')
+        fixture_connection.execute('DROP TABLE workbench_case_oidc_authorization')
         store.connection.execute("UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL")
     before = snapshot(store.connection, 'workbench_case_policy')
     store.close()

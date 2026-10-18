@@ -162,8 +162,8 @@ def test_stale_support_or_malformed_late_section_creates_no_orphan_report(worksp
 def test_converted_report_transaction_rolls_back_mid_insert_and_checks_membership(workspace):
     _client, bench, matter = workspace
     store = bench.workspace
-    with fixture_write(store):  # Background work shares this connection.
-        store.connection.execute("CREATE TEMP TRIGGER reject_second_section BEFORE INSERT ON workbench_report_section WHEN NEW.ordinal=2 BEGIN SELECT RAISE(ABORT, 'synthetic interrupted conversion'); END")
+    with fixture_write(store) as fixture_connection:  # Background work shares this connection.
+        fixture_connection.execute("CREATE TEMP TRIGGER reject_second_section BEFORE INSERT ON workbench_report_section WHEN NEW.ordinal=2 BEGIN SELECT RAISE(ABORT, 'synthetic interrupted conversion'); END")
     sections = [{"heading": "First", "body": "One"}, {"heading": "Second", "body": "Two"}]
     with pytest.raises(sqlite3.IntegrityError):
         store.create_report_from_sections(matter.matter_id, ACTOR, "No orphan", "", origin_id="synthetic-run", sections=sections)
@@ -284,9 +284,9 @@ def test_http_conversion_streams_more_than_one_export_page(workspace):
     run = bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind="full")
     bench.workspace.claim_review_run("synthetic-large-worker")
     count = 100_001
-    with fixture_write(bench.workspace):  # Background work shares this connection.
+    with fixture_write(bench.workspace) as fixture_connection:  # Background work shares this connection.
         bench.workspace.connection.execute("DELETE FROM workbench_review_decision WHERE run_id=?", (run.run_id,))
-        bench.workspace.connection.execute(
+        fixture_connection.execute(
             "WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM sequence WHERE n<?) "
             "INSERT INTO workbench_review_decision(run_id,matter_id,ordinal,document_id,source_version_id,"
             "action_token,source_name,source_kind,machine_decision,human_decision,human_note,created_at,updated_at) "

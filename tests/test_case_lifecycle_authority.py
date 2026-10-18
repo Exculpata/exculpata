@@ -318,8 +318,8 @@ def test_local_session_and_binding_are_atomic_and_do_not_store_cookie_binding(lo
     assert row['binding_digest'] == hashlib.sha256(binding.encode('ascii')).hexdigest()
     assert row['binding_digest'] != binding and row['binding_digest'] not in token
     before = store.connection.execute('SELECT COUNT(*) FROM workbench_session').fetchone()[0]
-    with fixture_write(store):
-        store.connection.execute('CREATE TEMP TRIGGER synthetic_binding_failure '
+    with fixture_write(store) as fixture_connection:
+        fixture_connection.execute('CREATE TEMP TRIGGER synthetic_binding_failure '
             'BEFORE INSERT ON workbench_case_session_binding BEGIN '
             "SELECT RAISE(ABORT, 'synthetic binding failure'); END")
     with pytest.raises(sqlite3.IntegrityError, match='synthetic binding failure'):

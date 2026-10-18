@@ -20,7 +20,7 @@ def test_logical_nested_fixture_preserves_outer_rollback_before_dml(tmp_path, ou
                     connection.execute('SELECT * FROM synthetic_fixture').fetchall()
                 elif outer_setup == 'ddl':
                     connection.execute('CREATE TABLE synthetic_other (value TEXT)')
-                assert not connection.in_transaction
+                assert connection.in_transaction is (outer_setup == 'ddl')
                 with fixture_write(store) as nested:
                     nested.execute("INSERT INTO synthetic_fixture VALUES ('inner')")
                 raise ValueError('outer rollback')

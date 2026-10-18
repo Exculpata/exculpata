@@ -162,7 +162,7 @@ def test_guard_closes_alias_and_deferred_scope_bypasses(source):
     "with fixture_write(bench.workspace) as connection:\n    connection.execute('COMMIT')",
     "with fixture_write(bench.workspace) as connection:\n    deferred = (row for row in connection.execute('DELETE FROM segment RETURNING rowid'))",
     "with fixture_write(bench.workspace) as connection:\n    rows = [connection.execute('DELETE FROM segment') for _ in items]",
-    "with fixture_write(bench.workspace):\n    bench.workspace.connection.execute(\"CREATE TRIGGER synthetic AFTER INSERT ON synthetic_fixture BEGIN SELECT 1; END\")",
+    "with fixture_write(bench.workspace) as connection:\n    connection.execute(\"CREATE TRIGGER synthetic AFTER INSERT ON synthetic_fixture BEGIN SELECT 1; END\")",
     "def inspect(connection):\n    return connection.execute('SELECT * FROM segment')",
     "bench.workspace.connection.rollback()  # fixture-write: Deliberately test an independent transaction rollback boundary.",
 ])
@@ -249,7 +249,8 @@ def test_guard_checks_eager_lambda_defaults(arguments):
 def test_guard_rejects_writable_parenthesized_pragmas(sql):
     source = f'bench.workspace.connection.execute({sql!r})'
     assert check_fixture_writes(source)
-    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source) == []
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source)
+    assert check_fixture_writes('with fixture_write(bench.workspace) as connection:\n    ' + source.replace('bench.workspace.connection', 'connection')) == []
 
 
 @pytest.mark.parametrize('sql', ['PRAGMA table_info(segment)', 'PRAGMA main.table_xinfo(segment)',
@@ -278,7 +279,7 @@ def test_nested_fixture_rejects_existing_transaction_rollback_schema(tmp_path, r
     try:
         with fixture_write(store) as connection:
             if schema == 'synthetic_attached':
-                connection.execute("ATTACH ':memory:' AS synthetic_attached")
+                store.connection.execute("ATTACH ':memory:' AS synthetic_attached")  # fixture-write: Deliberately prepare a raw attached schema to test nested rollback-policy rejection.
             conflict = ' ON CONFLICT ROLLBACK' if rollback_schema == 'constraint' else ''
             connection.execute(f'CREATE TABLE {table} (value TEXT UNIQUE{conflict})')
             if rollback_schema == 'trigger':
@@ -318,7 +319,7 @@ def test_nested_fixture_checks_schema_attached_after_entry(tmp_path):
             with fixture_write(store) as connection:
                 connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
                 with fixture_write(store) as nested:
-                    nested.execute('ATTACH ? AS synthetic_external', (str(external),))
+                    store.connection.execute('ATTACH ? AS synthetic_external', (str(external),))  # fixture-write: Deliberately inject an external attachment after nested entry to exercise schema rechecking.
                     with pytest.raises(RuntimeError, match='fixture_write'):
                         nested.execute("INSERT INTO synthetic_external.synthetic_conflict VALUES ('duplicate')")
                     assert connection.in_transaction

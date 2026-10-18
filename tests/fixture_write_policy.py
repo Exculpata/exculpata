@@ -54,6 +54,7 @@ class _Value:
     active_path: bool = False
     imported_function: bool = False
     fixture_handle: bool = False
+    elements: tuple[_Value, ...] | None = None
 
 
 class _Check(ast.NodeVisitor):
@@ -104,13 +105,15 @@ class _Check(ast.NodeVisitor):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
                           complete_text=isinstance(node.value, str))
+        if isinstance(node, (ast.Tuple, ast.List)):
+            return _Value(elements=tuple(self.value(item) for item in node.elts))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
             if node.attr == "connection":
                 return _Value(symbol=symbol, connection=base.connection or base.symbol,
                               fixture_handle=base.fixture_handle)
-            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS:
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | {"cursor"}:
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle)
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
                           active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
@@ -131,6 +134,12 @@ class _Check(ast.NodeVisitor):
             return self.merge_aliases(*({"value": self.value(value)} for value in node.values))["value"]
         if isinstance(node, ast.Call):
             function = self.value(node.func)
+            if function.symbol == "getattr" and len(node.args) >= 2:
+                name = self.value(node.args[1])
+                if name.complete_text:
+                    return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
+            if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
+                return replace(function, symbol=function.symbol.rsplit(".", 1)[0])
             if function.symbol in {"str", "Path", "pathlib.Path", "pathlib.PurePath", "os.fspath"} and node.args:
                 return self.value(node.args[0])
             if function.symbol == "sqlite3.connect":
@@ -169,8 +178,24 @@ class _Check(ast.NodeVisitor):
             if self.class_outer_aliases is not None and target.id in self.class_outer_names:
                 self.class_outer_aliases[target.id] = value
         elif isinstance(target, (ast.Tuple, ast.List)):
-            for item in target.elts:
-                self.bind(item, _Value())
+            values = value.elements
+            stars = [i for i, item in enumerate(target.elts) if isinstance(item, ast.Starred)]
+            if values is None or (not stars and len(values) != len(target.elts)) or (stars and len(values) < len(target.elts) - 1):
+                for item in target.elts:
+                    self.bind(item, _Value())
+            elif stars:
+                index = stars[0]
+                end = len(values) - (len(target.elts) - index - 1)
+                for item, element in zip(target.elts[:index], values[:index]):
+                    self.bind(item, element)
+                self.bind(target.elts[index], _Value(elements=values[index:end]))
+                for item, element in zip(target.elts[index + 1:], values[end:]):
+                    self.bind(item, element)
+            else:
+                for item, element in zip(target.elts, values):
+                    self.bind(item, element)
+        elif isinstance(target, ast.Starred):
+            self.bind(target.value, value)
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
         # A local workflow helper named execute is inspected at its definition;
@@ -437,7 +462,9 @@ class _Check(ast.NodeVisitor):
             # parameter is unannotated or its table has no workbench_ prefix.
             if (unknown_write or (writes and (not independent_connection or _TABLE.search(sql)))) and receiver.connection not in self.protected:
                 self.flag(node, "SQL fixture write outside fixture_write")
-            if (unknown_write or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f")) or _ROLLBACK_CONFLICT.search(commands)) and receiver.connection in self.protected and not receiver.fixture_handle:
+            nonimplicit_write = writes and not re.match(r"\s*(?:INSERT|UPDATE|DELETE|REPLACE)\b", commands, re.I)
+            needs_handle = nonimplicit_write or re.match(r"(?:CREATE|DROP|ALTER|REINDEX|ATTACH|DETACH|VACUUM)\b", commands.lstrip(";\ufeff \t\r\n\v\f"), re.I) or (pragma and writes)
+            if (unknown_write or needs_handle or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f")) or _ROLLBACK_CONFLICT.search(commands)) and receiver.connection in self.protected and not receiver.fixture_handle:
                 self.flag(node, "transaction control requires the yielded fixture_write handle")
         if method in _TRANSACTION_METHODS and not imported_function:
             # Product rollback APIs take domain arguments; a connection's
