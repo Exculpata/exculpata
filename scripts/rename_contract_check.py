@@ -34,7 +34,7 @@ MAX_ANALYSIS_STEPS = 500000
 # explicit syntax-policy decision before it can participate in analysis.
 SUPPORTED_PYTHON_AST_NAMES = frozenset("""
 Module Expression Interactive FunctionType FunctionDef AsyncFunctionDef ClassDef
-Return Delete Assign TypeAlias AugAssign AnnAssign For AsyncFor While If With
+Return Delete Assign AugAssign AnnAssign For AsyncFor While If With
 AsyncWith Match Raise Try TryStar Assert Import ImportFrom Global Nonlocal Expr
 Pass Break Continue BoolOp NamedExpr BinOp UnaryOp Lambda IfExp Dict Set ListComp
 SetComp DictComp GeneratorExp Await Yield YieldFrom Compare Call FormattedValue
@@ -43,7 +43,7 @@ Del And Or Add Sub Mult MatMult Div Mod Pow LShift RShift BitOr BitXor BitAnd
 FloorDiv Invert Not UAdd USub Eq NotEq Lt LtE Gt GtE Is IsNot In NotIn
 comprehension ExceptHandler arguments arg keyword alias withitem match_case
 MatchValue MatchSingleton MatchSequence MatchMapping MatchClass MatchStar MatchAs
-MatchOr TypeIgnore TypeVar ParamSpec TypeVarTuple
+MatchOr TypeIgnore
 """.split())
 SUPPORTED_PYTHON_AST_TYPES = frozenset(getattr(ast, name) for name in SUPPORTED_PYTHON_AST_NAMES)
 RENAME_COMPAT_HELPER = "case_intelligence.legacy_names.name_value"

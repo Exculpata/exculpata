@@ -1812,3 +1812,15 @@ def test_javascript_route_template_requires_explicit_source_contract():
     source = 'const path = `${origin}/auth/login`;'
     assert any('unsupported JavaScript construction (interpolated template)' in item.identifier
                for item in checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS))
+
+
+@pytest.mark.parametrize('source', [
+    'type Alias = LEGACY_STEM\nFORMAT=Alias.__value__ + "-unregistered-v99"',
+    'type Alias = "record"\nFORMAT=Alias.__value__ + "bench-unregistered-v99"',
+    'def helper[T: LEGACY_STEM](): pass',
+    'class Helper[T: LEGACY_STEM]: pass',
+])
+def test_unmodeled_type_alias_and_type_parameter_syntax_is_rejected(source):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + source
+    found = checker.scan_python('synthetic.py', source, NAME_CONTRACTS)
+    assert any('unsupported Python AST node' in item.identifier for item in found)

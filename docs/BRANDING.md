@@ -169,7 +169,7 @@ spellings;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
-The Python gate rejects unknown AST classes before value resolution, even without a known legacy origin. This preflight uses the existing per-file budget; unknown-node diagnostics cannot receive source receipts. Decoded literals remain checked when syntax is rejected. Diagnostics direct callers to `case_intelligence.legacy_names.name_value`.
+The Python gate rejects unknown AST classes and unmodeled type-alias/type-parameter syntax before value resolution, even without a known legacy origin. This preflight uses the existing per-file budget; unknown-node diagnostics cannot receive source receipts. Decoded literals remain checked when syntax is rejected. Diagnostics direct callers to `case_intelligence.legacy_names.name_value`.
 
 The Python gate has a restricted syntax contract. It is a source policy, not a
 proof of arbitrary Python execution. A known legacy origin must remain either a
