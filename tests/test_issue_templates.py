@@ -58,7 +58,8 @@ def test_agent_task_preserves_fix_hierarchy_and_kickoff_process() -> None:
     ]
     assert fields['size']['attributes']['options'] == ['S', 'M', 'L']
     assert fields['why_level']['validations']['required'] is False
-    kickoff = fields['restate_goal']['attributes']['description']
+    kickoff = '\n'.join(field['attributes']['value'] for field in form['body']
+                        if field['type'] == 'markdown')
     for requirement in ('Before coding', 'first kickoff comment', 'matches this issue',
                         'resolves any mismatch'):
         assert requirement in kickoff
@@ -110,7 +111,9 @@ def test_agent_kickoff_is_verified_separately_from_the_authors_form_entry() -> N
     fields = {field['id']: field for field in agent_form()['body'] if 'id' in field}
     kickoff = fields['restate_goal']['attributes']
     assert "Issue author's goal" in kickoff['label']
-    assert 'This form entry does not replace that comment' in kickoff['description']
+    instructions = '\n'.join(field['attributes']['value'] for field in agent_form()['body']
+                             if field['type'] == 'markdown')
+    assert 'This form entry does not replace that comment' in instructions
     guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
     pr = (ROOT / '.github/pull_request_template.md').read_text(encoding='utf-8')
     assert 'Kickoff permalink:' in pr
@@ -139,3 +142,15 @@ def test_hash_locked_test_environment_includes_the_yaml_parser() -> None:
     match = re.search(r'^pyyaml==6\.[^\n]+\n(?:[ \t]+[^\n]+\n)+', lock, re.MULTILINE)
     assert match, 'Regenerate application-test.lock when adding the YAML parser'
     assert '--hash=sha256:' in match.group()
+
+
+def test_agent_task_field_descriptions_remain_concise() -> None:
+    for field in agent_form()['body']:
+        description = field['attributes'].get('description', '')
+        assert len(description) <= 200, 'Move longer kickoff guidance into a markdown block'
+
+
+def test_coding_standards_preserve_checkout_and_upstream_verification() -> None:
+    standards = (ROOT / 'CODING_STANDARDS.md').read_text(encoding='utf-8')
+    assert 'Verify the checkout, branch and\nupstream PR state before acting' in standards
+    assert 'respect the selected scope and existing holds' in standards

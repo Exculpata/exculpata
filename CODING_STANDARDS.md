@@ -3,6 +3,8 @@
 Build toward a small defense team dropping in discovery and getting cited
 understanding without choosing an engine, configuring anything, or letting
 material leave the building. Read the [product north star](docs/PRODUCT_NORTH_STAR.md).
+GitHub issues and milestones are the work queue. Verify the checkout, branch and
+upstream PR state before acting; respect the selected scope and existing holds.
 
 Treat this repository and every GitHub interaction as public. Before any push,
 run the installed pre-push publication check; never bypass it. Separately inspect

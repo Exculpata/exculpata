@@ -18,8 +18,14 @@ body:
     id: restate_goal
     attributes:
       label: Issue author's goal and user-visible outcome
-      description: The issue author records the requested outcome here. Before coding, the agent posts its own restatement as its first kickoff comment, checks it matches this issue, and resolves any mismatch with the issue author. This form entry does not replace that comment; link the agent's comment in the PR for review.
+      description: Record the issue author's requested outcome. The agent's separate kickoff is verified through the PR evidence.
     validations: {required: true}
+  - type: markdown
+    attributes:
+      value: |
+        Before coding, the agent posts its own restatement as its first kickoff comment,
+        checks it matches this issue, and resolves any mismatch with the issue author.
+        This form entry does not replace that comment; link the agent's comment in the PR for review.
   - type: dropdown
     id: level
     attributes:
