@@ -11,10 +11,18 @@ from threading import get_ident, local
 
 
 _active_scopes = local()
+_LEGACY_TRANSACTION_CONTROL = getattr(sqlite3, "LEGACY_TRANSACTION_CONTROL", -1)
 
 
 def _current_scopes():
     return getattr(_active_scopes, "stack", ())
+
+
+def _check_transaction_mode(autocommit, isolation_level):
+    if autocommit is True:
+        raise RuntimeError("fixture_write does not support autocommit=True")
+    if autocommit == _LEGACY_TRANSACTION_CONTROL and isolation_level is None:
+        raise RuntimeError("fixture_write does not support legacy autocommit (isolation_level=None)")
 
 
 @dataclass
@@ -35,13 +43,16 @@ def fixture_write(workspace, *, media=False):
     requires an outer boundary without a caller transaction and serializes the
     complete sequence. It does not make multiple media API calls atomic.
     A nested SQL fixture uses a savepoint and never commits its caller's work.
+    Legacy transaction control requires a non-None isolation level; PEP249
+    autocommit=False remains supported regardless of its ignored isolation level.
     """
     if not isinstance(media, bool):
         raise TypeError("fixture_write media must be a bool")
     with workspace._lock:
         connection = workspace.connection
-        if getattr(connection, "autocommit", None) is True:
-            raise RuntimeError("fixture_write does not support autocommit=True")
+        _check_transaction_mode(
+            getattr(connection, "autocommit", _LEGACY_TRANSACTION_CONTROL), connection.isolation_level,
+        )
         active = _current_scopes()
         nested = connection.in_transaction or any(scope.active and scope.connection is connection for scope in active)
         if media and nested:
@@ -204,8 +215,10 @@ class _FixtureConnection:
         self._check_active()
         if name in {"autocommit", "isolation_level"}:
             self._check_transaction_control()
-        if name == "autocommit" and value is True:
-            raise RuntimeError("fixture_write does not support autocommit=True")
+            _check_transaction_mode(
+                value if name == "autocommit" else getattr(self._connection, "autocommit", _LEGACY_TRANSACTION_CONTROL),
+                value if name == "isolation_level" else self._connection.isolation_level,
+            )
         if name == "row_factory":
             value = _scoped_factory(self, value)
         setattr(self._connection, name, value)

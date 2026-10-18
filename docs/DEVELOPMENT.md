@@ -123,7 +123,10 @@ serializes the sequence rather than making those methods one atomic operation.
 Yielded connections, cursors and saved methods are valid only on the owning
 thread during the boundary; expired or transferred handles raise before touching
 SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=True`
-is unsupported and rejected before entry or assignment. Custom row factories
+is unsupported and rejected before entry or assignment. Legacy transaction control
+with `isolation_level=None` is also rejected at entry and on scoped mode changes,
+because raw DML in that mode commits before an exception can roll it back.
+PEP249 `autocommit=False` remains supported when its ignored isolation level is `None`. Custom row factories
 receive scoped cursors, including through public workspace queries, and scoped
 connection factories are always restored before releasing the lock, including raw
 in-boundary replacements. Set shared connection and cursor row factories through
@@ -183,15 +186,18 @@ definition-time defaults. Unannotated helper parameters that mutate SQLite
 callbacks must establish ownership inside the helper or document the exact
 independent operation; parameter spelling does not establish safety.
 Known local helper calls also retain SQLite handle and saved-method ownership,
-so a generic cleanup helper cannot hide closure of a shared database. Ordinary
-resource and independently owned connection cleanup remain supported.
+including statically known tuple/list positional unpacking and dictionary keyword
+unpacking, so a generic cleanup helper cannot hide closure of a shared database.
+Ordinary resource and independently owned connection cleanup remain supported.
 Writable PRAGMAs, including parenthesized forms and action PRAGMAs without
-arguments, require the same boundary as other mutations.
+arguments and prepare-time settings inside `EXPLAIN`, require the same boundary
+as other mutations.
 Unannotated SQL callback parameters
 and direct connection commit/rollback calls are checked conservatively too.
 The same lock must cover direct reads, backups and transaction-state assertions.
 It must also cover installing/removing SQLite trace callbacks, authorizers and
-progress handlers. Keep cursor consumption inside the lock. Release the lock
+progress handlers, and changing the connection-wide `text_factory`. Keep cursor
+consumption inside the lock. Release the lock
 before HTTP calls: the request runs in a different thread and needs that lock.
 The live-worker regressions in `tests/test_worker_sqlite_boundaries.py` enforce
 these boundaries for the status/readiness polls and resumed intake upload.

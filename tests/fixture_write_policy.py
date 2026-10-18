@@ -61,6 +61,7 @@ class _Value:
     imported_function: bool = False
     fixture_handle: bool = False
     elements: tuple[_Value, ...] | None = None
+    mapping: tuple[tuple[str, _Value], ...] | None = None
     methods: frozenset[str] = frozenset()
     receiver: _Value | None = None
     sqlite_cursor: bool = False
@@ -132,13 +133,36 @@ class _Check(ast.NodeVisitor):
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
                           complete_text=isinstance(node.value, str))
         if isinstance(node, (ast.Tuple, ast.List)):
-            return _Value(elements=tuple(self.value(item) for item in node.elts))
+            elements = []
+            for item in node.elts:
+                if isinstance(item, ast.Starred):
+                    expanded = self.value(item.value).elements
+                    if expanded is None:
+                        return _Value()
+                    elements.extend(expanded)
+                else:
+                    elements.append(self.value(item))
+            return _Value(elements=tuple(elements))
+        if isinstance(node, ast.Dict):
+            mapping = {}
+            for key, item in zip(node.keys, node.values):
+                if key is None:
+                    expanded = self.value(item).mapping
+                    if expanded is None:
+                        return _Value()
+                    mapping.update(expanded)
+                else:
+                    name = self.value(key)
+                    if not name.complete_text:
+                        return _Value()
+                    mapping[name.text] = self.value(item)
+            return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
             if node.attr == "__set__" and base.setter_attribute is not None:
                 return replace(base, symbol=symbol)
-            if base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"} and node.attr in {"row_factory", "isolation_level", "autocommit"}:
+            if base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"} and node.attr in {"row_factory", "text_factory", "isolation_level", "autocommit"}:
                 return _Value(symbol=symbol, setter_attribute=node.attr)
             if node.attr == "connection":
                 return _Value(symbol=symbol, connection=base.connection or base.symbol,
@@ -289,6 +313,11 @@ class _Check(ast.NodeVisitor):
                 result[name] = _Value(elements=tuple(
                     _Check.merge_aliases(*({"item": value.elements[index]} for value in values))["item"]
                     for index in range(len(values[0].elements))))
+            elif all(value.mapping is not None for value in values) and all(
+                    dict(value.mapping).keys() == dict(values[0].mapping).keys() for value in values):
+                result[name] = _Value(mapping=tuple(
+                    (key, _Check.merge_aliases(*({"item": dict(value.mapping)[key]} for value in values))["item"])
+                    for key, _ in values[0].mapping))
             elif all(value.connection is not None and value.connection.startswith("sqlite@") for value in values):
                 result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}",
                                       sqlite_cursor=all(value.sqlite_cursor for value in values))
@@ -486,6 +515,12 @@ class _Check(ast.NodeVisitor):
         self.bind(node.target, self.value(ast.BinOp(left=node.target, op=node.op, right=node.value)))
 
     def check_transaction_assignment(self, target: ast.AST) -> None:
+        if isinstance(target, ast.Attribute) and target.attr == "text_factory":
+            receiver = self.value(target.value)
+            if receiver.connection is not None and not receiver.connection.startswith("sqlite@"):
+                if receiver.connection not in self.protected | self.held_locks:
+                    self.flag(target, "text_factory change requires the owning lock or fixture_write")
+            return
         if isinstance(target, ast.Attribute) and target.attr == "row_factory":
             receiver = self.value(target.value)
             if receiver.connection is None or receiver.connection.startswith("sqlite@"):
@@ -582,7 +617,13 @@ class _Check(ast.NodeVisitor):
             # Strip quoted values/comments so SELECT 'update' is still a read.
             commands = re.sub(r"'(?:''|[^'])*'|--[^\n]*|/\*[\s\S]*?\*/", " ", sql)
             writes = _WRITE.search(commands) or re.search(r"^\s*PRAGMA\b[^;]*=", commands, re.I)
-            pragma = _PRAGMA.match(re.sub(r"--[^\n]*|/\*[\s\S]*?\*/", " ", sql))
+            pragma_source = re.sub(r"--[^\n]*|/\*[\s\S]*?\*/", " ", sql).lstrip(";\ufeff \t\r\n\v\f")
+            # EXPLAIN can change connection PRAGMAs during statement preparation.
+            # Only unwrap it for PRAGMA classification; EXPLAIN DML is a read.
+            pragma_source = re.sub(r"^EXPLAIN(?:\s+QUERY\s+PLAN)?\s+", "", pragma_source, flags=re.I)
+            pragma = _PRAGMA.match(pragma_source)
+            if pragma and pragma_source[pragma.end():].lstrip().startswith("="):
+                writes = True
             pragma_name = pragma[1].strip("\"'`[]").lower() if pragma else ""
             if pragma and (pragma_name in _ACTION_PRAGMAS or (pragma[2] and pragma_name not in _READ_ARGUMENT_PRAGMAS)):
                 # Parentheses also set values: user_version(12) is a write.
@@ -591,7 +632,7 @@ class _Check(ast.NodeVisitor):
             if re.match(r"\s*WITH\b", commands, re.I):
                 writes = writes or re.search(r"\b(?:INSERT|UPDATE|DELETE|REPLACE)\b", commands, re.I)
             independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
-            known_read = re.match(r"\s*(?:SELECT|EXPLAIN)\b", commands, re.I) or (sql_value.complete_text and re.match(r"\s*PRAGMA\b", commands, re.I))
+            known_read = re.match(r"\s*SELECT\b", commands, re.I) or (sql_value.complete_text and re.match(r"\s*(?:PRAGMA|EXPLAIN)\b", commands, re.I))
             # Callback parameters may receive a workspace connection even when
             # this module cannot prove its origin. Imported workflow functions
             # are checked at their definitions, not mistaken for SQL methods.
@@ -632,8 +673,25 @@ class _Check(ast.NodeVisitor):
             return
         kind, node, defaults, annotations, lexical = self.local_functions[function.symbol]
         positional = [*node.args.posonlyargs, *node.args.args]
-        supplied = {argument.arg: self.value(value) for argument, value in zip(positional, call.args)}
-        supplied.update({keyword.arg: self.value(keyword.value) for keyword in call.keywords if keyword.arg is not None})
+        actual = []
+        for argument in call.args:
+            if isinstance(argument, ast.Starred):
+                elements = self.value(argument.value).elements
+                if elements is None:
+                    # Dynamic iterable cardinality is outside this bounded
+                    # literal/alias expansion; do not guess later positions.
+                    break
+                actual.extend(elements)
+            else:
+                actual.append(self.value(argument))
+        supplied = {argument.arg: value for argument, value in zip(positional, actual)}
+        for keyword in call.keywords:
+            if keyword.arg is not None:
+                supplied[keyword.arg] = self.value(keyword.value)
+            else:
+                mapping = self.value(keyword.value).mapping
+                if mapping is not None:
+                    supplied.update(mapping)
         if not any(value.connection is not None for value in supplied.values()):
             return
         bindings = {**defaults, **supplied}

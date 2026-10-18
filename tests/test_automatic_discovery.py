@@ -627,7 +627,8 @@ def test_readiness_progress_never_scans_the_coverage_ledger(workbench):
     assert "GROUP BY" not in " ".join(queries).upper()
     for sql in queries:
         with bench.workspace._lock:
-            plan = " ".join(row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + sql))
+            plan_cursor = connection.execute("EXPLAIN QUERY PLAN " + sql)  # fixture-write: Query-plan inspection uses only the SELECT-filtered trace above and holds the owning lock through cursor consumption.
+            plan = " ".join(row[3] for row in plan_cursor)
         assert "SCAN a" not in plan and "SCAN workbench_entity_auto_discovery_unit" not in plan, (sql, plan)
 
 
