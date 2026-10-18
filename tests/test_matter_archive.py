@@ -219,9 +219,8 @@ def test_snapshot_ignores_new_audit_events_but_detects_authored_edit(archive_cas
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
-        with fixture_write(bench.workspace):
-            bench.workspace._append_audit_event_locked(actor_principal_id=OWNER, session_id=None,
-                matter_id=matter.matter_id, request_id='generated', action='work_product.export', outcome='success')
+        bench.workspace.append_audit_event(actor_principal_id=OWNER, session_id=None,
+            matter_id=matter.matter_id, request_id='generated', action='work_product.export', outcome='success')
         assert artifact.snapshot_digest == matter_snapshot_digest(bench, matter, store)
         # The frozen database rejects ordinary edits; reopening invalidates the
         # old exit and permits a fresh changed-content snapshot.
@@ -635,11 +634,10 @@ def test_audit_manifest_discloses_omissions_without_exporting_details(archive_ca
     from case_intelligence.matter_archive_projection import reference
     bench, matter, store = archive_case
     workspace = bench.workspace
-    with fixture_write(workspace):
-        event = workspace._append_audit_event_locked(actor_principal_id=OWNER, session_id=None,
-            matter_id=matter.matter_id, request_id='GENERATED-PRIVATE-REQUEST',
-            action='generated.audit_disclosure', outcome='success', object_type='generated_material',
-            object_id='GENERATED-PRIVATE-TARGET', details={'count': 7, 'principal_id': OTHER})
+    event = workspace.append_audit_event(actor_principal_id=OWNER, session_id=None,
+        matter_id=matter.matter_id, request_id='GENERATED-PRIVATE-REQUEST',
+        action='generated.audit_disclosure', outcome='success', object_type='generated_material',
+        object_id='GENERATED-PRIVATE-TARGET', details={'count': 7, 'principal_id': OTHER})
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:

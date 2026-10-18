@@ -19,14 +19,18 @@ def media_workspace(tmp_path):
 
 
 def seed_media(store, matter, actor, entered):
+    # fixture-write: Deliberately invoke this reusable media boundary from caller transactions and require rejection before its body.
     with fixture_write(store, media=True):
         entered.append(True)
+        # fixture-write: This synthetic seed body must remain unentered when the negative caller-transaction cases reject media entry.
         job = store.queue_media_job(
             matter.matter_id, 'a' * 32, 'b' * 32, actor,
             source_sha256='c' * 64, byte_size=1, media_type='audio/wav', duration_ms=1,
         )
+        # fixture-write: Preserve the complete synthetic seed for outer-mode controls; nested negative cases must never reach this claim.
         claimed = store.claim_media_job('synthetic-fixture-worker')
         assert claimed.media_job_id == job.media_job_id
+        # fixture-write: Complete only the valid outer-mode control; the negative caller-transaction cases must reject before this finish.
         return store.finish_media_job(job.media_job_id, degraded=False, message='Synthetic ready')
 
 
@@ -65,6 +69,7 @@ def test_indirect_media_fixture_rejects_active_same_workspace_before_body(media_
                     ['caller'] if setup == 'write-first' else []
                 )
             assert entered == []
+            # fixture-write: Inspect isolated media state inside the caller transaction to prove rejected seed entry did not create a job.
             assert store.media_job(matter.matter_id, 'a' * 32, 'b' * 32) is None
             raise ValueError('caller rollback')
     with fixture_write(store) as connection:

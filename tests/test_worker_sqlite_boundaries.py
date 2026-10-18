@@ -23,9 +23,11 @@ def test_live_worker_observations_are_serialized(request, monkeypatch, scenario)
             return getattr(original, name)
 
         def __enter__(self):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             return original.__enter__()
 
         def __exit__(self, *args):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             return original.__exit__(*args)
 
         def set_trace_callback(self, callback):

@@ -180,6 +180,7 @@ def test_public_workspace_query_uses_scoped_row_factory(tmp_path):
         with fixture_write(store) as connection:
             connection.row_factory = factory
             assert connection.row_factory is factory
+            # fixture-write: Probe a public query on an isolated synthetic store to verify scoped callback handles.
             assert store.principal_preference(principal.principal_id).theme == 'dark'
         assert captured
         with pytest.raises(RuntimeError, match='fixture_write'):

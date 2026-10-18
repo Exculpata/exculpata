@@ -98,12 +98,14 @@ def stopped_recovery_snapshot(case, tmp_path):
     bench, matter = case["bench"], case["matter"]
     created = bench.workspace.current_time()
     # Synthetic old-policy metadata, retained verbatim through the upgrade.
+    retention_values = (
+        matter.matter_id, bench.workspace._timestamp(created + timedelta(days=30)),
+        bench.workspace._timestamp(created + timedelta(days=37)), WEB_ACTOR,
+        bench.workspace._timestamp(created), bench.workspace._timestamp(created))
     with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             'INSERT INTO workbench_matter_retention VALUES (?,?,?,?,?,?)',
-            (matter.matter_id, bench.workspace._timestamp(created + timedelta(days=30)),
-             bench.workspace._timestamp(created + timedelta(days=37)), WEB_ACTOR,
-             bench.workspace._timestamp(created), bench.workspace._timestamp(created)))
+            retention_values)
     original_retention = bench.workspace.matter_retention(matter.matter_id)
     assert submit(case).status_code == 202
     job, result, _ = execute(case)

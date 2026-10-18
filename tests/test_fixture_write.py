@@ -77,11 +77,13 @@ def test_live_media_fixture_does_not_commit_concurrent_report_claim(tmp_path, mo
             return getattr(connection, name)
 
         def __enter__(self):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             connection.__enter__()
             return self
 
         def __exit__(self, *args):
             try:
+                # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
                 return connection.__exit__(*args)
             finally:
                 if threading.current_thread() is main_thread:

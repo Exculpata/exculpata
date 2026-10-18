@@ -31,6 +31,7 @@ _READ_ARGUMENT_PRAGMAS = {
 }
 _SQL_METHODS = {"execute", "executemany", "executescript"}
 _TRANSACTION_METHODS = {"commit", "rollback"}
+_CONTEXT_METHODS = {"__enter__", "__exit__"}
 _UNSUPPORTED_SQLITE_METHODS = {"deserialize", "blobopen", "setconfig", "enable_load_extension", "load_extension"}
 _NON_SQL_METHODS = _UNSUPPORTED_SQLITE_METHODS | {"backup", "setlimit", "interrupt"}
 _CALLBACK_METHODS = {
@@ -173,12 +174,15 @@ class _Check(ast.NodeVisitor):
                               fixture_handle=base.fixture_handle)
             if node.attr == "_lock":
                 return _Value(symbol=symbol, lock_owner=base.symbol)
-            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | _MEDIA_SEED | {"cursor", "close"}:
+            if base.symbol in {"WorkspaceStore", "case_intelligence.workspace_store.WorkspaceStore"}:
+                return _Value(symbol=symbol, methods=frozenset({node.attr}), descriptor=True)
+            if node.attr in _SQL_METHODS | _TRANSACTION_METHODS | _CONTEXT_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | _MEDIA_SEED | {"cursor", "close"}:
                 return _Value(symbol=symbol, connection=base.connection, fixture_handle=base.fixture_handle,
                               methods=frozenset({node.attr}), receiver=base,
                               descriptor=base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"})
             return _Value(symbol=symbol, live_workspace=node.attr == "workspace", workspace=node.attr == "workspace",
-                          active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
+                          active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols),
+                          receiver=base if base.workspace or base.live_workspace or (base.symbol and base.symbol in self.protected) else None)
         if isinstance(node, ast.JoinedStr):
             parts = [self.value(part.value if isinstance(part, ast.FormattedValue) else part) for part in node.values]
             return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts),
@@ -198,6 +202,8 @@ class _Check(ast.NodeVisitor):
             if node in self.call_values:
                 return self.call_values[node]
             function = self.value(node.func)
+            if "__enter__" in function.methods:
+                return self.value(node.args[0]) if function.descriptor and node.args else function.receiver or _Value()
             if function.descriptor and node.args and function.methods & {"cursor", "execute", "executemany"}:
                 return replace(self.value(node.args[0]), sqlite_cursor=True)
             if function.symbol == "getattr" and len(node.args) >= 2:
@@ -209,7 +215,7 @@ class _Check(ast.NodeVisitor):
                     # A dynamically selected callable on a known SQL connection
                     # must not discard ownership just because its name is unknown.
                     return _Value(connection=receiver.connection, fixture_handle=receiver.fixture_handle,
-                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | {"close"}), receiver=receiver)
+                                  methods=frozenset(_SQL_METHODS | _TRANSACTION_METHODS | _CONTEXT_METHODS | _CALLBACK_METHODS | _NON_SQL_METHODS | {"close"}), receiver=receiver)
             if function.connection is not None and function.symbol.rsplit(".", 1)[-1] in {"cursor", "execute", "executemany"}:
                 return replace(function, symbol=function.symbol.rsplit(".", 1)[0], methods=frozenset(), receiver=None,
                                sqlite_cursor=True)
@@ -569,6 +575,12 @@ class _Check(ast.NodeVisitor):
                 (kw.value for kw in expression.keywords if kw.arg == "workspace"), None)) if is_helper else None
             if is_helper and workspace_argument is not None:
                 owner = self.value(workspace_argument).symbol
+                if not owner and isinstance(workspace_argument, ast.Name):
+                    # A tuple-unpacked fixture can have unknown provenance; its
+                    # explicit boundary still names one owner, not every other
+                    # unknown value (whose abstract symbol is also empty).
+                    owner = workspace_argument.id
+                    self.bind(workspace_argument, replace(self.value(workspace_argument), symbol=owner, workspace=True))
                 media_mode = any(keyword.arg == "media" and isinstance(keyword.value, ast.Constant)
                                  and keyword.value.value is True for keyword in expression.keywords)
                 if owner in self.protected:
@@ -716,6 +728,14 @@ class _Check(ast.NodeVisitor):
             needs_handle = nonimplicit_write or re.match(r"(?:CREATE|DROP|ALTER|REINDEX|ATTACH|DETACH|VACUUM)\b", commands.lstrip(";\ufeff \t\r\n\v\f"), re.I) or (pragma and writes)
             if (unknown_write or needs_handle or _TRANSACTION.search(commands.lstrip(";\ufeff \t\r\n\v\f")) or _ROLLBACK_CONFLICT.search(commands)) and receiver.connection in self.protected and not receiver.fixture_handle:
                 self.flag(node, "transaction control requires the yielded fixture_write handle")
+        if (methods & _CONTEXT_METHODS and receiver.connection is not None
+                and not independent_connection):
+            if receiver.connection not in self.protected or not receiver.fixture_handle:
+                self.flag(node, "explicit connection context requires the yielded fixture_write handle")
+        if (receiver.symbol in self.protected and not methods & _MEDIA_SEED
+                and (receiver.symbol not in self.media_protected or receiver.symbol in self.nested_protected)
+                and (receiver.workspace or receiver.live_workspace or function.receiver is not None)):
+            self.flag(node, "workspace method inside SQL fixture_write may terminate its transaction")
         if methods & _TRANSACTION_METHODS and not imported_function:
             # Product rollback APIs take domain arguments; a connection's
             # commit/rollback accepts none. Retain bound-method provenance too.
@@ -763,11 +783,15 @@ class _Check(ast.NodeVisitor):
                 if mapping is not None:
                     supplied.update(mapping)
         bindings = {**defaults, **supplied}
-        known = any(value.connection is not None or value.live_workspace or value.workspace for value in bindings.values())
+        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+                for name, values in history.items() if name not in local_names}
+        environment = {**lexical, **late}
+        captures = self.captured_values(node, environment)
+        values = [*bindings.values(), *captures]
+        known = any(self.known_ownership(value) for value in values)
         if not known and (call.args or call.keywords):
             return
-        shared = any((value.connection is not None and not value.connection.startswith("sqlite@"))
-                     or value.live_workspace or value.workspace for value in bindings.values())
+        shared = any(self.known_ownership(value, shared_only=True) for value in values)
         if shared and (isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)):
             self.flag(call, "async/generator helper results with shared ownership are unsupported by fixture_write")
             return None
@@ -776,9 +800,7 @@ class _Check(ast.NodeVisitor):
                 self.flag(call, "recursive helper results with shared ownership are unsupported by fixture_write")
             return None
         previous = self.aliases
-        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
-                for name, values in history.items() if name not in local_names}
-        self.aliases = {**lexical, **late}
+        self.aliases = environment
         self.active_calls.add(function.symbol)
         if kind == "function":
             result = self.analyze_function(node, bindings, annotations, invoked=True)
@@ -787,6 +809,86 @@ class _Check(ast.NodeVisitor):
         self.active_calls.remove(function.symbol)
         self.aliases = previous
         return result
+
+    @staticmethod
+    def known_ownership(value, *, shared_only=False):
+        if value.workspace or value.live_workspace:
+            return True
+        if value.connection is not None and (not shared_only or not value.connection.startswith("sqlite@")):
+            return True
+        # Existing literal containers and bound methods retain their ownership.
+        return any(_Check.known_ownership(item, shared_only=shared_only) for item in (
+            *([value.receiver] if value.receiver is not None else []),
+            *(value.elements or ()), *(item for _, item in value.mapping or ()),
+        ))
+
+    def captured_values(self, node, environment):
+        # Only referenced lexical values count, not every ambient workspace.
+        # Collect this function's local binders before looking at references;
+        # Python shadows a closure/global for the whole function, not just after
+        # the assignment. Nested bodies are analyzed separately by the worklist.
+        parameters = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
+                      *([node.args.vararg] if node.args.vararg else []),
+                      *([node.args.kwarg] if node.args.kwarg else [])]
+        local = {argument.arg for argument in parameters}
+        declared = set()
+        references = []
+        pending = list(node.body) if isinstance(node.body, list) else [node.body]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, (ast.Global, ast.Nonlocal)):
+                declared.update(item.names)
+            elif isinstance(item, ast.Name) and isinstance(item.ctx, (ast.Store, ast.Del)):
+                local.add(item.id)
+            elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                if not isinstance(item, ast.Lambda):
+                    local.add(item.name)
+                # Definitions bind here; their bodies have independent scope.
+                continue
+            elif isinstance(item, (ast.Import, ast.ImportFrom)):
+                local.update(alias.asname or alias.name.split(".")[0] for alias in item.names)
+            elif isinstance(item, ast.ExceptHandler) and item.name:
+                local.add(item.name)
+            elif isinstance(item, (ast.MatchAs, ast.MatchStar)) and item.name:
+                local.add(item.name)
+            elif isinstance(item, ast.MatchMapping) and item.rest:
+                local.add(item.rest)
+            if isinstance(item, ast.comprehension):
+                # Iteration targets belong to the comprehension; walrus targets
+                # in its expressions still bind in the containing function.
+                pending.extend([item.iter, *item.ifs])
+            else:
+                pending.extend(ast.iter_child_nodes(item))
+        local -= declared
+        previous = self.aliases
+        self.aliases = environment
+
+        def collect(item, shadowed):
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                return
+            if isinstance(item, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                shadowed = shadowed.copy()
+                for generator in item.generators:
+                    collect(generator.iter, shadowed)
+                    shadowed.update(target.id for target in ast.walk(generator.target) if isinstance(target, ast.Name))
+                    for condition in generator.ifs:
+                        collect(condition, shadowed)
+                for expression in ([item.key, item.value] if isinstance(item, ast.DictComp) else [item.elt]):
+                    collect(expression, shadowed)
+                return
+            if isinstance(item, (ast.Name, ast.Attribute)) and isinstance(item.ctx, ast.Load):
+                root = item
+                while isinstance(root, ast.Attribute):
+                    root = root.value
+                if isinstance(root, ast.Name) and root.id not in shadowed:
+                    references.append(self.value(item))
+            for child in ast.iter_child_nodes(item):
+                collect(child, shadowed)
+
+        for item in node.body if isinstance(node.body, list) else [node.body]:
+            collect(item, local)
+        self.aliases = previous
+        return references
 
     @staticmethod
     def has_yield(node) -> bool:

@@ -120,6 +120,13 @@ transaction, even when the outer fixture has only read or created a table before
 entering the nested fixture. Ownership follows the locked thread, so copied or empty Python contexts cannot
 hide an active nested scope; finished handles lose ownership. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
+SQL fixture scopes admit connection operations, not workspace method calls:
+public mutators can enter their own connection contexts and commit pending fixture
+SQL. Prepare pure timestamp values before entry and perform public workflow
+transitions outside the SQL fixture. The inventory rejects workspace method calls
+inside SQL scopes, including private methods and saved aliases, rather than guessing
+which public methods commit. Explicit media mode retains its separate non-atomic
+seed contract. Deliberate isolated callback probes need an exact-statement reason.
 Yielded connections, cursors and saved methods are valid only on the owning
 thread during the boundary; expired or transferred handles raise before touching
 SQLite. Retained, returned or passed cursor results acquired inside a fixture
@@ -153,7 +160,8 @@ Connection-limit changes and interruption also
 require the owning lock or fixture boundary; deliberate cross-thread cancellation
 experiments need an exact-statement concurrency reason.
 Use the yielded handle for scripts, connection contexts and explicit transaction
-control. DDL, transactional metadata PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
+control, including direct, saved or unbound `__enter__`/`__exit__` calls.
+DDL, transactional metadata PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
 require that handle, which begins a transaction before SQLite can execute them
 without an implicit transaction. PRAGMA setters support only `user_version` and
 `application_id`; other setters and action PRAGMAs fail before execution, including
@@ -210,6 +218,9 @@ unpacking, so a generic cleanup helper cannot hide closure of a shared database.
 Direct synchronous local helper returns retain that ownership through aliases,
 branches, helper chains and tuple unpacking. Shared-handle return patterns that
 require coroutine, generator or recursive result evaluation are unsupported.
+That rejection includes referenced shared handles captured from lexical or late
+bindings, as well as handles passed as arguments; unrelated and shadowed names
+do not establish shared ownership.
 Ordinary resource and independently owned connection cleanup remain supported.
 A helper that receives a known live workspace must establish explicit media mode
 for a manual media seed; passing the workspace as an argument does not hide

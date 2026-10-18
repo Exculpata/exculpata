@@ -486,10 +486,12 @@ def test_restart_recovery_preserves_a_concurrent_charged_checkpoint(
             return getattr(self.connection, name)
 
         def __enter__(self):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             self.connection.__enter__()
             return self
 
         def __exit__(self, *args):
+            # fixture-write: Forward the instrumented product connection context unchanged so caller transaction behavior remains observable.
             return self.connection.__exit__(*args)
 
         def execute(self, sql, *args):

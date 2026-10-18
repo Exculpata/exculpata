@@ -69,11 +69,12 @@ def test_clip_rechecks_authority_after_render(tmp_path, monkeypatch, revocation)
             elif revocation == "administrator":
                 monkeypatch.setattr(client.app.state.identity, "kerberos_group_resolver", lambda _: set())
             else:
+                revoked_at = bench.workspace._now() if revocation == "session" else None
                 with fixture_write(bench.workspace):
                     if revocation == "session":
                         bench.workspace.connection.execute(
                             "UPDATE workbench_session SET revoked_at=? WHERE principal_id=?",
-                            (bench.workspace._now(), reader))
+                            (revoked_at, reader))
                     else:
                         bench.workspace.connection.execute(
                             "UPDATE workbench_principal SET active=0 WHERE principal_id=?", (reader,))
