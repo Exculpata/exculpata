@@ -49,8 +49,8 @@ def test_setattr_accepts_yielded_handle_and_independent_database(attribute):
     assert check_fixture_writes(f"import sqlite3\nconnection = sqlite3.connect(':memory:')\nsetattr(connection, '{attribute}', value)") == []
 
 
-def test_setattr_row_factory_under_owner_lock_does_not_allow_raw_cursor_factory():
-    assert check_fixture_writes("with bench.workspace._lock:\n    setattr(bench.workspace.connection, 'row_factory', callback)") == []
+def test_setattr_row_factory_under_owner_lock_requires_scoped_connection_and_cursor():
+    assert check_fixture_writes("with bench.workspace._lock:\n    setattr(bench.workspace.connection, 'row_factory', callback)")
     assert check_fixture_writes("with bench.workspace._lock:\n    setattr(bench.workspace.connection.cursor(), 'row_factory', callback)")
 
 

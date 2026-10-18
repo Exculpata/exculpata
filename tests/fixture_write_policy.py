@@ -2,7 +2,8 @@
 
 This deliberately small, local data-flow check is not a Python/SQL interpreter.
 It follows ordinary assignment aliases, SQL literals/concatenation/f-strings and
-SQLite imports. Keep fixture setup explicit so that this check and reviewers can
+SQLite imports, and direct local helper arguments with known SQLite provenance.
+Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
 That exception never exempts a surrounding function or the body of a ``with``.
@@ -66,6 +67,7 @@ class _Value:
     lock_owner: str | None = None
     unannotated_parameter: bool = False
     descriptor: bool = False
+    setter_attribute: str | None = None
 
 
 class _Check(ast.NodeVisitor):
@@ -76,6 +78,10 @@ class _Check(ast.NodeVisitor):
         self.class_outer_names: set[str] = set()
         self.eager_variable_annotations = True
         self.protected: set[str] = set()
+        self.nested_protected: set[str] = set()
+        self.media_protected: set[str] = set()
+        self.local_functions: dict[str, tuple] = {}
+        self.active_calls: set[str] = set()
         # Owning locks permit connection configuration, not SQL transactions.
         self.held_locks: set[str] = set()
         self.eager_walrus: dict[str, list[_Value]] | None = None
@@ -119,6 +125,8 @@ class _Check(ast.NodeVisitor):
             return _Value()
         if isinstance(node, ast.Name):
             return self.aliases.get(node.id, _Value(symbol=node.id))
+        if isinstance(node, ast.Lambda):
+            return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
@@ -128,6 +136,10 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
+            if node.attr == "__set__" and base.setter_attribute is not None:
+                return replace(base, symbol=symbol)
+            if base.symbol in {"sqlite3.Connection", "sqlite3.Cursor"} and node.attr in {"row_factory", "isolation_level", "autocommit"}:
+                return _Value(symbol=symbol, setter_attribute=node.attr)
             if node.attr == "connection":
                 return _Value(symbol=symbol, connection=base.connection or base.symbol,
                               fixture_handle=base.fixture_handle)
@@ -201,7 +213,9 @@ class _Check(ast.NodeVisitor):
                 break
             statement = self.parents[statement]
         if statement not in self.exempt:
-            self.violations.append(Violation(self.filename, node.lineno, rule))
+            violation = Violation(self.filename, node.lineno, rule)
+            if violation not in self.violations:
+                self.violations.append(violation)
 
     def bind(self, target: ast.AST, value: _Value) -> None:
         if isinstance(target, ast.Name):
@@ -240,6 +254,9 @@ class _Check(ast.NodeVisitor):
     def defer(self, kind, node, defaults=None, annotations=None):
         lexical = self.class_outer_aliases if self.class_outer_aliases is not None else self.aliases
         self.deferred.append((kind, node, defaults, annotations, lexical.copy(), self.comprehension_locals.copy()))
+        if kind in {"function", "lambda"}:
+            symbol = f"function@{node.lineno}:{node.name}" if kind == "function" else f"lambda@{node.lineno}:{node.col_offset}"
+            self.local_functions[symbol] = (kind, node, defaults, annotations, lexical.copy())
 
     def flush_deferred(self):
         # Python resolves globals/closure cells when a deferred body runs. Keep
@@ -287,6 +304,7 @@ class _Check(ast.NodeVisitor):
                                       workspace=any(value.workspace for value in values),
                                       unannotated_parameter=any(value.unannotated_parameter for value in values),
                                       descriptor=any(value.descriptor for value in values),
+                                      setter_attribute=values[0].setter_attribute if all(value.setter_attribute == values[0].setter_attribute for value in values) else None,
                                       sqlite_cursor=all(value.sqlite_cursor for value in values),
                                       lock_owner=values[0].lock_owner if all(value.lock_owner == values[0].lock_owner for value in values) else None,
                                       methods=frozenset().union(*(value.methods for value in values)),
@@ -472,14 +490,8 @@ class _Check(ast.NodeVisitor):
             receiver = self.value(target.value)
             if receiver.connection is None or receiver.connection.startswith("sqlite@"):
                 return
-            if receiver.sqlite_cursor and not receiver.fixture_handle:
-                self.flag(target, "row_factory change on shared cursor requires the yielded fixture_write handle")
-                return
-            if receiver.connection in self.protected:
-                if not receiver.fixture_handle:
-                    self.flag(target, "row_factory change requires the yielded fixture_write handle")
-            elif receiver.connection not in self.held_locks:
-                self.flag(target, "row_factory change requires the owning lock or fixture_write")
+            if not receiver.fixture_handle or receiver.connection not in self.protected:
+                self.flag(target, "row_factory change requires the yielded fixture_write handle")
             return
         if isinstance(target, ast.Attribute) and target.attr in {"autocommit", "isolation_level"}:
             receiver = self.value(target.value)
@@ -492,6 +504,8 @@ class _Check(ast.NodeVisitor):
 
     def visit_With(self, node: ast.With) -> None:
         previous = self.protected.copy()
+        previous_nested = self.nested_protected.copy()
+        previous_media = self.media_protected.copy()
         previous_locks = self.held_locks.copy()
         for item in node.items:
             expression = item.context_expr
@@ -504,6 +518,14 @@ class _Check(ast.NodeVisitor):
                 (kw.value for kw in expression.keywords if kw.arg == "workspace"), None)) if is_helper else None
             if is_helper and workspace_argument is not None:
                 owner = self.value(workspace_argument).symbol
+                media_mode = any(keyword.arg == "media" and isinstance(keyword.value, ast.Constant)
+                                 and keyword.value.value is True for keyword in expression.keywords)
+                if owner in self.protected:
+                    self.nested_protected.add(owner)
+                    if media_mode:
+                        self.flag(expression, "media fixture_write cannot nest inside the same workspace boundary")
+                if media_mode:
+                    self.media_protected.add(owner)
                 self.protected.add(owner)
                 value = _Value(connection=owner, symbol=owner + ".connection", fixture_handle=True)
             elif value.connection is not None and not value.connection.startswith("sqlite@"):
@@ -516,12 +538,18 @@ class _Check(ast.NodeVisitor):
         for statement in node.body:
             self.visit(statement)
         self.protected = previous
+        self.nested_protected = previous_nested
+        self.media_protected = previous_media
         self.held_locks = previous_locks
 
     visit_AsyncWith = visit_With
 
     def visit_Call(self, node: ast.Call) -> None:
         function = self.value(node.func)
+        if function.setter_attribute is not None and function.symbol.endswith(".__set__") and node.args:
+            target = ast.copy_location(ast.Attribute(value=node.args[0], attr=function.setter_attribute, ctx=ast.Store()), node)
+            self.parents[target] = node
+            self.check_transaction_assignment(target)
         if function.symbol in {"setattr", "builtins.setattr"} and len(node.args) >= 3:
             attribute = self.value(node.args[1])
             if attribute.complete_text:
@@ -588,9 +616,36 @@ class _Check(ast.NodeVisitor):
                     self.flag(node, "transaction termination outside fixture_write")
                 elif not receiver.fixture_handle:
                     self.flag(node, "transaction control requires the yielded fixture_write handle")
-        if methods & _MEDIA_SEED and receiver.live_workspace and receiver.symbol not in self.protected:
-            self.flag(node, "manual media fixture seed outside fixture_write")
+        if methods & _MEDIA_SEED and (receiver.live_workspace or receiver.symbol in self.protected):
+            if receiver.symbol in self.nested_protected:
+                self.flag(node, "commit-capable media fixture seed inside nested fixture_write")
+            elif receiver.symbol not in self.media_protected:
+                self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
         self.generic_visit(node)
+        self.check_local_call(node, function)
+
+    def check_local_call(self, call, function):
+        # Specialize direct local helpers only when an actual SQLite handle or
+        # bound method is supplied. Generic resource.close remains ordinary
+        # cleanup, while aliases and helper chains retain shared ownership.
+        if function.symbol not in self.local_functions or function.symbol in self.active_calls:
+            return
+        kind, node, defaults, annotations, lexical = self.local_functions[function.symbol]
+        positional = [*node.args.posonlyargs, *node.args.args]
+        supplied = {argument.arg: self.value(value) for argument, value in zip(positional, call.args)}
+        supplied.update({keyword.arg: self.value(keyword.value) for keyword in call.keywords if keyword.arg is not None})
+        if not any(value.connection is not None for value in supplied.values()):
+            return
+        bindings = {**defaults, **supplied}
+        previous = self.aliases
+        self.aliases = lexical.copy()
+        self.active_calls.add(function.symbol)
+        if kind == "function":
+            self.analyze_function(node, bindings, annotations, invoked=True)
+        else:
+            self.analyze_lambda(node, bindings, invoked=True)
+        self.active_calls.remove(function.symbol)
+        self.aliases = previous
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Closures retain aliases, but can run after the defining lock is gone.
@@ -612,17 +667,21 @@ class _Check(ast.NodeVisitor):
         annotated = {argument.arg: self.value(argument.annotation).symbol for argument in [*positional, *node.args.kwonlyargs]}
         self.defer("function", node, default_values, annotated)
 
-    def analyze_function(self, node, default_values, annotated):
+    def analyze_function(self, node, default_values, annotated, *, invoked=False):
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
-        self.held_locks, self.eager_walrus = set(), None
+        self.held_locks, self.eager_walrus = held_locks.copy() if invoked else set(), None
+        nested = self.nested_protected
+        media = self.media_protected
+        self.nested_protected = nested.copy() if invoked else set()
+        self.media_protected = media.copy() if invoked else set()
         eager_annotations = self.eager_variable_annotations
         self.eager_variable_annotations = False
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
-        self.protected, self.class_outer_aliases = set(), None
+        self.protected, self.class_outer_aliases = protected.copy() if invoked else set(), None
         for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
             self.aliases.pop(argument.arg, None)
             if argument.arg in default_values:
@@ -643,6 +702,8 @@ class _Check(ast.NodeVisitor):
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
+        self.nested_protected = nested
+        self.media_protected = media
         self.eager_variable_annotations = eager_annotations
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
 
@@ -676,15 +737,19 @@ class _Check(ast.NodeVisitor):
         default_values = {name: self.value(default) for name, default in defaults.items()}
         self.defer("lambda", node, default_values)
 
-    def analyze_lambda(self, node, default_values):
+    def analyze_lambda(self, node, default_values, *, invoked=False):
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
-        self.held_locks, self.eager_walrus = set(), None
+        self.held_locks, self.eager_walrus = held_locks.copy() if invoked else set(), None
+        nested = self.nested_protected
+        media = self.media_protected
+        self.nested_protected = nested.copy() if invoked else set()
+        self.media_protected = media.copy() if invoked else set()
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
-        self.protected, self.class_outer_aliases = set(), None
+        self.protected, self.class_outer_aliases = protected.copy() if invoked else set(), None
         for argument in [*positional, *node.args.kwonlyargs, *([node.args.vararg] if node.args.vararg else []), *([node.args.kwarg] if node.args.kwarg else [])]:
             self.aliases[argument.arg] = default_values.get(argument.arg, _Value())
             if argument.arg not in default_values:
@@ -695,6 +760,8 @@ class _Check(ast.NodeVisitor):
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
+        self.nested_protected = nested
+        self.media_protected = media
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
@@ -720,6 +787,10 @@ class _Check(ast.NodeVisitor):
         aliases, protected, class_outer = self.aliases, self.protected, self.class_outer_aliases
         held_locks, eager_walrus = self.held_locks, self.eager_walrus
         self.held_locks = set() if deferred else held_locks.copy()
+        nested = self.nested_protected
+        media = self.media_protected
+        self.nested_protected = set() if deferred else nested.copy()
+        self.media_protected = set() if deferred else media.copy()
         self.eager_walrus = None if deferred else {}
         self.aliases = (class_outer if class_outer is not None else aliases).copy()
         self.protected, self.class_outer_aliases = set() if deferred else protected.copy(), None
@@ -742,6 +813,8 @@ class _Check(ast.NodeVisitor):
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
         self.collect_bindings = collecting
+        self.nested_protected = nested
+        self.media_protected = media
         self.comprehension_locals = outer_locals
         for name, values in assignments.items():
             # Assignment expressions bind in the containing non-comprehension

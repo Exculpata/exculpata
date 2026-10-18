@@ -26,8 +26,8 @@ MIGRATION = ROOT / "src/case_intelligence/migrations/sqlite/0027_report_compilat
 
 def setup_store(path):
     store = WorkspaceStore(path)
-    with fixture_write(store) as connection:
-        connection.executescript(MIGRATION.read_text())
+    with store._lock:
+        store.connection.executescript(MIGRATION.read_text())  # fixture-write: Replay the existing migration on an isolated store before workers start; its foreign-key settings require raw migration semantics.
     actor = store.upsert_principal("test", ACTOR, "Synthetic reviewer", ACTOR, preferred_principal_id=ACTOR)
     matter = store.create_matter("Generated compilation matter", "Synthetic", actor.principal_id)
     return store, matter
@@ -51,8 +51,8 @@ def test_migration_is_mirrored_idempotent_and_keeps_old_records(tmp_path):
     store, matter = setup_store(tmp_path / "control.sqlite")
     jobs = ReportCompilationJobs(store)
     first = queue(jobs, matter)
-    with fixture_write(store) as connection:
-        connection.executescript(MIGRATION.read_text())
+    with store._lock:
+        store.connection.executescript(MIGRATION.read_text())  # fixture-write: Check migration idempotency on an isolated store with no worker; preserve the migration's foreign-key configuration semantics.
     assert jobs.get(matter.matter_id, ACTOR, first.job_id).state == "queued"
     assert store.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     store.close()

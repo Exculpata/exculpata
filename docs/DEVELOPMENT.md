@@ -110,8 +110,10 @@ to establish retry states. If a fixture manually claims and completes a job,
 stop and join that job's coordinator before queueing it; retain live workers in
 tests that exercise automatic processing. A passing rerun alone does not fix a
 fixture race. Use `tests.fixture_write.fixture_write(workspace)` for direct SQL
-fixture writes and hold it across a complete manual media seed sequence
-(queue, claim, import, finish). The helper acquires the current workspace lock
+fixture writes. Use `fixture_write(workspace, media=True)` across a complete
+manual media seed sequence (queue, claim, import, finish). Media mode rejects
+entry into an existing transaction or active fixture scope on that connection,
+including when a reusable seed helper is called indirectly. The helper acquires the current workspace lock
 before entering the connection transaction and keeps it through commit or
 rollback. Nested SQL fixtures use a savepoint without committing their caller's
 transaction, even when the outer fixture has only read or created a table before
@@ -124,17 +126,21 @@ SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=Tr
 is unsupported and rejected before entry or assignment. Custom row factories
 receive scoped cursors, including through public workspace queries, and scoped
 connection factories are always restored before releasing the lock, including raw
-in-boundary replacements. Set shared cursor row factories through the yielded
-cursor, even while holding the workspace lock: a raw cursor callback can expose
+in-boundary replacements. Set shared connection and cursor row factories through
+their yielded handles, even while holding the workspace lock: a raw callback can expose
 the underlying connection beyond that lock. Custom cursor
 factories are rejected before they can receive a raw connection. Unsupported
 connection methods such as closing the shared database, blob access, deserialize,
 backup and deferred dumps
 fail closed rather than returning an unscoped object.
 Use the yielded handle for scripts, connection contexts and explicit transaction
-control. DDL, writable PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
+control. DDL, transactional metadata PRAGMAs, CTE writes and semicolon/BOM-prefixed writes
 require that handle, which begins a transaction before SQLite can execute them
-without an implicit transaction. ATTACH, DETACH and VACUUM
+without an implicit transaction. PRAGMA setters support only `user_version` and
+`application_id`; other setters and action PRAGMAs fail before execution, including
+inside scripts and EXPLAIN. Read-only PRAGMA queries remain supported. Deliberate
+independent-connection configuration, such as a contention writer's busy timeout,
+requires the owning lock and an exact-statement reason. ATTACH, DETACH and VACUUM
 are rejected; deliberate raw attachment injection is limited to explicitly
 annotated negative tests on isolated synthetic connections. Outer scripts execute complete SQLite statements within the fixture
 transaction, without sqlite3's implicit pre-script commit; explicit transaction
@@ -161,7 +167,7 @@ annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
 The inventory follows constant-name getattr/setattr operations, SQLite method
-descriptors called with an explicit receiver, and element-wise tuple/list
+and writable-attribute descriptors called with an explicit receiver, and element-wise tuple/list
 unpacking, including nested and starred assignments. It merges match cases conservatively, propagates explicit class
 global/nonlocal assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
@@ -176,6 +182,9 @@ Deferred bodies include later global and closure bindings while preserving
 definition-time defaults. Unannotated helper parameters that mutate SQLite
 callbacks must establish ownership inside the helper or document the exact
 independent operation; parameter spelling does not establish safety.
+Known local helper calls also retain SQLite handle and saved-method ownership,
+so a generic cleanup helper cannot hide closure of a shared database. Ordinary
+resource and independently owned connection cleanup remain supported.
 Writable PRAGMAs, including parenthesized forms and action PRAGMAs without
 arguments, require the same boundary as other mutations.
 Unannotated SQL callback parameters

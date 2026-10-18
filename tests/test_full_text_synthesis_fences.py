@@ -392,8 +392,8 @@ def test_cancellation_cannot_overwrite_another_connections_charged_checkpoint(
     other = WorkspaceStore(bench.workspace.path)
     # An independent writer must either commit before cancellation's read or
     # wait until cancellation commits. Never wait for our own controlled hook.
-    with fixture_write(other) as fixture_connection:
-        fixture_connection.execute("PRAGMA busy_timeout=0")
+    with other._lock:
+        other.connection.execute("PRAGMA busy_timeout=0")  # fixture-write: Configure the independent contention writer to fail immediately instead of waiting on this test's other connection.
     repository = FullTextSynthesisRepository(connection=other.connection,
         lock=other._lock, authorize=other.membership)
     original_read = bench.workspace.research_job
@@ -453,8 +453,8 @@ def test_restart_recovery_preserves_a_concurrent_charged_checkpoint(
     next_result = deepcopy(before.result)
     next_result["hierarchical_synthesis"]["requests_spent"] += 1
     other = WorkspaceStore(bench.workspace.path)
-    with fixture_write(other) as fixture_connection:
-        fixture_connection.execute("PRAGMA busy_timeout=0")
+    with other._lock:
+        other.connection.execute("PRAGMA busy_timeout=0")  # fixture-write: Configure the independent contention writer to fail immediately instead of waiting on this test's other connection.
     repository = FullTextSynthesisRepository(connection=other.connection,
         lock=other._lock, authorize=other.membership)
     committed = []

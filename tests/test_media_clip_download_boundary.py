@@ -28,7 +28,7 @@ def seed_clip(bench, matter, actor, monkeypatch):
     document, _ = store.store_stream("synthetic.wav", "audio/wav",
                                     io.BytesIO(b"RIFF synthetic audio"))
     bench.media.close()
-    with fixture_write(bench.workspace):
+    with fixture_write(bench.workspace, media=True):
         job = bench.workspace.queue_media_job(
             matter.matter_id, document.document_id, document.version_id, actor,
             source_sha256=document.digest, byte_size=document.size, media_type="audio/wav", duration_ms=2000)

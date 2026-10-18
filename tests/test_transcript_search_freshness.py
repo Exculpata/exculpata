@@ -92,7 +92,7 @@ def seed(client, *, with_transcript=True):
     with store.mutation_guard():
         store.documents[document.document_id] = document
         store._save((document.document_id,))
-    with fixture_write(bench.workspace):
+    with fixture_write(bench.workspace, media=True):
         job = bench.workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, ACTOR,
             source_sha256=document.digest, byte_size=document.size, media_type=document.media_type, duration_ms=1000)
         if with_transcript:

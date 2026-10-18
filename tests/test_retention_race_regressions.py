@@ -31,8 +31,8 @@ def due_matter(tmp_path):
     competing = WorkspaceStore(path, clock=lambda: now[0])
     # A deterministic interleaving should report contention immediately rather
     # than waiting for a writer held by this same test's other connection.
-    with fixture_write(competing) as fixture_connection:
-        fixture_connection.execute("PRAGMA busy_timeout=0")
+    with competing._lock:
+        competing.connection.execute("PRAGMA busy_timeout=0")  # fixture-write: Configure the independent retention-race writer to report contention without waiting on the primary connection.
     now[0] += timedelta(days=9)
     try:
         yield primary, competing, matter, now

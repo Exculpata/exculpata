@@ -311,7 +311,7 @@ def test_media_original_machine_text_every_revision_speaker_history_and_clip_rec
         processor = ImmediateMediaProcessor()
         submitted = processor.submit(OWNER, wav, 'audio/wav', document.digest)
         summary = processor.transcript(OWNER, submitted['job_id'])
-    with fixture_write(workspace):
+    with fixture_write(workspace, media=True):
         job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
             source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
         workspace.claim_media_job('generated-worker')
@@ -522,7 +522,7 @@ def test_actual_recording_check_payload_and_private_inspection_id(archive_case, 
     # The real bounded inspector produces the complete failed-check schema for
     # invalid synthetic media on every host, including hosts without ffmpeg.
     result = inspect_recording(store.files / document.stored_name, 'audio/wav')
-    with fixture_write(workspace):
+    with fixture_write(workspace, media=True):
         job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
             source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
         workspace.claim_media_job('generated-worker')

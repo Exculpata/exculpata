@@ -95,17 +95,17 @@ def test_callback_lock_does_not_grant_sql_transaction_permission():
     "with fixture_write(bench.workspace):\n    bench.workspace.connection.row_factory = callback",
     "with bench.workspace._lock:\n    with fixture_write(bench.workspace):\n        bench.workspace.connection.row_factory = callback",
     "with other._lock:\n    bench.workspace.connection.row_factory = callback",
+    "with bench.workspace._lock:\n    bench.workspace.connection.row_factory = callback",
 ])
-def test_row_factory_changes_require_scoped_handle_or_exact_lock(source):
+def test_row_factory_changes_require_scoped_handle(source):
     assert check_fixture_writes(source)
 
 
 @pytest.mark.parametrize("source", [
-    "with bench.workspace._lock:\n    bench.workspace.connection.row_factory = callback",
     "with fixture_write(bench.workspace) as connection:\n    connection.row_factory = callback",
     "import sqlite3\nconnection = sqlite3.connect(':memory:')\nconnection.row_factory = callback",
 ])
-def test_row_factory_changes_accept_locked_or_independent_setup(source):
+def test_row_factory_changes_accept_scoped_or_independent_setup(source):
     assert check_fixture_writes(source) == []
 
 

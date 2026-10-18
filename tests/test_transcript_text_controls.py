@@ -85,7 +85,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
             store._save((document.document_id,))
         workspace = bench.workspace
         # Keep the real media worker from claiming the synthetic seed job.
-        with fixture_write(workspace):
+        with fixture_write(workspace, media=True):
             job = workspace.queue_media_job(
                 matter.matter_id, document.document_id, document.version_id, ACTOR,
                 source_sha256=document.digest, byte_size=document.size,

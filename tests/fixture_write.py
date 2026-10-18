@@ -26,20 +26,26 @@ class _FixtureScope:
 
 
 @contextmanager
-def fixture_write(workspace):
+def fixture_write(workspace, *, media=False):
     """Serialize fixture writes through commit/rollback on the current lock.
 
     The yielded connection is scoped to this boundary. Do not retain it for
-    later writes or wait for a worker/HTTP request here. Media API methods may
-    commit individually; the outer boundary serializes the complete sequence.
+    later writes or wait for a worker/HTTP request here. Manual media setup must
+    use ``media=True``: those public APIs commit individually, so this mode
+    requires an outer boundary without a caller transaction and serializes the
+    complete sequence. It does not make multiple media API calls atomic.
     A nested SQL fixture uses a savepoint and never commits its caller's work.
     """
+    if not isinstance(media, bool):
+        raise TypeError("fixture_write media must be a bool")
     with workspace._lock:
         connection = workspace.connection
         if getattr(connection, "autocommit", None) is True:
             raise RuntimeError("fixture_write does not support autocommit=True")
         active = _current_scopes()
         nested = connection.in_transaction or any(scope.active and scope.connection is connection for scope in active)
+        if media and nested:
+            raise RuntimeError("fixture_write(media=True) requires an outer boundary without a caller transaction")
         scope = _FixtureScope(connection, nested, get_ident())
         _active_scopes.stack = (*active, scope)
         handle = _FixtureConnection(scope)
@@ -78,6 +84,44 @@ def _check_nested_sql(sql):
 def _check_attachment_sql(sql):
     if re.match(r"(?:ATTACH|DETACH|VACUUM)\b", _sql_commands(sql), re.I):
         raise RuntimeError("fixture_write does not support attachment changes or VACUUM")
+
+
+_SQL_IDENTIFIER = r'''(?:\w+|"(?:""|[^"])*"|'(?:''|[^'])*'|`(?:``|[^`])*`|\[[^\]]*\])'''
+_PRAGMA = re.compile(
+    rf"^(?:EXPLAIN\s+(?:QUERY\s+PLAN\s+)?)?PRAGMA\s+"
+    rf"(?:{_SQL_IDENTIFIER}\s*\.\s*)?({_SQL_IDENTIFIER})(.*)$", re.I | re.S,
+)
+_SQL_COMMENT_OR_QUOTED = re.compile(
+    r''''(?:''|[^'])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|\[[^\]]*\]|--[^\n]*|/\*[\s\S]*?\*/'''
+)
+_READ_ARGUMENT_PRAGMAS = {
+    "table_info", "table_xinfo", "table_list", "index_info", "index_xinfo",
+    "index_list", "foreign_key_list", "foreign_key_check", "integrity_check", "quick_check",
+}
+_ACTION_PRAGMAS = {"optimize", "wal_checkpoint", "incremental_vacuum", "shrink_memory"}
+_TRANSACTIONAL_PRAGMAS = {"user_version", "application_id"}
+
+
+def _check_pragma_sql(sql):
+    """Return whether this is a PRAGMA query; reject nontransactional changes.
+
+    Connection settings can ignore a surrounding BEGIN or survive ROLLBACK.
+    Only the two supported transactional metadata setters belong in a fixture
+    write. EXPLAIN does not prevent prepare-time PRAGMA configuration changes.
+    """
+    commands = _SQL_COMMENT_OR_QUOTED.sub(
+        lambda match: " " if match[0].startswith(("--", "/*")) else match[0], sql,
+    ).lstrip(";\ufeff \t\r\n\v\f")
+    pragma = _PRAGMA.match(commands)
+    if pragma is None:
+        return False
+    name, argument = pragma.groups()
+    name = name.strip("\"'`[]").lower()
+    argument = argument.lstrip()
+    setting = argument.startswith("=") or (argument.startswith("(") and name not in _READ_ARGUMENT_PRAGMAS)
+    if name in _ACTION_PRAGMAS or (setting and name not in _TRANSACTIONAL_PRAGMAS):
+        raise RuntimeError(f"fixture_write does not support nontransactional PRAGMA {name}")
+    return not setting
 
 
 def _check_nested_schema(connection):
@@ -125,11 +169,12 @@ class _FixtureConnection:
     def _check_sql(self, sql):
         self._check_active()
         _check_attachment_sql(sql)
+        pragma_query = _check_pragma_sql(sql)
         if self._owns_caller_transaction():
             _check_nested_sql(sql)
             # Caller APIs may change schemas after nested entry.
             _check_nested_schema(self._connection)
-        elif (not self._connection.in_transaction and
+        elif (not self._connection.in_transaction and not pragma_query and
               not re.match(r"(?:SELECT|EXPLAIN|BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b", _sql_commands(sql), re.I)):
             # SQLite does not implicitly begin for DDL, CTE writes or prefixed
             # DML. Begin at the SQL handle, leaving media API entry lazy.
@@ -198,6 +243,7 @@ class _FixtureConnection:
         statements.append(sql_script[start:])
         for statement in statements:
             _check_attachment_sql(statement)
+            _check_pragma_sql(statement)
             _check_nested_sql(statement)
         if not self._connection.in_transaction:
             self._connection.execute('BEGIN')

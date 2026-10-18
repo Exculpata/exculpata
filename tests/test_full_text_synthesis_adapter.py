@@ -22,9 +22,9 @@ from tests.test_full_text_synthesis import ACTOR, finish, queue, seed_terminal_r
 class SyntheticLedger:
     def __init__(self):
         self._lock = RLock()
-        self.connection = sqlite3.connect(":memory:")
-        with self._lock:
-            self.connection.row_factory = sqlite3.Row
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        self.connection = connection
         self.allowed = True
         self.originals = {}
         self.resolutions = []
