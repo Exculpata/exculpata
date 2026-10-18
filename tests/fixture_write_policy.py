@@ -408,11 +408,13 @@ class _Check(ast.NodeVisitor):
                 if function.dictionary_method == "copy" and not node.args:
                     return function.receiver
                 if function.dictionary_method in _NAMESPACE_LOOKUPS and node.args:
-                    default = self.value(node.args[1]) if len(node.args) > 1 else None
+                    default = (self.value(node.args[1]) if len(node.args) > 1 else
+                               _Value(symbol="None", nonstring_constant=True) if function.dictionary_method == "get" else None)
                     return self.mapping_lookup(function.receiver, self.value(node.args[0]), default) or _Value()
             if (function.dictionary_accessor and function.dictionary_method in _NAMESPACE_LOOKUPS
                     or function.symbol == "operator.getitem") and len(node.args) >= 2:
-                default = self.value(node.args[2]) if len(node.args) > 2 else None
+                default = (self.value(node.args[2]) if len(node.args) > 2 else
+                           _Value(symbol="None", nonstring_constant=True) if function.dictionary_method == "get" else None)
                 resolved = self.mapping_lookup(self.value(node.args[0]), self.value(node.args[1]), default)
                 if resolved is not None:
                     return resolved
@@ -724,9 +726,9 @@ class _Check(ast.NodeVisitor):
         if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
             return _Value(symbol="<reflective-builtins>")
         if key.complete_text and receiver.mapping is not None:
-            selected = dict(receiver.mapping).get(key.text, default)
-            if selected is not None and (_Check.contains_namespace(selected) or _Check.is_dictionary(selected)):
-                return selected
+            return dict(receiver.mapping).get(key.text, default)
+        if key.nonstring_constant and receiver.mapping is not None:
+            return default
         return None
 
     @staticmethod
@@ -847,7 +849,9 @@ class _Check(ast.NodeVisitor):
                 merged_connection = (f"unknown@merged:{name}" if any(
                     not owner.startswith("sqlite@") for owner in connections) else
                     f"sqlite@merged:{name}" if connections else None)
-                result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
+                result[name] = _Value(symbol=values[0].symbol if values[0].symbol and all(value.symbol == values[0].symbol for value in values) else
+                                      "<reflective-builtins>" if any(_Check.contains_namespace(value) for value in values) else
+                                      values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       nonstring_constant=all(value.nonstring_constant for value in values),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
@@ -1607,7 +1611,26 @@ class _Check(ast.NodeVisitor):
     def visit_Return(self, node: ast.Return) -> None:
         if node.value is not None:
             self.visit(node.value)
-        self.return_values.append(self.value(node.value))
+        value = self.value(node.value)
+        self.return_values.append(value)
+        enclosing = self.parents.get(node)
+        while enclosing is not None and not isinstance(enclosing, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            enclosing = self.parents.get(enclosing)
+        if enclosing is not None and (isinstance(enclosing, ast.AsyncFunctionDef) or self.has_yield(enclosing)):
+            self.reject_delayed_namespace_result(node, value)
+
+    def reject_delayed_namespace_result(self, node, value):
+        if self.contains_namespace(value):
+            self.flag(node, "dynamic execution namespace results from async/generator helpers are unsupported; use synchronous fixed-parameter helpers", structural=True)
+
+    def visit_Yield(self, node: ast.Yield) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+        self.reject_delayed_namespace_result(node, self.value(node.value))
+
+    def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
+        self.visit(node.value)
+        self.reject_delayed_namespace_result(node, self.iteration_value(self.value(node.value)))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Closures retain aliases, but can run after the defining lock is gone.
