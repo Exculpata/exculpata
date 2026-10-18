@@ -32,7 +32,7 @@ def test_unit_and_document_limits_do_not_pull_an_unbounded_tail():
             yield PilotUnit(len(pulled), 'Synthetic')
     units, total, complete = collect([SimpleNamespace(iter_parsed_units=endless)],
                                      limits=replace(CoverageLimits(), units=3))
-    assert len(pulled) == 3 and units == []
+    assert len(pulled) == 4 and units == []  # One bounded exhaustion probe.
     assert total is None and not complete
     opened = []
     def sources():
@@ -40,7 +40,7 @@ def test_unit_and_document_limits_do_not_pull_an_unbounded_tail():
             opened.append(1)
             yield document()
     assert collect(sources(), limits=replace(CoverageLimits(), documents=2)) == ([], None, False)
-    assert len(opened) == 2
+    assert len(opened) == 3  # Metadata-only lookahead; the third source is not read.
 
 
 @pytest.mark.parametrize('kind', ['input', 'record', 'deadline'])
@@ -61,7 +61,7 @@ def test_limits_stop_serialized_reads_before_large_decode(monkeypatch, kind):
         assert kind == 'record' and len(value) < 1024
         return original(self, value, *args, **kwargs)
     monkeypatch.setattr(json.JSONDecoder, 'raw_decode', decode)
-    limits = replace(CoverageLimits(), input_chars=1024 if kind == 'input' else 500000,
+    limits = replace(CoverageLimits(), seconds=2, input_chars=1024 if kind == 'input' else 500000,
                      record_chars=1024)
     assert collect([document(stream=stream)], limits=limits, clock=lambda: now[0]) == ([], None, False)
     assert stream.tell() == 65536
@@ -112,7 +112,7 @@ def test_read_limits_discard_source_before_unvalidated_footer(kind):
     first = document([{'number': 1, 'text': 'Synthetic validated source'}])
     tail = document(stream=Reads('{"units":[{"number":1,"text":"2034-04-18"}]'
                                  + ' ' * 100000 + ',"version":2}'))
-    limits = replace(CoverageLimits(), input_chars=65536 if kind == 'input' else 200000)
+    limits = replace(CoverageLimits(), seconds=2, input_chars=65536 if kind == 'input' else 200000)
     units, total, complete = collect([first, tail], limits=limits, clock=lambda: now[0])
     assert len(reads) == 2
     assert [unit.text for unit in units] == ['Synthetic validated source']

@@ -31,6 +31,7 @@ class TimelineResult:
     undated: list
     notice: str
     rejected_count: int
+    coverage_records: list
 
     def payload(self):
         return asdict(self)
@@ -57,7 +58,7 @@ def _citation(unit, start, end, token):
 
 
 def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit: '', total_unit_count=None,
-                   coverage_complete=True):
+                   coverage_complete=True, coverage_records=()):
     if not (1 <= limits.units <= 2500 and 1 <= limits.entries <= 150 and 1 <= limits.unit_chars <= 6000):
         raise ValueError('Timeline limits must remain within the bounded scan ceilings')
     total_unit_count = (len(units) if total_unit_count is None else total_unit_count) if coverage_complete else None
@@ -162,5 +163,8 @@ def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit:
                     'or source text could not be read.')
     if capped:
         coverage += ' This draft is capped by passage, text, or entry limits. It is not a complete chronology.'
-    return TimelineResult('exculpata-timeline-draft-v1', None, len({u.document_id for u in scanned}), len(scanned), total_unit_count, coverage,
-                          capped, entries, conflicts, undated, NOTICE, rejected)
+    for record in coverage_records:
+        label = 'Unreadable source' if record['status'] == 'unreadable' else 'Coverage limit at source'
+        coverage += f" {label}: {record['source_name']} ({record['source_id']})."
+    return TimelineResult('exculpata-timeline-draft-v2', None, len({u.document_id for u in scanned}), len(scanned), total_unit_count, coverage,
+                          capped, entries, conflicts, undated, NOTICE, rejected, list(coverage_records))

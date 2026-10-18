@@ -1,5 +1,5 @@
 {
-  "format": "exculpata-timeline-draft-v1",
+  "format": "exculpata-timeline-draft-v2",
   "generated_at": null,
   "source_count": 40,
   "unit_count": 40,
@@ -2908,5 +2908,6 @@
   "notice": "Draft timeline generated from the records for attorney review. Entries are not findings.",
   "rejected_count": 0,
   "total_unit_count": 40,
-  "coverage_notice": "Included 40 of 40 passages from ready sources in the date scan."
+  "coverage_notice": "Included 40 of 40 passages from ready sources in the date scan.",
+  "coverage_records": []
 }
