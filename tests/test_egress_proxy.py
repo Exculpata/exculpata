@@ -34,7 +34,7 @@ def test_connect_denies_other_destinations(target):
         proxy.read_connect(Request(), ("issuer.example.test", 443))
 
 
-@pytest.mark.parametrize("issuer", ["http://issuer.example.test", "https://user@issuer.example.test", "https://issuer.example.test?x=1", "https://issuer.example.test/#fragment", "https://issuer.example.test\n", "https://issuer.example.test\\evil"])
+@pytest.mark.parametrize("issuer", ["https://issuer.example.test:0/realm", "https://issuer.example.test:00000/realm", "http://issuer.example.test", "https://user@issuer.example.test", "https://issuer.example.test?x=1", "https://issuer.example.test/#fragment", "https://issuer.example.test\n", "https://issuer.example.test\\evil"])
 def test_bad_issuer(issuer):
     with pytest.raises(proxy.Denied):
         proxy.issuer_authority(issuer)

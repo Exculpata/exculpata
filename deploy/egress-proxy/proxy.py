@@ -139,7 +139,8 @@ def issuer_authority(value: str) -> tuple[str, int] | None:
         raise Denied("invalid issuer")
     parsed = urlsplit(value)
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
-            or parsed.password is not None or parsed.query or parsed.fragment or '\\' in value):
+            or parsed.password is not None or parsed.query or parsed.fragment or '\\' in value
+            or parsed.port == 0):
         raise Denied("invalid issuer")
     host = parsed.hostname
     if not host.isascii():

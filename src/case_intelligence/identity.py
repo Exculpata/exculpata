@@ -118,9 +118,15 @@ class LocalAuthenticationError(WorkspaceProblem):
 
 def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> str:
     candidate = (value or "").strip().rstrip("/")
-    if not candidate or len(candidate) > 1_024:
+    if (not candidate or len(candidate) > 1_024 or "\\" in candidate
+            or any(c in (value or "") for c in ("\x00", "\r", "\n"))
+            or any(ord(c) <= 32 or ord(c) == 127 for c in candidate)):
         raise RuntimeError(f"{label} is missing or invalid")
-    parsed = urlsplit(candidate)
+    try:
+        parsed = urlsplit(candidate)
+        port = parsed.port
+    except ValueError:
+        raise RuntimeError(f"{label} must be an exact HTTPS URL") from None
     if (
         parsed.scheme != "https"
         or not parsed.hostname
@@ -133,6 +139,9 @@ def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> s
     if origin_only and parsed.path not in {"", "/"}:
         raise RuntimeError(f"{label} must not contain a path")
     hostname = parsed.hostname.casefold()
+    if (port == 0 or hostname.endswith(".") or ".." in hostname
+            or (hostname.isascii() and re.fullmatch(r"[a-zA-Z0-9._:-]+", hostname) is None)):
+        raise RuntimeError(f"{label} has an invalid authority")
     if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", hostname):
         try:
             if str(ipaddress.IPv4Address(hostname)) != hostname:

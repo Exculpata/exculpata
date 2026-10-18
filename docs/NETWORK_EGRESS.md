@@ -85,7 +85,12 @@ The proxy permits CONNECT only to the configured issuer's exact host and port.
 Outer configuration whitespace and trailing slashes are trimmed consistently
 with application settings, including issuer-bound pin matching. Line controls
 remain invalid. Installer preflight rejects noncanonical numeric issuer hosts
-before writing configuration, matching the application and relay.
+before writing configuration, matching the application and relay. Structural URL
+checks also reject trailing-dot/double-dot hosts, backslashes, embedded controls
+or spaces, unsupported ASCII host characters, and invalid/zero ports before writes.
+Unicode/ASCII-IDNA names, literal underscores, encoded path characters and valid
+HTTPS ports retain their existing treatment. DNS, certificate and provider metadata
+acceptance remain runtime checks.
 Existing ASCII issuer names containing underscores retain literal, exact-host
 matching; replacing an underscore or adding a suffix does not gain access.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this

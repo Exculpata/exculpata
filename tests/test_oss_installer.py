@@ -10,6 +10,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
 )
+import importlib.util
 import json
 import os
 import stat
@@ -1767,6 +1768,24 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
     ("oidc", ["--oidc-issuer", "https://2130706433"], False),
     ("oidc", ["--oidc-issuer", "https://0177.0.0.1"], False),
     ("oidc", ["--oidc-issuer", "https://0x7f000001"], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test./realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\\m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity..example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\tm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\x7fm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity%2eexample.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity+name.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:0/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:65536/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:invalid/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/realm\n'], False),
+    ("oidc", ["--oidc-issuer", 'https://login_eu.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://faß.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://xn--fa-hia.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:000443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://[2001:db8::1]:8443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real%20m'], True),
     ("oidc", ["--oidc-issuer", "http://identity.example.test"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test?query=yes"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/#fragment"], False),
@@ -1818,6 +1837,11 @@ def test_preflight_nonsecret_settings_match_identity_runtime(tmp_path, ready_hos
     except (RuntimeError, ValueError):
         runtime_valid = False
     assert runtime_valid is expected
+    if auth == "oidc" and runtime_valid:
+        spec = importlib.util.spec_from_file_location("agreement_relay", installer.PROJECT / "deploy/egress-proxy/proxy.py")
+        relay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(relay)
+        assert relay.issuer_authority(values["oidc_issuer"]) is not None
     result = installer._collect_preflight("none", args)
     assert (checks_by_name(result)["identity-options"].state == "pass") is runtime_valid
     assert not args.root.exists()
