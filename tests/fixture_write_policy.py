@@ -8,7 +8,9 @@ opaque containers can hide dynamic execution. Explicit safe builtin attributes
 remain supported. Scope dictionaries and the module registry retain their known
 builtin entry through deterministic key lookups, shallow copies and pure dictionary
 unions. Namespace-bearing mutations and value enumeration are rejected rather
-than interpreting aliased mutable state. Computed imports and arbitrary reflection
+than interpreting aliased mutable state. Unresolved keys into exact mappings with
+namespace-bearing entries are rejected without reconstructing iterated keys.
+Computed imports and arbitrary reflection
 are not interpreted. Supported pure dictionary operations retain dictionary type
 separately from exact literal entries; unknown keys never become an empty mapping.
 Keep fixture setup explicit so that this check and reviewers can
@@ -708,6 +710,8 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def mapping_lookup(receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
+        if not key.complete_text and receiver.mapping is not None and _Check.contains_namespace(receiver):
+            return _Value(symbol="<reflective-builtins>")
         if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
             return _Value(symbol="<reflective-builtins>")
         if key.complete_text and receiver.mapping is not None:

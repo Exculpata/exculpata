@@ -701,3 +701,43 @@ def test_namespace_mapping_key_expansion_runtime_acceptance(mapping, expansion):
 def test_namespace_mapping_key_expansion_retains_actual_carriers(source, rejection_line):
     source += "\ncopy()['__builtins__']['exec'](payload)"
     assert_namespace_runtime_effect_and_rejection(source, rejection_line=rejection_line)
+
+
+_COMPUTED_MAPPING_LOOKUPS = [
+    'mapping[key]', 'mapping.get(key)', 'mapping.__getitem__(key)',
+    'dict.get(mapping, key)', 'dict.__getitem__(mapping, key)',
+    'get(key)', 'unbound(mapping, key)', 'lookup(mapping, key)',
+]
+
+
+@pytest.mark.parametrize('lookup_expression', _COMPUTED_MAPPING_LOOKUPS)
+@pytest.mark.parametrize('mapping,key_source', [
+    ("{'copy': globals().copy}", 'keys = [*mapping]\nkey = keys[0]'),
+    ("{'copy': globals().copy}.copy()", 'keys = (*mapping,)\nkey = keys[0]'),
+    ("{'copy': globals().copy} | {'ordinary': 'safe'}", 'keys = [key for key in mapping]\nkey = keys[0]'),
+    ("{'nested': {'copy': globals().copy}}['nested']", 'key = resource'),
+    ("{'copy': globals().copy}", "key = ''.join(['co', 'py'])"),
+])
+def test_namespace_mapping_computed_lookup_runtime_rejection(mapping, key_source, lookup_expression):
+    source = 'from operator import getitem as lookup\nmapping = ' + mapping
+    source += '\nget = mapping.get\nunbound = dict.get\n' + key_source
+    rejection_line = len(source.splitlines()) + 1
+    source += '\ncopy = ' + lookup_expression
+    source += "\ncopy()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource='copy', rejection_line=rejection_line)
+
+
+@pytest.mark.parametrize('lookup_expression', _COMPUTED_MAPPING_LOOKUPS)
+@pytest.mark.parametrize('mapping,key_source', [
+    ("{'copy': globals().copy, 'ordinary': 'safe'}", "key = 'ordinary'"),
+    ("{'copy': globals().copy, 'ordinary': 'safe'}", "name = 'ordinary'\nkey = name"),
+    ("{'ordinary': 'safe'}", 'keys = [*mapping]\nkey = keys[0]'),
+])
+def test_namespace_mapping_computed_lookup_safe_runtime_controls(mapping, key_source, lookup_expression):
+    source = 'from operator import getitem as lookup\nmapping = ' + mapping
+    source += '\nget = mapping.get\nunbound = dict.get\n' + key_source
+    source += '\nobserved = ' + lookup_expression
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 'safe'
+    assert sink == []
+    assert check_fixture_writes(source) == []
