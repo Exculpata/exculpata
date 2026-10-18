@@ -128,16 +128,24 @@ can therefore defeat the boundary. No additional import hook can establish trust
 in code that already ran before it. The regression suite deliberately demonstrates
 execution of a harmless synthetic parent-cache payload; it does not claim to block it.
 
-Live `doctor` checks the running app container, then streams a metadata-only probe
+Live `doctor`, install completion and update acceptance check the running app
+container, then stream a metadata-only probe
 as its normal non-root user. The probe uses `python -I -S -B` without importing
 `case_intelligence`, compares its effective UID/GID/groups with the app process,
 and checks the effective root mount's read-only flag. It checks the installed
 venv package, its ancestors and package entries for root ownership, read-only
 mounts and effective app-user write access, including nested mounts and ACL-aware
-access checks. Symlinks, missing/inaccessible metadata, unexpected identities and
+access checks. Group/world-writable mode bits are independently rejected on the
+package, every ancestor and every entry, even if the read-only mount or current
+app identity masks those permissions. Root-owner write bits alone are permitted
+only when all effective protection checks pass. Symlinks, missing/inaccessible metadata, unexpected identities and
 unverified results fail closed with a bounded diagnostic. Compose's `user` and
 `read_only` declarations alone are not proof; a declared read-only container must
-also pass the live probe. Dry-run doctor explicitly leaves this check unverified.
+also pass the live probe. Install and update run it after startup and before health
+acceptance can report completion. A failed update check enters the existing rollback
+path; restored-release health/Docker/DNS acceptance remains unchanged. Prepare-only
+and dry-run operations do not run the live probe or establish package protection.
+Dry-run doctor explicitly leaves this check unverified.
 
 Doctor does not write probe files, change ownership/permissions, repair a node,
 or attest an already compromised process, interpreter, image or privileged host.

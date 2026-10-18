@@ -29,7 +29,7 @@ def protected_tree(tmp_path, monkeypatch):
     (package / 'nested/module.py').write_text('# synthetic module\n')
     original = Path.lstat
     monkeypatch.setattr(Path, 'lstat', lambda path: SimpleNamespace(
-        st_mode=original(path).st_mode, st_uid=0))
+        st_mode=original(path).st_mode & ~0o022, st_uid=0))
     monkeypatch.setattr(probe.os, 'access', lambda path, mode, **kwargs: False)
     monkeypatch.setattr(probe.os, 'statvfs', lambda path: SimpleNamespace(f_flag=probe.os.ST_RDONLY))
     return package
@@ -166,7 +166,7 @@ def test_container_configuration_failure_blocks_live_probe(monkeypatch,tmp_path,
 
 
 @pytest.mark.parametrize('reason', ['app-root-writable','package-writable',
-    'package-not-root-owned','package-mount-writable','app-user-root','probe-unavailable'])
+    'package-not-root-owned','package-mount-writable','package-mode-writable','app-user-root','probe-unavailable'])
 def test_declared_readonly_never_substitutes_for_effective_proof(monkeypatch,tmp_path,reason):
     wire_runtime(monkeypatch,proof={'installed_package_verified':False,'reason':reason},returncode=1)
     with pytest.raises(RuntimeError,match='Installed package trust is unverified') as error:
@@ -238,3 +238,93 @@ def test_native_writable_package_control_runs_without_docker():
         capture_output=True,text=True,timeout=10)
     assert result.returncode==0,result.stderr
     assert json.loads(result.stdout)=={'app_writable_package_control_rejected':True}
+
+
+@pytest.mark.parametrize('target', ['package', 'ancestor', 'file', 'nested'])
+@pytest.mark.parametrize('write_bits', [0o020, 0o002, 0o022])
+def test_group_world_write_modes_fail_even_on_readonly_mount(tmp_path, monkeypatch, target, write_bits):
+    package = protected_tree(tmp_path, monkeypatch)
+    unsafe = {'package': package, 'ancestor': package.parent,
+              'file': package / '__init__.py', 'nested': package / 'nested'}[target]
+    original = Path.lstat
+    monkeypatch.setattr(Path, 'lstat', lambda path: SimpleNamespace(
+        st_mode=original(path).st_mode | (write_bits if path == unsafe else 0), st_uid=0))
+    with pytest.raises(probe.BoundaryError, match='package-mode-writable'):
+        probe.verify_package(package)
+
+
+@pytest.mark.parametrize('mode', [0o444, 0o644, 0o640, 0o400])
+def test_owner_write_bit_is_allowed_with_effective_protections(tmp_path, monkeypatch, mode):
+    package = protected_tree(tmp_path, monkeypatch)
+    original = Path.lstat
+    monkeypatch.setattr(Path, 'lstat', lambda path: SimpleNamespace(
+        st_mode=(stat.S_IFREG | mode) if path == package / '__init__.py' else original(path).st_mode,
+        st_uid=0))
+    probe.verify_package(package)
+
+
+def completion_node(tmp_path, monkeypatch):
+    from tests.test_first_run_handoff import configured_node
+    root, args, paths = configured_node(tmp_path)
+    (paths['accounts'] / 'local-accounts.json').write_text('{}')
+    args.prepare_only = False
+    args.no_backup = True
+    events = []
+    monkeypatch.setattr(installer, '_run', lambda console, command, **kwargs:
+        events.append('startup' if 'up' in command else 'command') or subprocess.CompletedProcess(command, 0, '', ''))
+    monkeypatch.setattr(installer, '_preflight', lambda *a, **kw: ())
+    monkeypatch.setattr(installer, '_stage_release', lambda *a, **kw: ('synthetic-new', ROOT))
+    monkeypatch.setattr(installer, '_wait_health', lambda *a, **kw:
+        events.append('rollback-health' if kw.get('rollback') else 'health'))
+    return root, args, events
+
+
+@pytest.mark.parametrize('action', ['install', 'update'])
+@pytest.mark.parametrize('protected', [False, True])
+def test_install_update_require_package_protection_before_acceptance(tmp_path, monkeypatch, capsys, action, protected):
+    root, args, events = completion_node(tmp_path, monkeypatch)
+    before = {name: (root / name).read_bytes() for name in ('installation.json', 'compose.env',
+        'config/transcription.env')}
+    def verify(path):
+        assert path == root and events[-1] == 'startup'
+        events.append('package')
+        if not protected:
+            raise RuntimeError('synthetic package protection denied')
+    monkeypatch.setattr(installer, '_verify_installed_package', verify)
+    def run():
+        if action == 'install':
+            installer._provision(installer.Console(color=False), args, root, 'local', 'none',
+                None, None, password_input=[])
+        else:
+            installer._update(installer.Console(color=False), args, root)
+    capsys.readouterr()
+    if protected:
+        run()
+        assert events.index('startup') < events.index('package') < events.index('health')
+        assert 'rollback-health' not in events
+    else:
+        with pytest.raises(RuntimeError, match='synthetic package protection denied'):
+            run()
+        assert 'health' not in events
+        output = capsys.readouterr().out
+        assert 'node is online' not in output and 'Update committed' not in output
+        if action == 'update':
+            assert events[-2:] == ['startup', 'rollback-health']
+            assert all((root / name).read_bytes() == value for name, value in before.items())
+        else:
+            assert installer._install_progress(root)['phases']['running'] == 'checking'
+
+
+@pytest.mark.parametrize('action', ['install', 'update', 'prepare'])
+def test_nonlive_completion_does_not_probe_installed_package(tmp_path, monkeypatch, action):
+    root, args, events = completion_node(tmp_path, monkeypatch)
+    args.dry_run = action != 'prepare'
+    args.prepare_only = action == 'prepare'
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda *a:
+        pytest.fail('nonlive action attempted package verification'))
+    if action == 'update':
+        installer._update(installer.Console(color=False, quiet=True), args, root)
+    else:
+        installer._provision(installer.Console(color=False, quiet=True), args, root, 'local', 'none',
+            None, None, password_input=[])
+    assert 'health' not in events

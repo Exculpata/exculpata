@@ -1933,6 +1933,7 @@ def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, f
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
     monkeypatch.setattr(installer, "_stage_release", stage)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", lambda *a, **k: events.append("health"))
     monkeypatch.setattr(installer, "_seal_provisioning", lambda *a, **k: events.append("seal"))
     args = installer._parser().parse_args(["update", "--root", str(root), "--non-interactive", "--no-backup", *(["--dry-run"] if dry_run else [])])
@@ -2229,6 +2230,7 @@ def synthetic_late_gpu_resume(tmp_path, monkeypatch, request, *, after_free=4700
             raise RuntimeError("synthetic health timeout after model startup")
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", health)
     monkeypatch.setattr(installer, "_saved_models_verified", lambda *a, **k: True)
     # Reproduce an actual interruption boundary: provisioning seals its receipt,

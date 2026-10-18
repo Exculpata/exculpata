@@ -11,7 +11,9 @@ are trustworthy.
 The installed application package and its ancestors must be root-owned and
 read-only to the non-root app user. The IDNA integrity boundary does not protect
 parent-package bytecode that can execute before its private finder is installed.
-Live doctor checks effective container-root and installed-package protection;
+Live doctor, install completion and update acceptance check effective
+container-root and installed-package protection, including rejection of
+group/world-writable package, ancestor and entry mode bits.
 Compose declarations alone do not prove that state. Doctor does not repair
 permissions or attest an already compromised interpreter, image or privileged host.
 See [the package trust boundary and diagnostic limits](NETWORK_EGRESS.md).

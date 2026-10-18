@@ -1649,6 +1649,7 @@ def _verify_installed_package(root: Path) -> None:
         "app-user-unverified": "the diagnostic user does not match the running app user",
         "app-root-writable": "the app container root is writable",
         "package-writable": "the installed case_intelligence package or its ancestor is writable by the app user",
+        "package-mode-writable": "the installed package or its ancestor has group/world write permission bits",
         "package-not-root-owned": "the installed package or its ancestor is not root-owned",
         "package-mount-writable": "the installed package is on a writable mount",
     }
@@ -3652,6 +3653,7 @@ def _provision(
     except subprocess.CalledProcessError as exc:
         raise RuntimeError("Service startup failed. " + _startup_remedy(root)) from exc
     if not args.dry_run:
+        _verify_installed_package(root)
         _wait_health(console, root)
     console.ok(f"{LEGACY_PRODUCT} node is online")
 
@@ -4324,6 +4326,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
                            needs_model_staging=False)
         _run(console, [*compose, "up", "-d", "--remove-orphans"], dry_run=args.dry_run)
         if not args.dry_run:
+            _verify_installed_package(root)
             _wait_health(console, root)
             _seal_provisioning(root, updated)
             _record_prepared_phases(root, updated)

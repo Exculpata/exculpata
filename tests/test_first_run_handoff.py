@@ -536,6 +536,7 @@ def test_successful_update_handoff_retains_completed_preparation(tmp_path, monke
     def healthy(console, root):
         for phase in ('running', 'login_reachable', 'basic_review', 'selected_capabilities'):
             installer._install_phase(root, phase, 'complete')
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda *a: None)
     monkeypatch.setattr(installer, '_wait_health', healthy)
     installer._update(installer.Console(color=False), args, root)
     capsys.readouterr()

@@ -285,6 +285,7 @@ def test_update_retains_generation_and_config_except_release(tmp_path, monkeypat
     monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
     monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: ("synthetic-next", ROOT))
     monkeypatch.setattr(installer, "_run", lambda console, command, **k: calls.append(command))
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", lambda *a: None)
     monkeypatch.setattr(installer, "_seal_provisioning", lambda *a: None)
     args = installer._parser().parse_args(["update", "--root", str(root), "--no-backup", "--non-interactive"])
@@ -528,6 +529,7 @@ def test_custom_app_file_is_shared_by_validation_doctor_and_rollback(tmp_path, m
             selected.write_text("# Synthetic failed startup mutation\n")
             raise RuntimeError("synthetic startup failure")
         assert selected.read_bytes() == selected_before
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", health)
     with pytest.raises(RuntimeError, match="rollback was attempted"):
         installer._update(installer.Console(color=False, quiet=True), args, root)

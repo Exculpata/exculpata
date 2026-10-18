@@ -474,10 +474,14 @@ Docker Engine 26.0.0 or newer. Preflight blocks older, prerelease,
 unknown or unavailable versions; no older-engine backport exception is supported.
 Independently, startup, update acceptance and doctor require the
 [container-local behavioral DNS check](NETWORK_EGRESS.md#dns-boundary-and-supported-runtime).
-Live doctor also verifies the non-root app identity, effective read-only container
-root, and root-owned, read-only installed application package. Declared Compose
-settings alone do not satisfy this check. An app-writable package or unverified
-runtime state fails clearly; doctor changes no permissions or ownership. See the
+Install completion, update acceptance and live doctor also verify the non-root
+app identity, effective read-only container root, and root-owned, read-only
+installed application package. Declared Compose
+settings alone do not satisfy this check. Group/world write bits on the package,
+its ancestors or entries are rejected even on a read-only mount. An app-writable
+package or unverified runtime state fails clearly; a failed update check triggers
+the existing rollback path. Prepare-only and dry-run operations do not establish
+live package protection. These checks change no permissions or ownership. See the
 [installed package trust boundary](NETWORK_EGRESS.md), including the explicit
 parent-package bytecode limitation.
 The figures below are starting targets for alpha evaluation, not validated minimums:

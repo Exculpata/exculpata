@@ -46,6 +46,8 @@ def verify_package(package):
         metadata = path.lstat()
         if not (stat.S_ISDIR(metadata.st_mode) or stat.S_ISREG(metadata.st_mode)):
             raise BoundaryError('package-entry-unsafe')
+        if metadata.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise BoundaryError('package-mode-writable')
         if os.access(path, os.W_OK, effective_ids=True):
             raise BoundaryError('package-writable')
         if metadata.st_uid != 0:
