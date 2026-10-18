@@ -1245,6 +1245,16 @@ _INDIRECT_LOCAL_CLASS_RESULTS = [
     ('clone(x=Callback())', ''), ('deep_clone(**{"x": Callback()})', ''),
     ('deep_clone(memo={}, x=Callback())', ''),
     ('deep_clone(**{"memo": {}, "x": Callback()})', ''),
+    ('type.__call__(dict, callback=Callback())', '["callback"]'),
+    ('type.__call__(dict, **{"callback": Callback})', '["callback"]()'),
+    ('construct(dict, {"callback": Callback()})', '["callback"]'),
+    ('type.__call__(*(dict,), callback=Callback())', '["callback"]'),
+    ('type.__call__(list, [Callback()])', '[0]'),
+    ('type.__call__(tuple, (Callback().selected,))', '[0]'),
+    ('type.__call__(set, [Callback()])', '.pop()'),
+    ('type.__call__(frozenset, [Callback()])', '.__iter__().__next__()'),
+    ('builtin_type.__call__(Callback)', ''), ('builtin_object.__new__(Callback)', ''),
+    ('getattr(builtin_type, "__call__")(Callback)', ''),
 ]
 
 
@@ -1253,6 +1263,7 @@ _INDIRECT_LOCAL_CLASS_RESULTS = [
 def test_indirect_local_class_delayed_result_runtime_rejection(expression, selection, mode):
     source = (_LOCAL_CALLBACK_CLASS + '\nimport builtins\nimport importlib as modules\nimport copy as copies\n'
               'from copy import copy as clone, deepcopy as deep_clone\n'
+              'from builtins import type as builtin_type, object as builtin_object\n'
               'allocate = object.__new__\nconstruct = getattr(type, "__call__")\n'
               'def apply(operation, value):\n    return operation(value)')
     if mode == 'async':
@@ -1290,6 +1301,114 @@ def test_indirect_local_class_safe_runtime_controls(expression):
     source = ('import copy as copies\nfrom types import SimpleNamespace\nclass Callback:\n'
               '    def __call__(self):\n        return getattr(1, "real")\n'
               'external = SimpleNamespace(callback=Callback(), answer=1)\nobserved = ' + expression)
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('expression', [
+    'type.__call__(str, Callback)', 'allocate(str, Callback)',
+    'getattr(type, "__call__")(str, Callback)', 'builtins.type.__call__(str, Callback)',
+    'type.__call__(*(str, Callback))', 'type.__call__(*(), *(str, Callback))',
+    'type.__call__(str, *[Callback])',
+])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_indirect_constructor_conversion_arguments_runtime_acceptance(expression, mode):
+    source = 'import builtins\nclass Callback:\n    pass\nallocate = type.__call__'
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        source += '\nimport asyncio\nobserved = asyncio.run(provider())'
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression + '\nobserved = next(provider())'
+    else:
+        source += '\nprovider = lambda: ' + expression + '\nobserved = provider()'
+    source += '\naccepted = isinstance(observed, str) and observed.endswith("Callback\'>")'
+    accepted, sink = run_isolated_namespace_probe(source, 'accepted')
+    assert accepted is True
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('container', ['list', 'tuple', 'set', 'frozenset'])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_indirect_builtin_container_keys_runtime_acceptance(container, mode):
+    source = 'class Callback:\n    pass'
+    expression = 'type.__call__(' + container + ', {"callback": Callback()})'
+    if mode == 'async':
+        source += '\nasync def provider():\n    return ' + expression
+        source += '\nimport asyncio\nobserved = asyncio.run(provider())'
+    elif mode == 'generator':
+        source += '\ndef provider():\n    yield ' + expression + '\nobserved = next(provider())'
+    else:
+        source += '\nprovider = lambda: ' + expression + '\nobserved = provider()'
+    source += '\naccepted = list(observed) == ["callback"]'
+    accepted, sink = run_isolated_namespace_probe(source, 'accepted')
+    assert accepted is True
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('expression', [
+    'copy.copy(Callback())', 'copy.deepcopy(Callback())', 'alias.copy(Callback)',
+    'getattr(copy, "copy")(Callback())', '{"copy": copy.deepcopy}["copy"](Callback())',
+])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_unverified_copy_parameter_runtime_acceptance(expression, mode):
+    source = ('from types import SimpleNamespace\nclass Callback:\n    pass\n'
+              'def ordinary(value):\n    return 1\n'
+              'fake = SimpleNamespace(copy=ordinary, deepcopy=ordinary)')
+    if mode == 'async':
+        source += '\nasync def provider(copy):\n    alias = copy\n    return ' + expression
+        source += '\nimport asyncio\nobserved = asyncio.run(provider(fake))'
+    elif mode == 'generator':
+        source += '\ndef provider(copy):\n    alias = copy\n    yield ' + expression
+        source += '\nobserved = next(provider(fake))'
+    else:
+        source += '\ndef helper(copy):\n    alias = copy\n    return lambda: ' + expression
+        source += '\nobserved = helper(fake)()'
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('prelude', [
+    'import copy\ncopy = fake', 'from copy import copy\ncopy = ordinary',
+    'copy = fake\nalias = copy',
+])
+def test_copy_import_rebinding_runtime_acceptance(prelude):
+    source = ('from types import SimpleNamespace\nclass Callback:\n    pass\n'
+              'def ordinary(value):\n    return 1\n'
+              'fake = SimpleNamespace(copy=ordinary)\n' + prelude)
+    expression = 'copy(Callback())' if 'from copy import' in prelude else 'copy.copy(Callback())'
+    source += '\nprovider = lambda: ' + expression + '\nobserved = provider()'
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('name,access', [
+    ('type', 'type.__call__'), ('object', 'object.__new__'),
+    ('type', 'getattr(type, "__call__")'), ('object', 'getattr(object, "__new__")'),
+    ('type', 'alias.__call__'),
+])
+@pytest.mark.parametrize('mode', ['async', 'generator', 'lambda'])
+def test_unverified_allocator_parameter_runtime_acceptance(name, access, mode):
+    source = ('from types import SimpleNamespace\nclass Callback:\n    pass\n'
+              'def ordinary(value):\n    return 1\n'
+              'fake = SimpleNamespace(__call__=ordinary, __new__=ordinary)')
+    expression = access + '(Callback)'
+    if mode == 'async':
+        source += '\nasync def provider(' + name + '):\n    alias = ' + name + '\n    return ' + expression
+        source += '\nimport asyncio\nobserved = asyncio.run(provider(fake))'
+    elif mode == 'generator':
+        source += '\ndef provider(' + name + '):\n    alias = ' + name + '\n    yield ' + expression
+        source += '\nobserved = next(provider(fake))'
+    else:
+        source += '\ndef helper(' + name + '):\n    alias = ' + name + '\n    return lambda: ' + expression
+        source += '\nobserved = helper(fake)()'
     observed, sink = run_isolated_namespace_probe(source, 'observed')
     assert observed == 1
     assert sink == []

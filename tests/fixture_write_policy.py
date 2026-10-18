@@ -53,6 +53,7 @@ _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault", "copy",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
+_KNOWN_BUILTIN_CLASSES = {"type", "object", "dict", "list", "tuple", "set", "frozenset"}
 _NAMESPACE_PROVIDERS = {
     "globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars",
     "__import__", "builtins.__import__", "importlib.import_module",
@@ -220,6 +221,7 @@ class _Value:
     local_class: bool = False
     local_instance: bool = False
     class_operations: frozenset[str] = frozenset()
+    builtin_class: str = ""
 
 
 class _Check(ast.NodeVisitor):
@@ -281,10 +283,10 @@ class _Check(ast.NodeVisitor):
         origin = self.value(node.value) if isinstance(node, ast.Attribute) else self.value(node.func) if isinstance(node, ast.Call) else None
         result = self.expression_value(node, origin)
         symbol = result.symbol.removeprefix("builtins.").removeprefix("<reflective-builtins>.")
-        operation = ("construct" if symbol in {"type.__call__", "object.__new__"} else
-                     "copy" if symbol in {"copy.copy", "copy.deepcopy"} else None)
-        if operation is not None:
-            result = replace(result, class_operations=result.class_operations | {operation})
+        if result.imported_function and symbol in {"copy.copy", "copy.deepcopy"}:
+            result = replace(result, class_operations=result.class_operations | {"copy"})
+        if result.imported_function and result.symbol.startswith("builtins.") and symbol in _KNOWN_BUILTIN_CLASSES:
+            result = replace(result, builtin_class=symbol)
         if origin is not None and (origin.local_class or origin.local_instance):
             # Overlay provenance without discarding SQL/path ownership metadata.
             return replace(result, local_instance=True)
@@ -296,7 +298,8 @@ class _Check(ast.NodeVisitor):
         if node in self.evaluated_values:
             return self.evaluated_values[node]
         if isinstance(node, ast.Name):
-            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None))
+            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None,
+                                                   builtin_class=node.id if node.id in _KNOWN_BUILTIN_CLASSES else ""))
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
@@ -349,6 +352,12 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = origin
             symbol = base.symbol + "." + node.attr
+            if (base.builtin_class, node.attr) in {("type", "__call__"), ("object", "__new__")}:
+                return _Value(symbol=symbol, class_operations=frozenset({"construct"}))
+            if (base.imported_module and base.symbol == "builtins" or base.symbol == "<reflective-builtins>") and node.attr in _KNOWN_BUILTIN_CLASSES:
+                return _Value(symbol=symbol, builtin_class=node.attr)
+            if base.imported_module and base.symbol == "copy" and node.attr in {"copy", "deepcopy"}:
+                return _Value(symbol=symbol, class_operations=frozenset({"copy"}))
             if node.attr in {"__globals__", "f_globals", "f_locals"}:
                 return _Value(symbol="<python-scope>")
             if node.attr == "f_builtins":
@@ -792,6 +801,22 @@ class _Check(ast.NodeVisitor):
                 candidates.append(dict(value.mapping).get("x", _Value()) if value.mapping is not None else value)
         return self.merge_aliases(*({"x": value} for value in candidates))["x"] if candidates else _Value()
 
+    def first_positional_argument(self, arguments):
+        candidates = []
+        for argument in arguments:
+            if isinstance(argument, ast.Starred):
+                value = self.iteration_value(self.value(argument.value))
+                if value.elements is None:
+                    candidates.append(value)
+                    continue
+                if not value.elements:
+                    continue
+                candidates.append(value.elements[0])
+            else:
+                candidates.append(self.value(argument))
+            break
+        return self.merge_aliases(*({"first": value} for value in candidates))["first"] if candidates else _Value()
+
     @staticmethod
     def is_dictionary(value: _Value) -> bool:
         return value.dictionary_instance or value.mapping is not None or value.symbol in _BUILTIN_NAMESPACE_KEYS
@@ -922,6 +947,7 @@ class _Check(ast.NodeVisitor):
                                       local_class=any(_Check.has_local_class(value) for value in values),
                                       local_instance=any(_Check.has_local_class(value, instances=True) for value in values),
                                       class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in values)),
+                                      builtin_class=values[0].builtin_class if all(value.builtin_class == values[0].builtin_class for value in values) else "",
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1492,13 +1518,18 @@ class _Check(ast.NodeVisitor):
                 self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
         result = self.check_local_call(node, function)
         copied = self.copied_argument(actual_values, opaque_values, keyword_values) if "copy" in function.class_operations else _Value()
+        constructed = self.first_positional_argument(node.args) if "construct" in function.class_operations else _Value()
         if result is not None:
             self.evaluated_values[node] = result
         elif self.has_local_class(copied) or self.has_local_class(copied, instances=True) or self.local_class_operations(copied):
             # Known copies retain exact bounded shape; foreign builders do not.
             self.evaluated_values[node] = copied
-        elif "construct" in function.class_operations and any(self.has_local_class(value) for value in operands):
+        elif self.has_local_class(constructed):
             self.evaluated_values[node] = replace(self.value(node), local_instance=True)
+        elif constructed.builtin_class == "dict":
+            self.evaluated_values[node] = self.dictionary_value([*actual_values[1:], *opaque_values], keyword_values)
+        elif constructed.builtin_class in {"list", "tuple", "set", "frozenset"}:
+            self.evaluated_values[node] = self.payload_value([self.iteration_value(value) for value in [*actual_values[1:], *opaque_values]])
         elif node.args and not function.unannotated_parameter:
             aggregate = function.symbol.removeprefix("builtins.")
             if aggregate in {"iter", "list", "tuple", "set", "frozenset", "next", "getattr"}:
@@ -1564,7 +1595,8 @@ class _Check(ast.NodeVisitor):
                         [*bindings.values(), *namespace_captures, *variadic_values])
         known = any(self.contains_namespace(value) or self.known_ownership(value)
                     or self.has_active_path(value) or self.has_local_class(value)
-                    or self.has_local_class(value, instances=True) or self.local_class_operations(value) for value in values)
+                    or self.has_local_class(value, instances=True) or self.local_class_operations(value)
+                    or value.builtin_class for value in values)
         if not known and (call.args or call.keywords):
             return
         if namespace and (any(self.contains_namespace(value) for value in variadic_values)
