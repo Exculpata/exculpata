@@ -166,7 +166,7 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
     placeholder_pattern = r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}"
     shell_source = Path(location).suffix == ".sh" or Path(location).name.endswith(".env") or bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", text))
     if shell_source:
-        placeholder_pattern += r"|\$[A-Za-z_]\w*"
+        placeholder_pattern += r"|\$\{[^{}\n]*\}|\$[A-Za-z_]\w*"
     removal_pattern = placeholder_pattern + r"|[\"']" if shell_source else placeholder_pattern
     cuts, removed = set(), 0
     for placeholder in re.finditer(removal_pattern, text):
@@ -246,7 +246,7 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
     # comment/string boundaries, so lexical ambiguity must not hide escapes.
     found = scan_text(location, text, contracts)
     gap = r"(?:\s|[()]|/\*[\s\S]*?\*/|//[^\n]*(?:\n|$))*"
-    if re.search(r"['\"`]" + gap + r"\+" + gap + r"['\"`]", text):
+    if re.search(r"['\"`]" + gap + r"\+|[A-Za-z_$][\w.$\[\]]*" + gap + r"\+" + gap + r"['\"`]", text):
         found.append(Finding(f"{location}:1", "unsupported JavaScript literal composition"))
     try:
         encoded = [decode(match) for match in escapes.finditer(text) if match.group()[1:2] in {"x", "u", "\r", "\n"}]
@@ -333,11 +333,23 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     expansion_budget = 4096
     analysis_steps = MAX_ANALYSIS_STEPS
 
-    def consume_analysis_step():
+    def consume_analysis_step(cost=1):
         nonlocal analysis_steps
-        analysis_steps -= 1
+        analysis_steps -= cost
         if analysis_steps < 0:
             raise AnalysisBudgetExceeded
+
+    source_keys = {}
+
+    def source_key(node):
+        if node not in source_keys:
+            for part in ast.walk(node):
+                consume_analysis_step()
+                for _, field in ast.iter_fields(part):
+                    if isinstance(field, (str, bytes)):
+                        consume_analysis_step((len(field) + 63) // 64)
+            source_keys[node] = ast.unparse(node)
+        return source_keys[node]
 
     shadowed_qualified = set()
     loop_carried_names = []
@@ -368,10 +380,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 unresolved_stems.discard(key)
 
     def qualified(node):
-        stored = env.get(ast.unparse(node))
+        stored = env.get(source_key(node))
         if isinstance(stored, ContainerValue) and stored.kind in {"module", "callable"}:
             return stored.items[0]
-        if ast.unparse(node) in shadowed_qualified:
+        if source_key(node) in shadowed_qualified:
             return None
         if isinstance(node, ast.Attribute):
             parent = qualified(node.value)
@@ -411,7 +423,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             if path is not None and path.kind == "path":
                 return path
         if isinstance(node, (ast.Name, ast.Attribute)):
-            stored = env.get(ast.unparse(node))
+            stored = env.get(source_key(node))
             if isinstance(stored, ContainerValue) and stored.kind == "path":
                 return stored
         if isinstance(node, (ast.IfExp, ast.BoolOp)):
@@ -484,12 +496,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             if isinstance(piece, ast.Lambda):
                 return True
             if isinstance(piece, (ast.Name, ast.Attribute, ast.Subscript)):
-                if callable_value(env.get(ast.unparse(piece)), verified_only=True):
+                if (callable_value(env.get(source_key(piece)), verified_only=True)
+                        or env.get(source_key(piece)) == ContainerValue("unknown", ())):
                     return True
                 if isinstance(piece, ast.Attribute) and qualified(piece) in unsupported_path_builders | {"pathlib.Path"}:
                     return True
             if isinstance(piece, ast.Call):
-                stored = env.get(ast.unparse(piece.func))
+                stored = env.get(source_key(piece.func))
                 if isinstance(stored, ContainerValue) and stored.kind == "ambiguous_callable":
                     return True
                 pending.extend([*piece.args, *(item.value for item in piece.keywords)])
@@ -520,6 +533,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 return selected
         if isinstance(node, ast.Attribute) and may_carry_callable(node.value):
             parent = structure(node.value)
+            if parent == ContainerValue("unknown", ()):
+                return parent
             if parent is not None and callable_value(parent, verified_only=True):
                 return ContainerValue("ambiguous_callable", (parent,))
         if isinstance(node, (ast.Name, ast.Attribute)) and qualified(node) in unsupported_path_builders | {"pathlib.Path"}:
@@ -610,7 +625,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 if node.func.attr == "items":
                     return ContainerValue("list", tuple(ContainerValue("tuple", pair) for pair in container.items))
         if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
-            stored = env.get(ast.unparse(node))
+            stored = env.get(source_key(node))
             if isinstance(stored, ContainerValue):
                 return stored
             if isinstance(node, ast.Subscript):
@@ -690,7 +705,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
             if isinstance(node, ast.Attribute) and node.attr == "hex" and isinstance(node.value, ast.Call) and qualified(node.value.func) in {"uuid.uuid4", "uuid.uuid5", "uuid.uuid3"}:
                 return "CONTRACTDYNAMIC"
-            stored = env.get(ast.unparse(node))
+            stored = env.get(source_key(node))
             if stored is None and isinstance(node, ast.Subscript):
                 stored = member(node)
             if isinstance(stored, ContainerValue) and stored.kind == "path" and all(isinstance(part, str) or part is None for part in stored.items):
@@ -917,7 +932,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             if resolved is not None:
                 return legacy_value(resolved)
         if isinstance(piece, (ast.Name, ast.Attribute, ast.Subscript)):
-            if ast.unparse(piece) in unresolved_stems or legacy_value(env.get(ast.unparse(piece))):
+            if source_key(piece) in unresolved_stems or legacy_value(env.get(source_key(piece))):
                 return True
             if isinstance(piece, ast.Subscript):
                 selected = member(piece)
@@ -975,13 +990,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                         collect(child, source)
 
         def store(scope, unknown, events, target, resolved, unresolved):
-            name = ast.unparse(target)
+            name = source_key(target)
             if isinstance(target, (ast.Attribute, ast.Subscript)):
-                prior = scope.get(ast.unparse(target.value))
+                prior = scope.get(source_key(target.value))
                 if legacy_value(resolved) or unresolved or legacy_value(prior):
                     unsupported(target, "mutable attribute or container state")
             if isinstance(target, ast.Subscript):
-                parent = ast.unparse(target.value)
+                parent = source_key(target.value)
                 original = scope.get(parent)
                 if isinstance(original, ContainerValue):
                     updated = ContainerValue("unknown", ()) if legacy_value(original) or legacy_value(resolved) or unresolved else None
@@ -1023,7 +1038,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         collect(target, expression)
         for target, resolved, unresolved in pending:
-            name = ast.unparse(target)
+            name = source_key(target)
             if isinstance(target, ast.Attribute):
                 shadowed_qualified.add(name)
             root = re.split(r"[.\[]", name, maxsplit=1)[0]
@@ -1141,11 +1156,11 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 self.visit(target)
                 for part in ast.walk(target):
                     if isinstance(part, ast.Attribute):
-                        shadowed_qualified.add(ast.unparse(part))
+                        shadowed_qualified.add(source_key(part))
                     if isinstance(part, (ast.Attribute, ast.Subscript)) and contains_stem(part):
                         unsupported(part, "deletion of legacy-bearing mutable state")
                     if isinstance(part, (ast.Name, ast.Attribute, ast.Subscript)) and isinstance(part.ctx, ast.Del):
-                        unbind(ast.unparse(part))
+                        unbind(source_key(part))
 
         def visit_Assign(self, node: ast.Assign) -> None:
             self.generic_visit(node)
@@ -1685,7 +1700,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             self.composition(node)
 
         def visit_Call(self, node: ast.Call) -> None:
-            callee = structure(node.func)
+            callee = frozen(node.func) if isinstance(node.func, ast.Call) else structure(node.func)
+            if callee == ContainerValue("unknown", ()):
+                unsupported(node, "invocation of legacy-carrying unknown value")
             if callee is not None and callee.kind == "local_callable" and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "explicit legacy arguments to local callable")
             if callee is not None and callee.kind == "ambiguous_callable" and (legacy_value(callee) or any(contains_stem(item) for item in call_inputs(node))):

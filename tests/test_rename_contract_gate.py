@@ -1600,3 +1600,87 @@ def test_quote_regex_without_string_composition_remains_valid(source):
 ])
 def test_shell_empty_parameter_controls_keep_lexical_boundaries(source):
     assert checker.scan_text('synthetic.sh', source) == []
+
+
+@pytest.mark.parametrize('source', [
+    'const left = "record"; const FORMAT = left + "bench-unregistered-v99";',
+    'const right = "bench-unregistered-v99"; const FORMAT = "record" + right;',
+    'const left = "record"; const FORMAT = (left) /* synthetic */ + ("bench-unregistered-v99");',
+])
+def test_javascript_variable_literal_composition_is_restricted(source):
+    assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS)
+
+
+@pytest.mark.parametrize('operator', [':-', '-', ':+', '+', ':=', '='])
+def test_shell_parameter_operators_cannot_hide_empty_boundary(operator):
+    source = 'EMPTY=; VALUE=rec${EMPTY' + operator + '}"ordbench-unregistered-v99"'
+    assert checker.scan_text('synthetic.sh', source)
+
+
+@pytest.mark.parametrize('source', [
+    'Alias=operator.methodcaller("format",LEGACY_STEM)\nFORMAT=Alias("{}-unregistered-v99")',
+    'choices=[operator.methodcaller("format",LEGACY_STEM)]\nFORMAT=choices[0]("{}-unregistered-v99")',
+    'FORMAT=operator.methodcaller("format",LEGACY_STEM)("{}-unregistered-v99")',
+    'Alias=operator.methodcaller("format",LEGACY_STEM)\nFORMAT=Alias.__call__("{}-unregistered-v99")',
+])
+def test_invoking_unknown_legacy_values_is_restricted(source):
+    source = 'import operator\nfrom case_intelligence.legacy_names import LEGACY_STEM\n' + source
+    assert checker.scan_python('synthetic.py', source, NAME_CONTRACTS)
+
+
+@pytest.mark.parametrize('depth', [8, 16, 22])
+def test_unparse_node_work_is_bounded(monkeypatch, depth):
+    import ast
+    original = ast.unparse
+    work = 0
+    def counted(node):
+        nonlocal work
+        work += sum(1 for _ in ast.walk(node))
+        if work > 10000:
+            raise RuntimeError('synthetic unparse node-work budget exceeded')
+        return original(node)
+    monkeypatch.setattr(ast, 'unparse', counted)
+    source = 'def literal(value):\n return value' + '.replace("x", "y")' * depth + '\n'
+    assert checker.scan_python('synthetic.py', source, NAME_CONTRACTS) == []
+    assert work <= 10000
+
+
+def test_unparse_cost_is_reserved_before_running_it(monkeypatch):
+    import ast
+    monkeypatch.setattr(checker, 'MAX_ANALYSIS_STEPS', 1)
+    def unexpected(node):
+        raise AssertionError('unparse ran before its node cost was reserved')
+    monkeypatch.setattr(ast, 'unparse', unexpected)
+    assert checker.scan_python('synthetic.py', 'factory.method("synthetic")', NAME_CONTRACTS) == [
+        checker.Finding('synthetic.py:1', 'unsupported Python analysis budget exhausted')
+    ]
+
+
+def test_large_unparse_fields_are_budgeted_before_rendering(monkeypatch):
+    import ast
+    original = ast.unparse
+    monkeypatch.setattr(checker, 'MAX_ANALYSIS_STEPS', 300)
+    def bounded(node):
+        assert not any(isinstance(part, ast.Constant) and isinstance(part.value, str) and len(part.value) > 65536 for part in ast.walk(node))
+        return original(node)
+    monkeypatch.setattr(ast, 'unparse', bounded)
+    source = 'factory("' + 'x' * 100000 + '").method()'
+    assert checker.scan_python('synthetic.py', source, NAME_CONTRACTS) == [
+        checker.Finding('synthetic.py:1', 'unsupported Python analysis budget exhausted')
+    ]
+
+
+@pytest.mark.parametrize('source', [
+    'EMPTY=; VALUE=rec${EMPTY:-}"ordbench.env"',
+    'EMPTY=; VALUE=${EMPTY:-recordbench-unregistered-v99}',
+])
+def test_shell_parameter_operator_contents_are_still_checked(source):
+    assert bool(checker.scan_text('synthetic.sh', source)) == ('unregistered' in source)
+
+
+@pytest.mark.parametrize('source', [
+    'const badge = "99+";',
+    'const path = `${origin}/auth/login`;',
+])
+def test_javascript_literal_plus_data_and_complete_templates_remain_valid(source):
+    assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS) == []

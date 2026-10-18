@@ -169,6 +169,13 @@
           "function": "restore",
           "reason": "Pass existing registered backup coordinates to the unchanged restic adapter for status or restore; no new identifier is constructed at this call.",
           "validation": "tests/test_backup_contract.py"
+        },
+        {
+          "line": 743,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "status",
+          "reason": "Decode captured restic snapshot-list output after passing both registered backup tags; no operational name is constructed.",
+          "validation": "tests/test_backup_contract.py"
         }
       ]
     },
@@ -328,11 +335,60 @@
           "function": "_update",
           "reason": "Update an existing environment key through the registered alias family; preserve serialization and the saved naming generation.",
           "validation": "tests/test_install_naming.py"
+        },
+        {
+          "line": 1752,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1755,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1757,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1758,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1759,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 1760,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_matter_storage_layout_valid",
+          "reason": "Inspect the selected registered managed-storage marker, parse its metadata and validate generation-specific identity; these reads and predicates do not introduce a new name.",
+          "validation": "tests/test_install_naming.py; tests/test_oss_installer.py"
+        },
+        {
+          "line": 4324,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_uninstall",
+          "reason": "Validate the selected existing Compose project against the registered project-name pattern before uninstall; the refusal boundary remains unchanged.",
+          "validation": "tests/test_oss_installer.py"
         }
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "67926869f10202cdde34c151e8b1e6447fbfe5850f2010bd5da5367b1297dbbd",
+      "source_sha256": "fab1b6289fedf0062c3e8e92f3ddd2880028e14599e6f2043943b228ffbddda1",
       "diagnostics": [
         {
           "line": 196,
@@ -494,6 +550,34 @@
           "function": "scan_text",
           "reason": "Create a diagnostic record from a candidate identifier and source location; this packages scanner evidence rather than emitting an operational identifier.",
           "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 177,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect regex matches, offsets and candidate-token text while classifying source evidence; these are analysis operations, not emitted operational identifiers.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 188,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect regex matches, offsets and candidate-token text while classifying source evidence; these are analysis operations, not emitted operational identifiers.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 189,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect regex matches, offsets and candidate-token text while classifying source evidence; these are analysis operations, not emitted operational identifiers.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 196,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect regex matches, offsets and candidate-token text while classifying source evidence; these are analysis operations, not emitted operational identifiers.",
+          "validation": "tests/test_rename_contract_gate.py"
         }
       ]
     },
@@ -520,6 +604,13 @@
           "function": "build",
           "reason": "Hash existing wheel bytes with SHA-256; the input wheel coordinate is not returned identifier text.",
           "validation": "services/transcription/tests/test_compatibility_build.py"
+        },
+        {
+          "line": 53,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "patch_metadata",
+          "reason": "Encode authenticated, explicitly replaced package metadata as UTF-8; the retained compatibility version is checked separately.",
+          "validation": "services/transcription/tests/test_compatibility_build.py"
         }
       ]
     },
@@ -531,6 +622,13 @@
           "identifier": "unsupported legacy syntax (legacy-bearing class namespace); use immutable contract-based construction",
           "function": "Settings",
           "reason": "Frozen settings dataclass stores the existing registered lock/cache paths as configuration defaults; literal and resolved names remain checked. This receipt covers only this complete unchanged module.",
+          "validation": "services/transcription/tests/test_settings.py"
+        },
+        {
+          "line": 300,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "from_env",
+          "reason": "Validate the constructed settings object containing retained default paths; validation consumes settings and creates no naming generation.",
           "validation": "services/transcription/tests/test_settings.py"
         }
       ]
@@ -603,6 +701,13 @@
           "function": "parse_query",
           "reason": "Use the retained grammar version as a parser selector; the unchanged lexer returns query tokens rather than the selector name.",
           "validation": "tests/test_exact_search.py"
+        },
+        {
+          "line": 414,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "parse_query",
+          "reason": "Parse query tokens under the validated retained grammar version; the parser emits a query expression rather than a new grammar identifier.",
+          "validation": "tests/test_exact_search.py; tests/test_exact_search_proximity.py"
         }
       ]
     },
@@ -614,6 +719,13 @@
           "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
           "function": "__init__",
           "reason": "Store the Thread object whose name was already checked against the playback family; the stored object is not a generated identifier.",
+          "validation": "tests/test_matter_media_workflow.py"
+        },
+        {
+          "line": 56,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Start the already-constructed playback thread carrying a registered thread name; startup does not derive a new operational identifier.",
           "validation": "tests/test_matter_media_workflow.py"
         }
       ]
@@ -655,6 +767,34 @@
           "function": "create_workbench_app",
           "reason": "Consume scanner-status projection and the registered matter-scoped duplicate-token namespace in content-free upload admission; the helper hashes the scope and path into a token rather than emitting a new legacy identifier.",
           "validation": "tests/test_loose_file_preflight.py"
+        },
+        {
+          "line": 817,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Start an already-constructed maintenance or discovery thread with its retained registered thread name; startup does not derive a new identifier.",
+          "validation": "tests/test_expired_matter_recovery.py; tests/test_automatic_discovery.py"
+        },
+        {
+          "line": 894,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Start an already-constructed maintenance or discovery thread with its retained registered thread name; startup does not derive a new identifier.",
+          "validation": "tests/test_expired_matter_recovery.py; tests/test_automatic_discovery.py"
+        },
+        {
+          "line": 3191,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "automatic_discovery_pass",
+          "reason": "Emit fixed content-free warning messages through the existing retained logger namespace; the call does not construct a new logger name.",
+          "validation": "tests/test_automatic_discovery.py; tests/test_automatic_discovery_transactions.py"
+        },
+        {
+          "line": 3200,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "automatic_discovery_pass",
+          "reason": "Emit fixed content-free warning messages through the existing retained logger namespace; the call does not construct a new logger name.",
+          "validation": "tests/test_automatic_discovery.py; tests/test_automatic_discovery_transactions.py"
         }
       ]
     },
@@ -674,6 +814,20 @@
           "function": "__init__",
           "reason": "Keep a started Thread object whose name was already checked against the research/review family; the list is worker lifecycle state.",
           "validation": "tests/test_answer_jobs.py"
+        },
+        {
+          "line": 84,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Start existing research and full-review worker objects carrying registered thread names; startup does not derive another identifier.",
+          "validation": "tests/test_full_text_synthesis.py; tests/test_full_text_review.py"
+        },
+        {
+          "line": 174,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Start existing research and full-review worker objects carrying registered thread names; startup does not derive another identifier.",
+          "validation": "tests/test_full_text_synthesis.py; tests/test_full_text_review.py"
         }
       ]
     },
@@ -705,6 +859,13 @@
           "function": "_prefer_current",
           "reason": "Read the legacy configuration selector through the unchanged publication guard. This exact call receipt changes neither guard implementation nor policy; selected values remain subject to the guard.",
           "validation": "tests/test_publication_pre_push.py"
+        },
+        {
+          "line": 36,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_prefer_current",
+          "reason": "Inspect the captured git-config process result for a deprecated selector. This additive naming diagnostic does not change the publication guard implementation or policy.",
+          "validation": "tests/test_publication_pre_push.py; tests/test_publication_candidate.py"
         }
       ]
     },
@@ -783,6 +944,399 @@
           "function": "export_research",
           "reason": "Serialize and UTF-8 encode validated research data after citation-callback projection; the captured values are export data and do not become callable name constructors.",
           "validation": "tests/test_work_product_exports.py; tests/test_hierarchical_synthesis.py"
+        }
+      ]
+    },
+    "src/case_intelligence/admin_cli.py": {
+      "source_sha256": "a898440a8f16420411732f02f3e433b055c312cfe51114cec3a2bd774b3de452",
+      "diagnostics": [
+        {
+          "line": 117,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 118,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 120,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 121,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 122,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 123,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 124,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 126,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 127,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 128,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 129,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 130,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 131,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 132,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 133,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 134,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 135,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 137,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 138,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 139,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 140,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 141,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 142,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 143,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 144,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 145,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 146,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 147,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 148,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 149,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 150,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 151,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 152,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 160,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 161,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 162,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 164,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 166,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 167,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 169,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 170,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 171,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 172,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 173,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 174,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 175,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        },
+        {
+          "line": 176,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_parser",
+          "reason": "Configure argparse commands, options and handlers beneath the existing registered program name; the method call changes parser configuration rather than constructing an operational identifier.",
+          "validation": "tests/test_local_account_lifecycle.py; tests/test_local_account_rollback.py; tests/test_console_entry_points.py"
+        }
+      ]
+    },
+    "src/case_intelligence/managed_storage.py": {
+      "source_sha256": "c4d0a8cad27b4dba66e226551d97b3db55b2765bcd1bce7761f21f0b43af7ffd",
+      "diagnostics": [
+        {
+          "line": 286,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        },
+        {
+          "line": 289,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        },
+        {
+          "line": 290,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        },
+        {
+          "line": 297,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        },
+        {
+          "line": 298,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        },
+        {
+          "line": 299,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "_validate_root",
+          "reason": "Read and validate the already-selected registered storage marker and its product/storage identity; these inspection operations do not emit a new name.",
+          "validation": "tests/test_managed_storage.py"
+        }
+      ]
+    },
+    "src/case_intelligence/tickets.py": {
+      "source_sha256": "f2a8c0985da9c4850605670b2bc44b31150606e9c30b8660af8c028837a4350f",
+      "diagnostics": [
+        {
+          "line": 113,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "redeem",
+          "reason": "Match an input ticket URI against the anchored registered ticket scheme; this predicate does not create a URI.",
+          "validation": "tests/test_tickets.py"
         }
       ]
     }
