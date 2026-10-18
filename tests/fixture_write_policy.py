@@ -40,6 +40,8 @@ _CALLBACK_METHODS = {
 }
 _CONNECTION_PARAMETERS = {"connection", "conn", "db", "database"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
+_DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault", "copy",
+                       "__getitem__", "__or__", "__ror__", "__ior__"}
 
 
 @dataclass(frozen=True)
@@ -76,6 +78,8 @@ class _Value:
     unresolved_active_path: bool = False
     imported_module: bool = False
     scalar_converter: bool | None = None
+    dictionary_accessor: bool = False
+    dictionary_fromkeys: bool = False
 
 
 class _Check(ast.NodeVisitor):
@@ -193,6 +197,10 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
+            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS:
+                return _Value(symbol=symbol, dictionary_accessor=True)
+            if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
+                return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
                 return replace(accessor, symbol=symbol)
@@ -239,8 +247,12 @@ class _Check(ast.NodeVisitor):
             if self.unresolved_ownership(function):
                 return function
             owner, _, method = function.symbol.rpartition('.')
-            if owner in {"dict", "builtins.dict"} and node.args:
-                accessor = self.container_accessor_value(self.value(node.args[0]), method)
+            if function.dictionary_fromkeys and len(node.args) > 1:
+                default = self.value(node.args[1])
+                shared, active_path = self.known_ownership(default, shared_only=True), self.has_active_path(default)
+                return _Value(unresolved_shared_container=shared, unresolved_active_path=active_path)
+            if function.dictionary_accessor and node.args:
+                accessor = self.container_accessor_value(self.value(node.args[0]), method if owner in {"dict", "builtins.dict"} else "*")
                 if accessor is not None:
                     return accessor
             if "__enter__" in function.methods:
@@ -252,6 +264,8 @@ class _Check(ast.NodeVisitor):
                 if name.complete_text:
                     return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
                 receiver = self.value(node.args[0])
+                if receiver.symbol in {"dict", "builtins.dict"}:
+                    return _Value(dictionary_accessor=True)
                 if receiver.connection is not None:
                     # A dynamically selected callable on a known SQL connection
                     # must not discard ownership just because its name is unknown.
@@ -416,8 +430,10 @@ class _Check(ast.NodeVisitor):
         ))
 
     def container_accessor_value(self, receiver: _Value, method: str) -> _Value | None:
+        if method not in _DICT_VALUE_METHODS | {"*"}:
+            return None
         if (self.unresolved_ownership(receiver) or
-                (receiver.mapping is not None and method not in {"keys", "__iter__", "__len__", "__contains__"})):
+                receiver.mapping is not None):
             shared = self.known_ownership(receiver, shared_only=True)
             active_path = self.has_active_path(receiver)
             if shared or active_path:
@@ -490,6 +506,8 @@ class _Check(ast.NodeVisitor):
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
+                                      dictionary_accessor=any(value.dictionary_accessor for value in values),
+                                      dictionary_fromkeys=any(value.dictionary_fromkeys for value in values),
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
@@ -502,7 +520,11 @@ class _Check(ast.NodeVisitor):
                                           ((value.elements is not None or value.mapping is not None)
                                            and _Check.known_ownership(value, shared_only=True))
                                           for value in values),
-                                      unresolved_active_path=any(value.unresolved_active_path for value in values),
+                                      unresolved_active_path=any(
+                                          value.unresolved_active_path or
+                                          ((value.elements is not None or value.mapping is not None)
+                                           and _Check.has_active_path(value))
+                                          for value in values),
                                       sqlite_cursor=all(value.sqlite_cursor for value in values),
                                       lock_owner=values[0].lock_owner if all(value.lock_owner == values[0].lock_owner for value in values) else None,
                                       methods=frozenset().union(*(value.methods for value in values)),
@@ -815,16 +837,24 @@ class _Check(ast.NodeVisitor):
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
         if any(self.unresolved_ownership(value) for value in arguments_before):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
-        for argument in node.args:
+        explicit_receiver = None
+        for index, argument in enumerate(node.args):
             self.visit(argument)
+            if index == 0:
+                explicit_receiver = self.value(argument)
         for keyword in node.keywords:
             self.visit(keyword.value)
         owner, _, method = function.symbol.rpartition('.')
-        if owner in {"dict", "builtins.dict"} and node.args:
-            accessor = self.container_accessor_value(self.value(node.args[0]), method)
+        if function.dictionary_accessor and explicit_receiver is not None:
+            accessor = self.container_accessor_value(explicit_receiver, method if owner in {"dict", "builtins.dict"} else "*")
             if accessor is not None:
                 self.evaluated_values[node] = accessor
                 self.flag(node, "container accessors with shared handles or active workspace paths are unsupported")
+        if function.dictionary_fromkeys:
+            result = self.value(node)
+            if self.unresolved_ownership(result):
+                self.evaluated_values[node] = result
+                self.flag(node, "dictionary defaults with shared handles or active workspace paths are unsupported")
         argument_nodes = [*node.args, *(keyword.value for keyword in node.keywords)]
         if (any(isinstance(item, ast.NamedExpr) for argument in argument_nodes for item in ast.walk(argument))
                 and any(self.known_ownership(value, shared_only=True)

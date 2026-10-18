@@ -245,6 +245,11 @@ Accessor results retain unsupported provenance after exact extraction exceptions
 and unbound dictionary descriptors check their explicit receiver. Value-returning
 views over known active workspace paths are also unsupported; literal keys remain
 non-owning. Branches composed entirely of proven scalar converters stay proven.
+Dictionary handling uses a finite set of value-returning methods. Key-only
+`fromkeys` and None-returning mutators do not invent escaped handles; known shared
+or active-path defaults remain unsupported. Unbound receivers are captured before
+later arguments, dynamically selected accessors retain conservative identity,
+and heterogeneous merges preserve nested active-path provenance.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
