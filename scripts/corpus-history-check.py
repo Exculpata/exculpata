@@ -156,6 +156,8 @@ def run_probe(root: Path, case: dict, *, historical: bool, timeout: int) -> dict
             source = destination / "src"
         probe = write_probe(root, destination, case)
         report = destination / "results.xml"
+        config = destination / "pytest.ini"
+        config.write_text("[pytest]\n")
         env = os.environ.copy()
         for key in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTHONHOME"):
             env.pop(key, None)
@@ -168,6 +170,7 @@ def run_probe(root: Path, case: dict, *, historical: bool, timeout: int) -> dict
                      "pathlib.Path(sys.argv[1]).resolve() / 'case_intelligence'; "
                      "raise SystemExit(pytest.main(sys.argv[2:]))")
         command = [sys.executable, "-c", bootstrap, str(source), "-q", "-o", "addopts=",
+                   "-c", str(config), "--rootdir=" + str(probe.parent),
                    "--confcutdir=" + str(destination), "--junitxml=" + str(report),
                    str(probe) + "::" + case["test"]]
         try:

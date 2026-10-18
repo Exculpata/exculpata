@@ -217,3 +217,16 @@ def test_transcript_probe_executes_current_fixture_and_assertion():
     assert result['accepted'], result.get('diagnostic', result)
     assert result['tests'] == 1
     assert result['failures'] == result['errors'] == result['skipped'] == 0
+
+
+def test_probe_identity_is_independent_of_parent_pytest_root(tmp_path, monkeypatch):
+    (tmp_path / 'pytest.ini').write_text('[pytest]\n')
+    original_temporary = history.tempfile.TemporaryDirectory
+
+    def temporary(*, prefix):
+        return original_temporary(prefix=prefix, dir=tmp_path)
+
+    monkeypatch.setattr(history.tempfile, 'TemporaryDirectory', temporary)
+    result = history.run_probe(history.ROOT, history.CASES[2], historical=False, timeout=90)
+    assert result['accepted'], result.get('diagnostic', result)
+    assert result['node_ids'] == list(EXPECTED_NODE_IDS['ask-routing'])
