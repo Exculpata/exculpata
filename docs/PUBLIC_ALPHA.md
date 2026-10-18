@@ -163,6 +163,10 @@ all extracted metadata and filenames still receive every check, including
 operator deny terms. Unreviewed and changed bytes keep raw scanning. Missing,
 unsafe or malformed policy and unavailable or failed metadata inspection block
 publication. Existing narrow historical video dispositions remain unchanged.
+Metadata scanning retains literal strings alongside decoded binary values,
+including strings with a `base64:` prefix. ExifTool and ffprobe output share a
+50 MiB stdout/stderr limit enforced while reading, with a 30-second deadline.
+Exceeding either bound terminates the inspection and blocks publication.
 
 The version-2 JSON object has `version: 2` and a `reviews` array. Each entry
 contains exactly `sha256` (64 lowercase hex characters), `suffix` (a supported
@@ -191,6 +195,7 @@ trusted checkout SHA. Changed paths come from complete immutable base/head Git
 trees, including deleted paths and mode changes. Mutable PR file lists are not
 used. API errors, pagination limits and oversized or truncated trees fail closed. Changes to policy, approval authority, scanner, hooks,
 workflows, Makefile, CODEOWNERS or agent instructions require review, including renames.
+This includes `AGENTS.md` at every repository depth.
 An unchanged trusted pending request grants no authority and does not block an
 unrelated change in this verifier. Its schema is still validated. Introducing
 or modifying pending policy, or changing protected files while requests remain

@@ -10,11 +10,13 @@ import ipaddress
 import json
 import os
 import re
+import selectors
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 from datetime import date
 from dataclasses import dataclass
@@ -435,10 +437,48 @@ def _metadata_content(value) -> bytes:
     if isinstance(value, list):
         return b"\n".join(_metadata_content(part) for part in value)
     if isinstance(value, str):
+        literal = value.encode("utf-8", errors="replace")
         if value.startswith("base64:"):
-            return base64.b64decode(value[7:], validate=True)
-        return value.encode("utf-8", errors="replace")
+            return literal + b"\n" + base64.b64decode(value[7:], validate=True)
+        return literal
     return str(value).encode("utf-8")
+
+
+def _run_metadata_tool(arguments: list[str], *, timeout: float = 30) -> subprocess.CompletedProcess:
+    """Bound combined stdout/stderr while draining both pipes under one deadline."""
+    deadline = time.monotonic() + timeout
+    process = subprocess.Popen(arguments, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output, errors = bytearray(), bytearray()
+    size = 0
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ, output)
+            selector.register(process.stderr, selectors.EVENT_READ, errors)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                events = selector.select(remaining)
+                if not events:
+                    raise subprocess.TimeoutExpired(arguments, timeout)
+                for key, _ in events:
+                    chunk = os.read(key.fd, min(65536, MAX_DERIVED_SCAN_BYTES - size + 1))
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    size += len(chunk)
+                    if size > MAX_DERIVED_SCAN_BYTES:
+                        raise ValueError("Metadata output exceeds inspection limit")
+                    key.data.extend(chunk)
+            returncode = process.wait(timeout=max(0, deadline - time.monotonic()))
+        return subprocess.CompletedProcess(arguments, returncode, bytes(output), bytes(errors))
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        process.stdout.close()
+        process.stderr.close()
 
 
 def _scan_media(
@@ -458,7 +498,7 @@ def _scan_media(
         ) as handle:
             handle.write(data)
             handle.flush()
-            result = subprocess.run(
+            result = _run_metadata_tool(
                 [
                     ffprobe,
                     "-v",
@@ -469,12 +509,8 @@ def _scan_media(
                     "json",
                     handle.name,
                 ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=30,
             )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return [Finding(location, "media-inspection-failed")]
     if result.returncode != 0 or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
         return [Finding(location, "media-inspection-failed")]
@@ -586,9 +622,8 @@ def _scan_image(data: bytes, *, name: str, location: str, deny: tuple[bytes, ...
         with tempfile.NamedTemporaryFile(prefix="exculpata-publication-", suffix=Path(name).suffix) as handle:
             handle.write(data)
             handle.flush()
-            result = subprocess.run(
+            result = _run_metadata_tool(
                 [exiftool, "-config", "", "-j", "-a", "-G1:4", "-u", "-U", "-ee", "-b", handle.name],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False, timeout=30,
             )
         if result.returncode or result.stderr or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
             raise ValueError

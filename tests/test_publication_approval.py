@@ -100,6 +100,16 @@ def test_unrelated_change_reuses_already_trusted_policy():
     VERIFY.verify_policy(data, data, MAINTAINERS, HEAD, [], [{"filename": "ordinary.txt"}])
 
 
+@pytest.mark.parametrize("path", ["scripts/AGENTS.md", "tests/fixtures/AGENTS.md"])
+@pytest.mark.parametrize("renamed", [False, True])
+def test_scoped_agent_instructions_require_exact_head_review(path, renamed):
+    data = policy()
+    files = [{"filename": "ordinary.txt", "previous_filename": path}] if renamed else [{"filename": path}]
+    with pytest.raises(VERIFY.ApprovalError, match="maintainer-review-required"):
+        VERIFY.verify_policy(data, data, MAINTAINERS, HEAD, [], files)
+    VERIFY.verify_policy(data, data, MAINTAINERS, HEAD, [review(data)], files)
+
+
 def test_unrelated_change_reuses_unchanged_trusted_pending_request(trusted_root):
     data = policy(status="pending", approver=None, approved_on=None)
     assert VERIFY.policy_approvers(data, MAINTAINERS, allow_pending=True) == set()

@@ -143,7 +143,7 @@ def authorized_reviews(reviews, maintainers, head, digest):
 
 
 def protected(path):
-    return path in PROTECTED or path.startswith(".github/workflows/")
+    return path in PROTECTED or path.endswith("/AGENTS.md") or path.startswith(".github/workflows/")
 
 
 def verify_policy(base_policy, candidate_policy, maintainers, head, reviews, changed_files):

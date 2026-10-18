@@ -119,7 +119,7 @@ def test_missing_metadata_tool_and_invalid_image_block(tmp_path, monkeypatch):
     b'[{"File:FileType":"GIF","ExifTool:Warning":"synthetic warning"}]'])
 def test_unusable_metadata_output_fails_closed(monkeypatch, output):
     monkeypatch.setattr(SCAN.shutil, "which", lambda name: "exiftool")
-    monkeypatch.setattr(SCAN.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, output, b""))
+    monkeypatch.setattr(SCAN, "_run_metadata_tool", lambda *a, **k: subprocess.CompletedProcess(a, 0, output, b""))
     assert SCAN.Finding("synthetic", "media-inspection-failed") in inspect(FIXTURE.read_bytes())
 
 
@@ -127,7 +127,7 @@ def test_decoded_metadata_values_are_scanned(monkeypatch):
     import base64
     payload = json.dumps([{"File:FileType": "GIF", "GIF:Comment": "base64:" + base64.b64encode(EMAIL).decode()}]).encode()
     monkeypatch.setattr(SCAN.shutil, "which", lambda name: "exiftool")
-    monkeypatch.setattr(SCAN.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, payload, b""))
+    monkeypatch.setattr(SCAN, "_run_metadata_tool", lambda *a, **k: subprocess.CompletedProcess(a, 0, payload, b""))
     assert SCAN.Finding("synthetic#media-metadata", "non-example-email-address") in inspect(FIXTURE.read_bytes())
 
 
@@ -217,14 +217,14 @@ def test_image_inspection_failures_block_reviewed_media(monkeypatch, failure):
             b"x" * (SCAN.MAX_DERIVED_SCAN_BYTES + 1) if failure == "oversize" else b"[]",
             b"synthetic diagnostic" if failure == "stderr" else b"")
     monkeypatch.setattr(SCAN.shutil, "which", lambda name: "exiftool")
-    monkeypatch.setattr(SCAN.subprocess, "run", run)
+    monkeypatch.setattr(SCAN, "_run_metadata_tool", run)
     assert SCAN.Finding("synthetic", "media-inspection-failed") in inspect(FIXTURE.read_bytes())
 
 
 def test_metadata_decoding_covers_nested_escaped_values(monkeypatch):
     output = b'{"chapters":[{"tags":{"comment":"a\\u0040b.cd"}}]}'
     monkeypatch.setattr(SCAN.shutil, "which", lambda name: "ffprobe")
-    monkeypatch.setattr(SCAN.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, output, b""))
+    monkeypatch.setattr(SCAN, "_run_metadata_tool", lambda *a, **k: subprocess.CompletedProcess(a, 0, output, b""))
     assert SCAN.Finding("synthetic#media-metadata", "non-example-email-address") in SCAN._scan_media(
         b"synthetic", name="synthetic.mp4", location="synthetic", deny=())
     value = "C:" + "\\Users\\" + "synthetic-person\\file"
@@ -272,3 +272,56 @@ def test_valid_expired_entry_keeps_raw_scanning_without_invalidating_policy(tmp_
     findings = inspect(data)
     assert SCAN.Finding("synthetic", "non-example-email-address") in findings
     assert SCAN.Finding("synthetic", "media-review-policy-invalid") not in findings
+
+
+def test_literal_base64_prefix_keeps_deny_term_checks(tmp_path, monkeypatch):
+    marker = b"syntheticxyz"
+    data = commented(FIXTURE.read_bytes(), b"base64:" + marker)
+    review(tmp_path, monkeypatch, data)
+    assert SCAN.Finding("synthetic#media-metadata", "operator-deny-term") in inspect(data, deny=(marker,))
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_metadata_output_limit_stops_producer_before_completion(tmp_path, monkeypatch, stream):
+    completed = tmp_path / "producer-completed"
+    tool = tmp_path / "synthetic-metadata-tool"
+    tool.write_text(f"#!{sys.executable}\nimport os\nfrom pathlib import Path\n"
+                    f"os.write({1 if stream == 'stdout' else 2}, b'x' * (512 * 1024))\n"
+                    f"Path({str(completed)!r}).write_text('completed')\n")
+    tool.chmod(0o700)
+    monkeypatch.setattr(SCAN.shutil, "which", lambda name: str(tool))
+    monkeypatch.setattr(SCAN, "MAX_DERIVED_SCAN_BYTES", 1024)
+    findings = inspect(FIXTURE.read_bytes())
+    assert SCAN.Finding("synthetic", "media-inspection-failed") in findings
+    assert not completed.exists(), "Oversized output must stop the producer while reading."
+
+
+@pytest.mark.parametrize("close_pipes", [False, True])
+def test_metadata_timeout_terminates_and_reaps_the_tool(monkeypatch, close_pipes):
+    created = []
+    original = SCAN.subprocess.Popen
+    def start(*args, **kwargs):
+        process = original(*args, **kwargs)
+        created.append(process)
+        return process
+    monkeypatch.setattr(SCAN.subprocess, "Popen", start)
+    program = "import os, time; " + ("os.close(1); os.close(2); " if close_pipes else "") + "time.sleep(10)"
+    with pytest.raises(subprocess.TimeoutExpired):
+        SCAN._run_metadata_tool([sys.executable, "-c", program], timeout=0.2)
+    assert created[0].poll() is not None
+    assert created[0].stdout.closed and created[0].stderr.closed
+
+
+def test_metadata_output_budget_is_shared_by_both_pipes(monkeypatch):
+    monkeypatch.setattr(SCAN, "MAX_DERIVED_SCAN_BYTES", 1024)
+    program = "import os; os.write(1, b'x' * 600); os.write(2, b'x' * 600)"
+    with pytest.raises(ValueError, match="exceeds inspection limit"):
+        SCAN._run_metadata_tool([sys.executable, "-c", program])
+
+
+def test_metadata_reader_drains_both_pipes_and_preserves_exit_status(monkeypatch):
+    monkeypatch.setattr(SCAN, "MAX_DERIVED_SCAN_BYTES", 262144)
+    program = "import os; os.write(2, b'y' * 131072); os.write(1, b'x' * 131072); raise SystemExit(3)"
+    result = SCAN._run_metadata_tool([sys.executable, "-c", program])
+    assert result.returncode == 3
+    assert result.stdout == b"x" * 131072 and result.stderr == b"y" * 131072

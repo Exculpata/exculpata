@@ -289,8 +289,8 @@ def test_media_metadata_is_scanned(monkeypatch) -> None:
     }
     monkeypatch.setattr(publication.shutil, "which", lambda _name: "/usr/bin/ffprobe")
     monkeypatch.setattr(
-        publication.subprocess,
-        "run",
+        publication,
+        "_run_metadata_tool",
         lambda *_args, **_kwargs: subprocess.CompletedProcess(
             args=[], returncode=0, stdout=json.dumps(metadata).encode("utf-8")
         ),
