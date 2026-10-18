@@ -75,6 +75,7 @@ def test_nested_control_rejected_before_caller_transaction_changes(tmp_path, tar
                 connection.execute("INSERT INTO synthetic_fixture VALUES ('caller')")
                 cursor = connection.cursor()
                 with fixture_write(store) as nested:
+                    # fixture-write: Select deliberately retained scoped handles to verify nested transaction rejection before any mutation.
                     handle = {"nested": nested, "outer": connection, "cursor": cursor,
                               "cursor_connection": cursor.connection}[target]
                     with pytest.raises(RuntimeError, match="fixture_write"):

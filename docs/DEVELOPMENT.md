@@ -209,6 +209,12 @@ comprehensions follow the same boundary rules as direct assignments, evaluating
 and binding leaves left to right. A cleanup container containing only independent
 connections and ordinary resources remains non-shared; any known shared member
 retains the shared boundary requirement.
+Target expressions are visited before the following assignment leaf, so their
+explicit local bindings cannot hide a later shared setter. Subscripting literal
+containers with known shared values, destructuring known shared match subjects,
+and passing shared values through variadic helper parameters are unsupported by the inventory. Use explicit named
+handles and fixed helper parameters for fixture setup; independent-resource
+controls and simple match captures remain supported.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

@@ -372,7 +372,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
             capture_output=True, check=True, timeout=30,
         )
 
-    def sql(statement, database=f"{LEGACY_STEM}"):
+    def sql(statement, database: str=f"{LEGACY_STEM}"):
         return execute(
             "psql", "-X", "-U", f"{LEGACY_STEM}", "-d", database, "-v", "ON_ERROR_STOP=1", "-At",
             input_bytes=statement.encode(),

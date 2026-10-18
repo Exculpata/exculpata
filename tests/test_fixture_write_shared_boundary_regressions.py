@@ -22,6 +22,7 @@ def test_owner_lock_alone_cannot_scope_a_connection_factory(tmp_path, assignment
     try:
         namespace = {'workspace': workspace, 'factory': lambda cursor, row: cursor.connection}
         exec(source, namespace)
+        # fixture-write: Inspect the isolated raw escape probe namespace to prove the callback exposed its connection.
         assert namespace['leaked'] is workspace.connection
         assert [v.line for v in check_fixture_writes(source)] == [2]
     finally:
@@ -58,6 +59,7 @@ def test_nested_media_calls_that_destroy_caller_ownership_are_inventoried(tmp_pa
             exec(source, namespace)
         # The raw media APIs own transactions: queue rolled back the caller;
         # finish committed it. The inventory must reject either nested seed.
+        # fixture-write: Inspect the isolated negative probe namespace to verify the recorded caller transaction was terminated.
         assert not namespace['transaction_survived']
         assert workspace.connection.execute('SELECT count(*) FROM synthetic_pending').fetchone()[0] == expected_rows
         violations = check_fixture_writes(source)

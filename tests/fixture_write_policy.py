@@ -286,7 +286,17 @@ class _Check(ast.NodeVisitor):
         elif isinstance(target, ast.Attribute):
             # Assignment leaves execute left to right. An earlier name target
             # can replace the receiver of a later SQLite descriptor setter.
+            self.visit(target.value)
             self.check_transaction_assignment(target)
+        elif isinstance(target, ast.Subscript):
+            self.visit(target)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        self.generic_visit(node)
+        value = self.value(node.value)
+        if ((value.elements is not None or value.mapping is not None)
+                and self.known_ownership(value, shared_only=True)):
+            self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles")
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
         # A local workflow helper named execute is inspected at its definition;
@@ -388,6 +398,9 @@ class _Check(ast.NodeVisitor):
 
         for case in node.cases:
             self.aliases = fallthrough.copy()
+            if (self.known_ownership(subject, shared_only=True)
+                    and not (isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None)):
+                self.flag(case.pattern, "destructuring a known shared fixture value is unsupported; use explicit named handles")
             self.visit(case.pattern)
             for pattern in ast.walk(case.pattern):
                 name = getattr(pattern, "name", None) or getattr(pattern, "rest", None)
@@ -787,34 +800,51 @@ class _Check(ast.NodeVisitor):
         kind, node, defaults, annotations, lexical, history, local_names = self.local_functions[function.symbol]
         positional = [*node.args.posonlyargs, *node.args.args]
         actual = []
-        for argument in call.args:
+        unresolved_actual = []
+        for index, argument in enumerate(call.args):
             if isinstance(argument, ast.Starred):
                 elements = self.value(argument.value).elements
                 if elements is None:
                     # Dynamic iterable cardinality is outside this bounded
                     # literal/alias expansion; do not guess later positions.
+                    unresolved_actual = [self.value(item.value if isinstance(item, ast.Starred) else item)
+                                         for item in call.args[index:]]
                     break
                 actual.extend(elements)
             else:
                 actual.append(self.value(argument))
         supplied = {argument.arg: value for argument, value in zip(positional, actual)}
+        positional_only = {argument.arg for argument in node.args.posonlyargs}
+        fixed_names = {argument.arg for argument in [*node.args.args, *node.args.kwonlyargs]}
+        variadic_values = [*actual[len(positional):], *unresolved_actual] if node.args.vararg is not None else []
         for keyword in call.keywords:
             if keyword.arg is not None:
-                supplied[keyword.arg] = self.value(keyword.value)
+                if keyword.arg not in positional_only:
+                    supplied[keyword.arg] = self.value(keyword.value)
+                if node.args.kwarg is not None and keyword.arg not in fixed_names:
+                    variadic_values.append(self.value(keyword.value))
             else:
                 mapping = self.value(keyword.value).mapping
                 if mapping is not None:
-                    supplied.update(mapping)
+                    supplied.update((name, value) for name, value in mapping if name not in positional_only)
+                    if node.args.kwarg is not None:
+                        variadic_values.extend(value for name, value in mapping if name not in fixed_names)
         bindings = {**defaults, **supplied}
         late = {name: self.merge_aliases(*({name: value} for value in values))[name]
                 for name, values in history.items() if name not in local_names}
         environment = {**lexical, **late}
         captures = self.captured_values(node, environment)
-        values = [*bindings.values(), *captures]
+        # Surplus shared inputs are unsupported rather than silently dropped.
+        # Fixed workspace parameters and ordinary keyword options keep the
+        # existing direct-helper analysis, even if the signature is variadic.
+        values = [*bindings.values(), *captures, *variadic_values]
         known = any(self.known_ownership(value) for value in values)
         if not known and (call.args or call.keywords):
             return
         shared = any(self.known_ownership(value, shared_only=True) for value in values)
+        if any(self.known_ownership(value, shared_only=True) for value in variadic_values):
+            self.flag(call, "variadic helpers with shared fixture ownership are unsupported; use explicit named parameters")
+            return None
         if shared and (isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)):
             self.flag(call, "async/generator helper results with shared ownership are unsupported by fixture_write")
             return None
