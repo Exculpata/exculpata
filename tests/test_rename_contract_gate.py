@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from string import Formatter
 
 import pytest
 
@@ -298,7 +299,9 @@ def test_declared_alias_generation_and_retained_names_are_recognized(identifier)
 
 @pytest.mark.parametrize("key", sorted(NAME_CONTRACTS))
 def test_each_declared_template_expands_to_a_recognized_identifier(key):
-    value = NAME_CONTRACTS[key].legacy.format(suffix="SYNTHETIC", node_id="0123456789", kind="service")
+    template = NAME_CONTRACTS[key].legacy
+    parts = {field: "SYNTHETIC" for _, field, _, _ in Formatter().parse(template) if field}
+    value = template.format(**parts)
     assert checker.scan_text("synthetic", value) == []
 
 
@@ -491,3 +494,96 @@ def test_later_repeated_binding_remains_visible_to_deferred_body(tmp_path):
         'stem = LEGACY_STEM\nFORMAT = build()\nstem = "synthetic"\n'
     )
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'settings.stem = LEGACY_STEM\nFORMAT = f"{settings.stem}-unregistered-v99"',
+    'class Builder:\n def build(self):\n  self.stem = LEGACY_STEM\n  return f"{self.stem}-unregistered-v99"',
+    'match selected:\n case "legacy":\n  stem = LEGACY_STEM\n case _:\n  stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'FORMAT = b"\\x72ecordbench-unregistered-v99"',
+])
+def test_remaining_binding_and_bytes_forms_keep_legacy_origins(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path)
+
+
+def test_bom_prefixed_python_shebang_classifies_custom_suffix(tmp_path):
+    (tmp_path / "tool.in").write_text('\ufeff#!/usr/bin/env python3\nfrom case_intelligence.legacy_names import LEGACY_STEM\nFORMAT = f"{LEGACY_STEM}-unregistered-v99"\n')
+    assert checker.findings(tmp_path)
+
+
+def test_class_namespace_is_not_a_method_enclosing_scope(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'stem = "synthetic"\nclass Builder:\n stem = LEGACY_STEM\n'
+        ' def build(self):\n  return f"{stem}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize("identifier", [
+    "recordbench-backup-",
+    "/var/lib/recordbench/recordbench-unregistered-v99",
+    "/var/lib/recordbench-unregistered-v99/recordbench.env",
+])
+def test_operational_names_cannot_use_template_or_directory_exceptions(tmp_path, identifier):
+    (tmp_path / "synthetic.py").write_text(f'FORMAT = "{identifier}"\n')
+    assert checker.findings(tmp_path)
+
+
+def test_authority_module_declarations_outside_table_are_checked(tmp_path):
+    path = tmp_path / "src/case_intelligence/legacy_names.py"
+    path.parent.mkdir(parents=True)
+    path.write_text('OTHER = "recordbench-unregistered-v99"\n')
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("source", [
+    'settings.stem = LEGACY_STEM\nFORMAT = f"{settings.stem}-exact-v1"',
+    'settings.stem = LEGACY_STEM\nsettings.stem = "synthetic"\nFORMAT = f"{settings.stem}-unregistered-v99"',
+    'match selected:\n case "legacy":\n  stem = LEGACY_STEM\n case _:\n  stem = "synthetic"\nFORMAT = f"{stem}-exact-v1"',
+    'stem = LEGACY_STEM\nmatch selected:\n case _:\n  stem = "synthetic"\nFORMAT = f"{stem}-unregistered-v99"',
+    'stem = LEGACY_STEM\nmatch selected:\n case {"stem": stem}:\n  FORMAT = f"{stem}-unregistered-v99"',
+    'FORMAT = b"\\x72ecordbench-exact-v1"',
+])
+def test_attributes_match_cases_and_bytes_preserve_valid_sources(tmp_path, source):
+    (tmp_path / "synthetic.py").write_text('from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n')
+    assert checker.findings(tmp_path) == []
+
+
+def test_methods_keep_the_actual_enclosing_legacy_binding(tmp_path):
+    (tmp_path / "synthetic.py").write_text(
+        'from case_intelligence.legacy_names import LEGACY_STEM\n'
+        'stem = LEGACY_STEM\nclass Builder:\n stem = "synthetic"\n'
+        ' def build(self):\n  return f"{stem}-unregistered-v99"\n'
+    )
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize("value", [
+    "/var/lib/recordbench/config/settings.json",
+    "/var/lib/recordbench/config/recordbench.env",
+    "recordbench-backup-@NODE_ID@.service",
+    "recordbench-backup-{node_id}.{kind}",
+    "recordbench:${name}",
+    "recordbench://ticket/SYNTHETIC",
+])
+def test_complete_names_and_ordinary_descendants_keep_their_contracts(value):
+    assert checker.scan_text("synthetic", value) == []
+
+
+def test_namespace_prefix_does_not_accept_an_unknown_uri():
+    assert checker.scan_text("synthetic", "recordbench://unregistered/SYNTHETIC")
+    assert checker.scan_text("synthetic", "recordbench://")
+
+
+def test_template_prefix_allowance_is_limited_to_documentation():
+    assert checker.scan_text("synthetic.md", "recordbench-backup-") == []
+    assert checker.scan_text("synthetic.py", "recordbench-backup-")
+
+
+def test_authority_table_is_validated_separately_from_registered_exports(tmp_path):
+    path = tmp_path / "src/case_intelligence/legacy_names.py"
+    path.parent.mkdir(parents=True)
+    path.write_text('NAME_CONTRACTS = {}\nOTHER = "recordbench-exact-v1"\n')
+    assert checker.findings(tmp_path) == []

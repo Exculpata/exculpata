@@ -164,7 +164,8 @@ UTF-8 text, including NUL-containing text, CSS, configuration files and
 extensionless tools; binary filenames must also use declared names. Historical fixtures, cached dependencies,
 and historical assets keep their existing exclusions.
 Python files, extensionless tools and Python-shebang files receive syntax inspection
-without executing source. Parsed string literals expose escaped spellings;
+without executing source. Parsed string and UTF-8 bytes literals expose escaped
+spellings;
 known stem imports and constant aliases are resolved, and unknown runtime pieces
 must still fit a declared naming family. Existing persisted formats, runtime labels,
 and exact temporary-directory prefixes are retained explicitly in the table.
@@ -172,12 +173,18 @@ Function bodies retain possible legacy bindings from their containing scope,
 including aliases assigned after a definition or rebound after an earlier call.
 Unsupported stem compositions, including mapping-style
 interpolation, must use a contract key instead. String methods, container lookups,
-conditional and short-circuit aliases, and tuple assignments preserve known legacy
-origins. Unicode letters and combining marks stay part of source identifiers. Search
+conditional and short-circuit aliases, local attribute assignments, and tuple
+assignments preserve known legacy origins. Both `if` and `match` alternatives merge
+possible bindings. Methods use their enclosing lexical scope, not class locals. Unicode letters and combining marks stay part of source identifiers. Search
 patterns and parser inputs do not become generated identifiers. This is a bounded
 syntax check, not whole-program execution: arbitrary function return values and
 runtime loop values are not inferred. Use contract keys for generated operational
 names, including names assembled through helpers; review still checks that usage.
+Complete symbolic templates are checked against their family; bare template
+prefixes are examples only in Markdown unless explicitly registered. Registered
+paths permit ordinary descendants, while legacy-named descendants must have their
+own contract. The authority module is scanned outside the table declaration;
+only that declaration is covered by the separate contract-table validation.
 
 <!-- BEGIN GENERATED RENAME CONTRACT -->
 ### Rename contract
@@ -196,12 +203,14 @@ while conflicting authentication headers fail closed.
 | administrator | `recordbench.admin` | `exculpata.admin` | generation |
 | app_env | `recordbench.env` | `exculpata.env` | generation |
 | backup_shim | `recordbench-backup.sh` | `exculpata-backup.sh` | alias |
+| backup_status_default | `/srv/recordbench/.local/state/recordbench-backup/status.json` | `/srv/recordbench/.local/state/recordbench-backup/status.json` | retained |
 | backup_status_shim | `recordbench-backup-status.sh` | `exculpata-backup-status.sh` | alias |
 | backup_template | `recordbench-backup.{kind}.in` | `exculpata-backup.{kind}.in` | generation |
 | backup_tool | `recordbench_backup.py` | `exculpata_backup.py` | generation |
 | backup_unit | `recordbench-backup-{node_id}.{kind}` | `exculpata-backup-{node_id}.{kind}` | generation |
 | browser_name | `recordbench:{suffix}` | `exculpata:{suffix}` | alias |
 | browser_source_note | `recordbenchSourceNote` | `exculpataSourceNote` | alias |
+| cli_error_label | `recordbench:` | `recordbench:` | retained |
 | container_accounts | `/var/lib/recordbench-accounts` | `/var/lib/recordbench-accounts` | retained |
 | container_auth | `/run/recordbench-auth` | `/run/recordbench-auth` | retained |
 | container_data | `/var/lib/recordbench` | `/var/lib/recordbench` | retained |
@@ -273,6 +282,7 @@ while conflicting authentication headers fail closed.
 | stage_receipt | `.recordbench-stage-receipt.json` | `.recordbench-stage-receipt.json` | retained |
 | stem | `recordbench` | `exculpata` | generation |
 | storage_id | `recordbench-storage-{suffix}` | `exculpata-storage-{suffix}` | generation |
+| storage_id_prefix | `recordbench-storage-` | `exculpata-storage-` | generation |
 | storage_marker | `.recordbench-managed-storage.json` | `.exculpata-managed-storage.json` | generation |
 | storage_marker_temporary | `..recordbench-managed-storage.json-{suffix}.tmp` | `..exculpata-managed-storage.json-{suffix}.tmp` | generation |
 | temporary_account_browser | `recordbench-account-browser-` | `recordbench-account-browser-` | retained |
@@ -328,6 +338,8 @@ while conflicting authentication headers fail closed.
 | temporary_slice1a_browser | `recordbench-slice1a-browser-` | `recordbench-slice1a-browser-` | retained |
 | temporary_timing | `recordbench-timing-` | `recordbench-timing-` | retained |
 | temporary_zoom | `recordbench-zoom-` | `recordbench-zoom-` | retained |
+| ticket_uri | `recordbench://ticket/{token}` | `recordbench://ticket/{token}` | retained |
+| ticket_uri_prefix | `recordbench://ticket/` | `recordbench://ticket/` | retained |
 | transcription_notice | `/usr/share/licenses/recordbench-transcription` | `/usr/share/licenses/recordbench-transcription` | retained |
 | whisperx_build | `3.8.6+recordbench.1` | `3.8.6+recordbench.1` | retained |
 | whisperx_wheel | `3.8.6+recordbench.1-py3-none-any.whl` | `3.8.6+recordbench.1-py3-none-any.whl` | retained |

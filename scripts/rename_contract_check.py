@@ -38,7 +38,8 @@ HISTORICAL_ASSET = f"{LEGACY_STEM}-banner.svg"
 
 _STEM = re.escape(LEGACY_STEM)
 _TOKENS = re.compile(
-    rf"(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
+    rf"(?P<uri>(?={_STEM}:)[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9_.:/-]*)"
+    rf"|(?P<path>/(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]*{_STEM}[A-Za-z0-9_.@/-]*)"
     rf"|(?P<version>\d[\w.+-]*{_STEM}[\w.+-]*)"
     rf"|(?P<browser>{_STEM}:(?:[A-Za-z][A-Za-z0-9_:-]*)?)"
     rf"|(?P<name>(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\.+)?{_STEM}[A-Za-z0-9_.-]*)",
@@ -70,27 +71,44 @@ def _patterns(contracts: Mapping[str, NameContract]) -> list[tuple[str, re.Patte
     return result
 
 
-def _registered(token: str, patterns: list[tuple[str, re.Pattern[str]]]) -> bool:
+def _registered(token: str, patterns: list[tuple[str, re.Pattern[str]]], *, template_prefix: bool = False) -> bool:
+    def known_descendants(parts: list[str], prefix: str = "") -> bool:
+        for part in parts:
+            prefix += "/" + part
+            component, _, realm = part.partition("@")
+            if LEGACY_STEM in part.casefold() and not any(
+                pattern.fullmatch(component) or pattern.fullmatch(prefix) for _, pattern in patterns
+            ):
+                return False
+            if LEGACY_STEM in realm.casefold() and not _registered(realm, patterns):
+                return False
+        return True
+
     for template, pattern in patterns:
         if pattern.fullmatch(token):
             return True
         # A declared directory also owns its descendants, not sibling names.
         if template.startswith("/") and "{" not in template:
             if token.startswith(template.rstrip("/") + "/"):
-                return True
+                if known_descendants(token[len(template.rstrip("/")) + 1:].split("/"), template.rstrip("/")):
+                    return True
         # Generated/template examples may show a known family's fixed prefix.
-        if "{" in template and token == template.split("{", 1)[0]:
+        if template_prefix and "{" in template and token == template.split("{", 1)[0]:
             return True
         # File references may be relative to a configuration/release directory;
         # the filename itself still has to be explicitly present in the table.
         if token.startswith("/") and not template.startswith("/"):
             leaf = token.rstrip("/").rsplit("/", 1)[-1].split("@", 1)[0]
             if ("." in template or "-" in template) and pattern.fullmatch(leaf):
-                return True
+                if known_descendants(token.strip("/").split("/")):
+                    return True
     return False
 
 
 def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = NAME_CONTRACTS) -> list[Finding]:
+    # Inspect the complete generated name for ordinary deployment, Python and
+    # JavaScript placeholders; an unfilled fixed prefix alone is not a name.
+    text = re.sub(r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}", "CONTRACTDYNAMIC", text)
     patterns = _patterns(contracts)
     found = []
     for match in _TOKENS.finditer(text):
@@ -109,7 +127,9 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
         token = text[start:end]
         if token.rsplit("/", 1)[-1] == HISTORICAL_ASSET:
             continue
-        if not any(_registered(candidate, patterns) for candidate in (token, token.rstrip("."), token.lstrip("."))):
+        documented_prefix = Path(location).suffix.lower() == ".md"
+        if not any(_registered(candidate, patterns, template_prefix=documented_prefix)
+                   for candidate in (token, token.rstrip("."), token.lstrip("."))):
             line = text.count("\n", 0, start) + 1
             finding = Finding(f"{location}:{line}", token)
             if finding not in found:
@@ -307,7 +327,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         return []
 
     def contains_stem(piece: ast.AST) -> bool:
-        if isinstance(piece, ast.Name) and piece.id in unresolved_stems:
+        if isinstance(piece, (ast.Name, ast.Attribute)) and ast.unparse(piece) in unresolved_stems:
             return True
         if isinstance(piece, ast.Dict):
             return any(contains_stem(item) for item in piece.values)
@@ -333,10 +353,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
         pending = []
 
         def collect(item: ast.AST, source: ast.AST | None) -> None:
-            if isinstance(item, ast.Name):
+            if isinstance(item, (ast.Name, ast.Attribute)):
                 resolved = value(source) if source is not None else None
                 unresolved = source is not None and resolved is None and contains_stem(source)
-                pending.append((item.id, resolved, unresolved))
+                pending.append((ast.unparse(item), resolved, unresolved))
             elif isinstance(item, (ast.Tuple, ast.List)):
                 if isinstance(source, (ast.Tuple, ast.List)) and len(item.elts) == len(source.elts):
                     for child, child_source in zip(item.elts, source.elts):
@@ -359,10 +379,17 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
     class Visitor(ast.NodeVisitor):
         def __init__(self) -> None:
             self.deferred = []
+            self.method_scope = None
 
         def visit_Constant(self, node: ast.Constant) -> None:
-            if isinstance(node.value, str):
-                for item in scan_text(location, node.value, contracts):
+            decoded = node.value
+            if isinstance(decoded, bytes):
+                try:
+                    decoded = decoded.decode("utf-8")
+                except UnicodeDecodeError:
+                    return
+            if isinstance(decoded, str):
+                for item in scan_text(location, decoded, contracts):
                     _, line = item.location.rsplit(":", 1)
                     found.append(Finding(f"{location}:{node.lineno + int(line) - 1}", item.identifier))
 
@@ -414,19 +441,36 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             bind(node.target, node.value)
 
         def visit_If(self, node: ast.If) -> None:
-            nonlocal env, unresolved_stems
             self.visit(node.test)
+            self.alternatives([node.body, node.orelse])
+
+        def visit_Match(self, node: ast.Match) -> None:
+            self.visit(node.subject)
+            choices = []
+            exhaustive = False
+            for case in node.cases:
+                captures = []
+                for pattern in ast.walk(case.pattern):
+                    name = getattr(pattern, "name", None) or getattr(pattern, "rest", None)
+                    if name:
+                        captures.append(ast.Assign(targets=[ast.Name(id=name, ctx=ast.Store())], value=ast.Constant(value=None)))
+                choices.append([case.pattern, *captures, *([case.guard] if case.guard else []), *case.body])
+                exhaustive |= isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None and case.guard is None
+            self.alternatives(choices if exhaustive else [*choices, []])
+
+        def alternatives(self, choices: list[list[ast.AST]]) -> None:
+            nonlocal env, unresolved_stems
             outer, outer_unresolved = dict(env), set(unresolved_stems)
             branches = []
-            for statements in (node.body, node.orelse):
+            for statements in choices:
                 env, unresolved_stems = dict(outer), set(outer_unresolved)
                 for statement in statements:
                     self.visit(statement)
                 branches.append((env, unresolved_stems))
-            left, right = branches
-            env = {key: item for key, item in left[0].items() if item == right[0].get(key)}
-            unresolved_stems = left[1] | right[1]
-            for key in left[0].keys() | right[0].keys():
+            env = {key: item for key, item in branches[0][0].items()
+                   if all(item == bindings.get(key) for bindings, _ in branches[1:])}
+            unresolved_stems = set().union(*(unresolved for _, unresolved in branches))
+            for key in set().union(*(bindings.keys() for bindings, _ in branches)):
                 legacy = {bindings[key] for bindings, _ in branches
                           if key in bindings and LEGACY_STEM in bindings[key].casefold()}
                 if key not in env and key not in unresolved_stems and len(legacy) == 1:
@@ -439,7 +483,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.decorator_list, *node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append((node, dict(env), set(unresolved_stems), len(binding_events)))
+            self.deferred.append((node, *(self.method_scope or (dict(env), set(unresolved_stems), len(binding_events)))))
 
         visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -447,7 +491,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            self.deferred.append((node, dict(env), set(unresolved_stems), len(binding_events)))
+            self.deferred.append((node, *(self.method_scope or (dict(env), set(unresolved_stems), len(binding_events)))))
 
         def finish(self) -> None:
             nonlocal env, unresolved_stems, binding_events
@@ -491,6 +535,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             outer = env
             outer_unresolved = unresolved_stems
             outer_events = binding_events
+            outer_method_scope = self.method_scope
+            self.method_scope = self.method_scope or (dict(outer), set(outer_unresolved), len(outer_events))
             env = dict(env)
             unresolved_stems = set(unresolved_stems)
             binding_events = []
@@ -498,6 +544,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract])
             env = outer
             unresolved_stems = outer_unresolved
             binding_events = outer_events
+            self.method_scope = outer_method_scope
 
         def visit_JoinedStr(self, node: ast.JoinedStr) -> None:
             self.composition(node)
@@ -553,8 +600,6 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             continue
         if relative.as_posix() in SKIP_FILES or relative.as_posix().startswith("docs/assets/"):
             continue
-        if relative.as_posix() == "src/case_intelligence/legacy_names.py":
-            continue  # The authority is validated above, rather than scanning itself.
         # rglob visits each directory and file, so every relative-path component
         # is checked once, independently of its descendants or content type.
         found.extend(scan_component(relative.as_posix(), path.name, contracts))
@@ -565,8 +610,21 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             text = data.decode("utf-8")
         except UnicodeDecodeError:
             continue
+        if relative.as_posix() == "src/case_intelligence/legacy_names.py":
+            # The table is validated above; every other declaration in its
+            # module remains subject to the same operational-name checks.
+            lines = text.splitlines(keepends=True)
+            try:
+                authority = ast.parse(text.removeprefix("\ufeff"))
+            except SyntaxError:
+                authority = ast.Module(body=[], type_ignores=[])
+            for statement in authority.body:
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target] if isinstance(statement, ast.AnnAssign) else []
+                if any(isinstance(target, ast.Name) and target.id == "NAME_CONTRACTS" for target in targets):
+                    lines[statement.lineno - 1:statement.end_lineno] = ["\n"] * (statement.end_lineno - statement.lineno + 1)
+            text = "".join(lines)
         found.extend(scan_text(relative.as_posix(), text, contracts))
-        shebang = text.partition("\n")[0]
+        shebang = text.removeprefix("\ufeff").partition("\n")[0]
         if path.suffix == ".py" or not path.suffix or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang)):
             found.extend(scan_python(relative.as_posix(), text, contracts))
     return list(dict.fromkeys(found))
