@@ -223,6 +223,10 @@ before calling. Heterogeneous container merges that lose a known shared shape
 and shared global/nonlocal writes from helpers also reject explicitly. Return
 named handles from fixed-parameter helpers instead of changing outer bindings.
 Comprehension, lambda and class locals retain their separate binding scopes.
+Class bodies track their own explicit global/nonlocal declarations. Direct
+Boolean values used as iterables, arguments or subscript bases receive the same
+unresolved-ownership rejection as assigned containers. Synthesized capture and comprehension targets retain source
+locations; propagation after a comprehension does not count as another write.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

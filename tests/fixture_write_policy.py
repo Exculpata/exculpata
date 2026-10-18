@@ -259,11 +259,11 @@ class _Check(ast.NodeVisitor):
             if violation not in self.violations:
                 self.violations.append(violation)
 
-    def bind(self, target: ast.AST, value: _Value) -> None:
+    def bind(self, target: ast.AST, value: _Value, *, check_outer_write: bool = True) -> None:
         if self.unresolved_ownership(value) and hasattr(target, "lineno"):
             self.flag(target, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
         if isinstance(target, ast.Name):
-            if (self.outer_write_names is not None and target.id in self.outer_write_names
+            if (check_outer_write and self.outer_write_names is not None and target.id in self.outer_write_names
                     and target.id not in self.comprehension_locals
                     and self.known_ownership(value, shared_only=True)):
                 self.flag(target, "shared global/nonlocal fixture writes are unsupported; return an explicit handle")
@@ -303,8 +303,9 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
-        if ((value.elements is not None or value.mapping is not None)
-                and self.known_ownership(value, shared_only=True)):
+        if (self.unresolved_ownership(value) or
+                ((value.elements is not None or value.mapping is not None)
+                 and self.known_ownership(value, shared_only=True))):
             self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles")
 
     def visit_Name(self, node: ast.Name) -> None:
@@ -436,7 +437,9 @@ class _Check(ast.NodeVisitor):
                              else _Value(symbol=name))
                     if value.connection is None and previous.connection is not None:
                         value = replace(value, connection=f"unknown@pattern:{name}")
-                    self.bind(ast.Name(id=name), value)
+                    target = ast.copy_location(ast.Name(id=name), pattern)
+                    self.parents[target] = pattern
+                    self.bind(target, value)
             if case.guard is not None:
                 self.visit(case.guard)
                 # A false guard can still rebind aliases before the next case.
@@ -471,6 +474,8 @@ class _Check(ast.NodeVisitor):
 
     def visit_For(self, node: ast.For) -> None:
         self.visit(node.iter)
+        if self.unresolved_ownership(self.value(node.iter)):
+            self.flag(node.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
         self.visit_loop(node, target=node.target)
 
     visit_AsyncFor = visit_For
@@ -694,6 +699,8 @@ class _Check(ast.NodeVisitor):
         function = self.value(node.func)
         arguments_before = [self.value(argument) for argument in node.args]
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
+        if any(self.unresolved_ownership(value) for value in arguments_before):
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
         for argument in node.args:
             self.visit(argument)
         for keyword in node.keywords:
@@ -1082,7 +1089,7 @@ class _Check(ast.NodeVisitor):
         eager_annotations = self.eager_variable_annotations
         self.eager_variable_annotations = True
         lexical = class_outer if class_outer is not None else aliases
-        outer_write_names, self.outer_write_names = self.outer_write_names, None
+        outer_write_names, self.outer_write_names = self.outer_write_names, set()
         self.aliases, self.class_outer_aliases = lexical.copy(), lexical
         self.declare_functions(node.body)
         for statement in node.body:
@@ -1172,6 +1179,8 @@ class _Check(ast.NodeVisitor):
             if index:
                 self.visit(generator.iter)
             iterable = self.value(generator.iter) if index else first_iterable
+            if iterable is not None and self.unresolved_ownership(iterable):
+                self.flag(generator.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
             elements = iterable.elements if iterable is not None else None
             value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
             self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
@@ -1196,7 +1205,12 @@ class _Check(ast.NodeVisitor):
             # and every assignment because a later filter can skip a rewrite.
             merged = self.merge_aliases({name: aliases.get(name, _Value(symbol=name))},
                                         *({name: value} for value in values))[name]
-            self.bind(ast.Name(id=name), merged)
+            target = ast.copy_location(ast.Name(id=name), node)
+            self.parents[target] = node
+            # The actual walrus target was already checked at its own location.
+            # This is propagation of zero-iteration/branch outcomes, not a new
+            # outer-scope assignment of the prior binding.
+            self.bind(target, merged, check_outer_write=False)
             if self.eager_walrus is not None:
                 self.eager_walrus.setdefault(name, []).extend(values)
 
