@@ -31,10 +31,17 @@ def sample():
     citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True, 'evidence_kind':'document'}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
     actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation], 'claims':[{'text':'The parcel is blue.', 'citations':[citation]}]}}
+    seed_document_support(actual, citation)
+    seed_document_support(actual, actual['search']['citations'][0])
     expected['documents']['pdf']['pages'] = actual['pdf']['pages'] = 1
     expected['search']['search']['citations'] = [{'document_id':'pdf', 'span':'parcel is blue'}]
     seed_audio_support(expected, actual, {'document_id':'wav', 'excerpt':actual['wav']['text']})
     return manifest, expected, actual
+
+
+def seed_document_support(actual, citation):
+    citation.update(unit=1, location='Page 1', start=0, end=len(citation['excerpt']))
+    actual[citation['document_id']] = {'pages':1, 'text':citation['excerpt']}
 
 
 def seed_audio_support(expected, actual, citation):
@@ -69,6 +76,7 @@ def test_answer_facts_require_their_own_claim_citations(mutation):
     citations = [{'document_id':item['document_id'], 'excerpt':item['span'], 'source_valid':True,
                   'evidence_kind':'transcript' if item['document_id'] == 'wav' else 'document'}
                  for item in required]
+    seed_document_support(actual, citations[0])
     seed_audio_support(expected, actual, citations[1])
     claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if item['evidence_kind'] == 'transcript' else '') + item['excerpt'],
                'citations':[item]} for item in citations]
@@ -97,6 +105,7 @@ def test_answer_fact_normalization_preserves_case_and_punctuation(fact, text):
     manifest, expected, actual = sample()
     expected['answers']['answer'] = {'facts':[fact], 'citations':[{'document_id':'pdf', 'span':fact}]}
     citation = {'document_id':'pdf', 'excerpt':text, 'source_valid':True, 'evidence_kind':'document'}
+    seed_document_support(actual, citation)
     actual['answer'].update(text=text, citations=[citation], claims=[{'text':text, 'citations':[citation]}])
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is True
@@ -134,6 +143,7 @@ def test_complete_claim_cannot_change_details_beyond_required_gold_fact(claimed,
     claim = actual['answer']['claims'][0]
     claim['text'] = actual['answer']['text'] = f'The parcel is blue at {claimed}.'
     claim['citations'][0]['excerpt'] = f'The parcel is blue at {observed}.'
+    seed_document_support(actual, claim['citations'][0])
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is passes
     if not passes:
@@ -303,6 +313,7 @@ def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, v
     actual['answer']['text'] = excerpt
     actual['answer']['citations'] = [{'document_id':'pdf', 'excerpt':excerpt, 'source_valid':valid,
                                      'evidence_kind':'document'}]
+    seed_document_support(actual, actual['answer']['citations'][0])
     actual['answer']['claims'] = [{'text':excerpt, 'citations':actual['answer']['citations']}]
     result = next(r for r in gate.compare(manifest, expected, actual) if r['id'] == 'answer')
     assert result['passed'] is passes
@@ -382,6 +393,8 @@ def corpus_citation(source, expected, actual):
                 'evidence_kind':'transcript' if audio else 'document'}
     if audio:
         citation.update({key:actual[source]['units'][0][key] for key in ('unit', 'start_ms', 'end_ms')})
+    else:
+        citation.update(unit=1, location='Page 1', start=0, end=len(citation['excerpt']))
     return citation
 
 
@@ -492,3 +505,94 @@ def test_baseline_audio_layout_ends_at_pinned_source_signal_envelope(source, sig
     assert expected['audio'][source]['layouts'][0][0]['end_ms'] == last_signal_end
     assert expected['audio'][source]['locator']['end_ms'] == round(len(samples) * 1000 / rate)
     assert expected['audio'][source]['locator']['tolerance_ms'] == 500
+
+
+@pytest.mark.parametrize('field,value', [('model_id', 'synthetic/unreviewed'), ('license', 'unreviewed'),
+    ('model_id', None), ('license', None), ('revision', 'a'*40), ('languages', ['eng']), ('sha256', {})])
+def test_ocr_identity_requires_complete_reviewed_record(tmp_path, field, value):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'manifest.json'; manifest = json.loads(path.read_text())
+    if value is None:
+        del manifest['models']['ocr'][field]
+    else:
+        manifest['models']['ocr'][field] = value
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='OCR'):
+        gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('unit', 99), ('unit', 0), ('unit', -1), ('unit', True), ('unit', 1.0), ('unit', '1'),
+    ('location', 'Page 99'), ('location', 'Page 01'), ('location', ''),
+    ('start', -1), ('start', 1), ('start', False), ('start', 0.0),
+    ('end', 0), ('end', 99999), ('end', True), ('end', 19.0),
+    ('start_ms', 0), ('end_ms', 1000), ('excerpt', 'parcel is blue'),
+])
+def test_document_citation_locator_is_bound_to_observed_page(field, value):
+    manifest, expected, actual = sample()
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    for citation in [actual['answer']['citations'][0], actual['search']['citations'][0]]:
+        citation[field] = value
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert not results['answer']['passed'] and not results['search']['passed']
+
+
+@pytest.mark.parametrize('field', ['unit', 'location', 'start', 'end'])
+def test_document_citation_locator_fields_are_required(field):
+    manifest, expected, actual = sample()
+    for citation in [actual['answer']['citations'][0], actual['search']['citations'][0]]:
+        del citation[field]
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert not results['answer']['passed'] and not results['search']['passed']
+
+
+@pytest.mark.parametrize('observation', [None, {}, {'pages':True, 'text':'The parcel is blue.'},
+    {'pages':2, 'text':'The parcel is blue.'}, {'pages':1, 'text':'Different synthetic page.'}])
+def test_document_citation_needs_matching_observed_source(observation):
+    manifest, expected, actual = sample()
+    actual['pdf'] = observation
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert not results['answer']['passed'] and not results['search']['passed']
+
+
+def test_distinct_claims_can_share_a_valid_source_passage():
+    manifest, expected, actual = sample()
+    answer = actual['answer']
+    citation = answer['citations'][0]
+    answer['claims'].append({'text':'parcel is blue', 'citations':[copy.deepcopy(citation)]})
+    answer['text'] = ' '.join(claim['text'] for claim in answer['claims'])
+    answer['citations'] = [c for claim in answer['claims'] for c in claim['citations']]
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+
+
+@pytest.mark.parametrize('duplicate', ['citation', 'claim-reordered', 'claim-whitespace', 'aggregate-only', 'none'])
+def test_answer_uniqueness_matches_product_text_and_evidence_set(duplicate):
+    manifest, expected, actual = sample()
+    manifest['documents'].append({'id':'pdf-other', 'ocr':False})
+    expected['documents']['pdf-other'] = copy.deepcopy(expected['documents']['pdf'])
+    other = copy.deepcopy(actual['answer']['citations'][0]); other['document_id'] = 'pdf-other'
+    seed_document_support(actual, other)
+    expected['answers']['answer']['citations'].append({'document_id':'pdf-other', 'span':'parcel is blue'})
+    answer = actual['answer']
+    claim = answer['claims'][0]
+    claim['citations'].append(other)
+    answer['citations'] = list(claim['citations'])
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    if duplicate == 'citation':
+        extra = copy.deepcopy(claim['citations'][0]); extra['irrelevant_annotation'] = 'synthetic'
+        claim['citations'].append(extra)
+    elif duplicate.startswith('claim-'):
+        extra = copy.deepcopy(claim)
+        if duplicate == 'claim-reordered': extra['citations'].reverse()
+        else: extra['text'] = '  The  parcel is blue.  '
+        answer['claims'].append(extra)
+    elif duplicate == 'none':
+        # The product permits identical wording supported by a distinct passage set.
+        answer['claims'] = [{'text':claim['text'], 'citations':[citation]} for citation in claim['citations']]
+    answer['text'] = ' '.join(c['text'] for c in answer['claims'])
+    answer['citations'] = [c for item in answer['claims'] for c in item['citations']]
+    if duplicate == 'aggregate-only': answer['citations'].append(copy.deepcopy(other))
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
+    assert result['passed'] is (duplicate == 'none')
+    if duplicate in {'citation', 'claim-reordered', 'claim-whitespace'}:
+        assert any('duplicate' in line for line in result['diff'])

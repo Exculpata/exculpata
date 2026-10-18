@@ -322,3 +322,34 @@ def test_observed_bicycle_numeral_and_speech_endpoint_fit_source_signal_layout()
     assert actual['audio-bicycle']['units'][0]['end_ms'] == 5080
     assert gate.error_rate(gate.normalize(expected['audio']['audio-bicycle']['text']).split(),
                            gate.normalize(transcripts['audio-bicycle'][0]['text']).split()) == pytest.approx(2/15)
+
+
+@pytest.mark.parametrize('mutation', ['document-locator', 'document-unit', 'document-location',
+    'document-start', 'document-end', 'duplicate-citation', 'duplicate-claim'])
+def test_actual_corpus_rejects_invalid_document_locators_and_answer_duplicates(mutation):
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    answer = actual['answer-bicycle']
+    claim = next(c for c in answer['claims'] if c['citations'][0]['document_id'] == 'bicycle')
+    if mutation.startswith('document-'):
+        for citation in [claim['citations'][0], *actual['search-gate']['citations']]:
+            if citation['document_id'] == 'bicycle':
+                if mutation == 'document-locator':
+                    citation.update(unit=99, location='Page 99', start=-10, end=99999)
+                else:
+                    field = mutation.removeprefix('document-')
+                    citation[field] = {'unit':99, 'location':'Page 99', 'start':-10, 'end':99999}[field]
+    elif mutation == 'duplicate-citation':
+        claim['citations'].append(copy.deepcopy(claim['citations'][0]))
+    else:
+        answer['claims'].append(copy.deepcopy(claim))
+    answer['text'] = ' '.join(c['text'] for c in answer['claims'])
+    answer['citations'] = [citation for c in answer['claims'] for citation in c['citations']]
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert results['answer-bicycle']['passed'] is False
+    if mutation.startswith('document-'):
+        assert results['search-gate']['passed'] is False

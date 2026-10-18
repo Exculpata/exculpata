@@ -214,6 +214,7 @@ class _Value:
     dictionary_accessor: bool = False
     dictionary_fromkeys: bool = False
     dictionary_method: str = ""
+    callable_targets: frozenset[str] = frozenset()
 
 
 class _Check(ast.NodeVisitor):
@@ -228,6 +229,7 @@ class _Check(ast.NodeVisitor):
         self.media_protected: set[str] = set()
         self.local_functions: dict[str, tuple] = {}
         self.active_calls: set[str] = set()
+        self.active_namespace_results: set[str] = set()
         # Evaluated calls and literal containers capture values before later rebindings.
         self.evaluated_values: dict[ast.AST, _Value] = {}
         self.return_values: list[_Value] = []
@@ -707,6 +709,7 @@ class _Check(ast.NodeVisitor):
     def payload_value(self, values: list[_Value]) -> _Value:
         # Opaque aggregates lose element layout, never protected provenance.
         return _Value(symbol="<reflective-builtins>" if any(self.contains_namespace(value) for value in values) else "",
+                      callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in values)),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
@@ -715,11 +718,10 @@ class _Check(ast.NodeVisitor):
         # not their namespace-bearing values. Keep cardinality unknown and
         # preserve the existing conservative SQL/path provenance checks.
         if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
-            return replace(self.payload_value([value]), symbol="")
+            return replace(self.payload_value([value]), symbol="", callable_targets=frozenset())
         return value
 
-    @staticmethod
-    def mapping_lookup(receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
+    def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
         if (not key.complete_text and not key.nonstring_constant
                 and receiver.mapping is not None and _Check.contains_namespace(receiver)):
             return _Value(symbol="<reflective-builtins>")
@@ -729,7 +731,18 @@ class _Check(ast.NodeVisitor):
             return dict(receiver.mapping).get(key.text, default)
         if key.nonstring_constant and receiver.mapping is not None:
             return default
+        if receiver.mapping is not None:
+            return self.payload_value([*(item for _, item in receiver.mapping), *([] if default is None else [default])])
         return None
+
+    @staticmethod
+    def local_callable_targets(value: _Value) -> frozenset[str]:
+        targets = value.callable_targets
+        if value.symbol.startswith(("function@", "lambda@")):
+            targets |= {value.symbol}
+        children = [*([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return targets.union(*(_Check.local_callable_targets(child) for child in children))
 
     @staticmethod
     def is_dictionary(value: _Value) -> bool:
@@ -785,6 +798,7 @@ class _Check(ast.NodeVisitor):
                  and all(item.complete_text for item in keys.elements) else None)
         return _Value(dictionary_instance=True,
                       mapping=tuple((key, default) for key in dict.fromkeys(names)) if names is not None else None,
+                      callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in inputs)),
                       unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
@@ -853,6 +867,7 @@ class _Check(ast.NodeVisitor):
                                       "<reflective-builtins>" if any(_Check.contains_namespace(value) for value in values) else
                                       values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
                                       nonstring_constant=all(value.nonstring_constant for value in values),
+                                      callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in values)),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
@@ -1620,8 +1635,31 @@ class _Check(ast.NodeVisitor):
             self.reject_delayed_namespace_result(node, value)
 
     def reject_delayed_namespace_result(self, node, value):
-        if self.contains_namespace(value):
+        if self.delayed_result_contains_namespace(node, value):
             self.flag(node, "dynamic execution namespace results from async/generator helpers are unsupported; use synchronous fixed-parameter helpers", structural=True)
+
+    def delayed_result_contains_namespace(self, node, value):
+        if self.contains_namespace(value):
+            return True
+        children = [*([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ()),
+                    *(_Value(symbol=target) for target in value.callable_targets if target != value.symbol)]
+        if any(self.delayed_result_contains_namespace(node, child) for child in children):
+            return True
+        if value.symbol not in self.local_functions:
+            return False
+        if value.symbol in self.active_namespace_results or value.symbol in self.active_calls:
+            return True
+        # Inspect the existing local-body result with its lexical/default values;
+        # this constructs no runtime callable and interprets no additional syntax.
+        call = ast.copy_location(ast.Call(func=ast.Name(id="_delayed_result", ctx=ast.Load()),
+                                         args=[], keywords=[]), node)
+        self.active_namespace_results.add(value.symbol)
+        try:
+            result = self.check_local_call(call, value)
+            return result is not None and self.delayed_result_contains_namespace(node, result)
+        finally:
+            self.active_namespace_results.remove(value.symbol)
 
     def visit_Yield(self, node: ast.Yield) -> None:
         if node.value is not None:
@@ -1832,6 +1870,8 @@ class _Check(ast.NodeVisitor):
             result = self.payload_value([element])
             self.evaluated_values[node] = result
             self.reject_dynamic_builtin(node, result)
+            if deferred:
+                self.reject_delayed_namespace_result(node, result)
             if not deferred:
                 self.reject_mutable_carrier(node, element)
                 self.evaluated_values[node] = (_Value(receiver=element)

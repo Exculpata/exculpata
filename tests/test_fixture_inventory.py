@@ -1022,3 +1022,97 @@ def test_namespace_generator_return_value_runtime_rejection():
     source += '\ntry:\n    next(provider())\nexcept StopIteration as finished:\n    selected = finished.value'
     source += "\nselected()['__builtins__']['exec'](payload)"
     assert_namespace_runtime_effect_and_rejection(source, rejection_line=4)
+
+
+@pytest.mark.parametrize('definition,acquisition,invoke,rejection_line', [
+    ('async def provider():\n    return lambda: globals()', 'asyncio.run(provider())', 'selected()', 2),
+    ('async def provider():\n    selected = lambda: globals()\n    return selected', 'asyncio.run(provider())', 'selected()', 3),
+    ('async def provider():\n    def selected():\n        return globals()\n    return selected', 'asyncio.run(provider())', 'selected()', 4),
+    ('async def provider():\n    return lambda factory=globals: factory()', 'asyncio.run(provider())', 'selected()', 2),
+    ('factory = globals\nasync def provider():\n    return lambda: factory()', 'asyncio.run(provider())', 'selected()', 3),
+    ('async def provider():\n    return lambda: (lambda: globals())', 'asyncio.run(provider())', 'selected()()', 2),
+    ('async def provider():\n    return {"callback": lambda: globals()}', 'asyncio.run(provider())["callback"]', 'selected()', 2),
+    ('async def provider():\n    return (lambda: globals(),)', 'asyncio.run(provider())[0]', 'selected()', 2),
+    ('def provider():\n    yield lambda: globals()', 'next(provider())', 'selected()', 2),
+    ('def provider():\n    yield from [lambda: globals()]', 'next(provider())', 'selected()', 2),
+    ('async def provider():\n    yield lambda: globals()\nasync def consume():\n    return await anext(provider())', 'asyncio.run(consume())', 'selected()', 2),
+    ('def selected(depth):\n    if depth:\n        return selected(depth - 1)\n    return globals\nasync def provider():\n    return selected', 'asyncio.run(provider())', 'selected(1)()', 6),
+])
+def test_namespace_delayed_callable_result_runtime_rejection(definition, acquisition, invoke, rejection_line):
+    source = definition + '\nimport asyncio\nselected = ' + acquisition
+    source += '\n' + invoke + "['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=rejection_line)
+
+
+@pytest.mark.parametrize('definition,acquisition', [
+    ('async def provider():\n    return lambda: 1', 'asyncio.run(provider())'),
+    ('async def provider():\n    return lambda value=resource: getattr(value, "real")', 'asyncio.run(provider())'),
+    ('async def provider():\n    def callback():\n        return getattr(resource, "real")\n    return callback', 'asyncio.run(provider())'),
+    ('import builtins\nasync def provider():\n    return lambda: builtins.len([resource])', 'asyncio.run(provider())'),
+    ('async def provider():\n    return {"callback": lambda: 1}', 'asyncio.run(provider())["callback"]'),
+    ('def provider():\n    yield lambda: getattr(resource, "real")', 'next(provider())'),
+    ('def provider():\n    yield from [lambda: getattr(resource, "real")]', 'next(provider())'),
+    ('async def provider():\n    yield lambda: 1\nasync def consume():\n    return await anext(provider())', 'asyncio.run(consume())'),
+])
+def test_namespace_delayed_callable_safe_runtime_controls(definition, acquisition):
+    source = definition + '\nimport asyncio\nselected = ' + acquisition + '\nobserved = selected()'
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=1)
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+_DELAYED_CALLABLE_TRANSPORTS = [
+    ('[callback for callback in [CALLBACK]]', '[0]'),
+    ('{callback for callback in [CALLBACK]}', '.pop()'),
+    ('{"callback": callback for callback in [CALLBACK]}', '["callback"]'),
+    ('CALLBACK if resource else CALLBACK', ''),
+    ('{"callback": CALLBACK}[resource]', ''),
+    ('{"callback": CALLBACK}.get(resource)', ''),
+    ('dict.get({"callback": CALLBACK}, resource)', ''),
+    ('{"callback": CALLBACK}.copy()', '["callback"]'),
+    ('{}.get("missing", CALLBACK)', ''),
+    ('dict.fromkeys(["callback"], CALLBACK)', '["callback"]'),
+    ('{"nested": (CALLBACK,)}', '["nested"][0]'),
+    ('(callback for callback in [CALLBACK])', '.__next__()'),
+    ('dict.fromkeys(list(("callback",)), CALLBACK)', '["callback"]'),
+    ('{}.get(resource, CALLBACK)', ''),
+]
+
+
+@pytest.mark.parametrize('transport,selection', _DELAYED_CALLABLE_TRANSPORTS)
+def test_namespace_delayed_callable_transport_runtime_rejection(transport, selection):
+    source = 'async def provider():\n    return ' + transport.replace('CALLBACK', '(lambda: globals())')
+    source += '\nimport asyncio\nselected = asyncio.run(provider())' + selection
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, resource='callback', rejection_line=2)
+
+
+@pytest.mark.parametrize('transport,selection', _DELAYED_CALLABLE_TRANSPORTS)
+def test_namespace_delayed_callable_transport_safe_runtime_controls(transport, selection):
+    source = 'async def provider():\n    return ' + transport.replace('CALLBACK', '(lambda: getattr(1, "real"))')
+    source += '\nimport asyncio\nselected = asyncio.run(provider())' + selection + '\nobserved = selected()'
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource='callback')
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('mapping', [
+    '{"callback": lambda: globals()}',
+    '{"callback": lambda: globals()}.copy()',
+    'dict.fromkeys(["callback"], lambda: globals())',
+])
+def test_namespace_delayed_callable_key_iteration_runtime_acceptance(mapping):
+    source = 'async def provider():\n    return [*' + mapping + ']\nimport asyncio\nkeys = asyncio.run(provider())'
+    keys, sink = run_isolated_namespace_probe(source, 'keys')
+    assert keys == ['callback']
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+def test_namespace_generator_returned_callable_runtime_rejection():
+    source = 'def provider():\n    if False:\n        yield None\n    return lambda: globals()'
+    source += '\ntry:\n    next(provider())\nexcept StopIteration as finished:\n    selected = finished.value'
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    assert_namespace_runtime_effect_and_rejection(source, rejection_line=4)

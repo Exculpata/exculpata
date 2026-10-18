@@ -17,6 +17,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'benchmarks/corpus/v1'
 TRANSCRIPT_QUALIFIER = 'The machine transcript appears to say that '
+REVIEWED_OCR = {
+    'model_id': 'tesseract-ocr/tessdata_fast',
+    'revision': '87416418657359cb625c412a48b6e1d6d41c29bd',
+    'license': 'Apache-2.0',
+    'languages': ['eng', 'spa'],
+    'sha256': {
+        'eng': '7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2',
+        'spa': '6f2e04d02774a18f01bed44b1111f2cd7f3ba7ac9dc4373cd3f898a40ea6b464',
+        'osd': '9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff',
+    },
+}
 
 
 def normalize(text: str) -> str:
@@ -115,8 +126,8 @@ def load_corpus(root: Path):
     pin = manifest['models']['asr']
     if not any(m.get('model_id') == pin['model_id'] and m.get('revision') == pin['revision'] and m.get('license') == pin['license'] for m in approved):
         raise ValueError('ASR pin must match the reviewed model catalog')
-    if not re.fullmatch('[0-9a-f]{40}', manifest['models']['ocr']['revision']):
-        raise ValueError('OCR requires an immutable revision')
+    if manifest['models'].get('ocr') != REVIEWED_OCR:
+        raise ValueError('OCR identity must match the complete reviewed corpus record')
     for group in ('documents', 'audio', 'search', 'answers'):
         if set(expected[group]) != {row['id'] for row in manifest[group]}:
             raise ValueError(f'{group}: incomplete expected case inventory')
@@ -207,6 +218,14 @@ def supports_complete_claim(citation, text, kind):
     return citation.get('source_valid') is True and contains_tokens(citation.get('excerpt', ''), text)
 
 
+def citation_identity(citation):
+    """A corpus observation resolves one current source version and passage unit."""
+    source, unit = citation.get('document_id'), citation.get('unit')
+    if not isinstance(source, str) or type(unit) is not int or unit < 1:
+        return None
+    return source, unit
+
+
 def compare(manifest, expected, actual, *, full=False):
     """Return per-case diagnostics; no aggregate or caller-supplied pass flag is trusted."""
     source_kinds = {}
@@ -224,7 +243,18 @@ def compare(manifest, expected, actual, *, full=False):
         if kind is None or citation.get('source_valid') is not True or citation.get('evidence_kind') != kind:
             return False
         if kind == 'document':
-            return True
+            observation = actual.get(source)
+            # The reviewed PDF corpus contains one page per source, so its
+            # observed document text is the complete cited page unit.
+            return (isinstance(observation, dict) and type(observation.get('pages')) is int
+                    and observation['pages'] == expected['documents'][source]['pages'] == 1
+                    and type(citation.get('unit')) is int and citation['unit'] == 1
+                    and citation.get('location') == 'Page 1'
+                    and isinstance(citation.get('excerpt'), str) and bool(citation['excerpt'])
+                    and citation['excerpt'] == observation.get('text')
+                    and type(citation.get('start')) is int and citation['start'] == 0
+                    and type(citation.get('end')) is int and citation['end'] == len(citation['excerpt'])
+                    and citation.get('start_ms') is None and citation.get('end_ms') is None)
         observation = actual.get(source, {})
         return (matches_audio_layout(observation, expected['audio'][source])
                 and all(type(citation.get(key)) is int for key in ('unit', 'start_ms', 'end_ms'))
@@ -290,6 +320,7 @@ def compare(manifest, expected, actual, *, full=False):
                     errors.append('missing observed answer claims')
                     claims = []
                 valid_claims = []
+                seen_claims = set()
                 for index, claim in enumerate(claims, 1):
                     if (not isinstance(claim, dict) or not isinstance(claim.get('text'), str)
                             or not normalize(claim['text']) or not isinstance(claim.get('citations'), list)
@@ -297,6 +328,15 @@ def compare(manifest, expected, actual, *, full=False):
                         errors.append(f'invalid observed claim {index}')
                     else:
                         valid_claims.append(claim)
+                        identities = [citation_identity(c) for c in claim['citations']]
+                        if len(set(identities)) != len(identities):
+                            errors.append(f'duplicate citation in observed claim {index}')
+                        # Match generation._verify_text whitespace normalization
+                        # and the product's (text, evidence-id set) dedup key.
+                        identity = (' '.join(claim['text'].split()), frozenset(identities))
+                        if identity in seen_claims:
+                            errors.append(f'duplicate observed claim {index}')
+                        seen_claims.add(identity)
                         for citation in claim['citations']:
                             if not supports_complete_claim(citation, claim['text'],
                                                            source_kinds.get(citation.get('document_id'))):
