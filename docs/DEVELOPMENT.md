@@ -215,6 +215,14 @@ containers with known shared values, destructuring known shared match subjects,
 and passing shared values through variadic helper parameters are unsupported by the inventory. Use explicit named
 handles and fixed helper parameters for fixture setup; independent-resource
 controls and simple match captures remain supported.
+Non-destructuring literal and whole-subject match aliases remain supported.
+Subscripts capture their base before evaluating the index, and calls capture the
+callee before evaluating arguments. Assignment expressions in call arguments
+involving known shared ownership are unsupported; bind those values explicitly
+before calling. Heterogeneous container merges that lose a known shared shape
+and shared global/nonlocal writes from helpers also reject explicitly. Return
+named handles from fixed-parameter helpers instead of changing outer bindings.
+Comprehension, lambda and class locals retain their separate binding scopes.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
