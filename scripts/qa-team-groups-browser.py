@@ -8,12 +8,6 @@ not resolvable from the checkout. No existing node is contacted or modified.
 
 from __future__ import annotations
 
-from case_intelligence.legacy_names import (
-    LEGACY_ENV_PREFIX,
-    LEGACY_STEM,
-    name_value,
-)
-
 import argparse
 import os
 from pathlib import Path
@@ -27,6 +21,12 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+    name_value,
+)
 
 
 def _isolate_environment() -> None:

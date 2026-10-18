@@ -26,6 +26,13 @@ from case_intelligence.legacy_names import (  # noqa: E402
 )
 from case_intelligence import legacy_names as naming  # noqa: E402
 
+MAX_ANALYSIS_STEPS = 500000
+
+
+class AnalysisBudgetExceeded(Exception):
+    pass
+
+
 KNOWN_VALUES = {key: item for key, item in vars(naming).items()
                 if key.startswith(("LEGACY_", "CURRENT_")) and isinstance(item, str)}
 # Reviewed selector interface: environment keys select values; they are not
@@ -157,11 +164,15 @@ def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = 
     # JavaScript placeholders; an unfilled fixed prefix alone is not a name.
     found = []
     placeholder_pattern = r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}"
+    shell_source = Path(location).suffix == ".sh" or Path(location).name.endswith(".env") or bool(re.match(r"#![^\n]*\b(?:ba|da|k|z)?sh\b", text))
+    if shell_source:
+        placeholder_pattern += r"|\$[A-Za-z_]\w*"
+    removal_pattern = placeholder_pattern + r"|[\"']" if shell_source else placeholder_pattern
     cuts, removed = set(), 0
-    for placeholder in re.finditer(placeholder_pattern, text):
+    for placeholder in re.finditer(removal_pattern, text):
         cuts.add(placeholder.start() - removed)
         removed += len(placeholder.group())
-    empty = re.sub(placeholder_pattern, "", text)
+    empty = re.sub(removal_pattern, "", text)
     if any(offset in cuts for stem in re.finditer(re.escape(LEGACY_STEM), empty, re.IGNORECASE)
            for offset in range(stem.start() + 1, stem.end())):
         found.extend(scan_text(location, empty, contracts, literal=literal))
@@ -234,6 +245,9 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
     # Also inspect decoded text conservatively: regex literals can resemble
     # comment/string boundaries, so lexical ambiguity must not hide escapes.
     found = scan_text(location, text, contracts)
+    gap = r"(?:\s|[()]|/\*[\s\S]*?\*/|//[^\n]*(?:\n|$))*"
+    if re.search(r"['\"`]" + gap + r"\+" + gap + r"['\"`]", text):
+        found.append(Finding(f"{location}:1", "unsupported JavaScript literal composition"))
     try:
         encoded = [decode(match) for match in escapes.finditer(text) if match.group()[1:2] in {"x", "u", "\r", "\n"}]
         if any(not value or any(unicodedata.category(character) not in {"Cc", "Cs", "Cn"} for character in value)
@@ -317,6 +331,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     module_scope = None
     active_visitors = []
     expansion_budget = 4096
+    analysis_steps = MAX_ANALYSIS_STEPS
+
+    def consume_analysis_step():
+        nonlocal analysis_steps
+        analysis_steps -= 1
+        if analysis_steps < 0:
+            raise AnalysisBudgetExceeded
+
     shadowed_qualified = set()
     loop_carried_names = []
     loop_written_names = []
@@ -381,6 +403,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return inputs
 
     def frozen(node: ast.AST) -> str | ContainerValue | None:
+        consume_analysis_step()
         if isinstance(node, FrozenDomainValue):
             return node.item
         if (isinstance(node, ast.Call) and qualified(node.func) == "pathlib.Path") or (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)):
@@ -451,6 +474,31 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return any(callable_value(value, verified_only=verified_only) for value in item.items) if item.kind != "dict" else any(
             callable_value(value, verified_only=verified_only) for _, value in item.items)
 
+    def may_carry_callable(node):
+        pending = [node]
+        while pending:
+            piece = pending.pop()
+            consume_analysis_step()
+            if isinstance(piece, FrozenDomainValue) and callable_value(piece.item, verified_only=True):
+                return True
+            if isinstance(piece, ast.Lambda):
+                return True
+            if isinstance(piece, (ast.Name, ast.Attribute, ast.Subscript)):
+                if callable_value(env.get(ast.unparse(piece)), verified_only=True):
+                    return True
+                if isinstance(piece, ast.Attribute) and qualified(piece) in unsupported_path_builders | {"pathlib.Path"}:
+                    return True
+            if isinstance(piece, ast.Call):
+                stored = env.get(ast.unparse(piece.func))
+                if isinstance(stored, ContainerValue) and stored.kind == "ambiguous_callable":
+                    return True
+                pending.extend([*piece.args, *(item.value for item in piece.keywords)])
+                if isinstance(piece.func, ast.Attribute) and not qualified(piece.func.value):
+                    pending.append(piece.func.value)
+            else:
+                pending.extend(ast.iter_child_nodes(piece))
+        return False
+
     def callable_choice(items):
         if any(callable_value(item) for item in items):
             if all(item == items[0] for item in items):
@@ -460,6 +508,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
     def structure(node: ast.AST) -> ContainerValue | None:
         nonlocal env, unresolved_stems
+        consume_analysis_step()
         if isinstance(node, FrozenDomainValue):
             return node.item
         if isinstance(node, ast.Lambda):
@@ -469,9 +518,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             selected = callable_choice([frozen(choice) for choice in choices])
             if selected is not None:
                 return selected
-        if isinstance(node, ast.Attribute):
+        if isinstance(node, ast.Attribute) and may_carry_callable(node.value):
             parent = structure(node.value)
-            if parent is not None and parent.kind in {"callable", "local_callable", "ambiguous_callable"} and callable_value(parent, verified_only=True):
+            if parent is not None and callable_value(parent, verified_only=True):
                 return ContainerValue("ambiguous_callable", (parent,))
         if isinstance(node, (ast.Name, ast.Attribute)) and qualified(node) in unsupported_path_builders | {"pathlib.Path"}:
             return ContainerValue("callable", (qualified(node),))
@@ -579,10 +628,18 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             return ContainerValue("dict", tuple((index_value(key) if key is not None else None, frozen(item))
                                                 for key, item in zip(node.keys, node.values)))
         if isinstance(node, ast.Call):
-            inputs = tuple(frozen(item) for item in call_inputs(node)
-                           if not (isinstance(node.func, ast.Attribute) and item is node.func.value and qualified(item)))
-            if any(callable_value(item, verified_only=True) for item in inputs):
-                return ContainerValue("ambiguous_callable", inputs)
+            callee = structure(node.func) if may_carry_callable(node.func) else None
+            raw_inputs = [*node.args, *(item.value for item in node.keywords)]
+            if isinstance(node.func, ast.Attribute) and not qualified(node.func.value):
+                raw_inputs.append(node.func.value)
+            captured = (callee,) if callee is not None and callee.kind == "ambiguous_callable" else ()
+            if captured or any(may_carry_callable(item) for item in raw_inputs):
+                inputs = tuple(frozen(item) for item in call_inputs(node)
+                               if not (isinstance(node.func, ast.Attribute) and item is node.func.value and qualified(item)))
+                if captured or any(callable_value(item, verified_only=True) for item in inputs):
+                    if any(legacy_value(item) for item in (*captured, *inputs)):
+                        unsupported(node, "unmodeled callable consumer with legacy data")
+                    return ContainerValue("ambiguous_callable", (*captured, *inputs))
         return None
 
     def member(node: ast.Subscript) -> str | ContainerValue | None:
@@ -615,6 +672,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return ast.Constant(value=item)
 
     def value(node: ast.AST) -> str | None:
+        consume_analysis_step()
         if isinstance(node, ast.Attribute) and node.attr == "name":
             parent = structure(node.value)
             if parent is not None and parent.kind == "path" and parent.items and isinstance(parent.items[-1], str):
@@ -819,6 +877,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         method named get, replace or startswith has no assumed semantics.
         Parser and regex objects can expose their legacy-bearing inputs again.
         """
+        consume_analysis_step()
         inputs = selector_inputs(node)
         if inputs is not None:
             return inputs
@@ -848,6 +907,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         return [*([node.func.value] if isinstance(node.func, ast.Attribute) else []), *node.args, *(arg.value for arg in node.keywords)]
 
     def contains_stem(piece: ast.AST) -> bool:
+        consume_analysis_step()
         if isinstance(piece, FrozenDomainValue):
             return legacy_value(piece.item)
         if isinstance(piece, UnknownLegacy):
@@ -1628,7 +1688,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             callee = structure(node.func)
             if callee is not None and callee.kind == "local_callable" and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "explicit legacy arguments to local callable")
-            if callee is not None and callee.kind == "ambiguous_callable" and any(contains_stem(item) for item in call_inputs(node)):
+            if callee is not None and callee.kind == "ambiguous_callable" and (legacy_value(callee) or any(contains_stem(item) for item in call_inputs(node))):
                 unsupported(node, "explicit legacy arguments to ambiguous callable")
             if qualified(node.func) in unsupported_path_builders and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "legacy path builder output")
@@ -1679,9 +1739,14 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 self.generic_visit(node)
 
     visitor = Visitor()
-    visitor.visit(tree)
-    module_scope = env, unresolved_stems, binding_events
-    visitor.finish()
+    try:
+        visitor.visit(tree)
+        module_scope = env, unresolved_stems, binding_events
+        visitor.finish()
+    except AnalysisBudgetExceeded:
+        found.append(Finding(f"{location}:1", "unsupported Python analysis budget exhausted"))
+    except RecursionError:
+        found.append(Finding(f"{location}:1", "unsupported Python analysis depth"))
     return found
 
 

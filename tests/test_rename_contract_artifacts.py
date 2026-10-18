@@ -97,3 +97,22 @@ def test_both_qa_drivers_use_the_shared_helper():
         assert "qa('ORIGIN')" in source
         assert "qa('ARTIFACTS')" in source
         assert "qa('BROWSER_CHANNEL')" in source
+
+
+@pytest.mark.parametrize('script', ['qa-people-browser.py', 'qa-team-groups-browser.py'])
+@pytest.mark.parametrize('stale_package', [False, True])
+def test_qa_runner_uses_checkout_contracts_before_installed_packages(tmp_path, script, stale_package):
+    import os
+    import sys
+    environment = dict(os.environ)
+    environment.pop('PYTHONPATH', None)
+    if stale_package:
+        package = tmp_path/'case_intelligence'
+        package.mkdir()
+        (package/'__init__.py').write_text('')
+        (package/'legacy_names.py').write_text('raise RuntimeError("synthetic stale package was imported")\n')
+        environment['PYTHONPATH'] = str(tmp_path)
+    result = subprocess.run([sys.executable, '-S', str(ROOT/'scripts'/script), '--help'], cwd=tmp_path,
+                            env=environment, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    assert 'usage:' in result.stdout

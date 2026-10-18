@@ -1528,3 +1528,75 @@ def test_unmodeled_callable_consumers_preserve_possible_identity(tmp_path, selec
     source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+selection+'\nFORMAT=Alias(LEGACY_STEM)'
     (tmp_path/'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'choices={"yes":build,"no":str}\ngetter=choices.get\nAlias=getter("yes")\nFORMAT=Alias(LEGACY_STEM)',
+    'import functools\nAlias=functools.partial(build,LEGACY_STEM)\nFORMAT=Alias()',
+])
+def test_bound_selectors_and_captured_callable_arguments_fail_closed(tmp_path, source):
+    (tmp_path/'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'const re = /"/; const FORMAT = "record" + "bench-unregistered-v99";',
+    'const re = /"/; const FORMAT = ("record") /* synthetic */ + ("bench-unregistered-v99");',
+])
+def test_javascript_regex_quotes_cannot_disable_composition_check(tmp_path, source):
+    (tmp_path/'synthetic.js').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'EMPTY=; VALUE=rec$EMPTY"ordbench-unregistered-v99"',
+    'EMPTY=; VALUE="rec"$EMPTY"ordbench-unregistered-v99"',
+])
+def test_unbraced_shell_parameters_cannot_hide_legacy_stem(tmp_path, source):
+    (tmp_path/'synthetic.sh').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('depth', [4, 8, 16])
+def test_ordinary_call_chains_have_bounded_analysis_work(depth):
+    import sys
+    count = 0
+    previous = sys.getprofile()
+    def profile(frame, event, argument):
+        nonlocal count
+        if event == 'call' and frame.f_code.co_filename == checker.__file__ and frame.f_code.co_name in {'frozen','structure','value','call_inputs','contains_stem'}:
+            count += 1
+            if count > 10000:
+                raise RuntimeError('synthetic analysis work budget exceeded')
+    try:
+        sys.setprofile(profile)
+        found = checker.scan_python('synthetic.py', 'def literal(value):\n return value' + '.replace("x", "y")' * depth + '\n', NAME_CONTRACTS)
+    finally:
+        sys.setprofile(previous)
+    assert found == []
+    assert count <= 10000
+
+
+def test_analysis_budget_exhaustion_is_blocking(monkeypatch):
+    monkeypatch.setattr(checker, 'MAX_ANALYSIS_STEPS', 100, raising=False)
+    source = 'def literal(value):\n return value' + '.replace("x", "y")' * 16 + '\n'
+    assert checker.scan_python('synthetic.py', source, NAME_CONTRACTS) == [
+        checker.Finding('synthetic.py:1', 'unsupported Python analysis budget exhausted')
+    ]
+
+
+@pytest.mark.parametrize('source', [
+    'const re = /"/; const FORMAT = "synthetic";',
+    'const re = /[\x27\x22]/; const FORMAT = "synthetic";',
+])
+def test_quote_regex_without_string_composition_remains_valid(source):
+    assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize('source', [
+    'EMPTY=; VALUE=rec$EMPTY"ordbench.env"',
+    'EMPTY=; VALUE=rec$EMPTYordbench',
+    'VALUE="$RECORDBENCH_TEST_SETTING"',
+])
+def test_shell_empty_parameter_controls_keep_lexical_boundaries(source):
+    assert checker.scan_text('synthetic.sh', source) == []
