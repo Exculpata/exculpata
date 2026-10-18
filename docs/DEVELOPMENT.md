@@ -118,8 +118,16 @@ transaction, even when the outer fixture has only read or created a table before
 entering the nested fixture. Finished scopes do not retain ownership in copied
 contexts. Public media methods may commit individually; the outer helper
 serializes the sequence rather than making those methods one atomic operation.
-Use the yielded handle for scripts, connection contexts and explicit transaction control. A nested
-handle rejects `executescript`, commit/rollback, transaction-control SQL, rollback conflict clauses and
+Yielded connections, cursors and saved methods are valid only on the owning
+thread during the boundary; expired or transferred handles raise before touching
+SQLite. Writable connection/cursor attributes delegate to SQLite. Unsupported
+connection methods such as blob access, deserialize, backup and deferred dumps
+fail closed rather than returning an unscoped object.
+Use the yielded handle for scripts, connection contexts and explicit transaction
+control. Outer scripts execute complete SQLite statements within the fixture
+transaction, without sqlite3's implicit pre-script commit; explicit transaction
+commands and rollback conflict policies in scripts are rejected before execution.
+A nested handle rejects `executescript`, commit/rollback, transaction-control SQL, rollback conflict clauses and
 transaction-mode changes or connection context entry before they can end the caller's transaction. The same
 restriction applies to a retained outer handle or cursor during the nested
 boundary. Use ordinary `execute`/`executemany` statements for nested SQL fixtures;
@@ -140,7 +148,10 @@ eager operation while holding the helper. Function decorators, defaults and
 annotations that Python evaluates immediately require the boundary
 at definition time; function and lambda bodies remain deferred. Comprehension
 loop names have their own scope and do not inherit an independent connection alias.
-Class-local aliases remain separate from module and enclosing function aliases;
+The inventory merges match cases conservatively, propagates explicit class
+global/nonlocal assignments, and recognizes keyword workspace arguments. Dynamic
+PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries
+for dynamic schema inspection. Class-local aliases remain separate from module and enclosing function aliases;
 methods and comprehensions resolve names through their lexical scope. A direct
 SQLite connection to a workspace path keeps that provenance: exempting its
 creation does not exempt subsequent writes, contexts or transaction control.

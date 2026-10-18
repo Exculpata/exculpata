@@ -423,7 +423,7 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
         table = str(table_row[0])
         columns = {
             str(column[1])
-            for column in store.connection.execute(f'PRAGMA table_info("{table}")')
+            for column in store.connection.execute("SELECT * FROM pragma_table_info(?)", (table,))
         }
         if "matter_id" not in columns or table in preserved_tables:
             continue

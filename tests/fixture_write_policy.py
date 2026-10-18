@@ -47,6 +47,7 @@ class Violation:
 class _Value:
     symbol: str = ""
     text: str = ""
+    complete_text: bool = False
     connection: str | None = None
     live_workspace: bool = False
     workspace: bool = False
@@ -60,6 +61,7 @@ class _Check(ast.NodeVisitor):
         self.filename = filename
         self.aliases: dict[str, _Value] = {}
         self.class_outer_aliases: dict[str, _Value] | None = None
+        self.class_outer_names: set[str] = set()
         self.eager_variable_annotations = True
         self.protected: set[str] = set()
         self.violations: list[Violation] = []
@@ -100,7 +102,8 @@ class _Check(ast.NodeVisitor):
             return self.aliases.get(node.id, _Value(symbol=node.id))
         if isinstance(node, ast.Constant):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
-                          active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value)
+                          active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
+                          complete_text=isinstance(node.value, str))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
@@ -113,11 +116,13 @@ class _Check(ast.NodeVisitor):
                           active_path=node.attr == "path" and (base.live_workspace or base.symbol in self.workspace_symbols))
         if isinstance(node, ast.JoinedStr):
             parts = [self.value(part.value if isinstance(part, ast.FormattedValue) else part) for part in node.values]
-            return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts))
+            return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts),
+                          complete_text=all(part.complete_text for part in parts))
         if isinstance(node, ast.BinOp):
             left, right = self.value(node.left), self.value(node.right)
             return _Value(symbol=left.symbol + "/" + right.symbol,
-                          text=left.text + right.text, active_path=left.active_path or right.active_path)
+                          text=left.text + right.text, active_path=left.active_path or right.active_path,
+                          complete_text=isinstance(node.op, ast.Add) and left.complete_text and right.complete_text)
         if isinstance(node, ast.NamedExpr):
             return self.value(node.value)
         if isinstance(node, ast.IfExp):
@@ -138,7 +143,7 @@ class _Check(ast.NodeVisitor):
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"format", "join"}:
                 base = self.value(node.func.value)
                 arguments = [self.value(argument) for argument in [*node.args, *(keyword.value for keyword in node.keywords)]]
-                return replace(base, active_path=base.active_path or any(argument.active_path for argument in arguments))
+                return replace(base, active_path=base.active_path or any(argument.active_path for argument in arguments), complete_text=False)
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"as_posix", "__fspath__", "resolve", "absolute"}:
                 base = self.value(node.func.value)
                 if base.active_path:
@@ -161,6 +166,8 @@ class _Check(ast.NodeVisitor):
     def bind(self, target: ast.AST, value: _Value) -> None:
         if isinstance(target, ast.Name):
             self.aliases[target.id] = value
+            if self.class_outer_aliases is not None and target.id in self.class_outer_names:
+                self.class_outer_aliases[target.id] = value
         elif isinstance(target, (ast.Tuple, ast.List)):
             for item in target.elts:
                 self.bind(item, _Value())
@@ -182,7 +189,8 @@ class _Check(ast.NodeVisitor):
             elif all(value.connection is not None and value.connection.startswith("sqlite@") for value in values):
                 result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}")
             else:
-                result[name] = _Value(symbol=name, active_path=any(value.active_path for value in values))
+                result[name] = _Value(symbol=name, active_path=any(value.active_path for value in values),
+                                      connection=f"unknown@merged:{name}" if any(value.connection is not None for value in values) else None)
         return result
 
     def visit_If(self, node: ast.If) -> None:
@@ -194,6 +202,42 @@ class _Check(ast.NodeVisitor):
             for statement in body:
                 self.visit(statement)
             ends.append(self.aliases.copy())
+        self.aliases = self.merge_aliases(*ends)
+
+    def visit_Match(self, node: ast.Match) -> None:
+        self.visit(node.subject)
+        subject = self.value(node.subject)
+        fallthrough = self.aliases.copy()
+        ends = []
+
+        def irrefutable(pattern):
+            return ((isinstance(pattern, ast.MatchAs) and
+                     (pattern.pattern is None or irrefutable(pattern.pattern))) or
+                    (isinstance(pattern, ast.MatchOr) and any(map(irrefutable, pattern.patterns))))
+
+        for case in node.cases:
+            self.aliases = fallthrough.copy()
+            self.visit(case.pattern)
+            for pattern in ast.walk(case.pattern):
+                name = getattr(pattern, "name", None) or getattr(pattern, "rest", None)
+                if name:
+                    previous = self.aliases.get(name, _Value())
+                    value = (subject if pattern is case.pattern and isinstance(pattern, ast.MatchAs)
+                             else _Value(symbol=name))
+                    if value.connection is None and previous.connection is not None:
+                        value = replace(value, connection=f"unknown@pattern:{name}")
+                    self.bind(ast.Name(id=name), value)
+            if case.guard is not None:
+                self.visit(case.guard)
+                # A false guard can still rebind aliases before the next case.
+                fallthrough = self.merge_aliases(fallthrough, self.aliases)
+            for statement in case.body:
+                self.visit(statement)
+            ends.append(self.aliases.copy())
+            if case.guard is None and irrefutable(case.pattern):
+                break
+        else:
+            ends.append(fallthrough)
         self.aliases = self.merge_aliases(*ends)
 
     def visit_IfExp(self, node: ast.IfExp) -> None:
@@ -261,10 +305,9 @@ class _Check(ast.NodeVisitor):
 
     def visit_Global(self, node: ast.Global) -> None:
         if self.class_outer_aliases is not None:
-            # Explicit outer assignments must not retain a stale independent
-            # connection classification after the class body is evaluated.
+            self.class_outer_names.update(node.names)
             for name in node.names:
-                self.class_outer_aliases[name] = _Value(symbol=name)
+                self.aliases[name] = self.class_outer_aliases.get(name, _Value(symbol=name))
 
     visit_Nonlocal = visit_Global
 
@@ -337,8 +380,10 @@ class _Check(ast.NodeVisitor):
             value = self.value(expression)
             is_helper = isinstance(expression, ast.Call) and self.value(expression.func).symbol in {"fixture_write", "tests.fixture_write.fixture_write"}
             self.visit(expression)
-            if is_helper and expression.args:
-                owner = self.value(expression.args[0]).symbol
+            workspace_argument = (expression.args[0] if expression.args else next(
+                (kw.value for kw in expression.keywords if kw.arg == "workspace"), None)) if is_helper else None
+            if is_helper and workspace_argument is not None:
+                owner = self.value(workspace_argument).symbol
                 self.protected.add(owner)
                 value = _Value(connection=owner, symbol=owner + ".connection", fixture_handle=True)
             elif value.connection is not None and not value.connection.startswith("sqlite@"):
@@ -367,7 +412,8 @@ class _Check(ast.NodeVisitor):
         if method in _SQL_METHODS and not imported_function:
             argument = node.args[0] if node.args else next(
                 (item.value for item in node.keywords if item.arg in {"sql", "sql_script"}), None)
-            sql = self.value(argument).text
+            sql_value = self.value(argument)
+            sql = sql_value.text
             # Strip quoted values/comments so SELECT 'update' is still a read.
             commands = re.sub(r"'(?:''|[^'])*'|--[^\n]*|/\*[\s\S]*?\*/", " ", sql)
             writes = _WRITE.search(commands) or re.search(r"^\s*PRAGMA\b[^;]*=", commands, re.I)
@@ -380,7 +426,7 @@ class _Check(ast.NodeVisitor):
             if re.match(r"\s*WITH\b", commands, re.I):
                 writes = writes or re.search(r"\b(?:INSERT|UPDATE|DELETE|REPLACE)\b", commands, re.I)
             independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
-            known_read = re.match(r"\s*(?:SELECT|EXPLAIN|PRAGMA)\b", commands, re.I)
+            known_read = re.match(r"\s*(?:SELECT|EXPLAIN)\b", commands, re.I) or (sql_value.complete_text and re.match(r"\s*PRAGMA\b", commands, re.I))
             # Callback parameters may receive a workspace connection even when
             # this module cannot prove its origin. Imported workflow functions
             # are checked at their definitions, not mistaken for SQL methods.
@@ -451,6 +497,7 @@ class _Check(ast.NodeVisitor):
         for expression in [*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)]:
             self.visit(expression)
         aliases, class_outer = self.aliases, self.class_outer_aliases
+        outer_names, self.class_outer_names = self.class_outer_names, set()
         eager_annotations = self.eager_variable_annotations
         self.eager_variable_annotations = True
         lexical = class_outer if class_outer is not None else aliases
@@ -458,6 +505,9 @@ class _Check(ast.NodeVisitor):
         self.declare_functions(node.body)
         for statement in node.body:
             self.visit(statement)
+        for name in self.class_outer_names:
+            lexical[name] = self.aliases.get(name, _Value(symbol=name))
+        self.class_outer_names = outer_names
         self.aliases, self.class_outer_aliases = aliases, class_outer
         self.eager_variable_annotations = eager_annotations
         self.aliases[node.name] = _Value(symbol=f"class@{node.lineno}:{node.name}")
