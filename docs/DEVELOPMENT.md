@@ -250,6 +250,16 @@ Dictionary handling uses a finite set of value-returning methods. Key-only
 or active-path defaults remain unsupported. Unbound receivers are captured before
 later arguments, dynamically selected accessors retain conservative identity,
 and heterogeneous merges preserve nested active-path provenance.
+`fromkeys` retains evaluated key-input ownership before its default evaluates;
+only the literal string keys of a known mapping discard that mapping's values.
+Known starred argument lists expand before receiver/default selection. Mapping
+accessor defaults, supported dictionary construction, constant descriptor selection,
+set literals and eager comprehension results retain fixture provenance. Unsupported
+shared/active-path updates and subscript stores reject explicitly and retain a
+marker for known receiver aliases; their None return does not inherit that marker.
+Shared set results retain an unordered marker rather than source-order positions.
+Eager comprehensions of yielded scoped fixture handles retain that protected
+provenance and remain allowed within their owning boundary.
 It merges match cases conservatively, propagates explicit class global/nonlocal
 assignments, and recognizes keyword workspace arguments. Dynamic
 PRAGMAs require a yielded handle; use parameterized table-valued PRAGMA queries

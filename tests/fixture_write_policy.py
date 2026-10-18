@@ -80,6 +80,7 @@ class _Value:
     scalar_converter: bool | None = None
     dictionary_accessor: bool = False
     dictionary_fromkeys: bool = False
+    dictionary_method: str = ""
 
 
 class _Check(ast.NodeVisitor):
@@ -96,6 +97,7 @@ class _Check(ast.NodeVisitor):
         self.active_calls: set[str] = set()
         # Evaluated calls and literal containers capture values before later rebindings.
         self.evaluated_values: dict[ast.AST, _Value] = {}
+        self.container_updates: dict[int, tuple[_Value, _Value]] = {}
         self.return_values: list[_Value] = []
         self.outer_write_names: set[str] | None = None
         # Owning locks permit connection configuration, not SQL transactions.
@@ -140,16 +142,16 @@ class _Check(ast.NodeVisitor):
         if node is None:
             return _Value()
         if node in self.evaluated_values:
-            return self.evaluated_values[node]
+            return self.current_value(self.evaluated_values[node])
         if isinstance(node, ast.Name):
-            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None))
+            return self.current_value(self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None)))
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
                           complete_text=isinstance(node.value, str))
-        if isinstance(node, (ast.Tuple, ast.List)):
+        if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             elements = []
             inputs = []
             opaque = False
@@ -167,8 +169,7 @@ class _Check(ast.NodeVisitor):
                     inputs.append(value)
                     elements.append(value)
             if opaque:
-                return _Value(unresolved_shared_container=any(
-                    self.known_ownership(value, shared_only=True) for value in inputs))
+                return self.payload_value(inputs)
             return _Value(elements=tuple(elements))
         if isinstance(node, ast.Dict):
             mapping = {}
@@ -197,13 +198,15 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
             symbol = base.symbol + "." + node.attr
-            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS:
-                return _Value(symbol=symbol, dictionary_accessor=True)
+            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | {"update"}:
+                return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
             if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
-                return replace(accessor, symbol=symbol)
+                return replace(accessor, symbol=symbol, receiver=base, dictionary_method=node.attr)
+            if base.mapping is not None and node.attr in _DICT_VALUE_METHODS | {"update"}:
+                return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
                 return _Value(symbol=symbol, scalar_converter=True)
             if node.attr in {"__set__", "__delete__"} and base.setter_attribute is not None:
@@ -244,13 +247,15 @@ class _Check(ast.NodeVisitor):
             if node in self.evaluated_values:
                 return self.evaluated_values[node]
             function = self.value(node.func)
+            if function.symbol in {"dict", "builtins.dict"}:
+                return self.dictionary_value([self.value(arg) for arg in node.args],
+                                             [(kw.arg, self.value(kw.value)) for kw in node.keywords])
             if self.unresolved_ownership(function):
                 return function
             owner, _, method = function.symbol.rpartition('.')
-            if function.dictionary_fromkeys and len(node.args) > 1:
-                default = self.value(node.args[1])
-                shared, active_path = self.known_ownership(default, shared_only=True), self.has_active_path(default)
-                return _Value(unresolved_shared_container=shared, unresolved_active_path=active_path)
+            if function.dictionary_fromkeys and node.args:
+                return self.fromkeys_value(self.value(node.args[0]),
+                                           self.value(node.args[1]) if len(node.args) > 1 else _Value())
             if function.dictionary_accessor and node.args:
                 accessor = self.container_accessor_value(self.value(node.args[0]), method if owner in {"dict", "builtins.dict"} else "*")
                 if accessor is not None:
@@ -357,12 +362,26 @@ class _Check(ast.NodeVisitor):
             self.visit(target.value)
             self.check_transaction_assignment(target)
         elif isinstance(target, ast.Subscript):
-            self.visit(target)
+            self.visit(target.value)
+            receiver = self.value(target.value)
+            self.visit(target.slice)
+            marker = self.payload_value([value])
+            if self.unresolved_ownership(marker):
+                self.taint_container(receiver, marker)
+                self.flag(target, "shared or active-path container stores are unsupported; use explicit named handles")
+            else:
+                self.visit(target)
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
+        if isinstance(node.slice, ast.Constant):
+            index = node.slice.value
+            if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
+                self.evaluated_values[node] = value.elements[index]
+            elif value.mapping is not None and isinstance(index, str):
+                self.evaluated_values[node] = dict(value.mapping).get(index, _Value())
         if (self.unresolved_ownership(value) or
                 ((value.elements is not None or value.mapping is not None)
                  and self.known_ownership(value, shared_only=True))):
@@ -390,11 +409,17 @@ class _Check(ast.NodeVisitor):
                 elements.extend(value.elements or ())
             else:
                 elements.append(value)
-        self.evaluated_values[node] = (_Value(unresolved_shared_container=any(
-            self.known_ownership(value, shared_only=True) for value in inputs))
+        self.evaluated_values[node] = (self.payload_value(inputs)
             if opaque else _Value(elements=tuple(elements)))
 
     visit_List = visit_Tuple
+
+    def visit_Set(self, node: ast.Set) -> None:
+        self.visit_Tuple(node)
+        marker = self.payload_value([self.evaluated_values[node]])
+        if self.unresolved_ownership(marker):
+            # Set iteration has no positional correspondence to source order.
+            self.evaluated_values[node] = marker
 
     def visit_Dict(self, node: ast.Dict) -> None:
         # Capture each input when Python evaluates it. A later key or value
@@ -430,6 +455,7 @@ class _Check(ast.NodeVisitor):
         ))
 
     def container_accessor_value(self, receiver: _Value, method: str) -> _Value | None:
+        receiver = self.current_value(receiver)
         if method not in _DICT_VALUE_METHODS | {"*"}:
             return None
         if (self.unresolved_ownership(receiver) or
@@ -440,6 +466,51 @@ class _Check(ast.NodeVisitor):
                 return _Value(unresolved_shared_container=shared,
                               unresolved_active_path=active_path, active_path=active_path)
         return None
+
+    def current_value(self, value: _Value) -> _Value:
+        update = self.container_updates.get(id(value))
+        if update is not None and update[0] is value:
+            return self.current_value(update[1])
+        receiver = self.current_value(value.receiver) if value.receiver is not None else None
+        elements = tuple(self.current_value(item) for item in value.elements) if value.elements is not None else None
+        mapping = tuple((key, self.current_value(item)) for key, item in value.mapping) if value.mapping is not None else None
+        if receiver is not value.receiver or elements != value.elements or mapping != value.mapping:
+            return replace(value, receiver=receiver, elements=elements, mapping=mapping)
+        return value
+
+    def payload_value(self, values: list[_Value]) -> _Value:
+        values = [self.current_value(value) for value in values]
+        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
+                      unresolved_active_path=any(self.has_active_path(value) for value in values))
+
+    def taint_container(self, receiver: _Value, marker: _Value) -> None:
+        receiver = self.current_value(receiver)
+        self.container_updates[id(receiver)] = (receiver, self.payload_value([receiver, marker]))
+
+    def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
+        mapping = {}
+        opaque = False
+        inputs = [*arguments, *(value for _, value in keywords)]
+        for value in arguments:
+            if value.mapping is None:
+                opaque = True
+            else:
+                mapping.update(value.mapping)
+        for key, value in keywords:
+            if key is not None:
+                mapping[key] = value
+            elif value.mapping is not None:
+                mapping.update(value.mapping)
+            else:
+                opaque = True
+        return self.payload_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
+
+    def fromkeys_value(self, keys: _Value, default: _Value) -> _Value:
+        # A known mapping has literal string keys, independent of its values.
+        # Other supported key inputs retain their already-evaluated ownership.
+        inputs = [default] if keys.mapping is not None else [keys, default]
+        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
+                      unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
         # A local workflow helper named execute is inspected at its definition;
@@ -498,7 +569,7 @@ class _Check(ast.NodeVisitor):
             else:
                 receivers = [value.receiver for value in values if value.receiver is not None]
                 same_owner = all(value.connection == values[0].connection for value in values)
-                connections = [value.connection for value in values if value.connection is not None]
+                connections = [str(value.connection) for value in values if value.connection is not None]
                 merged_connection = (f"unknown@merged:{name}" if any(
                     not owner.startswith("sqlite@") for owner in connections) else
                     f"sqlite@merged:{name}" if connections else None)
@@ -508,6 +579,7 @@ class _Check(ast.NodeVisitor):
                                       False if any(value.scalar_converter is not None for value in values) else None,
                                       dictionary_accessor=any(value.dictionary_accessor for value in values),
                                       dictionary_fromkeys=any(value.dictionary_fromkeys for value in values),
+                                      dictionary_method=values[0].dictionary_method if all(value.dictionary_method == values[0].dictionary_method for value in values) else "",
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
                                       live_workspace=any(value.live_workspace for value in values),
@@ -837,24 +909,54 @@ class _Check(ast.NodeVisitor):
         arguments_before.extend(self.value(keyword.value) for keyword in node.keywords)
         if any(self.unresolved_ownership(value) for value in arguments_before):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
-        explicit_receiver = None
-        for index, argument in enumerate(node.args):
-            self.visit(argument)
-            if index == 0:
-                explicit_receiver = self.value(argument)
+        actual_values, opaque_values = [], []
+        for argument in node.args:
+            operand = argument.value if isinstance(argument, ast.Starred) else argument
+            self.visit(operand)
+            value = self.value(operand)
+            if isinstance(argument, ast.Starred):
+                if value.elements is None:
+                    opaque_values.append(value)
+                else:
+                    actual_values.extend(value.elements)
+            else:
+                actual_values.append(value)
+        keyword_values = []
         for keyword in node.keywords:
             self.visit(keyword.value)
+            keyword_values.append((keyword.arg, self.value(keyword.value)))
+        if any(self.unresolved_ownership(value) for value in [*actual_values, *opaque_values, *(v for _, v in keyword_values)]):
+            self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles")
+        explicit_receiver = actual_values[0] if actual_values and not opaque_values else None
         owner, _, method = function.symbol.rpartition('.')
-        if function.dictionary_accessor and explicit_receiver is not None:
-            accessor = self.container_accessor_value(explicit_receiver, method if owner in {"dict", "builtins.dict"} else "*")
-            if accessor is not None:
-                self.evaluated_values[node] = accessor
+        dictionary_method = function.dictionary_method or (method if owner in {"dict", "builtins.dict"} else "*")
+        dictionary_receiver = explicit_receiver if function.dictionary_accessor else function.receiver
+        dictionary_arguments = actual_values[1:] if function.dictionary_accessor else actual_values
+        if function.dictionary_accessor or function.dictionary_method:
+            accessor = self.container_accessor_value(dictionary_receiver, dictionary_method) if dictionary_receiver is not None else None
+            defaults = dictionary_arguments[1:] if dictionary_method in {"get", "pop", "setdefault", "*"} else []
+            marker = self.payload_value([*([] if accessor is None else [accessor]), *defaults, *opaque_values])
+            if dictionary_method == "update":
+                marker = self.payload_value([*dictionary_arguments, *opaque_values, *(v for _, v in keyword_values)])
+                if dictionary_receiver is not None and self.unresolved_ownership(marker):
+                    self.taint_container(dictionary_receiver, marker)
+                    self.flag(node, "shared or active-path container updates are unsupported; use explicit named handles")
+                self.evaluated_values[node] = _Value()
+            elif self.unresolved_ownership(marker):
+                self.evaluated_values[node] = marker
                 self.flag(node, "container accessors with shared handles or active workspace paths are unsupported")
-        if function.dictionary_fromkeys:
-            result = self.value(node)
+                if dictionary_method == "setdefault" and dictionary_receiver is not None:
+                    self.taint_container(dictionary_receiver, marker)
+        if function.dictionary_fromkeys and explicit_receiver is not None:
+            result = self.fromkeys_value(explicit_receiver, actual_values[1] if len(actual_values) > 1 else _Value())
+            self.evaluated_values[node] = result
             if self.unresolved_ownership(result):
-                self.evaluated_values[node] = result
-                self.flag(node, "dictionary defaults with shared handles or active workspace paths are unsupported")
+                self.flag(node, "dictionary keys/defaults with shared handles or active workspace paths are unsupported")
+        if function.symbol in {"dict", "builtins.dict"}:
+            result = self.dictionary_value([*actual_values, *opaque_values], keyword_values)
+            self.evaluated_values[node] = result
+            if self.unresolved_ownership(result):
+                self.flag(node, "opaque dictionary construction with fixture provenance is unsupported")
         argument_nodes = [*node.args, *(keyword.value for keyword in node.keywords)]
         if (any(isinstance(item, ast.NamedExpr) for argument in argument_nodes for item in ast.walk(argument))
                 and any(self.known_ownership(value, shared_only=True)
@@ -1353,6 +1455,11 @@ class _Check(ast.NodeVisitor):
                 self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles")
         else:
             self.visit(node.elt)
+            if not deferred:
+                element = self.value(node.elt)
+                self.evaluated_values[node] = (_Value(receiver=element)
+                    if element.fixture_handle and element.connection in self.protected
+                    else self.payload_value([element]))
         assignments = self.eager_walrus or {}
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
