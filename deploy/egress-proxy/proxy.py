@@ -51,14 +51,23 @@ def public_ip(ip):
                      and (ip.ipv4_mapped or ip.sixtofour or ip.teredo)))
 
 
+def normalized_issuer(value):
+    # Match application configuration trimming without accepting line controls.
+    if any(character in value for character in ("\x00", "\r", "\n")):
+        raise Denied("invalid issuer")
+    return value.strip().rstrip("/")
+
+
 def issuer_pins(value, issuer):
     if not value:
         return frozenset()
     if len(value) > 2048:
         raise Denied("invalid pins")
     data = json.loads(value)
+    issuer = normalized_issuer(issuer)
     if (not issuer or not isinstance(data, dict) or set(data) != {"issuer", "addresses"}
-            or data["issuer"] != issuer or not isinstance(data["addresses"], list)
+            or not isinstance(data["issuer"], str) or normalized_issuer(data["issuer"]) != issuer
+            or not isinstance(data["addresses"], list)
             or not 1 <= len(data["addresses"]) <= 16):
         raise Denied("invalid issuer-bound pins")
     addresses = []
@@ -123,6 +132,7 @@ def authority(value: str) -> tuple[str, int]:
 
 
 def issuer_authority(value: str) -> tuple[str, int] | None:
+    value = normalized_issuer(value)
     if not value:
         return None  # Local/Kerberos mode remains healthy and denies all CONNECTs.
     if len(value) > 1024 or any(ord(c) <= 32 or ord(c) == 127 for c in value):

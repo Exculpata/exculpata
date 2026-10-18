@@ -2149,3 +2149,17 @@ path = "src/case_intelligence/workspace_store.py"
 kind = "host"
 digest = "ee1832c20f2f7bd859fa4796b65f2d3a0c4f48918b7b672244c3d1aad0100571"
 detail = "matter.rename"
+
+# URL parsing and its validation exception; no new outbound transport or destination.
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "ff02b0d196d8aeeb1ccb6fd7456f14104923497215283d124d8fda82c11fbf70"
+detail = "httpx.URL"
+
+[[source]]
+path = "src/case_intelligence/identity.py"
+kind = "client"
+digest = "f4ceefccc0d2f8a791aedaa89037a61dd95e02c0310dc161627bd7e92de168d5"
+detail = "httpx.InvalidURL"

@@ -82,6 +82,10 @@ loopback health probes also disable ambient proxies. The relay has no host ports
 volumes, application environment file or secrets.
 
 The proxy permits CONNECT only to the configured issuer's exact host and port.
+Outer configuration whitespace and trailing slashes are trimmed consistently
+with application settings, including issuer-bound pin matching. Line controls
+remain invalid. Installer preflight rejects noncanonical numeric issuer hosts
+before writing configuration, matching the application and relay.
 Existing ASCII issuer names containing underscores retain literal, exact-host
 matching; replacing an underscore or adding a suffix does not gain access.
 Unicode issuer hostnames use the same IDNA2008 ASCII encoding as HTTPX; this
@@ -115,13 +119,19 @@ Cross-origin endpoints remain unsupported, as before. Redirect following remains
 disabled for real Authlib discovery, token and JWKS requests. Discovery metadata
 is restricted to approved protocol fields before Authlib can merge it into client
 options, so it cannot replace proxy, TLS, redirect, timeout, header or secret policy.
+Initial discovery and sanitization are serialized: a delayed concurrent response
+cannot restore raw transport options after validation. Failed or cancelled loads
+release the lock. Endpoint origins use HTTPX's ASCII wire host, so Unicode and
+its IDNA spelling agree while distinct names that Unicode casefold conflates do
+not gain access. The live fixture also exercises concurrent malicious metadata.
 TLS verification, SNI and optional custom CA handling stay in the app;
 the proxy never receives a CA file or client secret.
 
 By default the relay accepts globally routable issuer addresses only. An operator
 using a private issuer must explicitly save `CASE_INTELLIGENCE_OIDC_EGRESS_PINS`
 in the selected app env file: a single-quoted JSON object containing `issuer`
-(the full configured issuer URL, exactly) and `addresses` (1–16 distinct IP
+(the full issuer URL after the same outer-whitespace/trailing-slash trimming as
+application settings) and `addresses` (1–16 distinct IP
 address strings). Pins authorize only that issuer authority. Every resolved
 address must be in the pin set; a changed issuer URL or mixed/unpinned DNS answer
 fails closed. DNS is still required; pins do not replace name resolution or TLS

@@ -1746,6 +1746,12 @@ def _identity_options_valid(args: argparse.Namespace) -> bool:
                     or (origin_only and parsed.path not in {"", "/"})):
                 return False
             hostname = parsed.hostname.casefold()
+            if re.fullmatch(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)(?:\.(?:0[xX][0-9a-fA-F]+|[0-9]+))*", hostname):
+                try:
+                    if str(ipaddress.IPv4Address(hostname)) != hostname:
+                        return False
+                except ValueError:
+                    return False
             if hostname == "localhost":
                 return False
             try:

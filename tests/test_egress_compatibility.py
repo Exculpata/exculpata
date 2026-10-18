@@ -69,6 +69,19 @@ def test_existing_ascii_underscore_issuer_matches_transport(host):
             relay.read_connect(Request(other), expected)
 
 
+@pytest.mark.parametrize("value", [" https://issuer.example.test/realm ", "\thttps://issuer.example.test/realm/\t", "\u00a0https://issuer.example.test/realm/\u00a0"])
+def test_issuer_outer_whitespace_matches_runtime_and_pin_binding(value):
+    from case_intelligence.identity import OidcSettings
+    import json
+    settings = OidcSettings(issuer=value, external_origin="https://app.example.test",
+                            client_id="synthetic", client_secret="synthetic-secret")
+    assert relay.issuer_authority(value) == relay.issuer_authority(settings.issuer)
+    pins = json.dumps({"issuer": settings.issuer, "addresses": ["8.8.8.8"]})
+    assert relay.issuer_pins(pins, value) == relay.issuer_pins(pins, settings.issuer)
+    with pytest.raises(relay.Denied):
+        relay.issuer_pins(pins, value.strip().rstrip("/") + "/other")
+
+
 def test_stalled_first_address_leaves_budget_for_healthy_fallback(monkeypatch):
     clock, connected, closed = [0.0], [], []
     monkeypatch.setattr(relay.time, "monotonic", lambda: clock[0])

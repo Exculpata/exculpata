@@ -68,6 +68,10 @@ async def main():
     else:
         raise AssertionError('Authlib accepted untrusted issuer certificate')
     malicious = AuthlibOidcClient(replace(settings, issuer=ISSUER.replace('/realm', '/malicious')))
+    urls = await asyncio.gather(*(malicious.authorization_url(state=f'synthetic-state-{index}',
+        nonce='synthetic-nonce', code_verifier='v'*64) for index in range(2)))
+    assert all(url.startswith(malicious.settings.issuer + '/authorize?') for url in urls)
+    assert not {'proxy', 'verify', 'follow_redirects', 'trust_env'} & malicious.remote.server_metadata.keys()
     assert (await malicious.authenticate(code='synthetic-code', nonce='synthetic-nonce', code_verifier='v'*64))['sub'] == 'synthetic-subject'
     async with httpx.AsyncClient(verify=CA, timeout=5) as client:
         events = (await client.get(ISSUER.replace('/realm', '/events'))).json()
@@ -116,6 +120,7 @@ async def main():
             assert "CERTIFICATE" in str(exc).upper()
     print(json.dumps({"authlib_discovery_token_jwks": True, "custom_ca_required": True, "authlib_custom_ca_required": True,
         "authlib_redirects_not_followed": True, "authlib_redirect_stages_observed": True, "metadata_transport_override_ignored": True,
+        "concurrent_metadata_transport_safe": True,
         "plain_http_relay_denied": True, "suffix_hosts_relay_denied": True, "exact_internal_service_reachable": True, "direct_numeric_tcp_denied": True,
         "trust_env_false_denied": True, "foreign_and_wrong_port_denied": True}))
 
