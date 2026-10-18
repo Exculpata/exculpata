@@ -63,7 +63,7 @@ def test_no_tier_or_review_status_permits_uncited_assertions(bundle, tier, name,
     if status != "proposed":
         item = decision(item, status)
     item["citations"] = []
-    with pytest.raises(ValidationError, match="non-empty"):
+    with pytest.raises(ValidationError):
         validate_record(item, bundle["sources"])
 
 
@@ -202,6 +202,39 @@ def test_relations_resolve_exact_revisions_in_same_matter(bundle):
             validate_history(records, bundle["sources"], bundle["matter_id"])
 
 
+def test_conflict_reference_labels_rejected_target_without_promoting_it(bundle):
+    proposal = next(r for r in bundle["records"] if r["record_id"] == "event-range")
+    proposal["relations"] = [{"kind": "conflicts_with", "record_id": "event-rejected",
+                              "revision": 2, "reason": "Retain the reference to the rejected account."}]
+    lines = compile_chronology(bundle).splitlines()
+    line = next(line for line in lines if line.startswith("event-range@1 "))
+    assert "conflicts_with event-rejected@2 [rejected,historical/superseded]" in line
+    assert not any(line.startswith("event-rejected@") for line in lines)
+    assert "quote=" in line
+
+
+def test_conflict_reference_stays_pinned_to_superseded_accepted_revision(bundle):
+    bundle["records"].append(decision(record(bundle, "event-arrival", 3)))
+    lines = compile_chronology(bundle).splitlines()
+    line = next(line for line in lines if line.startswith("event-witness@2 "))
+    assert "conflicts_with event-arrival@2 [accepted,historical/superseded]" in line
+    assert "conflicts_with event-arrival@4" not in line
+    assert any(line.startswith("event-arrival@4 [accepted]") for line in lines)
+    assert not any(line.startswith("event-arrival@2 ") for line in lines)
+
+
+def test_conflict_rationale_escapes_multiline_text_without_losing_attribution(bundle):
+    rationale = 'Competing account.\nFORGED EVENT\r\n"quoted wording"\u2028SECOND LINE'
+    proposal = next(r for r in bundle["records"] if r["record_id"] == "event-range")
+    proposal["relations"] = [{"kind": "conflicts_with", "record_id": "event-arrival",
+                              "revision": 2, "reason": rationale}]
+    lines = compile_chronology(bundle).splitlines()
+    matching = [line for line in lines if "FORGED EVENT" in line]
+    assert len(matching) == 1 and matching[0].startswith("event-range@1 [proposed]")
+    assert "conflicts_with event-arrival@2 [accepted,current]" in matching[0]
+    assert f"reason={json.dumps(rationale)}" in matching[0] and "quote=" in matching[0]
+
+
 @pytest.mark.parametrize(("name", "values"), [
     ("event-undated", {"earliest": "2030-05-01"}),
     ("event-range", {"earliest": "2030-04-11"}),
@@ -279,6 +312,7 @@ def test_producer_model_pin_and_manual_null_are_not_interchangeable(bundle):
     item["producer"].update(kind="model", model={"name": "synthetic-model", "revision": "a" * 40})
     validate_record(item, bundle["sources"])
     for kind, model in [("model", None), ("model", {"name": "synthetic-model", "revision": "latest"}),
+                        ("model", {"name": "synthetic-model", "revision": "a" * 40 + "\n"}),
                         ("manual", item["producer"]["model"])]:
         item["producer"].update(kind=kind, model=model)
         with pytest.raises(ValidationError):
@@ -426,6 +460,7 @@ def test_fully_processed_zero_dated_events_never_means_no_events_occurred(bundle
     bundle["records"] = [r for r in bundle["records"] if r["record_type"] == "coverage"]
     for item in bundle["records"]:
         item["payload"]["scope_sha256"] = digest(bundle["scope"])
+        item["payload"]["execution_receipt"]["outcome"] = "completed"
         item["payload"]["portions"] = [p for p in item["payload"]["portions"] if p["target_id"] == "target-audio"]
         item["citations"] = [c for c in item["citations"] if c["source_id"] == "source-audio"]
     output = compile_chronology(bundle)
@@ -439,3 +474,189 @@ def test_chronology_without_coverage_fails_even_if_events_are_valid(bundle):
     bundle["records"] = [r for r in bundle["records"] if r["record_type"] != "coverage"]
     with pytest.raises(ValueError, match="chronology requires coverage"):
         compile_chronology(bundle)
+
+
+@pytest.fixture
+def unreadable_bundle(bundle):
+    bundle["scope"]["targets"] = [t for t in bundle["scope"]["targets"] if t["target_id"] == "target-unreadable"]
+    bundle["sources"] = [s for s in bundle["sources"] if s["source_id"] == "source-unreadable"]
+    bundle["records"] = [r for r in bundle["records"] if r["record_type"] == "coverage"]
+    for item in bundle["records"]:
+        item["citations"] = []
+        item["payload"]["scope_sha256"] = digest(bundle["scope"])
+        item["payload"]["portions"] = [p for p in item["payload"]["portions"] if p["target_id"] == "target-unreadable"]
+        item["payload"]["execution_receipt"] = {
+            "receipt_id": "receipt-unreadable", "stage": bundle["scope"]["stage"],
+            "started_at": "2030-05-01T09:00:00Z", "finished_at": "2030-05-01T09:05:00Z",
+            "outcome": "failed",
+        }
+    return bundle
+
+
+@pytest.mark.parametrize("extent", ["unknown", "twelve-pages"])
+def test_failed_unreadable_coverage_uses_receipt_without_inventing_quote(unreadable_bundle, extent):
+    bundle = unreadable_bundle
+    if extent == "twelve-pages":
+        physical_extent = {"unit": "page", "start": 1, "end": 13}
+        bundle["sources"][0]["physical_extent"] = physical_extent
+        bundle["scope"]["targets"][0].update(physical_extent)
+        for item in bundle["records"]:
+            item["payload"]["scope_sha256"] = digest(bundle["scope"])
+            item["payload"]["portions"][0].update(
+                start=1, end=13, reason="OCR failed for known twelve-page source; no extracted text.")
+    output = compile_chronology(bundle)
+    assert "coverage-capture@2 [accepted]" in output
+    assert "FAILED source-unreadable@unreadable-v1/no-representation" in output
+    assert "receipt-unreadable" in output and "quote=" not in output
+    assert bundle["records"][-1]["payload"]["portions"][0]["reason"] in output
+    assert ("extent unknown" if extent == "unknown" else "page[1,13)") in output
+
+
+@pytest.mark.parametrize("state", ["unprocessed", "processed"])
+def test_quote_free_coverage_exception_cannot_claim_nonfailed_processing(unreadable_bundle, state):
+    item = record(unreadable_bundle, "coverage-capture", 2)
+    item["payload"]["portions"][0]["state"] = state
+    with pytest.raises(INVALID):
+        validate_record(item, unreadable_bundle["sources"])
+
+
+@pytest.mark.parametrize("missing", ["execution_receipt", "reason"])
+def test_quote_free_failure_requires_receipt_and_explanation(unreadable_bundle, missing):
+    item = record(unreadable_bundle, "coverage-capture", 2)
+    if missing == "execution_receipt":
+        del item["payload"][missing]
+    else:
+        del item["payload"]["portions"][0][missing]
+    with pytest.raises(ValidationError):
+        validate_record(item, unreadable_bundle["sources"])
+
+
+@pytest.mark.parametrize("field", ["source_id", "source_version_id"])
+def test_quote_free_failure_still_requires_exact_source_version(unreadable_bundle, field):
+    bundle = unreadable_bundle
+    item = record(bundle, "coverage-capture", 2)
+    bundle["scope"]["targets"][0][field] = "unknown-pin"
+    item["payload"]["scope_sha256"] = digest(bundle["scope"])
+    with pytest.raises(ValueError, match="target source does not resolve"):
+        validate_coverage(item, bundle["scope"], bundle["sources"])
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("stage", "different-operation"), ("finished_at", "2030-05-01T08:59:00Z"),
+    ("finished_at", "2030-05-01T12:00:00Z"), ("outcome", "partial"), ("outcome", "completed"),
+])
+def test_failure_receipt_cannot_falsify_stage_time_or_outcome(unreadable_bundle, field, value):
+    bundle = unreadable_bundle
+    item = record(bundle, "coverage-capture", 2)
+    item["payload"]["execution_receipt"][field] = value
+    with pytest.raises(INVALID):
+        validate_record(item, bundle["sources"])
+        validate_coverage(item, bundle["scope"], bundle["sources"])
+
+
+@pytest.mark.parametrize("field", ["representation_id", "content_basis_sha256"])
+def test_unreadable_failure_cannot_fabricate_representation_or_text_digest(unreadable_bundle, field):
+    bundle = unreadable_bundle
+    item = record(bundle, "coverage-capture", 2)
+    bundle["scope"]["targets"][0][field] = "invented-text" if field == "representation_id" else "a" * 64
+    if field == "representation_id":
+        bundle["sources"][0][field] = "invented-text"  # Matching invented pins do not create extracted text.
+    item["payload"]["scope_sha256"] = digest(bundle["scope"])
+    with pytest.raises(INVALID):
+        validate_coverage(item, bundle["scope"], bundle["sources"])
+
+
+def test_quote_free_failure_cannot_reference_undefined_scope_target(unreadable_bundle):
+    bundle = unreadable_bundle
+    item = record(bundle, "coverage-capture", 2)
+    item["payload"]["portions"][0]["target_id"] = "undefined-target"
+    with pytest.raises(ValueError, match="coverage target omitted or invented"):
+        validate_coverage(item, bundle["scope"], bundle["sources"])
+
+
+def test_chronology_events_cannot_escape_declared_coverage_scope(bundle):
+    bundle["scope"]["targets"] = [t for t in bundle["scope"]["targets"] if t["target_id"] == "target-audio"]
+    bundle["scope"]["inventory_complete"] = True
+    for item in bundle["records"]:
+        if item["record_type"] == "coverage":
+            item["payload"]["scope_sha256"] = digest(bundle["scope"])
+            item["payload"]["execution_receipt"]["outcome"] = "completed"
+            item["payload"]["portions"] = [p for p in item["payload"]["portions"] if p["target_id"] == "target-audio"]
+            item["citations"] = [c for c in item["citations"] if c["source_id"] == "source-audio"]
+    # Log events still have valid exact citations, but their source is outside scope.
+    with pytest.raises(ValueError, match="outside chronology scope"):
+        compile_chronology(bundle)
+
+
+@pytest.mark.parametrize("declared_extent", ["unknown", "mismatched-pages"])
+def test_quote_free_scope_cannot_discard_or_change_known_physical_extent(unreadable_bundle, declared_extent):
+    bundle = unreadable_bundle
+    bundle["sources"][0]["physical_extent"] = {"unit": "page", "start": 1, "end": 13}
+    if declared_extent == "mismatched-pages":
+        bundle["scope"]["targets"][0].update(unit="page", start=1, end=12)
+    for item in bundle["records"]:
+        item["payload"]["scope_sha256"] = digest(bundle["scope"])
+        if declared_extent == "mismatched-pages":
+            item["payload"]["portions"][0].update(start=1, end=12)
+    validate_history(bundle["records"], bundle["sources"], bundle["matter_id"])
+    message = ("known physical extent was discarded" if declared_extent == "unknown"
+               else "physical extent does not match source inventory")
+    with pytest.raises(ValueError, match=message):
+        compile_chronology(bundle)
+
+
+def test_event_in_scope_but_in_unprocessed_portion_cannot_enter_chronology(bundle):
+    for item in bundle["records"]:
+        if item["record_type"] == "coverage":
+            first, *remaining = item["payload"]["portions"]
+            item["payload"]["portions"] = [
+                dict(first, start=1, end=3),
+                dict(first, start=3, end=4, state="unprocessed", reason="Capture budget excluded this page."),
+                dict(first, start=4, end=5),
+                *remaining,
+            ]
+            validate_coverage(item, bundle["scope"], bundle["sources"])
+    validate_history(bundle["records"], bundle["sources"], bundle["matter_id"])
+    validate_record(record(bundle, "event-range"), bundle["sources"])
+    # The event's page 3 is in scope; coverage quotations on page 1 and audio remain processed.
+    with pytest.raises(ValueError, match="event support lacks processed chronology coverage"):
+        compile_chronology(bundle)
+
+
+def test_fresh_quote_free_coverage_proposal_and_acceptance_validate_scope(unreadable_bundle):
+    bundle = unreadable_bundle
+    history = append_revision([], record(bundle, "coverage-capture"), bundle["sources"], scope=bundle["scope"])
+    history = append_revision(history, record(bundle, "coverage-capture", 2), bundle["sources"], scope=bundle["scope"])
+    assert [(r["revision"], r["status"]) for r in selected(history)] == [(2, "accepted")]
+    assert all(r["citations"] == [] for r in history)
+
+
+@pytest.mark.parametrize("revision", [1, 2])
+def test_fresh_coverage_append_requires_scope_even_with_valid_receipt(unreadable_bundle, revision):
+    bundle = unreadable_bundle
+    history = [] if revision == 1 else [record(bundle, "coverage-capture")]
+    with pytest.raises(ValueError, match="scope"):
+        append_revision(history, record(bundle, "coverage-capture", revision), bundle["sources"])
+
+
+@pytest.mark.parametrize("invalid_basis", ["receipt-stage", "readable-target"])
+def test_fresh_quote_free_acceptance_rejects_invalid_coverage_basis(unreadable_bundle, invalid_basis):
+    bundle = unreadable_bundle
+    if invalid_basis == "receipt-stage":
+        for item in bundle["records"]:
+            item["payload"]["execution_receipt"]["stage"] = "different-operation"
+        message = "receipt stage differs from scope"
+    else:
+        source, target = bundle["sources"][0], bundle["scope"]["targets"][0]
+        source.update(availability="available", representation_id="readable-text-v1",
+                      units=[{"locator": {"page": 1}, "text": "Readable synthetic page."}])
+        target.update(representation_id="readable-text-v1", content_basis_sha256=digest(source["units"]),
+                      unit="page", start=1, end=2)
+        for item in bundle["records"]:
+            item["payload"]["scope_sha256"] = digest(bundle["scope"])
+            item["payload"]["portions"][0].update(start=1, end=2)
+        message = "quote-free coverage requires failed unreadable targets"
+    # A structurally reconstructable proposal cannot bypass current acceptance checks.
+    history = validate_history([record(bundle, "coverage-capture")], bundle["sources"], bundle["matter_id"])
+    with pytest.raises(ValueError, match=message):
+        append_revision(history, record(bundle, "coverage-capture", 2), bundle["sources"], scope=bundle["scope"])

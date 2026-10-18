@@ -33,7 +33,7 @@
     "producer": {"$ref": "#/$defs/producer"},
     "status": {"enum": ["proposed", "accepted", "rejected"]},
     "review": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/review"}]},
-    "citations": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/citation"}},
+    "citations": {"type": "array", "minItems": 0, "uniqueItems": true, "items": {"$ref": "#/$defs/citation"}},
     "relations": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/relation"}},
     "payload": {"type": "object"}
   },
@@ -42,6 +42,21 @@
       "if": {"properties": {"status": {"const": "proposed"}}},
       "then": {"properties": {"review": {"type": "null"}}},
       "else": {"properties": {"review": {"$ref": "#/$defs/review"}}}
+    },
+    {
+      "if": {"properties": {"citations": {"maxItems": 0}}},
+      "then": {
+        "properties": {
+          "record_type": {"const": "coverage"},
+          "payload": {
+            "properties": {
+              "portions": {"items": {"properties": {"state": {"const": "failed"}}}},
+              "execution_receipt": {"properties": {"outcome": {"const": "failed"}}}
+            }
+          }
+        }
+      },
+      "else": {"properties": {"citations": {"minItems": 1}}}
     }
   ],
   "oneOf": [
@@ -99,7 +114,8 @@
         "revision": {
           "type": "string",
           "description": "Immutable model artifact or commit pin; floating names are not revisions.",
-          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "not": {"pattern": "\\s"}
         }
       }
     },
@@ -224,11 +240,24 @@
     "coverage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scope_id", "scope_sha256", "portions"],
+      "required": ["scope_id", "scope_sha256", "portions", "execution_receipt"],
       "properties": {
         "scope_id": {"$ref": "#/$defs/id"},
         "scope_sha256": {"$ref": "#/$defs/sha256"},
-        "portions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/coveragePortion"}}
+        "portions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/coveragePortion"}},
+        "execution_receipt": {"$ref": "#/$defs/executionReceipt"}
+      }
+    },
+    "executionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "stage", "started_at", "finished_at", "outcome"],
+      "properties": {
+        "receipt_id": {"$ref": "#/$defs/id"},
+        "stage": {"$ref": "#/$defs/id"},
+        "started_at": {"$ref": "#/$defs/utcTimestamp"},
+        "finished_at": {"$ref": "#/$defs/utcTimestamp"},
+        "outcome": {"enum": ["completed", "partial", "failed"]}
       }
     },
     "coveragePortion": {

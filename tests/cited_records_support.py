@@ -86,7 +86,9 @@ def validate_record(record, sources, *, resolve_support=True):
         if resolve_support:
             validate_citation(record, citation, sources)
         supported.update(citation["supports"])
-    require(supported == FIELDS[record["record_type"]], "material field lacks citation binding")
+    required_fields = (set() if record["record_type"] == "coverage" and not record["citations"]
+                       else FIELDS[record["record_type"]])
+    require(supported == required_fields, "material field lacks citation binding")
     payload = record["payload"]
     if record["record_type"] == "event":
         when = payload["when"]
@@ -99,9 +101,12 @@ def validate_record(record, sources, *, resolve_support=True):
                 "mention surface differs from cited occurrence")
 
 
-def append_revision(history, candidate, sources, *, resolve_support=True):
+def append_revision(history, candidate, sources, *, scope=None, resolve_support=True):
     """Copy on append; old review/evidence snapshots are never edited in place."""
     validate_record(candidate, sources, resolve_support=resolve_support)
+    if resolve_support and candidate["record_type"] == "coverage":
+        require(scope is not None, "fresh coverage append requires its frozen scope")
+        validate_coverage(candidate, scope, sources)
     chain = sorted((r for r in history if r["record_id"] == candidate["record_id"]),
                    key=lambda r: r["revision"])
     previous = chain[-1] if chain else None
@@ -188,6 +193,18 @@ def validate_coverage(record, scope, sources):
     require(len(targets) == len(scope["targets"]), "duplicate coverage target")
     require({p["target_id"] for p in payload["portions"]} == set(targets),
             "coverage target omitted or invented")
+    receipt = payload["execution_receipt"]
+    require(receipt["stage"] == scope["stage"], "receipt stage differs from scope")
+    require(clock(receipt["started_at"]) <= clock(receipt["finished_at"]) <= clock(record["created_at"]),
+            "receipt clock order is invalid")
+    states = {p["state"] for p in payload["portions"]}
+    if receipt["outcome"] == "completed":
+        require(states == {"processed"} and scope["inventory_complete"], "completed receipt hides gaps")
+    elif receipt["outcome"] == "failed":
+        require("processed" not in states and "failed" in states, "failed receipt claims processed material")
+    else:
+        require("processed" in states and (states != {"processed"} or not scope["inventory_complete"]),
+                "partial receipt does not match declared progress")
     seen = set()
     for target in targets.values():
         key = (target["source_id"], target["source_version_id"], target["representation_id"])
@@ -199,23 +216,39 @@ def validate_coverage(record, scope, sources):
                 "coverage target source does not resolve")
         source = matching[0]
         parts = [p for p in payload["portions"] if p["target_id"] == target["target_id"]]
+        if not record["citations"]:
+            require(all(p["state"] == "failed" for p in parts) and
+                    source["availability"] == "unavailable" and not source["units"] and
+                    target["representation_id"] is None and target["content_basis_sha256"] is None,
+                    "quote-free coverage requires failed unreadable targets")
         if target["unit"] == "unknown":
             require(target["start"] is None and target["end"] is None and
                     target["content_basis_sha256"] is None and
                     target["representation_id"] is None, "unknown extent claims a denominator")
+            require(source.get("physical_extent", {"unit": "unknown", "start": None, "end": None}) ==
+                    {"unit": "unknown", "start": None, "end": None}, "known physical extent was discarded")
             require(len(parts) == 1 and parts[0]["start"] is None and
                     parts[0]["end"] is None and parts[0]["state"] != "processed",
                     "unknown extent cannot claim processed coverage")
             continue
-        require(target["representation_id"] is not None and
-                target["content_basis_sha256"] == digest(source["units"]),
-                "coverage representation content changed")
         start, end = target["start"], target["end"]
         floor = 1 if target["unit"] == "page" else 0
         require(start is not None and end is not None and floor <= start < end,
                 "invalid coverage denominator")
+        if target["representation_id"] is None:
+            # Physical extent may be known even when extraction failed entirely.
+            require(target["content_basis_sha256"] is None and not source["units"] and
+                    source.get("physical_extent") == {"unit": target["unit"], "start": start, "end": end},
+                    "unextracted physical extent does not match source inventory")
+            require(all(p["state"] == "failed" for p in parts) and source["availability"] == "unavailable",
+                    "unextracted physical scope requires failed unreadable material")
+        else:
+            require(target["content_basis_sha256"] == digest(source["units"]),
+                    "coverage representation content changed")
         # The fixture inventory supplies known physical/extracted unit bounds.
-        if target["unit"] == "page":
+        if target["representation_id"] is None:
+            pass
+        elif target["unit"] == "page":
             require([u["locator"] for u in source["units"]] ==
                     [{"page": page} for page in range(start, end)],
                     "page denominator differs from frozen units")
@@ -261,8 +294,10 @@ def coverage_lines(records, scope, sources):
     for record in coverage:
         validate_coverage(record, scope, sources)
         lines.append(f'{record["record_id"]}@{record["revision"]} [{record["status"]}] '
-                     f'scope={scope["scope_id"]}@{digest(scope)} stage={scope["stage"]} | ' +
-                     " ; ".join(citation_text(c) for c in record["citations"]))
+                     f'scope={scope["scope_id"]}@{digest(scope)} stage={scope["stage"]} '
+                     f'receipt={record["payload"]["execution_receipt"]["receipt_id"]} | ' +
+                     (" ; ".join(citation_text(c) for c in record["citations"]) or
+                      "No quotation: failed unreadable material; processing receipt only."))
         if not scope["inventory_complete"]:
             lines.append(f'{record["record_id"]}@{record["revision"]} [{record["status"]}] '
                          "GAP: inventory unsealed; undeclared sources and denominator remain unknown.")
@@ -278,6 +313,22 @@ def coverage_lines(records, scope, sources):
     return lines
 
 
+def validate_chronology_scope(events, records, scope):
+    coverage = [r for r in selected(records) if r["record_type"] == "coverage"]
+    for event in events:
+        for citation in event["citations"]:
+            targets = [t for t in scope["targets"] if
+                       (t["source_id"], t["source_version_id"], t["representation_id"]) == source_key(citation)]
+            require(len(targets) == 1, "event support lies outside chronology scope")
+            target, locator = targets[0], citation["locator"]
+            start = locator.get("page", locator.get("timestamp_start_ms"))
+            end = start + 1 if "page" in locator else locator["timestamp_end_ms"]
+            require(any(p["target_id"] == target["target_id"] and p["state"] == "processed"
+                        and p["start"] is not None and p["start"] <= start < end <= p["end"]
+                        for r in coverage for p in r["payload"]["portions"]),
+                    "event support lacks processed chronology coverage")
+
+
 def compile_chronology(bundle):
     """Bounded all-or-error fixture projection; not authorization or discovery."""
     records = validate_history(bundle["records"], bundle["sources"], bundle["matter_id"])
@@ -285,6 +336,10 @@ def compile_chronology(bundle):
     for record in current:
         validate_record(record, bundle["sources"])
     events = [r for r in current if r["record_type"] == "event"]
+    coverage = coverage_lines(records, bundle["scope"], bundle["sources"])
+    validate_chronology_scope(events, records, bundle["scope"])
+    by_key = {(r["record_id"], r["revision"]): r for r in records}
+    current_keys = {(r["record_id"], r["revision"]) for r in current}
     lines = ["Synthetic chronology | compiler v1 | selection: latest accepted + pending proposal",
              "Display order only; same-day, overlapping and unresolved dates do not prove precedence."]
     for status in ("accepted", "proposed"):
@@ -294,13 +349,19 @@ def compile_chronology(bundle):
             when = payload["when"]
             bounds = ("UNRESOLVED" if when["earliest"] is None else
                       f'{when["earliest"]}..{when["latest"]}')
-            relations = ", ".join(f'{r["kind"]} {r["record_id"]}@{r["revision"]}'
-                                  for r in record["relations"]) or "none"
+            relation_labels = []
+            for relation in record["relations"]:
+                key = (relation["record_id"], relation["revision"])
+                target = by_key[key]
+                state = "current" if key in current_keys else "historical/superseded"
+                relation_labels.append(f'{relation["kind"]} {key[0]}@{key[1]} '
+                                       f'[{target["status"]},{state}] reason={json.dumps(relation["reason"])}')
+            relations = ", ".join(relation_labels) or "none"
             lines.append(f'{record["record_id"]}@{record["revision"]} [{status}] '
                          f'{bounds} ({json.dumps(when["expression"])}; {json.dumps(when["reason"])}) | '
                          f'{json.dumps(payload["description"])} | relations: {relations} | ' +
                          " ; ".join(citation_text(c) for c in record["citations"]))
     rejected = sum(r["status"] == "rejected" for r in records)
     lines.append(f"Excluded rejected revision snapshots: {rejected}; retained in input history.")
-    lines.extend(coverage_lines(records, bundle["scope"], bundle["sources"]))
+    lines.extend(coverage)
     return "\n".join(lines) + "\n"

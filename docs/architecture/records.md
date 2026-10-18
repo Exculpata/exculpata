@@ -49,6 +49,9 @@ types carry `schema_version`, `record_id`, `matter_id`, `record_type`, `revision
 `previous_revision`, `base_accepted_revision`, `created_at`, `producer`, `status`,
 `review`, `citations`, `relations` and type-specific `payload`.
 V1 uses `schema_version: "1.0"`; revision numbers belong to records, not the schema.
+Schema validation with format checking is the shape gate. Conformance also needs
+the contextual source, scope and revision checks demonstrated by the acceptance
+helper; passing JSON Schema alone cannot authorize or establish a valid acceptance.
 
 - `record_id` is an opaque stable identity assigned at first capture, never a hash
   of the current wording. `(record_id, revision)` identifies an immutable snapshot.
@@ -76,6 +79,12 @@ V1 uses `schema_version: "1.0"`; revision numbers belong to records, not the sch
 - `relations` preserve explicit `conflicts_with` references to exact record
   revisions in the same matter, with a rationale. They do not implement contradiction
   discovery or choose a winner. A later revision does not silently retarget a link.
+  The projection labels each target's review status and whether that revision is
+  current or historical/superseded; a rejected target is not rendered as evidence.
+
+Existing runtime states (`needs_review`, `confirmed`, `disputed`, `dismissed`)
+are not interchangeable with this proposal's review decisions. Runtime adoption
+needs an explicit, reviewed adapter; this specification performs no migration.
 
 An append checker can detect changes against the supplied prior snapshot; a bare
 schema or self-contained JSON file cannot enforce durable immutability. Any future
@@ -87,6 +96,8 @@ chain, then resolves the selected records against current supplied support. It
 does not re-accept historical decisions. A correction can therefore restore use
 without requiring withdrawn historical representations to remain available.
 History remains subject to the application's authorized retention lifecycle.
+Fresh coverage appends also require their frozen scope and validate its receipt,
+target resolution and partition before returning any new acceptance snapshot.
 
 ## Citations and support validity
 
@@ -130,7 +141,7 @@ or corrected support produces a new revision, not a mutation of the old decision
 | `event` | `description`, `when` | An asserted occurrence; dates belong to the assertion, not its capture time. |
 | `statement` | `content`, `speaker` | Attributed words/account; speaker may explicitly be unknown. This does not resolve the speaker to a person. |
 | `entity_mention` | `surface`, `entity_kind`, `identity` | Exactly one cited surface occurrence. `identity` is `unresolved` in v1; reconciliation is a separate human operation. |
-| `coverage` | Frozen scope, stage, processed and unprocessed portions with reasons | A processing receipt; never an evidentiary assertion about absent events. |
+| `coverage` | Frozen scope, processed/unprocessed/failed portions with reasons, execution receipt | A processing declaration; never an evidentiary assertion about absent events. |
 
 `when` preserves a source/reviewer expression and either an explicit day, a bounded
 inclusive date range, or unresolved bounds with a reason. Both bounds are null for
@@ -140,12 +151,14 @@ the expression; intra-day ordering needs a future explicit precision contract.
 
 ## Coverage boundary
 
-The exact citation policy for wholly unreadable coverage targets is pending the
-maintainer's narrow clarification. No quotation from unread material may be
-invented. This section and its schema must be settled before readiness. The draft
-schema currently requires a quote for every record and the fixture exercises a
-mixed scope with quoted processed material and explicit unread gaps. It does not
-yet admit an entirely unread scope as a coverage record.
+The approved narrow exception permits an empty `citations` array **only** for
+coverage of failed, unreadable targets. Every target still resolves to its exact
+source/version in the same matter; every portion is failed with a nonempty reason.
+The record retains a frozen scope and a failed execution receipt. It cannot claim
+processed material, use an invented quote, representation or text digest, or carry
+an uncited event, statement or entity mention. All three evidentiary types require
+quotations at every status and tier. The projection explicitly labels quote-free
+coverage as a processing receipt, not evidence.
 
 Coverage freezes a declared population, stage and source versions. Each known
 range must be partitioned into disjoint processed/unprocessed/failed portions;
@@ -158,6 +171,20 @@ The companion [scope schema](../../schemas/cited-record-scope.schema.json) freez
 the operation, inventory completeness, source/version/representation/content basis
 and known unit ranges. Coverage partitions reference its exact digest. Ranges are
 half-open, including pages; unknown extent uses null bounds and has no percentage.
+Known physical extent survives failed extraction: a twelve-page unreadable source
+can declare page `[1,13)` with null representation and content basis. Its catalog
+must independently supply that same physical extent; failed extraction cannot
+turn a known denominator into unknown extent. Physical inventory and extracted
+text coverage are different claims. These catalog declarations are synthetic
+inputs here, not a new source-discovery or storage subsystem.
+
+Every coverage record includes an `execution_receipt` with stable receipt ID,
+stage, UTC start/finish and completed/partial/failed outcome. The stage matches the
+scope, the clocks precede record creation, and the outcome agrees with its portions
+and inventory completeness. A receipt declares what was attempted; it is not an
+attestation of execution. The fixture's receipts are hand-built synthetic values.
+The scope digest uses UTF-8 compact JSON with sorted object keys, unchanged array
+order and no non-finite numbers, as implemented by the test helper's `digest`.
 Quotes must lie within processed portions. They demonstrate access to those cited
 units, not completion of the whole operation; the processing claim remains a receipt.
 
@@ -169,6 +196,8 @@ not a new product timeline or store. No runtime module imports them.
 
 1. Validate each record's shape and revision chain, selected records' exact support,
    and the frozen coverage partition. Reject cross-matter or unresolved references.
+   Every selected event citation must fall within a processed portion of the same
+   declared chronology scope; an unrelated complete scope cannot hide its gaps.
 2. Select current accepted snapshots plus pending proposed alternatives. Keep
    competing accounts and their exact relation targets; exclude rejections.
 3. Order dated records by `(earliest, latest, record_id, revision)`, then unresolved

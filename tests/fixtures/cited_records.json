@@ -41,7 +41,8 @@
       "representation_id": null,
       "matter_id": "matter-synthetic",
       "availability": "unavailable",
-      "units": []
+      "units": [],
+      "physical_extent": {"unit": "unknown", "start": null, "end": null}
     }
   ],
   "records": [
@@ -706,7 +707,14 @@
             "state": "failed",
             "reason": "No readable representation; source extent remains unknown."
           }
-        ]
+        ],
+        "execution_receipt": {
+          "receipt_id": "receipt-synthetic-capture",
+          "stage": "manual-event-capture",
+          "started_at": "2030-05-01T09:00:00Z",
+          "finished_at": "2030-05-01T09:59:00Z",
+          "outcome": "partial"
+        }
       }
     },
     {
@@ -804,7 +812,14 @@
             "state": "failed",
             "reason": "No readable representation; source extent remains unknown."
           }
-        ]
+        ],
+        "execution_receipt": {
+          "receipt_id": "receipt-synthetic-capture",
+          "stage": "manual-event-capture",
+          "started_at": "2030-05-01T09:00:00Z",
+          "finished_at": "2030-05-01T09:59:00Z",
+          "outcome": "partial"
+        }
       }
     }
   ],
