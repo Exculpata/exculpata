@@ -23,12 +23,15 @@ class TimelineResult:
     generated_at: str | None
     source_count: int
     unit_count: int
+    total_unit_count: int | None
+    coverage_notice: str
     capped: bool
     entries: list
     conflicts: list
     undated: list
     notice: str
     rejected_count: int
+    coverage_records: list
 
     def payload(self):
         return asdict(self)
@@ -54,13 +57,17 @@ def _citation(unit, start, end, token):
                 excerpt_digest=unit.excerpt_digest, support_token=token(unit), window=window)
 
 
-def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit: ''):
+def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit: '', total_unit_count=None,
+                   coverage_complete=True, coverage_records=()):
     if not (1 <= limits.units <= 2500 and 1 <= limits.entries <= 150 and 1 <= limits.unit_chars <= 6000):
         raise ValueError('Timeline limits must remain within the bounded scan ceilings')
+    total_unit_count = (len(units) if total_unit_count is None else total_unit_count) if coverage_complete else None
+    if total_unit_count is not None and total_unit_count < len(units):
+        raise ValueError('Total passage count cannot be less than the supplied passages')
     selected = sorted(units, key=lambda u: (u.document_id, u.page_number, u.chunk_id))[:limits.units]
     if len({u.matter_id for u in selected}) > 1:
         raise ValueError('A draft timeline belongs to one matter')
-    capped = len(units) > len(selected)
+    capped = not coverage_complete or total_unit_count > len(selected)
     anchors = defaultdict(list)
     scanned = []
     def parsed_documents():
@@ -148,5 +155,16 @@ def build_timeline(units, *, limits=TimelineLimits(), support_token=lambda unit:
     undated.sort(key=lambda e: e['entry_id'])
     # Pure output deliberately has no wall-clock dependency. HTTP supplies the
     # time of recomputation; the same extracted inputs serialize byte-identically.
-    return TimelineResult('exculpata-timeline-draft-v1', None, len({u.document_id for u in scanned}), len(scanned),
-                          capped, entries, conflicts, undated, NOTICE, rejected)
+    if coverage_complete:
+        coverage = f'Included {len(scanned):,} of {total_unit_count:,} passages from ready sources in the date scan.'
+    else:
+        coverage = (f'Included {len(scanned):,} passages from ready sources in the date scan. '
+                    'Total passage count is unavailable because the coverage scan reached a limit '
+                    'or source text could not be read.')
+    if capped:
+        coverage += ' This draft is capped by passage, text, or entry limits. It is not a complete chronology.'
+    for record in coverage_records:
+        label = 'Unreadable source' if record['status'] == 'unreadable' else 'Coverage limit at source'
+        coverage += f" {label}: {record['source_name']} ({record['source_id']})."
+    return TimelineResult('exculpata-timeline-draft-v2', None, len({u.document_id for u in scanned}), len(scanned), total_unit_count, coverage,
+                          capped, entries, conflicts, undated, NOTICE, rejected, list(coverage_records))

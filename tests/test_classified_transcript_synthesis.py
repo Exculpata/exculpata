@@ -42,7 +42,7 @@ def test_exact_classification_survives_saved_admission_and_both_synthesis_levels
     expected = (CAUTION if kind == "transcript" else "") + STATEMENT
     assert prepared["passes"][0]["text"] == expected
     assert prepared["evidence"][0] == ledger.originals[1]
-    assert ledger.db.execute("SELECT rationale FROM workbench_text_review_chunk").fetchone()[0] == STATEMENT
+    assert ledger.connection.execute("SELECT rationale FROM workbench_text_review_chunk").fetchone()[0] == STATEMENT
     ledger.service.generator = generator
     saved = []
     result = ledger.service.run(receipt["question"], prepared, lambda state: saved.append(deepcopy(state)),
@@ -62,7 +62,7 @@ def test_legacy_raw_and_already_cautioned_transcript_findings_admit_without_rewr
     prepared = ledger.prepare()
     assert prepared["full_text_synthesis_input"]["outcomes"] == [[1, "admitted"]]
     assert prepared["passes"][0]["text"] == CAUTION + STATEMENT
-    assert ledger.db.execute("SELECT rationale FROM workbench_text_review_chunk").fetchone()[0] == rationale
+    assert ledger.connection.execute("SELECT rationale FROM workbench_text_review_chunk").fetchone()[0] == rationale
 
 
 @pytest.mark.parametrize("rationale", [

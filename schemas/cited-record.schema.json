@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://exculpata.org/schemas/cited-record.schema.json",
+  "title": "Cited record v1",
+  "description": "Portable proposed, accepted or rejected record snapshot. Shape validation does not establish support validity, semantic entailment or historical immutability.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "matter_id",
+    "record_type",
+    "revision",
+    "previous_revision",
+    "base_accepted_revision",
+    "created_at",
+    "producer",
+    "status",
+    "review",
+    "citations",
+    "relations",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "record_id": {"$ref": "#/$defs/id"},
+    "matter_id": {"$ref": "#/$defs/id"},
+    "record_type": {"enum": ["event", "statement", "entity_mention", "coverage"]},
+    "revision": {"$ref": "#/$defs/revision"},
+    "previous_revision": {"$ref": "#/$defs/nullableRevision"},
+    "base_accepted_revision": {"$ref": "#/$defs/nullableRevision"},
+    "created_at": {"$ref": "#/$defs/utcTimestamp"},
+    "producer": {"$ref": "#/$defs/producer"},
+    "status": {"enum": ["proposed", "accepted", "rejected"]},
+    "review": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/review"}]},
+    "citations": {"type": "array", "minItems": 0, "uniqueItems": true, "items": {"$ref": "#/$defs/citation"}},
+    "relations": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/relation"}},
+    "payload": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "proposed"}}},
+      "then": {"properties": {"review": {"type": "null"}}},
+      "else": {"properties": {"review": {"$ref": "#/$defs/review"}}}
+    },
+    {
+      "if": {"properties": {"citations": {"maxItems": 0}}},
+      "then": {
+        "properties": {
+          "record_type": {"const": "coverage"},
+          "payload": {
+            "properties": {
+              "portions": {"items": {"properties": {"state": {"const": "failed"}}}},
+              "execution_receipt": {"properties": {"outcome": {"const": "failed"}}}
+            }
+          }
+        }
+      },
+      "else": {"properties": {"citations": {"minItems": 1}}}
+    }
+  ],
+  "oneOf": [
+    {"properties": {"record_type": {"const": "event"}, "payload": {"$ref": "#/$defs/event"}}},
+    {"properties": {"record_type": {"const": "statement"}, "payload": {"$ref": "#/$defs/statement"}}},
+    {
+      "properties": {
+        "record_type": {"const": "entity_mention"},
+        "payload": {"$ref": "#/$defs/entityMention"},
+        "citations": {"maxItems": 1}
+      }
+    },
+    {"properties": {"record_type": {"const": "coverage"}, "payload": {"$ref": "#/$defs/coverage"}}}
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", "not": {"pattern": "\\s"}},
+    "revision": {"type": "integer", "minimum": 1},
+    "nullableRevision": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/revision"}]},
+    "text": {"type": "string", "minLength": 1, "maxLength": 16384, "pattern": "\\S"},
+    "shortText": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64},
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "date": {"type": "string", "format": "date", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "version", "capability", "tier", "model"],
+      "properties": {
+        "kind": {"enum": ["manual", "deterministic", "model"]},
+        "name": {"$ref": "#/$defs/shortText"},
+        "version": {"$ref": "#/$defs/shortText"},
+        "capability": {"$ref": "#/$defs/shortText"},
+        "tier": {"enum": ["baseline", "assisted", "extended"]},
+        "model": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/model"}]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "model"}}},
+          "then": {"properties": {"model": {"$ref": "#/$defs/model"}}},
+          "else": {"properties": {"model": {"type": "null"}}}
+        }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision"],
+      "properties": {
+        "name": {"$ref": "#/$defs/shortText"},
+        "revision": {
+          "type": "string",
+          "description": "Immutable model artifact or commit pin; floating names are not revisions.",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+          "not": {"pattern": "\\s"}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer_id", "reviewed_revision", "reviewed_at", "reason"],
+      "properties": {
+        "reviewer_id": {"$ref": "#/$defs/id"},
+        "reviewed_revision": {
+          "$ref": "#/$defs/revision",
+          "description": "The prior proposed snapshot reviewed, not this decision snapshot. Checked against supplied history."
+        },
+        "reviewed_at": {"$ref": "#/$defs/utcTimestamp"},
+        "reason": {"$ref": "#/$defs/reason"}
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_version_id", "quote", "content_sha256", "locator", "supports"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/id"},
+        "source_version_id": {"$ref": "#/$defs/id"},
+        "quote": {"type": "string", "minLength": 1, "maxLength": 65536, "pattern": "\\S"},
+        "content_sha256": {
+          "$ref": "#/$defs/sha256",
+          "description": "Digest of the full identified page or media text unit, including surrounding context."
+        },
+        "locator": {"$ref": "#/$defs/locator"},
+        "supports": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Material payload fields this exact citation supports. Per-type completeness is checked separately; this declaration alone does not prove entailment.",
+          "items": {
+            "enum": [
+              "event.description",
+              "event.when",
+              "statement.content",
+              "statement.speaker",
+              "entity_mention.surface",
+              "coverage.processed"
+            ]
+          }
+        }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["representation_id", "character_start", "character_end", "excerpt_sha256"],
+      "properties": {
+        "representation_id": {"$ref": "#/$defs/id"},
+        "character_start": {"type": "integer", "minimum": 0},
+        "character_end": {"type": "integer", "minimum": 1},
+        "excerpt_sha256": {"$ref": "#/$defs/sha256"},
+        "page": {"type": "integer", "minimum": 1},
+        "timestamp_start_ms": {"type": "integer", "minimum": 0},
+        "timestamp_end_ms": {"type": "integer", "minimum": 1}
+      },
+      "oneOf": [
+        {
+          "required": ["page"],
+          "not": {"anyOf": [{"required": ["timestamp_start_ms"]}, {"required": ["timestamp_end_ms"]}]}
+        },
+        {"required": ["timestamp_start_ms", "timestamp_end_ms"], "not": {"required": ["page"]}}
+      ]
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "record_id", "revision", "reason"],
+      "properties": {
+        "kind": {"const": "conflicts_with"},
+        "record_id": {"$ref": "#/$defs/id"},
+        "revision": {"$ref": "#/$defs/revision"},
+        "reason": {"$ref": "#/$defs/reason"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["description", "when"],
+      "properties": {"description": {"$ref": "#/$defs/text"}, "when": {"$ref": "#/$defs/eventTime"}}
+    },
+    "eventTime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expression", "precision", "earliest", "latest", "reason"],
+      "properties": {
+        "expression": {"$ref": "#/$defs/reason"},
+        "precision": {"enum": ["day", "range", "unresolved"]},
+        "earliest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+        "latest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+        "reason": {"$ref": "#/$defs/reason"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"precision": {"const": "unresolved"}}},
+          "then": {"properties": {"earliest": {"type": "null"}, "latest": {"type": "null"}}},
+          "else": {"properties": {"earliest": {"$ref": "#/$defs/date"}, "latest": {"$ref": "#/$defs/date"}}}
+        }
+      ]
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content", "speaker"],
+      "properties": {"content": {"$ref": "#/$defs/text"}, "speaker": {"$ref": "#/$defs/reason"}}
+    },
+    "entityMention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "entity_kind", "identity"],
+      "properties": {
+        "surface": {"$ref": "#/$defs/text"},
+        "entity_kind": {"enum": ["person", "organization", "place", "other"]},
+        "identity": {"const": "unresolved"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_id", "scope_sha256", "portions", "execution_receipt"],
+      "properties": {
+        "scope_id": {"$ref": "#/$defs/id"},
+        "scope_sha256": {"$ref": "#/$defs/sha256"},
+        "portions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/coveragePortion"}},
+        "execution_receipt": {"$ref": "#/$defs/executionReceipt"}
+      }
+    },
+    "executionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "stage", "started_at", "finished_at", "outcome"],
+      "properties": {
+        "receipt_id": {"$ref": "#/$defs/id"},
+        "stage": {"$ref": "#/$defs/id"},
+        "started_at": {"$ref": "#/$defs/utcTimestamp"},
+        "finished_at": {"$ref": "#/$defs/utcTimestamp"},
+        "outcome": {"enum": ["completed", "partial", "failed"]}
+      }
+    },
+    "coveragePortion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_id", "start", "end", "state", "reason"],
+      "properties": {
+        "target_id": {"$ref": "#/$defs/id"},
+        "start": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "end": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "state": {"enum": ["processed", "unprocessed", "failed"]},
+        "reason": {"$ref": "#/$defs/reason"}
+      }
+    }
+  }
+}

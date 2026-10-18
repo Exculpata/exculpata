@@ -218,7 +218,8 @@ def test_answer_and_research_admission_serialize_across_store_connections(tmp_pa
             research_at_last_check.set()
             release_research.wait(timeout=5)
 
-    research_store.connection.set_trace_callback(pause_before_research_insert)
+    with research_store._lock:
+        research_store.connection.set_trace_callback(pause_before_research_insert)
 
     def queue_research() -> None:
         try:

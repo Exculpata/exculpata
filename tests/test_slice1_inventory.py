@@ -10,6 +10,7 @@ from tests.slice1_support import NOW, make_environment
 
 
 def scalar(store, sql, args=()):
+    # fixture-write: Every scalar caller passes a read-only SELECT count query.
     return store.connection.execute(sql, args).fetchone()[0]
 
 

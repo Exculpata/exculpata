@@ -1,4 +1,6 @@
 """Synthetic finding survival, independent of source-unit citation coverage."""
+
+from tests.fixture_write import fixture_write
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
@@ -267,14 +269,15 @@ def test_saved_investigation_discloses_shared_unit_omission_in_page_and_exports(
         result["summary"] = answer.text
         result["answer"] = bench._answer_payload(answer, {"S1": citation})
         completed = replace(completed, result=result)
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                                                (json.dumps(result), job.job_id))
         notice = "Historical checkpoint: finding-level retention was not measured."
     from case_intelligence.workspace_store import WorkspaceStore
     destination = tmp_path / "synthetic-clean-restore.sqlite"
     with sqlite3.connect(destination) as output:
-        bench.workspace.connection.backup(output)
+        with bench.workspace._lock:
+            bench.workspace.connection.backup(output)
     original_workspace = bench.workspace
     restored = WorkspaceStore(destination)
     try:

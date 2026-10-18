@@ -1,4 +1,6 @@
 """C1 through actual HTTP, Home, complete exports and administrator boundaries."""
+
+from tests.fixture_write import fixture_write
 import io
 import json
 import re
@@ -124,6 +126,6 @@ def test_administrator_read_only_nonmember_and_revoked_account(tmp_path, monkeyp
         assert admin.post(path, data=dict(values, csrf_token=admin_token), headers=_headers(ADMIN)).status_code == 403
         store = app.state.workbench.workspace
         actor = _principal_id(owner, OWNER)
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (actor,))
         assert owner.get(path, headers=_headers(OWNER), follow_redirects=False).status_code in (302, 303, 401, 403, 404)

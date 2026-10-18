@@ -1,4 +1,6 @@
 """Synthetic concurrent Report edits, structure, and finalization."""
+
+from tests.fixture_write import fixture_write
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import threading
@@ -132,7 +134,7 @@ def test_report_mutations_recheck_matter_and_member(tmp_path, operation, denial)
     if denial == 'other_matter':
         matter = store.create_matter('Other matter canary', '', 'principal-member')
     else:
-        with store.connection:
+        with fixture_write(store):
             if denial == 'revoked':
                 store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE principal_id='principal-member'")
             elif denial == 'inactive':

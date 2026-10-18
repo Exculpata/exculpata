@@ -1,4 +1,6 @@
 """Synthetic real-session visibility, authority and lifecycle time presentation."""
+
+from tests.fixture_write import fixture_write
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -150,7 +152,7 @@ def test_lifecycle_times_keep_utc_fallback_and_expose_full_instant_for_viewer_zo
 def test_unscheduled_invitation_changes_nothing_until_owner_or_admin_opts_in(notice_case, actor):
     client, bench, matter, _, clock = notice_case
     workspace = bench.workspace
-    with workspace._lock, workspace.connection:
+    with fixture_write(workspace):
         workspace.connection.execute("UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL WHERE matter_id=?", (matter.matter_id,))
     before = workspace.case_lifecycle.policy(matter.matter_id)
     if actor == 'administrator':

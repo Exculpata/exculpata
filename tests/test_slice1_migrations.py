@@ -28,8 +28,10 @@ def test_fresh_migration_foreign_keys_and_reopen(tmp_path):
     )] == [1]
     reopened.register_matter("matter-alpha", "Synthetic Alpha")
     with pytest.raises(sqlite3.IntegrityError):
-        reopened.connection.execute(
-            "INSERT INTO source_location(source_location_id,matter_id,display_name,enabled,catalog_revision) VALUES(?,?,?,?,?)",
-            ("bad-location", "unknown", "bad", 1, 0),
-        )
+        with reopened.transaction():
+            # fixture-write: Isolated SQLiteStore foreign-key injection uses its public explicit transaction in native legacy-autocommit mode.
+            reopened.connection.execute(
+                "INSERT INTO source_location(source_location_id,matter_id,display_name,enabled,catalog_revision) VALUES(?,?,?,?,?)",
+                ("bad-location", "unknown", "bad", 1, 0),
+            )
     reopened.close()

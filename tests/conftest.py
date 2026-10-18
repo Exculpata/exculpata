@@ -6,3 +6,5 @@ import os
 
 # Reserve 0 is the suite's disk escape. A real node must set this switch itself.
 os.environ.setdefault("CASE_INTELLIGENCE_TEST_MODE", "1")
+
+pytest_plugins = ['tests.worker_diagnostics']

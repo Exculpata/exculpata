@@ -1,4 +1,6 @@
 """Synthetic graph neighborhoods preserve explicit roles and exact source accounts."""
+
+from tests.fixture_write import fixture_write
 from contextlib import contextmanager
 
 import pytest
@@ -92,8 +94,9 @@ def test_each_account_reference_checked_once_under_source_guard_and_authorized_t
     # borrow availability from the first occurrence.
     refs['b' * 40] = dict(refs['b' * 40], source_version_id='replacement-source-version')
     with assertions.repository.transaction(matter.matter_id, ACTOR):
-        store.connection.execute('UPDATE workbench_assertion_account SET excerpt_digest=? '
-            'WHERE assertion_id=? AND stance=?', ('d' * 64, record['assertion_id'], 'supporting'))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_assertion_account SET excerpt_digest=? '
+                'WHERE assertion_id=? AND stance=?', ('d' * 64, record['assertion_id'], 'supporting'))
     calls = []
     validate = entities.validate_references
     def checked(references):
@@ -123,9 +126,11 @@ def test_record_pagination_is_stable_bounded_and_does_not_load_histories(graph_c
     monkeypatch.setattr(entities.repository, 'mentions', forbidden)
     graph = EvidenceGraphService(assertions)
     traced = []
-    store.connection.set_trace_callback(traced.append)
+    with store._lock:
+        store.connection.set_trace_callback(traced.append)
     first = graph.neighborhood(matter.matter_id, ACTOR, center['entity_id'])
-    store.connection.set_trace_callback(None)
+    with store._lock:
+        store.connection.set_trace_callback(None)
     second = graph.neighborhood(matter.matter_id, ACTOR, center['entity_id'], page=2)
     assert [row['record']['assertion_id'] for row in first['records']] == expected[:8]
     assert [row['record']['assertion_id'] for row in second['records']] == expected[8:]
@@ -189,7 +194,8 @@ def test_oversized_saved_support_refuses_instead_of_silently_truncating(graph_ca
     store, matter, _, assertions, center = graph_case
     record = assertions.create(matter.matter_id, ACTOR, **values(center))
     with assertions.repository.transaction(matter.matter_id, ACTOR):
-        store.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
-                                 ('Synthetic oversized excerpt. ' * 1000, record['assertion_id']))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
+                                     ('Synthetic oversized excerpt. ' * 1000, record['assertion_id']))
     with pytest.raises(WorkspaceProblem, match='excerpt limit'):
         EvidenceGraphService(assertions).neighborhood(matter.matter_id, ACTOR, center['entity_id'])

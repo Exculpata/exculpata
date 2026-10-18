@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import base64
 import io
 import re
@@ -292,7 +294,7 @@ def test_review_map_and_report_builder_preserve_citations(tmp_path):
         assert "Pending human review" in text
 
         foreign_marker = "Generated replacement passage from another source"
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_report_citation SET excerpt=? "
                 "WHERE matter_id=? AND report_id=? AND kind='source'",

@@ -56,6 +56,7 @@ def migrated(tmp_path):
 
 def rows(state, query):
     with connection(state['workspace']) as db:
+        # fixture-write: All rows callers inspect the stopped identity database with SELECT queries.
         return db.execute(query).fetchall()
 
 
@@ -93,6 +94,7 @@ def test_revocation_failure_prevents_account_replacement(migrated):
     state = migrated
     current = state['repo'].path.read_bytes()
     with connection(state['workspace']) as db:
+        # fixture-write: Install rollback failure injection after both fixture identity stores are closed.
         db.execute("CREATE TRIGGER synthetic_purge_failure BEFORE UPDATE ON workbench_session BEGIN SELECT RAISE(ABORT,'synthetic purge failure'); END")
     with pytest.raises(RuntimeError, match='could not be invalidated'):
         state['repo'].rollback(state['backup'], state['workspace'], actor=ACTOR, writers_stopped=True)
@@ -133,9 +135,12 @@ def test_invalid_workspace_never_restores_accounts(migrated, tmp_path, fault):
         if fault != 'missing':
             with connection(target) as db:
                 if fault == 'wrong':
+                    # fixture-write: Construct an unrelated isolated database for operator rollback refusal.
                     db.execute('CREATE TABLE unrelated(value TEXT)')
                 else:
+                    # fixture-write: Build an incompatible isolated database that no WorkspaceStore has opened.
                     db.execute('CREATE TABLE workbench_principal(principal_id TEXT)')
+                    # fixture-write: Build an incompatible isolated session schema for operator rollback refusal.
                     db.execute('CREATE TABLE workbench_session(session_id TEXT, auth_method TEXT)')
     elif fault == 'symlink':
         target = tmp_path / 'linked.sqlite'
@@ -200,6 +205,7 @@ def test_existing_revocation_timestamp_and_history_survive_repeated_rollback(mig
     timestamp = '2026-01-01T00:00:00Z'
     with connection(state['workspace']) as db:
         session_id = db.execute("SELECT session_id FROM workbench_session WHERE auth_method='local' LIMIT 1").fetchone()[0]
+        # fixture-write: Seed prior revocation after both fixture identity stores are closed.
         db.execute('UPDATE workbench_session SET revoked_at=? WHERE session_id=?', (timestamp, session_id))
         session_ids = db.execute('SELECT session_id FROM workbench_session ORDER BY session_id').fetchall()
     for _ in range(2):

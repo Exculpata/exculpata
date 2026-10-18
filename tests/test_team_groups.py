@@ -1,4 +1,6 @@
 """Synthetic live group authorization and storage recovery contracts."""
+
+from tests.fixture_write import fixture_write
 from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 
@@ -51,12 +53,12 @@ def test_two_groups_mixed_grants_and_last_revocation(tmp_path):
 
 def test_disabled_principal_and_live_account_eligibility(tmp_path):
     store, a, _, first, _ = seed(tmp_path / 'control.sqlite')
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_principal SET active=0 WHERE principal_id='principal-reviewer'")
     assert store.list_matters('principal-reviewer') == ()
     with pytest.raises(WorkspaceProblem):
         store.set_team_group_member(first, 'principal-reviewer', 'principal-administrator', present=True, administrator_override=True)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_principal SET active=1 WHERE principal_id='principal-reviewer'")
     enabled = {'principal-reviewer', 'principal-owner', 'principal-administrator', 'principal-other'}
     store.principal_enabled = lambda provider, subject: subject in enabled
@@ -81,7 +83,9 @@ def test_group_writes_authority_uniqueness_attribution_and_concurrency(tmp_path)
     def grant(connection):
         connection.set_matter_group_grant(a.matter_id, first, 'principal-owner', present=True)
     with ThreadPoolExecutor(2) as pool:
-        list(pool.map(grant, (store, other)))
+        pending = [pool.submit(grant, workspace) for workspace in (store, other)]
+        for future in pending:
+            future.result()
     assert len(store.matter_group_grants(a.matter_id)) == 1
     events = [e for e in store.audit_events(a.matter_id) if e.action == 'membership.group_add']
     assert len(events) == 1 and events[0].actor_principal_id == 'principal-owner' and events[0].object_id == first
@@ -100,7 +104,8 @@ def test_mirrored_migration_backup_clean_restore(tmp_path):
     store.add_member(a.matter_id, 'principal-reviewer', 'principal-owner')
     backup = tmp_path / 'backup.sqlite'
     with sqlite3.connect(backup) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     store.set_team_group_member(first, 'principal-reviewer', 'principal-administrator', present=False, administrator_override=True)
     clean = tmp_path / 'clean'
     clean.mkdir()

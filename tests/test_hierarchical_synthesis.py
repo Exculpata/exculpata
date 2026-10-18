@@ -1,4 +1,6 @@
 """Synthetic provenance, >12-unit recall, interruption and budget acceptance."""
+
+from tests.fixture_write import fixture_write
 from copy import deepcopy
 import hashlib
 
@@ -186,7 +188,8 @@ def test_live_workflow_backup_clean_restore_and_exports(tmp_path):
         bench.workspace.checkpoint_research_job = original_checkpoint
         destination = tmp_path / "clean-restore.sqlite"
         with sqlite3.connect(destination) as output:
-            bench.workspace.connection.backup(output)
+            with bench.workspace._lock:
+                bench.workspace.connection.backup(output)
         restored = WorkspaceStore(destination)
         assert restored.recover_running_research_jobs() == 1
         assert restored.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -396,7 +399,7 @@ def test_failed_synthesis_displays_saved_issue_checkpoint_and_spent_budget(chain
     corrupted = deepcopy(saved.result)
     corrupted["hierarchical_synthesis"]["issue"][0]["claims"][0]["text"] = "A submarine transported 9999 satellites to Jupiter."
     import json
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
             (json.dumps(corrupted), job.job_id))
     invalid = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")

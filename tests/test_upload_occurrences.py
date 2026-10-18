@@ -1,4 +1,6 @@
 """Separate deliberate imports retain context; same-item retries remain idempotent."""
+
+from tests.fixture_write import fixture_write
 import time
 
 import pytest
@@ -150,7 +152,7 @@ def test_uncataloged_received_source_waits_only_for_active_work(tmp_path, job_st
         item = items[0]
         w.set_upload_item_offset(m.matter_id, OWNER, session.upload_session_id, item.upload_item_id, 0, 7)
         w.finish_upload_item(m.matter_id, OWNER, session.upload_session_id, item.upload_item_id, 'f' * 32)
-        with w.connection:
+        with fixture_write(w):
             if job_state is None:
                 w.connection.execute('DELETE FROM workbench_ingest_job WHERE matter_id=?', (m.matter_id,))
             else:
