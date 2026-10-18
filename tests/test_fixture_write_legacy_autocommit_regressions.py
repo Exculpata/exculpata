@@ -88,10 +88,12 @@ def test_autocommit_false_with_none_isolation_preserves_pep249_caller_transactio
 
 
 def test_switch_from_pep249_to_legacy_none_is_rejected_before_mode_change(database):
+    # fixture-write: Establish caller-owned PEP249 mode before testing rejected fixture mode changes.
+    database.connection.autocommit = False
+    # fixture-write: PEP249 ignores this setting; preserve it across the rejected mode change.
+    database.connection.isolation_level = None
     with fixture_write(database) as connection:
-        connection.autocommit = False
-        connection.isolation_level = None
-        with pytest.raises(RuntimeError, match='fixture_write.*legacy autocommit'):
+        with pytest.raises(RuntimeError, match="nested fixture_write cannot end its caller's transaction"):
             connection.autocommit = sqlite3.LEGACY_TRANSACTION_CONTROL
         assert connection.autocommit is False
         assert connection.in_transaction

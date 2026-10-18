@@ -219,6 +219,10 @@ class _FixtureConnection:
                 value if name == "autocommit" else getattr(self._connection, "autocommit", _LEGACY_TRANSACTION_CONTROL),
                 value if name == "isolation_level" else self._connection.isolation_level,
             )
+            if name == "autocommit" and value is False:
+                # PEP249 mode immediately replaces a committed/rolled-back
+                # transaction, which would outlive this outer lock boundary.
+                raise RuntimeError("fixture_write does not support transitions to autocommit=False")
         if name == "row_factory":
             value = _scoped_factory(self, value)
         setattr(self._connection, name, value)
@@ -296,13 +300,19 @@ class _ScopedRowFactory:
 
     def __call__(self, cursor, row):
         self.connection._check_active()
+        if self.factory is None:
+            return row
+        if self.factory is sqlite3.Row:
+            # SQLite's built-in requires its actual cursor, while user callbacks
+            # receive the scoped proxy so they cannot retain a raw connection.
+            return sqlite3.Row(cursor, row)
         return self.factory(_FixtureCursor(self.connection, cursor, wrap_factory=False), row)
 
 
 def _scoped_factory(connection, factory):
     if isinstance(factory, _ScopedRowFactory):
         factory = factory.factory
-    return factory if factory is None or factory is sqlite3.Row else _ScopedRowFactory(connection, factory)
+    return _ScopedRowFactory(connection, factory)
 
 
 class _FixtureCursor:

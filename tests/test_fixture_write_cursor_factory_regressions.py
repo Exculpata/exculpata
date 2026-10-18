@@ -30,7 +30,9 @@ def test_raw_cursor_factory_escape_is_inventoried(tmp_path, cursor_expression, b
         # This raw SQLite path really escapes the boundary; the inventory must
         # reject its source rather than depend on the eventual consumer's name.
         assert namespace['leaked'] is workspace.connection
-        assert [v.line for v in check_fixture_writes(source)] == [3]
+        assert [v.line for v in check_fixture_writes(source)] == (
+            [2, 3] if boundary == 'with fixture_write(workspace):' else [3]
+        )
     finally:
         workspace.close()
 

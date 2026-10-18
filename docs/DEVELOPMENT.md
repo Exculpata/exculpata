@@ -122,11 +122,19 @@ hide an active nested scope; finished handles lose ownership. Public media metho
 serializes the sequence rather than making those methods one atomic operation.
 Yielded connections, cursors and saved methods are valid only on the owning
 thread during the boundary; expired or transferred handles raise before touching
-SQLite. Writable connection/cursor attributes delegate to SQLite; `autocommit=True`
+SQLite. Retained, returned or passed cursor results acquired inside a fixture
+must come from its yielded handle. Discarded raw write results and immediate
+in-boundary fetches remain supported. Row factories also check ownership when
+SQLite delivers a row, but empty or exhausted raw cursors never invoke a factory;
+the inventory therefore rejects their retention at acquisition.
+Writable connection/cursor attributes delegate to SQLite; `autocommit=True`
 is unsupported and rejected before entry or assignment. Legacy transaction control
 with `isolation_level=None` is also rejected at entry and on scoped mode changes,
 because raw DML in that mode commits before an exception can roll it back.
-PEP249 `autocommit=False` remains supported when its ignored isolation level is `None`.
+PEP249 `autocommit=False` remains supported on entry when its ignored isolation
+level is `None`: that transaction belongs to the caller. Switching to that mode
+inside a fixture is rejected because each commit or rollback immediately opens
+a replacement transaction that would outlive the fixture lock.
 Custom row factories receive scoped cursors, including through public workspace queries, and scoped
 connection factories are always restored before releasing the lock, including raw
 in-boundary replacements. Set shared connection and cursor row factories through
@@ -199,6 +207,9 @@ independent operation; parameter spelling does not establish safety.
 Known local helper calls also retain SQLite handle, live-workspace and saved-method ownership,
 including statically known tuple/list positional unpacking and dictionary keyword
 unpacking, so a generic cleanup helper cannot hide closure of a shared database.
+Direct synchronous local helper returns retain that ownership through aliases,
+branches, helper chains and tuple unpacking. Shared-handle return patterns that
+require coroutine, generator or recursive result evaluation are unsupported.
 Ordinary resource and independently owned connection cleanup remain supported.
 A helper that receives a known live workspace must establish explicit media mode
 for a manual media seed; passing the workspace as an argument does not hide

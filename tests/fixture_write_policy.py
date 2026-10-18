@@ -85,6 +85,8 @@ class _Check(ast.NodeVisitor):
         self.media_protected: set[str] = set()
         self.local_functions: dict[str, tuple] = {}
         self.active_calls: set[str] = set()
+        self.call_values: dict[ast.Call, _Value] = {}
+        self.return_values: list[_Value] = []
         # Owning locks permit connection configuration, not SQL transactions.
         self.held_locks: set[str] = set()
         self.eager_walrus: dict[str, list[_Value]] | None = None
@@ -193,6 +195,8 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.BoolOp):
             return self.merge_aliases(*({"value": self.value(value)} for value in node.values))["value"]
         if isinstance(node, ast.Call):
+            if node in self.call_values:
+                return self.call_values[node]
             function = self.value(node.func)
             if function.descriptor and node.args and function.methods & {"cursor", "execute", "executemany"}:
                 return replace(self.value(node.args[0]), sqlite_cursor=True)
@@ -282,7 +286,8 @@ class _Check(ast.NodeVisitor):
         self.deferred.append((kind, node, defaults, annotations, lexical.copy(), self.comprehension_locals.copy()))
         if kind in {"function", "lambda"}:
             symbol = f"function@{node.lineno}:{node.name}" if kind == "function" else f"lambda@{node.lineno}:{node.col_offset}"
-            self.local_functions[symbol] = (kind, node, defaults, annotations, lexical.copy())
+            self.local_functions[symbol] = (kind, node, defaults, annotations, lexical.copy(),
+                                            self.late_bindings, self.comprehension_locals.copy())
 
     def flush_deferred(self):
         # Python resolves globals/closure cells when a deferred body runs. Keep
@@ -555,9 +560,9 @@ class _Check(ast.NodeVisitor):
         previous_locks = self.held_locks.copy()
         for item in node.items:
             expression = item.context_expr
+            self.visit(expression)
             value = self.value(expression)
             is_helper = isinstance(expression, ast.Call) and self.value(expression.func).symbol in {"fixture_write", "tests.fixture_write.fixture_write"}
-            self.visit(expression)
             if value.lock_owner is not None:
                 self.held_locks.add(value.lock_owner)
             workspace_argument = (expression.args[0] if expression.args else next(
@@ -590,7 +595,30 @@ class _Check(ast.NodeVisitor):
 
     visit_AsyncWith = visit_With
 
+    def raw_cursor_result_escapes(self, node: ast.Call) -> bool:
+        # This is an acquisition rule, not cursor lifetime emulation. A raw
+        # result may be discarded or consumed by an immediate fetch/close;
+        # retained, returned or passed cursors must come from the scoped proxy.
+        current = node
+        parent = self.parents.get(current)
+        while isinstance(parent, ast.Attribute):
+            if parent.attr in {"rowcount", "lastrowid", "description", "arraysize"}:
+                return False
+            call = self.parents.get(parent)
+            if not isinstance(call, ast.Call) or call.func is not parent:
+                break
+            if parent.attr in {"fetchone", "fetchmany", "fetchall", "close"}:
+                return False
+            if parent.attr not in {"execute", "executemany", "cursor"}:
+                break
+            current = call
+            parent = self.parents.get(current)
+        return not isinstance(parent, ast.Expr)
+
     def visit_Call(self, node: ast.Call) -> None:
+        # Evaluate nested calls first, so an explicitly returned receiver or
+        # bound method retains ownership at its immediate invocation.
+        self.generic_visit(node)
         function = self.value(node.func)
         if function.setter_attribute is not None and function.symbol.endswith(".__delete__") and node.args:
             target = ast.copy_location(ast.Attribute(value=node.args[0], attr=function.setter_attribute, ctx=ast.Del()), node)
@@ -623,6 +651,9 @@ class _Check(ast.NodeVisitor):
         arguments = node.args
         if function.descriptor and arguments:
             receiver, arguments = self.value(arguments[0]), arguments[1:]
+        if (methods & {"execute", "executemany", "cursor"} and receiver.connection in self.protected
+                and not receiver.fixture_handle and self.raw_cursor_result_escapes(node)):
+            self.flag(node, "retained raw cursor requires the yielded fixture_write handle")
         imported_function = isinstance(node.func, ast.Name) and function.imported_function and function.connection is None
         independent_connection = receiver.connection is not None and receiver.connection.startswith("sqlite@")
         if not independent_connection and not imported_function:
@@ -700,16 +731,17 @@ class _Check(ast.NodeVisitor):
                 self.flag(node, "commit-capable media fixture seed inside nested fixture_write")
             elif receiver.symbol not in self.media_protected:
                 self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
-        self.generic_visit(node)
-        self.check_local_call(node, function)
+        result = self.check_local_call(node, function)
+        if result is not None:
+            self.call_values[node] = result
 
     def check_local_call(self, call, function):
         # Specialize direct local helpers only when a known workspace, SQLite
         # handle or bound method is supplied. Generic resource.close remains ordinary
         # cleanup, while aliases and helper chains retain shared ownership.
-        if function.symbol not in self.local_functions or function.symbol in self.active_calls:
+        if function.symbol not in self.local_functions:
             return
-        kind, node, defaults, annotations, lexical = self.local_functions[function.symbol]
+        kind, node, defaults, annotations, lexical, history, local_names = self.local_functions[function.symbol]
         positional = [*node.args.posonlyargs, *node.args.args]
         actual = []
         for argument in call.args:
@@ -730,18 +762,47 @@ class _Check(ast.NodeVisitor):
                 mapping = self.value(keyword.value).mapping
                 if mapping is not None:
                     supplied.update(mapping)
-        if not any(value.connection is not None or value.live_workspace or value.workspace for value in supplied.values()):
-            return
         bindings = {**defaults, **supplied}
+        known = any(value.connection is not None or value.live_workspace or value.workspace for value in bindings.values())
+        if not known and (call.args or call.keywords):
+            return
+        shared = any((value.connection is not None and not value.connection.startswith("sqlite@"))
+                     or value.live_workspace or value.workspace for value in bindings.values())
+        if shared and (isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)):
+            self.flag(call, "async/generator helper results with shared ownership are unsupported by fixture_write")
+            return None
+        if function.symbol in self.active_calls:
+            if shared and not isinstance(self.parents.get(call), ast.Expr):
+                self.flag(call, "recursive helper results with shared ownership are unsupported by fixture_write")
+            return None
         previous = self.aliases
-        self.aliases = lexical.copy()
+        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+                for name, values in history.items() if name not in local_names}
+        self.aliases = {**lexical, **late}
         self.active_calls.add(function.symbol)
         if kind == "function":
-            self.analyze_function(node, bindings, annotations, invoked=True)
+            result = self.analyze_function(node, bindings, annotations, invoked=True)
         else:
-            self.analyze_lambda(node, bindings, invoked=True)
+            result = self.analyze_lambda(node, bindings, invoked=True)
         self.active_calls.remove(function.symbol)
         self.aliases = previous
+        return result
+
+    @staticmethod
+    def has_yield(node) -> bool:
+        pending = list(node.body) if isinstance(node.body, list) else [node.body]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, (ast.Yield, ast.YieldFrom)):
+                return True
+            if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                pending.extend(ast.iter_child_nodes(item))
+        return False
+
+    def visit_Return(self, node: ast.Return) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+        self.return_values.append(self.value(node.value))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Closures retain aliases, but can run after the defining lock is gone.
@@ -764,6 +825,8 @@ class _Check(ast.NodeVisitor):
         self.defer("function", node, default_values, annotated)
 
     def analyze_function(self, node, default_values, annotated, *, invoked=False):
+        outer_returns, outer_calls = self.return_values, self.call_values
+        self.return_values, self.call_values = [], {}
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
@@ -795,6 +858,7 @@ class _Check(ast.NodeVisitor):
         self.declare_functions(node.body)
         for statement in node.body:
             self.visit(statement)
+        result = self.merge_aliases(*({"return": value} for value in self.return_values)).get("return", _Value())
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
@@ -802,6 +866,8 @@ class _Check(ast.NodeVisitor):
         self.media_protected = media
         self.eager_variable_annotations = eager_annotations
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
+        self.return_values, self.call_values = outer_returns, outer_calls
+        return result
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -834,6 +900,8 @@ class _Check(ast.NodeVisitor):
         self.defer("lambda", node, default_values)
 
     def analyze_lambda(self, node, default_values, *, invoked=False):
+        outer_returns, outer_calls = self.return_values, self.call_values
+        self.return_values, self.call_values = [], {}
         positional = [*node.args.posonlyargs, *node.args.args]
         outer_deferred, outer_bindings, collecting = self.deferred, self.late_bindings, self.collect_bindings
         self.deferred, self.late_bindings, self.collect_bindings = [], {}, True
@@ -853,12 +921,15 @@ class _Check(ast.NodeVisitor):
             if argument.arg.strip("_") in _CONNECTION_PARAMETERS and self.aliases[argument.arg].connection is None:
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.visit(node.body)
+        result = self.value(node.body)
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
         self.nested_protected = nested
         self.media_protected = media
         self.deferred, self.late_bindings, self.collect_bindings = outer_deferred, outer_bindings, collecting
+        self.return_values, self.call_values = outer_returns, outer_calls
+        return result
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self.visit(node.generators[0].iter)

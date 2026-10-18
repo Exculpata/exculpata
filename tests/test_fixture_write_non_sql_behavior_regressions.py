@@ -120,6 +120,7 @@ def test_yielded_proxy_rejects_factory_deletion_without_touching_raw_state(sqlit
 ])
 def test_saved_and_expired_deletion_recheck_boundary_without_mutating_factories(sqlite_pair, target, attribute):
     bench, _ = sqlite_pair
+    initial = getattr(bench.workspace.connection, attribute)
     with fixture_write(bench.workspace) as connection:
         handle = connection if target == 'connection' else connection.cursor()
         raw = bench.workspace.connection if target == 'connection' else handle._cursor
@@ -128,10 +129,12 @@ def test_saved_and_expired_deletion_recheck_boundary_without_mutating_factories(
         with pytest.raises(RuntimeError, match='does not support attribute deletion'):
             saved(attribute)
         assert getattr(raw, attribute) is original
+    restored = initial if target == 'connection' else original
+    assert getattr(raw, attribute) is restored
     for remove in (lambda: saved(attribute), lambda: delattr(handle, attribute)):
         with pytest.raises(RuntimeError, match='owning boundary'):
             remove()
-        assert getattr(raw, attribute) is original
+        assert getattr(raw, attribute) is restored
 
 
 @pytest.mark.parametrize('operation', ['deserialize', 'blobopen', 'backup'])

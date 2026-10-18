@@ -241,7 +241,9 @@ def test_nested_rollback_conflicts_preserve_caller_work(tmp_path, sql):
 def test_guard_checks_eager_lambda_defaults(arguments):
     source = f"callback = lambda {arguments}bench.workspace.connection.execute('DELETE FROM segment'): None"
     assert check_fixture_writes(source)
-    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source) == []
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n    ' + source)
+    assert check_fixture_writes('with fixture_write(bench.workspace) as connection:\n    '
+                                + source.replace('bench.workspace.connection', 'connection')) == []
 
 
 @pytest.mark.parametrize('sql', ['PRAGMA user_version(12)', 'PRAGMA main.application_id(12)',
@@ -340,7 +342,10 @@ def test_nested_fixture_checks_schema_attached_after_entry(tmp_path):
 ])
 def test_guard_checks_eager_function_expressions(source):
     assert check_fixture_writes(source)
-    assert check_fixture_writes('with fixture_write(bench.workspace):\n' + '\n'.join('    ' + line for line in source.splitlines())) == []
+    assert check_fixture_writes('with fixture_write(bench.workspace):\n' + '\n'.join('    ' + line for line in source.splitlines()))
+    scoped = source.replace('bench.workspace.connection', 'connection')
+    assert check_fixture_writes('with fixture_write(bench.workspace) as connection:\n'
+                                + '\n'.join('    ' + line for line in scoped.splitlines())) == []
 
 
 def test_guard_preserves_postponed_function_annotations():
