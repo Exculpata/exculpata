@@ -97,7 +97,8 @@ Link-local addresses, including the cloud metadata address, and unspecified
 addresses are rejected instead of confirmed. Each connection uses the exact vetted numeric addresses, with the original
 host retained for HTTP and TLS certificate verification. Redirects and environment
 proxies are disabled. IPv6 cloud metadata and multicast addresses are rejected
-even with consent. DNS lookup deadlines do not change global socket settings. One-word names and `*.local` names are not
+even with consent. IPv6 scope identifiers do not change the numeric address used
+for these policy checks. DNS lookup deadlines do not change global socket settings. One-word names and `*.local` names are not
 trusted from the spelling alone. The installer recognizes its controlled Docker
 host-gateway alias before Docker creates it; runtime requests still resolve and
 validate that alias. Invalid URLs are asked again. Non-interactive

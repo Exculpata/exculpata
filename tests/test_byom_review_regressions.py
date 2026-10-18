@@ -58,8 +58,9 @@ def test_special_purpose_ranges_need_consent(address):
 
 
 @pytest.mark.parametrize("confirmed", [False, True])
-def test_ipv6_metadata_cannot_be_confirmed(confirmed, monkeypatch):
-    address = endpoints._METADATA
+@pytest.mark.parametrize("scope", ["", "%synthetic0", "%25synthetic0"])
+def test_ipv6_metadata_cannot_be_confirmed(confirmed, scope, monkeypatch):
+    address = ipaddress.ip_address(str(endpoints._METADATA) + scope)
     url = f"http://[{address}]"
     endpoint = endpoints.parse_generator_endpoint("ollama", url, "synthetic", remote_confirmed=confirmed)
     with pytest.raises(endpoints.EndpointRejected, match="metadata"):

@@ -140,6 +140,8 @@ def require_local_or_confirmed(endpoint: GeneratorEndpoint) -> GeneratorEndpoint
 
 
 def _concrete(address: ipaddress.IPv4Address | ipaddress.IPv6Address):
+    if isinstance(address, ipaddress.IPv6Address):
+        address = ipaddress.IPv6Address(address.packed)
     mapped = getattr(address, "ipv4_mapped", None)
     return mapped if mapped is not None else address
 
