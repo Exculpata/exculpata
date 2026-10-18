@@ -176,8 +176,12 @@ def test_observation_preserves_wrong_claim_attachment_for_gate_rejection(tmp_pat
 
     monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'ask', swapped)
     actual = product.observe(tmp_path, manifest)
-    expected = {'documents':{'written':{'text':actual['written']['text'], 'cer':0}},
-        'audio':{}, 'search':{'search':{'document_ids':['spoken']}},
+    expected = {'documents':{'written':{'text':actual['written']['text'], 'cer':0, 'pages':1}},
+        'audio':{'spoken':{'text':actual['spoken']['text'], 'wer':0.15,
+            'locator':{'start_ms':0, 'end_ms':2000, 'tolerance_ms':500},
+            'layouts':[[{'text':actual['spoken']['text'], 'start_ms':0, 'end_ms':2000}]]}},
+        'search':{'search':{'document_ids':['spoken'],
+            'citations':[{'document_id':'spoken', 'span':'orange parcel'}]}},
         'answers':{'answer':{'facts':['blue bicycle', 'orange parcel'], 'citations':[
             {'document_id':'written', 'span':'blue bicycle'},
             {'document_id':'spoken', 'span':'orange parcel'}]}}}
@@ -198,7 +202,7 @@ def test_actual_corpus_shared_facts_cannot_hide_swapped_full_claim_support():
     manifest, expected = gate.load_corpus(gate.CORPUS)
     actual = product.observe(gate.CORPUS, manifest)
     positive = gate.compare(manifest, expected, actual)
-    assert len(positive) == 12 and all(row['passed'] for row in positive), positive
+    assert len(positive) == 14 and all(row['passed'] for row in positive), positive
     answer = actual['answer-bicycle']
     first, second = answer['claims']
     assert {first['citations'][0]['document_id'], second['citations'][0]['document_id']} == {
@@ -220,7 +224,7 @@ def test_actual_spoken_source_kind_cannot_remove_transcript_attribution(kind):
     manifest, expected = gate.load_corpus(gate.CORPUS)
     actual = product.observe(gate.CORPUS, manifest)
     positive = gate.compare(manifest, expected, actual)
-    assert len(positive) == 12 and all(row['passed'] for row in positive), positive
+    assert len(positive) == 14 and all(row['passed'] for row in positive), positive
     answer = actual['answer-spoken']
     assert len(answer['claims']) == 1
     claim = answer['claims'][0]
@@ -238,3 +242,67 @@ def test_actual_spoken_source_kind_cannot_remove_transcript_attribution(kind):
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer-spoken')
     assert result['passed'] is False
     assert any('complete claim' in difference for difference in result['diff'])
+
+
+@pytest.mark.parametrize('mutation,target', [
+    ('pages', 'bicycle'), ('collapsed-time', 'audio-bicycle'), ('wrong-search-passage', 'search-gate'),
+])
+def test_actual_corpus_rejects_page_timing_and_search_passage_regressions(mutation, target):
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    transcripts = copy.deepcopy(manifest['fast_transcripts'])
+    if mutation == 'collapsed-time':
+        for segment in transcripts['audio-bicycle']:
+            segment.update(start=1.0, end=1.1)
+    actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    if mutation == 'pages':
+        assert actual['bicycle']['pages'] == 1
+        actual['bicycle']['pages'] = 2
+    elif mutation == 'wrong-search-passage':
+        citation = next(c for c in actual['search-gate']['citations'] if c['document_id'] == 'audio-bicycle')
+        assert citation['source_valid'] is True
+        citation['excerpt'] = 'This is a synthetic recording.'
+    results = gate.compare(manifest, expected, actual)
+    assert any(row['id'] == target and not row['passed'] for row in results), results
+
+
+@pytest.mark.parametrize('mutation', ['collapsed', 'shifted', 'missing', 'boolean', 'float', 'boolean-unit', 'different-unit'])
+def test_actual_audio_citation_must_match_reviewed_observed_unit(mutation):
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    for key in ('search-gate', 'answer-spoken'):
+        citation = next(c for c in actual[key]['citations'] if c['document_id'] == 'audio-bicycle')
+        if mutation == 'collapsed': citation.update(start_ms=1000, end_ms=1100)
+        elif mutation == 'shifted': citation.update(start_ms=1000, end_ms=6615)
+        elif mutation == 'missing': del citation['start_ms']
+        elif mutation == 'boolean': citation['start_ms'] = False
+        elif mutation == 'float': citation['end_ms'] = 5615.0
+        elif mutation == 'boolean-unit': citation['unit'] = True
+        else: citation['unit'] += 1
+    results = gate.compare(manifest, expected, actual)
+    assert all(not row['passed'] for row in results if row['id'] in ('search-gate', 'answer-spoken'))
+
+
+@pytest.mark.parametrize('mutation', ['collapsed-fact', 'swapped-text', 'shifted-fact'])
+def test_actual_split_audio_requires_each_reviewed_passage_interval(mutation):
+    import copy
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    transcripts = copy.deepcopy(manifest['fast_transcripts'])
+    segments = [
+        {'start':0, 'end':2.04, 'text':'This is a synthetic recording.', 'speaker':'SPEAKER_00'},
+        {'start':2.04, 'end':4.48, 'text':'The orange parcel was stored in Locker 7.', 'speaker':'SPEAKER_00'},
+    ]
+    if mutation == 'collapsed-fact': segments[1].update(start=4.4, end=4.48)
+    elif mutation == 'swapped-text': segments[0]['text'], segments[1]['text'] = segments[1]['text'], segments[0]['text']
+    else: segments[1].update(start=3.04, end=5.48)
+    transcripts['audio-parcel'] = segments
+    actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
+    results = gate.compare(manifest, expected, actual)
+    assert all(not row['passed'] for row in results if row['id'] in ('audio-parcel', 'answer-parcel', 'search-parcel'))

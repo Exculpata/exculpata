@@ -31,7 +31,22 @@ def sample():
     citation = {'document_id':'pdf','excerpt':'The parcel is blue.', 'source_valid':True, 'evidence_kind':'document'}
     expected = {'documents':{'pdf':{'text':'The parcel is blue.','cer':0.03}}, 'audio':{'wav':{'text':'The bicycle is green.','wer':0.15}}, 'search':{'search':{'document_ids':['pdf']}}, 'answers':{'answer':{'facts':['parcel is blue'],'citations':[{'document_id':'pdf','span':'parcel is blue'}]}}}
     actual = {'pdf':{'text':'The parcel is blue.'},'wav':{'text':'Speaker 1: The bicycle is green.', 'asr_text':'The bicycle is green.'},'search':{'document_ids':['pdf'],'citations':[dict(citation)]},'answer':{'text':'The parcel is blue.','route':'question','dispatched':True,'answerable':True,'citations':[citation], 'claims':[{'text':'The parcel is blue.', 'citations':[citation]}]}}
+    expected['documents']['pdf']['pages'] = actual['pdf']['pages'] = 1
+    expected['search']['search']['citations'] = [{'document_id':'pdf', 'span':'parcel is blue'}]
+    seed_audio_support(expected, actual, {'document_id':'wav', 'excerpt':actual['wav']['text']})
     return manifest, expected, actual
+
+
+def seed_audio_support(expected, actual, citation):
+    source = citation['document_id']
+    text = citation['excerpt']
+    reference = gate.re.sub(r'^Speaker [0-9]+:\s*', '', text)
+    citation.update(unit=1, start_ms=0, end_ms=2000)
+    expected['audio'][source] = {'text':reference, 'wer':0.15,
+        'locator':{'start_ms':0, 'end_ms':2000, 'tolerance_ms':500},
+        'layouts':[[{'text':reference, 'start_ms':0, 'end_ms':2000}]]}
+    actual[source] = {'text':text, 'asr_text':reference,
+        'units':[{'unit':1, 'text':text, 'start_ms':0, 'end_ms':2000}]}
 
 
 @pytest.mark.parametrize('fact,wrong', [('09:15', '109:150'), ('09:15', '09:150'),
@@ -54,6 +69,7 @@ def test_answer_facts_require_their_own_claim_citations(mutation):
     citations = [{'document_id':item['document_id'], 'excerpt':item['span'], 'source_valid':True,
                   'evidence_kind':'transcript' if item['document_id'] == 'wav' else 'document'}
                  for item in required]
+    seed_audio_support(expected, actual, citations[1])
     claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if item['evidence_kind'] == 'transcript' else '') + item['excerpt'],
                'citations':[item]} for item in citations]
     actual['answer'].update(text=' '.join(claim['text'] for claim in claims), citations=citations, claims=claims)
@@ -102,6 +118,7 @@ def test_complete_claim_requires_own_passage_with_only_exact_transcript_qualifie
     citation['evidence_kind'] = kind
     if kind == 'transcript':
         citation['document_id'] = expected['answers']['answer']['citations'][0]['document_id'] = 'wav'
+        seed_audio_support(expected, actual, citation)
     actual['answer']['text'] = actual['answer']['claims'][0]['text'] = text
     result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'answer')
     assert result['passed'] is passes
@@ -131,6 +148,8 @@ def test_claim_kind_and_attribution_are_bound_to_manifest_source(source, observe
     expected['answers']['answer']['citations'][0]['document_id'] = source
     citation = actual['answer']['citations'][0]
     citation['document_id'] = source
+    if source == 'wav':
+        seed_audio_support(expected, actual, citation)
     if observed_kind is None:
         citation.pop('evidence_kind', None)
     else:
@@ -180,7 +199,7 @@ def test_regressions_fail_with_case_diff(mutation):
 
 def test_fast_does_not_claim_recognition():
     manifest, expected, actual = sample()
-    del actual['wav']
+    del actual['wav']['asr_text']
     assert all(r['passed'] for r in gate.compare(manifest, expected, actual))
     assert not all(r['passed'] for r in gate.compare(manifest, expected, actual, full=True))
 
@@ -303,18 +322,15 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
     manifest, expected = gate.load_corpus(gate.CORPUS)
     actual = {}
     for source, want in expected['documents'].items():
-        actual[source] = {'text':want['text'], 'ocr_pages':1}
+        actual[source] = {'text':want['text'], 'ocr_pages':1, 'pages':want['pages']}
     for source, want in expected['audio'].items():
-        actual[source] = {'text':want['text'], 'asr_text':want['text']}
+        actual[source] = {'text':want['text'], 'asr_text':want['text'],
+            'units':[dict(want['layouts'][0][0], unit=1)]}
     for key, want in expected['search'].items():
         actual[key] = {'document_ids':list(want['document_ids']), 'citations':[
-            {'document_id':source, 'excerpt':'Synthetic search support', 'source_valid':True}
-            for source in want['document_ids']]}
+            corpus_citation(source, expected, actual) for source in want['document_ids']]}
     for key, want in expected['answers'].items():
-        audio_ids = {source['id'] for source in manifest['audio']}
-        citations = [{'document_id':c['document_id'], 'excerpt':c['span'], 'source_valid':True,
-                      'evidence_kind':'transcript' if c['document_id'] in audio_ids else 'document'}
-                     for c in want['citations']]
+        citations = [corpus_citation(c['document_id'], expected, actual) for c in want['citations']]
         claims = [{'text':(gate.TRANSCRIPT_QUALIFIER if c['evidence_kind'] == 'transcript' else '') + c['excerpt'],
                    'citations':[c]} for c in citations]
         actual[key] = {'text':' '.join(claim['text'] for claim in claims), 'route':'question',
@@ -358,3 +374,92 @@ def test_scanned_search_is_required_only_in_full_comparison():
     for key in ['search-scan-en', 'search-scan-es']:
         assert not any(row['id'] == key for row in fast)
         assert any(row['id'] == key and not row['passed'] for row in full)
+
+
+def corpus_citation(source, expected, actual):
+    audio = source in expected['audio']
+    citation = {'document_id':source, 'excerpt':actual[source]['text'], 'source_valid':True,
+                'evidence_kind':'transcript' if audio else 'document'}
+    if audio:
+        citation.update({key:actual[source]['units'][0][key] for key in ('unit', 'start_ms', 'end_ms')})
+    return citation
+
+
+@pytest.mark.parametrize('pages', [None, True, False, 0, 2, 1.0, '1'])
+def test_pdf_page_count_requires_exact_integer(pages):
+    manifest, expected, actual = sample()
+    actual['pdf']['pages'] = pages
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'pdf')
+    assert result['passed'] is False
+    assert any('PDF pages' in line for line in result['diff'])
+
+
+@pytest.mark.parametrize('start,end,passes', [
+    (0, 2000, True), (500, 1500, True), (0, 2500, True),
+    (501, 2000, False), (0, 2501, False), (1000, 1100, False),
+    (-1, 2000, False), (2000, 1000, False), (0, 0, False),
+    (None, 2000, False), (False, 2000, False), (0, True, False),
+    (0.0, 2000, False), (0, 2000.0, False), ('0', 2000, False),
+])
+def test_audio_unit_locators_are_bounded_and_typed_in_both_lanes(start, end, passes):
+    manifest, expected, actual = sample()
+    actual['wav']['units'][0].update(start_ms=start, end_ms=end)
+    for full in (False, True):
+        result = next(row for row in gate.compare(manifest, expected, actual, full=full) if row['id'] == 'wav')
+        assert result['passed'] is passes
+
+
+@pytest.mark.parametrize('mutation', ['missing', 'empty', 'wrong-text', 'duplicate', 'missing-start'])
+def test_audio_unit_layout_must_be_present_and_match_projected_text(mutation):
+    manifest, expected, actual = sample()
+    audio = actual['wav']
+    if mutation == 'missing': del audio['units']
+    elif mutation == 'empty': audio['units'] = []
+    elif mutation == 'wrong-text': audio['units'][0]['text'] = 'Different synthetic passage.'
+    elif mutation == 'duplicate': audio['units'].append(dict(audio['units'][0]))
+    else: del audio['units'][0]['start_ms']
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'wav')
+    assert result['passed'] is False
+
+
+@pytest.mark.parametrize('mutation', ['pages', 'boolean-pages', 'missing-search-spans', 'blank-search-span',
+    'wrong-search-source', 'missing-locator', 'wide-tolerance', 'wrong-duration', 'empty-layouts',
+    'layout-missing-time', 'layout-boolean-time', 'layout-out-of-bounds', 'layout-empty-text'])
+def test_reviewed_page_search_and_timing_metadata_is_required(tmp_path, mutation):
+    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    path = root/'expected.json'; expected = json.loads(path.read_text())
+    audio = expected['audio']['audio-bicycle']
+    search = expected['search']['search-gate']
+    if mutation == 'pages': del expected['documents']['bicycle']['pages']
+    elif mutation == 'boolean-pages': expected['documents']['bicycle']['pages'] = True
+    elif mutation == 'missing-search-spans': del search['citations']
+    elif mutation == 'blank-search-span': search['citations'][0]['span'] = ' '
+    elif mutation == 'wrong-search-source': search['citations'][0]['document_id'] = 'parcel'
+    elif mutation == 'missing-locator': del audio['locator']
+    elif mutation == 'wide-tolerance': audio['locator']['tolerance_ms'] = 501
+    elif mutation == 'wrong-duration': audio['locator']['end_ms'] += 1
+    elif mutation == 'empty-layouts': audio['layouts'] = []
+    elif mutation == 'layout-missing-time': del audio['layouts'][0][0]['start_ms']
+    elif mutation == 'layout-boolean-time': audio['layouts'][0][0]['start_ms'] = False
+    elif mutation == 'layout-out-of-bounds': audio['layouts'][0][0]['end_ms'] += 1
+    else: audio['layouts'][0][0]['text'] = ' '
+    path.write_text(json.dumps(expected))
+    with pytest.raises(ValueError): gate.load_corpus(root)
+
+
+@pytest.mark.parametrize('unit_id', [0, -1, True, 1.0, '1', None])
+def test_audio_unit_ids_require_positive_integers(unit_id):
+    manifest, expected, actual = sample()
+    actual['wav']['units'][0]['unit'] = unit_id
+    result = next(row for row in gate.compare(manifest, expected, actual) if row['id'] == 'wav')
+    assert result['passed'] is False
+
+
+def test_reviewed_split_cannot_overlap_even_within_endpoint_tolerance():
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    layout = expected['audio']['audio-parcel']['layouts'][1]
+    units = [dict(unit, unit=index) for index, unit in enumerate(layout, 1)]
+    observation = {'units':units, 'text':'\n'.join(unit['text'] for unit in units)}
+    assert gate.matches_audio_layout(observation, expected['audio']['audio-parcel'])
+    units[1]['start_ms'] -= 1
+    assert not gate.matches_audio_layout(observation, expected['audio']['audio-parcel'])

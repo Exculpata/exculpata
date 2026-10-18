@@ -3,6 +3,9 @@
 This deliberately small, local data-flow check is not a Python/SQL interpreter.
 It follows ordinary assignment aliases, SQL literals/concatenation/f-strings and
 SQLite imports, and direct local helper arguments with known SQLite provenance.
+Known reflective builtin namespaces are rejected at exposure, before aliases or
+opaque containers can hide dynamic execution. Explicit safe builtin attributes
+remain supported; computed imports and arbitrary reflection are not interpreted.
 Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
@@ -358,6 +361,20 @@ class _Check(ast.NodeVisitor):
             if node in self.evaluated_values:
                 return self.evaluated_values[node]
             function = self.value(node.func)
+            if not function.unannotated_parameter:
+                if function.symbol in {"__import__", "builtins.__import__", "importlib.import_module"}:
+                    argument = node.args[0] if node.args else next(
+                        (kw.value for kw in node.keywords if kw.arg == "name"), None)
+                    name = self.value(argument)
+                    if name.complete_text and name.text == "builtins":
+                        return _Value(symbol="<reflective-builtins>")
+                if function.symbol in {"vars", "builtins.vars"} and node.args:
+                    if self.value(node.args[0]).symbol == "builtins":
+                        return _Value(symbol="<reflective-builtins>")
+                if function.symbol == "builtins.__getattribute__" and node.args:
+                    name = self.value(node.args[0])
+                    return _Value(symbol="builtins." + name.text if name.complete_text
+                                  else "<reflective-builtins>")
             if function.symbol in {"dict", "builtins.dict"}:
                 return self.dictionary_value([self.value(arg) for arg in node.args],
                                              [(kw.arg, self.value(kw.value)) for kw in node.keywords])
@@ -380,6 +397,8 @@ class _Check(ast.NodeVisitor):
                 if name.complete_text:
                     return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
                 receiver = self.value(node.args[0])
+                if receiver.symbol == "builtins":
+                    return _Value(symbol="<reflective-builtins>")
                 if receiver.symbol in {"dict", "builtins.dict"}:
                     return _Value(dictionary_accessor=True)
                 if receiver.connection is not None:
@@ -502,7 +521,8 @@ class _Check(ast.NodeVisitor):
 
     def reject_dynamic_builtin(self, node: ast.AST, value: _Value | None = None) -> None:
         value = self.value(node) if value is None else value
-        if (value.symbol in {"exec", "eval", "builtins.exec", "builtins.eval"}
+        if (value.symbol in {"exec", "eval", "builtins.exec", "builtins.eval",
+                             "__builtins__", "builtins.__dict__", "<reflective-builtins>"}
                 and not value.unannotated_parameter):
             self.flag(node, "dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()", structural=True)
 

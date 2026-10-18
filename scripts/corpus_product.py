@@ -263,6 +263,9 @@ def observe(root: Path, manifest: dict, full: bool = False, *,
                 document = _import_transcript(bench, matter, document, segments, principal.principal_id)
                 aliases[document.document_id] = item["id"]
                 results[item["id"]] = {"text": "\n".join(unit.text for unit in document.parsed_units()),
+                                       "units": [{"text": unit.text, "unit": unit.number,
+                                                  "start_ms": unit.start_ms, "end_ms": unit.end_ms}
+                                                 for unit in document.parsed_units()],
                                        "state": document.state,
                                        "mode": "observed-asr" if full else "prepared-transcript-fixture"}
             bench._sync_source_catalog(matter, tuple(store.documents.values()))

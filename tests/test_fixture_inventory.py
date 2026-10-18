@@ -128,3 +128,76 @@ def test_all_tracked_test_trees_observe_fixture_boundary(tmp_path, filename):
         "with fixture_write(bench.workspace, media=True):\n"
         "    bench.workspace.queue_media_job('synthetic')\n")
     assert check_repository_fixtures(tmp_path) == []
+
+
+@pytest.mark.parametrize('operation', ['exec', 'eval'])
+@pytest.mark.parametrize('source', [
+    "__import__('builtins').OP(payload)",
+    "__import__(name='builtins').OP(payload)",
+    "__builtins__['OP'](payload)",
+    "__builtins__.OP(payload)",
+    "namespace = __builtins__\nnamespace.get('OP')(payload)",
+    "import builtins as b\nb.__dict__['OP'](payload)",
+    "from builtins import __dict__ as namespace\nnamespace['OP'](payload)",
+    "import builtins as b\nvars(b)['OP'](payload)",
+    "import builtins as b\nb.__import__('builtins').OP(payload)",
+    "from builtins import __import__ as load\nload('builtins').OP(payload)",
+    "load = __import__\nload('builtins').OP(payload)",
+    "import importlib as imports\nimports.import_module('builtins').OP(payload)",
+    "from importlib import import_module as load\nload('builtins').OP(payload)",
+    "getattr(__import__('builtins'), 'OP')(payload)",
+    "import builtins as b\nnamespace = getattr(b, '__dict__')\nnamespace['OP'](payload)",
+    "import builtins as b\nmodules = (b,)\nmodules[0].__dict__['OP'](payload)",
+    "import builtins as b\nb.__getattribute__('OP')(payload)",
+    "import builtins as b\nread = b.__getattribute__\nread('OP')(payload)",
+    "from builtins import __getattribute__ as read\nread('OP')(payload)",
+    "from builtins import vars as namespace_of\nimport builtins as b\nnamespace_of(b)['OP'](payload)",
+])
+def test_reflected_builtin_execution_is_rejected(operation, source):
+    source = source.replace('OP', operation)
+    violations = check_fixture_writes(source)
+    assert any('dynamic execution' in item.rule and item.structural for item in violations)
+
+
+@pytest.mark.parametrize('operation', ['exec', 'eval'])
+@pytest.mark.parametrize('expression', ["__builtins__['OP']", "__import__('builtins').OP"])
+@pytest.mark.parametrize('transport', [
+    'consume(EXPRESSION)',
+    'saved = EXPRESSION\nsaved(payload)',
+    'saved = [EXPRESSION]\nsaved[0](payload)',
+    "saved = {'operation': EXPRESSION}\nsaved['operation'](payload)",
+    'callback = lambda: EXPRESSION\ncallback()(payload)',
+    'def callback(operation=EXPRESSION):\n    return operation',
+])
+def test_reflected_dynamic_values_reject_before_alias_or_container_transport(operation, expression, transport):
+    source = transport.replace('EXPRESSION', expression.replace('OP', operation))
+    violations = check_fixture_writes(source)
+    assert any('dynamic execution' in item.rule and item.structural for item in violations)
+
+
+@pytest.mark.parametrize('source', [
+    "import builtins\ngetattr(builtins, name)(payload)",
+    "import builtins as b\nb.__getattribute__(name)(payload)",
+    "import builtins as b\nnamespace = b.__dict__  # fixture-write: Deliberately capture an isolated synthetic mapping.",
+    "# fixture-write: Deliberately capture an isolated synthetic mapping.\nnamespace = __builtins__",
+])
+def test_unresolved_builtin_reflection_and_comments_cannot_hide_dynamic_access(source):
+    assert any(item.structural and 'dynamic execution' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "import builtins as b\nb.len(values)",
+    "import builtins as b\ngetattr(b, 'len')(values)",
+    "from builtins import len as size\nsize(values)",
+    "import builtins as b\nb.__getattribute__('len')(values)",
+    "from builtins import __import__ as load\nload('pathlib').Path('synthetic.txt')",
+    "from importlib import import_module as load\nload('synthetic_module')",
+    "vars(ordinary_resource)",
+    "__import__('pathlib').Path('synthetic.txt')",
+    "import importlib\nimportlib.import_module('synthetic_module')",
+    "def read(__builtins__):\n    return __builtins__['ordinary']",
+    "class Ordinary:\n    def __import__(self, name):\n        return name\nOrdinary().__import__('builtins')",
+    "__builtins__ = {'ordinary': 1}\nvalue = __builtins__['ordinary']",
+])
+def test_reflection_rejection_preserves_explicit_safe_builtins_and_ordinary_resources(source):
+    assert check_fixture_writes(source) == []

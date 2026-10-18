@@ -9,16 +9,31 @@ licenses, and fixture provenance. Every media file must be **strictly below
 
 `v1/expected.json` is reviewed gold, separate from inference inputs. Normalization
 uses Unicode NFKC, case folding, word characters, and collapsed whitespace.
-Native PDFs require zero character error; image PDFs allow CER <= 0.03; audio
-allows WER <= 0.15. Insertions, deletions, and substitutions all count. Search
-requires the named sources within top-k. Two full-only search cases require
+Native PDFs require zero character error; image PDFs allow CER <= 0.03; every
+PDF must retain its reviewed one-page count. Audio allows WER <= 0.15.
+Insertions, deletions, and substitutions all count. Search requires the named
+sources within top-k and their reviewed passage spans. Two full-only search cases require
 the English and Spanish scanned sources and their validated citation support,
 so accurate OCR alone cannot hide a missing searchable catalog entry. Each answer
 requires its facts, the question route, all named source spans, and valid product citation resolution.
-Missing, unrelated, or invalid citations fail without a citation tolerance.
+Every attached passage must support its complete extractive claim; document or
+transcript status comes from the manifest, and observed labels must agree.
+Missing, unrelated, or invalid source/text support fails without a text tolerance.
 The audio parcel gold explicitly permits the equivalent written forms “locker
 seven” and “Locker 7”; other numbers do not match. This is a reviewed span
 alternative, not number substitution in recognition scoring or source validation.
+
+Audio timing gold uses the original WAV durations (5,615 ms and 4,861 ms, rounded
+to the nearest millisecond) and explicit transcript-unit layouts. Both clips
+allow a single passage. The parcel clip also retains the existing reviewed
+two-unit layout: introduction at 0–2,040 ms and parcel sentence at 2,040–4,480 ms.
+Each observed unit must match one complete reviewed layout in order, including
+its text within the existing WER limit and both endpoints within 500 ms.
+Every audio search/answer citation must match its actual projected unit and
+interval. This rejects collapsed or shifted locators and misplaced passages;
+it is a bounded layout regression check, not word-level alignment evaluation.
+Fast runs check projection timing without claiming ASR accuracy. Timing gold
+is never inferred from the run being graded.
 
 ```sh
 make corpus-check
@@ -59,7 +74,7 @@ several GB of RAM/model storage and runs separately from ordinary PR checks.
 `Synthetic discovery corpus` runs the fast gate on every PR, covering ingestion,
 OCR, transcription, search, and answer changes without fragile path exclusions.
 Full runs nightly, on workflow dispatch, and on PR changes to the corpus,
-its runners, or its workflow. Actions are commit-pinned, permissions read-only,
+its runners, its workflow, or the Makefile. Actions are commit-pinned, permissions read-only,
 and hosted jobs use only synthetic inputs. Existing quality/publication/security
 checks remain unchanged. No model cache, workspace, database, or media artifacts
 are uploaded.
@@ -75,7 +90,7 @@ PYTHONPATH=src .venv/bin/python scripts/corpus_check.py --full \
 ```
 
 This writes observed outputs, **not new gold**, and still returns failure for
-mismatches. Review the text, source spans, tolerances, model/fixture identities,
+mismatches. Review the text, page counts, source spans, timing layouts and tolerances, model/fixture identities,
 and intended product change before manually editing `expected.json`. Include
 that diff and the new passing run in the PR. Do not accept a broken product by
 copying its output into gold. Updating model pins also requires the existing

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import unicodedata
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +38,54 @@ def error_rate(expected, actual) -> float:
             next_row.append(min(next_row[-1] + 1, row[j] + 1, row[j - 1] + (left != right)))
         row = next_row
     return row[-1] / max(1, len(expected))
+
+
+def valid_span_expectation(citation, sources):
+    return (isinstance(citation, dict) and citation.get('document_id') in sources
+            and isinstance(citation.get('span'), str) and bool(normalize(citation['span']))
+            and isinstance(citation.get('alternative_spans', []), list)
+            and all(isinstance(span, str) and normalize(span)
+                    for span in citation.get('alternative_spans', [])))
+
+
+def valid_locator_expectation(locator):
+    return (isinstance(locator, dict)
+            and all(type(locator.get(key)) is int for key in ('start_ms', 'end_ms', 'tolerance_ms'))
+            and locator['start_ms'] == 0 < locator['end_ms']
+            and 0 <= locator['tolerance_ms'] <= 500
+            and locator['end_ms'] > 2 * locator['tolerance_ms'])
+
+
+def matches_locator(observation, locator, tolerance):
+    """Accept only bounded endpoint variation in a reviewed synthetic interval."""
+    start, end = observation.get('start_ms'), observation.get('end_ms')
+    return (type(start) is int and type(end) is int
+            and 0 <= start < end
+            and abs(start - locator['start_ms']) <= tolerance
+            and abs(end - locator['end_ms']) <= tolerance)
+
+
+def matches_audio_layout(observation, expected):
+    if not isinstance(observation, dict):
+        return False
+    units = observation.get('units')
+    if (not isinstance(units, list) or not units or not all(isinstance(unit, dict)
+            and type(unit.get('unit')) is int and unit['unit'] > 0
+            and type(unit.get('start_ms')) is int and type(unit.get('end_ms')) is int
+            and isinstance(unit.get('text'), str) for unit in units)
+            or len({unit['unit'] for unit in units}) != len(units)
+            or any(right['start_ms'] < left['end_ms'] for left, right in zip(units, units[1:]))
+            or '\n'.join(unit['text'] for unit in units) != observation.get('text')):
+        return False
+    for layout in expected['layouts']:
+        if len(units) != len(layout):
+            continue
+        if all(matches_locator(unit, wanted, expected['locator']['tolerance_ms'])
+               and error_rate(normalize(wanted['text']).split(),
+                              normalize(re.sub(r'^Speaker [0-9]+:\s*', '', unit['text'])).split()) <= expected['wer']
+               for unit, wanted in zip(units, layout)):
+            return True
+    return False
 
 
 def load_corpus(root: Path):
@@ -75,6 +124,33 @@ def load_corpus(root: Path):
         for case in expected[group].values():
             if not normalize(case['text']) or not isinstance(case[metric], (int, float)) or not math.isfinite(case[metric]) or not 0 <= case[metric] <= 0.15:
                 raise ValueError(f'{group}: invalid expected text or tolerance')
+    if any(type(case.get('pages')) is not int or case['pages'] <= 0
+           for case in expected['documents'].values()):
+        raise ValueError('Documents require positive integer page counts')
+    for clip in manifest['audio']:
+        locator = expected['audio'][clip['id']].get('locator')
+        if not valid_locator_expectation(locator):
+            raise ValueError('Audio requires a bounded reviewed clip locator')
+        with wave.open(str(root / clip['path'])) as recording:
+            duration_ms = round(recording.getnframes() * 1000 / recording.getframerate())
+        if locator['end_ms'] != duration_ms:
+            raise ValueError('Reviewed audio locator must match the pinned WAV duration')
+        layouts = expected['audio'][clip['id']].get('layouts')
+        if not isinstance(layouts, list) or not layouts:
+            raise ValueError('Audio requires reviewed passage layouts')
+        for layout in layouts:
+            previous_end = 0
+            if not isinstance(layout, list) or not layout:
+                raise ValueError('Audio requires nonempty passage layouts')
+            for unit in layout:
+                if (not isinstance(unit, dict) or not isinstance(unit.get('text'), str) or not normalize(unit['text'])
+                        or type(unit.get('start_ms')) is not int or type(unit.get('end_ms')) is not int
+                        or not previous_end <= unit['start_ms'] < unit['end_ms'] <= duration_ms
+                        or unit['start_ms'] - previous_end > locator['tolerance_ms']):
+                    raise ValueError('Audio passage layout requires ordered bounded text intervals')
+                previous_end = unit['end_ms']
+            if duration_ms - previous_end > locator['tolerance_ms']:
+                raise ValueError('Audio passage layout must cover the reviewed clip interval')
     sources = {row['id'] for row in manifest['documents'] + manifest['audio']}
     ocr_sources = {row['id'] for row in manifest['documents'] if row['ocr']}
     discovery_sources = set()
@@ -88,6 +164,11 @@ def load_corpus(root: Path):
                 or not hits or len(hits) != len(set(hits)) or not set(hits) <= sources
                 or len(hits) > case['top_k']):
             raise ValueError('Search requires nonempty known hits within a positive top-k')
+        spans = expected['search'][case['id']].get('citations')
+        if (not isinstance(spans, list) or not spans
+                or not all(valid_span_expectation(span, sources) for span in spans)
+                or {span['document_id'] for span in spans} != set(hits)):
+            raise ValueError('Search requires reviewed support spans for every expected source')
     for case in expected['answers'].values():
         if (not case['facts'] or not all(isinstance(fact, str) and normalize(fact) for fact in case['facts'])
                 or not case['citations'] or any(c['document_id'] not in sources
@@ -134,11 +215,29 @@ def compare(manifest, expected, actual, *, full=False):
             if source['id'] in source_kinds:
                 raise ValueError(f"Duplicate or ambiguous corpus source identity: {source['id']}")
             source_kinds[source['id']] = kind
+
+    def valid_citation(citation):
+        if not isinstance(citation, dict):
+            return False
+        source = citation.get('document_id')
+        kind = source_kinds.get(source)
+        if kind is None or citation.get('source_valid') is not True or citation.get('evidence_kind') != kind:
+            return False
+        if kind == 'document':
+            return True
+        observation = actual.get(source, {})
+        return (matches_audio_layout(observation, expected['audio'][source])
+                and all(type(citation.get(key)) is int for key in ('unit', 'start_ms', 'end_ms'))
+                and any(isinstance(unit, dict)
+                        and citation.get('excerpt') == unit.get('text')
+                        and all(citation.get(key) == unit.get(key) for key in ('unit', 'start_ms', 'end_ms'))
+                        for unit in observation['units']))
+
     results = []
     for group in ('documents', 'audio', 'search', 'answers'):
         for case in manifest[group]:
             key = case['id']
-            if not full and (group == 'audio' or group == 'documents' and case['ocr']
+            if not full and (group == 'documents' and case['ocr']
                              or group == 'search' and case.get('full_only', False)):
                 continue
             want = expected[group][key]
@@ -148,6 +247,14 @@ def compare(manifest, expected, actual, *, full=False):
             if not isinstance(got, dict):
                 errors.append('missing observed case')
             elif group in ('documents', 'audio'):
+                if group == 'documents' and (type(got.get('pages')) is not int or got['pages'] != want['pages']):
+                    errors.append(f"expected {want['pages']} PDF pages; observed {got.get('pages')!r}")
+                if group == 'audio':
+                    if not matches_audio_layout(got, want):
+                        errors.append('transcript must preserve a reviewed passage layout, text and locators')
+                    if not full:
+                        results.append({'id': key, 'passed': not errors, 'diff': errors})
+                        continue
                 before = normalize(want['text'])
                 after = normalize(got.get('asr_text', '') if group == 'audio' else got.get('text', ''))
                 if group == 'audio':
@@ -168,12 +275,11 @@ def compare(manifest, expected, actual, *, full=False):
                 if not set(want['document_ids']).issubset(hits):
                     errors.append(f"expected top-{case['top_k']} sources {want['document_ids']}; observed {hits}")
                 citations = got.get('citations', [])
-                if any(c.get('source_valid') is not True for c in citations):
+                if any(not valid_citation(c) for c in citations):
                     errors.append('invalid search citation')
-                for source in want['document_ids']:
-                    if not any(c.get('document_id') == source and c.get('source_valid') is True
-                               and normalize(c.get('excerpt', '')) for c in citations):
-                        errors.append(f'missing validated search support: {source}')
+                for support in want['citations']:
+                    if not any(valid_citation(c) and matches_span(c, support) for c in citations):
+                        errors.append(f'missing validated search support: {support}')
             else:
                 if got.get('answerable') is not True:
                     errors.append(f"expected answerable true; observed {got.get('answerable')!r}")
@@ -214,7 +320,7 @@ def compare(manifest, expected, actual, *, full=False):
                                    for citation in claim['citations']):
                             errors.append(f'answer fact lacks support attached to its claim: {fact}')
                 for citation in citations:
-                    if citation.get('source_valid') is not True:
+                    if not valid_citation(citation):
                         errors.append(f'invalid source span: {citation}')
                     if not any(matches_span(citation, item) for item in want['citations']):
                         errors.append(f'unexpected citation: {citation}')
