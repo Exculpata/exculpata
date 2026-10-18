@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cited record synthetic scope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope_id", "matter_id", "stage", "inventory_complete", "targets"],
+  "properties": {
+    "scope_id": {"$ref": "#/$defs/id"},
+    "matter_id": {"$ref": "#/$defs/id"},
+    "stage": {"$ref": "#/$defs/id"},
+    "inventory_complete": {"type": "boolean"},
+    "targets": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/target"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", "not": {"pattern": "\\s"}},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_id",
+        "source_id",
+        "source_version_id",
+        "representation_id",
+        "content_basis_sha256",
+        "unit",
+        "start",
+        "end"
+      ],
+      "properties": {
+        "target_id": {"$ref": "#/$defs/id"},
+        "source_id": {"$ref": "#/$defs/id"},
+        "source_version_id": {"$ref": "#/$defs/id"},
+        "representation_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/id"}]},
+        "content_basis_sha256": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/sha256"}]},
+        "unit": {"enum": ["page", "millisecond", "unknown"]},
+        "start": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+        "end": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]}
+      }
+    }
+  }
+}

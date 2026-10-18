@@ -66,3 +66,7 @@ whole web application. Its dependencies and transaction owner are explicit. A
 model adapter can change without rewriting evidence or retention semantics.
 Existing saved work survives the change. Integration and recovery checks still
 exercise the real composition. Smaller files alone are not success.
+
+The [cited records v1 proposal](architecture/records.md) specifies a portable
+evidence/review boundary and synthetic chronology acceptance, including a manual
+no-model baseline. It introduces no runtime callers or new knowledge store.

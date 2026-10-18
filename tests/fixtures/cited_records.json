@@ -1,0 +1,849 @@
+{
+  "matter_id": "matter-synthetic",
+  "sources": [
+    {
+      "source_id": "source-log",
+      "source_version_id": "log-v1",
+      "representation_id": "log-text-v1",
+      "matter_id": "matter-synthetic",
+      "availability": "available",
+      "units": [
+        {
+          "locator": {"page": 1},
+          "text": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08."
+        },
+        {"locator": {"page": 2}, "text": "Witness Rowan: The courier did not arrive until 2030-04-09."},
+        {
+          "locator": {"page": 3},
+          "text": "A note says delivery was between 2030-04-08 and 2030-04-10; the exact day is uncertain."
+        },
+        {"locator": {"page": 4}, "text": "The door was opened yesterday; the note has no date."},
+        {"locator": {"page": 5}, "text": "This page was outside the capture budget."},
+        {"locator": {"page": 6}, "text": "An unverified draft says the courier arrived on 2030-04-01."}
+      ]
+    },
+    {
+      "source_id": "source-audio",
+      "source_version_id": "audio-v1",
+      "representation_id": "audio-text-v1",
+      "matter_id": "matter-synthetic",
+      "availability": "available",
+      "units": [
+        {
+          "locator": {"timestamp_start_ms": 0, "timestamp_end_ms": 2500},
+          "text": "Speaker unknown: I heard Rowan say, 'I may not have seen the courier.'"
+        }
+      ]
+    },
+    {
+      "source_id": "source-unreadable",
+      "source_version_id": "unreadable-v1",
+      "representation_id": null,
+      "matter_id": "matter-synthetic",
+      "availability": "unavailable",
+      "units": []
+    }
+  ],
+  "records": [
+    {
+      "schema_version": "1.0",
+      "record_id": "event-arrival",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "content_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 1,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 67,
+            "excerpt_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "The log reports courier arrival on April 8.",
+        "when": {
+          "expression": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "precision": "day",
+          "earliest": "2030-04-08",
+          "latest": "2030-04-08",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-arrival",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 2,
+      "previous_revision": 1,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T11:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "accepted",
+      "review": {
+        "reviewer_id": "reviewer-synthetic",
+        "reviewed_revision": 1,
+        "reviewed_at": "2030-05-01T11:01:00Z",
+        "reason": "Synthetic review of the cited assertion; no truth determination."
+      },
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "content_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 1,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 67,
+            "excerpt_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "The log reports courier arrival on April 8.",
+        "when": {
+          "expression": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "precision": "day",
+          "earliest": "2030-04-08",
+          "latest": "2030-04-08",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-witness",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Witness Rowan: The courier did not arrive until 2030-04-09.",
+          "content_sha256": "586eaccbf5628ef1881117859a9f30b8abde0d2445270cedfbefae92fdd53774",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 2,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 59,
+            "excerpt_sha256": "586eaccbf5628ef1881117859a9f30b8abde0d2445270cedfbefae92fdd53774"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "kind": "conflicts_with",
+          "record_id": "event-arrival",
+          "revision": 2,
+          "reason": "Different reported arrival days; neither account is selected as true."
+        }
+      ],
+      "payload": {
+        "description": "Rowan reports that the courier did not arrive until April 9.",
+        "when": {
+          "expression": "Witness Rowan: The courier did not arrive until 2030-04-09.",
+          "precision": "day",
+          "earliest": "2030-04-09",
+          "latest": "2030-04-09",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-witness",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 2,
+      "previous_revision": 1,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T11:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "accepted",
+      "review": {
+        "reviewer_id": "reviewer-synthetic",
+        "reviewed_revision": 1,
+        "reviewed_at": "2030-05-01T11:01:00Z",
+        "reason": "Synthetic review of the cited assertion; no truth determination."
+      },
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Witness Rowan: The courier did not arrive until 2030-04-09.",
+          "content_sha256": "586eaccbf5628ef1881117859a9f30b8abde0d2445270cedfbefae92fdd53774",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 2,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 59,
+            "excerpt_sha256": "586eaccbf5628ef1881117859a9f30b8abde0d2445270cedfbefae92fdd53774"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "kind": "conflicts_with",
+          "record_id": "event-arrival",
+          "revision": 2,
+          "reason": "Different reported arrival days; neither account is selected as true."
+        }
+      ],
+      "payload": {
+        "description": "Rowan reports that the courier did not arrive until April 9.",
+        "when": {
+          "expression": "Witness Rowan: The courier did not arrive until 2030-04-09.",
+          "precision": "day",
+          "earliest": "2030-04-09",
+          "latest": "2030-04-09",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-range",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "A note says delivery was between 2030-04-08 and 2030-04-10; the exact day is uncertain.",
+          "content_sha256": "c6096e9fe8c20101d394ed6d4580e650ffd5739dba0127a313955a391f2a3a5a",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 3,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 87,
+            "excerpt_sha256": "c6096e9fe8c20101d394ed6d4580e650ffd5739dba0127a313955a391f2a3a5a"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "A note gives a three-day delivery window.",
+        "when": {
+          "expression": "A note says delivery was between 2030-04-08 and 2030-04-10; the exact day is uncertain.",
+          "precision": "range",
+          "earliest": "2030-04-08",
+          "latest": "2030-04-10",
+          "reason": "Source leaves the exact date uncertain."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-undated",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "The door was opened yesterday; the note has no date.",
+          "content_sha256": "e0993a256677fe320ee212299596f44ad4e3b959aace631fdec90c1709672af5",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 4,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 52,
+            "excerpt_sha256": "e0993a256677fe320ee212299596f44ad4e3b959aace631fdec90c1709672af5"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "An undated note reports the door opening yesterday.",
+        "when": {
+          "expression": "The door was opened yesterday; the note has no date.",
+          "precision": "unresolved",
+          "earliest": null,
+          "latest": null,
+          "reason": "Source leaves the exact date uncertain."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-rejected",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "An unverified draft says the courier arrived on 2030-04-01.",
+          "content_sha256": "a70aa393125af8b439e5e678ba7bd129cd49065ba772d39da54fe205b683d43d",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 6,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 59,
+            "excerpt_sha256": "a70aa393125af8b439e5e678ba7bd129cd49065ba772d39da54fe205b683d43d"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "An unverified draft reports arrival on April 1.",
+        "when": {
+          "expression": "An unverified draft says the courier arrived on 2030-04-01.",
+          "precision": "day",
+          "earliest": "2030-04-01",
+          "latest": "2030-04-01",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-rejected",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 2,
+      "previous_revision": 1,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T11:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "rejected",
+      "review": {
+        "reviewer_id": "reviewer-synthetic",
+        "reviewed_revision": 1,
+        "reviewed_at": "2030-05-01T11:01:00Z",
+        "reason": "Synthetic review of the cited assertion; no truth determination."
+      },
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "An unverified draft says the courier arrived on 2030-04-01.",
+          "content_sha256": "a70aa393125af8b439e5e678ba7bd129cd49065ba772d39da54fe205b683d43d",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 6,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 59,
+            "excerpt_sha256": "a70aa393125af8b439e5e678ba7bd129cd49065ba772d39da54fe205b683d43d"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "An unverified draft reports arrival on April 1.",
+        "when": {
+          "expression": "An unverified draft says the courier arrived on 2030-04-01.",
+          "precision": "day",
+          "earliest": "2030-04-01",
+          "latest": "2030-04-01",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "event-arrival",
+      "matter_id": "matter-synthetic",
+      "record_type": "event",
+      "revision": 3,
+      "previous_revision": 2,
+      "base_accepted_revision": 2,
+      "created_at": "2030-05-01T12:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "content_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939",
+          "supports": ["event.description", "event.when"],
+          "locator": {
+            "page": 1,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 67,
+            "excerpt_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "description": "Proposed wording: the log asserts April 8 arrival.",
+        "when": {
+          "expression": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "precision": "day",
+          "earliest": "2030-04-08",
+          "latest": "2030-04-08",
+          "reason": "Day stated in the account; no time of day inferred."
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "statement-nested",
+      "matter_id": "matter-synthetic",
+      "record_type": "statement",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-audio",
+          "source_version_id": "audio-v1",
+          "quote": "Speaker unknown: I heard Rowan say, 'I may not have seen the courier.'",
+          "content_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d",
+          "supports": ["statement.content", "statement.speaker"],
+          "locator": {
+            "timestamp_start_ms": 0,
+            "timestamp_end_ms": 2500,
+            "representation_id": "audio-text-v1",
+            "character_start": 0,
+            "character_end": 70,
+            "excerpt_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "content": "I heard Rowan say, 'I may not have seen the courier.'",
+        "speaker": "Unknown speaker attributing uncertain, negated words to Rowan."
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "mention-rowan-report",
+      "matter_id": "matter-synthetic",
+      "record_type": "entity_mention",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Rowan",
+          "content_sha256": "586eaccbf5628ef1881117859a9f30b8abde0d2445270cedfbefae92fdd53774",
+          "supports": ["entity_mention.surface"],
+          "locator": {
+            "page": 2,
+            "representation_id": "log-text-v1",
+            "character_start": 8,
+            "character_end": 13,
+            "excerpt_sha256": "e0ebe4ec4c61126e9b1e4c1686ce37203eea1442f250ea45df82ab3acac96462"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {"surface": "Rowan", "entity_kind": "person", "identity": "unresolved"}
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "mention-rowan-audio",
+      "matter_id": "matter-synthetic",
+      "record_type": "entity_mention",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-audio",
+          "source_version_id": "audio-v1",
+          "quote": "Rowan",
+          "content_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d",
+          "supports": ["entity_mention.surface"],
+          "locator": {
+            "timestamp_start_ms": 0,
+            "timestamp_end_ms": 2500,
+            "representation_id": "audio-text-v1",
+            "character_start": 25,
+            "character_end": 30,
+            "excerpt_sha256": "e0ebe4ec4c61126e9b1e4c1686ce37203eea1442f250ea45df82ab3acac96462"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {"surface": "Rowan", "entity_kind": "person", "identity": "unresolved"}
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "coverage-capture",
+      "matter_id": "matter-synthetic",
+      "record_type": "coverage",
+      "revision": 1,
+      "previous_revision": null,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T10:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "proposed",
+      "review": null,
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "content_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939",
+          "supports": ["coverage.processed"],
+          "locator": {
+            "page": 1,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 67,
+            "excerpt_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939"
+          }
+        },
+        {
+          "source_id": "source-audio",
+          "source_version_id": "audio-v1",
+          "quote": "Speaker unknown: I heard Rowan say, 'I may not have seen the courier.'",
+          "content_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d",
+          "supports": ["coverage.processed"],
+          "locator": {
+            "timestamp_start_ms": 0,
+            "timestamp_end_ms": 2500,
+            "representation_id": "audio-text-v1",
+            "character_start": 0,
+            "character_end": 70,
+            "excerpt_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "scope_id": "scope-capture-v1",
+        "scope_sha256": "37684f6309a3998a968c988415932867fec4a950f527fdb8485a175a1d7f92ce",
+        "portions": [
+          {
+            "target_id": "target-log",
+            "start": 1,
+            "end": 5,
+            "state": "processed",
+            "reason": "Manual event capture completed over these pages."
+          },
+          {
+            "target_id": "target-log",
+            "start": 5,
+            "end": 6,
+            "state": "unprocessed",
+            "reason": "Capture budget ended before this page."
+          },
+          {
+            "target_id": "target-log",
+            "start": 6,
+            "end": 7,
+            "state": "processed",
+            "reason": "Separate manual review of the disputed draft."
+          },
+          {
+            "target_id": "target-audio",
+            "start": 0,
+            "end": 2500,
+            "state": "processed",
+            "reason": "Manual event capture completed; zero dated events found. Statement retained."
+          },
+          {
+            "target_id": "target-unreadable",
+            "start": null,
+            "end": null,
+            "state": "failed",
+            "reason": "No readable representation; source extent remains unknown."
+          }
+        ]
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "record_id": "coverage-capture",
+      "matter_id": "matter-synthetic",
+      "record_type": "coverage",
+      "revision": 2,
+      "previous_revision": 1,
+      "base_accepted_revision": null,
+      "created_at": "2030-05-01T11:00:00Z",
+      "producer": {
+        "kind": "manual",
+        "name": "synthetic-curator",
+        "version": "1",
+        "capability": "record.capture",
+        "tier": "baseline",
+        "model": null
+      },
+      "status": "accepted",
+      "review": {
+        "reviewer_id": "reviewer-synthetic",
+        "reviewed_revision": 1,
+        "reviewed_at": "2030-05-01T11:01:00Z",
+        "reason": "Reviewed the synthetic operation scope and explicit gaps."
+      },
+      "citations": [
+        {
+          "source_id": "source-log",
+          "source_version_id": "log-v1",
+          "quote": "Log entry written on 2030-04-10: The courier arrived on 2030-04-08.",
+          "content_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939",
+          "supports": ["coverage.processed"],
+          "locator": {
+            "page": 1,
+            "representation_id": "log-text-v1",
+            "character_start": 0,
+            "character_end": 67,
+            "excerpt_sha256": "67ca7a101b5bb72477bc734bb7c67d5fb0345f97d2e461ed430ef8c17fa58939"
+          }
+        },
+        {
+          "source_id": "source-audio",
+          "source_version_id": "audio-v1",
+          "quote": "Speaker unknown: I heard Rowan say, 'I may not have seen the courier.'",
+          "content_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d",
+          "supports": ["coverage.processed"],
+          "locator": {
+            "timestamp_start_ms": 0,
+            "timestamp_end_ms": 2500,
+            "representation_id": "audio-text-v1",
+            "character_start": 0,
+            "character_end": 70,
+            "excerpt_sha256": "f6d806aabefa6d23ddc9e360e9744f02fe181d677c12d0c70a2697a14596958d"
+          }
+        }
+      ],
+      "relations": [],
+      "payload": {
+        "scope_id": "scope-capture-v1",
+        "scope_sha256": "37684f6309a3998a968c988415932867fec4a950f527fdb8485a175a1d7f92ce",
+        "portions": [
+          {
+            "target_id": "target-log",
+            "start": 1,
+            "end": 5,
+            "state": "processed",
+            "reason": "Manual event capture completed over these pages."
+          },
+          {
+            "target_id": "target-log",
+            "start": 5,
+            "end": 6,
+            "state": "unprocessed",
+            "reason": "Capture budget ended before this page."
+          },
+          {
+            "target_id": "target-log",
+            "start": 6,
+            "end": 7,
+            "state": "processed",
+            "reason": "Separate manual review of the disputed draft."
+          },
+          {
+            "target_id": "target-audio",
+            "start": 0,
+            "end": 2500,
+            "state": "processed",
+            "reason": "Manual event capture completed; zero dated events found. Statement retained."
+          },
+          {
+            "target_id": "target-unreadable",
+            "start": null,
+            "end": null,
+            "state": "failed",
+            "reason": "No readable representation; source extent remains unknown."
+          }
+        ]
+      }
+    }
+  ],
+  "scope": {
+    "scope_id": "scope-capture-v1",
+    "matter_id": "matter-synthetic",
+    "stage": "manual-event-capture",
+    "inventory_complete": false,
+    "targets": [
+      {
+        "target_id": "target-log",
+        "source_id": "source-log",
+        "source_version_id": "log-v1",
+        "representation_id": "log-text-v1",
+        "content_basis_sha256": "173dd39b4fc6c783ce9099be6a2a164701092dbbc19ba12e1aba453575a3574c",
+        "unit": "page",
+        "start": 1,
+        "end": 7
+      },
+      {
+        "target_id": "target-audio",
+        "source_id": "source-audio",
+        "source_version_id": "audio-v1",
+        "representation_id": "audio-text-v1",
+        "content_basis_sha256": "47b7a1e55203874e99ecd59f7052b77c6b9b03acdc701f1963dcc6d9bae30e4d",
+        "unit": "millisecond",
+        "start": 0,
+        "end": 2500
+      },
+      {
+        "target_id": "target-unreadable",
+        "source_id": "source-unreadable",
+        "source_version_id": "unreadable-v1",
+        "representation_id": null,
+        "content_basis_sha256": null,
+        "unit": "unknown",
+        "start": null,
+        "end": null
+      }
+    ]
+  }
+}
