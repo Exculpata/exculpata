@@ -6,8 +6,10 @@ SQLite imports, and direct local helper arguments with known SQLite provenance.
 Known reflective builtin namespaces are rejected at exposure, before aliases or
 opaque containers can hide dynamic execution. Explicit safe builtin attributes
 remain supported. Scope dictionaries and the module registry retain their known
-builtin entry through deterministic key lookups and shallow copies; computed
-imports and arbitrary reflection are not interpreted.
+builtin entry through deterministic key lookups, shallow copies and pure dictionary
+unions. Namespace-bearing mutations and value enumeration are rejected rather
+than interpreting aliased mutable state. Computed imports and arbitrary reflection
+are not interpreted.
 Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
@@ -49,6 +51,8 @@ _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
 _BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
 _NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
+_NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault"}
+_NAMESPACE_ENUMERATIONS = {"values", "items", "popitem"}
 
 
 # Reviewed Python AST shapes; unknown nodes or fields fail closed before data flow.
@@ -309,9 +313,7 @@ class _Check(ast.NodeVisitor):
                     else:
                         mapping[name.text] = value
             if opaque:
-                return _Value(unresolved_shared_container=any(
-                    self.known_ownership(value, shared_only=True) for value in inputs),
-                    unresolved_active_path=any(self.has_active_path(value) for value in inputs))
+                return self.opaque_dictionary_value(inputs)
             return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
             base = self.value(node.value)
@@ -320,11 +322,11 @@ class _Check(ast.NodeVisitor):
                 return _Value(symbol="<python-scope>")
             if node.attr == "f_builtins":
                 return _Value(symbol="<reflective-builtins>")
-            if base.symbol in _BUILTIN_NAMESPACE_KEYS and node.attr in _NAMESPACE_LOOKUPS | {"copy"}:
+            if base.symbol in _BUILTIN_NAMESPACE_KEYS and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if node.attr in {"append", "extend", "insert", "add", "__setitem__", "__iadd__"}:
                 return _Value(symbol=symbol, receiver=base)
-            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | {"update"}:
+            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
             if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
@@ -521,6 +523,8 @@ class _Check(ast.NodeVisitor):
             self.visit(target.value)
             receiver = self.value(target.value)
             self.visit(target.slice)
+            if self.contains_namespace(value):
+                self.flag(target, "dynamic execution namespace stores are unsupported; use pure dictionary expressions", structural=True)
             marker = self.payload_value([value])
             if self.unresolved_ownership(marker):
                 self.flag(target, "shared or active-path container stores are unsupported; use explicit named handles", structural=True)
@@ -594,6 +598,8 @@ class _Check(ast.NodeVisitor):
                              for value in (left, right))
         if shared or container_path:
             return _Value(unresolved_shared_container=shared, unresolved_active_path=container_path)
+        if isinstance(operator, ast.BitOr) and any(self.contains_namespace(value) for value in (left, right)):
+            return self.dictionary_value([left, right], [])
         return _Value(symbol=left.symbol + "/" + right.symbol,
                       text=left.text + right.text, active_path=left.active_path or right.active_path,
                       complete_text=isinstance(operator, ast.Add) and left.complete_text and right.complete_text)
@@ -604,6 +610,7 @@ class _Check(ast.NodeVisitor):
         self.visit(node.right)
         result = self.binary_value(left, self.value(node.right), node.op)
         self.evaluated_values[node] = result
+        self.reject_dynamic_builtin(node, result)
         if self.unresolved_ownership(result):
             self.flag(node, "fixture container binary operations are unsupported; use literal tuples and fixture_write()", structural=True)
 
@@ -646,8 +653,9 @@ class _Check(ast.NodeVisitor):
             elif name.complete_text:
                 mapping[name.text] = value
         shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
-        self.evaluated_values[node] = (self.payload_value(inputs) if opaque
+        self.evaluated_values[node] = (self.opaque_dictionary_value(inputs) if opaque
                                   else _Value(mapping=tuple(mapping.items())))
+        self.reject_dynamic_builtin(node)
         self.reject_mutable_carrier(node, self.evaluated_values[node])
         if opaque and self.has_active_path(self.evaluated_values[node]):
             self.flag(node, "opaque dictionary paths are unsupported; use named paths with fixture_write()", structural=True)
@@ -699,6 +707,10 @@ class _Check(ast.NodeVisitor):
         key = _BUILTIN_NAMESPACE_KEYS.get(value.symbol)
         return ((key, _Value(symbol="<reflective-builtins>")),) if key else value.mapping
 
+    def opaque_dictionary_value(self, values: list[_Value]) -> _Value:
+        marker = self.payload_value(values)
+        return replace(marker, symbol="<reflective-builtins>") if any(self.contains_namespace(value) for value in values) else marker
+
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
         if len(arguments) == 1 and not keywords and arguments[0].symbol in _BUILTIN_NAMESPACE_KEYS:
             return arguments[0]
@@ -719,7 +731,7 @@ class _Check(ast.NodeVisitor):
                 mapping.update(expanded)
             else:
                 opaque = True
-        return self.payload_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
+        return self.opaque_dictionary_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
 
     def fromkeys_value(self, keys: _Value, default: _Value) -> _Value:
         # A known mapping has literal string keys, independent of its values.
@@ -1007,6 +1019,8 @@ class _Check(ast.NodeVisitor):
         self.visit(node.target)
         left = self.value(node.target)
         self.visit(node.value)
+        if any(self.contains_namespace(value) for value in (left, self.value(node.value))):
+            self.flag(node, "dynamic execution namespace mutation is unsupported; use pure dictionary expressions", structural=True)
         result = self.binary_value(left, self.value(node.value), node.op)
         if self.unresolved_ownership(result):
             self.flag(node, "augmented fixture container operations are unsupported; use named handles and fixture_write()", structural=True)
@@ -1175,6 +1189,27 @@ class _Check(ast.NodeVisitor):
         dictionary_method = function.dictionary_method or (method if owner in {"dict", "builtins.dict"} else "*")
         dictionary_receiver = explicit_receiver if function.dictionary_accessor else function.receiver
         dictionary_arguments = actual_values[1:] if function.dictionary_accessor else actual_values
+        namespace_inputs = [*dictionary_arguments, *opaque_values, *(value for _, value in keyword_values)]
+        if dictionary_receiver is not None:
+            namespace_inputs.append(dictionary_receiver)
+        if (function.dictionary_accessor or function.dictionary_method or method_name == "__setitem__") and any(
+                self.contains_namespace(value) for value in namespace_inputs):
+            if dictionary_method in _NAMESPACE_MUTATIONS or method_name == "__setitem__":
+                self.flag(node, "dynamic execution namespace mutation is unsupported; use pure dictionary expressions", structural=True)
+            elif dictionary_method in _NAMESPACE_ENUMERATIONS:
+                self.flag(node, "dynamic execution namespace enumeration is unsupported; use explicit literal key lookups", structural=True)
+            elif dictionary_method in {"get", "pop"} and any(self.contains_namespace(value) for value in dictionary_arguments[1:]):
+                self.flag(node, "dynamic execution namespace defaults are unsupported; use explicit named values", structural=True)
+            elif dictionary_method == "copy" and dictionary_receiver is not None and not dictionary_arguments:
+                self.evaluated_values[node] = dictionary_receiver
+            elif dictionary_method in {"__or__", "__ror__"}:
+                if dictionary_receiver is not None and len(dictionary_arguments) == 1 and not opaque_values and not keyword_values:
+                    pair = [dictionary_receiver, dictionary_arguments[0]]
+                    if dictionary_method == "__ror__":
+                        pair.reverse()
+                    self.evaluated_values[node] = self.dictionary_value(pair, [])
+                else:
+                    self.evaluated_values[node] = self.opaque_dictionary_value(namespace_inputs)
         if function.dictionary_accessor or function.dictionary_method:
             accessor = self.container_accessor_value(dictionary_receiver, dictionary_method) if dictionary_receiver is not None else None
             defaults = dictionary_arguments[1:] if dictionary_method in {"get", "pop", "setdefault", "*"} else []
@@ -1188,6 +1223,8 @@ class _Check(ast.NodeVisitor):
                 self.evaluated_values[node] = marker
                 self.flag(node, "container accessors with shared handles or active workspace paths are unsupported", structural=True)
         if function.dictionary_fromkeys and explicit_receiver is not None:
+            if any(self.contains_namespace(value) for value in actual_values[1:]):
+                self.flag(node, "dynamic execution namespace defaults are unsupported; use explicit named values", structural=True)
             result = self.fromkeys_value(explicit_receiver, actual_values[1] if len(actual_values) > 1 else _Value())
             self.evaluated_values[node] = result
             if self.unresolved_ownership(result):

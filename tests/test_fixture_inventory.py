@@ -313,3 +313,113 @@ def test_namespace_lookup_literal_reflection_and_mapping_copies(source):
 ])
 def test_namespace_lookup_literal_reflection_preserves_safe_values(source):
     assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('operation', ['exec', 'eval'])
+@pytest.mark.parametrize('namespace,key', [
+    ('globals()', '__builtins__'), ('locals()', '__builtins__'),
+    ('vars()', '__builtins__'), ('sys.modules', 'builtins'),
+])
+@pytest.mark.parametrize('merge', [
+    'NAMESPACE | {}', '{} | NAMESPACE',
+    'NAMESPACE.__or__({})', 'NAMESPACE.__ror__({})',
+    '{}.__or__(NAMESPACE)', '{}.__ror__(NAMESPACE)',
+    'dict.__or__(NAMESPACE, {})', 'dict.__ror__(NAMESPACE, {})',
+])
+def test_namespace_dictionary_unions_preserve_builtin_entries(operation, namespace, key, merge):
+    source = "import sys\nmerged = " + merge.replace('NAMESPACE', namespace)
+    source += f"\ngetattr(merged['{key}'], '{operation}')(payload)"
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "merge = globals().__or__\nmerge({})['__builtins__']['exec'](payload)",
+    "merge = dict.__ror__\nmerge(globals(), {})['__builtins__']['exec'](payload)",
+    "getattr(globals(), '__or__', None)({})['__builtins__']['exec'](payload)",
+    "({'scope': globals()} | {}).get('scope')['__builtins__']['exec'](payload)",
+    "({} | {'scope': globals()}).get('scope')['__builtins__']['exec'](payload)",
+    "({'scope': ordinary} | {'scope': globals()}).get('scope')['__builtins__']['exec'](payload)",
+    "({'__builtins__': ordinary} | globals())['__builtins__']['exec'](payload)",
+    "globals().__ror__({'__builtins__': ordinary})['__builtins__']['exec'](payload)",
+    "({'first': globals(), 'second': globals()} | {'first': ordinary})['second']['__builtins__']['exec'](payload)",
+    "(globals() | unknown)['__builtins__']['exec'](payload)",
+    "(unknown | globals())['__builtins__']['exec'](payload)",
+    "dict.__or__(globals(), unknown)['__builtins__']['exec'](payload)",
+    "merged = {**globals(), **unknown}\nmerged['__builtins__']['exec'](payload)",
+    "merged = dict(globals(), **unknown)\nmerged['__builtins__']['exec'](payload)",
+])
+def test_namespace_dictionary_union_aliases_overrides_and_opaque_inputs_reject(source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "scope = {}\nalias = scope\nscope |= globals()\nalias['__builtins__']['exec'](payload)",
+    "scope = globals()\nscope |= {}\nscope['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.update(globals())\nscope['__builtins__']['exec'](payload)",
+    "scope = {}\nupdate = scope.update\nupdate(globals())\nscope['__builtins__']['exec'](payload)",
+    "scope = {}\ndict.update(scope, globals())\nscope['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.update(nested=globals())\nscope['nested']['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.__ior__(globals())['__builtins__']['exec'](payload)",
+    "scope = {}\ndict.__ior__(scope, globals())['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.setdefault('nested', globals())['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.__setitem__('nested', globals())\nscope['nested']['__builtins__']['exec'](payload)",
+    "scope = {}\nscope['nested'] = globals()\nscope['nested']['__builtins__']['exec'](payload)",
+    "scope = {}\nscope.update(globals())  # fixture-write: Deliberately capture an isolated synthetic mapping.",
+    "scope = globals()\nscope.values()",
+    "scope = globals()\nscope.items()",
+    "scope = {'nested': globals()}\nscope.popitem()",
+    "dict.values(globals())",
+    "dict.items(globals())",
+    "dict.popitem({'nested': globals()})",
+])
+def test_namespace_dictionary_mutations_and_value_views_fail_closed(source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "(globals() | {'__builtins__': ordinary})['__builtins__'].run()",
+    "globals().__or__({'__builtins__': ordinary})['__builtins__'].run()",
+    "dict.__or__(globals(), {'__builtins__': ordinary})['__builtins__'].run()",
+    "dict.__ror__({'__builtins__': ordinary}, globals())['__builtins__'].run()",
+    "import sys\n({'builtins': ordinary}.__ror__(sys.modules))['builtins'].run()",
+    "({'scope': globals()} | {'scope': ordinary}).get('scope').run()",
+    "(globals() | {})['ROOT']",
+    "import sys\n(sys.modules | {}).get('synthetic_module')",
+    "scope = {'one': 1}\nscope |= {'two': 2}",
+    "scope = {}\nscope.update(ordinary)\nscope.setdefault('one', 1)",
+    "scope = {}\ndict.update(scope, {'one': 1})\nscope.__ior__({'two': 2})",
+    "scope = {'one': 1}\nscope.values()\nscope.items()\nscope.popitem()",
+    "scope = {}\nscope['ordinary'] = value",
+    "monkeypatch.setitem(globals(), 'ROOT', tmp_path)",
+    "import sys\nsys.modules[__name__] = module",
+])
+def test_namespace_dictionary_operations_preserve_safe_overrides_and_ordinary_mappings(source):
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('source', [
+    "dict.copy(globals())['__builtins__']['exec'](payload)",
+    "copy = dict.copy\ncopy(globals())['__builtins__']['exec'](payload)",
+    "scope = {}.get('scope', globals())\nscope['__builtins__']['exec'](payload)",
+    "scope = {}.pop('scope', globals())\nscope['__builtins__']['exec'](payload)",
+    "scope = dict.get({}, 'scope', globals())\nscope['__builtins__']['exec'](payload)",
+    "scopes = dict.fromkeys(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)",
+    "scopes = {}.fromkeys(['scope'], globals())\nscopes['scope']['__builtins__']['exec'](payload)",
+])
+def test_namespace_dictionary_remaining_copy_default_and_constructor_paths(source):
+    assert any(item.structural and 'dynamic execution' in item.rule
+               for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('source', [
+    "scope = {}.get('scope', ordinary)",
+    "scope = {}.pop('scope', ordinary)",
+    "values = dict.fromkeys(globals(), ordinary)",
+    "dict.copy({'one': 1})",
+    "dict.__getitem__({'one': 1}, 'one')",
+])
+def test_namespace_dictionary_defaults_and_key_only_construction_controls(source):
+    assert check_fixture_writes(source) == []
