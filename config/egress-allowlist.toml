@@ -7686,3 +7686,65 @@ path = "src/case_intelligence/_idna/__init__.py"
 kind = "host"
 digest = "631014dbd7d86a2bd3f9b149e6a8c890ac0f91625764adb09622102939959a43"
 detail = "idna-3.20.pyz"
+
+# Merged browser diagnostics: exact filenames and Python module-name literals.
+
+[[source]]
+path = "scripts/browser_navigation.py"
+kind = "host"
+digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
+detail = "navigation-timeouts.json"
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "25223e5f2d517f0fdbd3b5bdaa8dcae64fd4b5793989d1200a6b62600280ab21"
+detail = "selenium.webdriver"
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "efb45a7d73ffd0c24d23f25eeda09d0791426971be68797b14ecaade5117e9b1"
+detail = "selenium.webdriver.support"
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "a08d923a644b5153b0463fe298f1a180e0a873705503d80722ee150728d169f7"
+detail = "selenium.webdriver.support.ui"
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
+detail = "selenium.webdriver."
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
+detail = "selenium.webdriver."
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
+detail = "selenium.webdriver."
+
+[[source]]
+path = "scripts/browser_navigation_lint.py"
+kind = "host"
+digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
+detail = "selenium.webdriver."
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
+detail = "navigation-timeouts.json"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
+detail = "navigation-timeouts.json"
