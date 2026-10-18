@@ -1,5 +1,6 @@
 """Executable cache-boundary regressions, including matching timestamp/size forgery."""
 import importlib.util
+import compileall
 import marshal
 from pathlib import Path
 import py_compile
@@ -32,14 +33,17 @@ def run_policy(root, optimize=0):
 @pytest.mark.parametrize('mode', [py_compile.PycInvalidationMode.TIMESTAMP,
                                   py_compile.PycInvalidationMode.CHECKED_HASH,
                                   py_compile.PycInvalidationMode.UNCHECKED_HASH])
-def test_forged_loader_cache_cannot_replace_verified_import(tmp_path,optimize,mode):
+@pytest.mark.parametrize('filename', ['absolute','dot-relative','relocated'])
+def test_forged_loader_cache_cannot_replace_verified_import(tmp_path,optimize,mode,filename):
     package = isolated_policy(tmp_path)
     source = package/'_idna/__init__.py'
     cache = Path(importlib.util.cache_from_source(str(source),optimization='' if not optimize else str(optimize)))
     py_compile.compile(str(source),cfile=str(cache),doraise=True,optimize=optimize,invalidation_mode=mode)
     header = cache.read_bytes()[:16]
     payload = 'print("PLANTED_BYTECODE_EXECUTED")\nIDNAError=ValueError\ndef encode(*a,**kw): return b"evaded.example"\n'
-    cache.write_bytes(header + marshal.dumps(compile(payload,str(source),'exec',optimize=optimize)))
+    recorded={'absolute':str(source),'dot-relative':'./case_intelligence/_idna/__init__.py',
+              'relocated':'/synthetic/install/case_intelligence/_idna/__init__.py'}[filename]
+    cache.write_bytes(header + marshal.dumps(compile(payload,recorded,'exec',optimize=optimize)))
     result = run_policy(tmp_path,optimize)
     assert 'PLANTED_BYTECODE_EXECUTED' not in result.stdout, result.stdout
     assert result.returncode != 0, result.stdout
@@ -50,15 +54,76 @@ def test_forged_loader_cache_cannot_replace_verified_import(tmp_path,optimize,mo
 @pytest.mark.parametrize('mode', [py_compile.PycInvalidationMode.TIMESTAMP,
                                   py_compile.PycInvalidationMode.CHECKED_HASH,
                                   py_compile.PycInvalidationMode.UNCHECKED_HASH])
-@pytest.mark.parametrize('filename', ['absolute','relative','basename'])
+@pytest.mark.parametrize('filename', ['absolute','relative','basename','dot-relative','parent-relative',
+                                       'relocated','unicode-relocated','long-relocated','renamed-relocated'])
 def test_genuine_loader_cache_retains_offline_idna(tmp_path,optimize,mode,filename):
     package=isolated_policy(tmp_path)
     source=package/'_idna/__init__.py'
-    recorded={'absolute':str(source),'relative':str(source.relative_to(tmp_path)),'basename':source.name}[filename]
+    recorded={'absolute':str(source),'relative':str(source.relative_to(tmp_path)),
+              'basename':source.name,'dot-relative':'./'+str(source.relative_to(tmp_path)),
+              'parent-relative':'../synthetic-build/'+str(source.relative_to(tmp_path)),
+              'relocated':'/synthetic/install/lib/'+str(source.relative_to(tmp_path)),
+              'renamed-relocated':'/synthetic/install/loader.py',
+              'unicode-relocated':'/synthetic/é/'+str(source.relative_to(tmp_path)),
+              'long-relocated':'/synthetic/'+('nested/'*50)+str(source.relative_to(tmp_path))}[filename]
     py_compile.compile(str(source),dfile=recorded,doraise=True,optimize=optimize,invalidation_mode=mode)
     result=run_policy(tmp_path,optimize)
     assert result.returncode == 0, result.stderr
     assert "('xn--fa-hia.example', 443)" in result.stdout
+
+
+@pytest.mark.parametrize('layout', ['destination','strip-prepend'])
+def test_compileall_relocated_cache_retains_offline_idna(tmp_path,layout):
+    package=isolated_policy(tmp_path)
+    source=package/'_idna/__init__.py'
+    options=({'ddir':'/synthetic/install'} if layout=='destination' else
+             {'stripdir':str(tmp_path),'prependdir':'/synthetic/install'})
+    assert compileall.compile_file(str(source),quiet=2,force=True,**options)
+    result=run_policy(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "('xn--fa-hia.example', 443)" in result.stdout
+
+
+@pytest.mark.parametrize('shared', [False,True])
+def test_genuine_cache_supports_writer_reference_ownership(tmp_path,shared):
+    package=isolated_policy(tmp_path)
+    source=package/'_idna/__init__.py'
+    cache=Path(importlib.util.cache_from_source(str(source)))
+    py_compile.compile(str(source),doraise=True)
+    if shared:
+        compiled=compile(source.read_bytes(),str(source),'exec',dont_inherit=True)
+        references=(compiled,compiled)
+        payload=marshal.dumps(references[0])
+        del references,compiled
+    else:
+        payload=marshal.dumps(compile(source.read_bytes(),str(source),'exec',dont_inherit=True))
+    cache.write_bytes(cache.read_bytes()[:16]+payload)
+    result=run_policy(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "('xn--fa-hia.example', 443)" in result.stdout
+
+
+def test_untrusted_filename_candidates_do_not_authorize_modified_payload(tmp_path):
+    package=isolated_policy(tmp_path)
+    source=package/'_idna/__init__.py'
+    cache=Path(importlib.util.cache_from_source(str(source)))
+    py_compile.compile(str(source),doraise=True)
+    original=cache.read_bytes()
+    cache.write_bytes(original+marshal.dumps('/synthetic/install/__init__.py'))
+    result=run_policy(tmp_path)
+    assert result.returncode != 0
+    assert 'IDNA bytecode' in result.stderr
+
+
+def test_oversized_cache_payload_fails_closed(tmp_path):
+    package=isolated_policy(tmp_path)
+    source=package/'_idna/__init__.py'
+    cache=Path(importlib.util.cache_from_source(str(source)))
+    py_compile.compile(str(source),doraise=True)
+    cache.write_bytes(cache.read_bytes()+b'x'*20000)
+    result=run_policy(tmp_path)
+    assert result.returncode != 0
+    assert 'IDNA bytecode' in result.stderr
 
 
 def test_reload_cannot_select_a_newly_planted_cache(tmp_path):

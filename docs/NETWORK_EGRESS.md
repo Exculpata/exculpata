@@ -110,7 +110,13 @@ A finder in the trusted parent package intercepts only this private package's
 normal imports and reloads. It compares this interpreter's cache payload hashes against freshly compiled
 trusted loader source, rejects unknown/symlinked cache artifacts, and
 executes source bytes without ever executing a cache payload. Timestamp, size
-and source-hash cache headers cannot authorize different code. Canonical loader caches tagged for another CPython version are inert: they are
+and source-hash cache headers cannot authorize different code. Relative spellings
+(including leading `./`) and `compileall` destination/prefix filenames are preserved
+as traceback metadata. Bounded string candidates are read without deserializing
+untrusted objects; each candidate must reproduce the complete trusted-source payload
+hash. Filename strings are limited to 16 KiB and 128 distinct candidates per cache;
+the cache read is bounded by the canonical payload size plus that filename allowance.
+Canonical loader caches tagged for another CPython version are inert: they are
 not read or executed by this interpreter, and that version validates them against
 its own compiled source if it later uses the checkout. Other Python imports are unchanged; this does not protect a compromised parent package or
 arbitrary code already running in the process.

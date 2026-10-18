@@ -15,6 +15,46 @@ def _protect_offline_idna_import():
     name = __name__ + "._idna"
     source = Path(__file__).with_name("_idna") / "__init__.py"
 
+    def trusted_payloads(data, filename, optimize):
+        compiled = compile(data, filename, "exec", dont_inherit=True, optimize=optimize)
+        # Preserve the cache writer's reference ownership for marshal encoding.
+        cache_writer_references = (compiled, compiled)
+        payload = marshal.dumps(cache_writer_references[0])
+        del cache_writer_references, compiled
+        # Python runtimes may release the writer's caller reference before the
+        # marshal call. Both encodings below contain only freshly compiled source.
+        unshared = marshal.dumps(compile(data, filename, "exec", dont_inherit=True,
+                                         optimize=optimize))
+        return payload, unshared
+
+    def filename_candidates(payload):
+        # Read bounded string *candidates*, never deserialize untrusted objects.
+        # Candidates authorize nothing: a complete payload hash must still match
+        # trusted source compiled with that traceback-only filename.
+        found = set()
+        for offset, tag in enumerate(payload):
+            tag &= 0x7f
+            width = 1 if tag in b"zZ" else 4 if tag in b"aAut" else 0
+            if not width or offset + 1 + width > len(payload):
+                continue
+            start = offset + 1 + width
+            size = int.from_bytes(payload[offset + 1:start], "little")
+            if not 0 < size <= 16384 or start + size > len(payload):
+                continue
+            try:
+                name = payload[start:start + size].decode("utf-8", "surrogatepass")
+            except UnicodeDecodeError:
+                continue
+            if "\0" in name or name in found:
+                continue
+            found.add(name)
+            if len(found) > 128:
+                raise RuntimeError("Too many IDNA bytecode filename candidates")
+            yield name
+            # Both compiler-owned and caller-interned filename strings occur in
+            # genuine caches. Their marshal string tags differ, not their code.
+            yield sys.intern(name)
+
     class SourceOnlyLoader(importlib.machinery.SourceFileLoader):
         def get_code(self, fullname):
             data = source.read_bytes()
@@ -36,26 +76,21 @@ def _protect_offline_idna_import():
                         # It is never read or executed; its owning runtime checks
                         # its payload if the source tree is used there later.
                         continue
-                    # compileall permits source-relative filenames; these alter
-                    # traceback metadata, never the source being compiled.
-                    filenames = {str(source), *(str(Path(*source.parts[i:]))
-                                                for i in range(1, len(source.parts)))}
-                    trusted_payloads = []
-                    for filename in filenames:
-                        compiled = compile(data, filename, "exec", dont_inherit=True,
-                                           optimize=expected[artifact.name])
-                        # Match the cache writer's caller/callee references:
-                        # marshal also encodes reference ownership.
-                        cache_writer_references = (compiled, compiled)
-                        trusted_payloads.append(marshal.dumps(cache_writer_references[0]))
-                    maximum = max(map(len, trusted_payloads))
-                    hashes = {hashlib.sha256(payload).digest() for payload in trusted_payloads}
+                    optimize = expected[artifact.name]
+                    canonical = trusted_payloads(data, str(source), optimize)
+                    maximum = max(map(len, canonical)) + 16384
                     with artifact.open("rb") as stream:
                         stored = stream.read(16 + maximum + 1)
                     if (len(stored) < 16 or len(stored) > 16 + maximum
                             or stored[:4] != importlib.util.MAGIC_NUMBER
-                            or int.from_bytes(stored[4:8], "little") not in (0, 1, 3)
-                            or hashlib.sha256(stored[16:]).digest() not in hashes):
+                            or int.from_bytes(stored[4:8], "little") not in (0, 1, 3)):
+                        raise RuntimeError("IDNA bytecode failed source integrity validation")
+                    digest = hashlib.sha256(stored[16:]).digest()
+                    if digest not in {hashlib.sha256(item).digest() for item in canonical} and not any(
+                        digest == hashlib.sha256(item).digest()
+                        for filename in filename_candidates(stored[16:])
+                        for item in trusted_payloads(data, filename, optimize)
+                    ):
                         raise RuntimeError("IDNA bytecode failed source integrity validation")
             # Neither timestamp nor source-hash headers authorize execution of a
             # cached payload. Compile the trusted source bytes on every load/reload.
