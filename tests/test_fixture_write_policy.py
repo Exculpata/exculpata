@@ -6,6 +6,10 @@ from textwrap import dedent
 import pytest
 
 from tests.fixture_write_policy import check_fixture_writes
+from tests.fixture_inventory import check_inventory_source, inventory_paths
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("source", [
@@ -113,8 +117,9 @@ def test_exception_cannot_license_deferred_lambda_write():
     assert check_fixture_writes(source)
 
 
-def test_test_modules_and_scripts_observe_fixture_write_boundary():
-    from tests.fixture_inventory import check_repository_fixtures
-
-    violations = check_repository_fixtures(Path(__file__).resolve().parents[1])
+@pytest.mark.parametrize("path", inventory_paths(ROOT), ids=str)
+def test_test_modules_and_scripts_observe_fixture_write_boundary(path):
+    # Keep every tracked source and the same checker, but give each source its
+    # own CI result and unchanged per-test timeout instead of one serial batch.
+    violations = check_inventory_source((ROOT / path).read_text(encoding="utf-8"), path.as_posix())
     assert not violations, "\n" + "\n".join(map(str, violations))

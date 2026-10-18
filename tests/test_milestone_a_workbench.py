@@ -226,7 +226,8 @@ def test_full_matter_upload_search_generated_answer_support_and_restart(tmp_path
         assert 'data-answer-mode="generated"' in answer.text
         assert "Open support" not in answer.text or "Supporting source" not in answer.text
         assert len(generator.calls) == 1
-        assert all(item.source_name for item in generator.calls[0]["evidence"])
+        for item in generator.calls[0]["evidence"]:
+            assert item.source_name
         citation = re.search(
             rf'href="(/matters/{slug}\?support=[0-9a-f]{{40}}&amp;conversation=conversation-[0-9a-f]{{32}}#support-pane)"',
             answer.text,

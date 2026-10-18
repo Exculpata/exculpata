@@ -61,7 +61,8 @@ def test_support_and_contradiction_across_24_units_keep_originals_through_both_l
     assert state["requests_spent"] == len(client.calls) == 12
     for call in client.calls:
         assert len(call["evidence"]) <= 12
-        assert all(item.source_name.startswith("synthetic-") for item in call["evidence"])
+        for item in call["evidence"]:
+            assert item.source_name.startswith("synthetic-")
         assert "derived_findings_not_evidence" in call["working_context"]
 
 

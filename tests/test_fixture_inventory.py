@@ -1255,6 +1255,19 @@ _INDIRECT_LOCAL_CLASS_RESULTS = [
     ('type.__call__(frozenset, [Callback()])', '.__iter__().__next__()'),
     ('builtin_type.__call__(Callback)', ''), ('builtin_object.__new__(Callback)', ''),
     ('getattr(builtin_type, "__call__")(Callback)', ''),
+    ('type.__call__(*(item for item in ()), dict, callback=Callback())', '["callback"]'),
+    ('type.__call__(choose([dict]), callback=Callback())', '["callback"]'),
+    ('type.__call__(dict if resource else list, [("callback", Callback())])', '["callback"]'),
+    ('type.__call__(list if resource else dict, [("callback", Callback())])', '[0][1]'),
+    ('type.__call__.__call__(Callback)', ''), ('object.__new__.__call__(Callback)', ''),
+    ('copies.copy.__call__(Callback())', ''), ('copies.deepcopy.__call__(Callback())', ''),
+    ('type.__call__(choose([item for item in [dict]]), callback=Callback())', '["callback"]'),
+    ('type.__call__([item for item in [dict]][0], callback=Callback())', '["callback"]'),
+    ('type.__call__(next(iter([item for item in [dict]])), callback=Callback())', '["callback"]'),
+    ('type.__call__(next(iter({item for item in [dict]})), callback=Callback())', '["callback"]'),
+    ('type.__call__({key: dict for key in ["callback"]}.get(resource), callback=Callback())', '["callback"]'),
+    ('type.__call__(next(item for item in [dict]), callback=Callback())', '["callback"]'),
+    ('type.__call__(choose([{"callback": dict}])["callback"], callback=Callback())', '["callback"]'),
 ]
 
 
@@ -1265,7 +1278,8 @@ def test_indirect_local_class_delayed_result_runtime_rejection(expression, selec
               'from copy import copy as clone, deepcopy as deep_clone\n'
               'from builtins import type as builtin_type, object as builtin_object\n'
               'allocate = object.__new__\nconstruct = getattr(type, "__call__")\n'
-              'def apply(operation, value):\n    return operation(value)')
+              'def apply(operation, value):\n    return operation(value)\n'
+              'def choose(values):\n    return values[0]')
     if mode == 'async':
         source += '\nasync def provider():\n    return ' + expression
         rejection_line = len(source.splitlines())
@@ -1412,4 +1426,58 @@ def test_unverified_allocator_parameter_runtime_acceptance(name, access, mode):
     observed, sink = run_isolated_namespace_probe(source, 'observed')
     assert observed == 1
     assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+@pytest.mark.parametrize('mode', ['for', 'async-for', 'generator', 'comprehension'])
+def test_local_iterator_result_runtime_rejection(mode):
+    source = (_LOCAL_CALLBACK_CLASS + '\nclass IterableCallback(Callback):\n'
+              '    def __iter__(self):\n        yield self\n'
+              '    async def __aiter__(self):\n        yield self')
+    if mode == 'generator':
+        source += '\ndef provider():\n    for item in IterableCallback():\n        yield item'
+        rejection_line = len(source.splitlines())
+        source += '\nselected = next(provider())'
+    else:
+        source += '\nasync def provider():\n'
+        if mode == 'comprehension':
+            source += '    return [item for item in IterableCallback()]'
+        else:
+            source += '    ' + ('async ' if mode == 'async-for' else '') + 'for item in IterableCallback():\n        return item'
+        rejection_line = len(source.splitlines())
+        source += '\nimport asyncio\nselected = asyncio.run(provider())' + ('[0]' if mode == 'comprehension' else '')
+    source += "\nselected()['__builtins__']['exec'](payload)"
+    _, sink = run_isolated_namespace_probe(source)
+    assert sink == ['synthetic payload executed']
+    assert any(item.structural and item.line == rejection_line and 'delayed local class' in item.rule
+               and 'fixture_write' in item.rule for item in check_fixture_writes(source))
+
+
+@pytest.mark.parametrize('body', [
+    'return type.__call__(*(item for item in ()), dict, answer=1)["answer"]',
+    'return type.__call__(dict if resource else list, [("answer", 1)])["answer"]',
+    'for key in {"answer": dict}:\n        return int(key == "answer")',
+    'return int([key for key in {"answer": dict}] == ["answer"])',
+    'return int([key for key in {"answer": Callback()}] == ["answer"])',
+    'for item in [1]:\n        return item',
+    'return ordinary.__call__(Callback())',
+    'return int(getattr(dict, "__name__") == "dict")',
+])
+def test_builtin_carrier_transport_safe_runtime_controls(body):
+    source = ('class Callback:\n    pass\ndef ordinary(value):\n    return 1\n'
+              'async def provider():\n    ' + body + '\nimport asyncio\nobserved = asyncio.run(provider())')
+    observed, sink = run_isolated_namespace_probe(source, 'observed', resource=True)
+    assert observed == 1
+    assert sink == []
+    assert check_fixture_writes(source) == []
+
+
+def test_builtin_generator_marker_preserves_creation_and_consumption_runtime_timing():
+    source = ('def record(value):\n    sink.append("consumed")\n    return value\n'
+              'callback = dict\npending = (record(callback) for item in [1])\n'
+              'before = list(sink)\ncallback = list\nselected = next(pending)\n'
+              'observed = (before, selected is list)')
+    observed, sink = run_isolated_namespace_probe(source, 'observed')
+    assert observed == ([], True)
+    assert sink == ['consumed']
     assert check_fixture_writes(source) == []

@@ -134,6 +134,13 @@ def intake_folder(client: TestClient, slug: str) -> str:
     return receipt["receipt_url"]
 
 
+def discovery_has_pending_work(discovery) -> bool:
+    for key in ("sources_pending", "unsealed_sources", "sources_attention", "budget_reached"):
+        if discovery[key]:
+            return True
+    return False
+
+
 def wait_for_processing(demo: Demo, expected: int, timeout_seconds: float) -> None:
     """Wait beyond extraction: durable indexing jobs and suggestions must finish."""
     bench = demo.app.state.workbench
@@ -147,8 +154,7 @@ def wait_for_processing(demo: Demo, expected: int, timeout_seconds: float) -> No
                 and not any(bench.workspace.active_matter_work_counts(demo.matter.matter_id).values())
                 and discovery and discovery["sources_ready"] == readiness.searchable_count
                 and discovery["sources_complete"] == discovery["sources_ready"]
-                and not any(discovery[key] for key in (
-                    "sources_pending", "unsealed_sources", "sources_attention", "budget_reached"))):
+                and not discovery_has_pending_work(discovery)):
             return
         time.sleep(0.05)
     raise TimeoutError("Harbor Street processing did not finish before the demo deadline.")
