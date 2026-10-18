@@ -226,6 +226,11 @@ def citation_identity(citation):
     return source, unit
 
 
+def transcript_location(start_ms, end_ms):
+    from case_intelligence.media_evidence import format_timestamp
+    return f'{format_timestamp(start_ms)}–{format_timestamp(end_ms)}'
+
+
 def compare(manifest, expected, actual, *, full=False):
     """Return per-case diagnostics; no aggregate or caller-supplied pass flag is trusted."""
     source_kinds = {}
@@ -242,6 +247,10 @@ def compare(manifest, expected, actual, *, full=False):
         kind = source_kinds.get(source)
         if kind is None or citation.get('source_valid') is not True or citation.get('evidence_kind') != kind:
             return False
+        if (not isinstance(citation.get('excerpt'), str) or not citation['excerpt']
+                or type(citation.get('start')) is not int or citation['start'] != 0
+                or type(citation.get('end')) is not int or citation['end'] != len(citation['excerpt'])):
+            return False
         if kind == 'document':
             observation = actual.get(source)
             # The reviewed PDF corpus contains one page per source, so its
@@ -250,14 +259,12 @@ def compare(manifest, expected, actual, *, full=False):
                     and observation['pages'] == expected['documents'][source]['pages'] == 1
                     and type(citation.get('unit')) is int and citation['unit'] == 1
                     and citation.get('location') == 'Page 1'
-                    and isinstance(citation.get('excerpt'), str) and bool(citation['excerpt'])
                     and citation['excerpt'] == observation.get('text')
-                    and type(citation.get('start')) is int and citation['start'] == 0
-                    and type(citation.get('end')) is int and citation['end'] == len(citation['excerpt'])
                     and citation.get('start_ms') is None and citation.get('end_ms') is None)
         observation = actual.get(source, {})
         return (matches_audio_layout(observation, expected['audio'][source])
                 and all(type(citation.get(key)) is int for key in ('unit', 'start_ms', 'end_ms'))
+                and citation.get('location') == transcript_location(citation['start_ms'], citation['end_ms'])
                 and any(isinstance(unit, dict)
                         and citation.get('excerpt') == unit.get('text')
                         and all(citation.get(key) == unit.get(key) for key in ('unit', 'start_ms', 'end_ms'))

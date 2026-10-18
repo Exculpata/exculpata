@@ -48,7 +48,7 @@ def seed_audio_support(expected, actual, citation):
     source = citation['document_id']
     text = citation['excerpt']
     reference = gate.re.sub(r'^Speaker [0-9]+:\s*', '', text)
-    citation.update(unit=1, start_ms=0, end_ms=2000)
+    citation.update(unit=1, start_ms=0, end_ms=2000, location='00:00–00:02', start=0, end=len(text))
     expected['audio'][source] = {'text':reference, 'wer':0.15,
         'locator':{'start_ms':0, 'end_ms':2000, 'tolerance_ms':500},
         'layouts':[[{'text':reference, 'start_ms':0, 'end_ms':2000}]]}
@@ -393,6 +393,8 @@ def corpus_citation(source, expected, actual):
                 'evidence_kind':'transcript' if audio else 'document'}
     if audio:
         citation.update({key:actual[source]['units'][0][key] for key in ('unit', 'start_ms', 'end_ms')})
+        citation.update(location=gate.transcript_location(citation['start_ms'], citation['end_ms']),
+                        start=0, end=len(citation['excerpt']))
     else:
         citation.update(unit=1, location='Page 1', start=0, end=len(citation['excerpt']))
     return citation
@@ -596,3 +598,37 @@ def test_answer_uniqueness_matches_product_text_and_evidence_set(duplicate):
     assert result['passed'] is (duplicate == 'none')
     if duplicate in {'citation', 'claim-reordered', 'claim-whitespace'}:
         assert any('duplicate' in line for line in result['diff'])
+
+
+@pytest.mark.parametrize('start,end,label', [
+    (0, 5615, '00:00–00:05'), (2040, 4480, '00:02–00:04'),
+    (999, 1001, '00:00–00:01'), (59999, 60001, '00:59–01:00'),
+    (3599999, 3600123, '59:59–01:00:00'),
+])
+def test_transcript_display_label_uses_product_floor_and_hour_contract(start, end, label):
+    assert gate.transcript_location(start, end) == label
+
+
+@pytest.mark.parametrize('field,value', [
+    ('location', None), ('location', False), ('location', []), ('location', {}),
+    ('location', '00:00–00:03'), ('location', '00:00—00:02'), ('location', '00:00-00:02'),
+    ('location', '0–2000'), ('location', '00:00:00,000–00:00:02,000'), ('location', '00:00–00:02 '),
+    ('start', None), ('start', False), ('start', 0.0), ('start', '0'), ('start', -1), ('start', 1),
+    ('end', None), ('end', True), ('end', 19.0), ('end', '19'), ('end', 0), ('end', 99999),
+])
+def test_transcript_display_and_excerpt_range_require_exact_validated_values(field, value):
+    manifest, expected, actual = sample()
+    citation = actual['answer']['citations'][0]
+    citation.update(document_id='wav', evidence_kind='transcript')
+    seed_audio_support(expected, actual, citation)
+    expected['answers']['answer']['citations'][0]['document_id'] = 'wav'
+    actual['answer']['text'] = actual['answer']['claims'][0]['text'] = gate.TRANSCRIPT_QUALIFIER + citation['excerpt']
+    expected['search']['search']['document_ids'] = ['wav']
+    expected['search']['search']['citations'][0]['document_id'] = 'wav'
+    actual['search'] = {'document_ids':['wav'], 'citations':[copy.deepcopy(citation)]}
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    for observed in [citation, actual['search']['citations'][0]]:
+        if value is None: del observed[field]
+        else: observed[field] = value
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert not results['answer']['passed'] and not results['search']['passed']

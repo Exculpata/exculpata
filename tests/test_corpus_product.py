@@ -128,6 +128,9 @@ def test_corpus_citations_accept_observed_spoken_numeral_without_inference_from_
     ]
     actual = product.observe(gate.CORPUS, manifest, observed_transcripts=transcripts)
     assert 'Locker 7.' in actual['audio-parcel']['text']
+    parcel_labels = {citation['location'] for result in actual.values()
+                     for citation in result.get('citations', []) if citation['document_id'] == 'audio-parcel'}
+    assert parcel_labels == {'00:00–00:02', '00:02–00:04'}
     assert 'search-scan-en' not in actual and 'search-scan-es' not in actual
     results = gate.compare(manifest, expected, actual)
     assert all(row['passed'] for row in results), results
@@ -353,3 +356,23 @@ def test_actual_corpus_rejects_invalid_document_locators_and_answer_duplicates(m
     assert results['answer-bicycle']['passed'] is False
     if mutation.startswith('document-'):
         assert results['search-gate']['passed'] is False
+
+
+@pytest.mark.parametrize('mutation', ['page-label', 'missing-label', 'empty-label', 'wrong-time-label',
+    'hyphen-label', 'numeric-label', 'start-offset', 'end-offset'])
+def test_actual_transcript_citation_display_and_character_locators_are_bound(mutation):
+    spec = importlib.util.spec_from_file_location('corpus_check', Path(__file__).parents[1]/'scripts/corpus_check.py')
+    gate = importlib.util.module_from_spec(spec); spec.loader.exec_module(gate)
+    manifest, expected = gate.load_corpus(gate.CORPUS)
+    actual = product.observe(gate.CORPUS, manifest)
+    assert all(row['passed'] for row in gate.compare(manifest, expected, actual))
+    for key in ('search-gate', 'answer-spoken'):
+        citation = next(c for c in actual[key]['citations'] if c['document_id'] == 'audio-bicycle')
+        if mutation == 'missing-label': del citation['location']
+        elif mutation == 'start-offset': citation['start'] = -1
+        elif mutation == 'end-offset': citation['end'] = len(citation['excerpt']) + 1
+        else:
+            citation['location'] = {'page-label':'Page 99', 'empty-label':'',
+                'wrong-time-label':'00:01–00:01', 'hyphen-label':'00:00-00:05', 'numeric-label':5615}[mutation]
+    results = {row['id']:row for row in gate.compare(manifest, expected, actual)}
+    assert not results['search-gate']['passed'] and not results['answer-spoken']['passed']
