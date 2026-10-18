@@ -155,9 +155,16 @@ def _registered(token: str, patterns: list[tuple[str, re.Pattern[str]]], *, temp
 def scan_text(location: str, text: str, contracts: Mapping[str, NameContract] = NAME_CONTRACTS, *, literal: bool = False) -> list[Finding]:
     # Inspect the complete generated name for ordinary deployment, Python and
     # JavaScript placeholders; an unfilled fixed prefix alone is not a name.
-    text = re.sub(r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}", "CONTRACTDYNAMIC", text)
-    patterns = _patterns(contracts)
     found = []
+    def mask_placeholder(match):
+        identifier = match.group().strip("@$ {}")
+        if LEGACY_STEM in identifier.casefold():
+            offset = text.count("\n", 0, match.start())
+            for item in scan_text(location, identifier, contracts, literal=True):
+                found.append(Finding(f"{location}:{offset + 1}", item.identifier))
+        return "CONTRACTDYNAMIC"
+    text = re.sub(r"@[A-Z][A-Z0-9_]*@|\$?\{[A-Za-z_]\w*\}", mask_placeholder, text)
+    patterns = _patterns(contracts)
     for match in _TOKENS.finditer(text):
         start, end = match.span()
         # Python's ASCII-oriented operational patterns must not discard a
@@ -219,6 +226,10 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
     # comment/string boundaries, so lexical ambiguity must not hide escapes.
     found = scan_text(location, text, contracts)
     try:
+        encoded = [decode(match) for match in escapes.finditer(text) if match.group()[1:2] in {"x", "u", "\r", "\n"}]
+        if any(not value or any(unicodedata.category(character) not in {"Cc", "Cs", "Cn"} for character in value)
+               for value in encoded):
+            found.append(Finding(f"{location}:1", "unsupported encoded JavaScript composition"))
         found.extend(scan_text(location, escapes.sub(decode, text), contracts))
     except ValueError:
         found.append(Finding(f"{location}:1", "unsupported ambiguous JavaScript escape"))
@@ -234,6 +245,9 @@ def scan_javascript(location: str, text: str, contracts) -> list[Finding]:
         except ValueError:
             found.append(Finding(f"{location}:1", "unsupported undecodable JavaScript literal"))
             continue
+        if any(match.group()[1:] not in {"n", "r", "t", "b", "f", "v", "0", "\\", "'", '"', "`", "/"}
+               for match in escapes.finditer(body)):
+            found.append(Finding(f"{location}:1", "unsupported encoded JavaScript composition"))
         offset = text.count("\n", 0, literal_match.start())
         for item in scan_text(location, decoded, contracts, literal=True):
             _, line = item.location.rsplit(":", 1)
@@ -361,6 +375,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             stored = env.get(ast.unparse(node))
             if isinstance(stored, ContainerValue) and stored.kind == "path":
                 return stored
+        if isinstance(node, (ast.IfExp, ast.BoolOp)):
+            selected = structure(node)
+            if selected is not None:
+                return selected
         resolved = value(node)
         if resolved is not None:
             return resolved
@@ -405,12 +423,36 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             results.append((scope, set(bindings)))
         return results
 
+    def callable_value(item) -> bool:
+        if not isinstance(item, ContainerValue):
+            return False
+        if item.kind in {"module", "callable", "local_callable", "ambiguous_callable"}:
+            return True
+        return any(callable_value(value) for value in item.items) if item.kind != "dict" else any(
+            callable_value(value) for _, value in item.items)
+
+    def callable_choice(items):
+        if any(callable_value(item) for item in items):
+            if all(item == items[0] for item in items):
+                return items[0]
+            return ContainerValue("ambiguous_callable", tuple(items))
+        return None
+
     def structure(node: ast.AST) -> ContainerValue | None:
         nonlocal env, unresolved_stems
         if isinstance(node, FrozenDomainValue):
             return node.item
         if isinstance(node, ast.Lambda):
             return ContainerValue("local_callable", ())
+        if isinstance(node, (ast.IfExp, ast.BoolOp)):
+            choices = [node.body, node.orelse] if isinstance(node, ast.IfExp) else boolean_operands(node)
+            selected = callable_choice([frozen(choice) for choice in choices])
+            if selected is not None:
+                return selected
+        if isinstance(node, ast.Attribute):
+            parent = structure(node.value)
+            if parent is not None and parent.kind == "ambiguous_callable":
+                return parent
         if isinstance(node, (ast.Name, ast.Attribute)) and qualified(node) in unsupported_path_builders | {"pathlib.Path"}:
             return ContainerValue("callable", (qualified(node),))
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -512,8 +554,13 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         if source is None:
             return None
         key = index_value(node.slice)
+        if source.kind == "ambiguous_callable":
+            return source
         if source.kind == "selection":
-            return ContainerValue("unknown", ()) if legacy_value(source) else None
+            return (ContainerValue("ambiguous_callable", source.items) if callable_value(source)
+                    else ContainerValue("unknown", ()) if legacy_value(source) else None)
+        if key is None and callable_value(source):
+            return ContainerValue("ambiguous_callable", (source,))
         if source.kind == "dict":
             return next((item for name, item in reversed(source.items) if name == key), None)
         if source.kind in {"list", "tuple"} and isinstance(key, int) and -len(source.items) <= key < len(source.items):
@@ -522,7 +569,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
     def literal(item: str | ContainerValue | None) -> ast.AST:
         if isinstance(item, ContainerValue):
-            if item.kind in {"path", "string", "module", "callable", "local_callable", "object"}:
+            if item.kind in {"path", "string", "module", "callable", "local_callable", "ambiguous_callable", "object"}:
                 return FrozenDomainValue(item)
             if item.kind == "dict":
                 return ast.Dict(keys=[ast.Constant(value=key) for key, _ in item.items], values=[literal(value) for _, value in item.items])
@@ -1062,6 +1109,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                 ):
                     return ContainerValue("tuple", tuple(joined_values([item.items[index] for item in containers])
                                                          for index in range(len(containers[0].items))))
+                selected = callable_choice(list(candidates))
+                if selected is not None:
+                    return selected
                 legacy = {item for item in candidates if legacy_value(item)}
                 return next(iter(legacy)) if len(legacy) == 1 else ContainerValue("unknown", ()) if legacy else None
 
@@ -1302,6 +1352,9 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
                             if all(item == scope.get(key) for scope, _ in branches[1:])}
                 unresolved = set().union(*(unknown for _, unknown in branches))
                 for key in set().union(*(scope.keys() for scope, _ in branches)):
+                    selected = callable_choice([scope.get(key) for scope, _ in branches])
+                    if key not in bindings and selected is not None:
+                        bindings[key] = selected
                     legacy = {scope[key] for scope, _ in branches if key in scope and legacy_value(scope[key])}
                     if key not in bindings and key not in unresolved and len(legacy) == 1:
                         bindings[key] = legacy.pop()
@@ -1539,6 +1592,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             callee = structure(node.func)
             if callee is not None and callee.kind == "local_callable" and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "explicit legacy arguments to local callable")
+            if callee is not None and callee.kind == "ambiguous_callable" and any(contains_stem(item) for item in call_inputs(node)):
+                unsupported(node, "explicit legacy arguments to ambiguous callable")
             if qualified(node.func) in unsupported_path_builders and any(contains_stem(item) for item in call_inputs(node)):
                 unsupported(node, "legacy path builder output")
             if isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend", "insert", "update", "setdefault", "add", "__setitem__"} and any(contains_stem(item) for item in [node.func.value, *node.args, *(arg.value for arg in node.keywords)]):
@@ -1698,8 +1753,12 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
             authority.body = remaining
             text = b"".join(lines).decode("utf-8")
         found.extend(scan_text(relative.as_posix(), text, contracts))
-        if path.suffix.lower() in {".yaml", ".yml", ".toml"} and re.search(r"\\[xuU]", text):
-            found.append(Finding(f"{relative.as_posix()}:1", "unsupported encoded configuration string"))
+        if path.suffix.lower() in {".yaml", ".yml", ".toml"}:
+            if re.search(r"\\[xuU]", text):
+                found.append(Finding(f"{relative.as_posix()}:1", "unsupported encoded configuration string"))
+            continued = re.sub(r"\\[ \t]*[\r\n]+[ \t\r\n]*", "", text)
+            if continued != text:
+                found.extend(scan_text(relative.as_posix(), continued, contracts))
         if path.suffix.lower() == ".json":
             found.extend(scan_json(relative.as_posix(), text, contracts))
         if path.suffix.lower() in {".js", ".cjs", ".mjs"}:

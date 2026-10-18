@@ -332,60 +332,53 @@
       ]
     },
     "scripts/rename_contract_check.py": {
-      "source_sha256": "5ef3c41c1ae820ec67e825eb16d4af63924ee0ee35869b0fde68d6dc0a54aa92",
+      "source_sha256": "29453ca10f77b55ece9b93d75dd26efcc18fc9b5adf8de4770d0379d26b7f14d",
       "diagnostics": [
         {
-          "line": 169,
+          "line": 176,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 170,
+          "line": 177,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 171,
+          "line": 178,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 171,
+          "line": 178,
           "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 173,
+          "line": 180,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 173,
+          "line": 180,
           "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 174,
+          "line": 181,
           "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
-          "line": 175,
-          "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
@@ -398,70 +391,77 @@
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 183,
-          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
-          "line": 184,
-          "identifier": "unsupported legacy composition; use a contract key",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
-          "line": 188,
-          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
           "line": 189,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 190,
           "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 193,
+          "line": 191,
           "identifier": "unsupported legacy composition; use a contract key",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 193,
-          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
-          "line": 194,
-          "identifier": "unsupported legacy composition; use a contract key",
-          "function": "scan_text",
-          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
-          "validation": "tests/test_rename_contract_gate.py"
-        },
-        {
-          "line": 194,
-          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "line": 195,
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
           "line": 196,
+          "identifier": "unsupported legacy syntax (Slice); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 200,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 200,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 201,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 201,
+          "identifier": "unsupported legacy syntax (loop-carried legacy binding); use immutable contract-based construction",
+          "function": "scan_text",
+          "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
+          "validation": "tests/test_rename_contract_gate.py"
+        },
+        {
+          "line": 203,
           "identifier": "unsupported legacy syntax (legacy-bearing mutator call); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",
           "validation": "tests/test_rename_contract_gate.py"
         },
         {
-          "line": 161,
+          "line": 168,
           "identifier": "unsupported legacy syntax (abrupt loop with legacy bindings); use immutable contract-based construction",
           "function": "scan_text",
           "reason": "Inspect candidate text and report full identifier tokens with source locations; mutations and arithmetic only build diagnostic evidence.",

@@ -1363,3 +1363,100 @@ def test_local_callable_kind_survives_captured_and_iterated_values(tmp_path, tai
     source='from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n'+tail
     (tmp_path/'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('selection', [
+    'Alias = build if selected else str',
+    'Alias = str if selected else build',
+    'if selected:\n Alias = build\nelse:\n Alias = str',
+    'Alias = selected and build or str',
+    'Alias = (build if selected else str) if other else str',
+    'choices = [build] if selected else [str]\nAlias = choices[0]',
+    'for Alias in [build, str]:\n pass',
+])
+def test_conditional_callable_aliases_retain_restricted_origin(tmp_path, selection):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n' + selection + '\nFORMAT = Alias(LEGACY_STEM)\n'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('filename,source', [
+    ('compose.yaml', 'key: "record\\\n  bench-unregistered-v99"\n'),
+    ('config.toml', 'key = """record\\\n  bench-unregistered-v99"""\n'),
+    ('compose.yaml', 'key: "record\\\r\n  bench-unregistered-v99"\r\n'),
+    ('config.toml', 'key = """record\\  \n  bench-unregistered-v99"""\n'),
+])
+def test_configuration_continuations_fail_closed(tmp_path, filename, source):
+    (tmp_path/filename).write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    r'const FORMAT = "\x72ecord" + "bench-unregistered-v99";',
+    r'const first = "\u0072ecord"; const FORMAT = first + "bench-unregistered-v99";',
+    r'const FORMAT = `\u{72}ecord${"bench-unregistered-v99"}`;',
+    r'const FORMAT = "r\ecord" + "bench-unregistered-v99";',
+    'const FORMAT = "rec\\\nord" + "bench-unregistered-v99";',
+])
+def test_escaped_javascript_fragments_cannot_compose_unchecked(tmp_path, source):
+    (tmp_path/'synthetic.js').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('relative', ['synthetic.sh', 'compose.yaml'])
+@pytest.mark.parametrize('placeholder', ['${myrecord' + 'bench_unregistered_v99}', '{myrecord' + 'bench_unregistered_v99}', '@MYRECORDBENCH_UNREGISTERED_V99@'])
+def test_placeholder_identifiers_are_scanned_before_masking(tmp_path, relative, placeholder):
+    (tmp_path/relative).write_text('\nVALUE=' + placeholder + '\n')
+    found = checker.findings(tmp_path)
+    assert any(item.location == relative + ':2' and item.identifier.casefold() == 'myrecord' + 'bench_unregistered_v99' for item in found)
+
+
+@pytest.mark.parametrize('selection', [
+    'Alias = build if selected else LEGACY_STEM',
+    'if selected:\n Alias = build\nelse:\n Alias = unknown',
+    'choices = [build, str]\nAlias = [item for item in choices if selected][0]',
+    'Alias = build if selected else str\ndef use(callback=Alias):\n return callback(LEGACY_STEM)\nFORMAT=use()\nAlias = str',
+])
+def test_ambiguous_callable_choices_do_not_erase_identity(tmp_path, selection):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n' + selection + '\nFORMAT = Alias(LEGACY_STEM)\n'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
+
+
+@pytest.mark.parametrize('source', [
+    'Alias = str if selected else str\nFORMAT = Alias(LEGACY_STEM)',
+    'def build(stem):\n return stem+"-example"\nAlias = build if selected else str\nFORMAT = Alias("synthetic")',
+])
+def test_supported_callable_choices_keep_exact_or_nonlegacy_behavior(tmp_path, source):
+    (tmp_path/'synthetic.py').write_text('from case_intelligence.legacy_names import LEGACY_STEM\n'+source)
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('placeholder', ['${RECORDBENCH_TEST_SETTING}', '{RECORDBENCH_TEST_SETTING}', '@RECORDBENCH_TEST_SETTING@', '${SYNTHETIC_VALUE}'])
+def test_registered_and_nonlegacy_placeholder_identifiers_remain_valid(placeholder):
+    assert checker.scan_text('synthetic.sh', 'VALUE=' + placeholder) == []
+
+
+def test_control_regex_escapes_do_not_create_identifier_fragments():
+    source = r'const sanitize = value => value.replace(/[\u0000-\u0008\ud800-\udfff]/gu, " ");'
+    assert checker.scan_javascript('synthetic.js', source, NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize('filename,source', [
+    ('compose.yaml', 'run: |\n  echo \\\n    synthetic\n'),
+    ('compose.yaml', 'key: "record\\\n  bench.env"\n'),
+    ('config.toml', 'key = """record\\\n  bench.env"""\n'),
+])
+def test_configuration_continuation_safe_controls(tmp_path, filename, source):
+    (tmp_path/filename).write_text(source)
+    assert checker.findings(tmp_path) == []
+
+
+@pytest.mark.parametrize('selection', [
+    'Alias = [build, str][selected]',
+    'Alias = {"first": build, "second": str}[selected]',
+])
+def test_dynamic_callable_member_selection_retains_restriction(tmp_path, selection):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\ndef build(stem):\n return stem+"-unregistered-v99"\n' + selection + '\nFORMAT=Alias(LEGACY_STEM)'
+    (tmp_path/'synthetic.py').write_text(source)
+    assert checker.findings(tmp_path)
