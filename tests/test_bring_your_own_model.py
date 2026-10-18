@@ -888,7 +888,7 @@ def test_unvalidated_label_reaches_every_export_format():
     from tests.test_report_compilation import material, service
 
     generator = service()
-    generator.model_notice = UNVALIDATED_MODEL_LABEL
+    generator.client.model_notice = UNVALIDATED_MODEL_LABEL
     draft = compile_report("timeline", materials=(material(),), generator=generator)
     rendered = json.dumps(draft.coverage) + "\n".join(section["body"] for section in draft.sections)
     assert UNVALIDATED_MODEL_LABEL in rendered

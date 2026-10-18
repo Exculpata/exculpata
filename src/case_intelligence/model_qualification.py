@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from importlib.resources import files
 from pathlib import Path
 from typing import Mapping
 
@@ -16,8 +17,8 @@ from jsonschema import Draft202012Validator
 
 
 UNVALIDATED_MODEL_LABEL = "unvalidated model"
-_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "model_qualifications.json"
-_SCHEMA = Path(__file__).resolve().parents[2] / "config" / "model_qualifications.schema.json"
+_REGISTRY = files("case_intelligence").joinpath("config", "model_qualifications.json")
+_SCHEMA = files("case_intelligence").joinpath("config", "model_qualifications.schema.json")
 
 
 def qualification_schema(path: Path | None = None) -> dict[str, object]:

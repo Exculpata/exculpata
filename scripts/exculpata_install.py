@@ -73,7 +73,7 @@ from case_intelligence.embedding_index import (
     embedding_change_warning,
     load_embedding_index,
 )
-from case_intelligence.generator_schema import probe_schema_enforcement
+from case_intelligence.generator_schema import SchemaProbe, probe_schema_enforcement
 from case_intelligence.hardware_profile import detect_hardware, suggest_tier
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
@@ -1715,10 +1715,10 @@ class PreflightResult:
                 "checks": [asdict(check) for check in self.checks]}
 
 
-def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _probe(command: Sequence[str], *, timeout: int = 20) -> subprocess.CompletedProcess[str]:
     # Diagnostic commands never print arbitrary runtime output (which may contain
     # operator topology) and cannot hang an unattended first-run check forever.
-    return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=20, check=False)
+    return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=timeout, check=False)
 
 
 def _storage_ancestors_safe(ancestor: Path) -> bool:
@@ -3908,16 +3908,20 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             os.environ.pop("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", None)
         else:
             os.environ["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] = previous
+    if urllib.parse.urlparse(url).hostname == "generator":
+        _doctor_bundled_generator(console, root)
+        return
     headers: dict[str, str] = {}
-    if app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"):
+    token = app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY", "")
+    if not token and app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"):
         key_path = root / "secrets" / "generator-api-key"
         try:
             token = key_path.read_text(encoding="utf-8").strip()
         except OSError:
             console.warn("schema enforcement :: not checked; the generator API key file is unreadable")
             return
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     consent_key = "CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"
     previous_consent = os.environ.get(consent_key)
     os.environ[consent_key] = app_env.get(consent_key, "0")
@@ -3928,6 +3932,22 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
             os.environ.pop(consent_key, None)
         else:
             os.environ[consent_key] = previous_consent
+    console.note(f"schema enforcement :: {result.label}")
+    console.note(result.detail)
+    if result.fix:
+        console.warn(result.fix)
+
+
+def _doctor_bundled_generator(console: Console, root: Path) -> None:
+    command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
+    try:
+        response = _probe(command, timeout=55)
+        if response.returncode or len(response.stdout) > 4096:
+            raise ValueError("schema probe unavailable")
+        result = SchemaProbe(**json.loads(response.stdout))
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        console.warn("schema enforcement :: not checked; the application network probe is unavailable")
+        return
     console.note(f"schema enforcement :: {result.label}")
     console.note(result.detail)
     if result.fix:

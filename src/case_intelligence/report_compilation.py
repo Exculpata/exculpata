@@ -690,7 +690,7 @@ def compile_report(kind: str, topic: str = "", materials: Sequence[CompilationMa
     coverage["estimated_export_characters"] = export_characters
     coverage["export_character_limit"] = MAX_EXPORT_TEXT_CHARS
     sections.append({"heading": "Compilation coverage", "body": explanation + "\n\nReview basis:\n" + ledger, "citations": (), "material_ids": (), "provenance": (), "compilation_basis": ledger})
-    notice = str(getattr(generator, "model_notice", "") or "")
+    notice = str(getattr(getattr(generator, "client", generator), "model_notice", "") or "")
     if notice:
         coverage["model_notice"] = notice
         sections[-1]["body"] = notice + "\n\n" + sections[-1]["body"]

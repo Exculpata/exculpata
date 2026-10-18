@@ -78,7 +78,7 @@ def parse_generator_endpoint(
             "Enter the model name your server lists. It must be 1 to 200 characters. "
             "Nothing is downloaded."
         )
-    parsed = urlparse((url or "").strip())
+    parsed = _parsed_url((url or "").strip(), EndpointRejected)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise EndpointRejected(
             "Enter an http or https URL for the server origin, such as http://127.0.0.1:11434. "
@@ -218,7 +218,7 @@ def _destination_reason(addresses, *, remote_confirmed):
 
 def require_resolved_destination(url: str):
     """Return exactly the addresses approved for this connection."""
-    host = urlparse(url).hostname
+    host = _parsed_url(url, DestinationRejected).hostname
     if not host:
         raise DestinationRejected("The answer server URL has no host. The request was not sent.")
     addresses = addresses_for(host)
@@ -227,6 +227,16 @@ def require_resolved_destination(url: str):
     if reason:
         raise DestinationRejected(reason)
     return addresses
+
+
+def _parsed_url(url, error_type):
+    try:
+        parsed = urlparse(url)
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise ValueError("port out of range")
+        return parsed
+    except ValueError as exc:
+        raise error_type("Enter a valid server URL with a port from 1 to 65535.") from exc
 
 
 def _container_loopback(hostname: str) -> bool:

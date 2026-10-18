@@ -146,6 +146,21 @@ to `qualification_for(model_id, revision=...)` or `qualification_label`; the har
 records passes through `apply_harness_result` with the same digest. A pinned
 catalog ID alone is not a measured pass.
 
+The wheel includes the registry and its schema under `case_intelligence/config`,
+loaded with package resources. The repository `config/` copies are editable
+mirrors: update both copies together when recording a reviewed qualification;
+the parity regression rejects divergent contents. Installed applications do not
+depend on the source checkout. Current BYOM adapters still lack revision
+attestation and therefore cannot inherit a recorded pass.
+
+Compose passes the same effective embedding model and revision to the app and
+retrieval worker so populated-index mismatch warnings reflect the worker's
+configuration. Doctor probes bundled generators inside the existing app
+namespace, while external probes use saved endpoint consent and the runtime's
+inline-key-before-file precedence. Saved unsupported answers and compiled
+reports retain the qualification notice from their generating client even if
+the active model later changes.
+
 There is no Open WebUI setting or adapter. An Open WebUI process is usable
 only if it serves the `openai` contract above at `{URL}/v1/...` and the host
 is allowed. This repository does not establish that. MLX, a bundled llama.cpp

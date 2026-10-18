@@ -49,6 +49,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 case_intelligence = [
+  "config/model_qualifications*.json",
   "demo_data/*.json",
   "demo_data/*.pdf",
   "demo_data/sources/*/*",

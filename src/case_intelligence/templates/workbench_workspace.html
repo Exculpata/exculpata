@@ -317,11 +317,13 @@
                 </div>
                 {% endif %}
                 {% set partial_coverage = message.payload.source_coverage and message.payload.source_coverage.mode == 'partial' %}
-                {% if partial_coverage or message.payload.kind == 'generated' %}
+                {% if partial_coverage or message.payload.kind == 'generated' or message.payload.model_notice or message.payload.schema_enforcement %}
                 {# One collapsed line per answer holds every caveat; the full text stays in the page. #}
                 <details class="answer-about" data-answer-about>
                   {# The summary names every caveat inside, so none is hidden unannounced. #}
                   {% set about = [] %}{% if message.payload.kind == 'generated' %}{% set about = about + ['Check each statement against its sources'] %}{% if message.payload.evidence_notice %}{% set about = about + ['includes machine transcript'] %}{% endif %}{% endif %}{% if partial_coverage %}{% set about = about + ['searchable text was partial'] %}{% endif %}
+                  {% if message.payload.model_notice %}{% set about = about + [message.payload.model_notice] %}{% endif %}
+                  {% if message.payload.schema_enforcement %}{% set about = about + ['schema enforcement: ' ~ message.payload.schema_enforcement] %}{% endif %}
                   <summary>About this answer<small>{{ (about|join(' · '))[:1]|upper }}{{ (about|join(' · '))[1:] }}</small></summary>
                   {% if partial_coverage %}
                   <div class="answer-source-coverage" role="note">
@@ -329,11 +331,11 @@
                     <p>{{ message.payload.source_coverage.notice }}</p>
                   </div>
                   {% endif %}
-                  {% if message.payload.kind == 'generated' %}
-                  <p class="workflow-caution" role="note">{{ generated_review_notice }}</p>
                   {% if message.payload.model_notice %}<p class="workflow-caution" role="note">{{ message.payload.model_notice }}</p>{% endif %}
                   {% if message.payload.schema_enforcement == 'not enforced / validated locally' %}<p class="workflow-caution" role="note">Schema enforcement: not enforced / validated locally.</p>{% endif %}
                   {% if message.payload.schema_enforcement == 'verified' %}<p class="workflow-caution" role="note">Schema enforcement: verified.</p>{% endif %}
+                  {% if message.payload.kind == 'generated' %}
+                  <p class="workflow-caution" role="note">{{ generated_review_notice }}</p>
                   {% if message.payload.evidence_notice %}
                   <div class="answer-evidence-notice" role="note">
                     <strong>Machine transcript</strong>

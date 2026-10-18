@@ -65,12 +65,12 @@
           {% endif %}
           {% if message.payload.modality_coverage %}<small class="assistant-answer-coverage">Requested source coverage · {{ modality_coverage_notice(message.payload.modality_coverage.notice) }}</small>{% endif %}
           {% if message.payload.recorded_context_job %}<p><a href="/matters/{{ matter.slug }}/answer-jobs/{{ message.payload.recorded_context_job }}/context">Context supplied for this answer</a> · As submitted; inspect current changes and dispatch attempts. This is not proof of model attention.</p>{% endif %}
-          {% if message.payload.kind == 'generated' %}
-            <p>{{ answer_introduction(message.payload.introduction) }}</p>
-            <p class="assistant-evidence-note" role="note">{{ generated_review_notice }}</p>
             {% if message.payload.model_notice %}<p class="assistant-evidence-note" role="note">{{ message.payload.model_notice }}</p>{% endif %}
             {% if message.payload.schema_enforcement == 'not enforced / validated locally' %}<p class="assistant-evidence-note" role="note">Schema enforcement: not enforced / validated locally.</p>{% endif %}
             {% if message.payload.schema_enforcement == 'verified' %}<p class="assistant-evidence-note" role="note">Schema enforcement: verified.</p>{% endif %}
+          {% if message.payload.kind == 'generated' %}
+            <p>{{ answer_introduction(message.payload.introduction) }}</p>
+            <p class="assistant-evidence-note" role="note">{{ generated_review_notice }}</p>
             {% if message.payload.evidence_notice %}<small class="assistant-evidence-note">Machine transcript · verify wording and speaker identity against the recording.</small>{% endif %}
             <ol class="assistant-claims">
               {% for claim in message.payload.claims %}
