@@ -8,6 +8,8 @@ LOGIN_ERRORS = MappingProxyType({
     "preview_identity": "Choose an available preview identity.",
     "preview_expired": "The sign-in page expired. Please choose your preview identity again.",
     "login_expired": "The sign-in page expired. Please try again.",
+    "account_changed": "Your account changed. Sign in again to continue.",
+    "account_changed_audit": "Your account changed. Sign in again to continue. Audit completion needs operator attention; tell the installation operator.",
     "local_unavailable": "Local account sign-in is unavailable.",
     "local_credentials": "The username or password is incorrect.",
     "local_throttled": "Sign-in is temporarily unavailable. Wait a few minutes and try again.",

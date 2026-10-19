@@ -92,7 +92,7 @@ def test_oidc_provider_text_is_not_reflected_and_transaction_is_consumed(tmp_pat
     with TestClient(app, base_url=settings.external_origin) as client:
         state = _begin(client)
         response = client.get('/auth/oidc/callback', params={'state': state, 'error': provider_text}, follow_redirects=False)
-        assert response.headers['location'] == '/auth/login?error=oidc_incomplete_login'
+        assert parse_qs(urlsplit(response.headers['location']).query)['error'] == ['oidc_incomplete_login']
         assert client.cookies.get(OIDC_STATE_COOKIE) is None
         assert client.cookies.get(SESSION_COOKIE) is None
         assert LOGIN_ERRORS['oidc_incomplete_login'] in client.get(response.headers['location']).text

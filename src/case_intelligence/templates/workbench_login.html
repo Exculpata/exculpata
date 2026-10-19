@@ -69,6 +69,10 @@
 
       {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
 
+      {% if error and signed_in_return_url %}
+      <p><a href="{{ signed_in_return_url }}">Return to the requested page</a></p>
+      {% endif %}
+
       <div class="identity-choices">
         <a class="identity-choice" href="{{ oidc_start_url }}">
           <span class="identity-avatar product-mark" aria-hidden="true">{% include "exculpata_mark.html" %}</span>

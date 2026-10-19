@@ -172,10 +172,8 @@ def register_local_account_routes(app, *, identity, bench, templates, auth_conte
             raise RuntimeError("That account action is unavailable.")
         if is_self and action in {"password", "state", "role"}:
             # Do not render another privileged page using the pre-change context.
-            message = "Your account changed. Sign in again to continue."
-            if completion["audit_problem"]:
-                message += " Audit completion needs operator attention; tell the installation operator."
-            response = RedirectResponse("/auth/login?" + urlencode({"error": message}), status_code=303)
+            code = "account_changed_audit" if completion["audit_problem"] else "account_changed"
+            response = RedirectResponse("/auth/login?" + urlencode({"error": code}), status_code=303)
             response.delete_cookie(SESSION_COOKIE, path="/")
             return response
         notices = {"create": "Account created. Share the sign-in address and password privately. Have this person sign in once, then add them from the matter’s Case team page.",

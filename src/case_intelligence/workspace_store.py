@@ -1115,6 +1115,21 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             ).rowcount
         return row["next_path"] if changed == 1 else None
 
+    def cancel_oidc_transaction(self, state_digest: str) -> str | None:
+        """Discard only the failed browser's transaction and pending step-up request."""
+        if not re.fullmatch(r"[0-9a-f]{64}", state_digest):
+            return None
+        with self._lock, self.connection:
+            row = self.connection.execute(
+                "SELECT next_path FROM workbench_oidc_transaction WHERE state_digest=?",
+                (state_digest,),
+            ).fetchone()
+            self.connection.execute("DELETE FROM workbench_case_oidc_request WHERE state_digest=?",
+                                    (state_digest,))
+            self.connection.execute("DELETE FROM workbench_oidc_transaction WHERE state_digest=?",
+                                    (state_digest,))
+        return row["next_path"] if row else None
+
     def team_groups(self) -> tuple[dict, ...]:
         with self._lock:
             return tuple(dict(row) for row in self.connection.execute(
