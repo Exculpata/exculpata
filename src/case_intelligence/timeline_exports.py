@@ -1,5 +1,6 @@
 """Review exports retaining every original citation and its date basis."""
 import csv
+import html
 import io
 import json
 import re
@@ -17,6 +18,25 @@ def safe(value):
     text = _csv_safe(text)
     probe = unicodedata.normalize('NFKC', text).replace('\u2212', '-').lstrip()
     return "'" + text if probe.startswith(('=', '+', '-', '@', '|', '%')) else text
+
+
+def _md_escape(text: str) -> str:
+    value = html.escape(presentation_text(text))
+    for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
+        value = value.replace(character, '\\' + character)
+    value = re.sub(r'^([-+]|[0-9]{1,9}[.)])',
+                   lambda match: match[0][:-1] + '\\' + match[0][-1], value)
+    return re.sub(r'^[ \t]+', lambda match: ''.join(f'&#{ord(c)};' for c in match[0]), value)
+
+
+def md_inline(text: str) -> str:
+    value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', text)
+    return _md_escape(presentation_text(value).rstrip())
+
+
+def md_block_quoted(text: str) -> str:
+    value = re.sub(r'\r\n|[\r\u2028\u2029]', '\n', text)
+    return '\n'.join('> ' + _md_escape(line) for line in value.split('\n'))
 
 
 def export_timeline(payload, format_name):
@@ -40,24 +60,16 @@ def export_timeline(payload, format_name):
                 writer.writerow([safe(v) for v in (entry['date_label'], entry['precision'], entry['uncertainty'], entry['description'],
                     citation['source_id'] + ' · ' + citation['document_title'], json.dumps(citation['locator']), citation['excerpt'], entry['conflict_group'])] + ['citation'] + [''] * 6 + [payload['format']])
         return stream.getvalue()
-    def escape(text, *, multiline=False):
-        import html
-        value = str(text)
-        if not multiline:
-            value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', value)
-        value = html.escape(presentation_text(value))
-        for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
-            value = value.replace(character, '\\' + character)
-        return value
-
-    lines = ['# Draft timeline', '', escape(payload['notice']), '', escape(payload['coverage_notice']), '', 'Capped: ' + str(payload['capped']), '']
+    lines = ['# Draft timeline', '', md_inline(payload['notice']), '', md_inline(payload['coverage_notice']),
+             '', 'Capped: ' + md_inline(str(payload['capped'])), '']
     for record in payload['coverage_records']:
-        lines += ['Source coverage: ' + escape(record['source_name']) + ' (' + escape(record['source_id']) +
-                  ') — ' + escape(record['status']), '']
+        lines += ['Source coverage: ' + md_inline(record['source_name']) + ' (' + md_inline(record['source_id']) +
+                  ') - ' + md_inline(record['status']), '']
     for entry in entries:
-        lines += ['## ' + escape(entry['date_label']), '', escape(entry['description'], multiline=True), '',
-                  'Date uncertainty: ' + escape(entry['uncertainty']), 'Conflict group: ' + str(entry['conflict_group'] or 'None')]
+        lines += ['## ' + md_inline(entry['date_label']), '', md_block_quoted(entry['description']), '',
+                  'Date uncertainty: ' + md_inline(entry['uncertainty']),
+                  'Conflict group: ' + md_inline(str(entry['conflict_group'] or 'None'))]
         for c in entry['citations']:
-            lines += ['', 'Source: ' + escape(c['source_id'] + ' · ' + c['document_title']),
-                      'Locator: ' + escape(json.dumps(c['locator'])), '', '> ' + escape(c['excerpt'], multiline=True).replace('\n', '\n> ')]
+            lines += ['', 'Source: ' + md_inline(c['source_id']) + ' · ' + md_inline(c['document_title']),
+                      'Locator: ' + md_inline(json.dumps(c['locator'])), '', md_block_quoted(c['excerpt'])]
     return '\n'.join(lines) + '\n'

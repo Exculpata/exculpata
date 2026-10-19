@@ -5,6 +5,7 @@ import io
 import json
 
 import pytest
+from markdown_it import MarkdownIt
 
 from case_intelligence.timeline_exports import export_timeline
 
@@ -84,8 +85,130 @@ def test_markdown_preserves_multiline_excerpts_and_descriptions():
 
     body = export_timeline(data, 'markdown')
 
-    assert ('First \\*line\\*\n\nSecond &lt;line&gt;\r\nThird\rFourth\u2028Fifth\u2029Sixth\n') in body
-    assert body.endswith('> First \\*line\\*\n> \n> Second &lt;line&gt;\r\n> Third\rFourth\u2028Fifth\u2029Sixth\n')
+    quoted = ('> First \\*line\\*\n> \n> Second &lt;line&gt;\n'
+              '> Third\n> Fourth\n> Fifth\n> Sixth\n')
+    assert body.count(quoted) == 2
+    assert body.endswith(quoted)
+
+
+PAYLOAD_FIELDS = [
+    ('notice',), ('coverage_notice',), ('format',),
+    ('coverage_records', 0, 'source_id'), ('coverage_records', 0, 'source_name'),
+    ('coverage_records', 0, 'status'),
+    ('entries', 0, 'date_label'), ('entries', 0, 'precision'),
+    ('entries', 0, 'uncertainty'), ('entries', 0, 'conflict_group'),
+    ('entries', 0, 'description'), ('entries', 0, 'citations', 0, 'source_id'),
+    ('entries', 0, 'citations', 0, 'document_title'),
+    ('entries', 0, 'citations', 0, 'locator', 'label'),
+    ('entries', 0, 'citations', 0, 'excerpt'),
+]
+PAYLOAD_SUFFIXES = ['\n', '\r', '\r\n', '\u2028', '\u2029', '\n---', '\n===',
+                    '\n- ', '\n1. ', '\n\n    code', '\n[a]: http://x']
+FIELDS = pytest.mark.parametrize('path', PAYLOAD_FIELDS,
+                                ids=['.'.join(map(str, path)) for path in PAYLOAD_FIELDS])
+SUFFIXES = pytest.mark.parametrize('suffix', PAYLOAD_SUFFIXES,
+                                  ids=['lf', 'cr', 'crlf', 'line', 'paragraph', 'dash', 'equals',
+                                       'bullet', 'ordered', 'code', 'reference'])
+
+
+def set_field(data, path, value):
+    target = data
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+
+
+def markdown_blocks(data):
+    env = {}
+    tokens = MarkdownIt('commonmark').parse(export_timeline(data, 'markdown'), env)
+    assert not env.get('references')
+    blocks = []
+    depth = 0
+    for token in tokens:
+        if depth == 0:
+            blocks.append([])
+        blocks[-1].append(token)
+        depth += token.nesting
+    return blocks
+
+
+def block_shape(block):
+    return [(token.type, token.tag, token.nesting) for token in block
+            if token.type != 'inline' and not (
+                block[0].type == 'blockquote_open' and token.type.startswith('paragraph_'))]
+
+
+def block_text(block):
+    return [(token.content, [(child.type, child.content) for child in token.children or []])
+            for token in block if token.type == 'inline']
+
+
+@FIELDS
+@SUFFIXES
+@pytest.mark.parametrize('bucket', ['entries', 'undated'])
+def test_payload_cannot_escape_its_markdown_slot(path, suffix, bucket):
+    baseline = payload()
+    set_field(baseline, path, 'SlotMarker')
+    data = deepcopy(baseline)
+    set_field(data, path, 'SlotMarker' + suffix)
+    if bucket == 'undated':
+        for item in (baseline, data):
+            item['undated'], item['entries'] = item['entries'], []
+
+    expected = markdown_blocks(baseline)
+    actual = markdown_blocks(data)
+
+    assert [block_shape(block) for block in actual] == [block_shape(block) for block in expected]
+    for old, new in zip(expected, actual):
+        if not any('SlotMarker' in token.content for token in old):
+            assert block_text(new) == block_text(old)
+        else:
+            assert old[0].type in {'paragraph_open', 'blockquote_open', 'heading_open'}
+            assert any('SlotMarker' in token.content for token in new)
+            if path[-1] in {'description', 'excerpt'}:
+                assert new[0].type == 'blockquote_open'
+
+
+@FIELDS
+def test_single_line_fields_cannot_add_hard_breaks(path):
+    if path[-1] in {'description', 'excerpt'}:
+        return
+    data = payload()
+    set_field(data, path, 'SlotMarker  \t ')
+
+    body = export_timeline(data, 'markdown')
+    assert not any(line.endswith((' ', '\t')) for line in body.splitlines() if line)
+    assert not any(child.type == 'hardbreak' for block in markdown_blocks(data)
+                   for token in block for child in token.children or [])
+
+
+@FIELDS
+@pytest.mark.parametrize('value', ['- SlotMarker', '+ SlotMarker', '1. SlotMarker',
+                                  '    SlotMarker', '\tSlotMarker', '```SlotMarker',
+                                  '# SlotMarker', '[a]: http://x'])
+def test_payload_block_prefixes_stay_literal(path, value):
+    baseline = payload()
+    data = deepcopy(baseline)
+    set_field(data, path, value)
+
+    assert [block_shape(block) for block in markdown_blocks(data)] == [
+        block_shape(block) for block in markdown_blocks(baseline)]
+
+
+@SEPARATORS
+@pytest.mark.parametrize('field', ['description', 'excerpt'])
+def test_multiline_separators_cannot_release_list_items(separator, field):
+    data = payload()
+    path = (('entries', 0, 'description') if field == 'description' else
+            ('entries', 0, 'citations', 0, 'excerpt'))
+    set_field(data, path, 'SlotMarker' + separator + '- INJ')
+    blocks = markdown_blocks(data)
+
+    assert [block_shape(block) for block in blocks] == [
+        block_shape(block) for block in markdown_blocks(payload())]
+    injected = [block for block in blocks if any('INJ' in token.content for token in block)]
+    assert len(injected) == 1
+    assert injected[0][0].type == 'blockquote_open'
 
 
 @SEPARATORS
@@ -114,3 +237,32 @@ def test_csv_and_json_are_unchanged_by_markdown_metadata_presentation(separator)
     assert data == original
     assert export_timeline(data, 'csv') == expected_csv
     assert export_timeline(data, 'json') == expected_json
+
+
+def test_csv_and_json_bytes_preserve_all_payload_suffixes():
+    value = 'Synthetic' + ''.join(PAYLOAD_SUFFIXES)
+    data = payload()
+    for path in PAYLOAD_FIELDS:
+        set_field(data, path, value)
+    original = deepcopy(data)
+    csv_value = value.replace('\r\n', '\n').replace('\r', '\n').replace('\u2028', ' ').replace('\u2029', ' ')
+    csv_value = '\n'.join(line.rstrip() for line in csv_value.split('\n')).strip()
+    stream = io.StringIO(newline='')
+    writer = csv.writer(stream)
+    writer.writerow(('date_label', 'precision', 'uncertainty', 'description', 'source', 'locator',
+                     'excerpt', 'conflict_group', 'row_type', 'notice', 'coverage_notice', 'capped',
+                     'unit_count', 'total_unit_count', 'coverage_status', 'format'))
+    writer.writerow([''] * 8 + ['metadata', csv_value, csv_value, 'False', 1, 1, '', value])
+    writer.writerow([''] * 4 + [csv_value + ' · ' + csv_value] + [''] * 3 +
+                    ['coverage', '', csv_value, '', '', '', value, value])
+    writer.writerow([csv_value, csv_value, csv_value, csv_value, csv_value + ' · ' + csv_value,
+                     json.dumps({'label': value}), csv_value, csv_value, 'citation'] + [''] * 6 + [value])
+    expected_csv = stream.getvalue().encode('utf-8')
+    expected_json = json.dumps(original, ensure_ascii=False, indent=2).encode('utf-8')
+
+    assert export_timeline(data, 'csv').encode('utf-8') == expected_csv
+    assert export_timeline(data, 'json').encode('utf-8') == expected_json
+    export_timeline(data, 'markdown')
+    assert data == original
+    assert export_timeline(data, 'csv').encode('utf-8') == expected_csv
+    assert export_timeline(data, 'json').encode('utf-8') == expected_json
