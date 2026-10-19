@@ -143,7 +143,14 @@ unverified results fail closed with a bounded diagnostic. Compose's `user` and
 `read_only` declarations alone are not proof; a declared read-only container must
 also pass the live probe. Install and update run it after startup and before health
 acceptance can report completion. A failed update check enters the existing rollback
-path; restored-release health/Docker/DNS acceptance remains unchanged. Prepare-only
+path; restored-release health/Docker/DNS acceptance remains unchanged.
+Rollback does not re-check the restored package. A successful rollback therefore
+proves neither its package ownership nor its mode, mount or effective write-access
+protection; run live doctor against the restored node to verify those properties.
+An empty successful running-app inventory reports that the app is not running
+and package protection was not checked. Failed or malformed inventory still
+reports unverified package trust; it is not evidence that the app is stopped.
+Prepare-only
 and dry-run operations do not run the live probe or establish package protection.
 Dry-run doctor explicitly leaves this check unverified.
 

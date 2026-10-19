@@ -328,3 +328,48 @@ def test_nonlive_completion_does_not_probe_installed_package(tmp_path, monkeypat
         installer._provision(installer.Console(color=False, quiet=True), args, root, 'local', 'none',
             None, None, password_input=[])
     assert 'health' not in events
+
+
+@pytest.mark.parametrize('output', ['', '\n', '  \n\t'])
+def test_absent_app_reports_not_running_without_package_trust_claim(tmp_path, monkeypatch, output):
+    monkeypatch.setattr(installer, '_installed_release', lambda root: ({'profiles': []}, ROOT))
+    monkeypatch.setattr(installer, '_compose', lambda *a: ['docker', 'compose'])
+    calls = []
+    def inventory(command):
+        calls.append(command)
+        assert command == ['docker', 'compose', 'ps', '-q', 'app']
+        return subprocess.CompletedProcess(command, 0, output, 'synthetic-private-detail')
+    monkeypatch.setattr(installer, '_probe', inventory)
+    monkeypatch.setattr(installer.subprocess, 'run', lambda *a, **k:
+        pytest.fail('absent app reached a live package probe'))
+    with pytest.raises(RuntimeError, match='App is not running') as error:
+        installer._verify_installed_package(tmp_path)
+    message = str(error.value)
+    assert 'Package protection was not checked' in message
+    assert 'Start or resume the configured node, then rerun doctor' in message
+    assert 'trust is unverified' not in message and 'Rebuild' not in message
+    assert 'synthetic-private-detail' not in message
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('returncode,output', [(1, ''), (1, 'a'*64),
+    (0, 'invalid-container'), (0, 'a'*64+'\n'+'b'*64)])
+def test_failed_or_malformed_inventory_is_not_misreported_as_absent(tmp_path, monkeypatch, returncode, output):
+    monkeypatch.setattr(installer, '_installed_release', lambda root: ({'profiles': []}, ROOT))
+    monkeypatch.setattr(installer, '_compose', lambda *a: ['docker', 'compose'])
+    def inventory(command):
+        assert command == ['docker', 'compose', 'ps', '-q', 'app']
+        return subprocess.CompletedProcess(command, returncode, output, 'synthetic-private-detail')
+    monkeypatch.setattr(installer, '_probe', inventory)
+    monkeypatch.setattr(installer.subprocess, 'run', lambda *a, **k:
+        pytest.fail('unverified inventory reached a live package probe'))
+    with pytest.raises(RuntimeError, match='Installed package trust is unverified') as error:
+        installer._verify_installed_package(tmp_path)
+    assert 'App is not running' not in str(error.value)
+    assert 'synthetic-private-detail' not in str(error.value)
+
+
+def test_rollback_package_verification_limit_is_explicit():
+    text = (ROOT / 'docs/NETWORK_EGRESS.md').read_text()
+    assert 'Rollback does not re-check the restored package.' in text
+    assert 'run live doctor against the restored node' in text

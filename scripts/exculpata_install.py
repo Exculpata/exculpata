@@ -1659,6 +1659,11 @@ def _verify_installed_package(root: Path) -> None:
         compose = _compose(root, list(installation.get("profiles", [])))
         inventory = _probe([*compose, "ps", "-q", "app"])
         identifier = inventory.stdout.strip()
+        if inventory.returncode == 0 and not identifier:
+            raise RuntimeError(
+                "App is not running: no running app container was found. "
+                "Package protection was not checked. Start or resume the configured node, then rerun doctor."
+            )
         if inventory.returncode or not re.fullmatch(r"[0-9a-f]{12,64}", identifier):
             raise ValueError("app inventory unavailable")
         result = _probe(["docker", "inspect", "--type", "container", "--format",
