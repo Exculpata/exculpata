@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 
-_AUTH_MODE_PROBE_SHA256 = 'adb0fbfd70a3e2cade142c7da019ab7806f76c134990952c54ffb06ce12ac65c'
+_INSTALLER_SOURCE_SHA256 = 'adb0fbfd70a3e2cade142c7da019ab7806f76c134990952c54ffb06ce12ac65c'
 _BROWSER_CONDITION_SHA256 = 'dc038d841bac3d663026ff8c96b96bdc953bc201fc257e521d2736b717f8e5ad'
 
 
@@ -25,7 +25,7 @@ def _require_reviewed_source(source, expected, label):
 def run_auth_mode_probe():
     import exculpata_install as installer
     source = installer._AUTH_MODE_PROBE
-    _require_reviewed_source(source, _AUTH_MODE_PROBE_SHA256, 'Installer authentication probe')
+    _require_reviewed_source(source, _INSTALLER_SOURCE_SHA256, 'Installer authentication probe')
     exec(source, {})
 
 

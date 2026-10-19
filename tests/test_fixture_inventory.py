@@ -156,7 +156,7 @@ def test_workflow_runtime_probe_rejects_changed_executed_source_before_effect(mo
     assert 'review' in str(error) and 'pin' in str(error)
 
 
-@pytest.mark.parametrize('pin', ['_AUTH_MODE_PROBE_SHA256', '_BROWSER_CONDITION_SHA256'])
+@pytest.mark.parametrize('pin', ['_INSTALLER_SOURCE_SHA256', '_BROWSER_CONDITION_SHA256'])
 def test_changing_an_executed_source_pin_requires_wrapper_review(pin):
     from tests.fixture_inventory import check_inventory_source
     from tests import runtime_probes
