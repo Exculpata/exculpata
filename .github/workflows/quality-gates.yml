@@ -84,6 +84,10 @@ jobs:
             echo 'Secret scan blocked. Maintainer must inspect privately; no matched values or artifacts uploaded.'
             exit 1
           fi
+      - name: Verify exact historical exception and synthetic detection controls
+        env:
+          GITLEAKS: /tmp/gitleaks
+        run: python3 tests/test_gitleaks_exception.py
 
   application:
     needs: [change-scope]
