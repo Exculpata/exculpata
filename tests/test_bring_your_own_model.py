@@ -813,6 +813,9 @@ def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
     from case_intelligence.embedding_index import note_populated_index, record_embedding_index
 
     path = tmp_path / "state" / "embedding-index.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"model": "ibm-granite/granite-embedding-english-r2",
+        "revision": "47ea694b257b703fee9253d75c2b1f2985180498", "populated": True}))
     assert record_embedding_index(
         path, model="ibm-granite/granite-embedding-english-r2",
         revision="47ea694b257b703fee9253d75c2b1f2985180498", populated=True,

@@ -548,6 +548,7 @@ def _parse_model_content(content: object) -> Mapping[str, object]:
 class OllamaGenerator:
     def __init__(
         self, endpoint: str, model: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        api_key: str = "",
         opener: urllib.request.OpenerDirector | None = None,
         question_profile: QuestionGenerationProfile | None = None,
         schema_server: str = "ollama",
@@ -558,6 +559,7 @@ class OllamaGenerator:
         if not self.model or len(self.model) > 200:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._opener = opener
         self.question_profile = question_profile or QuestionGenerationProfile()
         self.schema_server = schema_server
@@ -574,7 +576,7 @@ class OllamaGenerator:
     def available(self) -> bool:
         if self.schema_mode == "refused":
             return False
-        payload = _bounded_json_get(f"{self.endpoint}/api/tags", timeout=2.0,
+        payload = _bounded_json_get(f"{self.endpoint}/api/tags", timeout=2.0, headers=self._headers,
                                    **({"opener": self._opener} if self._opener is not None else {}))
         names = {
             item.get("name")
@@ -615,7 +617,7 @@ class OllamaGenerator:
                     "options": {"temperature": 0.1, "num_ctx": 8192, "num_predict": DEFAULT_REVIEW_BUDGET.output_tokens},
                     "keep_alive": "5m",
                 },
-                timeout=self.timeout,
+                timeout=self.timeout, headers=self._headers,
                 **({"opener": self._opener} if self._opener is not None else {}),
             )
 
@@ -658,7 +660,7 @@ class OllamaGenerator:
                     "options": {"temperature": 0.0, "num_ctx": 8192, "num_predict": _classification_token_limit(output_tokens)},
                     "keep_alive": "5m",
                 },
-                timeout=self.timeout,
+                timeout=self.timeout, headers=self._headers,
                 **({"opener": self._opener} if self._opener is not None else {}),
             )
 
@@ -850,7 +852,7 @@ def generator_from_environment() -> GeneratorClient:
     profile = question_profile_from_environment()
     if backend == "ollama":
         client: GeneratorClient = OllamaGenerator(
-            endpoint, model, timeout=timeout, question_profile=profile, schema_server=server,
+            endpoint, model, timeout=timeout, api_key=_generator_api_key(), question_profile=profile, schema_server=server,
         )
     elif backend == "openai":
         client = OpenAICompatibleGenerator(

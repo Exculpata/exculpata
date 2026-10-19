@@ -13,6 +13,11 @@ WARNING = (
     "Existing indexes must be rebuilt before meaning search can use the new vectors. "
     "Exculpata does not rebuild them automatically."
 )
+UNKNOWN_WARNING = (
+    "The embedding identity of this index is unknown. Any existing vectors must be rebuilt "
+    "and their producing model and revision recorded before meaning search can safely use them. "
+    "Exculpata does not infer provenance from the current configuration or rebuild automatically."
+)
 
 
 def embedding_index_path() -> Path | None:
@@ -28,21 +33,22 @@ def embedding_index_path() -> Path | None:
 def load_embedding_index(path: Path) -> dict[str, object] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, dict) else None
 
 
 def embedding_change_warning(record: Mapping[str, object] | None, *, model: str, revision: str) -> str:
-    if not record or record.get("populated") is not True:
-        return ""
+    if (not record or record.get("populated") is not True
+            or not record.get("model") or not record.get("revision")):
+        return UNKNOWN_WARNING
     if record.get("model") != model or record.get("revision") != revision:
         return WARNING
     return ""
 
 
 def record_embedding_index(path: Path, *, model: str, revision: str, populated: bool) -> str:
-    """Store the model that produced current vectors. A conflict is left in place."""
+    """Record an observed empty index; preserve known or unknown populated provenance."""
 
     current = load_embedding_index(path)
     warning = embedding_change_warning(current, model=model, revision=revision) if populated else ""
@@ -65,9 +71,9 @@ def configured_embedding() -> tuple[str, str]:
 def note_populated_index(*, populated: bool) -> str:
     path = embedding_index_path()
     if path is None:
-        return ""
+        return UNKNOWN_WARNING if populated else ""
     model, revision = configured_embedding()
     try:
         return record_embedding_index(path, model=model, revision=revision, populated=populated)
     except OSError:
-        return embedding_change_warning(load_embedding_index(path), model=model, revision=revision)
+        return embedding_change_warning(load_embedding_index(path), model=model, revision=revision) if populated else ""

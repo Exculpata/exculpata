@@ -25,6 +25,8 @@ _LOCAL_NETWORKS = (
 )
 # EC2's documented IPv6 metadata endpoint, rejected even with remote consent.
 _METADATA = ipaddress.IPv6Address((0xFD00 << 112) | (0xEC2 << 96) | 0x254)
+# Alibaba ECS/ECI metadata is outside link-local space and also never consentable.
+_METADATA_ADDRESSES = frozenset((_METADATA, ipaddress.IPv4Address((100 << 24) | (100 << 16) | (100 << 8) | 200)))
 _DNS_SLOTS = threading.BoundedSemaphore(4)
 _DNS_TIMEOUT = 2.0
 
@@ -32,7 +34,7 @@ _DNS_TIMEOUT = 2.0
 def _blocked_address(address):
     concrete = _concrete(address)
     return (concrete.is_unspecified or concrete.is_link_local or concrete.is_multicast
-            or concrete == _METADATA)
+            or concrete in _METADATA_ADDRESSES)
 
 
 class EndpointRejected(ValueError):

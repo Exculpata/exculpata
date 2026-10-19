@@ -131,6 +131,25 @@ that existing indexes must be rebuilt. Exculpata does not rebuild them
 automatically. An API key for the answer server is read from
 `/run/exculpata-secrets/generator-api-key`.
 
+A populated index with missing, unreadable, incomplete or non-populated
+provenance stays **unknown**. The app does not stamp today's configuration onto
+existing vectors. Doctor warns when provenance cannot be established; startup
+uses the actual global vector count when available. A single document upload,
+including an empty document, cannot relabel or clear global index provenance.
+This tracking code does not attest a new or rebuilt index automatically: until
+a trusted rebuild records the producing model/revision, an unknown index keeps
+its warning. No automatic rebuild or migration is performed.
+
+Ollama and OpenAI-compatible clients use the same configured inline-key-before-
+file precedence. Ollama forwards the credential on availability checks, schema
+probes, answers, source classification and question drafting; it is never put in
+the URL. Generator redirects and ambient proxies remain disabled.
+
+The unconditional metadata deny set also covers the documented
+[Alibaba ECS metadata service](https://www.alibabacloud.com/help/en/ecs/user-guide/view-instance-metadata/),
+including IPv4-mapped IPv6 forms and hostnames resolving to that destination.
+Remote consent cannot permit it.
+
 Qualification requires a passing record for both the model ID and a runtime-attested
 immutable SHA-256 revision. A mutable name or tag cannot inherit a pass. Current
 BYOM adapters do not attest the served revision, so their answers remain labeled
