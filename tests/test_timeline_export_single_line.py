@@ -7,7 +7,7 @@ import json
 import pytest
 from markdown_it import MarkdownIt
 
-from case_intelligence.timeline_exports import export_timeline
+from case_intelligence.timeline_exports import export_timeline, md_block_quoted, md_inline
 
 
 SEPARATORS = pytest.mark.parametrize('separator', ['\n', '\r', '\r\n', '\u2028', '\u2029'],
@@ -54,8 +54,8 @@ def test_markdown_metadata_stays_on_one_line(separator, bucket, field):
     elif field == 'locator':
         citation['locator'] = {'label': value}
         escaped_separator = separator.encode('unicode_escape').decode().replace('\\', '\\\\')
-        expected = ('Locator: {&quot;label&quot;: &quot;x' + escaped_separator +
-                    '- injected' + escaped_separator + r'\# heading&quot;}')
+        expected = ('Locator: {"label": "x' + escaped_separator +
+                    '- injected' + escaped_separator + r'\# heading"}')
     else:
         data[field] = value
 
@@ -91,11 +91,27 @@ def test_markdown_preserves_multiline_excerpts_and_descriptions():
     assert body.endswith(quoted)
 
 
-PAYLOAD_FIELDS = [
-    ('notice',), ('coverage_notice',), ('format',),
+def string_leaf_paths(value, path=()):
+    if isinstance(value, str):
+        yield path
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from string_leaf_paths(child, path + (key,))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from string_leaf_paths(child, path + (index,))
+
+
+PAYLOAD_FIELDS = list(string_leaf_paths(payload()))
+NOT_RENDERED = {
+    ('format',),  # Serialization schema identifier, omitted from Markdown.
+    ('entries', 0, 'precision'),  # Markdown presents date_label and uncertainty instead.
+}
+RENDERED_FIELDS = [
+    ('notice',), ('coverage_notice',), ('capped',),
     ('coverage_records', 0, 'source_id'), ('coverage_records', 0, 'source_name'),
     ('coverage_records', 0, 'status'),
-    ('entries', 0, 'date_label'), ('entries', 0, 'precision'),
+    ('entries', 0, 'date_label'),
     ('entries', 0, 'uncertainty'), ('entries', 0, 'conflict_group'),
     ('entries', 0, 'description'), ('entries', 0, 'citations', 0, 'source_id'),
     ('entries', 0, 'citations', 0, 'document_title'),
@@ -103,12 +119,23 @@ PAYLOAD_FIELDS = [
     ('entries', 0, 'citations', 0, 'excerpt'),
 ]
 PAYLOAD_SUFFIXES = ['\n', '\r', '\r\n', '\u2028', '\u2029', '\n---', '\n===',
-                    '\n- ', '\n1. ', '\n\n    code', '\n[a]: http://x']
-FIELDS = pytest.mark.parametrize('path', PAYLOAD_FIELDS,
-                                ids=['.'.join(map(str, path)) for path in PAYLOAD_FIELDS])
+                    '\n- ', '\n1. ', '\n\n    code', '\n[a]: http://x',
+                    '\u0085', '\x0b', '\x0c', '\n```', '\n~~~', '\n<div>x</div>', '\n+ ', '\\']
+FIELDS = pytest.mark.parametrize('path', RENDERED_FIELDS,
+                                ids=['.'.join(map(str, path)) for path in RENDERED_FIELDS])
 SUFFIXES = pytest.mark.parametrize('suffix', PAYLOAD_SUFFIXES,
                                   ids=['lf', 'cr', 'crlf', 'line', 'paragraph', 'dash', 'equals',
-                                       'bullet', 'ordered', 'code', 'reference'])
+                                       'bullet', 'ordered', 'code', 'reference',
+                                       'nel', 'vt', 'ff', 'backtick-fence', 'tilde-fence',
+                                       'html', 'plus', 'backslash'])
+
+
+def test_every_string_leaf_has_explicit_markdown_coverage():
+    leaves = set(PAYLOAD_FIELDS)
+    covered = set(RENDERED_FIELDS)
+    assert not leaves - covered - NOT_RENDERED, 'Add new string leaves to RENDERED_FIELDS or NOT_RENDERED'
+    assert NOT_RENDERED <= leaves
+    assert not covered & NOT_RENDERED
 
 
 def set_field(data, path, value):
@@ -144,6 +171,51 @@ def block_text(block):
 
 
 @FIELDS
+@pytest.mark.parametrize('bucket', ['entries', 'undated'])
+def test_quotes_and_apostrophes_stay_literal_in_every_rendered_field(path, bucket):
+    data = payload()
+    value = 'O\'Brien & "Co"'
+    set_field(data, path, value)
+    if bucket == 'undated':
+        data['undated'], data['entries'] = data['entries'], []
+    expected = json.dumps({'label': value}) if 'locator' in path else value
+    escaped = expected.replace('&', '&amp;').replace('\\', '\\\\')
+
+    body = export_timeline(data, 'markdown')
+
+    assert escaped in body
+    assert '&#x27;' not in body and '&quot;' not in body
+    assert any(expected in child.content for block in markdown_blocks(data)
+               for token in block for child in token.children or [] if child.type == 'text')
+
+
+@pytest.mark.parametrize('helper', [md_inline, md_block_quoted])
+@pytest.mark.parametrize(('value', 'expected'), [(None, ''), (0, '0'), (42, '42')])
+def test_markdown_helpers_coerce_non_strings(helper, value, expected):
+    assert helper(value) == ('> ' if helper is md_block_quoted else '') + expected
+
+
+@FIELDS
+@pytest.mark.parametrize('bucket', ['entries', 'undated'])
+@pytest.mark.parametrize('value', [None, 0, 42])
+def test_markdown_export_accepts_non_string_fields(path, bucket, value):
+    data = payload()
+    set_field(data, path, value)
+    if bucket == 'undated':
+        data['undated'], data['entries'] = data['entries'], []
+
+    body = export_timeline(data, 'markdown')
+
+    assert body.startswith('# Draft timeline\n')
+    if value == 42:
+        assert '42' in body
+
+
+def test_source_coverage_uses_em_dash():
+    assert 'Source coverage: Synthetic (source-a) — unreadable\n' in export_timeline(payload(), 'markdown')
+
+
+@FIELDS
 @SUFFIXES
 @pytest.mark.parametrize('bucket', ['entries', 'undated'])
 def test_payload_cannot_escape_its_markdown_slot(path, suffix, bucket):
@@ -158,6 +230,7 @@ def test_payload_cannot_escape_its_markdown_slot(path, suffix, bucket):
     expected = markdown_blocks(baseline)
     actual = markdown_blocks(data)
 
+    assert any('SlotMarker' in token.content for block in expected for token in block)
     assert [block_shape(block) for block in actual] == [block_shape(block) for block in expected]
     for old, new in zip(expected, actual):
         if not any('SlotMarker' in token.content for token in old):
@@ -240,12 +313,14 @@ def test_csv_and_json_are_unchanged_by_markdown_metadata_presentation(separator)
 
 
 def test_csv_and_json_bytes_preserve_all_payload_suffixes():
-    value = 'Synthetic' + ''.join(PAYLOAD_SUFFIXES)
+    value = 'O\'Brien & "Co"' + ''.join(PAYLOAD_SUFFIXES)
     data = payload()
-    for path in PAYLOAD_FIELDS:
+    for path in PAYLOAD_FIELDS + [('entries', 0, 'conflict_group')]:
         set_field(data, path, value)
     original = deepcopy(data)
     csv_value = value.replace('\r\n', '\n').replace('\r', '\n').replace('\u2028', ' ').replace('\u2029', ' ')
+    for control in ('\u0085', '\x0b', '\x0c'):
+        csv_value = csv_value.replace(control, ' ')
     csv_value = '\n'.join(line.rstrip() for line in csv_value.split('\n')).strip()
     stream = io.StringIO(newline='')
     writer = csv.writer(stream)

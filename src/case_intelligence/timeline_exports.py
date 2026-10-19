@@ -21,7 +21,7 @@ def safe(value):
 
 
 def _md_escape(text: str) -> str:
-    value = html.escape(presentation_text(text))
+    value = html.escape(presentation_text(text), quote=False)
     for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
         value = value.replace(character, '\\' + character)
     value = re.sub(r'^([-+]|[0-9]{1,9}[.)])',
@@ -29,13 +29,13 @@ def _md_escape(text: str) -> str:
     return re.sub(r'^[ \t]+', lambda match: ''.join(f'&#{ord(c)};' for c in match[0]), value)
 
 
-def md_inline(text: str) -> str:
-    value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', text)
+def md_inline(text: object) -> str:
+    value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', '' if text is None else str(text))
     return _md_escape(presentation_text(value).rstrip())
 
 
-def md_block_quoted(text: str) -> str:
-    value = re.sub(r'\r\n|[\r\u2028\u2029]', '\n', text)
+def md_block_quoted(text: object) -> str:
+    value = re.sub(r'\r\n|[\r\u2028\u2029]', '\n', '' if text is None else str(text))
     return '\n'.join('> ' + _md_escape(line) for line in value.split('\n'))
 
 
@@ -64,7 +64,7 @@ def export_timeline(payload, format_name):
              '', 'Capped: ' + md_inline(str(payload['capped'])), '']
     for record in payload['coverage_records']:
         lines += ['Source coverage: ' + md_inline(record['source_name']) + ' (' + md_inline(record['source_id']) +
-                  ') - ' + md_inline(record['status']), '']
+                  ') — ' + md_inline(record['status']), '']
     for entry in entries:
         lines += ['## ' + md_inline(entry['date_label']), '', md_block_quoted(entry['description']), '',
                   'Date uncertainty: ' + md_inline(entry['uncertainty']),
