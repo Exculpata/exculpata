@@ -1,5 +1,10 @@
 # Exculpata brand
 
+Visual identity reference: logo, type, color, and positioning.
+
+For launch media and project descriptions, see
+[brand assets and project copy](BRANDING.md).
+
 ## Logo
 
 - Wordmark: `> exculpata█`. The prompt is JetBrains Mono Bold and the name is Geist (weight 620). The cursor block is cap height and sits on the baseline.

@@ -29,7 +29,8 @@ retained for the existing media files and historical copies.
 `exculpata-teaser.mp4` is the previous product teaser, retained with its
 original bytes. It shows synthetic demonstration material and includes an
 original soundtrack supplied by the maintainer for this video. The previous
-filename is recorded in [brand compatibility](../BRANDING.md).
+filename is recorded in the
+[brand assets and project-copy guide](../BRANDING.md).
 
 The soundtrack is excluded from the repository's Apache-2.0 software license.
 Its inclusion does not grant a standalone music license. Permission for other
@@ -37,4 +38,5 @@ uses of the music must be obtained from the maintainer. The original audio file
 is intentionally not distributed separately in this repository.
 
 `exculpata-teaser-preview.jpg` is a still extracted from the approved video.
-See [the branding guide](../BRANDING.md) for presentation guidance.
+See [the brand assets and project-copy guide](../BRANDING.md) for presentation
+guidance.

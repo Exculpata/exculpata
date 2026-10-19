@@ -1,10 +1,13 @@
 # Exculpata brand assets and project copy
 
+Asset and project-copy reference: launch media, descriptions, and compatibility.
+
 Use these assets and descriptions for the repository, project pages, and
 presentations. They describe community beta v0.1.0-beta.1; they do not imply an
 institutional endorsement or production acceptance.
 
-Visual colors, the wordmark, and the icon are specified in [BRAND.md](BRAND.md).
+For the visual identity (logo, type, color, and positioning), see
+[BRAND.md](BRAND.md).
 
 ## Identity
 
@@ -154,6 +157,6 @@ and `recordbench.publicationDenyFile` are still read.
 
 The previous installer and backup commands remain as shims and print a
 one-line deprecation notice. Historical changelog entries use the previous
-name. The README uses the Exculpata wordmark. The earlier banner remains at
-[assets/exculpata-banner.svg](assets/exculpata-banner.svg), and the original
-banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg).
+name. The README uses the Exculpata wordmark. The legacy
+[RecordBench banner](assets/recordbench-banner.svg) is superseded by
+[exculpata-banner.svg](assets/exculpata-banner.svg) for current branding.
