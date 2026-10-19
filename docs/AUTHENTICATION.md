@@ -29,8 +29,8 @@ CASE_INTELLIGENCE_AUTH_MODE=preview exculpata-workbench --host 127.0.0.1
 non-loopback HTTP clients before login, identity selection or matter access;
 the in-process TestClient peer remains available to synthetic tests. Do not
 reverse-proxy a development listener or expose it to staff. The supported CLI
-ignores forwarded peer headers; installed Kerberos identity still requires its
-separate authenticated proxy secret and group checks.
+keeps the direct TCP peer (`proxy_headers=False`); installed Kerberos identity
+still requires its separate authenticated proxy secret and group checks.
 
 Doctor compares saved and effective authentication without adding auth details
 to `/health`; see [authentication diagnostics](AUTHENTICATION_DIAGNOSTICS.md).
@@ -45,6 +45,66 @@ refresh in running processes; password, enabled-state and role changes require
 affected users to sign in again. Display-name changes retain their sessions.
 See the [local-account lifecycle](LOCAL_ACCOUNT_LIFECYCLE.md) for the shared
 service, explicit version 1 migration and recovery contract.
+
+For local sign-in throttling, both gateway locations overwrite `X-Forwarded-For`
+with `$remote_addr`. The app accepts exactly one header containing a single IP
+literal, without lists, ports, whitespace or IPv6 scope IDs, only from a trusted
+direct peer. With `EXCULPATA_ALLOW_CONTAINER_BIND=1` (or its deprecated alias),
+trusted peers are the exact IPs resolved for Compose service `gateway` on each
+login attempt. The `/auth/local` handler is synchronous, so FastAPI runs it,
+including DNS resolution and password verification, in its worker thread pool
+rather than on the asyncio event loop. This relies on Compose's
+operator-controlled DNS and private app listener; only the gateway publishes a
+port. No private subnet is trusted.
+Other deployments trust no peers by default; the app factory's
+`local_gateway_peers` tuple can explicitly supply gateway IP literals, and an
+empty tuple disables header trust. Missing, duplicate or malformed headers,
+untrusted peers and failed resolution fall back to the direct peer address
+(`unknown` if absent). Browser-supplied forwarded prefixes never select a key.
+
+Each app process allows at most 10 failed verifications per normalized username
+and client, 50 per client across all usernames, and 100 per normalized username
+across clients, in a rolling 15-minute window. Pending verifications reserve
+capacity against all three limits under a short lock. Password verification runs
+outside that lock. Pending reservations do not expire while verification is
+running; completed failures enter the window at completion. Errors release their
+reservations without recording a password failure. Throttled requests do not
+verify passwords, add failures or extend the window. Successful sign-in clears
+completed failures only for that username and client, preserving other pending
+attempts, the client's cross-username budget and the username aggregate.
+
+Memory is bounded without refusing sign-in because a key table is full:
+
+- At most 1,000 client records are retained. Each has at most 50 username records
+  and 50 failed or pending attempts across those usernames. Existing clients
+  cannot evict their own records by changing usernames. A new client replaces
+  the least recently admitted client without pending checks. If all records have
+  pending checks, it waits on a condition that releases the lock until a check
+  completes, rather than failing due to table capacity.
+- Username aggregates use 10,000 fixed buckets selected by a keyed digest of the
+  normalized username, each with at most 100 failed or pending attempts. They
+  survive client eviction and successful sign-in. Bucket collisions share a
+  budget, so they can throttle earlier, but cannot increase a username's allowed
+  guesses. A single client's 50-attempt budget cannot fill even one bucket.
+- Together these structures retain at most 61,000 window records and 1,100,000
+  failure timestamp references, plus bounded pending counters. Idle expired
+  entries remain within these bounds and are pruned when accessed. State resets
+  on process restart.
+
+This trades exact independent username budgets and indefinite client retention
+for bounded memory and fresh-client admission. Client churn from multiple
+addresses can evict another client's throttle; it cannot erase the username
+aggregate. Distributed failures can fill an aggregate bucket and temporarily
+block even correct passwords for its usernames. Collisions can also affect an
+unrelated username. A single address cycling usernames cannot evict its own
+active throttle or fill the global table. The gateway additionally limits
+requests to 10 per minute per connecting address, with a burst of 5.
+
+Operators see the existing denied `auth.login` audit events and the unchanged
+temporary-unavailability sign-in message; no client address or password is added
+to those events. Wait for the window to expire. Clients sharing one connecting
+address also share its per-client limit. If gateway DNS is unavailable or a
+custom proxy is not trusted, fallback can group users under that proxy's address.
 
 Manage accounts inside the tools container; do not edit hashes by hand:
 

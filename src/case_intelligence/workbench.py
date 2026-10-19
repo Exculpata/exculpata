@@ -16,11 +16,13 @@ from time import monotonic
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
 import os
 import re
+import socket
 import stat
 import sqlite3
 import tempfile
@@ -6332,6 +6334,31 @@ class _MatterResponseSendLeaseMiddleware:
                         self.release_clip(*clip)
 
 
+def _local_login_client_key(
+    request: Request, trusted_gateway_peers: tuple[str, ...] | None = None,
+) -> str:
+    """Use one gateway-written IP literal only after checking its direct TCP peer."""
+    peer = request.client.host if request.client is not None else "unknown"
+    values = request.headers.getlist("x-forwarded-for")
+    if len(values) != 1 or len(values[0]) > 45 or "%" in values[0]:
+        return peer
+    try:
+        forwarded = ipaddress.ip_address(values[0])
+        direct = ipaddress.ip_address(peer)
+        if trusted_gateway_peers is None:
+            if env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") != "1":
+                return peer
+            trusted_gateway_peers = tuple(
+                address[0] for family, _, _, _, address in socket.getaddrinfo(
+                    "gateway", None, type=socket.SOCK_STREAM,
+                ) if family in {socket.AF_INET, socket.AF_INET6}
+            )
+        trusted = {ipaddress.ip_address(value) for value in trusted_gateway_peers}
+    except (OSError, ValueError):
+        return peer
+    return str(forwarded) if direct in trusted else peer
+
+
 def create_workbench_app(
     runtime_dir: Path | None = None,
     *,
@@ -6349,6 +6376,7 @@ def create_workbench_app(
     auth_mode: str | None = None,
     secure_cookie: bool | None = None,
     local_settings: LocalAccountSettings | None = None,
+    local_gateway_peers: tuple[str, ...] | None = None,
     oidc_settings: OidcSettings | None = None,
     oidc_client: OidcProviderClient | None = None,
     kerberos_settings: KerberosSettings | None = None,
@@ -8503,7 +8531,7 @@ def create_workbench_app(
             context, raw_token = identity.login_local(
                 username,
                 password,
-                client_key=request.client.host if request.client is not None else "unknown",
+                client_key=_local_login_client_key(request, local_gateway_peers),
             )
         except LocalAuthenticationError as exc:
             audit(

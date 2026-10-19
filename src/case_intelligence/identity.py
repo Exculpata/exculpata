@@ -19,7 +19,6 @@ import pwd
 import re
 import secrets
 import stat
-import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +32,7 @@ from joserfc.errors import JoseError
 
 from .branding import PRODUCT_NAME
 from .local_accounts import LocalAccount, LocalAccountRepository
+from .local_login_limiter import LocalLoginLimiter
 from .compat_env import env
 from .workspace_store import PrincipalRecord, SessionRecord, WorkspaceProblem, WorkspaceStore
 
@@ -825,8 +825,7 @@ class IdentityService:
         self._secret = self._load_or_create_secret()
         self._preview_by_subject = {identity.subject: identity for identity in PREVIEW_IDENTITIES}
         self.local_settings = local_settings
-        self._local_failure_lock = threading.Lock()
-        self._local_failures: dict[str, list[datetime]] = {}
+        self._local_limiter = LocalLoginLimiter()
         self.oidc_settings = oidc_settings
         self.oidc_client = oidc_client
         self.kerberos_settings = kerberos_settings
@@ -1051,31 +1050,6 @@ class IdentityService:
         ).encode("utf-8", errors="replace")
         return hmac.new(self._secret, b"local-login:" + material, hashlib.sha256).hexdigest()
 
-    def _local_attempt_allowed(self, key: str, now: datetime) -> bool:
-        cutoff = now - timedelta(minutes=15)
-        with self._local_failure_lock:
-            failures = [value for value in self._local_failures.get(key, ()) if value >= cutoff]
-            if failures:
-                self._local_failures[key] = failures
-            else:
-                self._local_failures.pop(key, None)
-            return len(failures) < 10
-
-    def _record_local_failure(self, key: str, now: datetime) -> None:
-        cutoff = now - timedelta(minutes=15)
-        with self._local_failure_lock:
-            failures = [value for value in self._local_failures.get(key, ()) if value >= cutoff]
-            failures.append(now)
-            self._local_failures[key] = failures[-10:]
-            if len(self._local_failures) > 10_000:
-                stale = [
-                    value
-                    for value, timestamps in self._local_failures.items()
-                    if not timestamps or timestamps[-1] < cutoff
-                ]
-                for value in stale[:1_000]:
-                    self._local_failures.pop(value, None)
-
     def _local_session_binding(self, account: LocalAccount) -> str:
         # A keyed digest exposes neither password hashes nor stored revisions in
         # the opaque cookie. The session table continues to store only its digest.
@@ -1106,21 +1080,21 @@ class IdentityService:
             or not 1 <= len(password) <= 1_024
         ):
             raise LocalAuthenticationError("The username or password is incorrect.")
-        now = self._now()
-        attempt_key = self._local_attempt_key(username, client_key)
-        if not self._local_attempt_allowed(attempt_key, now):
-            raise LocalAuthenticationError(
-                "Sign-in is temporarily unavailable. Wait a few minutes and try again."
-            )
-        try:
-            account = self.local_settings.authenticate(username, password)
-        except (OSError, RuntimeError):
-            raise LocalAuthenticationError("Local account sign-in is temporarily unavailable.") from None
-        if account is None:
-            self._record_local_failure(attempt_key, now)
-            raise LocalAuthenticationError("The username or password is incorrect.")
-        with self._local_failure_lock:
-            self._local_failures.pop(attempt_key, None)
+        client_digest = self._local_attempt_key("", client_key)
+        username_digest = self._local_attempt_key(username, "")
+        with self._local_limiter.attempt(client_digest, username_digest, self._now) as attempt:
+            if attempt is None:
+                raise LocalAuthenticationError(
+                    "Sign-in is temporarily unavailable. Wait a few minutes and try again."
+                )
+            try:
+                account = self.local_settings.authenticate(username, password)
+            except (OSError, RuntimeError):
+                raise LocalAuthenticationError("Local account sign-in is temporarily unavailable.") from None
+            if account is None:
+                attempt.outcome = "failure"
+                raise LocalAuthenticationError("The username or password is incorrect.")
+            attempt.outcome = "success"
         principal = self.store.upsert_principal(
             self.local_settings.provider_key,
             account.username,
