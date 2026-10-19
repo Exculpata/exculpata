@@ -9,6 +9,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
 )
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -43,7 +44,7 @@ class GatewayHeaderContract(unittest.TestCase):
             # A separate HTTP server observes the headers that actually arrive
             # after proxying; the TLS gateway configuration is otherwise intact.
             variables = "|".join("$http_" + name.lower().replace("-", "_") for name in names)
-            rendered += '\nserver { listen 127.0.0.1:8786; location / { return 200 "' + variables + '"; } }\n'
+            rendered += '\nserver { listen 127.0.0.1:8786; access_log off; location / { return 200 "' + variables + '"; } }\n'
             (scratch / "default.conf").write_text(rendered)
             try:
                 run("docker", "run", "-d", "--name", container, "--network", "none",
@@ -82,9 +83,61 @@ class GatewayHeaderContract(unittest.TestCase):
                             self.assertEqual(request(path, forged, direct=True),
                                              "|".join(forged.get(name, "") for name in names))
                             self.assertEqual(request(path, forged), absent)
+                markers = ["SYNTHETIC-SEARCH-336", "SYNTHETIC-CODE-336",
+                           "SYNTHETIC-STATE-336", "SYNTHETIC-COOKIE-336",
+                           "SYNTHETIC-AUTHORIZATION-336", "SYNTHETIC-REFERER-336",
+                           "SYNTHETIC-AGENT-336", "SYNTHETIC-BODY-336",
+                           "synthetic-matter-336"]
+                paths = ["/matters/synthetic-matter-336?q=" + markers[0],
+                         "/auth/oidc/callback?code=" + markers[1] + "&state=" + markers[2],
+                         "/auth/login?next=%2Fmatters%2Fsynthetic-matter-336%3Fq%3D" + markers[0]]
+                private_headers = {"Cookie": "session=" + markers[3],
+                                   "Authorization": "Bearer " + markers[4],
+                                   "Referer": "https://example.test/" + markers[5],
+                                   "User-Agent": markers[6]}
+                for path in paths:
+                    self.assertEqual(request(path, private_headers), absent)
+
+                def status(path, *extra):
+                    return run("docker", "exec", container, "curl", "--silent", "--show-error",
+                               "--max-time", "5", "--cacert", "/run/tls/tls.crt",
+                               *extra, "--data", markers[7], "-o", "/dev/null", "-w", "%{http_code}",
+                               "https://localhost:8443" + path)
+
+                self.assertEqual(status("/", "-H", "Host: invalid host-" + markers[0]), "400")
+                self.assertEqual(status("/" + markers[0] * 1000), "414")
+                statuses = [status("/auth/local?q=" + markers[0]) for _ in range(12)]
+                self.assertIn("503", statuses)  # The unchanged nginx rate-limit response.
+                # Remove only the synthetic observer. The deployed gateway stays intact.
+                (scratch / "default.conf").write_text(rendered.split("\nserver { listen 127.0.0.1:8786;")[0])
+                run("docker", "exec", container, "nginx", "-s", "reload")
+                for attempt in range(40):
+                    if status(paths[1]) == "502":
+                        break
+                    time.sleep(0.1)
+                else:
+                    self.fail("synthetic upstream failure was not observed")
+                logs = subprocess.run(["docker", "logs", container], check=True,
+                                      capture_output=True, text=True, timeout=15)
+                for stream in (logs.stdout, logs.stderr):
+                    for marker in markers:
+                        self.assertNotIn(marker, stream)
+                for code in (200, 400, 414, 502, 503):
+                    self.assertRegex(logs.stdout, rf"gateway time=\S+ status={code} bytes=\d+ duration=[\d.]+")
             finally:
                 run("docker", "rm", "-f", container)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_gateway_logging_has_only_content_free_fields():
+    template = (ROOT / "deploy/gateway/default.conf.template").read_text()
+    formats = re.findall(r"log_format\s+exculpata_safe\s+([^;]+);", template)
+    assert len(formats) == 1
+    assert set(re.findall(r"\$[a-zA-Z_0-9]+", formats[0])) == {
+        "$time_iso8601", "$status", "$body_bytes_sent", "$request_time"}
+    assert re.findall(r"^\s*access_log\s+([^;]+);", template, re.M) == ["/dev/stdout exculpata_safe"]
+    assert re.findall(r"^error_log\s+([^;]+);", template, re.M) == ["/dev/null"]
+    assert not re.search(r"^\s+(error_log|log_format)\s", template, re.M)

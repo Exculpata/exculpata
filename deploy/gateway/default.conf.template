@@ -1,6 +1,13 @@
+# Content-free request accounting also covers rejected and failed requests.
+# Paths can contain matter names; request-context error diagnostics include queries.
+log_format exculpata_safe 'gateway time=$time_iso8601 status=$status '
+                         'bytes=$body_bytes_sent duration=$request_time';
+error_log /dev/null;
+
 limit_req_zone $binary_remote_addr zone=recordbench_login:10m rate=10r/m;
 
 server {
+    access_log /dev/stdout exculpata_safe;
     listen 8443 ssl;
     server_name ${EXCULPATA_SERVER_NAME};
 
