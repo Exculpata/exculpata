@@ -1,2 +1,4 @@
 # Reviewed public SHA-256 of a fixed repository payload, not a credential.
+# https://github.com/Exculpata/exculpata/issues/340
+# Remove when this historical finding is no longer reachable by the all-branch scan.
 e5efe2ab089c892585853297b6793e0b042a9347:tests/runtime_probes.py:generic-api-key:13
