@@ -1116,7 +1116,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         return row["next_path"] if changed == 1 else None
 
     def cancel_oidc_transaction(self, state_digest: str) -> str | None:
-        """Discard only the failed browser's transaction and pending step-up request."""
+        """Cancel browser state without taking a consumed callback's pending request."""
         if not re.fullmatch(r"[0-9a-f]{64}", state_digest):
             return None
         with self._lock, self.connection:
@@ -1124,10 +1124,12 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "SELECT next_path FROM workbench_oidc_transaction WHERE state_digest=?",
                 (state_digest,),
             ).fetchone()
-            self.connection.execute("DELETE FROM workbench_case_oidc_request WHERE state_digest=?",
-                                    (state_digest,))
-            self.connection.execute("DELETE FROM workbench_oidc_transaction WHERE state_digest=?",
-                                    (state_digest,))
+            self.connection.execute(
+                "DELETE FROM workbench_oidc_transaction WHERE state_digest=? "
+                "AND (consumed_at IS NULL OR NOT EXISTS "
+                "(SELECT 1 FROM workbench_case_oidc_request WHERE state_digest=?))",
+                (state_digest, state_digest),
+            )
         return row["next_path"] if row else None
 
     def team_groups(self) -> tuple[dict, ...]:
