@@ -45,10 +45,11 @@ Claims were checked against the source at
 
 | Page content | Source |
 | --- | --- |
-| Positioning, tagline, local-first wording | `docs/BRAND.md`, `docs/BRANDING.md` |
+| Visual identity: logo, type, color, and positioning | [Visual identity](../docs/BRAND.md) |
+| Assets, project copy, and compatibility | [Brand assets and project copy](../docs/BRANDING.md) |
 | File types, source-linked questions, notes and report drafting | `README.md`, “What you can explore today” |
 | Defense teams and access to counsel | `docs/PRODUCT_NORTH_STAR.md` |
-| Alpha status, human review and synthetic evaluation | `docs/BRANDING.md`, `docs/PUBLIC_ALPHA.md`, `README.md` |
+| Community beta status, human review and synthetic evaluation | [Brand assets and project copy](../docs/BRANDING.md), [Public contributor boundary](../docs/PUBLIC_ALPHA.md), [README](../README.md) |
 | Free, open-source core and license | `docs/PRODUCT_NORTH_STAR.md`, `LICENSE` |
 
 The page does not promise on-prem-only operation, exhaustive review, guaranteed
