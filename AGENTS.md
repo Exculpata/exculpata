@@ -37,6 +37,7 @@ can't repeat it. Fix it at the highest level that works:
 Every fix comes with a small synthetic regression test that fails on the commit
 that had the mistake. Name that commit in the PR description. If you fix at a
 lower level, say in one line why a higher level didn't work.
+TestClient route tests (for example tests/test_timeline_routes.py) can hang in a network-less workspace-write sandbox, so agents should run the non-route tests there and leave route tests to CI or the outer runner.
 
 ## Encode intent in the implementation
 
