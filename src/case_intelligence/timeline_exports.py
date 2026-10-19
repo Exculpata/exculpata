@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import re
 import unicodedata
 
 from .derived_text import presentation_text
@@ -39,9 +40,12 @@ def export_timeline(payload, format_name):
                 writer.writerow([safe(v) for v in (entry['date_label'], entry['precision'], entry['uncertainty'], entry['description'],
                     citation['source_id'] + ' · ' + citation['document_title'], json.dumps(citation['locator']), citation['excerpt'], entry['conflict_group'])] + ['citation'] + [''] * 6 + [payload['format']])
         return stream.getvalue()
-    def escape(text):
+    def escape(text, *, multiline=False):
         import html
-        value = html.escape(presentation_text(str(text)))
+        value = str(text)
+        if not multiline:
+            value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', value)
+        value = html.escape(presentation_text(value))
         for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
             value = value.replace(character, '\\' + character)
         return value
@@ -51,9 +55,9 @@ def export_timeline(payload, format_name):
         lines += ['Source coverage: ' + escape(record['source_name']) + ' (' + escape(record['source_id']) +
                   ') — ' + escape(record['status']), '']
     for entry in entries:
-        lines += ['## ' + escape(entry['date_label']), '', escape(entry['description']), '',
+        lines += ['## ' + escape(entry['date_label']), '', escape(entry['description'], multiline=True), '',
                   'Date uncertainty: ' + escape(entry['uncertainty']), 'Conflict group: ' + str(entry['conflict_group'] or 'None')]
         for c in entry['citations']:
             lines += ['', 'Source: ' + escape(c['source_id'] + ' · ' + c['document_title']),
-                      'Locator: ' + escape(json.dumps(c['locator'])), '', '> ' + escape(c['excerpt']).replace('\n', '\n> ')]
+                      'Locator: ' + escape(json.dumps(c['locator'])), '', '> ' + escape(c['excerpt'], multiline=True).replace('\n', '\n> ')]
     return '\n'.join(lines) + '\n'
