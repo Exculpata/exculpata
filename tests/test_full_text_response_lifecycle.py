@@ -1,4 +1,6 @@
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -187,7 +189,7 @@ def test_nonmember_admin_reads_ledger_as_self_after_owner_loses_access(tmp_path,
         import tests.test_full_text_reports_integration as fixtures
         monkeypatch.setattr(fixtures, "ACTOR", owner_id)
         run, documents = completed_text_run(bench, matter, ["The amber bicycle arrived."])
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             if owner_change == "inactive":
                 bench.workspace.connection.execute("UPDATE workbench_principal SET active=0 WHERE principal_id=?", (owner_id,))
             else:

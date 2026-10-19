@@ -1,6 +1,8 @@
 """Synthetic regression: automatic suggestions are reviewed from one inbox."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import html
 import re
 
@@ -167,7 +169,7 @@ def test_inbox_work_grows_linearly_with_suggestions(workbench):  # noqa: F811
 
     def add(count, start):
         # Hold the store's lock: background work shares this connection.
-        with bench.workspace._lock, connection:
+        with fixture_write(bench.workspace):
             for index in range(start, start + count):
                 entity_id = f"synthetic-entity-{index:06d}"
                 connection.execute(
@@ -190,11 +192,13 @@ def test_inbox_work_grows_linearly_with_suggestions(workbench):  # noqa: F811
         def tick():
             counted[0] += 1
             return 0
-        connection.set_progress_handler(tick, 1000)
+        with bench.workspace._lock:
+            connection.set_progress_handler(tick, 1000)
         try:
             items, total, _kinds = service.inbox(matter.matter_id, WEB_ACTOR)
         finally:
-            connection.set_progress_handler(None, 0)
+            with bench.workspace._lock:
+                connection.set_progress_handler(None, 0)
         assert len(items) == 25
         return counted[0], total
 
@@ -237,7 +241,7 @@ def test_a_group_larger_than_one_decision_says_so(workbench):  # noqa: F811
     upload(client, matter.slug, "Synthetic memo.txt", FIRST)
     bench.run_automatic_discovery_once()
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:
+    with fixture_write(bench.workspace):
         for index in range(201):
             connection.execute(
                 "INSERT INTO workbench_entity(entity_id,matter_id,entity_type,display_name,status,origin,"
@@ -258,7 +262,7 @@ def test_an_unavailable_original_is_not_offered_as_a_link(workbench):  # noqa: F
     rows, _ = service.list(matter.matter_id, WEB_ACTOR)
     amber = next(row for row in rows if row["display_name"] == "Amber Cooperative")
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:  # The retained reference cites an earlier source version.
+    with fixture_write(bench.workspace):  # The retained reference cites an earlier source version.
         connection.execute("UPDATE workbench_entity_mention SET source_version_id='superseded-version' WHERE entity_id=?",
                            (amber["entity_id"],))
     page = client.get(f"/matters/{matter.slug}/entities").text
@@ -602,7 +606,7 @@ def test_a_large_group_decides_the_identity_whose_passage_it_shows(workbench):  
     upload(client, matter.slug, "Synthetic memo.txt", FIRST)
     bench.run_automatic_discovery_once()
     connection = bench.workspace.connection
-    with bench.workspace._lock, connection:
+    with fixture_write(bench.workspace):
         for index in range(201):
             connection.execute(
                 "INSERT INTO workbench_entity(entity_id,matter_id,entity_type,display_name,status,origin,"

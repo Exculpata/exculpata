@@ -1,5 +1,7 @@
 """Synthetic owner/admin rename, stale forms, and stable matter identity."""
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 import io
 
@@ -89,7 +91,7 @@ def test_invalid_name_is_not_saved(tmp_path, name):
 ])
 def test_store_revalidates_authority_and_lifecycle(tmp_path, actor, override, state):
     store, matter = _store(tmp_path)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_matter_lifecycle SET state=? WHERE matter_id=?',
                                  (state, matter.matter_id))
     with pytest.raises(KeyError):
@@ -100,7 +102,7 @@ def test_store_revalidates_authority_and_lifecycle(tmp_path, actor, override, st
 
 def test_inactive_administrator_cannot_rename(tmp_path):
     store, matter = _store(tmp_path)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute("UPDATE workbench_principal SET active=0 WHERE principal_id='principal-admin'")
     with pytest.raises(KeyError):
         _rename(store, matter, 'Denied', actor='principal-admin', administrator_override=True)

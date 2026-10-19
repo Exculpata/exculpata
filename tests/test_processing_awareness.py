@@ -181,7 +181,8 @@ def test_first_draft_question_is_idempotent_across_store_connections(tmp_path):
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = tuple(pool.map(submit, (primary, secondary)))
+        pending = [pool.submit(submit, store) for store in (primary, secondary)]
+        results = tuple(future.result() for future in pending)
     assert {job.job_id for job, _created in results} == {results[0][0].job_id}
     assert {job.conversation_id for job, _created in results} == {
         results[0][0].conversation_id

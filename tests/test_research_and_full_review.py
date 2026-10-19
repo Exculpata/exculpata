@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 
 from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
@@ -126,11 +128,14 @@ def test_source_check_basis_survives_online_backup_and_clean_restore(tmp_path):
 
     restored_path = tmp_path / "restored" / "workbench.sqlite"
     restored_path.parent.mkdir(parents=True)
+    # fixture-write: Open a new isolated backup destination before its first WorkspaceStore.
     destination = sqlite3.connect(restored_path)
     try:
-        store.connection.backup(destination)
+        with store._lock:
+            # fixture-write: Copy under the source lock to a new isolated backup destination before its first WorkspaceStore.
+            store.connection.backup(destination)
     finally:
-        destination.close()
+        destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.
         store.close()
 
     restored = WorkspaceStore(restored_path)
@@ -167,20 +172,25 @@ def test_pre_basis_active_source_check_fails_closed_after_backup_restore(tmp_pat
     legacy_path = tmp_path / "legacy" / "workbench.sqlite"
     restored_path = tmp_path / "legacy-restored" / "workbench.sqlite"
     restored_path.parent.mkdir(parents=True)
+    # fixture-write: Open the legacy fixture only after closing its original WorkspaceStore.
     legacy = sqlite3.connect(legacy_path)
+    # fixture-write: Open a new isolated restore destination before its first WorkspaceStore.
     destination = sqlite3.connect(restored_path)
     try:
+        # fixture-write: Remove review basis from the closed legacy database before restoring it.
         legacy.execute(
             "ALTER TABLE workbench_review_decision DROP COLUMN source_basis_digest"
         )
+        # fixture-write: Remove source basis from the closed legacy database before restoring it.
         legacy.execute(
             "ALTER TABLE workbench_source_catalog DROP COLUMN content_basis_digest"
         )
-        legacy.commit()
+        legacy.commit()  # fixture-write: Commit the offline legacy schema before copying the closed database.
+        # fixture-write: Copy the offline legacy fixture after its store closed to a new isolated destination before its first WorkspaceStore.
         legacy.backup(destination)
     finally:
-        destination.close()
-        legacy.close()
+        destination.close()  # fixture-write: Close the isolated backup destination before its first WorkspaceStore is opened.
+        legacy.close()  # fixture-write: Close the offline legacy migration connection after its backup completes.
 
     restored = WorkspaceStore(restored_path)
     try:
@@ -1297,7 +1307,7 @@ def test_review_workspace_runs_exports_and_final_bundle_include_new_work_product
         def assert_corruption_is_refused(
             corrupt_result: dict[str, object], marker: str
         ) -> None:
-            with client.app.state.workbench.workspace.connection:
+            with fixture_write(client.app.state.workbench.workspace):
                 client.app.state.workbench.workspace.connection.execute(
                     "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                     (json.dumps(corrupt_result), research_id),
@@ -1369,7 +1379,7 @@ def test_review_workspace_runs_exports_and_final_bundle_include_new_work_product
         corrupt_gap["passes"][0]["text"] = gap_marker
         assert_corruption_is_refused(corrupt_gap, gap_marker)
 
-        with client.app.state.workbench.workspace.connection:
+        with fixture_write(client.app.state.workbench.workspace):
             client.app.state.workbench.workspace.connection.execute(
                 "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                 (json.dumps(original_result), research_id),

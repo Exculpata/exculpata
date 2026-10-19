@@ -1,6 +1,8 @@
 """Synthetic preservation coverage, privacy, capacity, and recovery regressions."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import io
 import json
@@ -113,7 +115,7 @@ def test_cross_matter_and_operational_canaries_are_absent_but_failed_work_remain
     convo = workspace.create_conversation(matter.matter_id, 'Generated conversation')
     now = workspace._now()
     question = workspace.append_message(matter.matter_id, convo.conversation_id, 'user', 'Generated unfinished question')
-    with workspace.connection:
+    with fixture_write(workspace):
         workspace.connection.execute('INSERT INTO workbench_answer_job '
             '(job_id,matter_id,conversation_id,actor_id,idempotency_key,question,question_message_id,state,stage,'
             'attempts,worker_id,cancellation_requested,message,created_at,updated_at) '
@@ -143,14 +145,14 @@ def test_cross_matter_and_operational_canaries_are_absent_but_failed_work_remain
 def test_unknown_schema_blocks_instead_of_omitting_or_exporting(archive_case, change):
     bench, matter, store = archive_case
     close(bench, matter)
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace) as connection:
         statements = {
             'table': 'CREATE TABLE future_records(matter_id,text)',
             'column': 'ALTER TABLE workbench_report ADD COLUMN future_secret TEXT',
             'authorization_column': 'ALTER TABLE workbench_case_purge_authority ADD COLUMN future_secret TEXT',
             'binding_column': 'ALTER TABLE workbench_case_session_binding ADD COLUMN future_secret TEXT',
         }
-        bench.workspace.connection.execute(statements[change])
+        connection.execute(statements[change])
     with pytest.raises(ArchiveProblem):
         build_matter_archive(bench, matter, OWNER, source_store=store)
     assert not list((bench.storage.root / 'preservation-exports').iterdir())
@@ -217,19 +219,18 @@ def test_snapshot_ignores_new_audit_events_but_detects_authored_edit(archive_cas
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
-        with bench.workspace._lock, bench.workspace.connection:
-            bench.workspace._append_audit_event_locked(actor_principal_id=OWNER, session_id=None,
-                matter_id=matter.matter_id, request_id='generated', action='work_product.export', outcome='success')
+        bench.workspace.append_audit_event(actor_principal_id=OWNER, session_id=None,
+            matter_id=matter.matter_id, request_id='generated', action='work_product.export', outcome='success')
         assert artifact.snapshot_digest == matter_snapshot_digest(bench, matter, store)
         # The frozen database rejects ordinary edits; reopening invalidates the
         # old exit and permits a fresh changed-content snapshot.
         with pytest.raises(sqlite3.IntegrityError, match='frozen'):
-            with bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute('UPDATE workbench_report SET title=? WHERE report_id=?',
                                                     ('Disallowed edit', report.report_id))
         bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id,
             session_id=bench.archive_test_session_id)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('UPDATE workbench_report SET title=? WHERE report_id=?',
                                                 ('Changed generated title', report.report_id))
         assert artifact.snapshot_digest != matter_snapshot_digest(bench, matter, store)
@@ -270,7 +271,7 @@ def test_nested_operational_fields_are_removed_and_unknown_fields_block(archive_
         cleanup_archive(artifact)
     bench.workspace.case_lifecycle.cancel_exit(matter.slug, OWNER, artifact.exit_id,
         session_id=bench.archive_test_session_id)
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_message SET payload_json=? WHERE message_id=?',
             (json.dumps(dict(future_unreviewed_field='UNKNOWN-CANARY')), message.message_id))
     close(bench, matter)
@@ -281,7 +282,7 @@ def test_nested_operational_fields_are_removed_and_unknown_fields_block(archive_
 def test_source_registry_catalog_disagreement_blocks_certification(archive_case):
     bench, matter, store = archive_case
     store.store_stream('generated.txt', 'text/plain', io.BytesIO(b'Generated original'))
-    with bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_source_catalog WHERE matter_id=?', (matter.matter_id,))
     close(bench, matter)
     with pytest.raises(ArchiveProblem, match='inventory'):
@@ -302,9 +303,6 @@ def test_media_original_machine_text_every_revision_speaker_history_and_clip_rec
     store.documents[document.document_id] = document
     store._save((document.document_id,))
     workspace = bench.workspace
-    job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
-        source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
-    workspace.claim_media_job('generated-worker')
     if metadata_source == 'current_service':
         summary = natural_transcription_summary(tmp_path, monkeypatch, document.digest)
     else:
@@ -312,23 +310,27 @@ def test_media_original_machine_text_every_revision_speaker_history_and_clip_rec
         processor = ImmediateMediaProcessor()
         submitted = processor.submit(OWNER, wav, 'audio/wav', document.digest)
         summary = processor.transcript(OWNER, submitted['job_id'])
-    transcript = workspace.import_media_transcript(job.media_job_id, segments=[dict(
-        external_segment_id='generated-segment', start_ms=0, end_ms=4000, speaker_cluster='SPEAKER_00',
-        speaker_display_name='Speaker 1', model_text='Generated machine text', confidence=.9)],
-        warnings=[], quality=summary['quality'], provenance=summary['provenance'])
-    segment = workspace.transcript_segments(matter.matter_id, document.document_id, document.version_id)[0]
-    for revision, text in [(0, 'First human correction'), (1, 'Second human correction')]:
-        workspace.revise_transcript_segment(matter.matter_id, document.document_id, document.version_id,
-            segment.segment_id, expected_revision=revision, text=text, actor_id=OWNER)
-    workspace.revise_speaker_mapping(matter.matter_id, document.document_id, document.version_id, 'SPEAKER_00',
-        expected_revision=0, display_name='Generated Witness', identity_state='confirmed', actor_id=OWNER)
-    workspace.create_media_clip(matter.matter_id, document.document_id, document.version_id,
-        title='Generated clip', start_ms=1000, end_ms=3000, actor_id=OWNER)
-    workspace.finish_media_job(job.media_job_id, degraded=False, message='Complete', warnings=[],
-        quality=summary['quality'], provenance=summary['provenance'])
-    workspace.queue_media_summary(matter.matter_id, document.document_id, document.version_id, OWNER)
-    workspace.start_media_summary(transcript.transcript_id)
-    workspace.fail_media_summary(transcript.transcript_id, 'Generated failed overview')
+    with fixture_write(workspace, media=True):
+        job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
+            source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
+        workspace.claim_media_job('generated-worker')
+        transcript = workspace.import_media_transcript(job.media_job_id, segments=[dict(
+            external_segment_id='generated-segment', start_ms=0, end_ms=4000, speaker_cluster='SPEAKER_00',
+            speaker_display_name='Speaker 1', model_text='Generated machine text', confidence=.9)],
+            warnings=[], quality=summary['quality'], provenance=summary['provenance'])
+        segment = workspace.transcript_segments(matter.matter_id, document.document_id, document.version_id)[0]
+        for revision, text in [(0, 'First human correction'), (1, 'Second human correction')]:
+            workspace.revise_transcript_segment(matter.matter_id, document.document_id, document.version_id,
+                segment.segment_id, expected_revision=revision, text=text, actor_id=OWNER)
+        workspace.revise_speaker_mapping(matter.matter_id, document.document_id, document.version_id, 'SPEAKER_00',
+            expected_revision=0, display_name='Generated Witness', identity_state='confirmed', actor_id=OWNER)
+        workspace.create_media_clip(matter.matter_id, document.document_id, document.version_id,
+            title='Generated clip', start_ms=1000, end_ms=3000, actor_id=OWNER)
+        workspace.finish_media_job(job.media_job_id, degraded=False, message='Complete', warnings=[],
+            quality=summary['quality'], provenance=summary['provenance'])
+        workspace.queue_media_summary(matter.matter_id, document.document_id, document.version_id, OWNER)
+        workspace.start_media_summary(transcript.transcript_id)
+        workspace.fail_media_summary(transcript.transcript_id, 'Generated failed overview')
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
@@ -516,13 +518,14 @@ def test_actual_recording_check_payload_and_private_inspection_id(archive_case, 
     bench, matter, store = archive_case
     document, _ = store.store_stream('generated.txt', 'text/plain', io.BytesIO(b'Generated unavailable recording'))
     workspace = bench.workspace
-    job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
-        source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
-    workspace.claim_media_job('generated-worker')
     # The real bounded inspector produces the complete failed-check schema for
     # invalid synthetic media on every host, including hosts without ffmpeg.
     result = inspect_recording(store.files / document.stored_name, 'audio/wav')
-    saved = workspace.save_media_preflight(job.media_job_id, result, hold=True, message='Generated failed check')
+    with fixture_write(workspace, media=True):
+        job = workspace.queue_media_job(matter.matter_id, document.document_id, document.version_id, OWNER,
+            source_sha256=document.digest, byte_size=document.size, media_type='audio/wav', duration_ms=4000)
+        workspace.claim_media_job('generated-worker')
+        saved = workspace.save_media_preflight(job.media_job_id, result, hold=True, message='Generated failed check')
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
@@ -631,11 +634,10 @@ def test_audit_manifest_discloses_omissions_without_exporting_details(archive_ca
     from case_intelligence.matter_archive_projection import reference
     bench, matter, store = archive_case
     workspace = bench.workspace
-    with workspace._lock, workspace.connection:
-        event = workspace._append_audit_event_locked(actor_principal_id=OWNER, session_id=None,
-            matter_id=matter.matter_id, request_id='GENERATED-PRIVATE-REQUEST',
-            action='generated.audit_disclosure', outcome='success', object_type='generated_material',
-            object_id='GENERATED-PRIVATE-TARGET', details={'count': 7, 'principal_id': OTHER})
+    event = workspace.append_audit_event(actor_principal_id=OWNER, session_id=None,
+        matter_id=matter.matter_id, request_id='GENERATED-PRIVATE-REQUEST',
+        action='generated.audit_disclosure', outcome='success', object_type='generated_material',
+        object_id='GENERATED-PRIVATE-TARGET', details={'count': 7, 'principal_id': OTHER})
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
@@ -690,7 +692,7 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
     oidc_authorization = 'SYNTHETIC-PRIVATE-OIDC-AUTHORIZATION'
     # Seed valid-shaped operational rows solely to exercise the export boundary;
     # this does not claim that direct database writes establish purge authority.
-    with workspace._lock, workspace.connection:
+    with fixture_write(workspace):
         workspace.connection.execute('INSERT INTO workbench_case_download_attempt VALUES (?,?,?,?,?,?,?,?,?,?,?)',
             (attempt, current.exit_id, export, archive_digest, 100, OWNER, session.session_id, 0, 0, 100, now))
         workspace.connection.execute('INSERT INTO workbench_case_download_coverage VALUES (?,?,?,?,?,?,?)',

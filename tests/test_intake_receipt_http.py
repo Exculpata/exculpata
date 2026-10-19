@@ -1,5 +1,7 @@
 """Synthetic selection, byte receipt, exact source support, and portable downloads."""
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -111,7 +113,7 @@ def test_receipt_retains_skips_received_bytes_exact_source_and_complete_exports(
         assert bundled == data
         assert not any(n.endswith('report.txt') for n in archive.namelist())
     # A version replacement cannot retarget a previously recorded receipt.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_source_catalog SET version_id=? WHERE matter_id=?', ('f' * 32, matter.matter_id))
     page = client.get(receipt['receipt_url'])
     assert '>Open source</a>' not in page.text and 'Source unavailable' in page.text
@@ -200,7 +202,7 @@ def test_receipt_writes_require_real_session_csrf_and_current_membership(tmp_pat
         assert client.post(receipt['receipt_url'] + '/discard', data={'confirm': 'yes'}).status_code == 403
         bench = app.state.workbench
         matter = bench.matter(slug, ACTOR)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (ACTOR,))
         assert client.post(url + '/seal', headers=headers, follow_redirects=False).status_code in {303, 401, 403, 404}
         assert bench.workspace.connection.execute('SELECT count(*) FROM workbench_intake_item WHERE matter_id=?', (matter.matter_id,)).fetchone()[0] == 0

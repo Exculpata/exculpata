@@ -1,4 +1,6 @@
 """Byte equality is visible without collapsing received source occurrences."""
+
+from tests.fixture_write import fixture_write
 import re
 
 import pytest
@@ -163,7 +165,8 @@ def test_byte_match_catalog_is_bounded_and_rebuildable_at_ten_thousand_sources(t
             nonlocal query_steps
             query_steps += 1000
             return int(query_steps > 5_000_000)
-        bench.workspace.connection.set_progress_handler(query_budget, 1000)
+        with bench.workspace._lock:
+            bench.workspace.connection.set_progress_handler(query_budget, 1000)
         try:
             filters = (
                 {"matching_only": True} if filter_mode == "matching" else
@@ -172,7 +175,8 @@ def test_byte_match_catalog_is_bounded_and_rebuildable_at_ten_thousand_sources(t
             )
             page = bench.source_library(matter, view='list', page_size=100, page=100, **filters)
         finally:
-            bench.workspace.connection.set_progress_handler(None, 0)
+            with bench.workspace._lock:
+                bench.workspace.connection.set_progress_handler(None, 0)
         assert query_steps <= 5_000_000
         assert page.total == 10_000 and len(page.items) == 100
         assert all(row.byte_match_count == 10_000 for row in page.items)
@@ -185,7 +189,7 @@ def test_byte_match_catalog_is_bounded_and_rebuildable_at_ten_thousand_sources(t
         workspace = bench.workspace
         # Simulate an older writer changing only the catalog. Stale derived rows
         # must fail closed until normal registry reconciliation repairs them.
-        with workspace._lock, workspace.connection:
+        with fixture_write(workspace):
             workspace.connection.execute('UPDATE workbench_source_catalog SET version_id=? WHERE matter_id=? AND action_token=?',
                 ('e' * 32, matter.matter_id, token))
         assert bench.source_library(matter, same_content=token).total == 0

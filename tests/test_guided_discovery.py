@@ -1,4 +1,6 @@
 """Synthetic guided discovery: incomplete extraction, retry, citations and human choice."""
+
+from tests.fixture_write import fixture_write
 from urllib.parse import parse_qs
 
 from fastapi.testclient import TestClient
@@ -97,7 +99,7 @@ def test_guided_partial_discovery_retry_and_explicit_acceptance(tmp_path, monkey
         assert 'data-discovery-unit' in error.text
         assert client.get(prefix + '/entity-discovery/missing').status_code == 404
         # A formerly extracted source can become unavailable after processing.
-        with store.connection:
+        with fixture_write(store):
             store.connection.execute("UPDATE workbench_source_catalog SET source_state='unavailable' WHERE document_id=?",
                                      (document.document_id,))
         changed = client.get(path)

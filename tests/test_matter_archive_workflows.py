@@ -44,6 +44,7 @@ def test_preserves_full_text_ledger_and_synthesis_checkpoint(workspace):
     for table in SCHEMA:
         if table in EXCLUDED_TABLES:
             continue
+        # fixture-write: scope_query returns only read-only archive projection SELECT statements.
         for row in bench.workspace.connection.execute(scope_query(table), (matter.matter_id,)):
             for column in exported_columns(table):
                 if column.endswith('_json') and row[column] is not None:

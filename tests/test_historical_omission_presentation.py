@@ -1,6 +1,8 @@
 """Known service omissions are presentation-only; sourced qualifications stay exact."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import copy
 import io
 import json
@@ -33,7 +35,7 @@ def test_historical_omission_views_exports_report_copies_leave_raw_evidence(work
     result["summary"] = content
     result["passes"][0].update(answer=payload, text=content)
     encoded = json.dumps(result)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (encoded, job.job_id))
     job = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
     conversation = bench.workspace.get_conversation(matter.matter_id)

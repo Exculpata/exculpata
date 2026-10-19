@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
@@ -421,7 +423,7 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
         table = str(table_row[0])
         columns = {
             str(column[1])
-            for column in store.connection.execute(f'PRAGMA table_info("{table}")')
+            for column in store.connection.execute("SELECT * FROM pragma_table_info(?)", (table,))
         }
         if "matter_id" not in columns or table in preserved_tables:
             continue
@@ -435,7 +437,7 @@ def test_store_requires_owner_unless_validated_administrator_override(tmp_path):
     not_empty = {table: count for table, count in remaining.items() if count}
     assert not not_empty, not_empty
     assert store.get_active_matter(neighbor.slug) == neighbor
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute(
             "UPDATE workbench_principal SET active=0 WHERE principal_id=?",
             ("principal-admin",),
@@ -527,7 +529,7 @@ def test_purge_refuses_every_durable_media_and_analysis_queue(tmp_path):
     assert store.active_matter_work_counts(matter.matter_id)["overviews"] == 1
     with pytest.raises(WorkspaceProblem, match="transcript overviews"):
         store.case_lifecycle.begin_exit(matter.slug, owner.principal_id, session_id=lifecycle_session(store, owner.principal_id, administrator_override=False).session_id)
-    with store.connection:
+    with fixture_write(store):
         store.connection.execute(
             "UPDATE workbench_media_summary SET state='stale' WHERE transcript_id=?",
             (summary.transcript_id,),
@@ -972,7 +974,7 @@ def test_administrator_exports_closed_matter_after_owner_deactivation_with_attri
         assert interrupted.status_code == 303
         assert bench.workspace.matter_lifecycle(matter.matter_id).state == "purge_failed"
 
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_principal SET active=0 WHERE principal_id=?",
                 (owner_id,),
@@ -1131,7 +1133,7 @@ def test_administrator_direct_exports_use_override_and_remain_matter_isolated(
             bench, target, owner_id
         )
 
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_principal SET active=0 WHERE principal_id=?",
                 (owner_id,),
@@ -1322,7 +1324,7 @@ def test_final_bundle_keeps_cited_research_exportable_after_projection_purge_fai
         corrupt_result = json.loads(json.dumps(original_result))
         corrupt_result["evidence"][0]["matter_id"] = "ci-matter-" + "f" * 32
         with pytest.raises(sqlite3.IntegrityError, match="frozen"):
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                     (json.dumps(corrupt_result), research.job_id),
@@ -1595,7 +1597,7 @@ def test_administrator_final_bundle_uses_durable_catalog_after_restart(tmp_path)
         )
         assert failed.status_code == 303
         assert bench.workspace.matter_lifecycle(matter_id).state == "purge_failed"
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_principal SET active=0 WHERE principal_id=?",
                 (owner_id,),

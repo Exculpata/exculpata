@@ -1,6 +1,8 @@
 """Synthetic authenticated export-and-exit journeys with real archive bytes."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import hashlib
 import io
 import re
@@ -389,7 +391,7 @@ def login_administrator(client, bench):
     """Use a synthetic persisted administrator session; no authentication bypass."""
     csrf = login(client, 'jordan-lee')
     session = client.app.state.identity.resolve(client.cookies.get(SESSION_COOKIE), read_only=True).session
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_session SET application_roles=? WHERE session_id=?',
             ('["administrator"]', session.session_id))
     return csrf

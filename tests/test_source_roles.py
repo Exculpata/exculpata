@@ -1,4 +1,6 @@
 """Synthetic C2 designation, identity, authorization and recovery contracts."""
+
+from tests.fixture_write import fixture_write
 import json
 import sqlite3
 from pathlib import Path
@@ -102,7 +104,7 @@ def test_bad_inputs_are_atomic(case, revision, role):
 @pytest.mark.parametrize('state', ['purging', 'purge_failed', 'deleted'])
 def test_inactive_lifecycle_denies_role_access(case, state):
     store, matter = case
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.execute('UPDATE workbench_matter_lifecycle SET state=? WHERE matter_id=?', (state, matter.matter_id))
     for admin in (False, True):
         with pytest.raises(KeyError):
@@ -140,7 +142,8 @@ def test_sqlite_backup_restore_export_remove_and_purge(case, tmp_path):
     path = tmp_path / 'clean' / 'workspace.sqlite'
     path.parent.mkdir()
     with sqlite3.connect(path) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     for _ in range(2):
         restored = WorkspaceStore(path)
         assert snapshot(restored, matter.matter_id) == expected
@@ -170,6 +173,7 @@ def test_migration_defaults_old_rows_and_reopens(case, tmp_path):
     # Reconstruct the exact old table by removing only the four new columns.
     with sqlite3.connect(path) as conn:
         for field in ('role_updated_at', 'role_updated_by', 'role_revision', 'source_role'):
+            # fixture-write: Reconstruct legacy source columns only after closing the fixture WorkspaceStore.
             conn.execute(f'ALTER TABLE workbench_source_organization DROP COLUMN {field}')
     reopened = WorkspaceStore(path)
     assert SourceRoleService(reopened).read(matter.matter_id, ACTOR, TOKEN) == dict(
@@ -183,7 +187,7 @@ def test_complete_export_refuses_missing_version_and_excess_history(case):
     store, matter = case
     update(store, matter)
     artifacts = []
-    with store._lock, store.connection:
+    with fixture_write(store):
         store.connection.executemany(
             "INSERT INTO workbench_audit_event(event_id,actor_principal_id,matter_id,request_id,action,outcome,object_type,object_id,details_json,occurred_at) VALUES (?,?,?,'synthetic-bounded-history','source.role_update','success','source',?,'{}','2026-01-01T00:00:00Z')",
             [(f'audit-synthetic-{i}', ACTOR, matter.matter_id, DOCUMENT) for i in range(10000)])
