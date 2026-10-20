@@ -56,7 +56,11 @@ Chrome. Optional integration tests can skip when their prerequisites are absent.
 application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
-TestClient modules get a lazy, bounded socketpair wakeup and AnyIO portal probe.
+Tests whose bodies, fixtures or class methods reference TestClient get a lazy,
+bounded socketpair wakeup and AnyIO portal probe. Detection includes aliases,
+subclasses and local helpers referenced from the test or its fixtures.
+Unreadable test source, or fixture source from a module using TestClient,
+conservatively triggers the probe.
 If a primitive fails, route tests skip with the cause and a terminal summary.
 When CI is set to a non-empty value other than "0" or "false" (case-insensitive),
 the probe fails instead of skipping. Run local skips in an unrestricted shell.
