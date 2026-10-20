@@ -941,6 +941,126 @@ def test_device_failed_admission_commit_does_not_leak_reservation(lane_identity,
     assert _sign_in(identity, cookie=cookie).device_cookie
 
 
+@pytest.mark.parametrize("variant", ["retry-recovers", "release-recovers", "release-also-fails"])
+@pytest.mark.parametrize("fault", [sqlite3.OperationalError, OSError, RuntimeError])
+def test_successful_device_completion_failure_releases_pending(
+        lane_identity, monkeypatch, caplog, variant, fault):
+    identity, clock, _ = lane_identity
+    cookie = _sign_in(identity).device_cookie
+    devices = identity._local_devices
+    original = devices._transaction
+    with original() as db:
+        # fixture-write: Leave one lifetime slot to expose a successful reservation counted as a failure.
+        db.execute("UPDATE devices SET failures = 29")
+        chain_id = devices._row(db, cookie)["chain_id"]
+    transactions = 0
+
+    @contextmanager
+    def transaction():
+        nonlocal transactions
+        transactions += 1
+        with original() as db:
+            yield db
+            if (transactions == 2
+                    or (variant == "release-recovers" and transactions == 3)
+                    or (variant == "release-also-fails" and transactions > 2)):
+                raise fault("synthetic completion commit failure")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(devices, "_transaction", transaction)
+        result = _sign_in(identity, cookie=cookie)
+    assert result[1]
+    recovered = variant == "retry-recovers"
+    assert bool(result.device_cookie) == recovered
+    if recovered:
+        with original() as db:
+            rows = db.execute("SELECT * FROM devices WHERE chain_id = ?", (chain_id,)).fetchall()
+            assert all(row["state"] != "revoked" and row["pending"] == 0 for row in rows)
+            failures = {row["device_digest"]: row["failures"] for row in rows}
+            assert devices._row(db, result.device_cookie)["state"] == "active"
+    clock.advance(seconds=devices.pending_timeout_seconds + 1)
+    with devices._lock, original() as db:
+        devices._maintain(db, clock())
+        rows = db.execute("SELECT * FROM devices WHERE chain_id = ?", (chain_id,)).fetchall()
+        assert all(row["state"] != "revoked" and row["pending"] == 0 for row in rows)
+        assert any(row["state"] == "active" for row in rows)
+        if recovered:
+            assert {row["device_digest"]: row["failures"] for row in rows} == failures
+            assert all(row["failures"] == 0 for row in rows)
+        else:
+            assert all(row["state"] == "active" and row["failures"] == 29 for row in rows)
+    assert transactions == {"retry-recovers": 3, "release-recovers": 4, "release-also-fails": 5}[variant]
+    warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+    if recovered:
+        assert not warnings
+    else:
+        assert len(warnings) == 1
+        assert warnings[0].message == (
+            "Local login device completion failed; sign-in succeeded without a device cookie.")
+    assert all(value not in caplog.text for value in (cookie, USER, ADDRESS))
+    assert all(row[key] not in caplog.text for row in rows for key in ("device_digest", "username_digest"))
+
+
+@pytest.mark.parametrize("replayed", [False, True])
+def test_successful_device_completion_retry_restores_attempt_state(registry, monkeypatch, caplog, replayed):
+    devices, clock = registry
+    cookie = _registry_success(registry)
+    original = devices._issue
+    calls = 0
+
+    def issue(db, attempt, cookie, username, now):
+        nonlocal calls
+        calls += 1
+        assert attempt.cookie is None and attempt.replayed == replayed
+        original(db, attempt, cookie, username, now)
+        if calls == 1:
+            attempt.replayed = not replayed
+            raise RuntimeError("synthetic issuance failure after setting attempt state")
+
+    monkeypatch.setattr(devices, "_issue", issue)
+    revision = ("synthetic-revision", "synthetic-binding")
+    with devices.attempt(cookie, devices.username_digest(USER), revision, clock) as attempt:
+        attempt.outcome, attempt.revision, attempt.replayed = "success", revision, replayed
+    assert calls == 2
+    assert attempt.cookie and attempt.replayed == replayed
+    assert not [record for record in caplog.records if record.levelname == "WARNING"]
+    with devices._transaction() as db:
+        assert devices._row(db, attempt.cookie)["state"] == "active"
+
+
+def test_successful_pending_releases_preserve_other_reservations(registry, monkeypatch):
+    devices, clock = registry
+    cookie = _registry_success(registry)
+    digest = devices.username_digest(USER)
+    revision = ("synthetic-revision", "synthetic-binding")
+    original = devices._transaction
+    with original() as db:
+        # fixture-write: Reserve three lifetime slots for two successes and one abandoned attempt.
+        db.execute("UPDATE devices SET failures = 27")
+
+    @contextmanager
+    def failed_commit():
+        with original() as db:
+            yield db
+            raise sqlite3.OperationalError("synthetic completion commit failure")
+
+    with devices.attempt(cookie, digest, revision, clock):
+        with monkeypatch.context() as patch:
+            with ExitStack() as successes:
+                for _ in range(2):
+                    attempt = successes.enter_context(devices.attempt(cookie, digest, revision, clock))
+                    attempt.outcome, attempt.revision = "success", revision
+                patch.setattr(devices, "_transaction", failed_commit)
+        clock.advance(seconds=devices.pending_timeout_seconds + 1)
+        for _ in range(2):
+            with original() as db:
+                devices._maintain(db, clock())
+                row = devices._row(db, cookie)
+                assert row["state"] == "active"
+                assert row["failures"] == 28 and row["pending"] == 0
+    assert all(window.pending == 0 for window in devices.windows.values())
+
+
 def test_daily_cap_reserves_pending_attempts_and_keeps_completion_time():
     limiter, clock = LocalLoginLimiter(), Clock()
     for batch, count in enumerate((100, 99)):
@@ -1264,8 +1384,11 @@ def test_successful_password_sign_in_survives_device_issuance_failure(login_hand
 
 
 @pytest.mark.parametrize("elapsed", [0, 60])
-def test_unit_lost_rotation_response_keeps_device_lane_while_untrusted_locked(login_handler, elapsed):
+def test_unit_lost_rotation_response_keeps_device_lane_while_untrusted_locked(
+        login_handler, monkeypatch, elapsed):
     identity, login = login_handler
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic",
+                        lambda: identity._clock().timestamp())
     original = _response_device(login())
     lost = _response_device(login(original))
     _lock_untrusted(identity)
@@ -1356,8 +1479,10 @@ def test_double_submit_keeping_earlier_sibling_survives_grace(
                        for event in identity.store.audit_events())
 
 
-def test_rotated_entry_after_grace_revokes_unused_successor_and_audits(login_handler):
+def test_rotated_entry_after_grace_revokes_unused_successor_and_audits(login_handler, monkeypatch):
     identity, login = login_handler
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic",
+                        lambda: identity._clock().timestamp())
     original = _response_device(login())
     current = _response_device(login(original))
     identity._clock.advance(seconds=identity._local_devices.rotation_grace_seconds + 1)
@@ -1385,8 +1510,9 @@ def test_device_inflight_double_submit_keeps_chain_active(registry):
         assert sorted(row["state"] for row in rows) == ["active", "active", "rotated"]
 
 
-def test_grace_retries_do_not_extend_original_rotation_deadline(registry):
+def test_grace_retries_do_not_extend_original_rotation_deadline(registry, monkeypatch):
     devices, clock = registry
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: clock().timestamp())
     original = _registry_success(registry)
     _registry_success(registry, original)
     clock.advance(seconds=50)
@@ -1619,9 +1745,12 @@ def test_cap_keeps_chain_whose_newest_sibling_is_within_cap(registry):
 
 def test_backward_clock_step_does_not_reopen_grace(login_handler, monkeypatch):
     identity, login = login_handler
+    elapsed = [0.0]
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: elapsed[0])
     original = _response_device(login())
     _response_device(login(original))
     identity._clock.advance(seconds=90)
+    elapsed[0] = 90
     _sign_in(identity, username=OTHER)
     identity._clock.advance(seconds=-80)
     results = []
@@ -1640,6 +1769,30 @@ def test_backward_clock_step_does_not_reopen_grace(login_handler, monkeypatch):
     assert all(row["state"] == "revoked" for row in _rows(identity) if row["chain_id"] == chain)
     events = [event for event in identity.store.audit_events() if event.action == "auth.device.replay"]
     assert len(events) == 1 and events[0].outcome == "denied"
+
+
+@pytest.mark.parametrize("backward_step", [1.5, 2.5])
+def test_backward_clock_step_preserves_live_lost_rotation(
+        lane_identity, monkeypatch, backward_step):
+    identity, clock, _ = lane_identity
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: 100.0)
+    original = _sign_in(identity).device_cookie
+    successor = _sign_in(identity, cookie=original).device_cookie
+    clock.advance(seconds=2)
+    _sign_in(identity, username=OTHER)
+    clock.advance(seconds=-backward_step)
+    _lock_untrusted(identity)
+    verifier = identity.local_settings.authenticate
+    verifier.reset_mock()
+    result = _sign_in(identity, cookie=original)
+    assert result[1] and result.device_cookie and not result.device_replayed
+    verifier.assert_called_once_with(USER, PASSWORD)
+    devices = identity._local_devices
+    with devices._transaction() as db:
+        row = devices._row(db, successor)
+        assert row["state"] == "active"
+        assert not db.execute("SELECT 1 FROM devices WHERE chain_id = ? AND state = 'revoked'",
+                              (row["chain_id"],)).fetchone()
 
 
 def test_lifetime_failure_cap_holds_across_processes(registry):
@@ -1767,14 +1920,22 @@ def test_active_entry_bound_counts_sibling_chains(registry):
             assert len(rows) <= devices.per_user_active_limit * devices.per_parent_unadmitted_limit
 
 
-@pytest.mark.parametrize("epoch", [None, "synthetic-previous-boot"])
-def test_missing_or_previous_boot_rotation_timing_fails_closed(registry, epoch):
+@pytest.mark.parametrize("timing", ["missing-epoch", "previous-boot", "missing-tick", "future-tick"])
+def test_missing_or_previous_boot_rotation_timing_fails_closed(registry, monkeypatch, timing):
     devices, clock = registry
+    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: 100.0)
     original = _registry_success(registry)
     current = _registry_success(registry, original)
     with devices._transaction() as db:
         # fixture-write: Represent legacy rotation timing or a restored registry from a previous boot.
-        db.execute("UPDATE devices SET rotation_epoch = ? WHERE state = 'rotated'", (epoch,))
+        if timing in ("missing-epoch", "previous-boot"):
+            epoch = None if timing == "missing-epoch" else "synthetic-previous-boot"
+            # fixture-write: Represent legacy rotation timing or a restored registry from a previous boot.
+            db.execute("UPDATE devices SET rotation_epoch = ? WHERE state = 'rotated'", (epoch,))
+        else:
+            tick = None if timing == "missing-tick" else 101.0
+            # fixture-write: Represent legacy rotation timing or a restored registry from a previous boot.
+            db.execute("UPDATE devices SET rotation_tick = ? WHERE state = 'rotated'", (tick,))
     with devices.attempt(original, devices.username_digest(USER),
                          ("synthetic-revision", "synthetic-binding"), clock) as attempt:
         assert attempt.replayed and attempt.device_digest is None

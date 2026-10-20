@@ -100,6 +100,7 @@ class LocalLoginDevices:
         self.path = runtime_dir / "login-devices.sqlite3"
         _create_private_file(self.path)
         self._lock = RLock()
+        self._successful_releases: list[tuple[str, int]] = []
         self._clock_origin: tuple[float, float] | None = None
         try:
             self._clock_epoch = Path("/proc/sys/kernel/random/boot_id").read_text().strip() or secrets.token_hex(32)
@@ -138,6 +139,17 @@ class LocalLoginDevices:
 
     @contextmanager
     def _transaction(self):
+        with self._lock:
+            with self._registry_transaction() as db:
+                for device_digest, generation in self._successful_releases:
+                    db.execute("UPDATE devices SET pending = pending - 1 "
+                               "WHERE device_digest = ? AND pending_generation = ? AND pending > 0",
+                               (device_digest, generation))
+                yield db
+            self._successful_releases.clear()
+
+    @contextmanager
+    def _registry_transaction(self):
         _private_file(self.path)
         for suffix in ("-journal", "-wal", "-shm"):
             sidecar = Path(str(self.path) + suffix)
@@ -178,10 +190,13 @@ class LocalLoginDevices:
         db.execute("INSERT INTO device_clock VALUES (1, ?) ON CONFLICT(singleton) "
                    "DO UPDATE SET high_water = excluded.high_water", (high_water,))
         db.execute("UPDATE devices SET successor_used = 1 WHERE state = 'rotated' "
+                   "AND NOT (rotation_epoch IS ? AND rotation_tick IS NOT NULL "
+                   "AND rotation_tick <= ? AND ? - rotation_tick <= ?) "
                    "AND (? < ? OR last_used + ? < ? OR rotation_tick IS NULL "
                    "OR rotation_epoch IS NULL OR rotation_epoch != ? "
                    "OR rotation_tick > ? OR rotation_tick + ? < ?)",
-                   (timestamp, high_water, self.rotation_grace_seconds, high_water,
+                   (self._clock_epoch, tick, tick, self.rotation_grace_seconds,
+                    timestamp, high_water, self.rotation_grace_seconds, high_water,
                     self._clock_epoch, tick, self.rotation_grace_seconds, tick))
         db.execute("UPDATE devices SET failures = failures + pending, pending = 0, "
                    "pending_generation = pending_generation + 1 "
@@ -208,14 +223,17 @@ class LocalLoginDevices:
         expected = self._digest("device-cookie", device_id + "|" + row["username_digest"])
         return row if hmac.compare_digest(signature, expected) else None
 
-    def _rotation_target(self, db, row, now):
+    def _rotation_target(self, db, row):
         if db.execute("SELECT 1 FROM devices WHERE chain_id = ? AND state = 'revoked'",
                       (row["chain_id"],)).fetchone():
             return None
         if row["state"] == "active":
             return row
-        if (row["state"] == "rotated" and not row["successor_used"]
-                and 0 <= now.timestamp() - row["last_used"] <= self.rotation_grace_seconds):
+        tick = monotonic()
+        monotonic_grace = (row["rotation_epoch"] == self._clock_epoch
+                           and row["rotation_tick"] is not None
+                           and 0 <= tick - row["rotation_tick"] <= self.rotation_grace_seconds)
+        if row["state"] == "rotated" and not row["successor_used"] and monotonic_grace:
             return db.execute("SELECT * FROM devices WHERE chain_id = ? AND state = 'active' "
                               "AND admitted = 0",
                               (row["chain_id"],)).fetchone()
@@ -227,7 +245,7 @@ class LocalLoginDevices:
             row = self._row(db, token)
             if row is None:
                 continue
-            target = self._rotation_target(db, row, now)
+            target = self._rotation_target(db, row)
             if row["state"] == "rotated" and target is None:
                 db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
                            (row["chain_id"],))
@@ -279,7 +297,7 @@ class LocalLoginDevices:
         if attempt.predecessor is not None:
             row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
                              (attempt.predecessor,)).fetchone()
-            target = self._rotation_target(db, row, now) if row is not None else None
+            target = self._rotation_target(db, row) if row is not None else None
             if target is None:
                 if row is not None and row["state"] == "rotated":
                     attempt.replayed = True
@@ -369,6 +387,18 @@ class LocalLoginDevices:
                 raise
         return result, window, generation
 
+    def _release_successful_attempt(self, result, generation):
+        if result.device_digest is not None:
+            self._successful_releases.append((result.device_digest, generation))
+            for _ in range(2):
+                try:
+                    with self._transaction():
+                        pass
+                except (OSError, RuntimeError):
+                    continue
+                break
+        LOGGER.warning("Local login device completion failed; sign-in succeeded without a device cookie.")
+
     @contextmanager
     def attempt(self, cookie: str | None, username: str, revision: tuple[str, str] | None,
                 clock: Callable[[], datetime]) -> Iterator[DeviceAttempt]:
@@ -391,21 +421,28 @@ class LocalLoginDevices:
                     elif result.outcome == "success":
                         window.failures.clear()
                 if result.device_digest is not None or result.outcome == "success":
-                    try:
-                        with self._transaction() as db:
-                            self._maintain(db, now)
-                            if result.device_digest is not None:
-                                db.execute("UPDATE devices SET pending = pending - 1, failures = failures + ? "
-                                           "WHERE device_digest = ? AND pending_generation = ? AND pending > 0",
-                                           (int(result.outcome == "failure"), result.device_digest, generation))
-                            if result.device_digest is not None and result.outcome == "failure":
-                                db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ? "
-                                           "AND EXISTS (SELECT 1 FROM devices WHERE device_digest = ? "
-                                           "AND failures >= ?)",
-                                           (result.chain_id, result.device_digest, self.lifetime_failure_limit))
-                            if result.outcome == "success":
-                                self._issue(db, result, cookie, username, now)
-                    except (OSError, RuntimeError):
-                        if result.outcome != "success":
-                            raise
-                        result.cookie = None
+                    replayed_before_completion = result.replayed
+                    for completion in range(2):
+                        try:
+                            with self._transaction() as db:
+                                self._maintain(db, now)
+                                if result.device_digest is not None:
+                                    db.execute("UPDATE devices SET pending = pending - 1, failures = failures + ? "
+                                               "WHERE device_digest = ? AND pending_generation = ? AND pending > 0",
+                                               (int(result.outcome == "failure"), result.device_digest, generation))
+                                if result.device_digest is not None and result.outcome == "failure":
+                                    db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ? "
+                                               "AND EXISTS (SELECT 1 FROM devices WHERE device_digest = ? "
+                                               "AND failures >= ?)",
+                                               (result.chain_id, result.device_digest, self.lifetime_failure_limit))
+                                if result.outcome == "success":
+                                    self._issue(db, result, cookie, username, now)
+                        except (OSError, RuntimeError):
+                            if result.outcome != "success":
+                                raise
+                            result.cookie = None
+                            result.replayed = replayed_before_completion
+                            if completion == 1:
+                                self._release_successful_attempt(result, generation)
+                        else:
+                            break

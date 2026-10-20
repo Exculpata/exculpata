@@ -131,7 +131,15 @@ local mode. If the cookie helper is used with `secure_cookie=False` in plain-HTT
 development, it skips issuing the device cookie. If cookie issuance fails after
 a successful password check, including a busy or unavailable registry or a
 predecessor revoked during verification, sign-in still succeeds without a new
-device cookie. Replay detected at completion still revokes the chain and writes
+device cookie. A completion transaction that fails with an I/O or runtime error
+is retried once in full, including maintenance, releasing the pending reservation
+without a failure, and issuing the device cookie. Cookie and replay state from
+the rolled-back transaction are reset before retrying. A committed retry returns
+the device cookie without a warning. If both completion attempts fail, a
+generation-bound pending release is queued and tried immediately, then applied
+before maintenance in the next successful transaction if necessary. Sign-in
+succeeds without a device cookie and logs one fixed warning without identifiers.
+Replay detected in a committed completion still revokes the chain and writes
 the replay audit event.
 
 A retained rotated entry has a 60-second grace window, inclusive of the last
@@ -142,10 +150,10 @@ request, even if that request fails its password check. Grace retries count
 against the presented entry's own failed and pending checks, including its
 persistent lifetime limit. They do not refresh its rotation deadline.
 The registry persists the highest observed wall-clock time. A reading below
-that time closes existing rotation grace windows. Each rotation also records
-monotonic time and the Linux boot identifier, so elapsed grace stays closed
-across processes even without intervening requests or after a wall-clock
-adjustment. Missing rotation timing or a different boot identifier closes grace.
+that time closes grace only when current-boot monotonic timing cannot vouch for
+the rotation. Rotations within the current boot keep their monotonic 60-second
+window across processes and wall-clock adjustments. Missing rotation timing,
+a different boot identifier, or an elapsed monotonic window closes grace.
 If the boot identifier is unavailable, a process-local identifier makes reopened
 registries fail closed for grace. Active successors remain usable.
 
