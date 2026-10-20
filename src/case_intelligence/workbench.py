@@ -67,6 +67,8 @@ from .exact_search_results import (
     ExactSearchBackend, ExactSearchChanged, ExactSearchPage, ExactSearchUnavailable, ReferenceExactSearchBackend,
     build_search_query,
 )
+from .login_errors import login_error_code, login_error_message
+from .oidc_callback_feedback import OidcCallbackFailure, finish_oidc_callback
 from .identity import (
     KERBEROS_SECRET_HEADER,
     KERBEROS_USER_HEADER,
@@ -8252,12 +8254,13 @@ def create_workbench_app(
     def login_page(
         request: Request,
         next_path: str = Query("/", alias="next", max_length=2_048),
-        error: str = Query("", max_length=240),
     ):
         destination = IdentityService.safe_next(next_path)
+        feedback = login_error_message(request.query_params.getlist("error"))
         existing = identity.resolve(request.cookies.get(SESSION_COOKIE))
         if (
             existing is not None
+            and not (identity.auth_mode == "oidc" and feedback)
             and (
                 identity.auth_mode != "kerberos"
                 or identity.kerberos_request_valid(
@@ -8287,7 +8290,7 @@ def create_workbench_app(
                         "identities": (),
                         "login_challenge": "",
                         "next_path": destination,
-                        "error": str(exc),
+                        "error": login_error_message([login_error_code(exc)]),
                         "auth_mode": identity.auth_mode,
                         "oidc_start_url": "",
                         "kerberos_continue_url": _query_url(
@@ -8333,7 +8336,8 @@ def create_workbench_app(
                 "identities": identity.preview_identities(),
                 "login_challenge": challenge,
                 "next_path": destination,
-                "error": error,
+                "error": feedback,
+                "signed_in_return_url": destination if existing and feedback else "",
                 "auth_mode": identity.auth_mode,
                 "oidc_start_url": _query_url("/auth/oidc/start", next=destination),
                 "kerberos_continue_url": _query_url("/auth/login", next=destination),
@@ -8383,7 +8387,7 @@ def create_workbench_app(
                 details={"auth_method": "oidc"},
             )
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
                 status_code=303,
             )
         response = RedirectResponse(start.authorization_url, status_code=302)
@@ -8397,20 +8401,12 @@ def create_workbench_app(
     @app.get("/auth/oidc/callback", include_in_schema=False)
     async def oidc_callback(
         request: Request,
-        code: str | None = Query(None, max_length=4_096),
-        state: str | None = Query(None, max_length=256),
-        error: str | None = Query(None, max_length=128),
     ):
         if identity.auth_mode != "oidc":
             raise HTTPException(404, "Organization sign-in is unavailable.")
         try:
-            context, raw_token, destination = await identity.finish_oidc_login(
-                cookie_state=request.cookies.get(OIDC_STATE_COOKIE),
-                returned_state=state,
-                code=code,
-                provider_error=error,
-            )
-        except OidcAuthenticationError as exc:
+            context, raw_token, destination = await finish_oidc_callback(identity, request)
+        except OidcCallbackFailure as exc:
             audit(
                 request,
                 "auth.login",
@@ -8418,7 +8414,8 @@ def create_workbench_app(
                 details={"auth_method": "oidc"},
             )
             response = RedirectResponse(
-                _query_url("/auth/login", error=str(exc)),
+                _query_url("/auth/login", error=login_error_code(exc),
+                           **({"next": exc.destination} if exc.destination != "/" else {})),
                 status_code=303,
             )
             response.delete_cookie(OIDC_STATE_COOKIE, path="/auth/oidc")
@@ -8452,7 +8449,7 @@ def create_workbench_app(
                 _query_url(
                     "/auth/login",
                     next=destination,
-                    error="The sign-in page expired. Please choose your preview identity again.",
+                    error="preview_expired",
                 ),
                 status_code=303,
             )
@@ -8460,7 +8457,7 @@ def create_workbench_app(
             context, raw_token = identity.login_preview(identity_subject)
         except WorkspaceProblem as exc:
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
                 status_code=303,
             )
         audit(
@@ -8495,7 +8492,7 @@ def create_workbench_app(
                 _query_url(
                     "/auth/login",
                     next=destination,
-                    error="The sign-in page expired. Please try again.",
+                    error="login_expired",
                 ),
                 status_code=303,
             )
@@ -8513,7 +8510,7 @@ def create_workbench_app(
                 details={"auth_method": "local"},
             )
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
                 status_code=303,
             )
         audit(
