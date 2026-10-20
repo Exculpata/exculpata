@@ -102,12 +102,19 @@ Password verification runs outside the admission lock. Unknown users still take
 the dummy Argon2 verification path when admitted. Throttled attempts never
 verify, add failures or extend a window; verifier errors release reservations
 without recording a password failure. There is no artificial request delay.
-Throttled refusals redirect with `error=local_throttled`. The sign-in page shows
-the fixed message “Sign-in is temporarily unavailable. Wait a few minutes and
-try again.” The 303 response includes an integer `Retry-After` of at least one
-second. Only the internal exception text says “Try again in N minutes.” It
-rounds `Retry-After / 60` up to at least one minute, with “Try again in 1 minute.”
-for the singular case. The retry interval accounts for every
+Throttled refusals redirect with `error=local_throttled` and `retry_minutes`,
+rounded up from `Retry-After / 60` and clamped to 1..1440. The 303 response keeps
+the integer `Retry-After` header in seconds. The sign-in page honors minutes only
+with exactly one error value equal to `local_throttled` and exactly one
+`retry_minutes` value of one to four ASCII digits whose integer is 1..1440.
+It keeps the fixed message “Sign-in is temporarily unavailable. Wait a few
+minutes and try again.” and appends “ Time remaining: about N minutes.” using
+only the parsed integer. The singular sentence is “ Time remaining: about 1
+minute.” Anything else uses the existing fixed message for the error code
+without a “Time remaining” sentence; absent, repeated or unknown error codes
+show no message.
+URL text is never echoed. No other error redirect includes `retry_minutes`.
+The retry interval accounts for every
 blocking window; in-flight checks or subsequent failures may change
 availability. Wrong-password errors are unchanged.
 
@@ -135,20 +142,25 @@ request, even if that request fails its password check. Grace retries count
 against the presented entry's own failed and pending checks, including its
 persistent lifetime limit. They do not refresh its rotation deadline.
 
-A successful grace retry issues a replacement in the same chain and retires the
-unused active successor. A displaced entry that was never admitted acts as a
-grace alias for the current unused active entry, within 60 seconds of its own
-retirement. This lets either response from a double submission recover. Once a
-presented predecessor's successor is admitted, that predecessor cannot recover
-through later unused successors. Registry admission and rotation each run in a
-single transaction under the registry lock. Grace recovery writes no replay
-audit event.
+A successful grace retry issues another active, never-admitted successor in the
+same chain. Successors from the same predecessor are siblings. Issuing one does
+not rotate its never-admitted siblings. The first sibling admitted on the device
+lane deletes every other never-admitted sibling of that predecessor in the same
+transaction. A deleted sibling is an unknown cookie and uses the untrusted lane,
+without revoking the chain or writing a replay audit event. An unused sibling
+that remains stored can be admitted after the predecessor's grace window ends.
+At most five never-admitted siblings are retained per predecessor; issuance
+beyond that deletes the oldest by creation time, then insertion order.
+Once a successor is admitted, its rotated predecessor cannot recover through
+later unused successors. Registry admission and rotation each run in a single
+transaction under the registry lock. Grace recovery writes no replay audit event.
 
 Outside this rule, presenting a retained rotated entry with a valid signature
 revokes its whole chain, uses the untrusted lane and writes a denied
 `auth.device.replay` audit event without raw addresses or tokens. Completion
 checks the rule again, so concurrent rotation cannot revive a revoked chain.
-Old registries receive the admission and successor-use columns automatically;
+Old registries receive admission, successor-use and nullable predecessor digest
+columns automatically. Rows without a predecessor digest keep the old behavior;
 pre-upgrade rotated entries retain replay behavior because their successor-use
 history is unknown. For rotated rows, `last_used` records the rotation time.
 
@@ -169,10 +181,12 @@ Memory and persistent storage are bounded:
   90 days expire. Pruning removes the oldest rotated/revoked rows before active
   rows when making room. Replay detection covers retained rows. Device windows
   retain at most 10 failed or pending checks per retained device. Each username
-  digest has at most 20 active entries. Issuance first revokes that username's
-  least recently used active chains to make room, including their rotated rows,
-  before global pruning. This prevents one username accumulating active entries
-  at the expense of other users.
+  digest has at most 20 active entries, counting each never-admitted sibling.
+  Issuance first revokes that username's least recently used active chains to
+  make room, including their rotated rows, before global pruning. If this retires
+  the issuing chain, password sign-in succeeds without a new device cookie.
+  This prevents one username accumulating active entries at the expense of
+  other users.
 
 The registry and separate `identity-device.key` are owner-only files with mode
 0600; symlinked paths are refused. Restarting the app container clears in-memory

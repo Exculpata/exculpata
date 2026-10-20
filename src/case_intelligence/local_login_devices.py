@@ -77,6 +77,7 @@ class LocalLoginDevices:
     failure_limit = 10
     lifetime_failure_limit = 30
     per_user_active_limit = 20
+    per_parent_unadmitted_limit = 5
     rotation_grace_seconds = 60
 
     def __init__(self, runtime_dir: Path):
@@ -100,12 +101,15 @@ class LocalLoginDevices:
                 failures INTEGER NOT NULL DEFAULT 0,
                 state TEXT NOT NULL CHECK(state IN ('active', 'rotated', 'revoked')),
                 admitted INTEGER NOT NULL DEFAULT 1,
-                successor_used INTEGER NOT NULL DEFAULT 1
+                successor_used INTEGER NOT NULL DEFAULT 1,
+                parent_digest TEXT
             )""")
             columns = {row["name"] for row in db.execute("PRAGMA table_info(devices)")}
             for name in ("admitted", "successor_used"):
                 if name not in columns:
                     db.execute(f"ALTER TABLE devices ADD COLUMN {name} INTEGER NOT NULL DEFAULT 1")
+            if "parent_digest" not in columns:
+                db.execute("ALTER TABLE devices ADD COLUMN parent_digest TEXT")
             db.execute("CREATE INDEX IF NOT EXISTS devices_chain ON devices(chain_id)")
 
     @contextmanager
@@ -240,7 +244,12 @@ class LocalLoginDevices:
                        "admitted = CASE WHEN device_digest = ? THEN 1 ELSE admitted END, "
                        "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
                        "WHERE device_digest IN (?, ?)",
-                       (attempt.predecessor, now.timestamp(), attempt.predecessor, target["device_digest"]))
+                       (attempt.predecessor, now.timestamp(), attempt.predecessor,
+                        target["device_digest"] if target["parent_digest"] is None else attempt.predecessor))
+            db.execute("DELETE FROM devices WHERE device_digest IN "
+                       "(SELECT device_digest FROM devices WHERE parent_digest = ? AND admitted = 0 "
+                       "ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)",
+                       (attempt.predecessor, self.per_parent_unadmitted_limit - 1))
         excess = db.execute(
             "SELECT chain_id FROM devices WHERE username_digest = ? AND state = 'active' "
             "ORDER BY last_used DESC, created DESC, rowid DESC LIMIT -1 OFFSET ?",
@@ -248,14 +257,16 @@ class LocalLoginDevices:
         for row in excess:
             db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
                        (row["chain_id"],))
+        if any(row["chain_id"] == attempt.chain_id for row in excess):
+            return
         self._prune(db, now, make_room=True)
         device_id = secrets.token_hex(16)
         chain = attempt.chain_id or secrets.token_hex(16)
         db.execute("INSERT INTO devices (device_digest, chain_id, username_digest, session_revision, "
-                   "account_binding, created, last_used, failures, state, admitted, successor_used) "
-                   "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active', 0, 1)",
+                   "account_binding, created, last_used, failures, state, admitted, successor_used, parent_digest) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active', 0, 1, ?)",
                    (self._digest("device-id", device_id), chain, username,
-                    *attempt.revision, now.timestamp(), now.timestamp()))
+                    *attempt.revision, now.timestamp(), now.timestamp(), attempt.predecessor))
         signature = self._digest("device-cookie", device_id + "|" + username)
         attempt.cookie = "~".join([f"v1.{device_id}.{signature}", *retained[:4]])
 
@@ -276,13 +287,16 @@ class LocalLoginDevices:
                                 raise LoginThrottled(900, now)
                         window = self.windows.setdefault(result.device_digest, _Window())
                         window.prune(now)
-                        row = db.execute("SELECT failures FROM devices WHERE device_digest = ?",
+                        row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
                                          (result.device_digest,)).fetchone()
                         limit = min(self.failure_limit, self.lifetime_failure_limit - row["failures"])
                         if window.count >= self.failure_limit or window.pending >= limit:
                             delay = (window.retry_seconds(now, self.failure_limit)
                                      if window.count >= self.failure_limit else 900)
                             raise LoginThrottled(delay, now)
+                        if not row["admitted"]:
+                            db.execute("DELETE FROM devices WHERE parent_digest = ? AND admitted = 0 "
+                                       "AND device_digest != ?", (row["parent_digest"], result.device_digest))
                         db.execute("UPDATE devices SET successor_used = 1 WHERE chain_id = ? "
                                    "AND state = 'rotated' AND admitted = 1 AND EXISTS "
                                    "(SELECT 1 FROM devices WHERE device_digest = ? AND state = 'active')",

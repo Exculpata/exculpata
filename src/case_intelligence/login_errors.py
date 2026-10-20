@@ -1,4 +1,5 @@
 """Closed vocabulary for unauthenticated sign-in feedback."""
+import re
 from types import MappingProxyType
 from .branding import PRODUCT_NAME
 from .identity import LocalLoginThrottledError
@@ -40,6 +41,8 @@ LOGIN_ERRORS = MappingProxyType({
     "oidc_fresh": "Fresh organization sign-in could not authorize this closure. Start again with the same administrator account.",
 })
 _CODES = {message: code for code, message in LOGIN_ERRORS.items()}
+_THROTTLED_MINUTE = " Time remaining: about 1 minute."
+_THROTTLED_MINUTES = " Time remaining: about {minutes} minutes."
 
 
 def login_error_code(error: Exception) -> str:
@@ -54,3 +57,14 @@ def login_error_message(codes: list[str]) -> str:
     if len(codes) != 1 or len(codes[0]) > 64:
         return ""
     return LOGIN_ERRORS.get(codes[0], "")
+
+
+def login_error_feedback(codes: list[str], retry_minutes_values: list[str]) -> str:
+    if (codes == ["local_throttled"] and len(retry_minutes_values) == 1
+            and isinstance(retry_minutes_values[0], str)
+            and re.fullmatch(r"[0-9]{1,4}", retry_minutes_values[0])):
+        minutes = int(retry_minutes_values[0])
+        if 1 <= minutes <= 1440:
+            remaining = _THROTTLED_MINUTE if minutes == 1 else _THROTTLED_MINUTES.format(minutes=minutes)
+            return LOGIN_ERRORS["local_throttled"] + remaining
+    return login_error_message(codes)

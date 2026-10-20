@@ -36,7 +36,7 @@ from case_intelligence.local_login_devices import (
     DEVICE_COOKIE, DEVICE_MAX_AGE, LocalLoginDevices, set_device_cookie,
 )
 from case_intelligence.local_login_limiter import LocalLoginLimiter, LoginThrottled, normalize_client_key
-from case_intelligence.login_errors import LOGIN_ERRORS, login_error_code
+from case_intelligence.login_errors import LOGIN_ERRORS, login_error_code, login_error_feedback, login_error_message
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceStore
 
@@ -130,12 +130,82 @@ def test_throttled_redirect_maps_to_local_throttled_code(tmp_path):
 
         page = fresh.get(location)
         assert page.status_code == 200
+        minutes = int(parse_qs(destination.query)["retry_minutes"][0])
         assert LOGIN_ERRORS["local_throttled"] in page.text
+        assert f"Time remaining: about {minutes} minutes." in page.text
 
     assert login_error_code(LocalLoginThrottledError(
         "Sign-in is temporarily unavailable. Try again in 3 minutes.",
         retry_after_seconds=150)) == "local_throttled"
 
+
+def test_throttled_login_page_shows_bounded_retry_minutes(tmp_path):
+    settings, _ = _settings()
+    app = create_workbench_app(
+        tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="local",
+        secure_cookie=True, local_settings=settings, local_gateway_peers=(GATEWAY_PEER[0],),
+        answer_workers=1)
+    identity = app.state.identity
+    identity._clock = Clock()
+    base = "https://exculpata.example.test"
+    with TestClient(app, base_url=base, client=GATEWAY_PEER) as fresh:
+        _lock_untrusted(identity)
+        identity._clock.advance(seconds=1)
+        refused = _login(fresh, PASSWORD, "198.51.100.99")
+        _assert_denied(refused, fresh)
+        assert SESSION_COOKIE not in refused.cookies
+        seconds = int(refused.headers["retry-after"])
+        assert seconds > 0
+        location = refused.headers["location"]
+        destination = urlsplit(location)
+        assert destination.path == "/auth/login"
+        query = parse_qs(destination.query, keep_blank_values=True)
+        assert query["error"] == ["local_throttled"]
+        assert len(query.get("retry_minutes", [])) == 1
+        assert re.fullmatch(r"[0-9]+", query["retry_minutes"][0])
+        minutes = int(query["retry_minutes"][0])
+        assert minutes == (seconds + 59) // 60
+        assert 1 <= minutes <= 1440
+
+        for value, page in [
+            (minutes, fresh.get(location)),
+            *[(value, fresh.get("/auth/login", params={
+                "error": "local_throttled", "retry_minutes": str(value)}))
+              for value in (1, 1440)],
+        ]:
+            assert page.status_code == 200
+            unit = "minute" if value == 1 else "minutes"
+            expected = LOGIN_ERRORS["local_throttled"] + f" Time remaining: about {value} {unit}."
+            assert re.findall(r'<div[^>]*role="alert"[^>]*>(.*?)</div>', page.text) == [expected]
+            assert LOGIN_ERRORS["local_throttled"] in page.text
+
+        invalid_values = [
+            [], ["0"], ["1441"], ["99999"], ["-5"], ["+5"], ["5.0"], ["05x"],
+            [" 5"], [""], ["9" * 300], ["\u0665"], ["5", "6"],
+        ]
+        for values in invalid_values:
+            page = fresh.get("/auth/login", params=[
+                ("error", "local_throttled"),
+                *[("retry_minutes", value) for value in values],
+            ])
+            assert page.status_code == 200
+            messages = re.findall(r'<div[^>]*role="alert"[^>]*>(.*?)</div>', page.text)
+            assert messages == [LOGIN_ERRORS["local_throttled"]], values
+            assert "Time remaining" not in page.text
+            assert all(value not in messages[0] for value in values if value)
+
+        for code, expected in [
+            ("local_credentials", [LOGIN_ERRORS["local_credentials"]]),
+            ("synthetic_unknown_error", []),
+        ]:
+            page = fresh.get("/auth/login", params={"error": code, "retry_minutes": "5"})
+            assert page.status_code == 200
+            assert re.findall(r'<div[^>]*role="alert"[^>]*>(.*?)</div>', page.text) == expected
+            assert "Time remaining" not in page.text
+            assert LOGIN_ERRORS["local_throttled"] not in page.text
+            if not expected:
+                assert all(message not in page.text for message in LOGIN_ERRORS.values())
+                assert code not in page.text
 
 
 USER = "synthetic.admin"
@@ -314,51 +384,36 @@ def test_lost_rotation_response_keeps_device_lane_while_untrusted_locked(tmp_pat
 def test_double_submit_with_same_device_cookie_keeps_chain_active(login_handler):
     identity, login = login_handler
     initial = login()
-    assert initial.status_code == 303
     destination = initial.headers["location"]
     assert not destination.startswith("/auth/login")
     original = _response_device(initial)
     chain = _rows(identity)[0]["chain_id"]
-
     identity._clock.advance(seconds=1)
-    first = login(original)
-    last = login(original)
-    for response in (first, last):
+    first, last = login(original), login(original)
+    for response in (initial, first, last):
         assert response.status_code == 303
         assert response.headers["location"] == destination
-        cookies = SimpleCookie()
-        for header in response.headers.getlist("set-cookie"):
-            cookies.load(header)
-        assert cookies[SESSION_COOKIE].value
-    first_successor = _response_device(first)
-    last_successor = _response_device(last)
+        assert SESSION_COOKIE in response.headers["set-cookie"]
+    first_successor, last_successor = _response_device(first), _response_device(last)
     assert len({original, first_successor, last_successor}) == 3
-    assert not any(event.action == "auth.device.replay"
-                   for event in identity.store.audit_events())
     rows = _rows(identity)
     assert all(row["chain_id"] == chain and row["state"] != "revoked" for row in rows)
-    assert any(row["state"] == "active" for row in rows)
-
+    assert sum(row["state"] == "active" for row in rows) == 2
     _lock_untrusted(identity)
-    refused = login(address="198.51.100.99")
-    assert refused.headers["location"].startswith("/auth/login?")
-    assert int(refused.headers["retry-after"]) > 0
-
     identity._clock.advance(seconds=30)
-    for cookie in (last_successor, first_successor):
-        response = login(cookie)
-        assert response.status_code == 303
-        assert response.headers["location"] == destination
-        cookies = SimpleCookie()
-        for header in response.headers.getlist("set-cookie"):
-            cookies.load(header)
-        assert cookies[SESSION_COOKIE].value
-        assert _response_device(response) != cookie
-    assert not any(event.action == "auth.device.replay"
-                   for event in identity.store.audit_events())
-    rows = _rows(identity)
-    assert all(row["chain_id"] == chain and row["state"] != "revoked" for row in rows)
-    assert any(row["state"] == "active" for row in rows)
+    accepted = login(last_successor)
+    assert accepted.status_code == 303 and accepted.headers["location"] == destination
+    current = _response_device(accepted)
+    assert current != last_successor
+    refused = login(first_successor)
+    # The deleted sibling uses the untrusted window, with 30 of its 900 seconds elapsed.
+    assert refused.status_code == 303 and refused.headers["retry-after"] == "870"
+    assert refused.headers["location"].startswith("/auth/login?")
+    assert SESSION_COOKIE not in refused.headers.get("set-cookie", "")
+    assert login(current).headers["location"] == destination
+    assert all(row["chain_id"] == chain and row["state"] != "revoked" for row in _rows(identity))
+    assert any(row["state"] == "active" for row in _rows(identity))
+    assert not any(event.action == "auth.device.replay" for event in identity.store.audit_events())
 
 
 def test_device_cookie_rotates_on_success_and_old_value_is_rejected(lane_identity):
@@ -930,7 +985,8 @@ def test_wrong_password_handler_message_and_headers_are_unchanged(login_handler)
     _, login = login_handler
     response = login(password="synthetic-wrong-password")
     assert response.status_code == 303
-    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["local_credentials"]
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["error"] == ["local_credentials"] and "retry_minutes" not in query
     assert LOGIN_ERRORS["local_credentials"] == "The username or password is incorrect."
     assert "retry-after" not in response.headers
 
@@ -1011,11 +1067,19 @@ def test_shared_replay_untrusted_success_still_rotates_submitted_users_entry(reg
 
 @pytest.mark.parametrize(("seconds", "minutes", "unit"), [
     (0, 1, "minute"), (60, 1, "minute"), (60.1, 2, "minutes"), (121, 3, "minutes"),
+    (86401, 1441, "minutes"),
 ])
-def test_retry_guidance_uses_relative_rounded_minutes(seconds, minutes, unit):
+def test_retry_guidance_uses_relative_rounded_minutes(login_handler, monkeypatch, seconds, minutes, unit):
     error = LoginThrottled(seconds, Clock()())
     assert str(error) == f"Sign-in is temporarily unavailable. Try again in {minutes} {unit}."
     assert isinstance(error.retry_after_seconds, int) and error.retry_after_seconds >= 1
+    identity, login = login_handler
+    refusal = LocalLoginThrottledError(str(error), retry_after_seconds=error.retry_after_seconds)
+    monkeypatch.setattr(identity, "login_local", Mock(side_effect=refusal))
+    response = login()
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["error"] == ["local_throttled"] and query["retry_minutes"] == [str(min(1440, minutes))]
+    assert response.headers["retry-after"] == str(error.retry_after_seconds)
 
 
 @pytest.mark.parametrize("subclass", [False, True])
@@ -1035,6 +1099,9 @@ def test_throttled_error_code_uses_type_before_message(subclass, message):
     assert error.retry_after_seconds == 150
     expected = "local_credentials" if message == LOGIN_ERRORS["local_credentials"] else "sign_in_failed"
     assert login_error_code(LocalAuthenticationError(message, retry_after_seconds=150)) == expected
+    for codes in ([], ["local_credentials"], ["unknown"], ["local_throttled"] * 2):
+        assert login_error_feedback(codes, ["5"]) == login_error_message(codes)
+        assert "Time remaining" not in login_error_feedback(codes, ["5"])
 
 
 def test_throttled_identity_has_dedicated_error_type(lane_identity):
@@ -1075,6 +1142,14 @@ def test_device_per_username_cap_preserves_other_users_and_retires_lru(registry)
                                "AND state = 'active'", (devices.username_digest(USER),)).fetchone()[0]
             assert count <= devices.per_user_active_limit
             assert db.execute("SELECT count(*) FROM devices").fetchone()[0] <= devices.capacity
+    devices.capacity = 100
+    original = _registry_success(registry)
+    current = _registry_success(registry, original)
+    for _ in range(devices.per_user_active_limit - 1):
+        _registry_success(registry)
+    assert _registry_success(registry, original) is None
+    with devices._transaction() as db:
+        assert devices._row(db, current)["state"] == "revoked"
 
 
 @pytest.mark.parametrize("failure", ["busy", "unavailable", "commit", "revoked"])
@@ -1132,7 +1207,86 @@ def test_unit_lost_rotation_response_keeps_device_lane_while_untrusted_locked(lo
     assert response.status_code == 303 and not response.headers["location"].startswith("/auth/login?")
     assert _response_device(response) not in (original, lost)
     assert not any(event.action == "auth.device.replay" for event in identity.store.audit_events())
-    assert [row["state"] for row in _rows(identity)] == ["rotated", "rotated", "active"]
+    assert [row["state"] for row in _rows(identity)] == ["rotated", "active", "active"]
+
+
+@pytest.mark.parametrize("elapsed,admit_last", [
+    pytest.param(61, False, id="earlier-sibling-after-grace"),
+    pytest.param(3600, False, id="earlier-sibling-after-hour"),
+    pytest.param(0, True, id="later-sibling-admitted-first"),
+])
+def test_double_submit_keeping_earlier_sibling_survives_grace(
+        login_handler, monkeypatch, elapsed, admit_last):
+    identity, login = login_handler
+    initial = login()
+    original = _response_device(initial)
+    destination = initial.headers["location"]
+    chain = _rows(identity)[0]["chain_id"]
+    identity._clock.advance(seconds=1)
+    first = login(original)
+    first_successor = _response_device(first)
+    first_digest = _rows(identity)[-1]["device_digest"]
+    last = login(original)
+    last_successor = _response_device(last)
+    assert len({original, first_successor, last_successor}) == 3
+    for response in (initial, first, last):
+        assert response.status_code == 303
+        assert response.headers["location"] == destination
+        assert not destination.startswith("/auth/login")
+        cookies = SimpleCookie()
+        for header in response.headers.getlist("set-cookie"):
+            cookies.load(header)
+        assert cookies[SESSION_COOKIE].value
+
+    identity._clock.advance(seconds=elapsed)
+    if admit_last:
+        admitted = login(last_successor)
+        assert admitted.status_code == 303
+        assert admitted.headers["location"] == destination
+        current = _response_device(admitted)
+    else:
+        _lock_untrusted(identity)
+        refused = login(address="198.51.100.99")
+        assert refused.headers["location"].startswith("/auth/login?")
+        assert int(refused.headers["retry-after"]) > 0
+
+    untrusted_attempt = Mock(wraps=identity._local_limiter.attempt)
+    monkeypatch.setattr(identity._local_limiter, "attempt", untrusted_attempt)
+    response = login(first_successor)
+    assert not any(event.action == "auth.device.replay"
+                   for event in identity.store.audit_events())
+    assert response.status_code == 303
+    assert response.headers["location"] == destination
+    cookies = SimpleCookie()
+    for header in response.headers.getlist("set-cookie"):
+        cookies.load(header)
+    assert cookies[SESSION_COOKIE].value
+    assert untrusted_attempt.call_count == int(admit_last)
+    rows = _rows(identity)
+    assert all(row["state"] != "revoked" for row in rows)
+    assert any(row["chain_id"] == chain and row["state"] == "active" for row in rows)
+
+    if admit_last:
+        assert all(row["device_digest"] != first_digest for row in rows)
+        _lock_untrusted(identity)
+        refused = login(address="198.51.100.99")
+        assert refused.headers["location"].startswith("/auth/login?")
+        assert int(refused.headers["retry-after"]) > 0
+        untrusted_attempt.reset_mock()
+        response = login(current)
+        assert response.status_code == 303
+        assert response.headers["location"] == destination
+        cookies = SimpleCookie()
+        for header in response.headers.getlist("set-cookie"):
+            cookies.load(header)
+        assert cookies[SESSION_COOKIE].value
+        assert _response_device(response) != current
+        untrusted_attempt.assert_not_called()
+        rows = _rows(identity)
+        assert all(row["state"] != "revoked" for row in rows)
+        assert any(row["chain_id"] == chain and row["state"] == "active" for row in rows)
+        assert not any(event.action == "auth.device.replay"
+                       for event in identity.store.audit_events())
 
 
 def test_rotated_entry_after_grace_revokes_unused_successor_and_audits(login_handler):
@@ -1161,7 +1315,7 @@ def test_device_inflight_double_submit_keeps_chain_active(registry):
     assert pending.cookie not in (None, original, current) and not pending.replayed
     with devices._transaction() as db:
         rows = db.execute("SELECT state FROM devices").fetchall()
-        assert sorted(row["state"] for row in rows) == ["active", "rotated", "rotated"]
+        assert sorted(row["state"] for row in rows) == ["active", "active", "rotated"]
 
 
 def test_grace_retries_do_not_extend_original_rotation_deadline(registry):
@@ -1203,15 +1357,15 @@ def test_grace_entry_requires_matching_username_revision_and_binding(registry, c
         assert attempt.device_digest is None and not attempt.replayed
 
 
-def test_device_registry_migrates_existing_table_and_preserves_restore(registry, tmp_path):
+@pytest.mark.parametrize("columns", [("parent_digest",), ("admitted", "successor_used", "parent_digest")])
+def test_device_registry_migrates_existing_table_and_preserves_restore(registry, tmp_path, columns):
     devices, clock = registry
     original = _registry_success(registry)
     current = _registry_success(registry, original)
     with devices._transaction() as db:
-        # fixture-write: Remove admitted from the device registry to construct the legacy schema for migration and restore.
-        db.execute("ALTER TABLE devices DROP COLUMN admitted")
-        # fixture-write: Remove successor_used from the device registry to construct the legacy schema for migration and restore.
-        db.execute("ALTER TABLE devices DROP COLUMN successor_used")
+        for column in columns:
+            # fixture-write: Remove each new column to construct the legacy device schema for migration and restore.
+            db.execute(f"ALTER TABLE devices DROP COLUMN {column}")
     backup = tmp_path / "legacy-backup"
     shutil.copytree(devices.path.parent, backup)
     for root in (devices.path.parent, backup):
@@ -1220,15 +1374,16 @@ def test_device_registry_migrates_existing_table_and_preserves_restore(registry,
         with restored._transaction() as db:
             assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             assert restored._row(db, current)["state"] == "active"
+            assert restored._row(db, current)["parent_digest"] is None
         with restored.attempt(original, restored.username_digest(USER),
                               ("synthetic-revision", "synthetic-binding"), clock) as attempt:
-            assert attempt.replayed and attempt.device_digest is None
+            assert attempt.replayed == ("admitted" in columns)
+            assert (attempt.device_digest is None) == ("admitted" in columns)
         fresh = _registry_success((restored, clock))
         _registry_success((restored, clock), fresh)
         with restored.attempt(fresh, restored.username_digest(USER),
                               ("synthetic-revision", "synthetic-binding"), clock) as attempt:
             assert attempt.device_digest and not attempt.replayed
-
 
 
 def test_completion_replay_is_audited_without_failing_password_sign_in(login_handler, monkeypatch):
@@ -1274,10 +1429,10 @@ def test_same_cookie_successes_verify_concurrently_without_revoking(lane_identit
     assert len({result.device_cookie for result in results}) == 2
     assert all(result.device_cookie and not result.device_replayed for result in results)
     assert all(row["state"] != "revoked" for row in _rows(identity))
-    assert sum(row["state"] == "active" for row in _rows(identity)) == 1
+    assert sum(row["state"] == "active" for row in _rows(identity)) == 2
 
 
-def test_unused_displaced_cookie_cannot_retire_admitted_active_successor(registry):
+def test_unused_sibling_is_deleted_when_another_is_admitted(registry):
     devices, clock = registry
     original = _registry_success(registry)
     displaced = _registry_success(registry, original)
@@ -1286,9 +1441,32 @@ def test_unused_displaced_cookie_cannot_retire_admitted_active_successor(registr
     revision = ("synthetic-revision", "synthetic-binding")
     with devices.attempt(current, digest, revision, clock):
         with devices.attempt(displaced, digest, revision, clock) as result:
-            assert result.replayed and result.device_digest is None
+            assert not result.replayed and result.device_digest is None
     with devices._transaction() as db:
-        assert all(row[0] == "revoked" for row in db.execute("SELECT state FROM devices"))
+        assert devices._row(db, displaced) is None
+        assert devices._row(db, current)["state"] == "active"
+        assert all(row[0] != "revoked" for row in db.execute("SELECT state FROM devices"))
+
+
+def test_never_admitted_siblings_are_bounded_and_oldest_becomes_unknown(registry):
+    devices, clock = registry
+    original = _registry_success(registry)
+    siblings = []
+    assert devices.per_parent_unadmitted_limit == 5
+    for index in range(12):
+        siblings.append(_registry_success(registry, original))
+        with devices._transaction() as db:
+            parent = devices._row(db, original)["device_digest"]
+            rows = db.execute("SELECT * FROM devices WHERE parent_digest = ?", (parent,)).fetchall()
+            assert len(rows) == min(index + 1, 5)
+            assert all(row["state"] == "active" and row["admitted"] == 0 for row in rows)
+            assert all(devices._row(db, cookie) is not None for cookie in siblings[-5:])
+            assert all(devices._row(db, cookie) is None for cookie in siblings[:-5])
+    with devices.attempt(siblings[0], devices.username_digest(USER),
+                         ("synthetic-revision", "synthetic-binding"), clock) as result:
+        assert result.device_digest is None and not result.replayed
+    with devices._transaction() as db:
+        assert all(row[0] != "revoked" for row in db.execute("SELECT state FROM devices"))
 
 
 def test_untrusted_rotation_marks_presented_predecessor_for_replay(registry):

@@ -70,7 +70,7 @@ from .exact_search_results import (
     build_search_query,
 )
 from .local_login_devices import DEVICE_COOKIE, set_device_cookie
-from .login_errors import login_error_code, login_error_message
+from .login_errors import login_error_code, login_error_feedback, login_error_message
 from .oidc_callback_feedback import OidcCallbackFailure, finish_oidc_callback
 from .identity import (
     KERBEROS_SECRET_HEADER,
@@ -8315,7 +8315,8 @@ def create_workbench_app(
         next_path: str = Query("/", alias="next", max_length=2_048),
     ):
         destination = IdentityService.safe_next(next_path)
-        feedback = login_error_message(request.query_params.getlist("error"))
+        feedback = login_error_feedback(
+            request.query_params.getlist("error"), request.query_params.getlist("retry_minutes"))
         existing = identity.resolve(request.cookies.get(SESSION_COOKIE))
         if (
             existing is not None
@@ -8571,8 +8572,11 @@ def create_workbench_app(
                 "denied",
                 details={"auth_method": "local"},
             )
+            code = login_error_code(exc)
+            retry = ({"retry_minutes": str(max(1, min(1440, (exc.retry_after_seconds + 59) // 60)))}
+                     if code == "local_throttled" and exc.retry_after_seconds is not None else {})
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
+                _query_url("/auth/login", next=destination, error=code, **retry),
                 status_code=303,
                 headers=({"Retry-After": str(exc.retry_after_seconds)}
                          if exc.retry_after_seconds is not None else None),
