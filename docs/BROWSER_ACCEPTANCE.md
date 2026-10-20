@@ -27,7 +27,7 @@ takes focus, shows only questions that pass the check with their sources, and
 that Dismiss saves nothing and returns focus; that saving a discovery draft adds
 one Suggested note without leaving the page; and that the card fits at 390 and
 320 pixels.
-The assistant-collapse-focus journey delays just the next animation callback
+The collapse-focus journey delays just the next animation callback
 after each collapse click by 150 ms. Its three required checks cover collection
 name typing and retained field focus during that delay, collapse focus on the
 expand tab when no other action follows, and expand focus on the enabled dock

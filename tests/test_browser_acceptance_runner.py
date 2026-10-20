@@ -70,6 +70,13 @@ def runner():
     return module
 
 
+def test_journey_names_keep_chrome_socket_paths_short(runner):
+    # Each journey's TMPDIR is <scratch>/<name>/tmp, and Chrome's SingletonSocket
+    # path under it must stay within the Unix socket path limit.
+    names = [row[0] for row in runner.JOURNEYS]
+    assert all(len(name) <= 16 for name in names), names
+
+
 @pytest.fixture(params=['intake-receipts', 'source-roles'])
 def refresh_script(monkeypatch, request):
     monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
