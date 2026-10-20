@@ -27,6 +27,17 @@ takes focus, shows only questions that pass the check with their sources, and
 that Dismiss saves nothing and returns focus; that saving a discovery draft adds
 one Suggested note without leaving the page; and that the card fits at 390 and
 320 pixels.
+The assistant-collapse-focus journey delays just the next animation callback
+after each collapse click by 150 ms. Its three required checks cover collection
+name typing and retained field focus during that delay, collapse focus on the
+expand tab when no other action follows, and expand focus on the enabled dock
+textarea or collapse button. The runner now requires all 19 journeys. To verify
+the regression against `067ea98`, retain that revision's application JavaScript
+and apply the new journey: check A must fail on focus or typed value, while B
+and C retain their existing behavior. The reports journey separately waits for
+two animation frames after collapse, verifies the collection name, and reports
+preflight status, collection name and active control if upload has not started
+within 10 seconds. Its existing 20-second ingestion wait is unchanged.
 The [one-box journey](WORKSPACE_LAYOUT.md#one-box-on-home) enables the optional
 Home entry point and checks exact search, cited answers and a prefilled
 every-source criterion, route switching, native keyboard use and a 430-pixel
