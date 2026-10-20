@@ -49,62 +49,117 @@ service, explicit version 1 migration and recovery contract.
 For local sign-in throttling, both gateway locations overwrite `X-Forwarded-For`
 with `$remote_addr`. The app accepts exactly one header containing a single IP
 literal, without lists, ports, whitespace or IPv6 scope IDs, only from a trusted
-direct peer. With `EXCULPATA_ALLOW_CONTAINER_BIND=1` (or its deprecated alias),
-trusted peers are the exact IPs resolved for Compose service `gateway` on each
-login attempt. The `/auth/local` handler is synchronous, so FastAPI runs it,
-including DNS resolution and password verification, in its worker thread pool
-rather than on the asyncio event loop. This relies on Compose's
+direct peer. `EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY=1` (deprecated alias:
+`RECORDBENCH_LOCAL_LOGIN_TRUST_GATEWAY=1`) enables resolving the exact addresses
+of Compose service `gateway`. Compose sets this only on the `app` service.
+`EXCULPATA_ALLOW_CONTAINER_BIND=1` keeps its bind meaning and does not enable
+header trust. The `/auth/local` handler is synchronous, so DNS resolution and
+password verification run in the worker thread pool. This relies on Compose's
 operator-controlled DNS and private app listener; only the gateway publishes a
 port. No private subnet is trusted.
-Other deployments trust no peers by default; the app factory's
-`local_gateway_peers` tuple can explicitly supply gateway IP literals, and an
-empty tuple disables header trust. Missing, duplicate or malformed headers,
-untrusted peers and failed resolution fall back to the direct peer address
-(`unknown` if absent). Browser-supplied forwarded prefixes never select a key.
 
-Each app process allows at most 10 failed verifications per normalized username
-and client, 50 per client across all usernames, and 100 per normalized username
-across clients, in a rolling 15-minute window. Pending verifications reserve
-capacity against all three limits under a short lock. Password verification runs
-outside that lock. Pending reservations do not expire while verification is
-running; completed failures enter the window at completion. Errors release their
-reservations without recording a password failure. Throttled requests do not
-verify passwords, add failures or extend the window. Successful sign-in clears
-completed failures only for that username and client, preserving other pending
-attempts, the client's cross-username budget and the username aggregate.
+Other deployments trust no peers by default. The app factory's
+`local_gateway_peers` tuple takes precedence, and an empty tuple disables header
+trust. Missing, duplicate or malformed headers from a trusted peer, untrusted
+peers and failed gateway resolution fall back to the direct peer (`unknown` if
+absent). Failed resolution, invalid trusted-peer headers and untrusted-peer
+headers in container mode produce warnings, at most one per kind per five
+minutes per process. Container binding without a gateway trust setting also
+warns once per process. Warnings contain no addresses, header values, usernames
+or tokens. Browser-supplied forwarded prefixes never select a key.
 
-Memory is bounded without refusing sign-in because a key table is full:
+IPv4 clients use their full address. IPv4-mapped IPv6 addresses use the mapped
+IPv4 address. Other IPv6 clients share a client budget within their /64, whether
+the address came from the direct peer or a trusted header. Non-IP keys such as
+`unknown` pass through. Clients sharing a connecting address share its budget;
+failed gateway resolution or missing trust can group users under a proxy.
 
-- At most 1,000 client records are retained. Each has at most 50 username records
-  and 50 failed or pending attempts across those usernames. Existing clients
-  cannot evict their own records by changing usernames. A new client replaces
-  the least recently admitted client without pending checks. If all records have
-  pending checks, it waits on a condition that releases the lock until a check
-  completes, rather than failing due to table capacity.
-- Username aggregates use 10,000 fixed buckets selected by a keyed digest of the
-  normalized username, each with at most 100 failed or pending attempts. They
-  survive client eviction and successful sign-in. Bucket collisions share a
-  budget, so they can throttle earlier, but cannot increase a username's allowed
-  guesses. A single client's 50-attempt budget cannot fill even one bucket.
-- Together these structures retain at most 61,000 window records and 1,100,000
-  failure timestamp references, plus bounded pending counters. Idle expired
-  entries remain within these bounds and are pruned when accessed. State resets
-  on process restart.
+Local password sign-in has two admission lanes. A device cookie is only a
+throttling signal, not a session or an authentication factor. Both lanes still
+require the correct password and current account authorization.
 
-This trades exact independent username budgets and indefinite client retention
-for bounded memory and fresh-client admission. Client churn from multiple
-addresses can evict another client's throttle; it cannot erase the username
-aggregate. Distributed failures can fill an aggregate bucket and temporarily
-block even correct passwords for its usernames. Collisions can also affect an
-unrelated username. A single address cycling usernames cannot evict its own
-active throttle or fill the global table. The gateway additionally limits
-requests to 10 per minute per connecting address, with a burst of 5.
+- The **untrusted lane** applies to a new or cleared browser and to invalid,
+  forged, wrong-user, revoked, expired or stale-revision device entries. Each app
+  process allows at most 10 failed verifications per normalized username and
+  client, 50 per client across usernames, and 100 per username bucket across
+  clients in a rolling 15-minute window. A username bucket also permits at most
+  200 failures per rolling 24 hours. Daily counters use 15-minute slots and retain
+  a slot until its entire interval is older than 24 hours, so admission can be
+  delayed by up to 15 additional minutes. A success clears only the completed
+  failures for that client and username, preserving both username aggregates and
+  the client's cross-username budget.
+- The **device lane** applies to an active server-registered browser entry for
+  the submitted username and current account revision. It allows 10 failures
+  per rolling 15 minutes per device, per process. Thirty failures without a
+  success revoke the device persistently. Device attempts do not consume or
+  depend on any untrusted client, username or daily budget. A device success
+  does not clear the untrusted aggregates. Device entries are not bound to an IP
+  address or User-Agent.
 
-Operators see the existing denied `auth.login` audit events and the unchanged
-temporary-unavailability sign-in message; no client address or password is added
-to those events. Wait for the window to expire. Clients sharing one connecting
-address also share its per-client limit. If gateway DNS is unavailable or a
-custom proxy is not trusted, fallback can group users under that proxy's address.
+Both lanes check admission before verifying a password and reserve capacity for
+pending verifications. Pending reservations do not expire during verification.
+Password verification runs outside the admission lock. Unknown users still take
+the dummy Argon2 verification path when admitted. Throttled attempts never
+verify, add failures or extend a window; verifier errors release reservations
+without recording a password failure. There is no artificial request delay.
+Refusals say “Sign-in is temporarily unavailable. Try again after HH:MM UTC.”
+and the 303 response includes an integer `Retry-After` of at least one second.
+The retry interval accounts for every blocking window. The displayed UTC time
+rounds up to the next whole minute; in-flight checks or subsequent failures may
+change availability. Wrong-password errors are unchanged.
+
+Every successful password sign-in rotates the browser entry to a new random
+128-bit device ID and marks its predecessor rotated in the same chain. The
+`__Host-exculpata_device` cookie has Secure, HttpOnly, SameSite=Strict, Path=/,
+no Domain and a 90-day Max-Age. It holds at most five entries, one per username,
+newest first, for shared computers. Signing in as one user does not give another
+user a device lane. Entries use a separate random device signing key, never the
+session or login-challenge key. Password, role or enabled-state changes invalidate
+all devices for that account through its session revision and account binding.
+Display-name changes do not invalidate them. Secure cookies remain required in
+local mode. If the cookie helper is used with `secure_cookie=False` in plain-HTTP
+development, it skips issuing the device cookie.
+
+Presenting a retained rotated entry with a valid signature revokes its whole
+chain, uses the untrusted lane and writes a denied `auth.device.replay` audit
+event without raw addresses or tokens. Concurrent rotation cannot revive a
+revoked chain. Concurrent submissions using the same entry can trigger this
+replay protection and require a fresh untrusted sign-in.
+
+Memory and persistent storage are bounded:
+
+- At most 1,000 client records retain at most 50 username windows each. Fresh
+  clients replace the least recently admitted client without pending checks.
+  Existing clients cannot evict their own records by changing usernames. If all
+  records have pending checks, admission waits on the existing condition until
+  a check completes.
+- Username aggregates use 10,000 fixed buckets selected by a keyed digest. Each
+  retains at most 100 short-window failure timestamps and 97 daily counter slots,
+  plus pending counters. These budgets survive client eviction and success.
+  Bucket collisions can throttle earlier but cannot increase allowed guesses.
+- `login-devices.sqlite3` in the identity runtime directory retains at most
+  10,000 device rows containing keyed device and username digests, chain IDs,
+  revision bindings, times, lifetime failure counts and state. Entries unused for
+  90 days expire. Pruning removes the oldest rotated/revoked rows before active
+  rows when making room. Replay detection covers retained rows. Device windows
+  retain at most 10 failed or pending checks per retained device.
+
+The registry and separate `identity-device.key` are owner-only files with mode
+0600; symlinked paths are refused. Restarting the app container clears in-memory
+throttles, including device windows, but preserves the registry, lifetime failure
+counts and rotation/revocation state. Distributed guesses can still temporarily
+block an untrusted browser, including a correct password; an existing valid
+device entry keeps its separate lane. The gateway additionally limits requests
+to 10 per minute per connecting address, with a burst of 5.
+
+Include the registry and device key in the same stopped-runtime backup as account
+and session state. Restore into a clean owner-controlled runtime directory with
+the matching application version and mode 0600. A synthetic clean-restore test
+checks persisted failures and rotation/replay state with the original directory
+removed. Restoring an older backup also restores its older device state; use a
+new device key when old browser entries must remain invalid. Rolling back to a
+pre-device release uses the pre-upgrade backup and its matching reader; device
+cookies then provide no lane until a supported release issues them again.
 
 Manage accounts inside the tools container; do not edit hashes by hand:
 

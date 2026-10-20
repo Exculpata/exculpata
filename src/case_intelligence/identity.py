@@ -19,6 +19,7 @@ import pwd
 import re
 import secrets
 import stat
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,7 +33,8 @@ from joserfc.errors import JoseError
 
 from .branding import PRODUCT_NAME
 from .local_accounts import LocalAccount, LocalAccountRepository
-from .local_login_limiter import LocalLoginLimiter
+from .local_login_limiter import LocalLoginLimiter, LoginThrottled, normalize_client_key
+from .local_login_devices import LocalLoginDevices, LocalLoginResult
 from .compat_env import env
 from .workspace_store import PrincipalRecord, SessionRecord, WorkspaceProblem, WorkspaceStore
 
@@ -113,6 +115,12 @@ class KerberosAuthenticationError(WorkspaceProblem):
 
 class LocalAuthenticationError(WorkspaceProblem):
     """A generic local-account failure that never reveals account existence."""
+
+    def __init__(self, message: str, *, retry_after_seconds: int | None = None,
+                 device_replayed: bool = False):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        self.device_replayed = device_replayed
 
 
 def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> str:
@@ -837,6 +845,7 @@ class IdentityService:
         )
         if self.auth_mode == "local":
             self.local_settings = self.local_settings or LocalAccountSettings.from_env()
+            self._local_devices = LocalLoginDevices(self.runtime_dir)
         elif self.local_settings is not None:
             raise RuntimeError("Local account configuration is only valid in local mode")
         if self.auth_mode == "oidc":
@@ -1070,6 +1079,7 @@ class IdentityService:
         password: str,
         *,
         client_key: str = "",
+        device_cookie: str | None = None,
     ) -> tuple[AuthContext, str]:
         if self.auth_mode != "local" or self.local_settings is None:
             raise LocalAuthenticationError("Local account sign-in is unavailable.")
@@ -1080,28 +1090,42 @@ class IdentityService:
             or not 1 <= len(password) <= 1_024
         ):
             raise LocalAuthenticationError("The username or password is incorrect.")
-        client_digest = self._local_attempt_key("", client_key)
+        client_digest = self._local_attempt_key("", normalize_client_key(client_key))
         username_digest = self._local_attempt_key(username, "")
-        with self._local_limiter.attempt(client_digest, username_digest, self._now) as attempt:
-            if attempt is None:
-                raise LocalAuthenticationError(
-                    "Sign-in is temporarily unavailable. Wait a few minutes and try again."
-                )
-            try:
-                account = self.local_settings.authenticate(username, password)
-            except (OSError, RuntimeError):
-                raise LocalAuthenticationError("Local account sign-in is temporarily unavailable.") from None
-            if account is None:
-                attempt.outcome = "failure"
-                raise LocalAuthenticationError("The username or password is incorrect.")
-            attempt.outcome = "success"
+        device = None
+        try:
+            previous = self.local_settings.account(username) if device_cookie else None
+            revision = ((previous.session_revision, self._local_session_binding(previous))
+                        if previous is not None and previous.enabled else None)
+            with self._local_devices.attempt(
+                device_cookie, self._local_devices.username_digest(username), revision, self._now,
+            ) as device:
+                lane = (nullcontext(device) if device.device_digest is not None else
+                        self._local_limiter.attempt(client_digest, username_digest, self._now))
+                with lane as attempt:
+                    account = self.local_settings.authenticate(username, password)
+                    if account is None:
+                        attempt.outcome = device.outcome = "failure"
+                        raise LocalAuthenticationError("The username or password is incorrect.")
+                    attempt.outcome = device.outcome = "success"
+                    device.revision = (account.session_revision, self._local_session_binding(account))
+        except LocalAuthenticationError as exc:
+            exc.device_replayed = bool(device and device.replayed)
+            raise
+        except LoginThrottled as exc:
+            raise LocalAuthenticationError(str(exc), retry_after_seconds=exc.retry_after_seconds,
+                                           device_replayed=bool(device and device.replayed)) from None
+        except (OSError, RuntimeError):
+            raise LocalAuthenticationError("Local account sign-in is temporarily unavailable.",
+                                           device_replayed=bool(device and device.replayed)) from None
         principal = self.store.upsert_principal(
             self.local_settings.provider_key,
             account.username,
             account.display_name,
             account.username,
         )
-        return self._issue_session(principal, "local", account.roles, local_account=account)
+        return LocalLoginResult(
+            self._issue_session(principal, "local", account.roles, local_account=account), device)
 
     def _resolved_kerberos_groups(self, principal: str) -> frozenset[str]:
         try:

@@ -3,9 +3,56 @@
 from collections import OrderedDict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import ipaddress
+import math
 from threading import Condition
 from typing import Callable, Iterator, Literal
+
+
+def normalize_client_key(value: str) -> str:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return value
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.ipv4_mapped is not None:
+            return str(address.ipv4_mapped)
+        return str(ipaddress.ip_network((address, 64), strict=False))
+    return str(address)
+
+
+class LoginThrottled(Exception):
+    def __init__(self, seconds: float, now: datetime):
+        self.retry_after_seconds = max(1, math.ceil(seconds))
+        retry = (now + timedelta(seconds=self.retry_after_seconds)).astimezone(timezone.utc)
+        if retry.second or retry.microsecond:
+            retry = retry.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        super().__init__("Sign-in is temporarily unavailable. "
+                         f"Try again after {retry:%H:%M} UTC.")
+
+
+@dataclass
+class _DailyWindow:
+    slots: dict[int, int] = field(default_factory=dict)
+    pending: int = 0
+
+    def prune(self, now: datetime) -> None:
+        for slot in list(self.slots):
+            if (slot + 1) * 900 + 86400 <= now.timestamp():
+                del self.slots[slot]
+
+    @property
+    def count(self) -> int:
+        return sum(self.slots.values()) + self.pending
+
+    def retry_seconds(self, now: datetime, limit: int) -> float:
+        remaining = self.count
+        for slot, count in sorted(self.slots.items()):
+            remaining -= count
+            if remaining < limit:
+                return (slot + 1) * 900 + 86400 - now.timestamp()
+        return 86400
 
 
 @dataclass
@@ -15,12 +62,17 @@ class _Window:
 
     def prune(self, now: datetime) -> None:
         cutoff = now - timedelta(minutes=15)
-        while self.failures and self.failures[0] < cutoff:
+        while self.failures and self.failures[0] <= cutoff:
             self.failures.popleft()
 
     @property
     def count(self) -> int:
         return len(self.failures) + self.pending
+
+    def retry_seconds(self, now: datetime, limit: int) -> float:
+        expirations = [value + timedelta(minutes=15) for value in self.failures]
+        expirations.extend([now + timedelta(minutes=15)] * self.pending)
+        return (sorted(expirations)[self.count - limit] - now).total_seconds()
 
 
 @dataclass
@@ -53,30 +105,37 @@ class LocalLoginLimiter:
     client_username_limit = 10
     client_total_limit = 50
     username_limit = 100
+    username_daily_limit = 200
 
     def __init__(self) -> None:
         self.clients: OrderedDict[str, _Client] = OrderedDict()
         self.usernames: dict[int, _Window] = {}
+        self.daily: dict[int, _DailyWindow] = {}
         self._condition = Condition()
 
     def _reserve(
         self, client_key: str, username_key: str, clock: Callable[[], datetime],
-    ) -> tuple[_Client, _Window, _Window, int] | None:
+    ) -> tuple[_Client, _Window, _Window, _DailyWindow, int]:
         bucket = int(username_key, 16) % self.username_bucket_count
         with self._condition:
             while True:
                 now = clock()
                 aggregate = self.usernames.get(bucket, _Window())
                 aggregate.prune(now)
-                if aggregate.count >= self.username_limit:
-                    return None
+                daily = self.daily.get(bucket, _DailyWindow())
+                daily.prune(now)
+                blockers = [(aggregate, self.username_limit), (daily, self.username_daily_limit)]
                 client = self.clients.get(client_key)
                 if client is not None:
                     client.prune(now)
                     pair = client.usernames.get(username_key, _Window())
-                    if (client.total.count >= self.client_total_limit
-                            or pair.count >= self.client_username_limit):
-                        return None
+                    blockers.extend([(client.total, self.client_total_limit),
+                                     (pair, self.client_username_limit)])
+                delays = [window.retry_seconds(now, limit) for window, limit in blockers
+                          if window.count >= limit]
+                if delays:
+                    raise LoginThrottled(max(delays), now)
+                if client is not None:
                     break
                 if len(self.clients) < self.client_capacity:
                     client = _Client()
@@ -92,19 +151,16 @@ class LocalLoginLimiter:
             self.clients.move_to_end(client_key)
             client.usernames[username_key] = pair
             self.usernames[bucket] = aggregate
-            for window in (pair, client.total, aggregate):
+            self.daily[bucket] = daily
+            for window in (pair, client.total, aggregate, daily):
                 window.pending += 1
-            return client, pair, aggregate, bucket
+            return client, pair, aggregate, daily, bucket
 
     @contextmanager
     def attempt(
         self, client_key: str, username_key: str, clock: Callable[[], datetime],
-    ) -> Iterator[_Attempt | None]:
-        reservation = self._reserve(client_key, username_key, clock)
-        if reservation is None:
-            yield None
-            return
-        client, pair, aggregate, bucket = reservation
+    ) -> Iterator[_Attempt]:
+        client, pair, aggregate, daily, bucket = self._reserve(client_key, username_key, clock)
         result = _Attempt()
         try:
             yield result
@@ -116,6 +172,13 @@ class LocalLoginLimiter:
                     window.prune(now)
                     if result.outcome == "failure":
                         window.failures.append(now)
+                daily.pending -= 1
+                daily.prune(now)
+                if result.outcome == "failure":
+                    slot = int(now.timestamp() // 900)
+                    daily.slots[slot] = daily.slots.get(slot, 0) + 1
+                if not daily.count:
+                    del self.daily[bucket]
                 if result.outcome == "success":
                     pair.failures.clear()
                 if not pair.count:

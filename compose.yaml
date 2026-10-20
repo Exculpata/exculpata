@@ -342,6 +342,7 @@ services:
       - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}
     environment:
       EXCULPATA_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY: "1"
       EXCULPATA_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
       CASE_INTELLIGENCE_POSTGRES_DSN_FILE: /run/recordbench-secrets/postgres-dsn
       CASE_INTELLIGENCE_CLAMAV_HOST: clamav

@@ -125,7 +125,7 @@ def test_unit_trusted_header_and_ipv6_canonicalization():
 
 @pytest.mark.parametrize("installed", [False, True])
 def test_unit_compose_gateway_resolution(monkeypatch, installed):
-    monkeypatch.setenv("EXCULPATA_ALLOW_CONTAINER_BIND", "1" if installed else "0")
+    monkeypatch.setenv("EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY", "1" if installed else "0")
     resolve = Mock(return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", GATEWAY_PEER)])
     monkeypatch.setattr(socket, "getaddrinfo", resolve)
     expected = "203.0.113.66" if installed else GATEWAY_PEER[0]
@@ -139,7 +139,7 @@ def test_unit_compose_gateway_resolution(monkeypatch, installed):
 
 
 def test_unit_gateway_address_changes_do_not_retain_old_trust(monkeypatch):
-    monkeypatch.setenv("EXCULPATA_ALLOW_CONTAINER_BIND", "1")
+    monkeypatch.setenv("EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY", "1")
     resolve = Mock(side_effect=[
         [(socket.AF_INET, socket.SOCK_STREAM, 6, "", GATEWAY_PEER)],
         [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.20", 0))]])
