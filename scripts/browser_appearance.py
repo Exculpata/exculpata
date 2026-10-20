@@ -1,4 +1,6 @@
 """Shared six-palette selection for synthetic browser acceptance journeys."""
+from browser_navigation import wait_for_replacement
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
@@ -19,7 +21,7 @@ def select_appearance(driver, wait, mode, accent):
                 menu.find_element(By.CSS_SELECTOR, "summary").click()
             picker = wait.until(EC.visibility_of_element_located((By.ID, f"account-appearance-{field}")))
         Select(picker).select_by_value(value)
-        wait.until(EC.staleness_of(root))
+        wait_for_replacement(driver, wait, root)
         wait.until(lambda _: driver.execute_script(
             "return document.readyState === 'complete' && document.documentElement.dataset[arguments[0]] === arguments[1]",
             field, value))

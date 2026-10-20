@@ -24,6 +24,44 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_browser_scripts_use_guarded_staleness_wait():
+    # These sites are out of scope for this change and can move to the helper later.
+    allowed = {
+        'browser-accept-activity.py': 4,
+        'browser-accept-ask-heading.py': 1,
+        'browser-accept-assertions.py': 1,
+        'browser-accept-briefing.py': 1,
+        'browser-accept-cited-context.py': 1,
+        'browser-accept-email-coverage.py': 1,
+        'browser-accept-entities.py': 1,
+        'browser-accept-entity-discovery.py': 1,
+        'browser-accept-evidence-graph.py': 1,
+        'browser-accept-full-text-synthesis.py': 1,
+        'browser-accept-matter-context.py': 1,
+        'browser-accept-matter-knowledge.py': 1,
+        'browser-accept-matter-rename.py': 1,
+        'browser-accept-media-preflight.py': 1,
+        'browser-accept-notebook-conflicts.py': 2,
+        'browser-accept-report-conflicts.py': 1,
+        'browser-accept-reports-bundle.py': 1,
+        'browser-accept-source-folders.py': 1,
+        'browser-accept-upload-occurrences.py': 1,
+        'browser-accept-workflow-handoff.py': 1,
+        'browser-accept-zoom.py': 1,
+        'browser_case_exit.py': 1,
+    }
+    counts = {
+        path.name: count
+        for path in sorted((ROOT / 'scripts').glob('browser*.py'))
+        if path.name != 'browser_navigation.py'
+        if (count := path.read_text().count('EC.staleness_of('))
+    }
+    assert counts == allowed, (
+        'Browser staleness counts changed; use browser_navigation.wait_for_replacement. '
+        f'Expected {allowed}, found {counts}'
+    )
+
+
 @pytest.fixture
 def runner():
     spec = importlib.util.spec_from_file_location('browser_acceptance_runner', ROOT / 'scripts/run-browser-acceptance.py')

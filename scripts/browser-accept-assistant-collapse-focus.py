@@ -17,10 +17,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 from synthetic_browser_environment import isolate_environment
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,7 +103,7 @@ def main():
             def submit(selector):
                 element = find(selector)
                 element.click()
-                wait.until(EC.staleness_of(element))
+                wait_for_replacement(driver, wait, element)
 
             def collapsed():
                 return driver.execute_script(
