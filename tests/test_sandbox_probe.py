@@ -118,6 +118,7 @@ def test_real_probe_in_normal_environment():
 
 
 def test_hook_skips_exact_message_and_caches(monkeypatch):
+    monkeypatch.delenv('CI', raising=False)
     message = probe.skip_message('socketpair send/receive', 'PermissionError: synthetic')
     calls = []
     monkeypatch.setattr(hooks, 'probe_testclient', lambda: calls.append(True) or message)
@@ -130,6 +131,22 @@ def test_hook_skips_exact_message_and_caches(monkeypatch):
             hooks.pytest_runtest_setup(item)
         assert str(exc.value) == message
     assert calls == [True]
+
+
+def test_probe_failure_fails_instead_of_skipping_under_ci(monkeypatch):
+    monkeypatch.setenv('CI', 'true')
+    message = probe.skip_message('socketpair send/receive', 'PermissionError: synthetic')
+    monkeypatch.setattr(hooks, 'probe_testclient', lambda: message)
+    module = SimpleNamespace(stash=pytest.Stash())
+    module.stash[hooks._module_uses_testclient] = True
+    item = SimpleNamespace(getparent=lambda cls: module,
+                           config=SimpleNamespace(stash=pytest.Stash()))
+    try:
+        with pytest.raises(pytest.fail.Exception) as exc:
+            hooks.pytest_runtest_setup(item)
+    except pytest.skip.Exception as exc:
+        pytest.fail(f'Probe failure skipped instead of failing: {exc}')
+    assert str(exc.value) == message
 
 
 def test_hook_is_lazy_for_non_route_tests(monkeypatch):
@@ -177,6 +194,7 @@ def test_pytest_hook_integration(tmp_path, workers, blocked):
     )
     (tmp_path / 'test_plain.py').write_text('def test_plain(): pass\n')
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(root), str(root / 'src')]))
+    env.pop('CI', None)
     command = ['timeout', '25', sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider']
     if workers:
         command += ['-n', str(workers)]

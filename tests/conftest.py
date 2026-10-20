@@ -58,6 +58,8 @@ def pytest_runtest_setup(item):
         item.config.stash[_probe_result] = probe_testclient()
     failure = item.config.stash[_probe_result]
     if failure is not None:
+        if os.environ.get('CI', '').lower() not in {'', '0', 'false'}:
+            pytest.fail(failure, pytrace=False)
         pytest.skip(failure)
 
 

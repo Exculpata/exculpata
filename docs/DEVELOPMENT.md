@@ -57,8 +57,9 @@ application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
 TestClient modules get a lazy, bounded socketpair wakeup and AnyIO portal probe.
-If a primitive fails, route tests skip with the cause and a terminal summary;
-run those tests in CI or an unrestricted shell.
+If a primitive fails, route tests skip with the cause and a terminal summary.
+When CI is set to a non-empty value other than "0" or "false" (case-insensitive),
+the probe fails instead of skipping. Run local skips in an unrestricted shell.
 
 It is safe to rerun bootstrap with the same interpreter after dependency metadata
 changes. An existing incompatible or broken environment is left untouched:
