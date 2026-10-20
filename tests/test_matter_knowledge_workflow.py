@@ -1,4 +1,6 @@
 """Case notes connects saved records without inference, mutation or model work."""
+
+from tests.fixture_write import fixture_write
 import html
 import re
 from urllib.parse import parse_qs, urlparse
@@ -98,9 +100,10 @@ def test_unavailable_identity_mention_retains_bounded_escaped_excerpt(connection
         excerpt = '<script>changeScope()</script> Synthetic historical mention. ' * 8
         # Synthetic retained evidence whose original no longer matches.
         with service.repository.transaction(matter.matter_id, WEB_ACTOR):
-            bench.workspace.connection.execute(
-                'UPDATE workbench_entity_mention SET excerpt=? WHERE mention_id=?',
-                (excerpt, mention['mention_id']))
+            with fixture_write(bench.workspace):
+                bench.workspace.connection.execute(
+                    'UPDATE workbench_entity_mention SET excerpt=? WHERE mention_id=?',
+                    (excerpt, mention['mention_id']))
     store = bench.source_store(matter)
     with store.mutation_guard():
         store.get(mention['document_id']).version_id = 'f' * 32
@@ -186,9 +189,10 @@ def test_administrator_knowledge_links_respect_membership(protected_assertion, t
     assertions.update(matter.matter_id, c['owner_id'], c['record']['assertion_id'],
         expected_revision=3, **(EVENT_FIELDS | dict(statement='Synthetic long statement. ' * 20)))
     with assertions.repository.transaction(matter.matter_id, c['owner_id']):
-        bench.workspace.connection.execute(
-            'UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
-            ('Synthetic long historical account. ' * 12, c['record']['assertion_id']))
+        with fixture_write(bench.workspace):
+            bench.workspace.connection.execute(
+                'UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
+                ('Synthetic long historical account. ' * 12, c['record']['assertion_id']))
     response = client.get(prefix + '/notebook', headers=_headers(ADMIN))
     assert '1 additional mentions not shown' in response.text
     assert '1 additional supporting accounts not shown' in response.text
@@ -306,8 +310,9 @@ def test_source_instructions_and_markup_are_inert(connections):
     # Synthetic historical evidence includes instruction-like text. Merely reading
     # it must neither execute markup nor create application instructions.
     with bench.workspace.assertion_repository().transaction(matter.matter_id, WEB_ACTOR):
-        bench.workspace.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
-            (instruction, connections['assertion_id']))
+        with fixture_write(bench.workspace):
+            bench.workspace.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE assertion_id=?',
+                (instruction, connections['assertion_id']))
     before = list(bench.workspace.connection.iterdump())
     response = client.get(f'/matters/{slug}/notebook')
     assert response.status_code == 200 and instruction not in response.text
@@ -471,7 +476,7 @@ def test_notebook_rechecks_live_local_authority_after_render(tmp_path, monkeypat
                 elif change == 'revoke_session':
                     identity.logout(administrator)
                 elif change == 'disable_principal':
-                    with bench.workspace._lock, bench.workspace.connection:
+                    with fixture_write(bench.workspace):
                         bench.workspace.connection.execute(
                             'UPDATE workbench_principal SET active=0 WHERE principal_id=?',
                             (administrator.principal_id,))

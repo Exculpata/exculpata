@@ -1,5 +1,7 @@
 """A generated legacy database, atomic upgrade, and an isolated restore drill."""
 
+from tests.fixture_write import fixture_write
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -26,8 +28,10 @@ def legacy_database(path):
     migrations = resources.files('case_intelligence').joinpath('migrations/sqlite')
     for source in sorted(migrations.iterdir(), key=lambda entry: entry.name):
         if '0002_' <= source.name < '0040_':
+            # fixture-write: Build the isolated pre-upgrade database before any WorkspaceStore is opened.
             connection.executescript(source.read_text(encoding='utf-8'))
     with connection:
+        # fixture-write: Seed the isolated legacy principal before any WorkspaceStore is opened.
         connection.execute(
             'INSERT INTO workbench_principal VALUES (?,?,?,?,?,1,?,?)',
             (OWNER, 'test', 'generated-owner', 'Generated Owner', 'generated', '2026-01-01T00:00:00Z',
@@ -35,16 +39,20 @@ def legacy_database(path):
         for suffix, state in [('scheduled', 'active'), ('unscheduled', 'active'),
                               ('failed', 'purge_failed'), ('purging', 'purging'), ('deleted', 'deleted')]:
             matter_id = 'ci-matter-synthetic-' + suffix
+            # fixture-write: Seed legacy matter rows before any WorkspaceStore is opened.
             connection.execute('INSERT INTO workbench_matter VALUES (?,?,?,?,?,?,?)',
                 (matter_id, 'm-' + {'scheduled':'a','unscheduled':'b','failed':'c','purging':'d','deleted':'e'}[suffix] * 12,
                  'Generated ' + suffix, 'Generated fixture', OWNER,
                  '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'))
+            # fixture-write: Seed legacy lifecycle states before any WorkspaceStore is opened.
             connection.execute(
                 'INSERT INTO workbench_matter_lifecycle(matter_id,state,purge_id,updated_at) VALUES (?,?,?,?)',
                 (matter_id, state, 'matter-purge-' + suffix if state in ('purging','purge_failed') else None,
                  '2026-01-01T00:00:00Z'))
+            # fixture-write: Seed legacy membership rows before any WorkspaceStore is opened.
             connection.execute('INSERT INTO workbench_matter_membership VALUES (?,?,?, ?,?,?,?,NULL)',
                 (matter_id, OWNER, 'owner', 'active', OWNER, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'))
+        # fixture-write: Seed legacy retention dates before any WorkspaceStore is opened.
         connection.execute('INSERT INTO workbench_matter_retention VALUES (?,?,?,?,?,?)',
             ('ci-matter-synthetic-scheduled', '2026-01-31T00:00:00Z', '2026-02-07T00:00:00Z', OWNER,
              '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'))
@@ -124,10 +132,13 @@ def test_synthetic_backup_clean_restore_and_old_writer_refusal(tmp_path):
     upgraded = WorkspaceStore(path, clock=lambda: NOW)
     # An already-open old writer sees the committed SQL guard too.
     with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
+        # fixture-write: Exercise the independent old writer rejection against the upgraded database.
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
+    # fixture-write: Roll back the deliberately independent old writer after its rejected update.
     old.rollback()
     # The original 0007 startup backfill must also fail, even on ignored rows.
     with pytest.raises(sqlite3.OperationalError, match=f"{LEGACY_STEM}_case_lifecycle_writer"):
+        # fixture-write: Exercise rejected legacy startup SQL through the independent old writer.
         old.executescript(resources.files('case_intelligence').joinpath(
             'migrations/sqlite/0007_matter_lifecycle.sql').read_text())
     old.close()
@@ -158,6 +169,7 @@ def test_v40_backup_upgrade_fences_old_writer_and_never_invents_authority(tmp_pa
     old = legacy_database(path)
     old.create_function(f"{LEGACY_STEM}_case_lifecycle_writer", 0, lambda: 1)
     old.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda matter_id: 0)
+    # fixture-write: Build the isolated version-one schema before opening the upgraded store.
     old.executescript(resources.files('case_intelligence').joinpath(
         'migrations/sqlite/0040_case_lifecycle.sql').read_text())
     before = snapshot(old, 'workbench_matter_lifecycle')
@@ -174,7 +186,9 @@ def test_v40_backup_upgrade_fences_old_writer_and_never_invents_authority(tmp_pa
                   'workbench_case_purge_authority', 'workbench_case_session_binding'):
         assert snapshot(upgraded.connection, table) == ()
     with pytest.raises(sqlite3.IntegrityError, match='writer version'):
+        # fixture-write: Exercise version-one writer rejection through its original independent connection.
         old.execute("UPDATE workbench_matter_lifecycle SET state='purging' WHERE state='active'")
+    # fixture-write: Roll back the independent version-one writer after its rejected update.
     old.rollback()
     assert upgraded.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert upgraded.connection.execute('PRAGMA foreign_key_check').fetchall() == []
@@ -202,9 +216,9 @@ def test_v41_backup_clean_restore_and_atomic_oidc_upgrade(tmp_path):
     store = WorkspaceStore(path, clock=lambda: NOW)
     owner = store.upsert_principal('test', 'synthetic-owner', 'Synthetic Owner', 'owner')
     matter = store.create_matter('Synthetic preserved case', '', owner.principal_id)
-    with store.connection:
-        store.connection.execute('DROP TABLE workbench_case_oidc_request')
-        store.connection.execute('DROP TABLE workbench_case_oidc_authorization')
+    with fixture_write(store) as fixture_connection:
+        fixture_connection.execute('DROP TABLE workbench_case_oidc_request')
+        fixture_connection.execute('DROP TABLE workbench_case_oidc_authorization')
         store.connection.execute("UPDATE workbench_case_policy SET mode='unscheduled',next_check_in_at=NULL")
     before = snapshot(store.connection, 'workbench_case_policy')
     store.close()

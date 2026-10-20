@@ -8,6 +8,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 from pathlib import Path
@@ -60,12 +62,12 @@ def main() -> None:
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             wait = WebDriverWait(driver, 20)
             wait.until(lambda _: server.started)
-            driver.get(base + "/")
+            navigate_to(driver, base + "/", diagnostics=args.output)
             bench = app.state.workbench
             bench.research.close()
             matter = bench.workspace.create_matter("Synthetic Report review", "Browser acceptance", ACTOR)
             job, _ = saved_research(bench, matter)
-            driver.get(base + f"/matters/{matter.slug}/research?job={job.job_id}")
+            navigate_to(driver, base + f"/matters/{matter.slug}/research?job={job.job_id}", diagnostics=args.output)
             for details in driver.find_elements(By.CSS_SELECTOR, 'details'):
                 if details.find_elements(By.CSS_SELECTOR, 'form[action$="/report"]'):
                     driver.execute_script("arguments[0].open = true", details)

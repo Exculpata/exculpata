@@ -243,10 +243,12 @@ def test_live_postgres_projection_removes_matters_absent_from_workspace():
             assert backend.lexical(stale_id, "STALE PROJECTION CANARY", 10) == ()
         finally:
             with connection.cursor() as cursor:
+                # fixture-write: Clean up the disposable PostgreSQL projection on its independent connection.
                 cursor.execute(
                     "DELETE FROM review_matter WHERE matter_id = ANY(%s)",
                     ([retained_id, stale_id],),
                 )
+            # fixture-write: Commit cleanup on the disposable PostgreSQL connection, not the shared SQLite workspace.
             connection.commit()
 
 
@@ -283,10 +285,12 @@ def test_live_postgres_whole_matter_delete_cascades_without_touching_neighbor():
                 assert cursor.fetchone() == (0,)
         finally:
             with connection.cursor() as cursor:
+                # fixture-write: Clean up the disposable PostgreSQL projection on its independent connection.
                 cursor.execute(
                     "DELETE FROM review_matter WHERE matter_id = ANY(%s)",
                     ([first_id, second_id],),
                 )
+            # fixture-write: Commit cleanup on the disposable PostgreSQL connection, not the shared SQLite workspace.
             connection.commit()
 
 

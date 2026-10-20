@@ -6,6 +6,8 @@ from __future__ import annotations
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
+
+from browser_navigation import navigate_to
 import argparse
 import json
 from pathlib import Path
@@ -53,7 +55,7 @@ def main():
         try:
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             wait = WebDriverWait(driver, 25); wait.until(lambda _: server.started)
-            driver.get(base + '/')
+            navigate_to(driver, base + '/', diagnostics=args.output)
             bench = app.state.workbench; bench.research.close()
             matter = bench.workspace.create_matter('The bicycle delivery', 'Synthetic report acceptance', ACTOR)
             research, document = saved_research(bench, matter)
@@ -71,7 +73,7 @@ def main():
                 driver.save_screenshot(str(args.output / (name + '.png')))
                 driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride', {})
             for kind in ('timeline', 'entities', 'topic'):
-                driver.get(base + f'/matters/{matter.slug}/reports/new')
+                navigate_to(driver, base + f'/matters/{matter.slug}/reports/new', diagnostics=args.output)
                 wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, f'input[name="kind"][value="{kind}"]'))).click()
                 if kind == 'topic':
                     driver.find_element(By.CSS_SELECTOR, 'textarea[name="topic"]').send_keys('The bicycle arrival')
@@ -105,7 +107,7 @@ def main():
                              if job.report_id == current_report.report_id)
             bench.workspace.delete_report(matter.matter_id, current_report.report_id, ACTOR,
                                           expected_updated_at=current_report.updated_at)
-            driver.get(base + f'/matters/{matter.slug}/reports')
+            navigate_to(driver, base + f'/matters/{matter.slug}/reports', diagnostics=args.output)
             recovery = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,
                 f'.report-job-list a[href$="job={completed.job_id}"]')))
             assert 'This draft was deleted' in recovery.text
@@ -116,7 +118,7 @@ def main():
             # Hold the worker stopped so the queued cancellation state is
             # deterministic; this uses only this script's synthetic runtime.
             bench.report_compilation.coordinator.close()
-            driver.get(base + f'/matters/{matter.slug}/reports/new')
+            navigate_to(driver, base + f'/matters/{matter.slug}/reports/new', diagnostics=args.output)
             click(wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, '.report-compose-submit button'))))
             click(wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'form[action$="/cancel"] button'))))
             wait.until(lambda d: 'Compilation cancelled.' in d.find_element(By.TAG_NAME, 'body').text)

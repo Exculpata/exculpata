@@ -1,0 +1,65 @@
+name: Agent task
+description: A scoped task for a coding agent
+labels: ["agent-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow [coding standards](https://github.com/Exculpata/exculpata/blob/main/CODING_STANDARDS.md).
+        Review the [ideal architecture contract](https://github.com/Exculpata/exculpata/blob/main/docs/IDEAL.md)
+        for supported paths, evidence integrity and rules that require human judgment.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and evidence
+      description: What went wrong, with links to commits, PRs, CI runs or review comments.
+    validations: {required: true}
+  - type: textarea
+    id: restate_goal
+    attributes:
+      label: Issue author's goal and user-visible outcome
+      description: Record the issue author's requested outcome. The agent's separate kickoff is verified through the PR evidence.
+    validations: {required: true}
+  - type: markdown
+    attributes:
+      value: |
+        Before coding, the agent posts its own restatement as its first kickoff comment,
+        checks it matches this issue, and resolves any mismatch with the issue author.
+        This form entry does not replace that comment; link the agent's comment in the PR for review.
+  - type: dropdown
+    id: level
+    attributes:
+      label: Fix level
+      description: Correct the environment, not the agent. Pick the highest level that works.
+      options:
+        - Code (types, invariants, boundaries)
+        - Static check or CI test
+        - AGENTS.md rule
+        - Human review
+    validations: {required: true}
+  - type: textarea
+    id: why_level
+    attributes:
+      label: Why not a higher level
+      description: If a lower level is needed, explain in one line why a higher level did not work.
+    validations: {required: false}
+  - type: textarea
+    id: regression
+    attributes:
+      label: Regression test
+      description: The synthetic test that reproduces the mistake, and the commit it must fail on.
+    validations: {required: true}
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+    validations: {required: true}
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      options: [S, M, L]
+    validations: {required: true}
+  - type: markdown
+    attributes:
+      value: "Standing rule: use neutral criminal-defense terminology in code, comments, docs, commits and PR text. Never disclose private organizational affiliations, employer details, office names or professional titles. Use synthetic examples only."

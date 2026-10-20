@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import json
 import socket
@@ -89,7 +91,7 @@ def main():
             wait = WebDriverWait(owner, 20)
             wait.until(lambda _: server.started)
             def go(driver, path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
             def fill(driver, selector, value):
                 field = driver.find_element(By.CSS_SELECTOR, selector)
                 field.clear()

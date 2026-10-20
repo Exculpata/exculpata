@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to, refresh_page
+
 import argparse
 from contextlib import contextmanager
 import io
@@ -206,7 +208,7 @@ def main(argv=None):
             with serve(app, release) as base:
                 wait.until(lambda _: entered.is_set())
                 assert bench.workspace.matter_readiness(matter.matter_id).processing_count > 0
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 assert not driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]")
                 assert "prepar" in find("main").text.casefold() or "processing" in find("main").text.casefold()
                 checks.append("Active durable processing retains the existing readiness presentation and suppresses the briefing")
@@ -219,7 +221,7 @@ def main(argv=None):
                 place = next(item for item in entities if item["display_name"] == "Amber Cooperative")
                 service.update(matter.matter_id, ACTOR, place["entity_id"], expected_revision=place["revision"],
                     display_name="Amber Cooperative", entity_type="place", status="suggested")
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 sections = driver.find_elements(By.CSS_SELECTOR, "[data-briefing-section]")
                 assert [section.get_attribute("data-briefing-section") for section in sections] == [
                     "arrived", "people_places", "dates", "unread"]
@@ -268,7 +270,7 @@ def main(argv=None):
                             status:r.status,type:r.headers.get('content-type'),body:await r.text()}))
                         .catch(e=>done({error:String(e)}));""", href)
                     assert response.get("status") == 200 and "text/html" in response.get("type", ""), (href, response.get("status"))
-                    driver.get(base + href)
+                    navigate_to(driver, base + href, diagnostics=args.output)
                     # Chrome may acknowledge navigation before the destination's
                     # DOM is observable. Keep the landmark requirement and wait
                     # for the real page, including filtered source-list links.
@@ -291,7 +293,7 @@ def main(argv=None):
                         .map(e=>e.outerHTML)""")
 
                 def edit_objective(value):
-                    driver.get(base + prefix + "/home")
+                    navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                     summary = find("#matter-purpose summary")
                     keyboard_to(summary)
                     summary.send_keys(Keys.ENTER)
@@ -305,7 +307,7 @@ def main(argv=None):
                     wait.until(EC.staleness_of(save))
                     wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
 
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 original_questions, original_sections = question_snapshot(), unchanged_sections()
                 original_briefing = find("[data-discovery-briefing]").get_attribute("outerHTML")
                 edit_objective("Review JORDAN   SAMPLE and 2024-05-07.")
@@ -313,7 +315,7 @@ def main(argv=None):
                 assert question_snapshot() == expected
                 assert unchanged_sections() == original_sections
                 assert work_counts(bench, matter) == (0, 0, 0)
-                driver.refresh()
+                refresh_page(driver, wait)
                 wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
                 assert question_snapshot() == expected
                 checks.append("Native Home objective editing and reload stably promote only existing matching questions with identical text, Suggested labels, links, sections and coverage")
@@ -328,7 +330,7 @@ def main(argv=None):
 
                 # Deliver two real Home responses out of order relative to
                 # controlled readiness events; no application helper is mocked.
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 draft = "Synthetic unsent briefing draft"
                 field = find("#one-box-question")
                 field.send_keys(draft)
@@ -384,7 +386,7 @@ def main(argv=None):
 
                 driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
                     "width": 430, "height": 932, "deviceScaleFactor": 1, "mobile": False})
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 no_overflow()
                 assert js("return innerWidth") == 430
                 chosen = choose_question(bench, matter, "#one-box-question")
@@ -392,7 +394,7 @@ def main(argv=None):
                 driver.save_screenshot(str(args.output / "briefing-question-430.png"))
                 assert find("#one-box-question").get_attribute("value") == chosen
                 checks.append("At 430 pixels, native Tab and Enter fill and focus the unobscured one box without submitting or creating answer/research work")
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 heading = find("[data-discovery-briefing]")
                 js("arguments[0].scrollIntoView({block:'start',behavior:'instant'})", heading)
                 no_overflow()
@@ -403,7 +405,7 @@ def main(argv=None):
             bench = app.state.workbench
             matter = bench.matter(matter.slug, ACTOR)
             with serve(app) as base:
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 assert not driver.find_elements(By.CSS_SELECTOR, "#one-box-question")
                 assert "Ask a focused question" in find("[data-task-launcher]").text
                 choose_question(bench, matter, "#assistant-question")
@@ -413,7 +415,7 @@ def main(argv=None):
 
             app = configured_app(runtime, briefing=False)
             with serve(app) as base:
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 assert not driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing], [data-briefing-question]")
                 assert find("#one-box-question").is_displayed()
                 checks.append("Disabling the briefing flag preserves Home's existing optional one-box entry point")

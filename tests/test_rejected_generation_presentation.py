@@ -1,6 +1,8 @@
 """Real synthetic rejection and exact historical display preserve saved evidence."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import copy
 from dataclasses import replace
 import json
@@ -122,7 +124,7 @@ def test_historical_rejected_research_projects_after_validation_preserving_ledge
     result["gaps"][0]["note"] = LEGACY
     encoded = json.dumps(result)
     original = bench.source_store(matter).source_path(document.document_id).read_bytes()
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (encoded, job.job_id))
     job = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
     page = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")
@@ -141,7 +143,7 @@ def test_historical_rejected_research_projects_after_validation_preserving_ledge
     # Presentation must never repair a raw saved-summary mismatch into a valid export.
     corrupted = copy.deepcopy(result)
     corrupted["summary"] = CURRENT
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (json.dumps(corrupted), job.job_id))
     assert client.get(f"/matters/{matter.slug}/research/{job.job_id}/export?format=json").status_code == 409
 
@@ -234,7 +236,7 @@ def test_legacy_research_pass_without_answer_projects_only_after_raw_validation(
     result["passes"][0].update(status="needs_review", text=historical)
     result["gaps"][0]["note"] = historical
     encoded = json.dumps(result)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (encoded, job.job_id))
     saved = bench.workspace.research_job(matter.matter_id, ACTOR, job.job_id)
     page = client.get(f"/matters/{matter.slug}/research?job={job.job_id}")
@@ -251,7 +253,7 @@ def test_legacy_research_pass_without_answer_projects_only_after_raw_validation(
     assert bench.workspace.connection.execute("SELECT result_json FROM workbench_research_job WHERE job_id=?", (job.job_id,)).fetchone()[0] == encoded
     corrupted = copy.deepcopy(result)
     corrupted["passes"][0]["text"] = expected
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?", (json.dumps(corrupted), job.job_id))
     assert client.get(f"/matters/{matter.slug}/research/{job.job_id}/export?format=json").status_code == 409
 

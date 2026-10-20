@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
@@ -33,7 +35,7 @@ def test_administrator_can_open_matter_after_owner_is_disabled(tmp_path) -> None
         bench = client.app.state.workbench
         owner_id = _principal_id(client, OWNER)
         matter = bench.matter(slug, owner_id)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_principal SET active=0 WHERE principal_id=?",
                 (owner_id,),

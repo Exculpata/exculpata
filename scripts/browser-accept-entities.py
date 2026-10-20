@@ -6,6 +6,8 @@ from __future__ import annotations
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
+
+from browser_navigation import navigate_to
 import argparse
 import json
 from pathlib import Path
@@ -97,7 +99,7 @@ def main():
             wait = WebDriverWait(driver, 20)
             wait.until(lambda _: server.started)
             def go(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
             def fill(selector, text):
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 element.clear()
@@ -179,7 +181,7 @@ def main():
             record('Another same-name person remains distinct, with no automatic alias merge')
             go(entity_path)
             other = browser()
-            other.get(base + entity_path)
+            navigate_to(other, base + entity_path, diagnostics=args.output)
             name = other.find_element(By.CSS_SELECTOR, 'input[name=display_name]')
             name.clear()
             name.send_keys('Alex Example — reviewed')

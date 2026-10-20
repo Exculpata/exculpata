@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from .pilot_uploads import PilotStore, UploadProblem, securely_delete_owned_tree
 from .workspace_store import WorkspaceProblem
+from .source_cache import source_cache_guard
 
 
 @contextmanager
@@ -40,7 +41,7 @@ def ensure_writable(bench, matter_id):
 def source_store(bench, matter, *, archive=False):
     if not re.fullmatch(r'ci-matter-[0-9a-f]{32}', matter.matter_id):
         raise RuntimeError('Stored matter identity is invalid.')
-    with source_lock(bench, matter.matter_id), bench._store_lock:
+    with source_lock(bench, matter.matter_id), source_cache_guard(bench):
         state = bench.workspace.matter_lifecycle(matter.matter_id).state
         if state not in {'active', 'closing', 'purge_failed'}:
             raise UploadProblem('This matter cannot open its source storage.', 409)
@@ -219,7 +220,7 @@ def cleanup_archives(bench, matter_id, *, keep=None):
 
 def quarantine_sources(bench, matter, purge_id, quarantine):
     """Move an authorized frozen tree without invoking startup reconciliation."""
-    with source_lock(bench, matter.matter_id), bench._store_lock:
+    with source_lock(bench, matter.matter_id), source_cache_guard(bench):
         bench.workspace.case_lifecycle.validate_purge(matter.matter_id, purge_id)
         root = bench.storage.matters / matter.matter_id / 'sources'
         if root.is_symlink() or not root.is_dir() or quarantine.is_symlink() or quarantine.exists():

@@ -90,7 +90,9 @@ def test_cross_matter_injection_rejects_at_schema_lane_citation_projection_and_t
     alpha = store.connection.execute("SELECT * FROM segment WHERE matter_id='matter-alpha'").fetchone()
     bravo_version = store.connection.execute("SELECT source_version_id FROM source_version WHERE matter_id='matter-bravo' AND media_type='text/plain'").fetchone()[0]
     with pytest.raises(sqlite3.IntegrityError):
-        store.connection.execute("UPDATE segment SET source_version_id=? WHERE segment_id=?", (bravo_version, alpha["segment_id"]))
+        with store.transaction():
+            # fixture-write: Isolated SQLiteStore cross-matter corruption uses its public explicit transaction in native legacy-autocommit mode.
+            store.connection.execute("UPDATE segment SET source_version_id=? WHERE segment_id=?", (bravo_version, alpha["segment_id"]))
     service = RetrievalService(store, registry, access, tickets)
     base = tuple(service._current("matter-alpha"))[0]
     mixed = RetrievalService(store, registry, access, tickets,

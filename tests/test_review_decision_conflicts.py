@@ -1,4 +1,6 @@
 """Synthetic shared human-validation edits retain separate machine results."""
+
+from tests.fixture_write import fixture_write
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import threading
@@ -97,7 +99,7 @@ def test_validation_rechecks_current_authority_and_exact_matter(tmp_path, denial
     if denial == 'other_matter':
         matter = store.create_matter('Generated other matter canary', '', MEMBER)
     else:
-        with store.connection:
+        with fixture_write(store):
             if denial == 'revoked':
                 store.connection.execute("UPDATE workbench_matter_membership SET state='revoked' WHERE principal_id=?", (MEMBER,))
             elif denial == 'inactive':
@@ -169,7 +171,7 @@ def test_http_retains_choice_note_attribution_and_current_machine_support(tmp_pa
         assert accepted.status_code == 303
         current = bench.workspace.review_decision(matter.matter_id, actor, run.run_id, shown.document_id)
         assert current.human_note == '<Unsaved review note>' and _machine(current) == _machine(shown)
-        with bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute('DELETE FROM workbench_review_decision WHERE run_id=? AND document_id=?',(run.run_id,shown.document_id))
         gone = owner.post(path, data=draft, headers=_headers(OWNER))
         assert gone.status_code == 409 and 'no longer available' in gone.text and '&lt;Unsaved review note&gt;' in gone.text

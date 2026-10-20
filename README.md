@@ -440,10 +440,10 @@ details out of issues, pull requests, and screenshots.
 
 ## Project status
 
-Exculpata v0.1.0-beta.1 is the current community beta prerelease. The reviewed
-source is available for evaluation and contribution. The maintainer applies the
-git tag. Checksummed source artifacts and recorded image and model identities
-are follow-ups for a later beta. Supported production-release requirements remain
+Exculpata [v0.1.0-beta.1](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1)
+is the published community beta prerelease. The tagged source is available for
+evaluation and contribution. Checksummed source artifacts and recorded image and
+model identities are follow-ups for a later beta. Supported production-release requirements remain
 open. Sharing the source and supporting confidential casework each require the
 evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 [publication checklist](docs/PUBLICATION_CHECKLIST.md).
@@ -459,7 +459,7 @@ evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
-- [Brand](docs/BRAND.md)
+- [Visual identity: logo, type, color, and positioning](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)
 
 ## License

@@ -410,6 +410,7 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     assert len(manifest["source_sha256"]) == 64
     assert (release / "compose.yaml").is_file()
     assert (release / "services/transcription/src").is_dir()
+    assert (release / "CODING_STANDARDS.md").read_bytes() == (ROOT / "CODING_STANDARDS.md").read_bytes()
     for lock in ("requirements/application.lock", "requirements/build.lock",
                  "services/transcription/requirements-api.lock",
                  "deploy/model-stager/requirements.lock"):
@@ -417,6 +418,28 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     assert not (release / ".git").exists()
     assert not (release / ".venv").exists()
     assert not (release / "tests").exists()
+
+
+def test_coding_standards_are_staged_and_change_capsule_identity(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    for directory in installer.RELEASE_DIRECTORIES:
+        (source / directory).mkdir()
+    for name in installer.RELEASE_FILES:
+        (source / name).write_text("synthetic release source\n")
+    (source / "AGENTS.md").write_text("Follow [coding standards](CODING_STANDARDS.md).\n")
+    standards = source / "CODING_STANDARDS.md"
+    standards.write_text("Use synthetic examples only.\n")
+    monkeypatch.setattr(installer, "PROJECT", source)
+    console = installer.Console(color=False, quiet=True)
+    root = tmp_path / "node"
+    before_id, before = installer._stage_release(console, root, dry_run=False)
+    assert (before / "CODING_STANDARDS.md").read_bytes() == standards.read_bytes()
+    standards.write_text("Use synthetic examples and preserve review evidence.\n")
+    after_id, after = installer._stage_release(console, root, dry_run=False)
+    assert after_id != before_id
+    assert (after / "CODING_STANDARDS.md").read_bytes() == standards.read_bytes()
+    assert (before / "CODING_STANDARDS.md").read_text() == "Use synthetic examples only.\n"
 
 
 @pytest.mark.parametrize("cache_path", [

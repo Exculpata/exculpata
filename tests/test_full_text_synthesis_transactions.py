@@ -20,6 +20,9 @@ def test_synthesis_fixture_serializes_with_report_claim(workspace, monkeypatch, 
     started = False
 
     class ObservedLock:
+        def _is_owned(self):
+            return lock._is_owned()
+
         def __enter__(self):
             current = threading.current_thread()
             if current is claimant:

@@ -7,6 +7,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from browser_navigation import navigate_to
+
 import argparse
 import io
 import json
@@ -135,7 +137,7 @@ def main(argv=None):
                     "width": width, "height": height, "deviceScaleFactor": 1, "mobile": False})
 
             def open_page(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 wait.until(lambda _: js("return document.readyState") == "complete")
                 # A remembered collapsed dock must not hide the controls under test.
                 if "assistant-collapsed" in find("body").get_attribute("class"):
