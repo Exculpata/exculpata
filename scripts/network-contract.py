@@ -17,21 +17,32 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_iana_tlds():
+    try:
+        text = (ROOT / "config/iana-tlds-alpha-by-domain.txt").read_text(encoding="ascii")
+    except FileNotFoundError as exc:
+        raise ValueError("IANA TLD list is missing") from exc
+    tlds = frozenset(line.strip().lower() for line in text.splitlines()
+                     if line.strip() and not line.lstrip().startswith("#"))
+    if not tlds:
+        raise ValueError("IANA TLD list is empty")
+    return tlds
+
+
+IANA_TLDS = load_iana_tlds()
 NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
                    "socket", "http.client", "authlib.integrations", "service_endpoints.open_service_request")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
+# IANA TLDs such as md, py, sh and zip remain host findings despite these suffixes.
 NON_HOST_SUFFIXES = frozenset({
     "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "json", "jsonl", "yaml",
     "yml", "toml", "txt", "md", "log", "env", "sh", "py", "cjs", "mjs", "js",
     "css", "html", "sqlite", "sqlite3", "db", "wav", "mp3", "mp4", "eml", "pdf",
     "csv", "tar", "gz", "zip", "whl", "lock", "bin", "key", "pem", "keytab",
     "template", "tmp", "conf", "cfg", "ini", "xml", "pyz",
-})
-PUBLIC_TLD_GUARD = frozenset({
-    "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "app", "dev",
-    "cloud", "site", "online", "xyz", "top", "shop", "tech", "store", "page",
-    "ai", "io", "me", "tv", "cc", "ly", "sh", "co",
 })
 NETWORK_CALLEE_NAMES = frozenset({
     "connect", "connect_ex", "create_connection", "getaddrinfo", "gethostbyname",
@@ -76,10 +87,10 @@ def non_host_category(node, parents, module_roots, is_network_call):
     if tail in {"test", "example", "invalid", "localhost"}:
         return None
     category = None
-    if tail in NON_HOST_SUFFIXES:
+    if tail in NON_HOST_SUFFIXES and tail not in IANA_TLDS:
         category = "file suffix"
     elif (len(labels) >= 2 and all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label) for label in labels)
-          and len(tail) >= 3 and tail not in PUBLIC_TLD_GUARD):
+          and len(tail) >= 3 and tail not in IANA_TLDS):
         if labels[0] in sys.stdlib_module_names or labels[0] == "builtins" or labels[0] in module_roots:
             category = "module path"
         elif any(re.search(r"[a-z][A-Z]", label) for label in labels):

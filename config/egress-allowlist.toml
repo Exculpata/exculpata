@@ -484,6 +484,12 @@ digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
 detail = "0.0.0.0"
 
 [[source]]
+path = "services/transcription/src/transcription_v2/batch_exports.py"
+kind = "host"
+digest = "0258bb0baa6b83524bbae1eb4fff9acf776ff0809d26a6764d39941829f249ef"
+detail = "transcriptions.zip"
+
+[[source]]
 path = "services/transcription/src/transcription_v2/exporters.py"
 kind = "host"
 digest = "b159efb69dd7e41ac380559eea1ea39d0baa07e690034d653e13f37ecbc33213"
@@ -650,6 +656,18 @@ path = "src/case_intelligence/assertion_routes.py"
 kind = "host"
 digest = "5269fb10ee99788a25d41bdd337e68a0250798ef91c5d7cd27caa7e236919bd2"
 detail = "assertion.export"
+
+[[source]]
+path = "src/case_intelligence/case_lifecycle_support.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
+
+[[source]]
+path = "src/case_intelligence/case_lifecycle_support.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
 
 [[source]]
 path = "src/case_intelligence/docx_extract_helper.py"
@@ -884,6 +902,12 @@ path = "src/case_intelligence/malware_scan.py"
 kind = "client"
 digest = "d3b16410bac504734fdef1c713bc47be445028402550cf1b157b4c397b4b62b5"
 detail = "socket.timeout"
+
+[[source]]
+path = "src/case_intelligence/matter_archive.py"
+kind = "host"
+digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
+detail = "preservation.zip"
 
 [[source]]
 path = "src/case_intelligence/media_evidence.py"
@@ -1124,6 +1148,12 @@ path = "src/case_intelligence/work_product_exports.py"
 kind = "host"
 digest = "00dc92fe497951013ce26ed2761392ebff1f9fcb4f995aba9fadd086b3be2f05"
 detail = "www.w3.org"
+
+[[source]]
+path = "src/case_intelligence/work_product_exports.py"
+kind = "host"
+digest = "7a479d15942f89e508521cb720cc66316b05d2e5e6ebaaa78b4cdd465e40f385"
+detail = "matter-report.md"
 
 [[source]]
 path = "src/case_intelligence/work_product_exports.py"
@@ -2159,6 +2189,12 @@ detail = "socket.socket"
 [[source]]
 path = "scripts/browser-accept-loose-file-preflight.py"
 kind = "host"
+digest = "9337d101921a6daf40227049618281890a459d92cd0f3e392c50658b16b9710d"
+detail = "messages.zip"
+
+[[source]]
+path = "scripts/browser-accept-loose-file-preflight.py"
+kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -2179,6 +2215,12 @@ path = "scripts/browser-accept-matter-context.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
 detail = "network import"
+
+[[source]]
+path = "scripts/browser-accept-matter-context.py"
+kind = "host"
+digest = "cf254e772e45a5c9c477102dd40aa8d5acbc9109f517a740ff53da5f172c76ab"
+detail = "browser-accept-matter-knowledge.py"
 
 [[source]]
 path = "scripts/browser-accept-matter-context.py"
@@ -2621,6 +2663,12 @@ detail = "socket.socket"
 [[source]]
 path = "scripts/browser-accept-workflow-handoff.py"
 kind = "host"
+digest = "31d270f09c8a2af3329c3c017acce6d8459201c80898937078b46f69f3f157f6"
+detail = "subprocess.run"
+
+[[source]]
+path = "scripts/browser-accept-workflow-handoff.py"
+kind = "host"
 digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
 
@@ -2737,6 +2785,36 @@ path = "scripts/browser-accept-zoom.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/check-publication-candidate.py"
+kind = "host"
+digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
+detail = "pre-push-publication.py"
+
+[[source]]
+path = "scripts/classify-quality-change.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"
+
+[[source]]
+path = "scripts/classify-quality-change.py"
+kind = "host"
+digest = "eca12c0a30e25b4b46522ebf89465a03ba72a03f540796c979137931d8f92055"
+detail = "contributing.md"
+
+[[source]]
+path = "scripts/classify-quality-change.py"
+kind = "host"
+digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
+detail = "changelog.md"
+
+[[source]]
+path = "scripts/classify-quality-change.py"
+kind = "host"
+digest = "f6ed156e4bf5c791680662464b94ea5d753f219ee816b385f67870e2c0d7d4c7"
+detail = "security.md"
 
 [[source]]
 path = "scripts/demo.py"
@@ -2859,6 +2937,24 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
+path = "scripts/doc_identifier_check.py"
+kind = "host"
+digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
+detail = "branding.md"
+
+[[source]]
+path = "scripts/doc_identifier_check.py"
+kind = "host"
+digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
+detail = "branding.md"
+
+[[source]]
+path = "scripts/doc_identifier_check.py"
+kind = "host"
+digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
+detail = "changelog.md"
+
+[[source]]
 path = "scripts/evaluate-claims.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
@@ -2945,6 +3041,36 @@ detail = "network import"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
+digest = "a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9"
+detail = "agents.md"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
+detail = "changelog.md"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "eca12c0a30e25b4b46522ebf89465a03ba72a03f540796c979137931d8f92055"
+detail = "contributing.md"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "f6ed156e4bf5c791680662464b94ea5d753f219ee816b385f67870e2c0d7d4c7"
+detail = "security.md"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
 digest = "8f0178ee6570e427a34e4921e835dc36b5cae9c15c55ffbd3dd95dd7ad44e7a0"
 detail = "generator:8000"
 
@@ -2953,6 +3079,12 @@ path = "scripts/exculpata_install.py"
 kind = "client"
 digest = "97dff362590a9e88e963bd2d76e92d36f125fa3b8fca8eabea41ff0027509cad"
 detail = "http.client.HTTPSConnection"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "845e50f00676652a2255ba859cd94f616285ab310b0f4cb0c86915e3479af1e1"
+detail = "stage-models.py"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -3099,10 +3231,40 @@ digest = "d460260804767fa94d8e98a9f5bd8a0fef6f83120c372070d127415d350f54ff"
 detail = "security.ubuntu.com"
 
 [[source]]
+path = "scripts/install-publication-hook.py"
+kind = "host"
+digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
+detail = "pre-push-publication.py"
+
+[[source]]
+path = "scripts/install-publication-hook.py"
+kind = "host"
+digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
+detail = "pre-push-publication.py"
+
+[[source]]
+path = "scripts/install-publication-hook.py"
+kind = "host"
+digest = "a8a48cdb2b34c5d38409448d389617da80e84ed0c27790e7a40cf4f6aae05dc2"
+detail = "publication-check.py"
+
+[[source]]
+path = "scripts/legacy_name_check.py"
+kind = "host"
+digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
+detail = "changelog.md"
+
+[[source]]
 path = "scripts/network-contract.py"
 kind = "host"
 digest = "df4f2e6c41d3cf5d13690df03d7b19c1bd96d30c4da3f45796057c3f76ca7da7"
 detail = "authlib.integrations"
+
+[[source]]
+path = "scripts/pre-push-publication.py"
+kind = "host"
+digest = "a8a48cdb2b34c5d38409448d389617da80e84ed0c27790e7a40cf4f6aae05dc2"
+detail = "publication-check.py"
 
 [[source]]
 path = "scripts/publication-check.py"
@@ -3147,6 +3309,18 @@ digest = "ce60c1041aa07a78eee28783a4e443ed01c5648fcc8704a623f2f7c117b3289d"
 detail = "users.noreply.github.com"
 
 [[source]]
+path = "scripts/publication-check.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"
+
+[[source]]
+path = "scripts/publication-check.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"
+
+[[source]]
 path = "scripts/qa-people-browser.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3223,6 +3397,114 @@ path = "scripts/run-browser-acceptance.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
 detail = "network import"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "d911440a278a550a05adb4af6b07edf4cf9b5129de3cb91149578e9db611cffd"
+detail = "browser-accept-intake-receipts.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "3ebbc6dd107b4d84a13fa3813d8be73469ce9c15ab10fadffb9454df300860c6"
+detail = "browser-accept-dusk.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "123e2934c295b3299349bdee98861823b21999364d31d9820b8660a81542028e"
+detail = "browser-accept-reports-bundle.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "5b68f1df595beda5072cf3698b77b22bec77e83f79c50795a970aa8a3fe6882d"
+detail = "browser-accept-workspace-layout.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "7ed5a610c57828ed16c75a55d5bfddb5058a7f2d572257626cc27892c99f7896"
+detail = "browser-accept-activity.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "b5596a9826ef6106ed7301a463fb458c5e4ba6e28d87e9d4bf1b966299d52fea"
+detail = "browser-accept-zoom.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "1e2eb0ce7d259f661c9f05a90d838549a3807b813fadee6c72f7e4c305247fe2"
+detail = "browser-accept-account-controls.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "cf254e772e45a5c9c477102dd40aa8d5acbc9109f517a740ff53da5f172c76ab"
+detail = "browser-accept-matter-knowledge.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "9a508fc583c11dee80d6fad32580407444e7e1038e196eacb5975435da639e27"
+detail = "browser-accept-matter-context.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "68abf4919373301cedd9c20b4e4d112645c099f7cdfd522a56d95908d0749c4a"
+detail = "browser-accept-cited-context.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "38a9260cc613db3f308096085e4da8b7e86fb8c50396a6ff0770599c7c4e43bd"
+detail = "browser-accept-assertions.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "69edfec01c71b6e6556932d89e8bffdc9ce84a448ff16036dc01b41b92c16a31"
+detail = "browser-accept-assistant-dock.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "1fd3339df960df9ff92ea99ca6e82f8f639b562857077dc8104c0b4642fb6585"
+detail = "browser-accept-one-box.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "a1c037954e248227a15ed79751b5ef8fac0b9c9922a87e2c5beed551b9973c63"
+detail = "browser-accept-briefing.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "f574cb02f0363e37def054db251ca56647651acbf02aaf32d1f1d9bb9f4ed267"
+detail = "browser-accept-matter-purpose.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "4a7e3fdbb74f5bdc5161413cd7eb8648779f51b87039a3b5be5011b722925b7b"
+detail = "browser-accept-ask-heading.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "efd59cb4b14e8e8cefaa531a5282084e5ee4d24479d62274b582f51304e721b7"
+detail = "browser-accept-source-roles.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "66c619a8cf6393002081645a27e53cd7d32297248e9724edf062e772456136a2"
+detail = "browser-accept-timeline-draft.py"
 
 [[source]]
 path = "scripts/run-browser-acceptance.py"
@@ -3259,6 +3541,12 @@ path = "scripts/test-egress-smoke.py"
 kind = "host"
 digest = "18aedd26acf92baed120db3fc1497bdbc1951ac87f9f387a6e42c4a2d6545016"
 detail = "issuer.example.test:8443"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "253202dc76743f2c5b6d76891a9502e89764ccc75705783990f9cc7ec3e71d50"
+detail = "probe.py"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
@@ -3314,6 +3602,18 @@ kind = "host"
 digest = "0f0ebaa65f822c1fa3d73c7a648dc0cb3b1861eb6baf147950f2ae7941fd7026"
 detail = "x.retrieval"
 
+[[source]]
+path = "scripts/vendor-idna.py"
+kind = "host"
+digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
+detail = "license.md"
+
+[[source]]
+path = "scripts/vendor-idna.py"
+kind = "host"
+digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
+detail = "license.md"
+
 # Merged browser diagnostics: exact filenames and Python module-name literals.
 
 [[source]]
@@ -3357,3 +3657,15 @@ path = "scripts/browser_navigation_lint.py"
 kind = "host"
 digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
 detail = "selenium.webdriver."
+
+[[source]]
+path = "src/case_intelligence/_idna/__init__.py"
+kind = "host"
+digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
+detail = "license.md"
+
+[[source]]
+path = "src/case_intelligence/_idna/__init__.py"
+kind = "host"
+digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
+detail = "readme.md"

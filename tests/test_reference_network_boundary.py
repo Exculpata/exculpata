@@ -1,6 +1,7 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
 from collections import Counter
+import hashlib
 import importlib.util
 import json
 import re
@@ -115,7 +116,7 @@ def test_network_contract_current_tree():
 
 
 @pytest.mark.parametrize("value", [
-    "os.path.join", "json.dumps", "recordbench.env", "exculpata-backup.sh",
+    "os.path.join", "json.dumps", "recordbench.env",
     "synthetic-figure.png", "synthetic-report.json", "pathlib.path", "builtins.str",
     "selenium.webdriver.support.widgets", "Emulation.setDeviceMetricsOverride",
     "synthetic-report.JSON",
@@ -135,7 +136,7 @@ def test_contract_ignores_plain_non_host_literals(contract_tree, value):
         "192.0.2.10", "198.51.100.7", "203.0.113.5", "2001:db8::5",
         "synthetic.example.test", "os.test", "os.example", "os.invalid", "os.localhost",
         "camelCase.test", "os.com", "os.co", "os.io", "synthetic-module.attribute",
-        "selenium.webdriver.support.ui",
+        "selenium.webdriver.support.ui", "exculpata-backup.sh",
     )],
     (repr("http://x.sh"), "x.sh"), (repr("https://x.co"), "x.co"),
     *[(f"httpx.get({host!r})", host) for host in ("x.sh", "notes.md", "x.co")],
@@ -168,6 +169,67 @@ def test_contract_identifier_becomes_host_when_passed_to_network_call(contract_t
     # fixture-write: Mutate the identifier into a synthetic network destination.
     path.write_text("import httpx\nhttpx.get('os.path.join')\n")
     assert "unreviewed outbound host: os.path.join" in run_contract(contract_tree).stderr
+
+
+@pytest.mark.parametrize("host", ["example.sh", "example.md", "example.py", "example.zip"])
+def test_contract_rejects_plain_file_suffix_tld_hosts(contract_tree, host):
+    # fixture-write: Seed a synthetic host whose TLD also names a file suffix.
+    (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr
+
+
+@pytest.mark.parametrize("host", ["os.run", "pathlib.link", "exampleApi.network"])
+def test_contract_rejects_plain_identifier_tld_hosts(contract_tree, host):
+    # fixture-write: Seed a synthetic host shaped like a module or camelCase identifier.
+    (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host.lower()}" in result.stderr
+
+
+@pytest.mark.parametrize("source,host,line", [
+    ("PREFIX = 'https://'\nTARGET = PREFIX + 'example.sh'\n", "example.sh", 2),
+    ("HOST = 'example.zip'\nURL = f'https://{HOST}/status'\n", "example.zip", 1),
+    ("SCHEME = 'https://'\nURL = '{}{}'.format(SCHEME, 'example.py')\n", "example.py", 2),
+])
+def test_contract_rejects_tld_hosts_in_split_urls(contract_tree, source, host, line):
+    # fixture-write: Seed a synthetic URL with its scheme in a separate statement.
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr
+
+
+def test_contract_iana_tlds_are_pinned():
+    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    data = (ROOT / "config/iana-tlds-alpha-by-domain.txt").read_bytes()
+    assert hashlib.sha256(data).hexdigest() == "92e7f493aa6d9e24f33e3ef452ef2aee1562e9c890851b88ec797f022ce641c2"
+    assert isinstance(checker.IANA_TLDS, frozenset)
+    assert len(checker.IANA_TLDS) == 1437
+    assert {"md", "py", "sh", "zip", "run", "link", "network", "co", "int"} <= checker.IANA_TLDS
+    assert not {"test", "example", "invalid", "localhost"} & checker.IANA_TLDS
+
+
+@pytest.mark.parametrize("contents", [None, "", "# Synthetic empty TLD list\n\n"])
+def test_contract_rejects_missing_or_empty_iana_tlds(monkeypatch, contents):
+    read_text = Path.read_text
+
+    def read_tlds(path, *args, **kwargs):
+        if path == ROOT / "config/iana-tlds-alpha-by-domain.txt":
+            if contents is None:
+                raise FileNotFoundError(path)
+            return contents
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_tlds)
+    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
+    checker = importlib.util.module_from_spec(spec)
+    with pytest.raises(ValueError, match="IANA TLD list"):
+        spec.loader.exec_module(checker)
 
 
 def test_contract_host_allowances_match_pruned_inventory(monkeypatch):
@@ -205,7 +267,7 @@ def test_contract_host_allowances_match_pruned_inventory(monkeypatch):
     assert removed
     reserved = {"test", "example", "invalid", "localhost"}
     assert not reserved & checker.NON_HOST_SUFFIXES
-    assert not reserved & checker.PUBLIC_TLD_GUARD
+    assert not reserved & checker.IANA_TLDS
 
 
 def test_network_contract_rejects_loosening(contract_tree):
