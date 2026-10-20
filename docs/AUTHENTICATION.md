@@ -141,6 +141,13 @@ still match. Admission means the entry passed the device limits on a later
 request, even if that request fails its password check. Grace retries count
 against the presented entry's own failed and pending checks, including its
 persistent lifetime limit. They do not refresh its rotation deadline.
+The registry persists the highest observed wall-clock time. A reading below
+that time closes existing rotation grace windows. Each rotation also records
+monotonic time and the Linux boot identifier, so elapsed grace stays closed
+across processes even without intervening requests or after a wall-clock
+adjustment. Missing rotation timing or a different boot identifier closes grace.
+If the boot identifier is unavailable, a process-local identifier makes reopened
+registries fail closed for grace. Active successors remain usable.
 
 A successful grace retry issues another active, never-admitted successor in the
 same chain. Successors from the same predecessor are siblings. Issuing one does
@@ -164,6 +171,18 @@ Old registries receive admission, successor-use and nullable predecessor digest
 columns automatically. Rows without a predecessor digest keep the old behavior;
 pre-upgrade rotated entries retain replay behavior because their successor-use
 history is unknown. For rotated rows, `last_used` records the rotation time.
+Pending counts, reservation deadlines and generation numbers are also added
+automatically. Admission reserves a lifetime-budget slot in the same SQLite
+transaction that checks failures plus pending attempts, across all processes.
+Completion releases the slot and records a failure only for a failed password
+check. Reservations expire 15 minutes after the first pending attempt in a
+batch. Expiry conservatively counts unfinished attempts as failures and advances
+the generation, so a crashed process cannot retain slots forever and a late
+completion cannot count them twice. Opening another registry owner does not
+reset live reservations. The existing in-process window still applies.
+Registry lookup errors log a warning without cookie values and use the
+untrusted lane. Password verification and its untrusted limits still apply;
+a failed admission commit remains an unavailable sign-in.
 
 Memory and persistent storage are bounded:
 
@@ -182,9 +201,12 @@ Memory and persistent storage are bounded:
   90 days expire. Pruning removes the oldest rotated/revoked rows before active
   rows when making room. Replay detection covers retained rows. Device windows
   retain at most 10 failed or pending checks per retained device. Each username
-  digest has at most 20 active entries, counting each never-admitted sibling.
-  Issuance first revokes that username's least recently used active chains to
-  make room, including their rotated rows, before global pruning. If this retires
+  digest has at most 20 active chains. Before insertion, issuance keeps the
+  newest 19 chains, ranking each by its newest active row's last-use time,
+  creation time and insertion order. It revokes only excess chains, including
+  their rotated rows, before global pruning. An older sibling cannot retire a
+  chain whose newest active sibling is retained. At most five active siblings
+  per chain gives a bound of 100 active entries per username. If this retires
   the issuing chain, password sign-in succeeds without a new device cookie.
   This prevents one username accumulating active entries at the expense of
   other users.

@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
 import hmac
+import logging
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,7 @@ import secrets
 import sqlite3
 import stat
 from threading import RLock
+from time import monotonic
 from typing import Callable, Iterator
 
 from .local_login_limiter import LoginThrottled, _Window
@@ -19,6 +21,11 @@ from .local_login_limiter import LoginThrottled, _Window
 DEVICE_COOKIE = "__Host-exculpata_device"
 DEVICE_MAX_AGE = 90 * 24 * 60 * 60
 _TOKEN = re.compile(r"v1\.([0-9a-f]{32})\.([0-9a-f]{64})\Z")
+LOGGER = logging.getLogger(__name__)
+
+
+class DeviceRegistryUnavailable(RuntimeError):
+    pass
 
 
 def _private_file(path: Path) -> None:
@@ -79,6 +86,7 @@ class LocalLoginDevices:
     per_user_active_limit = 20
     per_parent_unadmitted_limit = 5
     rotation_grace_seconds = 60
+    pending_timeout_seconds = 900
 
     def __init__(self, runtime_dir: Path):
         runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -92,6 +100,11 @@ class LocalLoginDevices:
         self.path = runtime_dir / "login-devices.sqlite3"
         _create_private_file(self.path)
         self._lock = RLock()
+        self._clock_origin: tuple[float, float] | None = None
+        try:
+            self._clock_epoch = Path("/proc/sys/kernel/random/boot_id").read_text().strip() or secrets.token_hex(32)
+        except OSError:
+            self._clock_epoch = secrets.token_hex(32)
         self.windows: dict[str, _Window] = {}
         with self._transaction() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS devices (
@@ -110,7 +123,18 @@ class LocalLoginDevices:
                     db.execute(f"ALTER TABLE devices ADD COLUMN {name} INTEGER NOT NULL DEFAULT 1")
             if "parent_digest" not in columns:
                 db.execute("ALTER TABLE devices ADD COLUMN parent_digest TEXT")
+            for name, definition in (
+                ("pending", "INTEGER NOT NULL DEFAULT 0"),
+                ("pending_until", "REAL NOT NULL DEFAULT 0"),
+                ("pending_generation", "INTEGER NOT NULL DEFAULT 0"),
+                ("rotation_tick", "REAL"),
+                ("rotation_epoch", "TEXT"),
+            ):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE devices ADD COLUMN {name} {definition}")
             db.execute("CREATE INDEX IF NOT EXISTS devices_chain ON devices(chain_id)")
+            db.execute("CREATE TABLE IF NOT EXISTS device_clock "
+                       "(singleton INTEGER PRIMARY KEY CHECK(singleton = 1), high_water REAL NOT NULL)")
 
     @contextmanager
     def _transaction(self):
@@ -129,7 +153,7 @@ class LocalLoginDevices:
         except sqlite3.Error:
             if db is not None:
                 db.rollback()
-            raise RuntimeError("identity device registry is unavailable") from None
+            raise DeviceRegistryUnavailable("identity device registry is unavailable") from None
         except BaseException:
             if db is not None:
                 db.rollback()
@@ -143,6 +167,28 @@ class LocalLoginDevices:
 
     def username_digest(self, username: str) -> str:
         return self._digest("device-username", username.strip().casefold())
+
+    def _maintain(self, db, now):
+        timestamp, tick = now.timestamp(), monotonic()
+        if self._clock_origin is None:
+            self._clock_origin = (timestamp, tick)
+        origin, started = self._clock_origin
+        previous = db.execute("SELECT high_water FROM device_clock WHERE singleton = 1").fetchone()
+        high_water = max(timestamp, previous["high_water"] if previous else timestamp)
+        db.execute("INSERT INTO device_clock VALUES (1, ?) ON CONFLICT(singleton) "
+                   "DO UPDATE SET high_water = excluded.high_water", (high_water,))
+        db.execute("UPDATE devices SET successor_used = 1 WHERE state = 'rotated' "
+                   "AND (? < ? OR last_used + ? < ? OR rotation_tick IS NULL "
+                   "OR rotation_epoch IS NULL OR rotation_epoch != ? "
+                   "OR rotation_tick > ? OR rotation_tick + ? < ?)",
+                   (timestamp, high_water, self.rotation_grace_seconds, high_water,
+                    self._clock_epoch, tick, self.rotation_grace_seconds, tick))
+        db.execute("UPDATE devices SET failures = failures + pending, pending = 0, "
+                   "pending_generation = pending_generation + 1 "
+                   "WHERE pending > 0 AND pending_until <= ?",
+                   (max(high_water, origin + tick - started),))
+        db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id IN "
+                   "(SELECT chain_id FROM devices WHERE failures >= ?)", (self.lifetime_failure_limit,))
 
     @staticmethod
     def _entries(cookie: str | None) -> list[str]:
@@ -202,7 +248,7 @@ class LocalLoginDevices:
         return result
 
     def _prune(self, db, now: datetime, *, make_room: bool = False) -> None:
-        rows = db.execute("SELECT device_digest, last_used, state FROM devices "
+        rows = db.execute("SELECT device_digest, last_used, state, pending FROM devices "
                           "ORDER BY (state = 'active'), last_used, created").fetchall()
         remaining = len(rows)
         present = {row["device_digest"] for row in rows}
@@ -211,7 +257,7 @@ class LocalLoginDevices:
                 del self.windows[key]
         for row in rows:
             key = row["device_digest"]
-            if self.windows.get(key, _Window()).pending:
+            if row["pending"] or self.windows.get(key, _Window()).pending:
                 continue
             if (row["last_used"] <= now.timestamp() - DEVICE_MAX_AGE
                     or remaining > self.capacity - int(make_room)):
@@ -242,9 +288,11 @@ class LocalLoginDevices:
                 return
             db.execute("UPDATE devices SET state = 'rotated', failures = 0, successor_used = 0, "
                        "admitted = CASE WHEN device_digest = ? THEN 1 ELSE admitted END, "
+                       "rotation_tick = CASE WHEN state = 'active' THEN ? ELSE rotation_tick END, "
+                       "rotation_epoch = CASE WHEN state = 'active' THEN ? ELSE rotation_epoch END, "
                        "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
                        "WHERE device_digest IN (?, ?)",
-                       (attempt.predecessor, now.timestamp(), attempt.predecessor,
+                       (attempt.predecessor, monotonic(), self._clock_epoch, now.timestamp(), attempt.predecessor,
                         target["device_digest"] if target["parent_digest"] is None else attempt.predecessor))
             if row["parent_digest"] is not None:
                 db.execute("DELETE FROM devices WHERE parent_digest = ? AND state = 'active' "
@@ -254,8 +302,10 @@ class LocalLoginDevices:
                        "ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)",
                        (attempt.predecessor, self.per_parent_unadmitted_limit - 1))
         excess = db.execute(
-            "SELECT chain_id FROM devices WHERE username_digest = ? AND state = 'active' "
-            "ORDER BY last_used DESC, created DESC, rowid DESC LIMIT -1 OFFSET ?",
+            "SELECT chain_id FROM (SELECT chain_id, last_used, created, rowid AS ordinal, "
+            "ROW_NUMBER() OVER (PARTITION BY chain_id ORDER BY last_used DESC, created DESC, rowid DESC) "
+            "AS position FROM devices WHERE username_digest = ? AND state = 'active') "
+            "WHERE position = 1 ORDER BY last_used DESC, created DESC, ordinal DESC LIMIT -1 OFFSET ?",
             (username, self.per_user_active_limit - 1)).fetchall()
         for row in excess:
             db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
@@ -273,39 +323,61 @@ class LocalLoginDevices:
         signature = self._digest("device-cookie", device_id + "|" + username)
         attempt.cookie = "~".join([f"v1.{device_id}.{signature}", *retained[:4]])
 
+    def _admit(self, cookie, username, revision, clock):
+        result = DeviceAttempt()
+        window = None
+        generation = None
+        if self._entries(cookie):
+            admission_completed = False
+            try:
+                with self._lock:
+                    with self._transaction() as db:
+                        now = clock()
+                        self._maintain(db, now)
+                        result = self._select(db, cookie, username, revision, now)
+                        if result.device_digest is not None:
+                            if result.device_digest not in self.windows and len(self.windows) >= self.capacity:
+                                self._prune(db, now)
+                                if len(self.windows) >= self.capacity:
+                                    raise LoginThrottled(900, now)
+                            window = self.windows.setdefault(result.device_digest, _Window())
+                            window.prune(now)
+                            row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
+                                             (result.device_digest,)).fetchone()
+                            if (window.count >= self.failure_limit
+                                    or row["failures"] + row["pending"] >= self.lifetime_failure_limit):
+                                delay = (window.retry_seconds(now, self.failure_limit)
+                                         if window.count >= self.failure_limit else 900)
+                                raise LoginThrottled(delay, now)
+                            db.execute("UPDATE devices SET successor_used = 1 WHERE chain_id = ? "
+                                       "AND state = 'rotated' AND admitted = 1 AND EXISTS "
+                                       "(SELECT 1 FROM devices WHERE device_digest = ? AND state = 'active')",
+                                       (result.chain_id, result.device_digest))
+                            generation = row["pending_generation"]
+                            db.execute("UPDATE devices SET admitted = 1, pending = pending + 1, "
+                                       "pending_until = CASE WHEN pending = 0 THEN ? ELSE pending_until END, "
+                                       "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
+                                       "WHERE device_digest = ?",
+                                       (now.timestamp() + self.pending_timeout_seconds,
+                                        now.timestamp(), result.device_digest))
+                        admission_completed = True
+                    if window is not None:
+                        window.pending += 1
+            except DeviceRegistryUnavailable:
+                if admission_completed:
+                    raise RuntimeError("identity device admission could not commit") from None
+                raise
+        return result, window, generation
+
     @contextmanager
     def attempt(self, cookie: str | None, username: str, revision: tuple[str, str] | None,
                 clock: Callable[[], datetime]) -> Iterator[DeviceAttempt]:
-        result = DeviceAttempt()
-        window = None
-        if self._entries(cookie):
-            with self._lock:
-                with self._transaction() as db:
-                    now = clock()
-                    result = self._select(db, cookie, username, revision, now)
-                    if result.device_digest is not None:
-                        if result.device_digest not in self.windows and len(self.windows) >= self.capacity:
-                            self._prune(db, now)
-                            if len(self.windows) >= self.capacity:
-                                raise LoginThrottled(900, now)
-                        window = self.windows.setdefault(result.device_digest, _Window())
-                        window.prune(now)
-                        row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
-                                         (result.device_digest,)).fetchone()
-                        limit = min(self.failure_limit, self.lifetime_failure_limit - row["failures"])
-                        if window.count >= self.failure_limit or window.pending >= limit:
-                            delay = (window.retry_seconds(now, self.failure_limit)
-                                     if window.count >= self.failure_limit else 900)
-                            raise LoginThrottled(delay, now)
-                        db.execute("UPDATE devices SET successor_used = 1 WHERE chain_id = ? "
-                                   "AND state = 'rotated' AND admitted = 1 AND EXISTS "
-                                   "(SELECT 1 FROM devices WHERE device_digest = ? AND state = 'active')",
-                                   (result.chain_id, result.device_digest))
-                        db.execute("UPDATE devices SET admitted = 1, "
-                                   "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
-                                   "WHERE device_digest = ?", (now.timestamp(), result.device_digest))
-                if window is not None:
-                    window.pending += 1
+        try:
+            result, window, generation = self._admit(cookie, username, revision, clock)
+        except DeviceRegistryUnavailable:
+            LOGGER.warning("Local login device registry is unavailable; using the untrusted lane.")
+            result, window, generation = DeviceAttempt(), None, None
+            cookie = None
         try:
             yield result
         finally:
@@ -321,11 +393,12 @@ class LocalLoginDevices:
                 if result.device_digest is not None or result.outcome == "success":
                     try:
                         with self._transaction() as db:
+                            self._maintain(db, now)
+                            if result.device_digest is not None:
+                                db.execute("UPDATE devices SET pending = pending - 1, failures = failures + ? "
+                                           "WHERE device_digest = ? AND pending_generation = ? AND pending > 0",
+                                           (int(result.outcome == "failure"), result.device_digest, generation))
                             if result.device_digest is not None and result.outcome == "failure":
-                                db.execute("UPDATE devices SET failures = failures + 1, "
-                                           "state = CASE WHEN failures + 1 >= ? THEN 'revoked' ELSE state END "
-                                           "WHERE device_digest = ?",
-                                           (self.lifetime_failure_limit, result.device_digest))
                                 db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ? "
                                            "AND EXISTS (SELECT 1 FROM devices WHERE device_digest = ? "
                                            "AND failures >= ?)",

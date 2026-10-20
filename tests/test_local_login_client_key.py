@@ -123,6 +123,12 @@ def test_unit_trusted_header_and_ipv6_canonicalization():
     assert _key(peer=("192.0.2.9", 43000)) == "192.0.2.9"
 
 
+def test_ipv4_mapped_trusted_peer_uses_forwarded_client():
+    assert _key(peer=("::ffff:192.0.2.10", 41000), values=("203.0.113.9",)) == "203.0.113.9"
+    request = _request(values=("203.0.113.9",))
+    assert workbench._local_login_client_key(request, ("::ffff:192.0.2.10",)) == "203.0.113.9"
+
+
 @pytest.mark.parametrize("installed", [False, True])
 def test_unit_compose_gateway_resolution(monkeypatch, installed):
     monkeypatch.setenv("EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY", "1" if installed else "0")

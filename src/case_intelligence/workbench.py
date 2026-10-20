@@ -6376,7 +6376,9 @@ def _local_login_client_key(
                 _local_login_trust_warning("resolve", "Local login gateway resolution failed; using the direct peer.")
     try:
         trusted = {ipaddress.ip_address(value) for value in trusted_gateway_peers}
-        is_trusted = ipaddress.ip_address(peer) in trusted
+        trusted = {getattr(address, "ipv4_mapped", None) or address for address in trusted}
+        address = ipaddress.ip_address(peer)
+        is_trusted = (getattr(address, "ipv4_mapped", None) or address) in trusted
     except ValueError:
         is_trusted = False
     if not is_trusted:
