@@ -56,6 +56,10 @@ Chrome. Optional integration tests can skip when their prerequisites are absent.
 application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
+TestClient modules get a lazy, bounded socketpair wakeup and AnyIO portal probe.
+If a primitive fails, route tests skip with the cause and a terminal summary;
+run those tests in CI or an unrestricted shell.
+
 It is safe to rerun bootstrap with the same interpreter after dependency metadata
 changes. An existing incompatible or broken environment is left untouched:
 choose a new `--venv` directory. The script never deletes an environment or
