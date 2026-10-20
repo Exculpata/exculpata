@@ -484,66 +484,6 @@ digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
 detail = "0.0.0.0"
 
 [[source]]
-path = "services/transcription/src/transcription_v2/api.py"
-kind = "host"
-digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
-detail = "ui-summary.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/api.py"
-kind = "host"
-digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
-detail = "ui-summary.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/api.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/api.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/asr_models.py"
-kind = "host"
-digest = "587cb980af76fdc7e52369fd0b9d926dff266976b6f8ac631e358fecc49ff8cf"
-detail = "config.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/asr_models.py"
-kind = "host"
-digest = "15d442008fc30bee1d28a81d2d926f17005fe428e465c2062627366bf2a68019"
-detail = "model.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/asr_models.py"
-kind = "host"
-digest = "224931eb13f8d2471acd38a4a0d7417d20e8ea340160a467ceaa359d25197b87"
-detail = "tokenizer.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/asr_models.py"
-kind = "host"
-digest = "997adb8193fc386bcb199ac522863a80691deafd9000f3ddfeaf2f69c52a2fc7"
-detail = "vocabulary.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/asr_models.py"
-kind = "host"
-digest = "d3d22bc7c4c52ddcbfad29e1ed1ec423541ee12f9f87e65ecf3d73ea92578901"
-detail = "vocabulary.txt"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/batch_exports.py"
-kind = "host"
-digest = "0258bb0baa6b83524bbae1eb4fff9acf776ff0809d26a6764d39941829f249ef"
-detail = "transcriptions.zip"
-
-[[source]]
 path = "services/transcription/src/transcription_v2/exporters.py"
 kind = "host"
 digest = "b159efb69dd7e41ac380559eea1ea39d0baa07e690034d653e13f37ecbc33213"
@@ -574,18 +514,6 @@ digest = "f4142957241f3951bd3b4f7c9e5335b8f8ebb4cba3d4b6d7d327fff5dead1575"
 detail = "purl.org"
 
 [[source]]
-path = "services/transcription/src/transcription_v2/model_manifest.py"
-kind = "host"
-digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
-detail = "approved-model-manifest.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/nemotron.py"
-kind = "host"
-digest = "587cb980af76fdc7e52369fd0b9d926dff266976b6f8ac631e358fecc49ff8cf"
-detail = "config.json"
-
-[[source]]
 path = "services/transcription/src/transcription_v2/nemotron.py"
 kind = "host"
 digest = "9d75c1098fc54a1f7bd270f148884f599765d894639c9c4ee891396968c60df2"
@@ -596,12 +524,6 @@ path = "services/transcription/src/transcription_v2/pipeline.py"
 kind = "host"
 digest = "eed80851b3bcbce25e592fa94b2d4fc4ddbe282881c8adeb0453aad81fdf32c5"
 detail = "pyannote.audio"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/pipeline.py"
-kind = "host"
-digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
-detail = "config.yaml"
 
 [[source]]
 path = "services/transcription/src/transcription_v2/pipeline.py"
@@ -694,18 +616,6 @@ digest = "453cb49f45b2d3e3003607d9987cfb5ca578753f989a8319ebc27ad4ecfad156"
 detail = "huggingface.co"
 
 [[source]]
-path = "services/transcription/src/transcription_v2/resources.py"
-kind = "host"
-digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
-detail = "config.yaml"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/review_exports.py"
-kind = "host"
-digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
-detail = "machine-result.json"
-
-[[source]]
 path = "services/transcription/src/transcription_v2/settings.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
@@ -730,100 +640,16 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "services/transcription/src/transcription_v2/storage.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/storage.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/storage.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/storage.py"
-kind = "host"
-digest = "57de585196dd963ab45641a89daa2312cb58dd4636948635463b5a6bdedf61c6"
-detail = "upload.bin"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/storage.py"
-kind = "host"
-digest = "c03d130eafab83fd4b56692d1d4379698070dd1b54ea6c9ca44785296e902c33"
-detail = "output.bin"
-
-[[source]]
 path = "services/transcription/src/transcription_v2/tokenizer_resources.py"
 kind = "host"
 digest = "b81ed947e69f8cfb48653aee1c52c87c8e76397a4f9cb47c794664b9cefa462b"
 detail = "collocations.tab"
 
 [[source]]
-path = "services/transcription/src/transcription_v2/worker.py"
-kind = "host"
-digest = "d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034"
-detail = "config.yaml"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/worker.py"
-kind = "host"
-digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
-detail = "machine-result.json"
-
-[[source]]
-path = "services/transcription/src/transcription_v2/worker.py"
-kind = "host"
-digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
-detail = "ui-summary.json"
-
-[[source]]
 path = "src/case_intelligence/assertion_routes.py"
 kind = "host"
 digest = "5269fb10ee99788a25d41bdd337e68a0250798ef91c5d7cd27caa7e236919bd2"
 detail = "assertion.export"
-
-[[source]]
-path = "src/case_intelligence/case_archive_delivery.py"
-kind = "host"
-digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
-detail = "http.response.start"
-
-[[source]]
-path = "src/case_intelligence/case_archive_delivery.py"
-kind = "host"
-digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
-detail = "http.response.start"
-
-[[source]]
-path = "src/case_intelligence/case_archive_delivery.py"
-kind = "host"
-digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
-detail = "http.response.body"
-
-[[source]]
-path = "src/case_intelligence/case_archive_delivery.py"
-kind = "host"
-digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
-detail = "http.response.body"
-
-[[source]]
-path = "src/case_intelligence/case_lifecycle_support.py"
-kind = "host"
-digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
-detail = "preservation.zip"
-
-[[source]]
-path = "src/case_intelligence/case_lifecycle_support.py"
-kind = "host"
-digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
-detail = "preservation.zip"
 
 [[source]]
 path = "src/case_intelligence/docx_extract_helper.py"
@@ -844,12 +670,6 @@ digest = "f8908fd8d80fc43c635e4d14ae845eecb70d97e7263caf701287ef90e890209b"
 detail = "entity.decide"
 
 [[source]]
-path = "src/case_intelligence/evaluation.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
 path = "src/case_intelligence/extended_extract.py"
 kind = "host"
 digest = "0cf6e749095460da770de883ad173289adbd7c0dab62bf0fe319cbe036100517"
@@ -866,24 +686,6 @@ path = "src/case_intelligence/extended_extract.py"
 kind = "host"
 digest = "a2afda436c92578d84317fa1f1364eb8820b7e3122129d0f654e1553845316b3"
 detail = "schemas.openxmlformats.org"
-
-[[source]]
-path = "src/case_intelligence/fixture_builder.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/fixture_builder.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/fixture_builder.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
 
 [[source]]
 path = "src/case_intelligence/generation.py"
@@ -971,12 +773,6 @@ detail = "authlib.integrations.starlette_client.OAuth.register"
 
 [[source]]
 path = "src/case_intelligence/identity.py"
-kind = "host"
-digest = "d2e7153ef8d5d22621297f6842407df8b2021e2f403672b383178064d4dcdcdb"
-detail = "identity-session.key"
-
-[[source]]
-path = "src/case_intelligence/identity.py"
 kind = "client"
 digest = "33e30c24b1e81f0576167859b007760f50896c6109032a5a159f4467addf7e5c"
 detail = "authlib.integrations.base_client.errors.AuthlibBaseError"
@@ -1013,12 +809,6 @@ detail = "httpx.HTTPError"
 
 [[source]]
 path = "src/case_intelligence/identity.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "src/case_intelligence/identity.py"
 kind = "client"
 digest = "b66d442bfebc813f401710fb66aa4afdc4475852d174c189749d9f3b732d4db3"
 detail = "httpx.Timeout"
@@ -1034,18 +824,6 @@ path = "src/case_intelligence/local_account_admin.py"
 kind = "host"
 digest = "54da4751b1cad7ff800542042c0528cca2a82eb45c05262826ad9a92116acd31"
 detail = "security.csrf"
-
-[[source]]
-path = "src/case_intelligence/local_account_format.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "src/case_intelligence/local_accounts.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
 
 [[source]]
 path = "src/case_intelligence/malware_scan.py"
@@ -1108,102 +886,6 @@ digest = "d3b16410bac504734fdef1c713bc47be445028402550cf1b157b4c397b4b62b5"
 detail = "socket.timeout"
 
 [[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
-detail = "unavailable-references.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
-detail = "sources.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
-detail = "readme.txt"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
-detail = "unavailable-references.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
-detail = "sources.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "98964a21992590a87f116951331000c6e5fb82adce75264c29812a5a4c5a2431"
-detail = "preservation.zip"
-
-[[source]]
-path = "src/case_intelligence/matter_archive.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
-detail = "sources.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
-detail = "readme.txt"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d"
-detail = "sources.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
-detail = "unavailable-references.jsonl"
-
-[[source]]
-path = "src/case_intelligence/matter_archive_verifier.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/matter_context_exports.py"
-kind = "host"
-digest = "05a513df2e6db7b51f6a6f251b7c6d63b4a94a3dd2449ccdfe45295e6f62e057"
-detail = "selections.json"
-
-[[source]]
-path = "src/case_intelligence/matter_context_exports.py"
-kind = "host"
-digest = "76b3b631079abb7f6557bc4853d4618ae15846596f387854d680377f925d52c7"
-detail = "matter-purpose.json"
-
-[[source]]
 path = "src/case_intelligence/media_evidence.py"
 kind = "client"
 digest = "cfbd7ec4ab90c790a3496fb5a193e231c9da8bca6d9889b3be7473a4db02dd73"
@@ -1252,54 +934,6 @@ digest = "356b41e092ecaaba9c85e60dacd398dbad209d619a47baf6f9d3ed59eb01625c"
 detail = "admin.setup"
 
 [[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "17b14a21bdcf391aeeca1fcb1e6a38945cdf2b65aee68173d11c78ff7a4ed500"
-detail = "http.disconnect"
-
-[[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
-detail = "http.request"
-
-[[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
-detail = "http.request"
-
-[[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "9a3a53db87dd7036ad4cca9829934ec2bb1096493e6cf31b1d2aa0a3ce671245"
-detail = "http.response.start"
-
-[[source]]
-path = "src/case_intelligence/pilot_uploads.py"
-kind = "host"
-digest = "11ed1327783ec1a5fde821cae38adbb369146786f63a780dac7f591e3e2fc7ff"
-detail = "http.response.body"
-
-[[source]]
-path = "src/case_intelligence/question_draft_evaluation.py"
-kind = "host"
-digest = "76f65e507c8553d93c2dfec3417a6851f5de95206d0ff0de073ccf6de7b01c03"
-detail = "question-drafts-v1.json"
-
-[[source]]
-path = "src/case_intelligence/question_draft_evaluation.py"
-kind = "host"
-digest = "b546905e3eaa417cad3f64329ae02e69b2844d8551db177d092ef2d9a3a81276"
-detail = "models.json"
-
-[[source]]
 path = "src/case_intelligence/question_output_policy.py"
 kind = "host"
 digest = "77b21ac4bf17d68e0b9603975e6fb8c79ac6def2fc8e91949c855c4eaffe06bd"
@@ -1338,12 +972,6 @@ detail = "127.0.0.1"
 [[source]]
 path = "src/case_intelligence/retrieval_worker.py"
 kind = "host"
-digest = "3676d42cc0aaad07c56dffdd3edf395a4de8c41ddaef53ba4748c06aad3d9476"
-detail = "http.request"
-
-[[source]]
-path = "src/case_intelligence/retrieval_worker.py"
-kind = "host"
 digest = "19e36255972107d42b8cecb77ef5622e842e8a50778a6ed8dd1ce94732daca9e"
 detail = "0.0.0.0"
 
@@ -1358,42 +986,6 @@ path = "src/case_intelligence/review_bench.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
-detail = "catalog.sqlite"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "149af985ec9529e069c101109261fc6f1e9b4f86f4045847588dda1cc27020fa"
-detail = "workspace.html"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
-detail = "source.html"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
-detail = "source.html"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "c9ab3b49bebd27a9ef26622fe870838c22843bc52f1d90f46e5f5fcee631df7b"
-detail = "source.html"
-
-[[source]]
-path = "src/case_intelligence/review_bench.py"
-kind = "host"
-digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
-detail = "catalog.sqlite"
 
 [[source]]
 path = "src/case_intelligence/review_bench.py"
@@ -1468,34 +1060,10 @@ digest = "614752cbb48c443bb4d935108a71fd92fe1d748164bdc5addc4e7a3309445d25"
 detail = "urllib.request.ProxyHandler"
 
 [[source]]
-path = "src/case_intelligence/slice1_evaluation.py"
-kind = "host"
-digest = "ecc6fee74589aee3a5125df33c3fa4dec46d298e9fcbc89924b991f9e5350efd"
-detail = "catalog.sqlite"
-
-[[source]]
-path = "src/case_intelligence/slice1_evaluation.py"
-kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "src/case_intelligence/slice1_evaluation.py"
-kind = "host"
-digest = "8a486c563ed75230d3c1e191ef10782c680cd26f0b42cb347816bcf69d791644"
-detail = "renamed.txt"
-
-[[source]]
 path = "src/case_intelligence/source_find.py"
 kind = "host"
 digest = "966b007db83d9638bdbb965d91846ab210149f8c191211b4cef87fff96c27b43"
 detail = "wordprocessingml.document"
-
-[[source]]
-path = "src/case_intelligence/source_roles.py"
-kind = "host"
-digest = "a4dfe66cd98011ecf8b0d570a0afd8295ff44ef4cbca0c148949f109a2d72848"
-detail = "source-roles.json"
 
 [[source]]
 path = "src/case_intelligence/timeline_routes.py"
@@ -1560,32 +1128,8 @@ detail = "www.w3.org"
 [[source]]
 path = "src/case_intelligence/work_product_exports.py"
 kind = "host"
-digest = "7a479d15942f89e508521cb720cc66316b05d2e5e6ebaaa78b4cdd465e40f385"
-detail = "matter-report.md"
-
-[[source]]
-path = "src/case_intelligence/work_product_exports.py"
-kind = "host"
 digest = "898419abecd8f415ef5fe5d431f55f88df8c4266e8bbb8eab37722c94e1a34f7"
 detail = "matter-report.docx"
-
-[[source]]
-path = "src/case_intelligence/work_product_exports.py"
-kind = "host"
-digest = "b01eeed0ec6fc4f4799e44c7b4084e649d6eee4f1aca52ac935553ff82108398"
-detail = "readme.txt"
-
-[[source]]
-path = "src/case_intelligence/work_product_exports.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/work_product_exports.py"
-kind = "host"
-digest = "177c9d62efa3e683c87a7ef61a71befaeda60b2b98631de1fcf6ba7406b08750"
-detail = "conversations.json"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
@@ -1895,21 +1439,9 @@ detail = "127.0.0.1"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "819b0cc88dc150b8b808976a22c74d2eca2e04109c647d5d9673890f09c8b168"
-detail = "workbench.sqlite"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
 kind = "client"
 digest = "1e36c28904dbe84da1d510f84128608aa627fbb13e71fa8c23fcc446c8c4e809"
 detail = "service_endpoints.open_service_request"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "17b14a21bdcf391aeeca1fcb1e6a38945cdf2b65aee68173d11c78ff7a4ed500"
-detail = "http.disconnect"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
@@ -2140,30 +1672,6 @@ digest = "d3894428d67fd3b74047ad1a7017d9bc9fcd437fa37b59ea07e8722144d1c099"
 detail = "upload.cleanup"
 
 [[source]]
-path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "e5675b17900f8a8cd287b452ea2ff5c1f4611cbe5774affc248a752d4265bb37"
-detail = "discovery.json"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "1e8809804a14faaf3c87b477a837e3fd6c4709a1faf8e7d4aa770ae8212cdfe7"
-detail = "entity.json"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "61f70adf8afd898813bf60ed4912c452dd18e4c42b8aa52d9686ef44efeaf1a1"
-detail = "assertion.json"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
-kind = "host"
-digest = "260a43df6fb18a04734e9e0a9243f8ac97a5c1b58ed93719c7723b7fc5f15efc"
-detail = "full-text-ledger.json"
-
-[[source]]
 path = "src/case_intelligence/workspace_store.py"
 kind = "host"
 digest = "ee1832c20f2f7bd859fa4796b65f2d3a0c4f48918b7b672244c3d1aad0100571"
@@ -2187,72 +1695,6 @@ detail = "httpx.InvalidURL"
 # Exact expression/literal records; no directory or client/host wildcard.
 
 [[source]]
-path = "scripts/assertion-storage-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/assertion-storage-restore-drill.py"
-kind = "host"
-digest = "00cef86f5c6bd4b73bfe948f62db56d70ff5a509ebc7358f30fe0fe37106e05e"
-detail = "synthetic-seed.json"
-
-[[source]]
-path = "scripts/automatic-discovery-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/automatic-discovery-restore-drill.py"
-kind = "host"
-digest = "1ebb9a71fb8706b21a57a2e3553170b740a60d82df5f1ef7799b9c147bc799f1"
-detail = "working.sqlite"
-
-[[source]]
-path = "scripts/automatic-discovery-restore-drill.py"
-kind = "host"
-digest = "67363728ae393380f494fc0ede1a7c52a92311116a34cb9746c59003d3953641"
-detail = "preupgrade.sqlite"
-
-[[source]]
-path = "scripts/automatic-discovery-restore-drill.py"
-kind = "host"
-digest = "a3ab835788664906eb016e7a7018bb3c7652229f7a91214685ba2d8bd2ce12f4"
-detail = "restored.sqlite"
-
-[[source]]
-path = "scripts/automatic-discovery-restore-drill.py"
-kind = "host"
-digest = "ca96a2b64ae8a74b46c835273581fbc34f368e3e33685e47cbb6f3add2196ea5"
-detail = "clean-rollback.sqlite"
-
-[[source]]
-path = "scripts/benchmark-time-to-briefing.py"
-kind = "host"
-digest = "64a90ee4ec3a072cda4d6757fcae848d880ebe6ab2545723f1836491567a430f"
-detail = "socket.connect"
-
-[[source]]
-path = "scripts/benchmark-time-to-briefing.py"
-kind = "host"
-digest = "155e0196226ac581f83d6a0e0b17e04c10fba9033070137da7f70bcc44684aa0"
-detail = "socket.getaddrinfo"
-
-[[source]]
-path = "scripts/benchmark-time-to-briefing.py"
-kind = "host"
-digest = "2dfe744f64b97238df644a0ef96b7f245bb6ffc7519b726824c0753e6e3797c4"
-detail = "run.json"
-
-[[source]]
-path = "scripts/bootstrap-dev.py"
-kind = "host"
-digest = "52ac22c2c61c79c9655242d4af22dc97a7cfbdc1a1c1d92f964cf1d5c3de17da"
-detail = "pyvenv.cfg"
-
-[[source]]
 path = "scripts/browser-accept-account-controls.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2289,18 +1731,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-account-controls.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-account-controls.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
 path = "scripts/browser-accept-activity.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2323,30 +1753,6 @@ path = "scripts/browser-accept-activity.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-activity.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-activity.py"
-kind = "host"
-digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
-detail = "emulation.setscriptexecutiondisabled"
-
-[[source]]
-path = "scripts/browser-accept-activity.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-activity.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-ask-heading.py"
@@ -2373,30 +1779,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-ask-heading.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-ask-heading.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-ask-heading.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-ask-heading.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-assertions.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2421,90 +1803,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "f9ae08b55ae596cfdc1fc72d9cf2b68b8ae303ec573a0d4c7ace70e83e9eaf4b"
-detail = "assertion-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "f9bb82f145d4acc5f8ef24e02768591d2aa78ccc9eae4599637152f5c67cb32f"
-detail = "assertion-accounts.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "3f9ae32c1c1d2cc0647077b9843f2d4b7cc81911973adede1bfa9b40b1a7c890"
-detail = "assertion-source-return-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "6d2f74296469ffe7a5c786de9591492a818dd77647de635f449b05d418914d09"
-detail = "assertion-conflict.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "34a30bf066fc1022d92fdedad3596f6ba4aeec5c833084972561afe867843ed9"
-detail = "assertion-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "deff50a23640c98ff0e2fb99c27d9e98f541fd1eeb034acb6501d95132e5e7ab"
-detail = "assertion-mobile-recovery.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "32800cdff2abaf1376b9a8c043e8e0e449c6c968f06c7f2b03693bfc94e10f4b"
-detail = "assertion-chronology.png"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-assertions.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-assistant-dock.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2525,62 +1823,8 @@ detail = "127.0.0.1:"
 [[source]]
 path = "scripts/browser-accept-assistant-dock.py"
 kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "119c17eb4af8940b3fb3fe88d7712d53585b2178245dd7ad4390e545f7f2c5fd"
-detail = "dock-source-1440.png"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "c47bcdf937681916cc7b9f2f0b2050f477a93077bdeb7485aacaceb7da41a03b"
-detail = "dock-suggest-preview-1440.png"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "127fa958af8589bba4f24ceac407e34d6c92cb209ac8654790c502cb062d576d"
-detail = "dock-suggested-1440.png"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "01267d0549868bc0979aa07f09098522dcd56fb5161d3585fddd4243e165cea2"
-detail = "dock-suggest-preview-320.png"
-
-[[source]]
-path = "scripts/browser-accept-assistant-dock.py"
-kind = "host"
-digest = "e74d148016ae4dda039c21ac3c4b54cf3a777e05f598d1aabd7bd4eceb65c4f7"
-detail = "dock-draft-1440.png"
 
 [[source]]
 path = "scripts/browser-accept-briefing.py"
@@ -2605,60 +1849,6 @@ path = "scripts/browser-accept-briefing.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "0f225091d29ce1c6a5c2a4b2d3406eaf0df40424f205b55d88f4730f92c95790"
-detail = "opaque.bin"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "b8935d0ec3971f6c11a56fdc6034b1b812e223dafd9f9cfb8abfc359ea4d5a73"
-detail = "briefing-question-430.png"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "0439b978bc36d98dd53ad016f7c8becd92d2c89d922aba78e5308fa9b6476f0a"
-detail = "briefing-sections-430.png"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "4f54dcbf64932b15e57332ad73faaf169f1b90163a3733c9b6be3b72d9d2949e"
-detail = "briefing-ask-fallback-430.png"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-briefing.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
 
 [[source]]
 path = "scripts/browser-accept-cited-context.py"
@@ -2697,90 +1887,6 @@ digest = "00f7ff9d7f44c0b822340db7c9ab7ebc8eb0694828d8910539d497ac37eaff86"
 detail = "requests"
 
 [[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
-detail = "emulation.setscriptexecutiondisabled"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
-detail = "emulation.setscriptexecutiondisabled"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "18f00ca555da6636c2dd29990f2a363b76f44d8d7af311008aebd535074ee1d1"
-detail = "cited-context-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "e59ae284ae6b7a08ca6135391b91d095705878ae725fd1c61ed64fdcd2124946"
-detail = "cited-context-assistant.png"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "38560ef14312692add9e6b95817e8da76884ba731937a6aedb74f8847f582797"
-detail = "cited-context-changed.png"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "84189bf38f3765962dfb175475719bdcbff82e3e2056131eedfa171d77553a79"
-detail = "cited-context-transcript-moment.png"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "3a69134be8a104a46c4c894381f88ade06e05adb9e9ed763197d047dfb4aa989"
-detail = "cited-context-answer-return.png"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-cited-context.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-compiled-reports.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2803,30 +1909,6 @@ path = "scripts/browser-accept-compiled-reports.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-compiled-reports.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-compiled-reports.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-compiled-reports.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-compiled-reports.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-dusk.py"
@@ -2853,54 +1935,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "c06d29887248e8ebf82a83b80a62642d417c99782b493102634372e3e20fbcc4"
-detail = "accent-status.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "b26a15eb5a06452cdcd7517fbb14bab26f0b9c26a8cb7704ef3af1aef5800865"
-detail = "accent-filters.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "1524d62ffe524062e1dde059f2649781a999c0472c59b553b54db27ddf5841fe"
-detail = "accent-bulk.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "4230651d5d649e254694efb73ddf8c2e8e9f55bc1518dd04afb451b2ff36fbe5"
-detail = "accent-focus.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "62ab1c1c7dde3a1e9dd3d08730d2e64846dc2d5fd6a5adb00ceab5fad7323ed8"
-detail = "accent-bulk-active.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "e090e6cf5149a84fd6e03240bcaac279e3b3bc9ad38098941176d393a625bd40"
-detail = "accent-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-dusk.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-email-coverage.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2915,54 +1949,12 @@ detail = "socket.socket"
 [[source]]
 path = "scripts/browser-accept-email-coverage.py"
 kind = "host"
-digest = "ffd5204723a4f6520e5c39d9936a3b2e3395a8104fece2db26285c3d4044e076"
-detail = "generated.eml"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "ffd5204723a4f6520e5c39d9936a3b2e3395a8104fece2db26285c3d4044e076"
-detail = "generated.eml"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
 digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
 
 [[source]]
 path = "scripts/browser-accept-email-coverage.py"
 kind = "host"
-digest = "070238473d29a3c5b3be683295e918e19668bbe7e1ee1aa811ba46b1d9a18578"
-detail = "forwarded.eml"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "070238473d29a3c5b3be683295e918e19668bbe7e1ee1aa811ba46b1d9a18578"
-detail = "forwarded.eml"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "070238473d29a3c5b3be683295e918e19668bbe7e1ee1aa811ba46b1d9a18578"
-detail = "forwarded.eml"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
-detail = "notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
-detail = "notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -2971,36 +1963,6 @@ path = "scripts/browser-accept-email-coverage.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290"
-detail = "damaged.pdf"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290"
-detail = "damaged.pdf"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-email-coverage.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
 
 [[source]]
 path = "scripts/browser-accept-entities.py"
@@ -3027,60 +1989,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "1852c7e115fba9fed74f630a534a75ff3add6909205fcfcdf702dd70678b4e1f"
-detail = "entity-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "ea9872d7690109efa3c5fd0cac67dd31b49808c7a599599fd63599f12743bd50"
-detail = "entity-conflict.png"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "30db34db18beaca7a9b3efde6086a229d39a78cf56faa06cc06c156e21b5c01e"
-detail = "entity-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "d0c5d9ef52e44c7c794e099843396520d47097bfb10262245622dd044a049580"
-detail = "entity-mobile-recovery.png"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-entities.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-entity-discovery.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3105,114 +2013,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "1852c7e115fba9fed74f630a534a75ff3add6909205fcfcdf702dd70678b4e1f"
-detail = "entity-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "ea9872d7690109efa3c5fd0cac67dd31b49808c7a599599fd63599f12743bd50"
-detail = "entity-conflict.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "30db34db18beaca7a9b3efde6086a229d39a78cf56faa06cc06c156e21b5c01e"
-detail = "entity-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "d0c5d9ef52e44c7c794e099843396520d47097bfb10262245622dd044a049580"
-detail = "entity-mobile-recovery.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "87c44ae8c3143c2b13ebc83dcaebeb0ef0e342c1ea20ce00a1f2b0b436f39213"
-detail = "guided-discovery-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "ee84e793d01d74719655c5b8104dd316d84ca93285b222535a4ef850ff59815b"
-detail = "guided-discovery-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "899cce25e2642d2352ae34aec74ac30fa0c8ea1c310f0615c6228695a30ec391"
-detail = "discovery-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "3baa09d284424bb6b3838d0714217b532a537bb3990dee6689fe87adcaaf956b"
-detail = "discovery-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "cff8381c727b5dfb40d750a9c302215602a6fccfec2c5a6977b07a3019cd346c"
-detail = "reconciliation-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-entity-discovery.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-evidence-graph.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3235,48 +2035,6 @@ path = "scripts/browser-accept-evidence-graph.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "1694381de6bbd2006b477021e45bafc158691c119edcdd56519185061dcda863"
-detail = "connections-light-amber-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "75952a304cc7568480b32f08976b29b9fbd50c945097e6698f4aec996a7089be"
-detail = "connections-light-amber-mobile-evidence.png"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "54ba50bef8e592ea4d524bc39188eba721adb895167057b9778bcb5fe1fc9658"
-detail = "connections-mobile-source-return.png"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-evidence-graph.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-exact-search.py"
@@ -3303,24 +2061,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-exact-search.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-exact-search.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-exact-search.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-full-text-review.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3328,69 +2068,9 @@ detail = "network import"
 
 [[source]]
 path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
 
 [[source]]
 path = "scripts/browser-accept-full-text-review.py"
@@ -3403,36 +2083,6 @@ path = "scripts/browser-accept-full-text-review.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "1c2e0328cae321156ec9445b8beb01bc991ae1da497fae4249f54d48bc1d56c4"
-detail = "synthetic-ledger.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "1c2e0328cae321156ec9445b8beb01bc991ae1da497fae4249f54d48bc1d56c4"
-detail = "synthetic-ledger.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "48926835d3966d8eb763953e4edbfce41bf4ee0d1dde552ed7ccc2106b04f16f"
-detail = "text-ledger-contrast.json"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "1368131b2bb94b85eec36cb068dbf51494acb3822974548b1dc46da2b8589148"
-detail = "full-review-resume.png"
-
-[[source]]
-path = "scripts/browser-accept-full-text-review.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-full-text-synthesis.py"
@@ -3457,78 +2107,6 @@ path = "scripts/browser-accept-full-text-synthesis.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "00bd01a5ac28df9737c8561c2a7832b6bec8d2fde0511da3bad10ed55dfbb508"
-detail = "synthetic-dispatch.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "00bd01a5ac28df9737c8561c2a7832b6bec8d2fde0511da3bad10ed55dfbb508"
-detail = "synthetic-dispatch.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "2b592e81d4572f525425262b477f91e2703979226a173bae2ed11f55d2c659fc"
-detail = "synthetic-no-finding.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "a8b1b37f1d782d2abcc4916f9a6d6d249f5cabf66d0f6aa527143b8d949bde63"
-detail = "synthetic-failed.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "617b215ffe1e01facbbc9a1a8764cd1c64aca8d7c737868f088c1f8eae9f523c"
-detail = "synthetic-empty.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "956aa02910e00df411239210b10ffae1637e0e87928b82739faedebd939456ea"
-detail = "synthetic-unsupported.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "b251aae47dd2ddfa3c654500e4c40a4d2bfccf92459bddf9ce18cc4d91397a72"
-detail = "synthetic-late-margin.txt"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-full-text-synthesis.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
 
 [[source]]
 path = "scripts/browser-accept-intake-receipts.py"
@@ -3559,66 +2137,6 @@ path = "scripts/browser-accept-intake-receipts.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "7952a481cb3a1d47b550ef6af346afac15123b317996837f88063474a35792c2"
-detail = "synthetic-refresh.html"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "b48152b3ad1a85681c670025958b8b9ed69ec8d702cc66e70cae0a9d1425b152"
-detail = "resume.txt"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "8efad9c7de03296e3da4cd49fd8981a1e8ba4e162a20034f47df877be5a1f993"
-detail = "capacity-limited.txt"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "ef130475ffb225827d163a629b25b560bfaf52150fafdfa93afe3f524ceddf3a"
-detail = "synthetic-nested-receipt.png"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "99c07a8a7090747d3fcd13c61142ee063e17d5c61b991530c7ca51ca8519522f"
-detail = "receipt-browser-result.json"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "ade84309de60ac877f592db30d2fb0f090b579138891b923167b90bbf19ed90d"
-detail = "record.txt"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "ade84309de60ac877f592db30d2fb0f090b579138891b923167b90bbf19ed90d"
-detail = "record.txt"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "0f225091d29ce1c6a5c2a4b2d3406eaf0df40424f205b55d88f4730f92c95790"
-detail = "opaque.bin"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-intake-receipts.py"
-kind = "host"
-digest = "e5cdc9259bdcd1ca4605cee324f56fe416e4ea936cea58231b8dd9b60a248091"
-detail = "browser-errors.json"
 
 [[source]]
 path = "scripts/browser-accept-loose-file-preflight.py"
@@ -3641,54 +2159,6 @@ detail = "socket.socket"
 [[source]]
 path = "scripts/browser-accept-loose-file-preflight.py"
 kind = "host"
-digest = "5ea8a2478572a4c9116a5880f19c07ce966314d5d781c901cfe4c74cc86b43c5"
-detail = "incident-notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "5ea8a2478572a4c9116a5880f19c07ce966314d5d781c901cfe4c74cc86b43c5"
-detail = "incident-notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "5ea8a2478572a4c9116a5880f19c07ce966314d5d781c901cfe4c74cc86b43c5"
-detail = "incident-notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290"
-detail = "damaged.pdf"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "7ac1da2d54d28ef4146203ed844b34a5fb7ed370b6b7f684d91c9b9fe4d2f294"
-detail = "scan.png"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "9337d101921a6daf40227049618281890a459d92cd0f3e392c50658b16b9710d"
-detail = "messages.zip"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "a8ef9e8466d92c23d0a78c632ebc12931b9aa1af4cc6f1cc2e6016a9d366c29f"
-detail = "oversize.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "55c08838e32537cd519aaeac028f9137e6768b1fd3eec74bba02ac67bcdb4418"
-detail = "network.requestwillbesent"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -3705,76 +2175,10 @@ digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
 
 [[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
-detail = "emulation.setscriptexecutiondisabled"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
-detail = "emulation.setscriptexecutiondisabled"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "30bacb8c935c56758284ebccfd07a9562bb74096967b5de1ac03fd62d135bee5"
-detail = "record-00004.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "b47df6af93a9a195044048943590f37f84ffb8b1856ef83cf88319ee80fa6a1d"
-detail = "desktop-preflight.png"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "73ccf7ae3c2a9ae0b6b090a8e7d7ff09b70697bc444342becdb22675e35729d4"
-detail = "mobile-preflight.png"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "da6950c2cc3fdcdbfbe1fde17bb3084623c9ac1481f0875784be14ce1998a4e4"
-detail = "mobile-partial-upload.png"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "474d41fc95a86eed33ad08554d8aa48cd62674a8376b7a152e707948fd7c24d7"
-detail = "partial.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "9808933cc16572b67241aef06f399242021ea5e09ab435eeb64fc738f352bcc3"
-detail = "cancelled.txt"
-
-[[source]]
-path = "scripts/browser-accept-loose-file-preflight.py"
-kind = "host"
-digest = "486688d37d6dc7c6c055076bdee15b1de75ccc22c5fb5f6c58fb356ccb067ec3"
-detail = "no-javascript-folder.png"
-
-[[source]]
 path = "scripts/browser-accept-matter-context.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
 detail = "network import"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "cf254e772e45a5c9c477102dd40aa8d5acbc9109f517a740ff53da5f172c76ab"
-detail = "browser-accept-matter-knowledge.py"
 
 [[source]]
 path = "scripts/browser-accept-matter-context.py"
@@ -3793,30 +2197,6 @@ path = "scripts/browser-accept-matter-context.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "f6c8016e4324a4f72186213920710d89b72399a8fe2777cb14ce3690ed383179"
-detail = "context-light-amber-mobile.png"
 
 [[source]]
 path = "scripts/browser-accept-matter-context.py"
@@ -3825,30 +2205,6 @@ digest = "d27399a3d529a195d84f7ef9aff7ccd37f9c37b75b876025864bd63e4a6cb6ab"
 detail = "127.0.0.1:18080"
 
 [[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "b39d737163bc6dcbc23042cc063768fd16b2ad58d74a35b791105e0d47470337"
-detail = "context-supplied-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-context.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-matter-knowledge.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3871,48 +2227,6 @@ path = "scripts/browser-accept-matter-knowledge.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "342d4ef6a9e8bfcac304b3303ba75de8dd0aaa94c95ddc933d1af08c1158a1a3"
-detail = "page.removescripttoevaluateonnewdocument"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "a22191b07c7c088a546080ac98608ab43e4a021522fc516581976c4e6e319962"
-detail = "page.addscripttoevaluateonnewdocument"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "30ea58eb19914c7f601a528cedd124fd40d2734e441d2382171980129623b32f"
-detail = "knowledge-light-amber-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-matter-knowledge.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-matter-purpose.py"
@@ -3939,36 +2253,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-matter-purpose.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-matter-purpose.py"
-kind = "host"
-digest = "1e6b497e888227142d247299d126dbb26386dc8dc14144f0d705c328e37162ca"
-detail = "purpose-empty-1440.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-purpose.py"
-kind = "host"
-digest = "01dd75708459a878b576fe4b46e6ebd4d61aff5ed03fa1a98dd5df0b85e6e395"
-detail = "purpose-conflict-320.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-purpose.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-matter-purpose.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-matter-rename.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3979,18 +2263,6 @@ path = "scripts/browser-accept-matter-rename.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
 
 [[source]]
 path = "scripts/browser-accept-matter-rename.py"
@@ -4013,32 +2285,8 @@ detail = "network.enable"
 [[source]]
 path = "scripts/browser-accept-matter-rename.py"
 kind = "host"
-digest = "3f7f923e2092e60ff6873b5072ceccc652260ad88134dcf58c3aa5b03fb91b89"
-detail = "network.setextrahttpheaders"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
-digest = "f074fe2e9300e8789039c334b6d765e613db8acbb943dedce9862b8aca12db5b"
-detail = "conflict-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
-digest = "bcdafdc2932fd63339b75455fed1780751f345f9c01663ef7f5c7a009337eb34"
-detail = "settings-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-matter-rename.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-media-preflight.py"
@@ -4065,54 +2313,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "64a627ed860a4a20be232258b8498911cce048db598da63b032635da0f6a9a81"
-detail = "absent.wav"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "5956a9fd01da95bebf11aa625ab3002810d329ca1cc788fcd6b3cfc45e4f5024"
-detail = "no-audio-playback.png"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "c133f76222af1bb5c18d6bd4350d88adcd4c76e4a823cbadf476ff6d8dc3b297"
-detail = "video-only-home.png"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "f3eb03bbf314745225270ae56ab2323d34ee294e36aae1e7c4f93bff23fa465f"
-detail = "mobile-recording-decision.png"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "8a0554b128c7162344b79276e12b60db68224af2dea5bd74304da4444d54ac90"
-detail = "original-time-speech.png"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-media-preflight.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
-
-[[source]]
 path = "scripts/browser-accept-notebook-conflicts.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4123,18 +2323,6 @@ path = "scripts/browser-accept-notebook-conflicts.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
 
 [[source]]
 path = "scripts/browser-accept-notebook-conflicts.py"
@@ -4157,32 +2345,8 @@ detail = "network.enable"
 [[source]]
 path = "scripts/browser-accept-notebook-conflicts.py"
 kind = "host"
-digest = "3f7f923e2092e60ff6873b5072ceccc652260ad88134dcf58c3aa5b03fb91b89"
-detail = "network.setextrahttpheaders"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
-digest = "8ee5316fc897a7081c10b8a06322b1003d2d1be464164bb014c8309426bd6627"
-detail = "note-conflict-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
-digest = "98512b9522ab711a0cc81ce5e3f3c0f9bef6cf141dcd3fbc4cef078884b246d8"
-detail = "note-conflict-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-notebook-conflicts.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-one-box.py"
@@ -4209,48 +2373,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "970eb837d3c6724b981e822f5f0d702f3b75010730a98e1be88f463fd68eb953"
-detail = "one-box-home-430.png"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "c4433716814653727ce1ba74e6b2a9effe2ec1ac1a4c879525c428ccc3e3f19f"
-detail = "one-box-answer-430.png"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "08f9f1f682ce21e481bb884d29aaf6716fddbd3aa11baad15531073d004fefbb"
-detail = "deeper-investigation-offer-430.png"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-one-box.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
 path = "scripts/browser-accept-report-conflicts.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4261,18 +2383,6 @@ path = "scripts/browser-accept-report-conflicts.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
 
 [[source]]
 path = "scripts/browser-accept-report-conflicts.py"
@@ -4295,38 +2405,8 @@ detail = "network.enable"
 [[source]]
 path = "scripts/browser-accept-report-conflicts.py"
 kind = "host"
-digest = "3f7f923e2092e60ff6873b5072ceccc652260ad88134dcf58c3aa5b03fb91b89"
-detail = "network.setextrahttpheaders"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "50f28490078e7908017fcb64c94d0debb3bfd72f8c2b42d8cc0f3a9bb3d65dd2"
-detail = "report-conflict-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "f26b0b75ff60823f034f34e1c05b36c1afbe75977e4ad003a3f977296fb615e6"
-detail = "report-conflict-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "scripts/browser-accept-report-conflicts.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-reports-bundle.py"
@@ -4339,24 +2419,6 @@ path = "scripts/browser-accept-reports-bundle.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "f6bd61c429eeb4f1fea36720e745eceba905e5e93a8b9a81919400e18bb0992f"
-detail = "generated-note.txt"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "f6bd61c429eeb4f1fea36720e745eceba905e5e93a8b9a81919400e18bb0992f"
-detail = "generated-note.txt"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "f6bd61c429eeb4f1fea36720e745eceba905e5e93a8b9a81919400e18bb0992f"
-detail = "generated-note.txt"
 
 [[source]]
 path = "scripts/browser-accept-reports-bundle.py"
@@ -4371,72 +2433,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "f8146e69ea3061615645b7d84ea1ec4f65b0fae366dcf9ee62d8e50c60a1e7ba"
-detail = "emulation.settimezoneoverride"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "049986e4c50a473e04d8f973890b40dc4e62975a29fe68b802fa20dd59f0ef81"
-detail = "synthetic-delete.txt"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "fa93353804c291c8bf8fc3301026680a5a60f5a0fc2f2c8b1d5c7c663e846d67"
-detail = "generated-recovery.txt"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "e744e03c7f63dd663b27f0d9068a861a98e4119bb17bfa8be0eb2de11d8ac061"
-detail = "reports-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "cbca0de40456ac7eb7f30fc1b606de18e3deda9c65d619b8de1b6995da51d12b"
-detail = "reports-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "caaa7bb17c13c1e0b30d3f1d4f6dde5bb7a5d786e8f2fbf41fd0f1fd6af97058"
-detail = "export-needs-attention.png"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
-
-[[source]]
-path = "scripts/browser-accept-reports-bundle.py"
-kind = "host"
-digest = "dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7"
-detail = "unavailable-references.jsonl"
-
-[[source]]
 path = "scripts/browser-accept-review-decision-conflicts.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4447,18 +2443,6 @@ path = "scripts/browser-accept-review-decision-conflicts.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
-
-[[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
-digest = "8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d"
-detail = "generated-source.txt"
 
 [[source]]
 path = "scripts/browser-accept-review-decision-conflicts.py"
@@ -4481,34 +2465,10 @@ detail = "network.enable"
 [[source]]
 path = "scripts/browser-accept-review-decision-conflicts.py"
 kind = "host"
-digest = "3f7f923e2092e60ff6873b5072ceccc652260ad88134dcf58c3aa5b03fb91b89"
-detail = "network.setextrahttpheaders"
-
-[[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
 
 [[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
-digest = "160d5c6117d9789df0836836ae29ad40e87f1afa7147a2c3576778d9b8755ae4"
-detail = "decision-conflict-desktop.png"
-
-[[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
-digest = "776b4b3040634e3eec9cad0849a3d037d38a4a81c745964c2b3a4e5a69b041f3"
-detail = "decision-conflict-mobile.png"
-
-[[source]]
-path = "scripts/browser-accept-review-decision-conflicts.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
 path = "scripts/browser-accept-review-report.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4533,24 +2493,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-review-report.py"
-kind = "host"
-digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
-detail = "emulation.cleardevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-review-report.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-review-report.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
 path = "scripts/browser-accept-source-folders.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4561,12 +2503,6 @@ path = "scripts/browser-accept-source-folders.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "8fcbdd50a4dfcae6303297c6ad6935008261375cdd4918177e1fad1d716ea2d9"
-detail = "north-reference.txt"
 
 [[source]]
 path = "scripts/browser-accept-source-folders.py"
@@ -4587,36 +2523,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
-detail = "notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
-detail = "notes.txt"
-
-[[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-source-folders.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
-
-[[source]]
 path = "scripts/browser-accept-source-roles.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4631,12 +2537,6 @@ detail = "socket.socket"
 [[source]]
 path = "scripts/browser-accept-source-roles.py"
 kind = "host"
-digest = "7982620fe63ded9e08027a0e5a526d327170bf088cc1d9fe0283baf7a4fb36d1"
-detail = "synthetic-charge.txt"
-
-[[source]]
-path = "scripts/browser-accept-source-roles.py"
-kind = "host"
 digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
 
@@ -4645,30 +2545,6 @@ path = "scripts/browser-accept-source-roles.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-source-roles.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-source-roles.py"
-kind = "host"
-digest = "0dfe9b7dc59a808eaaff7795cad8088944b5761661ab1525b9e42b47165f1209"
-detail = "source-role-conflict-320.png"
-
-[[source]]
-path = "scripts/browser-accept-source-roles.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-source-roles.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-timeline-draft.py"
@@ -4691,38 +2567,8 @@ detail = "127.0.0.1:"
 [[source]]
 path = "scripts/browser-accept-timeline-draft.py"
 kind = "host"
-digest = "aab97556cecaa26d836e8f909d66208e47f10f98842760b68016079475cac8d7"
-detail = "first.txt"
-
-[[source]]
-path = "scripts/browser-accept-timeline-draft.py"
-kind = "host"
-digest = "2a12e0273d1838442e88cfcf23fa81372295a568ca3df92d0bb6bcbe1cbb285c"
-detail = "second.txt"
-
-[[source]]
-path = "scripts/browser-accept-timeline-draft.py"
-kind = "host"
-digest = "5c61ecd404cbfd527c4a1fc810cf661abf112f9f39a3d04af29ac0d425d42437"
-detail = "undated.txt"
-
-[[source]]
-path = "scripts/browser-accept-timeline-draft.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-timeline-draft.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-timeline-draft.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-upload-occurrences.py"
@@ -4745,18 +2591,6 @@ detail = "127.0.0.1:"
 [[source]]
 path = "scripts/browser-accept-upload-occurrences.py"
 kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -4765,30 +2599,6 @@ path = "scripts/browser-accept-upload-occurrences.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
-digest = "36141eb783770492f9ad4a052d6f9c608e57ee917f3050cdf567471c36b4f389"
-detail = "synthetic-separate-productions.png"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
-digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
-detail = "result.json"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-upload-occurrences.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
 
 [[source]]
 path = "scripts/browser-accept-workflow-handoff.py"
@@ -4807,18 +2617,6 @@ path = "scripts/browser-accept-workflow-handoff.py"
 kind = "client"
 digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
 detail = "socket.socket"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "31d270f09c8a2af3329c3c017acce6d8459201c80898937078b46f69f3f157f6"
-detail = "subprocess.run"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "46b4725c0fe95f725d5fe5a66daed9f04d34e8d959b26cc671d5a825f64192ba"
-detail = "subprocess.popen"
 
 [[source]]
 path = "scripts/browser-accept-workflow-handoff.py"
@@ -4881,48 +2679,6 @@ digest = "600701c21f5fd32d7d223417d45a52d7e1bcb490c0c4797520d31b974db1541f"
 detail = "httpx.Client.close"
 
 [[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "e46859af8c09359313a48f9daa792ba61c783c2691acbc9f08bb18d18b632495"
-detail = "fixture.json"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "eebc9b53be310d0eb185da5f2dbd957dd069f0b8798d62e134759dfe9a507693"
-detail = "mixed-answer.png"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "9b2db02ef42d2ee247c22e49c554cc2b9c47c2cabb655178143d7861fa2fd43c"
-detail = "investigation-result.png"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "88b706432ec4881179be9ac50d864d7516a6bd010ab866031a41b7d0914ca199"
-detail = "mixed-report.png"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/browser-accept-workflow-handoff.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
-
-[[source]]
 path = "scripts/browser-accept-workspace-layout.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4943,44 +2699,8 @@ detail = "127.0.0.1:"
 [[source]]
 path = "scripts/browser-accept-workspace-layout.py"
 kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
-digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
-detail = "emulation.setdevicemetricsoverride"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
-digest = "3f73cc3392648cb25203944ab8c3db7bbb218824764b42606f7b133d1ee4edd2"
-detail = "emulation.setemulatedmedia"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
-digest = "3f73cc3392648cb25203944ab8c3db7bbb218824764b42606f7b133d1ee4edd2"
-detail = "emulation.setemulatedmedia"
-
-[[source]]
-path = "scripts/browser-accept-workspace-layout.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
 
 [[source]]
 path = "scripts/browser-accept-zoom.py"
@@ -5017,78 +2737,6 @@ path = "scripts/browser-accept-zoom.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
-
-[[source]]
-path = "scripts/browser-accept-zoom.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/browser-accept-zoom.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/check-publication-candidate.py"
-kind = "host"
-digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
-detail = "pre-push-publication.py"
-
-[[source]]
-path = "scripts/classify-quality-change.py"
-kind = "host"
-digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
-detail = "readme.md"
-
-[[source]]
-path = "scripts/classify-quality-change.py"
-kind = "host"
-digest = "eca12c0a30e25b4b46522ebf89465a03ba72a03f540796c979137931d8f92055"
-detail = "contributing.md"
-
-[[source]]
-path = "scripts/classify-quality-change.py"
-kind = "host"
-digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
-detail = "changelog.md"
-
-[[source]]
-path = "scripts/classify-quality-change.py"
-kind = "host"
-digest = "f6ed156e4bf5c791680662464b94ea5d753f219ee816b385f67870e2c0d7d4c7"
-detail = "security.md"
-
-[[source]]
-path = "scripts/context-storage-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/context-storage-restore-drill.py"
-kind = "host"
-digest = "1ebb9a71fb8706b21a57a2e3553170b740a60d82df5f1ef7799b9c147bc799f1"
-detail = "working.sqlite"
-
-[[source]]
-path = "scripts/context-storage-restore-drill.py"
-kind = "host"
-digest = "67363728ae393380f494fc0ede1a7c52a92311116a34cb9746c59003d3953641"
-detail = "preupgrade.sqlite"
-
-[[source]]
-path = "scripts/context-storage-restore-drill.py"
-kind = "host"
-digest = "29b5be577251c5950454312361db0040d2a0c45378a19b72b783cf99a8f550cb"
-detail = "upgraded-backup.sqlite"
-
-[[source]]
-path = "scripts/context-storage-restore-drill.py"
-kind = "host"
-digest = "31424a6c6ddb6b2d7b2505c586c48bc4e5b0c3c41bf258b46fa6274198efc8df"
-detail = "workspace.sqlite"
 
 [[source]]
 path = "scripts/demo.py"
@@ -5211,84 +2859,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/doc_identifier_check.py"
-kind = "host"
-digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
-detail = "branding.md"
-
-[[source]]
-path = "scripts/doc_identifier_check.py"
-kind = "host"
-digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
-detail = "branding.md"
-
-[[source]]
-path = "scripts/doc_identifier_check.py"
-kind = "host"
-digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
-detail = "changelog.md"
-
-[[source]]
-path = "scripts/entity-discovery-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/entity-discovery-restore-drill.py"
-kind = "host"
-digest = "1ebb9a71fb8706b21a57a2e3553170b740a60d82df5f1ef7799b9c147bc799f1"
-detail = "working.sqlite"
-
-[[source]]
-path = "scripts/entity-discovery-restore-drill.py"
-kind = "host"
-digest = "67363728ae393380f494fc0ede1a7c52a92311116a34cb9746c59003d3953641"
-detail = "preupgrade.sqlite"
-
-[[source]]
-path = "scripts/entity-discovery-restore-drill.py"
-kind = "host"
-digest = "ca96a2b64ae8a74b46c835273581fbc34f368e3e33685e47cbb6f3add2196ea5"
-detail = "clean-rollback.sqlite"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "1ebb9a71fb8706b21a57a2e3553170b740a60d82df5f1ef7799b9c147bc799f1"
-detail = "working.sqlite"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "67363728ae393380f494fc0ede1a7c52a92311116a34cb9746c59003d3953641"
-detail = "preupgrade.sqlite"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "29b5be577251c5950454312361db0040d2a0c45378a19b72b783cf99a8f550cb"
-detail = "upgraded-backup.sqlite"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "31424a6c6ddb6b2d7b2505c586c48bc4e5b0c3c41bf258b46fa6274198efc8df"
-detail = "workspace.sqlite"
-
-[[source]]
-path = "scripts/entity-storage-restore-drill.py"
-kind = "host"
-digest = "ca96a2b64ae8a74b46c835273581fbc34f368e3e33685e47cbb6f3add2196ea5"
-detail = "clean-rollback.sqlite"
-
-[[source]]
 path = "scripts/evaluate-claims.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
@@ -5321,24 +2891,6 @@ detail = "127.0.0.1"
 [[source]]
 path = "scripts/evaluate-full-text-synthesis.py"
 kind = "host"
-digest = "00bd01a5ac28df9737c8561c2a7832b6bec8d2fde0511da3bad10ed55dfbb508"
-detail = "synthetic-dispatch.txt"
-
-[[source]]
-path = "scripts/evaluate-full-text-synthesis.py"
-kind = "host"
-digest = "1fd539f11883200646e6a2737345336f5ac0f641824780b54fdf40b3be310cfb"
-detail = "synthetic-extraction-failed.txt"
-
-[[source]]
-path = "scripts/evaluate-full-text-synthesis.py"
-kind = "host"
-digest = "68bf64f66aa77bef5b5c89cc2544bfda057f0dd18b6c6b005c762b28d6b812c2"
-detail = "synthetic-zero-units.txt"
-
-[[source]]
-path = "scripts/evaluate-full-text-synthesis.py"
-kind = "host"
 digest = "93a333cbf2050c16fa7eaf0765d249111c965676805f45bba6586de48b283dea"
 detail = "127.0.0.1:11439"
 
@@ -5361,12 +2913,6 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
-path = "scripts/evaluate-workflow-quality.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
 path = "scripts/exculpata_backup.py"
 kind = "host"
 digest = "ba8ff6755d75e404138c8769fb42f792fbd64c6701f741ea5f5837c221b01b2b"
@@ -5375,108 +2921,6 @@ detail = "127.0.0.1:8786"
 [[source]]
 path = "scripts/exculpata_backup.py"
 kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "9dc9baa5e9719de650a9d436c49d6d93ca64ddc5f677e67499c60881a30a47df"
-detail = "backup-status.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
-detail = "backup.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
-detail = "backup.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
-detail = "backup.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "a9b3413ee6122d5e9a69751782c03b883c544ca0e19d49499e93062ddcc1cbfd"
-detail = "backup.lock"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "c304dc78b408e19e60bfd78d3310684f0e8a7f95e6e05f5177010829232aefc6"
-detail = "source.sqlite"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "c9305d3da246115fd8487eec27da2f1bab61858666e5f59f5bdc68d049cdb5d3"
-detail = "frozen.sqlite"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
 digest = "5e96ee26757e7076c5afaf7265974c770c9825ea0b181dd4a2baee0e27049325"
 detail = "review-index.dump"
 
@@ -5485,24 +2929,6 @@ path = "scripts/exculpata_backup.py"
 kind = "host"
 digest = "5e96ee26757e7076c5afaf7265974c770c9825ea0b181dd4a2baee0e27049325"
 detail = "review-index.dump"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "b82710f5aadf793dc1d4f8d02c7fd67aaac8134757563f527e20b9bbd40291af"
-detail = "backup-manifest.json"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
-detail = "compose.kerberos.yaml"
-
-[[source]]
-path = "scripts/exculpata_backup.py"
-kind = "host"
-digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
-detail = "compose.local-accounts.yaml"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -5519,422 +2945,14 @@ detail = "network import"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
-digest = "a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9"
-detail = "agents.md"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
-detail = "changelog.md"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "eca12c0a30e25b4b46522ebf89465a03ba72a03f540796c979137931d8f92055"
-detail = "contributing.md"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
-detail = "readme.md"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "f6ed156e4bf5c791680662464b94ea5d753f219ee816b385f67870e2c0d7d4c7"
-detail = "security.md"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
-detail = "compose.kerberos.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
-detail = "compose.kerberos.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
-detail = "compose.local-accounts.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
-detail = "compose.local-accounts.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711"
-detail = "pyproject.toml"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
-detail = "installation.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "cbbe552412f6965a8dc0cdbd35ad39f07388ab73d575f2a7b95fe8224dbd250c"
-detail = "compose.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "07331b38cc52c9ceea0d2a2adeee9ee95f5902c6eb6130f77475e5ca0ecc6a26"
-detail = "transcription.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
 digest = "8f0178ee6570e427a34e4921e835dc36b5cae9c15c55ffbd3dd95dd7ad44e7a0"
 detail = "generator:8000"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "fb362910d898a3711cde7aec3c8c281e7e464caec39a99d90fe50cd83009ed47"
-detail = "provisioned.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "6573734df9fc41c1c129c990d7c179058c7e416da2c071afdeffb3f92baf2450"
-detail = "install-progress.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "6573734df9fc41c1c129c990d7c179058c7e416da2c071afdeffb3f92baf2450"
-detail = "install-progress.json"
 
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "client"
 digest = "97dff362590a9e88e963bd2d76e92d36f125fa3b8fca8eabea41ff0027509cad"
 detail = "http.client.HTTPSConnection"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "845e50f00676652a2255ba859cd94f616285ab310b0f4cb0c86915e3479af1e1"
-detail = "stage-models.py"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
-detail = "backup.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
-detail = "backup.json"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -5959,48 +2977,6 @@ path = "scripts/exculpata_install.py"
 kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
-detail = "local-accounts.json"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -6083,20 +3059,8 @@ detail = "http.client.HTTPException"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
-digest = "9dc9baa5e9719de650a9d436c49d6d93ca64ddc5f677e67499c60881a30a47df"
-detail = "backup-status.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
 digest = "dd573a076405ac7ffbcf984eb6bee992ad4914693d0c8c2797d4492d5bbccf88"
 detail = "tls.crt"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "71aab6b266bb38ecab81860da8c970eebacc104e2ce6637f895485ad7477fed7"
-detail = "tls.key"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -6118,33 +3082,9 @@ detail = "http.client.HTTPException"
 
 [[source]]
 path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "9d84bf6299c1c0507d3f5ff408697db3a3f7a4d2710019b95729dda33e544719"
-detail = "backup-unit.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "9d84bf6299c1c0507d3f5ff408697db3a3f7a4d2710019b95729dda33e544719"
-detail = "backup-unit.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
 kind = "client"
 digest = "1d57a59c6744b1a79399764d64e10af65821ccf27bfede769709829af48f4c24"
 detail = "urllib.request.urlopen"
-
-[[source]]
-path = "scripts/full-text-synthesis-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/full-text-synthesis-restore-drill.py"
-kind = "host"
-digest = "ade1fbce1069898f2b7c1e1c092f980a10507f2918bee33dfaae0ab0bcbebb86"
-detail = "seed.json"
 
 [[source]]
 path = "scripts/install-ci-browser-deps.py"
@@ -6159,100 +3099,10 @@ digest = "d460260804767fa94d8e98a9f5bd8a0fef6f83120c372070d127415d350f54ff"
 detail = "security.ubuntu.com"
 
 [[source]]
-path = "scripts/install-publication-hook.py"
-kind = "host"
-digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
-detail = "pre-push-publication.py"
-
-[[source]]
-path = "scripts/install-publication-hook.py"
-kind = "host"
-digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
-detail = "pre-push-publication.py"
-
-[[source]]
-path = "scripts/install-publication-hook.py"
-kind = "host"
-digest = "a8a48cdb2b34c5d38409448d389617da80e84ed0c27790e7a40cf4f6aae05dc2"
-detail = "publication-check.py"
-
-[[source]]
-path = "scripts/install-publication-hook.py"
-kind = "host"
-digest = "589c0279a4598dd95a2f4dc3263c4240d6b6f7ccf9dc69fa370ffab3bcf776ac"
-detail = "core.hookspath"
-
-[[source]]
-path = "scripts/legacy_name_check.py"
-kind = "host"
-digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
-detail = "changelog.md"
-
-[[source]]
-path = "scripts/legacy_name_check.py"
-kind = "host"
-digest = "50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711"
-detail = "pyproject.toml"
-
-[[source]]
-path = "scripts/legacy_name_check.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/legacy_name_check.py"
-kind = "host"
-digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
-detail = "compose.kerberos.yaml"
-
-[[source]]
-path = "scripts/legacy_name_check.py"
-kind = "host"
-digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
-detail = "compose.local-accounts.yaml"
-
-[[source]]
-path = "scripts/network-contract.py"
-kind = "host"
-digest = "d7b298b569114a19e3d2c8fa68eeae0cf6e1a72906040b681bd68d25081d3aeb"
-detail = "urllib.request"
-
-[[source]]
-path = "scripts/network-contract.py"
-kind = "host"
-digest = "ea321344270fca61610e97b0e85026ec4b166f7099cb577e715d3b62d7641294"
-detail = "http.client"
-
-[[source]]
 path = "scripts/network-contract.py"
 kind = "host"
 digest = "df4f2e6c41d3cf5d13690df03d7b19c1bd96d30c4da3f45796057c3f76ca7da7"
 detail = "authlib.integrations"
-
-[[source]]
-path = "scripts/network-contract.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
-
-[[source]]
-path = "scripts/pre-push-publication.py"
-kind = "host"
-digest = "a8a48cdb2b34c5d38409448d389617da80e84ed0c27790e7a40cf4f6aae05dc2"
-detail = "publication-check.py"
-
-[[source]]
-path = "scripts/publication-check.py"
-kind = "host"
-digest = "cffc03de6e7a525df9c9e3dd77a3e0dffc44b9f6ad3788bf707841c34c6f0cfe"
-detail = "credentials.json"
-
-[[source]]
-path = "scripts/publication-check.py"
-kind = "host"
-digest = "8379d7b10771c6b6dd81d29f45bae6e28ddfcc17a1e356b86a0d5e8f56bbe51e"
-detail = "secrets.json"
 
 [[source]]
 path = "scripts/publication-check.py"
@@ -6297,18 +3147,6 @@ digest = "ce60c1041aa07a78eee28783a4e443ed01c5648fcc8704a623f2f7c117b3289d"
 detail = "users.noreply.github.com"
 
 [[source]]
-path = "scripts/publication-check.py"
-kind = "host"
-digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
-detail = "readme.md"
-
-[[source]]
-path = "scripts/publication-check.py"
-kind = "host"
-digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
-detail = "readme.md"
-
-[[source]]
 path = "scripts/qa-people-browser.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -6331,12 +3169,6 @@ path = "scripts/qa-people-browser.py"
 kind = "host"
 digest = "66f31d5a570949d9b03b639c05793d7e2a22b1afb26e67081cd1bcfb328a0dc4"
 detail = "loopback.crt"
-
-[[source]]
-path = "scripts/qa-people-browser.py"
-kind = "host"
-digest = "a98684dfdae30f6a784aa2c93caea04e19315e0b8a2c9bc2312573455ba391e1"
-detail = "loopback.key"
 
 [[source]]
 path = "scripts/qa-people-browser.py"
@@ -6377,12 +3209,6 @@ detail = "loopback.crt"
 [[source]]
 path = "scripts/qa-team-groups-browser.py"
 kind = "host"
-digest = "a98684dfdae30f6a784aa2c93caea04e19315e0b8a2c9bc2312573455ba391e1"
-detail = "loopback.key"
-
-[[source]]
-path = "scripts/qa-team-groups-browser.py"
-kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -6391,924 +3217,12 @@ path = "scripts/qa-team-groups-browser.py"
 kind = "host"
 digest = "1feecb0989dc7ae80c7ef54ed23c4b4606b4af46459c5b0d1aa4f4ca3217cc51"
 detail = "127.0.0.1:"
-
-[[source]]
-path = "scripts/report-storage-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/report-storage-restore-drill.py"
-kind = "host"
-digest = "0eb20bc6f2db2e780ef075cba10f7dc25f67633074add0a35189c1225794ed0a"
-detail = "legacy.sqlite"
-
-[[source]]
-path = "scripts/report-storage-restore-drill.py"
-kind = "host"
-digest = "bede945bce9735279652e96db875ef0e9e1d8662d29e41d90018450c749d9937"
-detail = "preupgrade-backup.sqlite"
-
-[[source]]
-path = "scripts/report-storage-restore-drill.py"
-kind = "host"
-digest = "ca96a2b64ae8a74b46c835273581fbc34f368e3e33685e47cbb6f3add2196ea5"
-detail = "clean-rollback.sqlite"
 
 [[source]]
 path = "scripts/run-browser-acceptance.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
 detail = "network import"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "d911440a278a550a05adb4af6b07edf4cf9b5129de3cb91149578e9db611cffd"
-detail = "browser-accept-intake-receipts.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "99c07a8a7090747d3fcd13c61142ee063e17d5c61b991530c7ca51ca8519522f"
-detail = "receipt-browser-result.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "99c07a8a7090747d3fcd13c61142ee063e17d5c61b991530c7ca51ca8519522f"
-detail = "receipt-browser-result.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "3ebbc6dd107b4d84a13fa3813d8be73469ce9c15ab10fadffb9454df300860c6"
-detail = "browser-accept-dusk.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
-detail = "receipt.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "123e2934c295b3299349bdee98861823b21999364d31d9820b8660a81542028e"
-detail = "browser-accept-reports-bundle.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "5b68f1df595beda5072cf3698b77b22bec77e83f79c50795a970aa8a3fe6882d"
-detail = "browser-accept-workspace-layout.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "7ed5a610c57828ed16c75a55d5bfddb5058a7f2d572257626cc27892c99f7896"
-detail = "browser-accept-activity.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b5596a9826ef6106ed7301a463fb458c5e4ba6e28d87e9d4bf1b966299d52fea"
-detail = "browser-accept-zoom.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "1e2eb0ce7d259f661c9f05a90d838549a3807b813fadee6c72f7e4c305247fe2"
-detail = "browser-accept-account-controls.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "cf254e772e45a5c9c477102dd40aa8d5acbc9109f517a740ff53da5f172c76ab"
-detail = "browser-accept-matter-knowledge.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "9a508fc583c11dee80d6fad32580407444e7e1038e196eacb5975435da639e27"
-detail = "browser-accept-matter-context.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "68abf4919373301cedd9c20b4e4d112645c099f7cdfd522a56d95908d0749c4a"
-detail = "browser-accept-cited-context.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "38a9260cc613db3f308096085e4da8b7e86fb8c50396a6ff0770599c7c4e43bd"
-detail = "browser-accept-assertions.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "69edfec01c71b6e6556932d89e8bffdc9ce84a448ff16036dc01b41b92c16a31"
-detail = "browser-accept-assistant-dock.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "1fd3339df960df9ff92ea99ca6e82f8f639b562857077dc8104c0b4642fb6585"
-detail = "browser-accept-one-box.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "a1c037954e248227a15ed79751b5ef8fac0b9c9922a87e2c5beed551b9973c63"
-detail = "browser-accept-briefing.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f574cb02f0363e37def054db251ca56647651acbf02aaf32d1f1d9bb9f4ed267"
-detail = "browser-accept-matter-purpose.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "4a7e3fdbb74f5bdc5161413cd7eb8648779f51b87039a3b5be5011b722925b7b"
-detail = "browser-accept-ask-heading.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "efd59cb4b14e8e8cefaa531a5282084e5ee4d24479d62274b582f51304e721b7"
-detail = "browser-accept-source-roles.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "66c619a8cf6393002081645a27e53cd7d32297248e9724edf062e772456136a2"
-detail = "browser-accept-timeline-draft.py"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f6c8016e4324a4f72186213920710d89b72399a8fe2777cb14ce3690ed383179"
-detail = "context-light-amber-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "30ea58eb19914c7f601a528cedd124fd40d2734e441d2382171980129623b32f"
-detail = "knowledge-light-amber-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "a0fd7203fdae387ecb4398968df3d28cf72b145f55e28e9d872cf4c6b26ae688"
-detail = "source-role-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "2d7623169615afbf5b1edf8d91a22e58b6fa9cf475aa735d9e589d7ba63f4841"
-detail = "source-role-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c2d6db7d03981926d409112fb2d7576cf36690790abfc191e253fc440ef21daf"
-detail = "source-role-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "0dfe9b7dc59a808eaaff7795cad8088944b5761661ab1525b9e42b47165f1209"
-detail = "source-role-conflict-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
-detail = "failure.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "4e92815206b44c8d388963805346a1064b958f0483af8feb8359ac80c2eacb48"
-detail = "failure.html"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "09758f6ab0607c721a0db0f105e199b0ba7ff19d58f83b16646abbc07f98d890"
-detail = "timeline-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "4b53baa9f624857814693b6b6d34e64fee7cdf74936d3175cddc43c8ec49fc5d"
-detail = "timeline-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "1e6b497e888227142d247299d126dbb26386dc8dc14144f0d705c328e37162ca"
-detail = "purpose-empty-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "64c9096bc13973a9af7a35bfb34a17a5ab4a2d9818147c1bbbb7e7676a3414bb"
-detail = "purpose-edit-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "06d5faca0d803593397182c6bc9af3c9d7d26e3f0a111ced3a77718db5d60ecf"
-detail = "purpose-edit-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "9f36058aaf4b8e40fecd46063508bcc557246be4ba5da0a02d7899c1a7eae687"
-detail = "purpose-edit-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "01dd75708459a878b576fe4b46e6ebd4d61aff5ed03fa1a98dd5df0b85e6e395"
-detail = "purpose-conflict-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c06d29887248e8ebf82a83b80a62642d417c99782b493102634372e3e20fbcc4"
-detail = "accent-status.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b26a15eb5a06452cdcd7517fbb14bab26f0b9c26a8cb7704ef3af1aef5800865"
-detail = "accent-filters.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "1524d62ffe524062e1dde059f2649781a999c0472c59b553b54db27ddf5841fe"
-detail = "accent-bulk.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "4230651d5d649e254694efb73ddf8c2e8e9f55bc1518dd04afb451b2ff36fbe5"
-detail = "accent-focus.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "62ab1c1c7dde3a1e9dd3d08730d2e64846dc2d5fd6a5adb00ceab5fad7323ed8"
-detail = "accent-bulk-active.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "e090e6cf5149a84fd6e03240bcaac279e3b3bc9ad38098941176d393a625bd40"
-detail = "accent-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "0012e227bbe5c791c4b466d1cdae5565f5d5754b67ec1b15fa1e4823aa513f9b"
-detail = "ask-heading-dark-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "20d0ab0d9c2312170566aec36144feba77b68652e67a9e1da305da9ed75e5c48"
-detail = "ask-heading-dark-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "8c17aa04720c901686ad9224ccff1085ed98ff9e83f1faf96f61577a74d797a0"
-detail = "ask-heading-light-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "98c257f429a4b0f29480055d40be20fdb8f6b1d9cfa8dc86af329d30eb45a93f"
-detail = "ask-heading-light-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "6f0ba6a7f77761edf37f73adc8ffe888899f550f01205076d5833bf28bf967cb"
-detail = "ask-heading-dusk-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "80a3b7d2c70e7c39cc1e43fe5f3eb8a892fb238f3ac70643b0d531215e7fa925"
-detail = "ask-heading-dusk-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "a2f0383a9781582463a216c35fe5ecfd686e776190e089a066a44aa69b601e40"
-detail = "ask-heading-review-dark-1920.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "381ea851e05c5597c3ad8562c6a773e9e5f85584577051d1b3223a37b0794498"
-detail = "ask-heading-review-light-1920.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "d9691174f13eece8fa53c7183c0436002c382866d6ca4b2dfe1e62d35b1922e3"
-detail = "ask-heading-conversation-dark-1920.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "523fdd6fc0fbf56b7cbe0dc77054f0372287a38d58b33b9a68e0639e91da7cda"
-detail = "ask-heading-conversation-light-1920.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "e5cdc9259bdcd1ca4605cee324f56fe416e4ea936cea58231b8dd9b60a248091"
-detail = "browser-errors.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "e744e03c7f63dd663b27f0d9068a861a98e4119bb17bfa8be0eb2de11d8ac061"
-detail = "reports-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "cbca0de40456ac7eb7f30fc1b606de18e3deda9c65d619b8de1b6995da51d12b"
-detail = "reports-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "867ad35d44c7882a10fa0998d26eab5aee51900dba8c94feb266a8af8860158c"
-detail = "export-ready-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f6972df71180d497583a0f2a10042c9999e67d456255b8fb77be184b36640403"
-detail = "export-ready-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "caaa7bb17c13c1e0b30d3f1d4f6dde5bb7a5d786e8f2fbf41fd0f1fd6af97058"
-detail = "export-needs-attention.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "3044e5e8c49650f6e05359f9c76c20e7ac9a106e65fec20eb16b6bddf0af8cd9"
-detail = "readiness-failed-close-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "fbcbeea4e4aebe3d9da9562f86f6f895bf465da2db052faabce345bf118bad41"
-detail = "readiness-failed-close-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "47b2cd090ebd5ed952dba50358bd2ce3d5912eca411c760462d612d39a129bc4"
-detail = "closure-cancellation-window-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "ca292742a0d5375675488f406568bbdfb8739d99142096cb4cc3617d27d7ceed"
-detail = "closure-cancellation-window-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "434da28e06b86e0b2699c7731df1734610d7ef56bdae19c7c88c01ed82adaa54"
-detail = "closure-final-confirmation-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "748192ab179a5dbbf5ddb2007e85ed915f5a624dae7f7b5164a16195d56189b5"
-detail = "closure-final-confirmation-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "57b7f968e249500723d5128a7d7f19a7dfa8dacd27cdf24c9c212ea00f476612"
-detail = "legacy-check-in-invitation-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "9e9fb35fcffa754d3dbbe3935031b439da77d8968c07775a9336aa6498e5ff9b"
-detail = "legacy-check-in-invitation-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "0a43c3a693ff36148158ed2bddf7d478e80dc5b76c3e9d471d98ad1143c0c3e9"
-detail = "closure-member-notice-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c36cd0df6ad8985d16401b4f2fdc5f9a5afee3323c3f4ad721d7c03c1f7cea0e"
-detail = "closure-member-notice-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "49a544f98e9c7aea479298910c94f7da16a310c6470ad4163a8fe842546de9b4"
-detail = "delete-without-export-window-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "a8758eb2f5c463401d77c821ecc7c0edda9017e08fb4d004b798e91ebd3706fd"
-detail = "delete-without-export-window-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "8ebb8c94cd93c105030685d28bd4527c2931a668d2fcfc91b8e93dbf059f11b6"
-detail = "delete-without-export-final-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "66c39547aa0aa8ec3fc1425c24a14d515f179fcdce2e8c82276d477bae13ba23"
-detail = "delete-without-export-final-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "8a9ffd666c387dd59027d5fc7f5f9c9c8099913b5583bae5496b78a19d9f4dc1"
-detail = "notes-constrained-with-assistant.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "5eb553b95133d93a03f88d00ce60cb084c2d9eff4c71f0f0d56f7a784298dcf9"
-detail = "sources-mobile-actions-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "970eb837d3c6724b981e822f5f0d702f3b75010730a98e1be88f463fd68eb953"
-detail = "one-box-home-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c4433716814653727ce1ba74e6b2a9effe2ec1ac1a4c879525c428ccc3e3f19f"
-detail = "one-box-answer-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "08f9f1f682ce21e481bb884d29aaf6716fddbd3aa11baad15531073d004fefbb"
-detail = "deeper-investigation-offer-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "0439b978bc36d98dd53ad016f7c8becd92d2c89d922aba78e5308fa9b6476f0a"
-detail = "briefing-sections-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b8935d0ec3971f6c11a56fdc6034b1b812e223dafd9f9cfb8abfc359ea4d5a73"
-detail = "briefing-question-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "4f54dcbf64932b15e57332ad73faaf169f1b90163a3733c9b6be3b72d9d2949e"
-detail = "briefing-ask-fallback-430.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "ca6aeb02285cb80f3eac03d8e352f296ad24538dc1fa417fca7b9afa6c269544"
-detail = "sources-mobile-actions-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f6f189a70b43a81f918a809b096cdbc15d49b5572bfffe6b632b4bf557062423"
-detail = "notes-suggestion-original-support.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f6fa1177cc1b98fed84e43814302c13d602f9ed239941fa0442c298845433f6e"
-detail = "root-font-200-percent.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "bcd172565521cf5ab2e4c6a98fe7c4e3f7f9e2c88d7809aac21dcbaf9a154f0c"
-detail = "text-spacing.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "88bdd88fdd5971770dcc481e000a84cdac18c05a5ec67685021010d150b9f7c0"
-detail = "notes-balanced-4k.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "82141a22a7c588811576860f133541dfac269d2556bda66698721dc526d78a19"
-detail = "zoom-125-notes.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c11f2d8742048a7ccc8d8704f21879ff8665f8823f1ead5e9800aa69a2e0bb0c"
-detail = "zoom-125-sources.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "49192b30aa43a6b554867ec421f0dce8c18be27255e60d9c13dbaf0bb8b217f9"
-detail = "zoom-150-notes.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "080c5f1cb00b54ae86a171d9dcc50e8a93f5360282e2c6e7192d7d00ac96bbd1"
-detail = "zoom-150-sources.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "942ed9f29c0f85914a78087597207757ec59921452cf945c9be9280b921383c6"
-detail = "zoom-200-notes.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "5c070c8545e55d777fc5d474712fb66af624ea8b225633f60a1c5637e122bfb5"
-detail = "zoom-200-sources.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "adbc42d346123a36fb006bc6dfd9bb76dfe6b4f2acc33e4cab12c7c8a044f7c0"
-detail = "zoom-400-notes.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "5a55afea21245531ea5e417ec941170574af3915ef69ffc49608f5f109579d76"
-detail = "zoom-400-sources.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b39d737163bc6dcbc23042cc063768fd16b2ad58d74a35b791105e0d47470337"
-detail = "context-supplied-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "3566c22fce6417707e3b84cd7436223cd5f7515498b84610f37d7e24d6a3aac6"
-detail = "context-dark-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "38cf81edd3c99ebf0f320977b3bdf85639faedd793fa11e0986a7dddd2136df6"
-detail = "context-light-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "900e12a857cba8d79c64f517ca72d79632d2ed73eb3ceb9367ee899d8d827547"
-detail = "context-dusk-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "6ad0759b5e68354a9d2e88311022a60c935f60989365b7b45bb97d6f0565a5f7"
-detail = "context-dusk-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "a5936f63ff0eed54c87e750aff8560c505dc0af409961d10edb2356263d1c96a"
-detail = "knowledge-dark-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "29c231ca8a7bcb8805856e981528ddd2987b03d81cdbccd1f98ab40cea15cce0"
-detail = "knowledge-light-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "685418129b658a3fb3390bc99567dc453789b39c387a0b5d805099d0fb8581d7"
-detail = "knowledge-dusk-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "863559f341d2eb6ce734a598621b96c02ec65407af2777b254647e50141460fb"
-detail = "knowledge-dusk-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "18f00ca555da6636c2dd29990f2a363b76f44d8d7af311008aebd535074ee1d1"
-detail = "cited-context-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b2198d5380ae5561cacea5241fc9857e38b59dd35b921020c908d9e73516067a"
-detail = "cited-context-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "30e14af860d4360dd76b7ea27c855a220cadc328511de0553447bed44e6e5a9d"
-detail = "cited-context-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "e59ae284ae6b7a08ca6135391b91d095705878ae725fd1c61ed64fdcd2124946"
-detail = "cited-context-assistant.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "eeb46b0f8ef546cd32e881e8bab4e06940f0a91e6a0ce51ce85215e3188bbd8f"
-detail = "cited-context-assistant-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "6833aefc7f8d381da42c67da6737e983497ab7f1a8771b5c6bc2e2aed02a1f42"
-detail = "cited-context-assistant-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "38560ef14312692add9e6b95817e8da76884ba731937a6aedb74f8847f582797"
-detail = "cited-context-changed.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "84189bf38f3765962dfb175475719bdcbff82e3e2056131eedfa171d77553a79"
-detail = "cited-context-transcript-moment.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "3a69134be8a104a46c4c894381f88ade06e05adb9e9ed763197d047dfb4aa989"
-detail = "cited-context-answer-return.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f8231ea6a64432ad8a645c1ade982891db1e44e90cf4b388618a310ffd72fcaf"
-detail = "assertion-source-toolbar-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "699ca9e1f3444bf757dbd66052096ee1a3d19ff582169796f3c8aaa232923509"
-detail = "assertion-source-toolbar-1200.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f9ae08b55ae596cfdc1fc72d9cf2b68b8ae303ec573a0d4c7ace70e83e9eaf4b"
-detail = "assertion-desktop.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f9bb82f145d4acc5f8ef24e02768591d2aa78ccc9eae4599637152f5c67cb32f"
-detail = "assertion-accounts.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "3f9ae32c1c1d2cc0647077b9843f2d4b7cc81911973adede1bfa9b40b1a7c890"
-detail = "assertion-source-return-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "6d2f74296469ffe7a5c786de9591492a818dd77647de635f449b05d418914d09"
-detail = "assertion-conflict.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "34a30bf066fc1022d92fdedad3596f6ba4aeec5c833084972561afe867843ed9"
-detail = "assertion-mobile.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "deff50a23640c98ff0e2fb99c27d9e98f541fd1eeb034acb6501d95132e5e7ab"
-detail = "assertion-mobile-recovery.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "32800cdff2abaf1376b9a8c043e8e0e449c6c968f06c7f2b03693bfc94e10f4b"
-detail = "assertion-chronology.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "119c17eb4af8940b3fb3fe88d7712d53585b2178245dd7ad4390e545f7f2c5fd"
-detail = "dock-source-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "734f64a59fb95484b483b8733cbfdc9b7eeee7ee695d8fac1c25b4e1d1ea2df8"
-detail = "dock-source-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "0c97aab2e90c752ea7bbb553a1fa9937699ba1d3d15957a4df305f242ce3496e"
-detail = "dock-source-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "c47bcdf937681916cc7b9f2f0b2050f477a93077bdeb7485aacaceb7da41a03b"
-detail = "dock-suggest-preview-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "127fa958af8589bba4f24ceac407e34d6c92cb209ac8654790c502cb062d576d"
-detail = "dock-suggested-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "d9c9db1aeb9aea6272b724bc99cbad0301811914f4564d70b9fc84d81c608adc"
-detail = "dock-suggest-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "b923f86662cb54666a26db9aadd13fd389a3484b17d917be104ededc86ced8fe"
-detail = "dock-suggest-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "01267d0549868bc0979aa07f09098522dcd56fb5161d3585fddd4243e165cea2"
-detail = "dock-suggest-preview-320.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "e74d148016ae4dda039c21ac3c4b54cf3a777e05f598d1aabd7bd4eceb65c4f7"
-detail = "dock-draft-1440.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "f6e7cf9d3865bd81c1c06a41b3cdefdfc8d4a1d7e4531fa6b904a30c63e4f212"
-detail = "dock-draft-390.png"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "08dad6bf54474908d86bff265c4b46e207a4745e3476e250c028ba532a05a95a"
-detail = "dock-draft-320.png"
 
 [[source]]
 path = "scripts/run-browser-acceptance.py"
@@ -7323,76 +3237,10 @@ digest = "33a42f15908b434b7f657b103c4fcff63295c88cc0358763453b8ab2a3b00247"
 detail = "storage.googleapis.com"
 
 [[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "834aa60b7b3085c08406d4bbe0f2d6c5811ca9ad1f74666deef53da29f614842"
-detail = "journey.log"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "834aa60b7b3085c08406d4bbe0f2d6c5811ca9ad1f74666deef53da29f614842"
-detail = "journey.log"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "87249a4ce26259c12a05305bf70f692772b27f2a7ab19cb4b1a8fb740dcb1ea2"
-detail = "summary.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "35ab6d2120900f86a7fe1f90b21f893c2d64fefeaf550581c5906a6564bf50f1"
-detail = "journeys.json"
-
-[[source]]
-path = "scripts/source-role-storage-restore-drill.py"
-kind = "host"
-digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
-detail = "baseline.tar"
-
-[[source]]
-path = "scripts/source-role-storage-restore-drill.py"
-kind = "host"
-digest = "1ebb9a71fb8706b21a57a2e3553170b740a60d82df5f1ef7799b9c147bc799f1"
-detail = "working.sqlite"
-
-[[source]]
-path = "scripts/source-role-storage-restore-drill.py"
-kind = "host"
-digest = "67363728ae393380f494fc0ede1a7c52a92311116a34cb9746c59003d3953641"
-detail = "preupgrade.sqlite"
-
-[[source]]
-path = "scripts/source-role-storage-restore-drill.py"
-kind = "host"
-digest = "ae42fe0ae89efceda5968cbaa6e6f0a07c6d1c980823a952572f84efceeea9cd"
-detail = "clean.sqlite"
-
-[[source]]
 path = "scripts/stage-models.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
 detail = "network import"
-
-[[source]]
-path = "scripts/stage-models.py"
-kind = "host"
-digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
-detail = "approved-model-manifest.json"
-
-[[source]]
-path = "scripts/stage-models.py"
-kind = "host"
-digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
-detail = "approved-model-manifest.json"
-
-[[source]]
-path = "scripts/stage-models.py"
-kind = "host"
-digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
-detail = "approved-model-manifest.json"
 
 [[source]]
 path = "scripts/stage-models.py"
@@ -7409,44 +3257,8 @@ detail = "urllib.request.urlopen"
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
-digest = "9e9bb9c1d9c0410e3d831c192e58a8e0c34653479ddb09a41769905d7f414876"
-detail = "issuer-key.pem"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "76543611dccc2cd0832fc6eb344b9cbfb3d6dc00aa7babae7409f07d62ddf24a"
-detail = "compose.json"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
 digest = "18aedd26acf92baed120db3fc1497bdbc1951ac87f9f387a6e42c4a2d6545016"
 detail = "issuer.example.test:8443"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "fabc33d1236e2825d6047cd55f5bd1c20954bd806033613209bf8530c32a22bd"
-detail = "issuer.pem"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "fabc33d1236e2825d6047cd55f5bd1c20954bd806033613209bf8530c32a22bd"
-detail = "issuer.pem"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "253202dc76743f2c5b6d76891a9502e89764ccc75705783990f9cc7ec3e71d50"
-detail = "probe.py"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
-detail = "compose.yaml"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
@@ -7475,104 +3287,8 @@ detail = "127.0.0.1:8080"
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
-digest = "906be301a25b186e911bc2e6e760e4cbaf9f3d6f3315dbddb5833f95d3fb2a01"
-detail = "build.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "08274475db59c29eb680585c6c99698bb8d0a0830374b61b75934b9cd9b9bdf3"
-detail = "fixture-build.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "1ae892f4d7f947dd96ca21d6783a373652e3bad3751309b00bdb852e242956f6"
-detail = "up.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "1ae892f4d7f947dd96ca21d6783a373652e3bad3751309b00bdb852e242956f6"
-detail = "up.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "02bc38be55f1e3977370c178350fd786350d5261ab4ba291814ce568aeec7922"
-detail = "allow-proxy.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
 digest = "4e2232d461afd420ba9d68751aba2ee208d941177d0d80c23828487da7e987a3"
 detail = "issuer.example.test:8443"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "f2ac2ab0b8e48ac251e587366058a0dc9d5316c1ccb3a10d1bc0d9bb394aefc8"
-detail = "readiness.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "9214fa68115778ea49a60f1eb872efe85f036aafcd8b9b095e0f0eaf36fe3207"
-detail = "dns-forwarding-control-up.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "817300f6a610396fbbd1bb42344552f9ab9113ac23277d222017d44bd974a649"
-detail = "dns-restored-up.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "f6c51c8bebaa8a37e20c8b31b837aa7eb2db3950221bdc583c75f261a9bd9ba2"
-detail = "deny-all-up.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "c57c6351294229d4a0fbfdcfb6981737c5a3b48759a5162e00d20196053da512"
-detail = "cleanup.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "87249a4ce26259c12a05305bf70f692772b27f2a7ab19cb4b1a8fb740dcb1ea2"
-detail = "summary.json"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "784a8601679c5bdf0e4dfafa5c2536fe894354eea12ab4be27387353ec81270f"
-detail = "foreign-tls-control.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "55a13eaf292681c74dbe06fadd926708243f923b5df95413c376e92fd401d788"
-detail = "probe.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "5f49daa8f7940a71edb73d525b2945b721ca7f86124e64bdc0e5a00c460c29f0"
-detail = "dns-forwarding-control.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "f976d207841ed173f1c448bebfdd9d445ec8e6ac1a469b2e4652c10517ecc1b2"
-detail = "dns-restored.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "2119d609d5f1089e01abb9aeea5271874f3df781dffea8a5cc84b28855a3ba56"
-detail = "deny-all.log"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
@@ -7598,121 +3314,7 @@ kind = "host"
 digest = "0f0ebaa65f822c1fa3d73c7a648dc0cb3b1861eb6baf147950f2ae7941fd7026"
 detail = "x.retrieval"
 
-[[source]]
-path = "scripts/vendor-idna.py"
-kind = "host"
-digest = "631014dbd7d86a2bd3f9b149e6a8c890ac0f91625764adb09622102939959a43"
-detail = "idna-3.20.pyz"
-
-[[source]]
-path = "scripts/vendor-idna.py"
-kind = "host"
-digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
-detail = "license.md"
-
-[[source]]
-path = "scripts/vendor-idna.py"
-kind = "host"
-digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
-detail = "license.md"
-
-[[source]]
-path = "scripts/vendor-idna.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "scripts/verify-byte-match-rollback.py"
-kind = "host"
-digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
-detail = "expected.json"
-
-[[source]]
-path = "scripts/verify-byte-match-rollback.py"
-kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "070238473d29a3c5b3be683295e918e19668bbe7e1ee1aa811ba46b1d9a18578"
-detail = "forwarded.eml"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "819b0cc88dc150b8b808976a22c74d2eca2e04109c647d5d9673890f09c8b168"
-detail = "workbench.sqlite"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "ffd5204723a4f6520e5c39d9936a3b2e3395a8104fece2db26285c3d4044e076"
-detail = "generated.eml"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "ffd5204723a4f6520e5c39d9936a3b2e3395a8104fece2db26285c3d4044e076"
-detail = "generated.eml"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
-detail = "expected.json"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
-detail = "expected.json"
-
-[[source]]
-path = "scripts/verify-email-coverage-rollback.py"
-kind = "host"
-digest = "e81b1522ec2d6d234e1aede776556cf6aa6bb166ebba33466f4d8f8a5c2b8a13"
-detail = "new-occurrence.eml"
-
-[[source]]
-path = "scripts/verify-media-preflight-rollback.py"
-kind = "host"
-digest = "f6f3fbe702b7ac1f7d4467ee354557e0187f4ff4ff0c9ab88de21993c00922ac"
-detail = "generated-silence.wav"
-
-[[source]]
-path = "scripts/verify-upload-occurrence-rollback.py"
-kind = "host"
-digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
-detail = "expected.json"
-
-[[source]]
-path = "scripts/verify-upload-occurrence-rollback.py"
-kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "scripts/verify-upload-occurrence-rollback.py"
-kind = "host"
-digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
-detail = "report.txt"
-
-[[source]]
-path = "src/case_intelligence/_idna/__init__.py"
-kind = "host"
-digest = "631014dbd7d86a2bd3f9b149e6a8c890ac0f91625764adb09622102939959a43"
-detail = "idna-3.20.pyz"
-
 # Merged browser diagnostics: exact filenames and Python module-name literals.
-
-[[source]]
-path = "scripts/browser_navigation.py"
-kind = "host"
-digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
-detail = "navigation-timeouts.json"
 
 [[source]]
 path = "scripts/browser_navigation_lint.py"
@@ -7755,45 +3357,3 @@ path = "scripts/browser_navigation_lint.py"
 kind = "host"
 digest = "77aa4feec487dd9a1a62685af06ef63108785874bb965ceabf9f1d3e81d5ef8a"
 detail = "selenium.webdriver."
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
-detail = "navigation-timeouts.json"
-
-[[source]]
-path = "scripts/run-browser-acceptance.py"
-kind = "host"
-digest = "482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908"
-detail = "navigation-timeouts.json"
-
-[[source]]
-path = "src/case_intelligence/_idna/__init__.py"
-kind = "host"
-digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
-detail = "manifest.json"
-
-[[source]]
-path = "src/case_intelligence/_idna/__init__.py"
-kind = "host"
-digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
-detail = "license.md"
-
-[[source]]
-path = "src/case_intelligence/_idna/__init__.py"
-kind = "host"
-digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
-detail = "readme.md"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "47250fde870fa4580111354ae25c52239059edbcc5880ee1b68de47de643e721"
-detail = "installed-package.log"
-
-[[source]]
-path = "scripts/test-egress-smoke.py"
-kind = "host"
-digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
-detail = "installed-package-control.log"

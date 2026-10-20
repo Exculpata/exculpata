@@ -21,6 +21,72 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
                    "socket", "http.client", "authlib.integrations", "service_endpoints.open_service_request")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
+NON_HOST_SUFFIXES = frozenset({
+    "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "json", "jsonl", "yaml",
+    "yml", "toml", "txt", "md", "log", "env", "sh", "py", "cjs", "mjs", "js",
+    "css", "html", "sqlite", "sqlite3", "db", "wav", "mp3", "mp4", "eml", "pdf",
+    "csv", "tar", "gz", "zip", "whl", "lock", "bin", "key", "pem", "keytab",
+    "template", "tmp", "conf", "cfg", "ini", "xml", "pyz",
+})
+PUBLIC_TLD_GUARD = frozenset({
+    "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "app", "dev",
+    "cloud", "site", "online", "xyz", "top", "shop", "tech", "store", "page",
+    "ai", "io", "me", "tv", "cc", "ly", "sh", "co",
+})
+NETWORK_CALLEE_NAMES = frozenset({
+    "connect", "connect_ex", "create_connection", "getaddrinfo", "gethostbyname",
+    "request", "urlopen", "Request", "open_service_request", "Client", "AsyncClient",
+    "Session", "ClientSession",
+})
+
+
+def plain_host_context(node, parents, is_network_call):
+    """Keep URL fragments and destinations visible through enclosing expressions."""
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, ast.stmt):
+            break
+        if isinstance(node, ast.Call) and is_network_call(node):
+            return False
+        string_context = (
+            isinstance(node, ast.JoinedStr)
+            or isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod))
+            or isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"format", "join"}
+        )
+        if string_context and any(
+            isinstance(part, ast.Constant) and isinstance(part.value, str) and "://" in part.value
+            for part in ast.walk(node)
+        ):
+            return False
+    return True
+
+
+def non_host_category(node, parents, module_roots, is_network_call):
+    """Classify only plain filename or identifier literals; None keeps the finding."""
+    value = node.value
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        pass
+    else:
+        return None
+    labels = value.split(".")
+    tail = labels[-1].lower()
+    if tail in {"test", "example", "invalid", "localhost"}:
+        return None
+    category = None
+    if tail in NON_HOST_SUFFIXES:
+        category = "file suffix"
+    elif (len(labels) >= 2 and all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", label) for label in labels)
+          and len(tail) >= 3 and tail not in PUBLIC_TLD_GUARD):
+        if labels[0] in sys.stdlib_module_names or labels[0] == "builtins" or labels[0] in module_roots:
+            category = "module path"
+        elif any(re.search(r"[a-z][A-Z]", label) for label in labels):
+            category = "camelCase"
+    if category and plain_host_context(node, parents, is_network_call):
+        return category
+    return None
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -54,7 +120,7 @@ def fingerprint(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
-def source_inventory(root):
+def source_inventory(root, legacy_host_rule=False):
     """Resolve ordinary imports, aliases, assignments and sync/async clients.
 
     This conservative inventory cannot resolve arbitrary reflection, generated
@@ -72,11 +138,15 @@ def source_inventory(root):
             raise ValueError(f"{relative}:1: symlinked source")
         tree = ast.parse(path.read_text(), filename=relative)
         aliases = {}
+        module_roots = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for item in node.names:
+                    module_roots.add(item.name.split('.')[0])
                     aliases[item.asname or item.name.split('.')[0]] = item.name if item.asname else item.name.split('.')[0]
             elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    module_roots.add(node.module.split('.')[0])
                 for item in node.names:
                     aliases[item.asname or item.name] = f"{node.module}.{item.name}"
 
@@ -130,6 +200,12 @@ def source_inventory(root):
 
         def networking(name):
             return any(name == module or name.startswith(module + ".") for module in NETWORK_MODULES)
+
+        def is_network_call(node):
+            name = resolve(node.func)
+            final_name = node.func.attr if isinstance(node.func, ast.Attribute) else name.rsplit('.', 1)[-1]
+            return (networking(name) or final_name in NETWORK_CALLEE_NAMES
+                    or name.rsplit('.', 1)[-1] in NETWORK_CALLEE_NAMES)
 
         # A bounded fixed point also follows aliases assigned after their use.
         for _ in range(12):
@@ -185,7 +261,8 @@ def source_inventory(root):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 hosts = set(URL.findall(node.value))
                 if HOSTNAME.fullmatch(node.value):
-                    hosts.add(node.value)
+                    if legacy_host_rule or not non_host_category(node, parents, module_roots, is_network_call):
+                        hosts.add(node.value)
                 if len(node.value) <= 45:
                     try:
                         hosts.add(str(ipaddress.ip_address(node.value)))
