@@ -341,3 +341,24 @@ def test_csv_and_json_bytes_preserve_all_payload_suffixes():
     assert data == original
     assert export_timeline(data, 'csv').encode('utf-8') == expected_csv
     assert export_timeline(data, 'json').encode('utf-8') == expected_json
+
+
+@pytest.mark.parametrize("control", [
+    "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+])
+@pytest.mark.parametrize("field", ["excerpt", "document_title", "source_name", "notice"])
+def test_bidi_controls_do_not_survive_into_markdown(control, field):
+    data = payload()
+    value = "left" + control + "right"
+    if field == "excerpt":
+        data["entries"][0]["citations"][0]["excerpt"] = value
+    elif field == "document_title":
+        data["entries"][0]["citations"][0]["document_title"] = value
+    elif field == "source_name":
+        data["coverage_records"][0]["source_name"] = value
+    else:
+        data["notice"] = value
+    body = export_timeline(data, "markdown")
+    assert control not in body
+    assert control not in MarkdownIt("commonmark").render(body)

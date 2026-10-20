@@ -10,18 +10,22 @@ from .derived_text import presentation_text
 from .work_product_exports import _csv_safe
 
 
+def _export_presentation_text(text: str) -> str:
+    text = presentation_text(text)
+    return ''.join(' ' if unicodedata.category(c) == 'Cf' or c in '\u2028\u2029' else c for c in text)
+
+
 def safe(value):
     # Use the notebook presentation/control policy before inspecting formula
     # prefixes. Format characters and Unicode line separators cannot hide them.
-    text = presentation_text(str(value or ''))
-    text = ''.join(' ' if unicodedata.category(c) == 'Cf' or c in '\u2028\u2029' else c for c in text)
+    text = _export_presentation_text(str(value or ''))
     text = _csv_safe(text)
     probe = unicodedata.normalize('NFKC', text).replace('\u2212', '-').lstrip()
     return "'" + text if probe.startswith(('=', '+', '-', '@', '|', '%')) else text
 
 
 def _md_escape(text: str) -> str:
-    value = html.escape(presentation_text(text), quote=False)
+    value = html.escape(_export_presentation_text(text), quote=False)
     for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
         value = value.replace(character, '\\' + character)
     value = re.sub(r'^([-+]|[0-9]{1,9}[.)])',
