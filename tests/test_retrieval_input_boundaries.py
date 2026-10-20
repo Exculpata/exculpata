@@ -36,7 +36,7 @@ def worker_transport(monkeypatch):
     monkeypatch.setattr(retrieval_worker, "_embedding", Embedding())
     monkeypatch.setattr(retrieval_worker, "_reranker", Reranker())
     with TestClient(retrieval_worker.app) as client:
-        def open_request(request, timeout):
+        def open_request(request, timeout, **_kwargs):
             requests.append(request)
             response = client.post(request.full_url, content=request.data,
                                    headers={"Content-Type": "application/json"})
@@ -45,7 +45,7 @@ def worker_transport(monkeypatch):
                                              "synthetic rejection", {}, None)
             return io.BytesIO(response.content)
 
-        monkeypatch.setattr("urllib.request.urlopen", open_request)
+        monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", open_request)
         yield requests, embedded
 
 
@@ -138,7 +138,7 @@ def test_exact_serialized_byte_boundary_includes_framing(overhead, monkeypatch, 
 def test_unrepresentable_request_is_nonretryable_before_transport(monkeypatch):
     from case_intelligence import retrieval_limits
     monkeypatch.setattr(retrieval_limits, "MAX_BODY_BYTES", 10)
-    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: pytest.fail("unexpected transport"))
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", lambda *_a, **_k: pytest.fail("unexpected transport"))
     with pytest.raises(retrieval_limits.RetrievalInputProblem):
         RemoteEmbeddingAdapter("http://testserver").embed(["Synthetic"])
 
@@ -164,7 +164,7 @@ def test_rerank_byte_batches_keep_original_candidates(worker_transport):
 @pytest.mark.parametrize("texts", [[""], [" "], ["\ud800"]])
 def test_invalid_inputs_fail_locally_without_service_input_leak(texts, monkeypatch):
     from case_intelligence.retrieval_limits import RetrievalInputProblem
-    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: pytest.fail("unexpected transport"))
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", lambda *_a, **_k: pytest.fail("unexpected transport"))
     with pytest.raises(RetrievalInputProblem, match="administrator") as error:
         RemoteEmbeddingAdapter("http://testserver").embed(texts)
     assert error.value.retryable is False
@@ -173,7 +173,7 @@ def test_invalid_inputs_fail_locally_without_service_input_leak(texts, monkeypat
 @pytest.mark.parametrize("query", ["", "q" * 513, "\ud800"])
 def test_rerank_invalid_query_fails_before_transport(query, monkeypatch):
     from case_intelligence.retrieval_limits import RetrievalInputProblem
-    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k: pytest.fail("unexpected transport"))
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", lambda *_a, **_k: pytest.fail("unexpected transport"))
     with pytest.raises(RetrievalInputProblem):
         RemoteRerankerAdapter("http://testserver").rerank(query, [])
 
@@ -181,7 +181,7 @@ def test_rerank_invalid_query_fails_before_transport(query, monkeypatch):
 @pytest.mark.parametrize("vectors", [[], [[1.0], [1.0, 2.0]], [[float("nan")], [1.0]], [[float("inf")], [1.0]]])
 def test_malformed_fragment_vectors_fail_before_index_writes(vectors, monkeypatch):
     from case_intelligence.pilot_uploads import PilotUnit
-    monkeypatch.setattr("urllib.request.urlopen", lambda *_a, **_k:
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", lambda *_a, **_k:
                         io.BytesIO(json.dumps({"vectors": vectors}).encode()))
     connection = RecordingDatabase()
     with pytest.raises(RuntimeError, match="invalid embedding batch"):
@@ -206,7 +206,7 @@ def test_later_fragment_failure_never_publishes_a_partial_index(failure, monkeyp
             rows = [[1.0]] if failure == "dimension" else []
         return io.BytesIO(json.dumps({"vectors": rows}).encode())
 
-    monkeypatch.setattr("urllib.request.urlopen", open_request)
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", open_request)
     adapter = RemoteEmbeddingAdapter("http://testserver")
     adapter.batch_limit = 1
     connection = RecordingDatabase()
@@ -231,7 +231,7 @@ def test_permanent_index_rejection_is_actionable_and_not_retryable_after_reopen(
         raise urllib.error.HTTPError("http://testserver/embed", status,
             "synthetic server detail must stay private", {}, io.BytesIO(b"synthetic private input"))
 
-    monkeypatch.setattr("urllib.request.urlopen", rejected)
+    monkeypatch.setattr("case_intelligence.review_bench_v2.open_service_request", rejected)
     with TestClient(app) as client:
         bench = app.state.workbench
         created = client.post("/matters", data={"name": "Synthetic boundary", "descriptor": "Synthetic"},

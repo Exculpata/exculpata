@@ -1,5 +1,10 @@
 # Security policy
 
+The [reference egress model](docs/NETWORK_EGRESS.md) describes app isolation,
+the destination-limited OIDC proxy, its acceptance limits and the named
+`model-stager`, `clamav-updater` and gateway exceptions. It is not a host firewall
+or a claim that all containers are offline.
+
 This prerelease has no public support window. Report suspected vulnerabilities
 through GitHub private vulnerability reporting: open this repository's
 **Security** tab and choose **Report a vulnerability**.

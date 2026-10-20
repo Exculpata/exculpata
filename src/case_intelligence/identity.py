@@ -8,6 +8,9 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
+from case_intelligence.oidc_network_policy import validated_https_url
+
+import asyncio
 import base64
 import grp
 import hashlib
@@ -128,30 +131,10 @@ class LocalLoginThrottledError(LocalAuthenticationError):
 
 
 def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> str:
-    candidate = (value or "").strip().rstrip("/")
-    if not candidate or len(candidate) > 1_024:
-        raise RuntimeError(f"{label} is missing or invalid")
-    parsed = urlsplit(candidate)
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise RuntimeError(f"{label} must be an exact HTTPS URL")
-    if origin_only and parsed.path not in {"", "/"}:
-        raise RuntimeError(f"{label} must not contain a path")
-    hostname = parsed.hostname.casefold()
-    if hostname == "localhost":
-        raise RuntimeError(f"{label} must not use a loopback host")
     try:
-        if ipaddress.ip_address(hostname).is_loopback:
-            raise RuntimeError(f"{label} must not use a loopback host")
-    except ValueError:
-        pass
-    return candidate
+        return validated_https_url(value or "", origin_only=origin_only)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} must be an exact non-loopback HTTPS URL") from exc
 
 
 def _regular_file(path: Path, *, label: str, exact_mode: int | None = None) -> Path:
@@ -596,6 +579,10 @@ class AuthlibOidcClient:
     def __init__(self, settings: OidcSettings) -> None:
         self.settings = settings
         verify: bool | str = str(settings.ca_file) if settings.ca_file else True
+        # Explicit operator transport; discovery must never choose proxy/TLS or
+        # inherit a suffix-based NO_PROXY exception. Native installations can
+        # omit the relay; the reference Compose graph fixes this setting.
+        proxy = os.environ.get("CASE_INTELLIGENCE_OIDC_PROXY", "").strip() or None
         registry = OAuth()
         self.remote = registry.register(
             name="district",
@@ -609,59 +596,80 @@ class AuthlibOidcClient:
                 "timeout": httpx.Timeout(10.0, connect=5.0),
                 "verify": verify,
                 "follow_redirects": False,
+                "trust_env": False,
+                "proxy": proxy,
             },
         )
         self._metadata_ready = False
+        self._metadata_lock = asyncio.Lock()
 
     @staticmethod
     def _origin(value: str) -> tuple[str, str, int]:
-        parsed = urlsplit(value)
-        return parsed.scheme, (parsed.hostname or "").casefold(), parsed.port or 443
+        try:
+            parsed = httpx.URL(value)
+        except httpx.InvalidURL as exc:
+            raise OidcAuthenticationError("Organization sign-in configuration could not be verified.") from exc
+        # Compare the authority used by the transport. Unicode casefold can
+        # conflate distinct IDNA hosts (for example, sharp-s and double-s).
+        return parsed.scheme, parsed.raw_host.decode("ascii").lower(), parsed.port or 443
 
     async def _validated_metadata(self) -> Mapping[str, Any]:
-        try:
-            metadata = await self.remote.load_server_metadata()
-        except (AuthlibBaseError, httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
-            raise OidcAuthenticationError("Organization sign-in is temporarily unavailable.") from exc
-        if self._metadata_ready:
-            return metadata
-        if metadata.get("issuer") != self.settings.issuer:
-            raise OidcAuthenticationError("Organization sign-in configuration could not be verified.")
-        issuer_origin = self._origin(self.settings.issuer)
-        for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
-            value = metadata.get(key)
-            if not isinstance(value, str):
-                raise OidcAuthenticationError("Organization sign-in configuration is incomplete.")
+        # Authlib mutates one shared mapping after discovery completes. Do
+        # not let a delayed initial response restore untrusted transport keys.
+        async with self._metadata_lock:
+            if self._metadata_ready:
+                return self.remote.server_metadata
             try:
-                normalized = _strict_https_url(value, label=f"OIDC {key}")
-            except RuntimeError as exc:
+                metadata = await self.remote.load_server_metadata()
+            except (AuthlibBaseError, httpx.HTTPError, OSError, RuntimeError, ValueError) as exc:
+                raise OidcAuthenticationError("Organization sign-in is temporarily unavailable.") from exc
+            if metadata.get("issuer") != self.settings.issuer:
+                raise OidcAuthenticationError("Organization sign-in configuration could not be verified.")
+            issuer_origin = self._origin(self.settings.issuer)
+            for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+                value = metadata.get(key)
+                if not isinstance(value, str):
+                    raise OidcAuthenticationError("Organization sign-in configuration is incomplete.")
+                try:
+                    normalized = _strict_https_url(value, label=f"OIDC {key}")
+                except RuntimeError as exc:
+                    raise OidcAuthenticationError(
+                        "Organization sign-in configuration could not be verified."
+                    ) from exc
+                if self._origin(normalized) != issuer_origin:
+                    raise OidcAuthenticationError(
+                        "Organization sign-in endpoints do not match the approved issuer."
+                    )
+            response_types = metadata.get("response_types_supported")
+            if isinstance(response_types, list) and "code" not in response_types:
+                raise OidcAuthenticationError("Organization sign-in does not support authorization code flow.")
+            challenges = metadata.get("code_challenge_methods_supported")
+            if not isinstance(challenges, list) or "S256" not in challenges:
+                raise OidcAuthenticationError("Organization sign-in does not advertise required PKCE support.")
+            auth_methods = metadata.get("token_endpoint_auth_methods_supported")
+            if isinstance(auth_methods, list) and self.settings.token_auth_method not in auth_methods:
                 raise OidcAuthenticationError(
-                    "Organization sign-in configuration could not be verified."
-                ) from exc
-            if self._origin(normalized) != issuer_origin:
-                raise OidcAuthenticationError(
-                    "Organization sign-in endpoints do not match the approved issuer."
+                    "Organization sign-in does not support the configured client authentication method."
                 )
-        response_types = metadata.get("response_types_supported")
-        if isinstance(response_types, list) and "code" not in response_types:
-            raise OidcAuthenticationError("Organization sign-in does not support authorization code flow.")
-        challenges = metadata.get("code_challenge_methods_supported")
-        if not isinstance(challenges, list) or "S256" not in challenges:
-            raise OidcAuthenticationError("Organization sign-in does not advertise required PKCE support.")
-        auth_methods = metadata.get("token_endpoint_auth_methods_supported")
-        if isinstance(auth_methods, list) and self.settings.token_auth_method not in auth_methods:
-            raise OidcAuthenticationError(
-                "Organization sign-in does not support the configured client authentication method."
-            )
-        algorithms = metadata.get("id_token_signing_alg_values_supported") or ["RS256"]
-        if not isinstance(algorithms, list):
-            raise OidcAuthenticationError("OIDC signing algorithms are invalid.")
-        safe_algorithms = [value for value in algorithms if value in _SAFE_SIGNING_ALGORITHMS]
-        if not safe_algorithms:
-            raise OidcAuthenticationError("Organization sign-in has no approved token signing algorithm.")
-        self.remote.server_metadata["id_token_signing_alg_values_supported"] = safe_algorithms
-        self._metadata_ready = True
-        return metadata
+            algorithms = metadata.get("id_token_signing_alg_values_supported") or ["RS256"]
+            if not isinstance(algorithms, list):
+                raise OidcAuthenticationError("OIDC signing algorithms are invalid.")
+            safe_algorithms = [value for value in algorithms if value in _SAFE_SIGNING_ALGORITHMS]
+            if not safe_algorithms:
+                raise OidcAuthenticationError("Organization sign-in has no approved token signing algorithm.")
+            # Authlib merges server_metadata over client_kwargs. Retain only OIDC
+            # fields consumed by this adapter; arbitrary provider metadata is not
+            # transport configuration (nor client credentials, headers or options).
+            fields = {"issuer", "authorization_endpoint", "token_endpoint", "jwks_uri",
+                      "response_types_supported", "code_challenge_methods_supported",
+                      "token_endpoint_auth_methods_supported", "id_token_signing_alg_values_supported",
+                      "_loaded_at"}
+            approved = {key: value for key, value in metadata.items() if key in fields}
+            approved["id_token_signing_alg_values_supported"] = safe_algorithms
+            self.remote.server_metadata.clear()
+            self.remote.server_metadata.update(approved)
+            self._metadata_ready = True
+            return self.remote.server_metadata
 
     async def authorization_url(
         self,

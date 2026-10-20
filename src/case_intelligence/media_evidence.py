@@ -24,6 +24,7 @@ from .media_preflight import (
     REVISION as PREFLIGHT_REVISION,
     inspect_recording,
 )
+from .media_processor_errors import MediaProcessorError, MediaProcessorNotFound
 from .branding import PRODUCT_NAME
 from .derived_text import presentation_text
 from .generation import GenerationRejected, GenerationUnavailable
@@ -46,14 +47,6 @@ from .work_product_exports import (
     blocks_to_docx,
     blocks_to_markdown,
 )
-
-
-class MediaProcessorError(RuntimeError):
-    """Staff-safe failure at the transient processor boundary."""
-
-
-class MediaProcessorNotFound(MediaProcessorError):
-    """The processor verified that an ephemeral job is already absent."""
 
 
 MAX_SUMMARY_WINDOWS = 12
@@ -265,6 +258,7 @@ class TranscriptionV2Client:
                 headers=headers,
                 timeout=timeout,
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
                 response = client.request(method, path, files=files, data=data)
             if response.status_code >= 400:
