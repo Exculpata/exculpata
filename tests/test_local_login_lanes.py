@@ -1099,6 +1099,7 @@ def test_successful_password_sign_in_survives_device_issuance_failure(login_hand
     def authenticate(username, password):
         if failure == "revoked":
             with original_transaction() as db:
+                # fixture-write: Revoke the device registry entry during password verification to exercise issuance losing a revocation race.
                 db.execute("UPDATE devices SET state = 'revoked'")
         elif failure == "busy":
             monkeypatch.setattr(devices, "_prune", Mock(side_effect=RuntimeError("synthetic busy registry")))
@@ -1207,7 +1208,9 @@ def test_device_registry_migrates_existing_table_and_preserves_restore(registry,
     original = _registry_success(registry)
     current = _registry_success(registry, original)
     with devices._transaction() as db:
+        # fixture-write: Remove admitted from the device registry to construct the legacy schema for migration and restore.
         db.execute("ALTER TABLE devices DROP COLUMN admitted")
+        # fixture-write: Remove successor_used from the device registry to construct the legacy schema for migration and restore.
         db.execute("ALTER TABLE devices DROP COLUMN successor_used")
     backup = tmp_path / "legacy-backup"
     shutil.copytree(devices.path.parent, backup)
@@ -1309,12 +1312,14 @@ def test_grace_lifetime_revocation_survives_pruning_predecessor(registry):
     original = _registry_success(registry)
     successor = _registry_success(registry, original)
     with devices._transaction() as db:
+        # fixture-write: Seed the rotated device one failure below its lifetime limit without expiring rotation grace.
         db.execute("UPDATE devices SET failures = 29 WHERE state = 'rotated'")
     with devices.attempt(original, devices.username_digest(USER),
                          ("synthetic-revision", "synthetic-binding"), clock) as result:
         result.outcome = "failure"
     with devices._transaction() as db:
         assert all(row[0] == "revoked" for row in db.execute("SELECT state FROM devices"))
+        # fixture-write: Remove only the exhausted predecessor to verify successor revocation survives pruning while the successor remains stored.
         db.execute("DELETE FROM devices WHERE failures = 30")
     with devices.attempt(successor, devices.username_digest(USER),
                          ("synthetic-revision", "synthetic-binding"), clock) as result:
