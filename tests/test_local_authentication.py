@@ -76,7 +76,8 @@ def test_local_account_login_uses_argon2_session_and_admin_role(tmp_path):
             follow_redirects=False,
         )
         assert denied.status_code == 303
-        assert "username+or+password" in denied.headers["location"]
+        assert "error=local_credentials" in denied.headers["location"]
+        assert "The username or password is incorrect." in client.get(denied.headers["location"]).text
         assert client.cookies.get(SESSION_COOKIE) is None
 
         refreshed = client.get("/auth/login")
