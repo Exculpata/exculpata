@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
@@ -244,6 +245,18 @@ def lane_identity(tmp_path):
                                local_settings=settings, clock=clock)
     try:
         yield identity, clock, accounts
+    finally:
+        store.close()
+
+
+@pytest.fixture
+def real_lane_identity(tmp_path):
+    settings = LocalAccountSettings(_accounts(tmp_path))
+    store = WorkspaceStore(tmp_path / "runtime/workbench.sqlite")
+    identity = IdentityService(store, tmp_path / "runtime", auth_mode="local", secure_cookie=True,
+                               local_settings=settings, clock=Clock())
+    try:
+        yield identity
     finally:
         store.close()
 
@@ -1000,6 +1013,60 @@ def test_device_verifier_error_does_not_consume_failure_budget(lane_identity, mo
             _sign_in(identity, cookie=cookie)
     assert _rows(identity)[0]["failures"] == 0
     assert all(window.count == 0 for window in identity._local_devices.windows.values())
+
+
+@pytest.mark.parametrize("fault", [RuntimeError, VerificationError])
+def test_real_device_verifier_fault_preserves_failure_budget(real_lane_identity, monkeypatch, fault):
+    identity = real_lane_identity
+    cookie = _sign_in(identity).device_cookie
+    assert cookie
+    with monkeypatch.context() as patch:
+        patch.setattr(PasswordHasher, "verify", Mock(side_effect=fault("synthetic verifier fault")))
+        for _ in range(31):
+            with pytest.raises(LocalAuthenticationError, match=r"^Local account sign-in is temporarily unavailable\.$"):
+                _sign_in(identity, cookie=cookie)
+            rows = _rows(identity)
+            assert rows
+            assert all(row["failures"] == 0 and row["pending"] == 0 for row in rows)
+            assert all(row["state"] != "revoked" for row in rows)
+    assert _sign_in(identity, cookie=cookie).device_cookie
+
+
+def test_real_device_invalid_hash_preserves_failure_budget(real_lane_identity, monkeypatch):
+    identity = real_lane_identity
+    cookie = _sign_in(identity).device_cookie
+    assert cookie
+    # The account repository rejects malformed hashes before verification.
+    monkeypatch.setattr(PasswordHasher, "verify", Mock(side_effect=InvalidHashError()))
+    with pytest.raises(LocalAuthenticationError, match=r"^Local account sign-in is temporarily unavailable\.$"):
+        _sign_in(identity, cookie=cookie)
+    rows = _rows(identity)
+    assert rows
+    assert all(row["failures"] == 0 and row["pending"] == 0 for row in rows)
+    assert all(row["state"] != "revoked" for row in rows)
+
+
+def test_real_device_wrong_password_consumes_failure_budget(real_lane_identity):
+    identity = real_lane_identity
+    cookie = _sign_in(identity).device_cookie
+    assert cookie
+    with pytest.raises(LocalAuthenticationError, match=r"^The username or password is incorrect\.$"):
+        _sign_in(identity, cookie=cookie, password="synthetic-wrong-password")
+    rows = _rows(identity)
+    assert len(rows) == 1
+    assert rows[0]["failures"] == 1 and rows[0]["pending"] == 0
+    assert rows[0]["state"] == "active"
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_real_account_dummy_hash_mismatch_returns_none(real_lane_identity, monkeypatch, disabled):
+    settings = real_lane_identity.local_settings
+    account = replace(settings.account(USER), enabled=False) if disabled else None
+    monkeypatch.setattr(settings, "account", lambda username: account)
+    verify = Mock(wraps=settings._hasher.verify)
+    monkeypatch.setattr(PasswordHasher, "verify", verify)
+    assert settings.authenticate(USER, PASSWORD) is None
+    verify.assert_called_once_with(settings._dummy_hash, PASSWORD)
 
 
 def test_shared_cookie_replay_revokes_only_affected_chain(registry):

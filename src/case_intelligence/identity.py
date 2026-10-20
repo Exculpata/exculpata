@@ -416,17 +416,20 @@ class LocalAccountSettings:
         return self.accounts.get(normalized)
 
     def authenticate(self, username: str, password: str) -> LocalAccount | None:
+        from argon2.exceptions import VerifyMismatchError
+
         account = self.account(username)
         expected_hash = (
             account.password_hash
             if account is not None and account.enabled
             else self._dummy_hash
         )
-        verified = False
         try:
             verified = bool(self._hasher.verify(expected_hash, password))
+        except VerifyMismatchError:
+            return None
         except Exception:
-            verified = False
+            raise RuntimeError("Local password verification is unavailable") from None
         return account if verified and account is not None and account.enabled else None
 
 
