@@ -13,7 +13,7 @@ import secrets
 import sqlite3
 import stat
 from threading import RLock
-from time import monotonic
+import time
 from typing import Callable, Iterator
 
 from .local_login_limiter import LoginThrottled, _Window
@@ -22,6 +22,13 @@ DEVICE_COOKIE = "__Host-exculpata_device"
 DEVICE_MAX_AGE = 90 * 24 * 60 * 60
 _TOKEN = re.compile(r"v1\.([0-9a-f]{32})\.([0-9a-f]{64})\Z")
 LOGGER = logging.getLogger(__name__)
+
+
+def _boot_clock() -> float:
+    try:
+        return time.clock_gettime(time.CLOCK_BOOTTIME)
+    except (AttributeError, OSError, ValueError):
+        return time.monotonic()
 
 
 class DeviceRegistryUnavailable(RuntimeError):
@@ -181,7 +188,7 @@ class LocalLoginDevices:
         return self._digest("device-username", username.strip().casefold())
 
     def _maintain(self, db, now):
-        timestamp, tick = now.timestamp(), monotonic()
+        timestamp, tick = now.timestamp(), _boot_clock()
         if self._clock_origin is None:
             self._clock_origin = (timestamp, tick)
         origin, started = self._clock_origin
@@ -190,13 +197,13 @@ class LocalLoginDevices:
         db.execute("INSERT INTO device_clock VALUES (1, ?) ON CONFLICT(singleton) "
                    "DO UPDATE SET high_water = excluded.high_water", (high_water,))
         db.execute("UPDATE devices SET successor_used = 1 WHERE state = 'rotated' "
-                   "AND NOT (rotation_epoch IS ? AND rotation_tick IS NOT NULL "
-                   "AND rotation_tick <= ? AND ? - rotation_tick <= ?) "
-                   "AND (? < ? OR last_used + ? < ? OR rotation_tick IS NULL "
+                   "AND ((? < ? AND NOT (rotation_epoch IS ? AND rotation_tick IS NOT NULL "
+                   "AND rotation_tick <= ? AND ? - rotation_tick <= ?)) "
+                   "OR last_used + ? < ? OR rotation_tick IS NULL "
                    "OR rotation_epoch IS NULL OR rotation_epoch != ? "
                    "OR rotation_tick > ? OR rotation_tick + ? < ?)",
-                   (self._clock_epoch, tick, tick, self.rotation_grace_seconds,
-                    timestamp, high_water, self.rotation_grace_seconds, high_water,
+                   (timestamp, high_water, self._clock_epoch, tick, tick, self.rotation_grace_seconds,
+                    self.rotation_grace_seconds, high_water,
                     self._clock_epoch, tick, self.rotation_grace_seconds, tick))
         db.execute("UPDATE devices SET failures = failures + pending, pending = 0, "
                    "pending_generation = pending_generation + 1 "
@@ -223,17 +230,20 @@ class LocalLoginDevices:
         expected = self._digest("device-cookie", device_id + "|" + row["username_digest"])
         return row if hmac.compare_digest(signature, expected) else None
 
-    def _rotation_target(self, db, row):
+    def _rotation_target(self, db, row, now):
         if db.execute("SELECT 1 FROM devices WHERE chain_id = ? AND state = 'revoked'",
                       (row["chain_id"],)).fetchone():
             return None
         if row["state"] == "active":
             return row
-        tick = monotonic()
-        monotonic_grace = (row["rotation_epoch"] == self._clock_epoch
-                           and row["rotation_tick"] is not None
-                           and 0 <= tick - row["rotation_tick"] <= self.rotation_grace_seconds)
-        if row["state"] == "rotated" and not row["successor_used"] and monotonic_grace:
+        tick = _boot_clock()
+        boot_grace = (row["rotation_epoch"] == self._clock_epoch
+                      and row["rotation_tick"] is not None
+                      and 0 <= tick - row["rotation_tick"] <= self.rotation_grace_seconds)
+        previous = db.execute("SELECT high_water FROM device_clock WHERE singleton = 1").fetchone()
+        high_water = max(now.timestamp(), previous["high_water"] if previous else now.timestamp())
+        wall_grace = high_water <= row["last_used"] + self.rotation_grace_seconds
+        if row["state"] == "rotated" and not row["successor_used"] and boot_grace and wall_grace:
             return db.execute("SELECT * FROM devices WHERE chain_id = ? AND state = 'active' "
                               "AND admitted = 0",
                               (row["chain_id"],)).fetchone()
@@ -245,7 +255,7 @@ class LocalLoginDevices:
             row = self._row(db, token)
             if row is None:
                 continue
-            target = self._rotation_target(db, row)
+            target = self._rotation_target(db, row, now)
             if row["state"] == "rotated" and target is None:
                 db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
                            (row["chain_id"],))
@@ -297,7 +307,7 @@ class LocalLoginDevices:
         if attempt.predecessor is not None:
             row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
                              (attempt.predecessor,)).fetchone()
-            target = self._rotation_target(db, row) if row is not None else None
+            target = self._rotation_target(db, row, now) if row is not None else None
             if target is None:
                 if row is not None and row["state"] == "rotated":
                     attempt.replayed = True
@@ -310,7 +320,7 @@ class LocalLoginDevices:
                        "rotation_epoch = CASE WHEN state = 'active' THEN ? ELSE rotation_epoch END, "
                        "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
                        "WHERE device_digest IN (?, ?)",
-                       (attempt.predecessor, monotonic(), self._clock_epoch, now.timestamp(), attempt.predecessor,
+                       (attempt.predecessor, _boot_clock(), self._clock_epoch, now.timestamp(), attempt.predecessor,
                         target["device_digest"] if target["parent_digest"] is None else attempt.predecessor))
             if row["parent_digest"] is not None:
                 db.execute("DELETE FROM devices WHERE parent_digest = ? AND state = 'active' "

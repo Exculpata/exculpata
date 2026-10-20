@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 from starlette.responses import Response
 
-from case_intelligence import workbench
+from case_intelligence import local_login_devices, workbench
 from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.identity import (
     IdentityService, LocalAccountSettings, LocalAuthenticationError, LocalLoginThrottledError,
@@ -667,6 +667,30 @@ def test_throttled_request_never_sleeps(login_handler, monkeypatch):
 @pytest.fixture
 def registry(tmp_path):
     return LocalLoginDevices(tmp_path / "devices"), Clock()
+
+
+@pytest.mark.parametrize("availability", ["available", "missing", "unsupported", "invalid"])
+def test_boot_clock_uses_boottime_with_monotonic_fallback(monkeypatch, availability):
+    clock = local_login_devices.time
+    monotonic = Mock(return_value=10.0)
+    gettime = Mock(return_value=20.0)
+    monkeypatch.setattr(clock, "monotonic", monotonic)
+    monkeypatch.setattr(clock, "clock_gettime", gettime, raising=False)
+    monkeypatch.setattr(clock, "CLOCK_BOOTTIME", 123, raising=False)
+    if availability == "missing":
+        monkeypatch.delattr(clock, "CLOCK_BOOTTIME")
+    elif availability in ("unsupported", "invalid"):
+        gettime.side_effect = OSError if availability == "unsupported" else ValueError
+
+    assert local_login_devices._boot_clock() == (20.0 if availability == "available" else 10.0)
+    if availability == "missing":
+        gettime.assert_not_called()
+    else:
+        gettime.assert_called_once_with(123)
+    if availability == "available":
+        monotonic.assert_not_called()
+    else:
+        monotonic.assert_called_once_with()
 
 
 def _registry_success(registry, cookie=None, username=USER):
@@ -1387,7 +1411,7 @@ def test_successful_password_sign_in_survives_device_issuance_failure(login_hand
 def test_unit_lost_rotation_response_keeps_device_lane_while_untrusted_locked(
         login_handler, monkeypatch, elapsed):
     identity, login = login_handler
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic",
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock",
                         lambda: identity._clock().timestamp())
     original = _response_device(login())
     lost = _response_device(login(original))
@@ -1481,7 +1505,7 @@ def test_double_submit_keeping_earlier_sibling_survives_grace(
 
 def test_rotated_entry_after_grace_revokes_unused_successor_and_audits(login_handler, monkeypatch):
     identity, login = login_handler
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic",
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock",
                         lambda: identity._clock().timestamp())
     original = _response_device(login())
     current = _response_device(login(original))
@@ -1512,7 +1536,7 @@ def test_device_inflight_double_submit_keeps_chain_active(registry):
 
 def test_grace_retries_do_not_extend_original_rotation_deadline(registry, monkeypatch):
     devices, clock = registry
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: clock().timestamp())
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: clock().timestamp())
     original = _registry_success(registry)
     _registry_success(registry, original)
     clock.advance(seconds=50)
@@ -1743,10 +1767,54 @@ def test_cap_keeps_chain_whose_newest_sibling_is_within_cap(registry):
                               (row["chain_id"],)).fetchone()
 
 
+def test_forward_wall_clock_step_closes_live_rotation_grace(lane_identity, monkeypatch):
+    identity, clock, _ = lane_identity
+    elapsed = [100.0]
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: elapsed[0])
+    original = _sign_in(identity).device_cookie
+    successor = _sign_in(identity, cookie=original).device_cookie
+    clock.advance(seconds=3600)
+    elapsed[0] += 1
+
+    result = _sign_in(identity, cookie=original)
+
+    assert result.device_replayed
+    devices = identity._local_devices
+    with devices._transaction() as db:
+        predecessor = devices._row(db, original)
+        replacement = devices._row(db, successor)
+        assert predecessor["chain_id"] == replacement["chain_id"]
+        assert predecessor["state"] == replacement["state"] == "revoked"
+
+
+@pytest.mark.parametrize("elapsed", [60, 61])
+@pytest.mark.parametrize("observation", ["current", "high-water"])
+def test_rotation_checks_enforce_wall_clock_grace(registry, monkeypatch, elapsed, observation):
+    devices, clock = registry
+    monkeypatch.setattr(local_login_devices, "_boot_clock", lambda: 100.0)
+    original = _registry_success(registry)
+    successor = _registry_success(registry, original)
+    clock.advance(seconds=elapsed)
+    with devices._transaction() as db:
+        if observation == "high-water":
+            # fixture-write: Record a forward observation without closing the predecessor in maintenance.
+            db.execute("UPDATE device_clock SET high_water = ?", (clock().timestamp(),))
+            clock.advance(seconds=-elapsed)
+        row = devices._row(db, original)
+        assert not row["successor_used"]
+        target = devices._rotation_target(db, row, clock())
+        if elapsed == 60:
+            assert target["device_digest"] == devices._row(db, successor)["device_digest"]
+        else:
+            assert target is None
+        devices._maintain(db, clock())
+        assert bool(devices._row(db, original)["successor_used"]) == (elapsed > 60)
+
+
 def test_backward_clock_step_does_not_reopen_grace(login_handler, monkeypatch):
     identity, login = login_handler
     elapsed = [0.0]
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: elapsed[0])
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: elapsed[0])
     original = _response_device(login())
     _response_device(login(original))
     identity._clock.advance(seconds=90)
@@ -1775,7 +1843,7 @@ def test_backward_clock_step_does_not_reopen_grace(login_handler, monkeypatch):
 def test_backward_clock_step_preserves_live_lost_rotation(
         lane_identity, monkeypatch, backward_step):
     identity, clock, _ = lane_identity
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: 100.0)
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: 100.0)
     original = _sign_in(identity).device_cookie
     successor = _sign_in(identity, cookie=original).device_cookie
     clock.advance(seconds=2)
@@ -1891,11 +1959,11 @@ def test_pending_schema_migration_and_clean_restore(registry, tmp_path):
 
 @pytest.mark.parametrize("forward_step", [0, 3600])
 @pytest.mark.parametrize("reopen", [False, True])
-def test_monotonic_elapsed_time_closes_grace_without_intervening_requests(
+def test_boot_clock_elapsed_time_closes_grace_without_intervening_requests(
         registry, monkeypatch, forward_step, reopen):
     devices, clock = registry
     elapsed = [0.0]
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: elapsed[0])
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: elapsed[0])
     original = _registry_success(registry)
     clock.advance(seconds=forward_step)
     _registry_success(registry, original)
@@ -1923,7 +1991,7 @@ def test_active_entry_bound_counts_sibling_chains(registry):
 @pytest.mark.parametrize("timing", ["missing-epoch", "previous-boot", "missing-tick", "future-tick"])
 def test_missing_or_previous_boot_rotation_timing_fails_closed(registry, monkeypatch, timing):
     devices, clock = registry
-    monkeypatch.setattr("case_intelligence.local_login_devices.monotonic", lambda: 100.0)
+    monkeypatch.setattr("case_intelligence.local_login_devices._boot_clock", lambda: 100.0)
     original = _registry_success(registry)
     current = _registry_success(registry, original)
     with devices._transaction() as db:

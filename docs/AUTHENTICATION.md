@@ -139,6 +139,8 @@ the device cookie without a warning. If both completion attempts fail, a
 generation-bound pending release is queued and tried immediately, then applied
 before maintenance in the next successful transaction if necessary. Sign-in
 succeeds without a device cookie and logs one fixed warning without identifiers.
+Queued releases are held per process and are lost if it restarts before the
+registry recovers.
 Replay detected in a committed completion still revokes the chain and writes
 the replay audit event.
 
@@ -149,11 +151,13 @@ still match. Admission means the entry passed the device limits on a later
 request, even if that request fails its password check. Grace retries count
 against the presented entry's own failed and pending checks, including its
 persistent lifetime limit. They do not refresh its rotation deadline.
-The registry persists the highest observed wall-clock time. A reading below
-that time closes grace only when current-boot monotonic timing cannot vouch for
-the rotation. Rotations within the current boot keep their monotonic 60-second
-window across processes and wall-clock adjustments. Missing rotation timing,
-a different boot identifier, or an elapsed monotonic window closes grace.
+The registry persists the highest observed wall-clock time. Rotations record a
+boot clock that counts suspend time on Linux (`CLOCK_BOOTTIME`, with monotonic
+time as a fallback elsewhere) and the boot identifier. A backward wall-clock
+reading closes grace only when the boot clock cannot vouch for the rotation.
+A wall-clock reading more than 60 seconds after rotation closes grace.
+Missing rotation timing, a different boot identifier, or an elapsed boot-clock
+window also closes grace.
 If the boot identifier is unavailable, a process-local identifier makes reopened
 registries fail closed for grace. Active successors remain usable.
 
