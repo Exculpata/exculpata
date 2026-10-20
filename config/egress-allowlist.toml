@@ -2163,6 +2163,38 @@ kind = "host"
 digest = "260a43df6fb18a04734e9e0a9243f8ac97a5c1b58ed93719c7723b7fc5f15efc"
 detail = "full-text-ledger.json"
 
+# Local login gateway trust: resolve the compose "gateway" service to check the direct TCP peer; no outbound connection.
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "bd0b1f1b0cecf8c85dbb55e512f1f2c068ede02504e61999fde2b7ff407c38b4"
+detail = "socket.getaddrinfo"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "e1d921891a7cf8a169afe31c187611f421a7b129583692d6429f27308da73a7b"
+detail = "socket.SOCK_STREAM"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "a15bc5891a32959be0b3b6af468f2391f5ff8e07cf50e6c7a51de87b923ab7d5"
+detail = "socket.AF_INET"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "client"
+digest = "f64c882d1255ea7e2d5ca407d7eec2a1403acce585ecc3654a0c468876db7ad4"
+detail = "socket.AF_INET6"
+
 [[source]]
 path = "src/case_intelligence/workspace_store.py"
 kind = "host"

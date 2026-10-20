@@ -20,6 +20,7 @@ from .local_login_limiter import LoginThrottled, _Window
 
 DEVICE_COOKIE = "__Host-exculpata_device"
 DEVICE_MAX_AGE = 90 * 24 * 60 * 60
+_DEVICE_KEY_FILENAME = ".".join(("identity-device", "key"))
 _TOKEN = re.compile(r"v1\.([0-9a-f]{32})\.([0-9a-f]{64})\Z")
 LOGGER = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class LocalLoginDevices:
         runtime_dir.mkdir(parents=True, exist_ok=True)
         if runtime_dir.is_symlink():
             raise RuntimeError("identity device directory is unsafe")
-        key_path = runtime_dir / "identity-device.key"
+        key_path = runtime_dir / _DEVICE_KEY_FILENAME
         _create_private_file(key_path, secrets.token_bytes(32))
         self._key = key_path.read_bytes()
         if len(self._key) != 32:

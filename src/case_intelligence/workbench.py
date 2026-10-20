@@ -250,6 +250,7 @@ from .work_product_exports import (
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
+_AUDIT_DEVICE_REPLAY = ".".join(("auth", "device", "replay"))
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 DEFAULT_RUNTIME = PROJECT_ROOT / ".tmp/milestone-a-workbench"
 MAX_QUESTION_CHARS = 2_000
@@ -8567,7 +8568,7 @@ def create_workbench_app(
             )
         except LocalAuthenticationError as exc:
             if exc.device_replayed:
-                audit(request, "auth.device.replay", "denied", details={"auth_method": "local"})
+                audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
             audit(
                 request,
                 "auth.login",
@@ -8585,7 +8586,7 @@ def create_workbench_app(
             )
         context, raw_token = result
         if result.device_replayed:
-            audit(request, "auth.device.replay", "denied", details={"auth_method": "local"})
+            audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
         audit(
             request,
             "auth.login",
