@@ -1432,19 +1432,46 @@ def test_same_cookie_successes_verify_concurrently_without_revoking(lane_identit
     assert sum(row["state"] == "active" for row in _rows(identity)) == 2
 
 
-def test_unused_sibling_is_deleted_when_another_is_admitted(registry):
+def test_wrong_password_on_stale_sibling_keeps_live_sibling(registry):
+    devices, clock = registry
+    original = _registry_success(registry)
+    stale = _registry_success(registry, original)
+    live = _registry_success(registry, original)
+    digest = devices.username_digest(USER)
+    revision = ("synthetic-revision", "synthetic-binding")
+    with devices.attempt(stale, digest, revision, clock) as result:
+        result.outcome = "failure"
+    with devices._transaction() as db:
+        row = devices._row(db, live)
+        assert row is not None
+        assert row["state"] == "active"
+        assert all(row[0] != "revoked" for row in db.execute("SELECT state FROM devices"))
+    with devices.attempt(live, digest, revision, clock) as result:
+        assert result.device_digest is not None and not result.replayed
+        result.outcome, result.revision = "success", revision
+    assert result.cookie
+
+
+def test_unused_sibling_is_deleted_when_another_signs_in(registry):
     devices, clock = registry
     original = _registry_success(registry)
     displaced = _registry_success(registry, original)
     current = _registry_success(registry, original)
     digest = devices.username_digest(USER)
     revision = ("synthetic-revision", "synthetic-binding")
-    with devices.attempt(current, digest, revision, clock):
-        with devices.attempt(displaced, digest, revision, clock) as result:
-            assert not result.replayed and result.device_digest is None
+    with devices.attempt(current, digest, revision, clock) as result:
+        result.outcome = "failure"
+    with devices._transaction() as db:
+        assert devices._row(db, displaced)["state"] == "active"
+    with devices.attempt(current, digest, revision, clock) as result:
+        with devices._transaction() as db:
+            assert devices._row(db, displaced)["state"] == "active"
+        result.outcome, result.revision = "success", revision
+    with devices.attempt(displaced, digest, revision, clock) as result:
+        assert not result.replayed and result.device_digest is None
     with devices._transaction() as db:
         assert devices._row(db, displaced) is None
-        assert devices._row(db, current)["state"] == "active"
+        assert devices._row(db, current)["state"] == "rotated"
         assert all(row[0] != "revoked" for row in db.execute("SELECT state FROM devices"))
 
 

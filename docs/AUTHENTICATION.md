@@ -144,11 +144,12 @@ persistent lifetime limit. They do not refresh its rotation deadline.
 
 A successful grace retry issues another active, never-admitted successor in the
 same chain. Successors from the same predecessor are siblings. Issuing one does
-not rotate its never-admitted siblings. The first sibling admitted on the device
-lane deletes every other never-admitted sibling of that predecessor in the same
-transaction. A deleted sibling is an unknown cookie and uses the untrusted lane,
-without revoking the chain or writing a replay audit event. An unused sibling
-that remains stored can be admitted after the predecessor's grace window ends.
+not rotate its never-admitted siblings. A successful sign-in with one sibling
+deletes every other active sibling of that predecessor in the same transaction.
+A failed attempt deletes no siblings. A deleted sibling is an unknown cookie and
+uses the untrusted lane, without revoking the chain or writing a replay audit
+event. An unused sibling that remains stored can be admitted after the
+predecessor's grace window ends.
 At most five never-admitted siblings are retained per predecessor; issuance
 beyond that deletes the oldest by creation time, then insertion order.
 Once a successor is admitted, its rotated predecessor cannot recover through

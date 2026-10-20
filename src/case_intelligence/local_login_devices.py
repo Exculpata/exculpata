@@ -246,6 +246,9 @@ class LocalLoginDevices:
                        "WHERE device_digest IN (?, ?)",
                        (attempt.predecessor, now.timestamp(), attempt.predecessor,
                         target["device_digest"] if target["parent_digest"] is None else attempt.predecessor))
+            if row["parent_digest"] is not None:
+                db.execute("DELETE FROM devices WHERE parent_digest = ? AND state = 'active' "
+                           "AND device_digest != ?", (row["parent_digest"], attempt.predecessor))
             db.execute("DELETE FROM devices WHERE device_digest IN "
                        "(SELECT device_digest FROM devices WHERE parent_digest = ? AND admitted = 0 "
                        "ORDER BY created DESC, rowid DESC LIMIT -1 OFFSET ?)",
@@ -294,9 +297,6 @@ class LocalLoginDevices:
                             delay = (window.retry_seconds(now, self.failure_limit)
                                      if window.count >= self.failure_limit else 900)
                             raise LoginThrottled(delay, now)
-                        if not row["admitted"]:
-                            db.execute("DELETE FROM devices WHERE parent_digest = ? AND admitted = 0 "
-                                       "AND device_digest != ?", (row["parent_digest"], result.device_digest))
                         db.execute("UPDATE devices SET successor_used = 1 WHERE chain_id = ? "
                                    "AND state = 'rotated' AND admitted = 1 AND EXISTS "
                                    "(SELECT 1 FROM devices WHERE device_digest = ? AND state = 'active')",
