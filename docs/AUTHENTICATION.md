@@ -91,7 +91,7 @@ require the correct password and current account authorization.
 - The **device lane** applies to an active server-registered browser entry for
   the submitted username and current account revision. It allows 10 failures
   per rolling 15 minutes per device, per process. Thirty failures without a
-  success revoke the device persistently. Device attempts do not consume or
+  success revoke the device chain persistently. Device attempts do not consume or
   depend on any untrusted client, username or daily budget. A device success
   does not clear the untrusted aggregates. Device entries are not bound to an IP
   address or User-Agent.
@@ -102,13 +102,14 @@ Password verification runs outside the admission lock. Unknown users still take
 the dummy Argon2 verification path when admitted. Throttled attempts never
 verify, add failures or extend a window; verifier errors release reservations
 without recording a password failure. There is no artificial request delay.
-Refusals say “Sign-in is temporarily unavailable. Try again after HH:MM UTC.”
-and the 303 response includes an integer `Retry-After` of at least one second.
-The retry interval accounts for every blocking window. The displayed UTC time
-rounds up to the next whole minute; in-flight checks or subsequent failures may
-change availability. Wrong-password errors are unchanged.
+Refusals say “Sign-in is temporarily unavailable. Try again in N minutes.”
+The display rounds `Retry-After / 60` up to at least one minute, with “Try again
+in 1 minute.” for the singular case. The 303 response includes an integer
+`Retry-After` of at least one second. The retry interval accounts for every
+blocking window; in-flight checks or subsequent failures may change
+availability. Wrong-password errors are unchanged.
 
-Every successful password sign-in rotates the browser entry to a new random
+A successful password sign-in normally rotates the browser entry to a new random
 128-bit device ID and marks its predecessor rotated in the same chain. The
 `__Host-exculpata_device` cookie has Secure, HttpOnly, SameSite=Strict, Path=/,
 no Domain and a 90-day Max-Age. It holds at most five entries, one per username,
@@ -118,13 +119,36 @@ session or login-challenge key. Password, role or enabled-state changes invalida
 all devices for that account through its session revision and account binding.
 Display-name changes do not invalidate them. Secure cookies remain required in
 local mode. If the cookie helper is used with `secure_cookie=False` in plain-HTTP
-development, it skips issuing the device cookie.
+development, it skips issuing the device cookie. If cookie issuance fails after
+a successful password check, including a busy or unavailable registry or a
+predecessor revoked during verification, sign-in still succeeds without a new
+device cookie. Replay detected at completion still revokes the chain and writes
+the replay audit event.
 
-Presenting a retained rotated entry with a valid signature revokes its whole
-chain, uses the untrusted lane and writes a denied `auth.device.replay` audit
-event without raw addresses or tokens. Concurrent rotation cannot revive a
-revoked chain. Concurrent submissions using the same entry can trigger this
-replay protection and require a fresh untrusted sign-in.
+A retained rotated entry has a 60-second grace window, inclusive of the last
+second. It can use the device lane only while the chain is not revoked, its
+successor has not been admitted, and its username, revision and account binding
+still match. Admission means the entry passed the device limits on a later
+request, even if that request fails its password check. Grace retries count
+against the presented entry's own failed and pending checks, including its
+persistent lifetime limit. They do not refresh its rotation deadline.
+
+A successful grace retry issues a replacement in the same chain and retires the
+unused active successor. A displaced entry that was never admitted acts as a
+grace alias for the current unused active entry, within 60 seconds of its own
+retirement. This lets either response from a double submission recover. Once a
+presented predecessor's successor is admitted, that predecessor cannot recover
+through later unused successors. Registry admission and rotation each run in a
+single transaction under the registry lock. Grace recovery writes no replay
+audit event.
+
+Outside this rule, presenting a retained rotated entry with a valid signature
+revokes its whole chain, uses the untrusted lane and writes a denied
+`auth.device.replay` audit event without raw addresses or tokens. Completion
+checks the rule again, so concurrent rotation cannot revive a revoked chain.
+Old registries receive the admission and successor-use columns automatically;
+pre-upgrade rotated entries retain replay behavior because their successor-use
+history is unknown. For rotated rows, `last_used` records the rotation time.
 
 Memory and persistent storage are bounded:
 
@@ -142,7 +166,11 @@ Memory and persistent storage are bounded:
   revision bindings, times, lifetime failure counts and state. Entries unused for
   90 days expire. Pruning removes the oldest rotated/revoked rows before active
   rows when making room. Replay detection covers retained rows. Device windows
-  retain at most 10 failed or pending checks per retained device.
+  retain at most 10 failed or pending checks per retained device. Each username
+  digest has at most 20 active entries. Issuance first revokes that username's
+  least recently used active chains to make room, including their rotated rows,
+  before global pruning. This prevents one username accumulating active entries
+  at the expense of other users.
 
 The registry and separate `identity-device.key` are owner-only files with mode
 0600; symlinked paths are refused. Restarting the app container clears in-memory

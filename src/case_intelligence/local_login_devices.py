@@ -76,6 +76,8 @@ class LocalLoginDevices:
     capacity = 10_000
     failure_limit = 10
     lifetime_failure_limit = 30
+    per_user_active_limit = 20
+    rotation_grace_seconds = 60
 
     def __init__(self, runtime_dir: Path):
         runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -96,8 +98,14 @@ class LocalLoginDevices:
                 username_digest TEXT NOT NULL, session_revision TEXT NOT NULL,
                 account_binding TEXT NOT NULL, created REAL NOT NULL, last_used REAL NOT NULL,
                 failures INTEGER NOT NULL DEFAULT 0,
-                state TEXT NOT NULL CHECK(state IN ('active', 'rotated', 'revoked'))
+                state TEXT NOT NULL CHECK(state IN ('active', 'rotated', 'revoked')),
+                admitted INTEGER NOT NULL DEFAULT 1,
+                successor_used INTEGER NOT NULL DEFAULT 1
             )""")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(devices)")}
+            for name in ("admitted", "successor_used"):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE devices ADD COLUMN {name} INTEGER NOT NULL DEFAULT 1")
             db.execute("CREATE INDEX IF NOT EXISTS devices_chain ON devices(chain_id)")
 
     @contextmanager
@@ -150,17 +158,31 @@ class LocalLoginDevices:
         expected = self._digest("device-cookie", device_id + "|" + row["username_digest"])
         return row if hmac.compare_digest(signature, expected) else None
 
+    def _rotation_target(self, db, row, now):
+        if db.execute("SELECT 1 FROM devices WHERE chain_id = ? AND state = 'revoked'",
+                      (row["chain_id"],)).fetchone():
+            return None
+        if row["state"] == "active":
+            return row
+        if (row["state"] == "rotated" and not row["successor_used"]
+                and 0 <= now.timestamp() - row["last_used"] <= self.rotation_grace_seconds):
+            return db.execute("SELECT * FROM devices WHERE chain_id = ? AND state = 'active' "
+                              "AND admitted = 0",
+                              (row["chain_id"],)).fetchone()
+        return None
+
     def _select(self, db, cookie, username, revision, now) -> DeviceAttempt:
         result = DeviceAttempt()
         for token in self._entries(cookie):
             row = self._row(db, token)
             if row is None:
                 continue
-            if row["state"] == "rotated":
+            target = self._rotation_target(db, row, now)
+            if row["state"] == "rotated" and target is None:
                 db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
                            (row["chain_id"],))
                 result.replayed = True
-            elif (row["state"] == "active" and row["username_digest"] == username
+            elif (target is not None and row["username_digest"] == username
                   and result.predecessor is None and row["last_used"] > now.timestamp() - DEVICE_MAX_AGE):
                 result.predecessor = row["device_digest"]
                 result.chain_id = row["chain_id"]
@@ -171,7 +193,7 @@ class LocalLoginDevices:
             if result.predecessor is not None:
                 state = db.execute("SELECT state FROM devices WHERE device_digest = ?",
                                    (result.predecessor,)).fetchone()["state"]
-                if state != "active":
+                if state == "revoked":
                     result.predecessor = result.chain_id = None
         return result
 
@@ -205,20 +227,33 @@ class LocalLoginDevices:
                 retained.append(token)
                 seen.add(row["username_digest"])
         if attempt.predecessor is not None:
-            row = db.execute("SELECT state FROM devices WHERE device_digest = ?",
+            row = db.execute("SELECT * FROM devices WHERE device_digest = ?",
                              (attempt.predecessor,)).fetchone()
-            if row is None or row["state"] != "active":
+            target = self._rotation_target(db, row, now) if row is not None else None
+            if target is None:
                 if row is not None and row["state"] == "rotated":
                     attempt.replayed = True
                     db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
                                (attempt.chain_id,))
                 return
-            db.execute("UPDATE devices SET state = 'rotated', failures = 0 WHERE device_digest = ?",
-                       (attempt.predecessor,))
+            db.execute("UPDATE devices SET state = 'rotated', failures = 0, successor_used = 0, "
+                       "admitted = CASE WHEN device_digest = ? THEN 1 ELSE admitted END, "
+                       "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
+                       "WHERE device_digest IN (?, ?)",
+                       (attempt.predecessor, now.timestamp(), attempt.predecessor, target["device_digest"]))
+        excess = db.execute(
+            "SELECT chain_id FROM devices WHERE username_digest = ? AND state = 'active' "
+            "ORDER BY last_used DESC, created DESC, rowid DESC LIMIT -1 OFFSET ?",
+            (username, self.per_user_active_limit - 1)).fetchall()
+        for row in excess:
+            db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ?",
+                       (row["chain_id"],))
         self._prune(db, now, make_room=True)
         device_id = secrets.token_hex(16)
         chain = attempt.chain_id or secrets.token_hex(16)
-        db.execute("INSERT INTO devices VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active')",
+        db.execute("INSERT INTO devices (device_digest, chain_id, username_digest, session_revision, "
+                   "account_binding, created, last_used, failures, state, admitted, successor_used) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active', 0, 1)",
                    (self._digest("device-id", device_id), chain, username,
                     *attempt.revision, now.timestamp(), now.timestamp()))
         signature = self._digest("device-cookie", device_id + "|" + username)
@@ -248,8 +283,13 @@ class LocalLoginDevices:
                             delay = (window.retry_seconds(now, self.failure_limit)
                                      if window.count >= self.failure_limit else 900)
                             raise LoginThrottled(delay, now)
-                        db.execute("UPDATE devices SET last_used = ? WHERE device_digest = ?",
-                                   (now.timestamp(), result.device_digest))
+                        db.execute("UPDATE devices SET successor_used = 1 WHERE chain_id = ? "
+                                   "AND state = 'rotated' AND admitted = 1 AND EXISTS "
+                                   "(SELECT 1 FROM devices WHERE device_digest = ? AND state = 'active')",
+                                   (result.chain_id, result.device_digest))
+                        db.execute("UPDATE devices SET admitted = 1, "
+                                   "last_used = CASE WHEN state = 'active' THEN ? ELSE last_used END "
+                                   "WHERE device_digest = ?", (now.timestamp(), result.device_digest))
                 if window is not None:
                     window.pending += 1
         try:
@@ -265,13 +305,20 @@ class LocalLoginDevices:
                     elif result.outcome == "success":
                         window.failures.clear()
                 if result.device_digest is not None or result.outcome == "success":
-                    with self._transaction() as db:
-                        if result.device_digest is not None and result.outcome == "failure":
-                            db.execute("UPDATE devices SET failures = failures + 1, "
-                                       "state = CASE WHEN failures + 1 >= ? THEN 'revoked' ELSE state END "
-                                       "WHERE device_digest = ?",
-                                       (self.lifetime_failure_limit, result.device_digest))
-                        if result.outcome == "success":
-                            self._issue(db, result, cookie, username, now)
-                    if result.outcome == "success" and result.cookie is None:
-                        raise RuntimeError("identity device changed during sign-in")
+                    try:
+                        with self._transaction() as db:
+                            if result.device_digest is not None and result.outcome == "failure":
+                                db.execute("UPDATE devices SET failures = failures + 1, "
+                                           "state = CASE WHEN failures + 1 >= ? THEN 'revoked' ELSE state END "
+                                           "WHERE device_digest = ?",
+                                           (self.lifetime_failure_limit, result.device_digest))
+                                db.execute("UPDATE devices SET state = 'revoked' WHERE chain_id = ? "
+                                           "AND EXISTS (SELECT 1 FROM devices WHERE device_digest = ? "
+                                           "AND failures >= ?)",
+                                           (result.chain_id, result.device_digest, self.lifetime_failure_limit))
+                            if result.outcome == "success":
+                                self._issue(db, result, cookie, username, now)
+                    except (OSError, RuntimeError):
+                        if result.outcome != "success":
+                            raise
+                        result.cookie = None

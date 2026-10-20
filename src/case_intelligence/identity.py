@@ -123,6 +123,10 @@ class LocalAuthenticationError(WorkspaceProblem):
         self.device_replayed = device_replayed
 
 
+class LocalLoginThrottledError(LocalAuthenticationError):
+    """A local sign-in refusal with a retry interval."""
+
+
 def _strict_https_url(value: str, *, label: str, origin_only: bool = False) -> str:
     candidate = (value or "").strip().rstrip("/")
     if not candidate or len(candidate) > 1_024:
@@ -1113,8 +1117,8 @@ class IdentityService:
             exc.device_replayed = bool(device and device.replayed)
             raise
         except LoginThrottled as exc:
-            raise LocalAuthenticationError(str(exc), retry_after_seconds=exc.retry_after_seconds,
-                                           device_replayed=bool(device and device.replayed)) from None
+            raise LocalLoginThrottledError(str(exc), retry_after_seconds=exc.retry_after_seconds,
+                                          device_replayed=bool(device and device.replayed)) from None
         except (OSError, RuntimeError):
             raise LocalAuthenticationError("Local account sign-in is temporarily unavailable.",
                                            device_replayed=bool(device and device.replayed)) from None

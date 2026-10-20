@@ -3,7 +3,7 @@
 from collections import OrderedDict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import ipaddress
 import math
 from threading import Condition
@@ -25,11 +25,10 @@ def normalize_client_key(value: str) -> str:
 class LoginThrottled(Exception):
     def __init__(self, seconds: float, now: datetime):
         self.retry_after_seconds = max(1, math.ceil(seconds))
-        retry = (now + timedelta(seconds=self.retry_after_seconds)).astimezone(timezone.utc)
-        if retry.second or retry.microsecond:
-            retry = retry.replace(second=0, microsecond=0) + timedelta(minutes=1)
+        minutes = math.ceil(self.retry_after_seconds / 60)
+        unit = "minute" if minutes == 1 else "minutes"
         super().__init__("Sign-in is temporarily unavailable. "
-                         f"Try again after {retry:%H:%M} UTC.")
+                         f"Try again in {minutes} {unit}.")
 
 
 @dataclass
