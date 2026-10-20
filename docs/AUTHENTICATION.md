@@ -102,10 +102,12 @@ Password verification runs outside the admission lock. Unknown users still take
 the dummy Argon2 verification path when admitted. Throttled attempts never
 verify, add failures or extend a window; verifier errors release reservations
 without recording a password failure. There is no artificial request delay.
-Refusals say “Sign-in is temporarily unavailable. Try again in N minutes.”
-The display rounds `Retry-After / 60` up to at least one minute, with “Try again
-in 1 minute.” for the singular case. The 303 response includes an integer
-`Retry-After` of at least one second. The retry interval accounts for every
+Throttled refusals redirect with `error=local_throttled`. The sign-in page shows
+the fixed message “Sign-in is temporarily unavailable. Wait a few minutes and
+try again.” The 303 response includes an integer `Retry-After` of at least one
+second. Only the internal exception text says “Try again in N minutes.” It
+rounds `Retry-After / 60` up to at least one minute, with “Try again in 1 minute.”
+for the singular case. The retry interval accounts for every
 blocking window; in-flight checks or subsequent failures may change
 availability. Wrong-password errors are unchanged.
 

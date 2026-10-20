@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from http.cookies import SimpleCookie
 from pathlib import Path
 from unittest.mock import Mock
-from urllib.parse import unquote_plus
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from argon2 import PasswordHasher
@@ -36,6 +36,7 @@ from case_intelligence.local_login_devices import (
     DEVICE_COOKIE, DEVICE_MAX_AGE, LocalLoginDevices, set_device_cookie,
 )
 from case_intelligence.local_login_limiter import LocalLoginLimiter, LoginThrottled, normalize_client_key
+from case_intelligence.login_errors import LOGIN_ERRORS, login_error_code
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceStore
 
@@ -98,6 +99,42 @@ def test_known_device_signs_in_while_untrusted_lane_locked(tmp_path):
         assert response.status_code == 303
         assert response.headers["location"] == destination
         assert victim.cookies.get(SESSION_COOKIE) is not None
+
+
+def test_throttled_redirect_maps_to_local_throttled_code(tmp_path):
+    settings, _ = _settings()
+    app = create_workbench_app(
+        tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="local",
+        secure_cookie=True, local_settings=settings, local_gateway_peers=(GATEWAY_PEER[0],),
+        answer_workers=1)
+    app.state.identity._clock = Clock()
+    base = "https://exculpata.example.test"
+    with ExitStack() as clients:
+        for number in range(1, 11):
+            attacker = clients.enter_context(
+                TestClient(app, base_url=base, client=GATEWAY_PEER))
+            for _ in range(10):
+                _assert_denied(
+                    _login(attacker, "synthetic-wrong-password", f"203.0.113.{number}"),
+                    attacker)
+
+        fresh = clients.enter_context(TestClient(app, base_url=base, client=GATEWAY_PEER))
+        refused = _login(fresh, PASSWORD, "198.51.100.99")
+        _assert_denied(refused, fresh)
+        assert SESSION_COOKIE not in refused.cookies
+        assert int(refused.headers["retry-after"]) > 0
+        location = refused.headers["location"]
+        destination = urlsplit(location)
+        assert destination.path == "/auth/login"
+        assert parse_qs(destination.query, keep_blank_values=True)["error"] == ["local_throttled"]
+
+        page = fresh.get(location)
+        assert page.status_code == 200
+        assert LOGIN_ERRORS["local_throttled"] in page.text
+
+    assert login_error_code(LocalLoginThrottledError(
+        "Sign-in is temporarily unavailable. Try again in 3 minutes.",
+        retry_after_seconds=150)) == "local_throttled"
 
 
 
@@ -203,7 +240,7 @@ def test_new_browser_still_refused_while_untrusted_lane_locked(login_handler):
     response = login()
     assert response.status_code == 303
     assert int(response.headers["retry-after"]) == 900
-    assert "try again in 15 minutes." in unquote_plus(response.headers["location"]).lower()
+    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["local_throttled"]
     assert SESSION_COOKIE not in response.headers.get("set-cookie", "")
 
 
@@ -884,7 +921,8 @@ def test_device_throttle_handler_returns_retry_after(login_handler):
     before = identity.local_settings.authenticate.call_count
     response = login(cookie)
     assert response.status_code == 303 and response.headers["retry-after"] == "900"
-    assert "Try again in 15 minutes." in unquote_plus(response.headers["location"])
+    assert int(response.headers["retry-after"]) > 0
+    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["local_throttled"]
     assert identity.local_settings.authenticate.call_count == before
 
 
@@ -892,7 +930,8 @@ def test_wrong_password_handler_message_and_headers_are_unchanged(login_handler)
     _, login = login_handler
     response = login(password="synthetic-wrong-password")
     assert response.status_code == 303
-    assert "The username or password is incorrect." in unquote_plus(response.headers["location"])
+    assert parse_qs(urlsplit(response.headers["location"]).query)["error"] == ["local_credentials"]
+    assert LOGIN_ERRORS["local_credentials"] == "The username or password is incorrect."
     assert "retry-after" not in response.headers
 
 
@@ -979,6 +1018,25 @@ def test_retry_guidance_uses_relative_rounded_minutes(seconds, minutes, unit):
     assert isinstance(error.retry_after_seconds, int) and error.retry_after_seconds >= 1
 
 
+@pytest.mark.parametrize("subclass", [False, True])
+@pytest.mark.parametrize("message", [
+    "Sign-in is temporarily unavailable. Try again in 3 minutes.",
+    LOGIN_ERRORS["local_credentials"],
+    "Synthetic throttling refusal",
+])
+def test_throttled_error_code_uses_type_before_message(subclass, message):
+    class SyntheticThrottledError(LocalLoginThrottledError):
+        pass
+
+    error_type = SyntheticThrottledError if subclass else LocalLoginThrottledError
+    error = error_type(message, retry_after_seconds=150)
+    assert login_error_code(error) == "local_throttled"
+    assert str(error) == message
+    assert error.retry_after_seconds == 150
+    expected = "local_credentials" if message == LOGIN_ERRORS["local_credentials"] else "sign_in_failed"
+    assert login_error_code(LocalAuthenticationError(message, retry_after_seconds=150)) == expected
+
+
 def test_throttled_identity_has_dedicated_error_type(lane_identity):
     identity, _, _ = lane_identity
     for _ in range(10):
@@ -986,6 +1044,8 @@ def test_throttled_identity_has_dedicated_error_type(lane_identity):
     with pytest.raises(LocalLoginThrottledError) as error:
         _sign_in(identity)
     assert error.value.retry_after_seconds == 900
+    assert str(error.value) == "Sign-in is temporarily unavailable. Try again in 15 minutes."
+    assert login_error_code(error.value) == "local_throttled"
 
 
 def test_device_per_username_cap_preserves_other_users_and_retires_lru(registry):

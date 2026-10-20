@@ -1,6 +1,7 @@
 """Closed vocabulary for unauthenticated sign-in feedback."""
 from types import MappingProxyType
 from .branding import PRODUCT_NAME
+from .identity import LocalLoginThrottledError
 
 LOGIN_ERRORS = MappingProxyType({
     "sign_in_failed": "Sign-in could not be completed. Please try again.",
@@ -43,6 +44,8 @@ _CODES = {message: code for code, message in LOGIN_ERRORS.items()}
 
 def login_error_code(error: Exception) -> str:
     """Unknown exceptions never become public message text or URL content."""
+    if isinstance(error, LocalLoginThrottledError):
+        return "local_throttled"
     return _CODES.get(str(error), "sign_in_failed")
 
 
