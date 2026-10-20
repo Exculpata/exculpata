@@ -471,14 +471,20 @@ def _scan_media(
     if result.returncode != 0 or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
         return [Finding(location, "media-inspection-failed")]
     try:
-        json.loads(result.stdout)
+        metadata = json.loads(result.stdout)
     except (UnicodeDecodeError, json.JSONDecodeError):
         return [Finding(location, "media-inspection-failed")]
-    return _scan_bytes(
+    findings = _scan_bytes(
         result.stdout,
         location=f"{location}#media-metadata",
         deny=deny,
     )
+    if not isinstance(metadata, dict):
+        findings.append(Finding(
+            location,
+            "unsupported-media-metadata; use _scan_media() with ffprobe JSON object output",
+        ))
+    return findings
 
 
 def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> list[Finding]:
