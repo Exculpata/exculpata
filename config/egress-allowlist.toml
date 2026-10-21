@@ -2537,6 +2537,42 @@ digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
 [[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "client"
+digest = "a6c16fea11a4b0e02a6ae1a76c485b8e4e4bbb7b219344058b7a7683c4d7a272"
+detail = "socket.socket"
+
+[[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "host"
+digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
+detail = "127.0.0.1:"
+
+[[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "host"
+digest = "a22191b07c7c088a546080ac98608ab43e4a021522fc516581976c4e6e319962"
+detail = "page.addscripttoevaluateonnewdocument"
+
+[[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
 path = "scripts/browser-accept-assistant-dock.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -6589,6 +6625,12 @@ detail = "receipt.json"
 [[source]]
 path = "scripts/run-browser-acceptance.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
 digest = "123e2934c295b3299349bdee98861823b21999364d31d9820b8660a81542028e"
 detail = "browser-accept-reports-bundle.py"
 
@@ -6681,6 +6723,12 @@ path = "scripts/run-browser-acceptance.py"
 kind = "host"
 digest = "66c619a8cf6393002081645a27e53cd7d32297248e9724edf062e772456136a2"
 detail = "browser-accept-timeline-draft.py"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "2d9b11a978460e719ad008d27d19f244b09904a1e68d830da093a43bb9728536"
+detail = "browser-accept-assistant-collapse-focus.py"
 
 [[source]]
 path = "scripts/run-browser-acceptance.py"
