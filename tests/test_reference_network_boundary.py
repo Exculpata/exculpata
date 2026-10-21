@@ -1,17 +1,25 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
+from collections import Counter
 import importlib.util
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tomllib
 
 import pytest
 import yaml
 
 
 ROOT = Path(__file__).parents[1]
+_OS_LOCAL = "os." + "local"
+_API_INTERNAL = "aPi." + "internal"
+_LOGGING_CORP = "logging." + "corp"
+# Lists (path, kind, digest, detail) allowances removed versus main because
+# main's scanner no longer emits them.
+PRUNED_ALLOWANCES = ()
 
 
 def test_reference_compose_network_boundary_and_explicit_exceptions():
@@ -112,8 +120,123 @@ def test_network_contract_current_tree():
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize("value", [
+    "os.path.join", "json.dumps", "recordbench.env",
+    "synthetic-figure.png", "synthetic-report.json", "pathlib.path", "builtins.str",
+    "selenium.webdriver.support.widgets", "Emulation.setDeviceMetricsOverride",
+    "synthetic-report.JSON",
+])
+def test_contract_flags_plain_module_and_file_shaped_literals(contract_tree, value):
+    source = f'import selenium.webdriver\nTARGET = {value!r}\n'
+    # fixture-write: Seed synthetic source to exercise literal classification.
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:2: unreviewed outbound host: {value.lower()}" in result.stderr.splitlines()
+
+
+@pytest.mark.parametrize("expression,host", [
+    *[(repr(host), host) for host in (
+        "example.com", "example.org", "example.net", "auth.login", "x.co",
+        "192.0.2.10", "198.51.100.7", "203.0.113.5", "2001:db8::5",
+        "synthetic.example.test", "os.test", "os.example", "os.invalid", "os.localhost",
+        "camelCase.test", "os.com", "os.co", "os.io", "synthetic-module.attribute",
+        "selenium.webdriver.support.ui", "exculpata-backup.sh",
+    )],
+    (repr("http://x.sh"), "x.sh"), (repr("https://x.co"), "x.co"),
+    *[(f"httpx.get({host!r})", host) for host in ("x.sh", "notes.md", "x.co")],
+    *[(f"socket.create_connection(({host!r}, 443))", host)
+      for host in ("x.sh", "notes.md", "x.co")],
+    ("'http://' + 'x.sh'", "x.sh"),
+    ("'http://' + ('x.sh' + suffix)", "x.sh"),
+    ('f"http://{\'x.sh\'}"', "x.sh"),
+    ("'http://%s' % 'x.sh'", "x.sh"),
+    ("'http://{}'.format('x.sh')", "x.sh"),
+    ("'http://'.join(['x.sh'])", "x.sh"),
+    ("httpx.get(str('notes.md'))", "notes.md"),
+    ("client.connect(('notes.md', 443))", "notes.md"),
+    ("client.request(host='notes.md')", "notes.md"),
+])
+def test_contract_preserves_host_literals_in_network_context(contract_tree, expression, host):
+    # fixture-write: Seed synthetic source without executing its network expressions.
+    (contract_tree / "src/synthetic_probe.py").write_text(
+        f"import httpx\nimport socket\nTARGET = {expression}\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:3: unreviewed outbound host: {host.lower()}" in result.stderr
+
+
+def test_contract_flags_module_shaped_literal_in_network_call(contract_tree):
+    path = contract_tree / "src/synthetic_probe.py"
+    # fixture-write: Seed a module-shaped literal as a synthetic network destination.
+    path.write_text("import httpx\nhttpx.get('os.path.join')\n")
+    assert "src/synthetic_probe.py:2: unreviewed outbound host: os.path.join" in run_contract(contract_tree).stderr.splitlines()
+
+
+@pytest.mark.parametrize("host", ["example.sh", "example.md", "example.py", "example.zip"])
+def test_contract_rejects_plain_file_suffix_tld_hosts(contract_tree, host):
+    # fixture-write: Seed a synthetic host whose TLD also names a file suffix.
+    (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr
+
+
+@pytest.mark.parametrize("host", ["os.run", "pathlib.link", "exampleApi.network"])
+def test_contract_rejects_plain_identifier_tld_hosts(contract_tree, host):
+    # fixture-write: Seed a synthetic host shaped like a module or camelCase identifier.
+    (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host.lower()}" in result.stderr
+
+
+@pytest.mark.parametrize("source,host,line", [
+    ("PREFIX = 'https://'\nTARGET = PREFIX + 'example.sh'\n", "example.sh", 2),
+    ("HOST = 'example.zip'\nURL = f'https://{HOST}/status'\n", "example.zip", 1),
+    ("SCHEME = 'https://'\nURL = '{}{}'.format(SCHEME, 'example.py')\n", "example.py", 2),
+])
+def test_contract_rejects_tld_hosts_in_split_urls(contract_tree, source, host, line):
+    # fixture-write: Seed a synthetic URL with its scheme in a separate statement.
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr
+
+
+@pytest.mark.parametrize("source,host,line", [
+    ("import asyncio\nasync def main():\n    await asyncio.open_connection('" + _OS_LOCAL + "', 443)\n", _OS_LOCAL, 3),
+    ("import smtplib\nsmtplib.SMTP('email.relay', 25)\n", "email.relay", 2),
+    ("TARGET = '" + _API_INTERNAL + "'\n", _API_INTERNAL.lower(), 1),
+    ("import socket\nHOST = '" + _LOGGING_CORP + "'\nsocket.create_connection((HOST, 443))\n", _LOGGING_CORP, 2),
+    ("SCHEME = 'https://'\nurl = f'{SCHEME}" + _OS_LOCAL + "'\n", _OS_LOCAL, 2),
+], ids=["os-local", "email-relay", "camelcase-internal", "host-in-variable", "split-url"])
+def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, line):
+    # fixture-write: Seed synthetic private hosts and a URL with a separate scheme.
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
+
+
+def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
+    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+
+    findings = Counter((path, kind, digest, detail)
+                       for path, _, kind, digest, detail in checker.source_inventory(ROOT))
+    policy = tomllib.loads((ROOT / "config/egress-allowlist.toml").read_text())
+    allowances = Counter((item["path"], item["kind"], item["digest"], item["detail"])
+                         for item in policy["source"])
+    assert findings == allowances
+    for key in PRUNED_ALLOWANCES:
+        assert key not in findings
+
+
 def test_network_contract_rejects_loosening(contract_tree):
     path = contract_tree / "compose.yaml"
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(path.read_text().replace("  models:\n    internal: true", "  models: {}"))
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -123,6 +246,7 @@ def test_network_contract_rejects_loosening(contract_tree):
 @pytest.mark.parametrize("replacement", ["dns: [127.0.0.11]", "dns: []", "dns: [192.0.2.53]"])
 def test_network_contract_rejects_dns_upstream_changes(contract_tree, replacement):
     path = contract_tree / "compose.yaml"
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(path.read_text().replace("dns: [127.0.0.1]", replacement))
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -130,6 +254,7 @@ def test_network_contract_rejects_dns_upstream_changes(contract_tree, replacemen
 
 
 def test_network_contract_rejects_new_outbound_host(contract_tree):
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     (contract_tree / "src/synthetic_probe.py").write_text('import httpx\nhttpx.get("https://example.invalid")\n')
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -139,6 +264,7 @@ def test_network_contract_rejects_new_outbound_host(contract_tree):
 
 @pytest.mark.parametrize("host", ["outbound.example.invalid", "203.0.113.25", "2001:db8::25"])
 def test_network_contract_rejects_bare_host_literal(contract_tree, host):
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     (contract_tree / "src/synthetic_probe.py").write_text(f'TARGET = "{host}"\n')
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -156,6 +282,7 @@ def test_contract_rejects_overlay_escape(contract_tree, change):
     path = contract_tree / "compose.local-accounts.yaml"
     data = yaml.safe_load(path.read_text())
     data["services"]["app"].update(change)
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(yaml.safe_dump(data))
     result = run_contract(contract_tree)
     assert result.returncode == 1 and "compose.local-accounts.yaml:" in result.stderr
@@ -173,6 +300,7 @@ def test_contract_rejects_host_control_mounts(contract_tree, change):
     path = contract_tree / "compose.local-accounts.yaml"
     data = yaml.safe_load(path.read_text())
     data["services"]["app"].update(change)
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(yaml.safe_dump(data))
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -187,6 +315,7 @@ def test_contract_rejects_named_volume_host_control(contract_tree, definition):
     path = contract_tree / "compose.yaml"
     data = yaml.safe_load(path.read_text())
     data["volumes"]["clamav-signatures"] = definition
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(yaml.safe_dump(data))
     result = run_contract(contract_tree)
     assert result.returncode == 1 and "volume definitions changed" in result.stderr
@@ -204,6 +333,7 @@ def test_contract_rejects_named_volume_host_control(contract_tree, definition):
     'not valid Python @\n',
 ])
 def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source):
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     (contract_tree / "src/synthetic_probe.py").write_text(source)
     assert run_contract(contract_tree).returncode == 1
 
@@ -218,6 +348,7 @@ def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source
 ])
 def test_contract_detects_only_new_call_with_approved_imports(contract_tree, baseline, addition, detail):
     path = contract_tree / "src/synthetic_probe.py"
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(baseline)
     spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
     checker = importlib.util.module_from_spec(spec)
@@ -226,11 +357,13 @@ def test_contract_detects_only_new_call_with_approved_imports(contract_tree, bas
     with policy.open("a") as stream:
         for relative, _, kind, digest, description in checker.source_inventory(contract_tree):
             if relative == "src/synthetic_probe.py":
+                # fixture-write: Mutate the synthetic contract tree for boundary validation.
                 stream.write('\n[[source]]\n' + '\n'.join(
                     f'{key} = {json.dumps(value)}' for key, value in
                     (("path", relative), ("kind", kind), ("digest", digest), ("detail", description))) + '\n')
     assert run_contract(contract_tree).returncode == 0
     line = baseline.splitlines().index("    # NEW") + 1
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(baseline.replace("# NEW", addition))
     result = run_contract(contract_tree)
     assert result.returncode == 1
@@ -238,10 +371,12 @@ def test_contract_detects_only_new_call_with_approved_imports(contract_tree, bas
 
 
 def test_contract_rejects_new_compose_and_duplicate_keys(contract_tree):
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     (contract_tree / "compose.escape.yaml").write_text("services: {app: {network_mode: host}}\n")
     assert run_contract(contract_tree).returncode == 1
     (contract_tree / "compose.escape.yaml").unlink()
     path = contract_tree / "compose.yaml"
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(path.read_text() + "\nnetworks: {}\n")
     assert run_contract(contract_tree).returncode == 1
 
@@ -270,6 +405,7 @@ def test_contract_rejects_proxy_routing_overrides(contract_tree, key, value):
     path = contract_tree / 'compose.local-accounts.yaml'
     data = yaml.safe_load(path.read_text())
     data['services']['app'].setdefault('environment', {})[key] = value
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text(yaml.safe_dump(data))
     result = run_contract(contract_tree)
     assert result.returncode == 1 and 'compose.local-accounts.yaml:' in result.stderr
@@ -279,6 +415,7 @@ def test_contract_rejects_proxy_routing_overrides(contract_tree, key, value):
 def test_network_contract_reviews_operational_script_clients(contract_tree, relative):
     path = contract_tree / relative
     path.parent.mkdir(exist_ok=True)
+    # fixture-write: Mutate the synthetic contract tree for boundary validation.
     path.write_text('import httpx\nhttpx.get("https://new-script.example.invalid")\n')
     result = run_contract(contract_tree)
     assert result.returncode == 1
