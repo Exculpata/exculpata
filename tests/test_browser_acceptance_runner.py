@@ -6,6 +6,7 @@ from case_intelligence.legacy_names import (
     LEGACY_ENV_PREFIX,
 )
 
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
@@ -25,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_browser_scripts_use_guarded_staleness_wait():
-    # These sites are out of scope for this change and can move to the helper later.
+    # Ratchet down under https://github.com/Exculpata/exculpata/issues/353;
+    # remove all temporary exceptions before 2026-11-20 UTC.
     allowed = {
         'browser-accept-activity.py': 4,
         'browser-accept-ask-heading.py': 1,
@@ -50,6 +52,13 @@ def test_browser_scripts_use_guarded_staleness_wait():
         'browser-accept-zoom.py': 1,
         'browser_case_exit.py': 1,
     }
+    assert not allowed or datetime.now(timezone.utc) < datetime(2026, 11, 20, tzinfo=timezone.utc), (
+        'Browser staleness exceptions expire on 2026-11-20 UTC. '
+        'Migrate remaining sites to browser_navigation.wait_for_replacement, preserving '
+        'assertions, readiness checks, deadlines and unexpected-error behavior, then '
+        'ratchet exceptions down to zero. '
+        'Tracker: https://github.com/Exculpata/exculpata/issues/353'
+    )
     counts = {
         path.name: count
         for path in sorted((ROOT / 'scripts').glob('browser*.py'))
@@ -60,6 +69,30 @@ def test_browser_scripts_use_guarded_staleness_wait():
         'Browser staleness counts changed; use browser_navigation.wait_for_replacement. '
         f'Expected {allowed}, found {counts}'
     )
+
+
+@pytest.mark.parametrize('instant, expired', [
+    (datetime(2026, 11, 19, 23, 59, 59, 999999, tzinfo=timezone.utc), False),
+    (datetime(2026, 11, 20, tzinfo=timezone.utc), True),
+    (datetime(2026, 11, 21, tzinfo=timezone.utc), True),
+])
+def test_browser_staleness_exceptions_expire_at_utc_boundary(monkeypatch, instant, expired):
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return instant
+
+    monkeypatch.setattr(sys.modules[__name__], 'datetime', FrozenDatetime)
+    if expired:
+        with pytest.raises(AssertionError) as failure:
+            test_browser_scripts_use_guarded_staleness_wait()
+        message = str(failure.value)
+        assert '2026-11-20 UTC' in message
+        assert 'https://github.com/Exculpata/exculpata/issues/353' in message
+        assert 'browser_navigation.wait_for_replacement' in message
+    else:
+        test_browser_scripts_use_guarded_staleness_wait()
 
 
 @pytest.fixture
