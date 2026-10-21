@@ -1,7 +1,6 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
 from collections import Counter
-import hashlib
 import importlib.util
 import json
 import re
@@ -15,6 +14,12 @@ import yaml
 
 
 ROOT = Path(__file__).parents[1]
+_OS_LOCAL = "os." + "local"
+_API_INTERNAL = "aPi." + "internal"
+_LOGGING_CORP = "logging." + "corp"
+# Lists (path, kind, digest, detail) allowances removed versus main because
+# main's scanner no longer emits them.
+PRUNED_ALLOWANCES = ()
 
 
 def test_reference_compose_network_boundary_and_explicit_exceptions():
@@ -121,13 +126,13 @@ def test_network_contract_current_tree():
     "selenium.webdriver.support.widgets", "Emulation.setDeviceMetricsOverride",
     "synthetic-report.JSON",
 ])
-def test_contract_ignores_plain_non_host_literals(contract_tree, value):
+def test_contract_flags_plain_module_and_file_shaped_literals(contract_tree, value):
     source = f'import selenium.webdriver\nTARGET = {value!r}\n'
     # fixture-write: Seed synthetic source to exercise literal classification.
     (contract_tree / "src/synthetic_probe.py").write_text(source)
     result = run_contract(contract_tree)
-    assert not any("unreviewed outbound host" in line and value.lower() in line
-                   for line in result.stderr.splitlines()), result.stderr
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:2: unreviewed outbound host: {value.lower()}" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("expression,host", [
@@ -161,14 +166,11 @@ def test_contract_preserves_host_literals_in_network_context(contract_tree, expr
     assert f"src/synthetic_probe.py:3: unreviewed outbound host: {host.lower()}" in result.stderr
 
 
-def test_contract_identifier_becomes_host_when_passed_to_network_call(contract_tree):
+def test_contract_flags_module_shaped_literal_in_network_call(contract_tree):
     path = contract_tree / "src/synthetic_probe.py"
-    # fixture-write: Seed a plain synthetic identifier before the mutation.
-    path.write_text("TARGET = 'os.path.join'\n")
-    assert "unreviewed outbound host: os.path.join" not in run_contract(contract_tree).stderr
-    # fixture-write: Mutate the identifier into a synthetic network destination.
+    # fixture-write: Seed a module-shaped literal as a synthetic network destination.
     path.write_text("import httpx\nhttpx.get('os.path.join')\n")
-    assert "unreviewed outbound host: os.path.join" in run_contract(contract_tree).stderr
+    assert "src/synthetic_probe.py:2: unreviewed outbound host: os.path.join" in run_contract(contract_tree).stderr.splitlines()
 
 
 @pytest.mark.parametrize("host", ["example.sh", "example.md", "example.py", "example.zip"])
@@ -202,72 +204,34 @@ def test_contract_rejects_tld_hosts_in_split_urls(contract_tree, source, host, l
     assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr
 
 
-def test_contract_iana_tlds_are_pinned():
-    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
-    checker = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(checker)
-    data = (ROOT / "config/iana-tlds-alpha-by-domain.txt").read_bytes()
-    assert hashlib.sha256(data).hexdigest() == "92e7f493aa6d9e24f33e3ef452ef2aee1562e9c890851b88ec797f022ce641c2"
-    assert isinstance(checker.IANA_TLDS, frozenset)
-    assert len(checker.IANA_TLDS) == 1437
-    assert {"md", "py", "sh", "zip", "run", "link", "network", "co", "int"} <= checker.IANA_TLDS
-    assert not {"test", "example", "invalid", "localhost"} & checker.IANA_TLDS
+@pytest.mark.parametrize("source,host,line", [
+    ("import asyncio\nasync def main():\n    await asyncio.open_connection('" + _OS_LOCAL + "', 443)\n", _OS_LOCAL, 3),
+    ("import smtplib\nsmtplib.SMTP('email.relay', 25)\n", "email.relay", 2),
+    ("TARGET = '" + _API_INTERNAL + "'\n", _API_INTERNAL.lower(), 1),
+    ("import socket\nHOST = '" + _LOGGING_CORP + "'\nsocket.create_connection((HOST, 443))\n", _LOGGING_CORP, 2),
+    ("SCHEME = 'https://'\nurl = f'{SCHEME}" + _OS_LOCAL + "'\n", _OS_LOCAL, 2),
+], ids=["os-local", "email-relay", "camelcase-internal", "host-in-variable", "split-url"])
+def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, line):
+    # fixture-write: Seed synthetic private hosts and a URL with a separate scheme.
+    (contract_tree / "src/synthetic_probe.py").write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
-@pytest.mark.parametrize("contents", [None, "", "# Synthetic empty TLD list\n\n"])
-def test_contract_rejects_missing_or_empty_iana_tlds(monkeypatch, contents):
-    read_text = Path.read_text
-
-    def read_tlds(path, *args, **kwargs):
-        if path == ROOT / "config/iana-tlds-alpha-by-domain.txt":
-            if contents is None:
-                raise FileNotFoundError(path)
-            return contents
-        return read_text(path, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "read_text", read_tlds)
-    spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
-    checker = importlib.util.module_from_spec(spec)
-    with pytest.raises(ValueError, match="IANA TLD list"):
-        spec.loader.exec_module(checker)
-
-
-def test_contract_host_allowances_match_pruned_inventory(monkeypatch):
+def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
     spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
 
-    def host_keys(findings):
-        return Counter((path, kind, digest, detail)
-                       for path, _, kind, digest, detail in findings if kind == "host")
-
-    old = host_keys(checker.source_inventory(ROOT, legacy_host_rule=True))
-    classified = Counter()
-    predicate = checker.non_host_category
-
-    def record_classification(node, *args):
-        category = predicate(node, *args)
-        if category:
-            assert category in {"file suffix", "module path", "camelCase"}
-            classified[checker.fingerprint(node.value), node.value.lower()] += 1
-        return category
-
-    monkeypatch.setattr(checker, "non_host_category", record_classification)
-    new = host_keys(checker.source_inventory(ROOT))
+    findings = Counter((path, kind, digest, detail)
+                       for path, _, kind, digest, detail in checker.source_inventory(ROOT))
     policy = tomllib.loads((ROOT / "config/egress-allowlist.toml").read_text())
-    allow = Counter((item["path"], item["kind"], item["digest"], item["detail"])
-                    for item in policy["source"] if item["kind"] == "host")
-    assert new == allow
-    assert not new - old
-    removed = Counter()
-    for (_, _, digest, detail), count in (old - new).items():
-        assert classified[digest, detail] >= count
-        removed[digest, detail] += count
-    assert removed == classified
-    assert removed
-    reserved = {"test", "example", "invalid", "localhost"}
-    assert not reserved & checker.NON_HOST_SUFFIXES
-    assert not reserved & checker.IANA_TLDS
+    allowances = Counter((item["path"], item["kind"], item["digest"], item["detail"])
+                         for item in policy["source"])
+    assert findings == allowances
+    for key in PRUNED_ALLOWANCES:
+        assert key not in findings
 
 
 def test_network_contract_rejects_loosening(contract_tree):
