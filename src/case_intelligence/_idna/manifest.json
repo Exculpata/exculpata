@@ -1,0 +1,13 @@
+{
+  "version": "3.20",
+  "upstream_wheel_sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+  "files": {
+    "idna/core.py": "3dd4c3ffee4ff223207fac65f3812a1e6895ae8ad1e7a6ed60115768f3551520",
+    "idna/idnadata.py": "23a9a8c1d15de9c634d0bf213d779810f485083fe1b0f7e09044ad04a69cc7eb",
+    "idna/intranges.py": "838f6c70b4a4a89b4084b98e3836bb8551eb8928e66fad2d893b04a287097412",
+    "idna/package_data.py": "ae759534a3c582a00ac856cfca464a39ee8251d393208d8af06b605bc20e02a9",
+    "idna/uts46data.py": "770e849bfa156c71828a89440a57fe9aea70735f103ae4616ee4f682e13d6c00",
+    "LICENSE.md": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04"
+  },
+  "archive_sha256": "390aa8fb9c672c2f89f4c02d12d89671bde3dbcabba5aee9226356b4fce4ae13"
+}

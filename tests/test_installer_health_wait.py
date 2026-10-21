@@ -13,6 +13,7 @@ from tests.test_oss_installer import installer
 @pytest.mark.parametrize("product_name", [CURRENT_PRODUCT, LEGACY_PRODUCT])
 @pytest.mark.parametrize("outcome", ["ready", "timeout", "incomplete"])
 def test_health_wait_is_calm_bounded_and_retains_final_reason(tmp_path, monkeypatch, capsys, outcome, product_name):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)
     root, _, _ = configured_node(tmp_path)
     clock = [0.0]
     probes = []
@@ -65,3 +66,55 @@ def test_health_wait_is_calm_bounded_and_retains_final_reason(tmp_path, monkeypa
     assert all(later - earlier >= 30 for earlier, later in zip(elapsed, elapsed[1:]))
     assert all(value <= clock[0] for value in elapsed)
     assert "\r" not in output and "\x1b" not in output
+
+
+def test_failed_dns_behavior_blocks_readiness_and_completion(tmp_path, monkeypatch):
+    root, _, _ = configured_node(tmp_path)
+    monkeypatch.setattr(installer, '_running_auth_mode', lambda *a: 'local')
+    monkeypatch.setattr(installer, '_login_reachable', lambda *a: True)
+    payload={'product':CURRENT_PRODUCT,'status':'ok','storage':{'status':'ready'},
+             'capabilities':{'source_review':'ready','malware_scan':'ready'}}
+    monkeypatch.setattr(installer.urllib.request, 'urlopen', lambda *a,**kw: io.BytesIO(json.dumps(payload).encode()))
+    def reject(root):
+        raise RuntimeError('DNS isolation is unverified')
+    monkeypatch.setattr(installer, '_verify_installed_dns', reject)
+    with pytest.raises(RuntimeError, match='DNS isolation is unverified'):
+        installer._wait_health(installer.Console(color=False),root)
+    assert installer._install_progress(root)['phases']['selected_capabilities'] != 'complete'
+
+
+@pytest.mark.parametrize("artifact", ["scripts/dns_boundary_probe.py", "config/egress-allowlist.toml", "deploy/egress-proxy/proxy.py"])
+def test_unmarked_egress_capsule_still_requires_dns_proof(tmp_path, artifact):
+    (tmp_path / "compose.yaml").write_text("services: {}\n")
+    target = tmp_path / artifact
+    target.parent.mkdir(parents=True)
+    target.write_text("synthetic public artifact")
+    assert installer._release_requires_dns_proof(tmp_path)
+
+
+@pytest.mark.parametrize("metadata", ["{", "[]", '{"network_contract_version":0}', '{"network_contract_version":2}', '{"network_contract_version":true}'])
+def test_unknown_or_invalid_rollback_contract_fails_closed(tmp_path, metadata):
+    (tmp_path / "compose.yaml").write_text("services: {}\n")
+    (tmp_path / "RELEASE_MANIFEST.json").write_text(metadata)
+    with pytest.raises(RuntimeError, match="contract is invalid or unsupported"):
+        installer._release_requires_dns_proof(tmp_path)
+
+
+def test_legacy_capsule_does_not_bypass_normal_health_acceptance(tmp_path, monkeypatch):
+    root, _, _ = configured_node(tmp_path)
+    release = tmp_path / "legacy-release"
+    release.mkdir()
+    (release / "compose.yaml").write_text("services: {}\n")
+    record = json.loads((root / "installation.json").read_text())
+    record['release_path'] = str(release)
+    (root / "installation.json").write_text(json.dumps(record))
+    monkeypatch.setattr(installer, '_running_auth_mode', lambda *a: 'local')
+    monkeypatch.setattr(installer, '_login_reachable', lambda *a: True)
+    payload = {'product': CURRENT_PRODUCT, 'status': 'ok', 'storage': {'status': 'ready'},
+               'capabilities': {'source_review': 'ready', 'malware_scan': 'ready'}}
+    monkeypatch.setattr(installer.urllib.request, 'urlopen', lambda *a, **kw: io.BytesIO(json.dumps(payload).encode()))
+    def reject(root):
+        raise RuntimeError('DNS isolation is unverified')
+    monkeypatch.setattr(installer, '_verify_installed_dns', reject)
+    with pytest.raises(RuntimeError, match='DNS isolation is unverified'):
+        installer._wait_health(installer.Console(color=False), root)

@@ -306,6 +306,26 @@ def test_media_metadata_is_scanned(monkeypatch) -> None:
     ]
 
 
+def test_unsupported_media_root_preserves_content_findings(monkeypatch) -> None:
+    metadata = [{"comment": "reviewer@" + "private.invalid synthetic-denied-marker"}]
+    monkeypatch.setattr(publication.shutil, "which", lambda _name: "/usr/bin/ffprobe")
+    monkeypatch.setattr(
+        publication.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps(metadata).encode("utf-8")
+        ),
+    )
+    findings = publication._scan_content(
+        b"synthetic-media", name="fixture.wav", location="fixture.wav",
+        deny=(b"synthetic-denied-marker",),
+    )
+    assert any("unsupported-media-metadata" in item.rule and "_scan_media" in item.rule
+               for item in findings)
+    assert publication.Finding("fixture.wav#media-metadata", "non-example-email-address") in findings
+    assert publication.Finding("fixture.wav#media-metadata", "operator-deny-term") in findings
+
+
 def test_history_scan_finds_a_forbidden_blob_after_it_is_deleted(tmp_path) -> None:
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(

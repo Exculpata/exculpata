@@ -512,6 +512,8 @@ def test_doctor_recovers_prepared_progress_without_reprovisioning(tmp_path, monk
         for phase in ('running', 'login_reachable', 'basic_review', 'selected_capabilities'):
             installer._install_phase(root, phase, 'complete')
     monkeypatch.setattr(installer, '_wait_health', healthy)
+    monkeypatch.setattr(installer, '_verify_installed_dns', lambda root: None)
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda root: None)
     installer._doctor(installer.Console(color=False), args, root)
     capsys.readouterr()
     installer._handoff(installer.Console(color=False), root)
@@ -534,6 +536,7 @@ def test_successful_update_handoff_retains_completed_preparation(tmp_path, monke
     def healthy(console, root):
         for phase in ('running', 'login_reachable', 'basic_review', 'selected_capabilities'):
             installer._install_phase(root, phase, 'complete')
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda *a: None)
     monkeypatch.setattr(installer, '_wait_health', healthy)
     installer._update(installer.Console(color=False), args, root)
     capsys.readouterr()
