@@ -47,8 +47,9 @@ not. The two configured backends are:
 
 `{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
 The URL is an origin or path prefix. It is not a URL that already ends in
-`/v1/chat/completions` or `/api/chat`. The host must be loopback
-(`127.0.0.1`, `localhost`, or `::1`) or an exact name in
+`/v1/chat/completions` or `/api/chat`. External endpoints must use HTTPS,
+for example `https://answers.example.test:8443`. Only the bundled
+`http://generator:8000` endpoint permits HTTP. The host must be an exact name in
 `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS`
 ([`src/case_intelligence/service_endpoints.py`](../src/case_intelligence/service_endpoints.py),
 lines 16–49 and 53–77). Usernames, passwords, queries, and fragments are
@@ -81,30 +82,47 @@ Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` from
 `RECORDBENCH_GENERATOR_ALLOWED_HOSTS` value only when the Exculpata name is
 unset, and otherwise defaulting to `generator`. The external-generator option
 writes the host it just checked into `EXCULPATA_GENERATOR_ALLOWED_HOSTS`, so a
-stale value cannot replace it. A non-loopback host is refused until that
-allowlist contains it. Inside
-the app container, loopback is the container itself, so a server on the host is
-not reached by `127.0.0.1`. The installer asks again and explains that; use a
-LAN address or the Docker host-gateway name with the same port. That name is
-`host.docker.` followed immediately by `internal`. The app service maps
-`EXCULPATA_HOST_GATEWAY_ALIAS` to the host gateway. The installer writes that
-alias when the chosen host is the gateway name. The default alias is
-`host-gateway.example.test`.
+stale value cannot replace it. The app uses the internal companion transport for
+`http://generator:8000`. All external requests tunnel through the explicitly
+configured `CASE_INTELLIGENCE_GENERATOR_PROXY` relay. Ambient proxy variables
+and `NO_PROXY` cannot bypass it; redirects are refused. TLS hostname and
+certificate verification stay in the app, end to end. The relay never decrypts.
+Its existing five-second setup budget, 60-second tunnel deadline and 8 MiB tunnel
+limit also apply to generator traffic; a longer client timeout does not extend them.
 
-A name is local only when every address it resolves to is loopback, RFC1918, or
-IPv6 ULA. A public address requires explicit confirmation before it is saved.
-Link-local addresses, including the cloud metadata address, and unspecified
-addresses are rejected instead of confirmed. Each connection uses the exact vetted numeric addresses, with the original
-host retained for HTTP and TLS certificate verification. Redirects and environment
-proxies are disabled. IPv6 cloud metadata and multicast addresses are rejected
-even with consent. IPv6 scope identifiers do not change the numeric address used
-for these policy checks. DNS lookup deadlines do not change global socket settings. One-word names and `*.local` names are not
-trusted from the spelling alone. The installer recognizes its controlled Docker
-host-gateway alias before Docker creates it; runtime requests still resolve and
-validate that alias. Invalid URLs are asked again. Non-interactive
-invalid input stops with the same explanation. `--confirm-remote-generator`
-supplies the confirmation for a public host when input is not interactive. It
-does not allow a link-local or unspecified address.
+A server bound to host loopback (`127.0.0.1:11434`, `localhost`, or `::1`) cannot
+be reached by the containerized app. There is no host-gateway alias or alternate
+route. Expose an operator-managed HTTPS endpoint reachable by the relay, with a
+trusted certificate. HTTP is rejected in interactive and non-interactive install,
+endpoint parsing, and environment settings construction.
+
+The installer checks local/remote consent on the host. Public destinations need
+`--confirm-remote-generator` (or interactive confirmation) because matter text
+and cited passages leave the installation. Private RFC1918/ULA destinations need
+explicit reviewed pins. Supply `--generator-egress-pins` as single-line JSON:
+`{"issuer":"https://answers.example.test:8443","addresses":["<reviewed-IP>"]}`.
+Replace the placeholder with an exact reviewed IP address; it is not accepted
+literally. The `issuer` field name matches the shared OIDC pin format but binds
+to the complete generator URL. The installer never infers pins from DNS.
+
+Pins are saved as `CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS`. Installer Compose
+commands derive `GENERATOR_EGRESS_URL` and `GENERATOR_EGRESS_PINS` from the selected
+app env file, ignoring shell overrides. Empty configuration denies the generator
+slot. Recreate the relay and app through the installer after changing the saved
+URL or pins. Each relay connection resolves DNS and validates the entire answer
+set before dialing only those numeric addresses. Every answer must match explicit
+pins when supplied; otherwise only public addresses are permitted. Loopback,
+link-local, metadata, multicast, unspecified, reserved and transition addresses
+remain denied even with pins or remote consent. The app retains consent and
+destination checks using literal addresses and reviewed pins; external DNS belongs
+to the relay because app DNS is isolated. Host-side doctor probes retain direct
+address validation and do not establish app reachability.
+
+Generator values containing `$` are rejected before writing, when reading retained
+env files, and at app settings construction. This intentionally uses resolved
+literals instead of adding Compose escape/decode semantics that differ between
+generated and operator-maintained files. API key file contents are not Compose
+environment values. Relay URL and pin values also reject `$`.
 
 Startup sends one small strict-schema request. `doctor` sends the same request
 unless `--dry-run` is set. Ollama is checked with native `format`. llama.cpp,
@@ -129,7 +147,7 @@ Granite and the ModernBERT reranker on CPU. When an index already contains
 vectors and the embedding model or revision changes, `doctor` and startup say
 that existing indexes must be rebuilt. Exculpata does not rebuild them
 automatically. An API key for the answer server is read from
-`/run/exculpata-secrets/generator-api-key`.
+`/run/recordbench-secrets/generator-api-key` on the existing read-only secrets mount.
 
 A populated index with missing, unreadable, incomplete or non-populated
 provenance stays **unknown**. The app does not stamp today's configuration onto

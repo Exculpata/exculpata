@@ -73,7 +73,7 @@ on their host gateway. An operator must not expose a DNS forwarder or general
 proxy there to these networks; this change is not a firewall for host services.
 No host firewall or system DNS configuration is installed by the product.
 
-## OIDC relay
+## OIDC and generator relay
 
 The Authlib adapter uses the explicitly configured
 `CASE_INTELLIGENCE_OIDC_PROXY` and disables ambient proxy discovery. Compose fixes
@@ -85,7 +85,24 @@ exact host allowlists, disables ambient proxies and rejects redirects. Hardcoded
 loopback health probes also disable ambient proxies. The relay has no host ports,
 volumes, application environment file or secrets.
 
-The proxy permits CONNECT only to the configured issuer's exact host and port.
+The proxy permits CONNECT only to the configured issuer's exact host and port,
+and one separately configured external generator authority. The generator slot
+uses `GENERATOR_EGRESS_URL` and `GENERATOR_EGRESS_PINS`, derived from the selected
+app env file by the installer. Empty generator configuration denies that slot.
+Both authorities use the same parser, DNS validation, pin and address-denial rules.
+A shared authority with conflicting pin sets fails startup rather than broadening
+either slot. Generator pins use the existing `issuer` JSON field bound to the full
+generator URL. Only reviewed RFC1918/ULA pins allow private generator addresses;
+loopback and metadata destinations cannot be pinned. See
+[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints).
+
+The app's `CASE_INTELLIGENCE_GENERATOR_PROXY` selects the CONNECT relay explicitly;
+its transport cannot be bypassed with `NO_PROXY`. The bundled generator continues
+to use the exact-allowlisted internal companion route. External generator HTTP
+URLs and `$` interpolation are rejected at configuration boundaries. Host loopback
+answer servers are unreachable from the containerized app; no host-gateway route
+is installed. The host-only doctor transport does not alter application routing.
+
 Outer configuration whitespace and trailing slashes are trimmed consistently
 with application settings, including issuer-bound pin matching. Line controls
 remain invalid. Installer preflight rejects noncanonical numeric issuer hosts
@@ -187,8 +204,8 @@ IPv4 authorities (octal, hexadecimal, shortened and integer forms) are rejected
 before resolution, even when a resolver would interpret one as a public IP. DNS is resolved for
 each connection; every answer must pass validation before any connection is
 made, and the proxy dials that validated numeric address without resolving it
-again. Empty issuer configuration starts in deny-all mode for local and Kerberos
-sign-in. Requests, destinations and tunneled bytes are not logged. Concurrency,
+again. Empty issuer configuration denies the issuer slot for local and Kerberos
+sign-in; a configured generator slot remains independent. Requests, destinations and tunneled bytes are not logged. Concurrency,
 header size/time, tunnel duration and transferred bytes are bounded by eight
 connection slots, operation timeouts and byte limits. DNS and all connection
 attempts share one five-second budget. Each address receives an equal share of
@@ -257,8 +274,8 @@ Installer Compose invocations derive `OIDC_EGRESS_ISSUER` from the one selected
 application env file's `CASE_INTELLIGENCE_OIDC_ISSUER`, only in `oidc` mode. Shell
 overrides are discarded. This preserves fresh, legacy and explicitly selected
 filenames without copying app configuration or secrets into the proxy. Only the
-issuer and its optional pin JSON are passed. Changing
-the saved issuer requires recreating the proxy and app together through the
+issuer, external generator URL and their optional pin JSON are passed. Changing
+either saved URL requires recreating the proxy and app together through the
 installer. An existing proxy cannot observe a changed env file automatically.
 
 The installer accepts single-line `KEY=value` entries with upper/lowercase keys,
@@ -267,7 +284,7 @@ values, and inline comments. An unquoted comment requires preceding whitespace;
 quoted comments follow the closing quote. Auth mode uses `strip().lower()`, as
 the app does. Duplicate keys, multiline values, unset keys without `=`, `export`
 prefixes, colon delimiters and unsupported quoted escapes fail with a line-only
-diagnostic. Auth mode, issuer and pin values containing `$` are deliberately
+diagnostic. Auth mode, issuer, pins and generator values containing `$` are deliberately
 rejected: write resolved literals instead of shell/Compose interpolation before
 upgrading. Keep secrets in their existing files; diagnostics never print values.
 Other env entries are not copied to the proxy. This is a supported subset of

@@ -60,7 +60,6 @@ from case_intelligence.legacy_names import (
     accepts_product,
 )
 from case_intelligence.external_generator import (
-    HOST_GATEWAY_NAME,
     REMOTE_CONFIRMATION,
     EndpointRejected,
     GeneratorEndpoint,
@@ -74,7 +73,11 @@ from case_intelligence.embedding_index import (
     embedding_change_warning,
     load_embedding_index,
 )
-from case_intelligence.generator_schema import SchemaProbe, probe_schema_enforcement
+from case_intelligence.generator_schema import SchemaProbe, probe_schema_enforcement, _urllib_transport
+from case_intelligence.generator_config import (
+    bundled_generator, generator_literal, generator_pins, validate_generator_url,
+)
+from generator_host_probe import open_host_generator_request
 from case_intelligence.hardware_profile import detect_hardware, suggest_tier
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
@@ -220,7 +223,7 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Compose must report). Unrelated shell values were removed above.
     config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
     result["EXCULPATA_APP_ENV_FILE"] = _selected_app_env(config, saved).name
-    # Share only the issuer with the relay. Never give it the application's
+    # Share only destination URLs and pins. Never give the relay the application's
     # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
     selected = _selected_app_env(config, saved)
     application = _dotenv(selected, literal_keys={
@@ -235,6 +238,22 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         application.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
         if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     )
+    generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
+    pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
+    try:
+        if generator:
+            generator = validate_generator_url(generator.strip())
+        if generator and not bundled_generator(generator):
+            generator_pins(pins, generator)
+            result["GENERATOR_EGRESS_URL"] = generator
+            result["GENERATOR_EGRESS_PINS"] = pins
+        else:
+            if pins:
+                raise RuntimeError("Generator pins require an external HTTPS URL")
+            result["GENERATOR_EGRESS_URL"] = ""
+            result["GENERATOR_EGRESS_PINS"] = ""
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid saved generator egress configuration: {exc}") from exc
     return result
 
 
@@ -367,7 +386,8 @@ def _parser() -> argparse.ArgumentParser:
         choices=("ollama", "llamacpp", "lmstudio"),
         help="use an Ollama, llama.cpp, or LM Studio server instead of the bundled generator",
     )
-    parser.add_argument("--external-generator-url", help="origin of that server, without /v1 or /api/chat")
+    parser.add_argument("--generator-egress-pins", default="", help="reviewed exact address pins as JSON with issuer (generator URL) and addresses")
+    parser.add_argument("--external-generator-url", help="HTTPS origin of that server, without /v1 or /api/chat; host loopback is unreachable from the app")
     parser.add_argument("--external-generator-model", help="model name the server lists; nothing is downloaded")
     parser.add_argument("--external-generator-api-key-stdin", action="store_true",
                         help="read an optional API key from stdin; it is stored only in the node secrets directory")
@@ -489,10 +509,14 @@ def _external_from_args(args: argparse.Namespace) -> GeneratorEndpoint | None:
             "Use --models none or --models transcription with your own answer server."
         )
     try:
-        return require_local_or_confirmed(parse_generator_endpoint(
+        endpoint = require_local_or_confirmed(parse_generator_endpoint(
             server, url, model, remote_confirmed=bool(args.confirm_remote_generator),
         ))
-    except EndpointRejected as exc:
+        pins = generator_pins(getattr(args, "generator_egress_pins", ""), endpoint.url)
+        if endpoint.local_network and not pins:
+            raise ValueError("Private answer servers require explicit reviewed --generator-egress-pins.")
+        return endpoint
+    except ValueError as exc:
         raise RuntimeError(str(exc)) from exc
 
 
@@ -520,33 +544,13 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
         return None
     while True:
         server = _choose("Answer server", ("ollama", "llamacpp", "lmstudio"), "ollama", non_interactive=False)
-        url = input("Server URL (origin only, for example http://127.0.0.1:11434): ").strip()
+        url = input("Server HTTPS URL (origin only; host loopback is unreachable from the app): ").strip()
         model = input("Model name the server lists: ").strip()
         try:
             endpoint = parse_generator_endpoint(server, url, model, remote_confirmed=False)
         except EndpointRejected as exc:
             print(str(exc))
             continue
-        if endpoint.container_loopback:
-            print(
-                "The application runs in a container. This loopback address is the container, "
-                "not this computer. Enter the server's LAN address, or http://"
-                + HOST_GATEWAY_NAME
-                + " with the same port."
-            )
-            rewritten = input("Server URL: ").strip()
-            try:
-                endpoint = parse_generator_endpoint(server, rewritten, model, remote_confirmed=False)
-            except EndpointRejected as exc:
-                print(str(exc))
-                continue
-            if endpoint.container_loopback:
-                print(
-                    "That address still points at container loopback. "
-                    "The application will not reach a server on this computer at that URL."
-                )
-                if input("Use this URL anyway? Type yes to keep it: ").strip() != "yes":
-                    continue
         if not endpoint.local_network:
             try:
                 require_local_or_confirmed(parse_generator_endpoint(
@@ -562,6 +566,16 @@ def _collect_external_generator(console: Console, args: argparse.Namespace) -> G
             endpoint = require_local_or_confirmed(parse_generator_endpoint(
                 server, endpoint.url, model, remote_confirmed=True,
             ))
+        if endpoint.local_network and not getattr(args, "generator_egress_pins", ""):
+            args.generator_egress_pins = input("Reviewed private address pins (JSON with issuer URL and addresses): ").strip()
+        try:
+            pins = generator_pins(args.generator_egress_pins, endpoint.url)
+            if endpoint.local_network and not pins:
+                raise ValueError("Private answer servers require explicit reviewed generator egress pins.")
+        except ValueError as exc:
+            print(str(exc))
+            args.generator_egress_pins = ""
+            continue
         args.external_generator = endpoint.server
         args.external_generator_url = endpoint.url
         args.external_generator_model = endpoint.model
@@ -588,14 +602,13 @@ def _apply_external_generator(
         if not secret.strip() or len(secret) > 4096:
             raise RuntimeError("The generator API key is missing or too long. Enter it on one line.")
         _private_write(secret_path, secret if secret.endswith("\n") else secret + "\n")
-        api_key_file = "/run/exculpata-secrets/generator-api-key"
+        api_key_file = f"/run/{LEGACY_STEM}-secrets/generator-api-key"
     elif secret_path.is_file():
-        api_key_file = "/run/exculpata-secrets/generator-api-key"
+        api_key_file = f"/run/{LEGACY_STEM}-secrets/generator-api-key"
     values = _external_environment_values(endpoint, api_key_file=api_key_file)
     app_values.update(values)
     compose_values["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
-    if endpoint.host == HOST_GATEWAY_NAME:
-        compose_values["EXCULPATA_HOST_GATEWAY_ALIAS"] = HOST_GATEWAY_NAME
+    app_values["CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS"] = getattr(args, "generator_egress_pins", "")
     app_values["CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"] = "1" if endpoint.remote_confirmed else "0"
     return endpoint
 
@@ -1079,6 +1092,13 @@ def _secret(path: Path, size: int = 48) -> str:
     return value
 
 
+def _generator_literal(key, value):
+    try:
+        generator_literal(key, value)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
 def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = False) -> str:
     if aliases:
         expanded = {}
@@ -1096,6 +1116,7 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     for key, value in values.items():
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None:
             raise RuntimeError("generated environment key is invalid")
+        _generator_literal(key, value)
         encoded = str(value)
         if any(character in encoded for character in ("\x00", "\r", "\n")):
             raise RuntimeError(f"generated environment value is invalid: {key}")
@@ -1150,6 +1171,7 @@ def _dotenv(path: Path, *, literal_keys: set[str] | None = None) -> dict[str, st
             raise RuntimeError(error)
         if key in (literal_keys or ()) and "$" in value:
             raise RuntimeError(f"unsupported node environment interpolation on line {number}; write the resolved auth/issuer literal (see docs/NETWORK_EGRESS.md)")
+        _generator_literal(key, value)
         values[key] = value
     return values
 
@@ -3467,6 +3489,7 @@ def hashlib_short(path: Path) -> str:
 
 
 def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool = False) -> None:
+    _generator_literal(key, value)
     original = path.read_bytes().decode("utf-8")
     saved = _dotenv(path)
     keys = {key}
@@ -4070,7 +4093,7 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     embedding = compose_env.get("EXCULPATA_EMBEDDING_MODEL") or compose_env.get("RECORDBENCH_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
     revision = compose_env.get("EXCULPATA_EMBEDDING_REVISION") or compose_env.get("RECORDBENCH_EMBEDDING_REVISION") or DEFAULT_EMBEDDING_REVISION
     index_warning = embedding_change_warning(
-        load_embedding_index(root / "state" / "embedding-index.json"),
+        load_embedding_index(root / "state" / ("embedding-index" + ".json")),
         model=embedding,
         revision=revision,
     )
@@ -4090,6 +4113,7 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     try:
         from case_intelligence.service_endpoints import validate_service_endpoint
 
+        validate_generator_url(url)
         validate_service_endpoint(
             url,
             environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS",
@@ -4121,7 +4145,8 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     previous_consent = os.environ.get(consent_key)
     os.environ[consent_key] = app_env.get(consent_key, "0")
     try:
-        result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15)
+        result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15,
+                                          transport=_urllib_transport(15, open_request=open_host_generator_request))
     finally:
         if previous_consent is None:
             os.environ.pop(consent_key, None)
@@ -4275,6 +4300,8 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
         args.external_generator_url = url
         args.external_generator_model = model_name
         args.confirm_remote_generator = bool(external.get("remote_confirmed"))
+        args.generator_egress_pins = app_env.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
+        _external_from_args(args)
     args.enable_account_management = account_management
     paths = _paths(root, args.storage_root)
     mount_keys = {"config": "CONFIG", "secrets": "SECRETS", "runtime": "RUNTIME",
@@ -4642,7 +4669,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         rollback_error: Exception | None = None
         if not args.dry_run:
             try:
-                _atomic_private_write(root / "compose.env", old_compose_text)
+                _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
                 _atomic_private_write(root / "installation.json", old_installation_text)
                 _atomic_private_write(app_path, old_app_text)
                 _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)

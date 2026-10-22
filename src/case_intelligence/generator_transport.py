@@ -1,12 +1,15 @@
-"""Connect model requests to vetted addresses, preserving TLS identity and refusing redirects."""
+"""External generator HTTPS tunnels through the explicitly configured relay."""
 from __future__ import annotations
 
 import http.client
-import socket
-import time
+import os
 import urllib.request
+from urllib.parse import urlsplit
 
-from .external_generator import require_resolved_destination
+from .external_generator import DestinationRejected, _destination_reason
+from .generator_config import generator_pins, validate_generator_url
+from .oidc_network_policy import issuer_authority
+from .service_endpoints import validate_service_endpoint
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -15,48 +18,41 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def open_generator_request(request, *, timeout, opener=None):
-    addresses = require_resolved_destination(request.full_url)
+    try:
+        validate_generator_url(request.full_url)
+        if urlsplit(request.full_url).scheme != "https":
+            raise ValueError("External answer servers require HTTPS")
+        validate_service_endpoint(request.full_url, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS",
+                                  label="generator endpoint", schemes=frozenset({"https"}))
+        configured = os.environ.get("CASE_INTELLIGENCE_GENERATOR_URL", request.full_url)
+        pins = generator_pins(os.environ.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", ""), configured)
+        if issuer_authority(configured) != issuer_authority(request.full_url):
+            raise ValueError("Generator request authority differs from configuration")
+        confirmed = os.environ.get("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED") == "1"
+        if pins:
+            reason = _destination_reason(pins, remote_confirmed=confirmed)
+            if reason:
+                raise ValueError(reason)
+        elif not confirmed:
+            raise ValueError("External answer servers require remote consent or reviewed private address pins")
+        proxy = urlsplit(os.environ.get("CASE_INTELLIGENCE_GENERATOR_PROXY", ""))
+        if (proxy.scheme != "http" or not proxy.hostname or not proxy.port or proxy.path not in {"", "/"}
+                or proxy.username is not None or proxy.password is not None or proxy.query or proxy.fragment):
+            raise ValueError("Configure CASE_INTELLIGENCE_GENERATOR_PROXY for the CONNECT relay")
+    except ValueError as exc:
+        raise DestinationRejected(str(exc)) from exc
     if opener is not None:
-        # Explicit transport injection is for controlled evaluation/test clients.
-        return opener.open(request, timeout=timeout)
-
-    def connect(address, timeout=timeout, source_address=None):
-        deadline = time.monotonic() + timeout
-        last = None
-        for vetted in addresses:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("Generator connection timed out")
-            family = socket.AF_INET6 if vetted.version == 6 else socket.AF_INET
-            sock = socket.socket(family, socket.SOCK_STREAM)
-            try:
-                sock.settimeout(remaining)
-                if source_address is not None:
-                    sock.bind(source_address)
-                # Numeric connect: no second hostname resolution after validation.
-                sock.connect((str(vetted), address[1]))
-                return sock
-            except OSError as exc:
-                last = exc
-                sock.close()
-        raise last or OSError("No approved generator address")
-
-    def connection_factory(connection_type):
-        def make(host, **kwargs):
-            connection = connection_type(host, **kwargs)
-            connection._create_connection = connect
-            return connection
-        return make
-
-    class HTTP(urllib.request.HTTPHandler):
-        def http_open(self, req):
-            return self.do_open(connection_factory(http.client.HTTPConnection), req)
+        raise DestinationRejected("External generator requests must use the configured CONNECT relay")
 
     class HTTPS(urllib.request.HTTPSHandler):
         def https_open(self, req):
-            return self.do_open(connection_factory(http.client.HTTPSConnection), req,
-                                context=self._context)
+            def connection(host, **kwargs):
+                target = urlsplit("//" + host)
+                connection = http.client.HTTPSConnection(proxy.hostname, proxy.port, **kwargs)
+                connection.set_tunnel(target.hostname, target.port or 443)
+                return connection
+            return self.do_open(connection, req, context=self._context)
 
-    # Environment proxies could resolve independently or receive credentials.
-    transport = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect(), HTTP(), HTTPS())
+    # Explicit tunnel construction cannot be bypassed by ambient NO_PROXY.
+    transport = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect(), HTTPS())
     return transport.open(request, timeout=timeout)

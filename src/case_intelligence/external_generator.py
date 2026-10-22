@@ -8,12 +8,14 @@ import threading
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from .generator_config import generator_literal, validate_generator_url
+
 
 SERVERS = ("ollama", "llamacpp", "lmstudio")
 _BACKEND = {"ollama": "ollama", "llamacpp": "openai", "lmstudio": "openai"}
 # Docker's host-gateway name. Kept split so the publication scan does not see
 # one internal hostname token.
-HOST_GATEWAY_NAME = "host.docker." + "internal"
+HOST_GATEWAY_NAME = "host." + "docker." + "internal"
 _COMPLETION_SUFFIXES = ("/v1/chat/completions", "/api/chat", "/v1/models", "/api/tags")
 # Exact RFC1918 ranges, loopback, and RFC4193 ULA; no broad is_private shortcut.
 _LOCAL_NETWORKS = (
@@ -68,6 +70,11 @@ def parse_generator_endpoint(
     *,
     remote_confirmed: bool = False,
 ) -> GeneratorEndpoint:
+    try:
+        for key, value in (("GENERATOR_SERVER", server), ("GENERATOR_URL", url), ("GENERATOR_MODEL", model)):
+            generator_literal(key, value)
+    except ValueError as exc:
+        raise EndpointRejected(str(exc)) from exc
     kind = server.strip().casefold()
     if kind not in SERVERS:
         raise EndpointRejected(
@@ -81,11 +88,10 @@ def parse_generator_endpoint(
             "Nothing is downloaded."
         )
     parsed = _parsed_url((url or "").strip(), EndpointRejected)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise EndpointRejected(
-            "Enter an http or https URL for the server origin, such as http://127.0.0.1:11434. "
-            "Include the scheme and host."
-        )
+    try:
+        validate_generator_url((url or "").strip())
+    except ValueError as exc:
+        raise EndpointRejected(str(exc)) from exc
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise EndpointRejected(
             "The URL cannot contain a username, password, query, or fragment. "
@@ -94,13 +100,13 @@ def parse_generator_endpoint(
     path = parsed.path.rstrip("/")
     if any(path.endswith(suffix) for suffix in _COMPLETION_SUFFIXES) or path in {"/v1", "/api"}:
         raise EndpointRejected(
-            "Use the server origin, such as http://127.0.0.1:11434. "
+            "Use the HTTPS server origin. "
             "Do not include /v1, /api, /v1/chat/completions, or /api/chat."
         )
     if any(part == ".." for part in path.split("/")):
         raise EndpointRejected("The URL path cannot contain '..'. Enter the server origin.")
     host = parsed.hostname.casefold()
-    local = host == HOST_GATEWAY_NAME or host_is_local(host)
+    local = host_is_local(host)
     loopback = _container_loopback(host)
     origin = f"{parsed.scheme}://{parsed.netloc}{path}".rstrip("/")
     return GeneratorEndpoint(

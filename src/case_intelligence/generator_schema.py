@@ -214,13 +214,8 @@ def _server(value: str) -> str:
     return server
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002
-        return None
-
-
 def _urllib_transport(
-    timeout: float,
+    timeout: float, *, open_request=None,
 ) -> Callable[[str, Mapping[str, object], Mapping[str, str]], Mapping[str, object]]:
 
     def send(
@@ -235,7 +230,14 @@ def _urllib_transport(
         from .external_generator import DestinationRejected
         from .generator_transport import open_generator_request
         try:
-            with open_generator_request(request, timeout=timeout) as response:
+            if open_request is not None:
+                response = open_request(request, timeout=timeout)
+            elif url.startswith("https:"):
+                response = open_generator_request(request, timeout=timeout)
+            else:
+                from .service_endpoints import open_service_request
+                response = open_service_request(request, timeout=timeout, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
+            with response:
                 raw = response.read(65_537)
         except urllib.error.HTTPError as exc:
             # A reachable server rejected the request; do not call this a DNS/network failure.

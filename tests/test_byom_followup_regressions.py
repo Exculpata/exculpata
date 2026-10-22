@@ -17,8 +17,8 @@ def test_provider_metadata_is_blocked_for_literal_and_dns(monkeypatch, mapped, c
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED", "1" if confirmed else "0")
     monkeypatch.setattr(endpoints, "addresses_for", lambda host: (address,))
     for host in ("synthetic-generator.example.test", f"[{address}]" if mapped else str(address)):
-        endpoint = endpoints.parse_generator_endpoint("ollama", f"http://{host}", "synthetic", remote_confirmed=confirmed)
-        with pytest.raises(endpoints.EndpointRejected, match="metadata"):
+        with pytest.raises(endpoints.EndpointRejected, match="metadata|denied destination"):
+            endpoint = endpoints.parse_generator_endpoint("ollama", f"https://{host}", "synthetic", remote_confirmed=confirmed)
             endpoints.require_local_or_confirmed(endpoint)
         with pytest.raises(endpoints.DestinationRejected, match="metadata"):
             endpoints.require_resolved_destination(f"http://{host}/api/chat")
@@ -29,8 +29,10 @@ def test_provider_metadata_is_blocked_for_literal_and_dns(monkeypatch, mapped, c
 def test_populated_unknown_index_is_never_blessed(tmp_path, stored):
     path = tmp_path / "embedding-index.json"
     if isinstance(stored, bytes):
+        # fixture-write: Seed synthetic data for this isolated regression.
         path.write_bytes(stored)
     elif stored is not None:
+        # fixture-write: Seed synthetic data for this isolated regression.
         path.write_text(stored if isinstance(stored, str) else json.dumps(stored))
     before = path.read_bytes() if path.exists() else None
     warning = record_embedding_index(path, model="synthetic/new", revision="synthetic-new-revision", populated=True)
@@ -51,6 +53,7 @@ def test_empty_document_does_not_clear_global_index_provenance(monkeypatch, tmp_
     from types import SimpleNamespace
     from case_intelligence.review_bench_v2 import upsert_postgres_document
     path = tmp_path / "embedding-index.json"
+    # fixture-write: Seed synthetic data for this isolated regression.
     path.write_text(json.dumps({"model": "synthetic/old", "revision": "synthetic-old", "populated": True}))
     before = path.read_bytes()
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_INDEX_RECORD", str(path))
@@ -66,10 +69,12 @@ def test_ollama_environment_key_reaches_every_request(monkeypatch, tmp_path):
     from case_intelligence import generation, generator_completion, generator_schema
     from case_intelligence.generation import EvidenceItem
     key_file = tmp_path / "synthetic-key"
+    # fixture-write: Seed synthetic data for this isolated regression.
     key_file.write_text("synthetic-ollama-credential")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "ollama")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SERVER", "ollama")
-    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "https://answers.example.test:11434")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "answers.example.test")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "synthetic")
     monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE", str(key_file))

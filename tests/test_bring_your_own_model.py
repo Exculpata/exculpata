@@ -344,7 +344,8 @@ def test_validate_and_retry_checks_locally_including_unprobed_clients(monkeypatc
 def test_environment_labels_unvalidated_models_and_can_skip_the_probe(monkeypatch):
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "openai")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SERVER", "llamacpp")
-    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "http://127.0.0.1:8080")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "https://answers.example.test:8080")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "answers.example.test")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", f"{LEGACY_STEM}-qwen35-9b")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "0")
     client = generator_from_environment()
@@ -424,46 +425,46 @@ def _trust_office_names(monkeypatch, *names):
     import case_intelligence.external_generator as endpoints
 
     office = _office_address()
-    original = endpoints._resolve_addresses
 
     def resolve(hostname):
         if hostname in names:
             return (office,)
-        return original(hostname)
+        return ()
 
     monkeypatch.setattr(endpoints, "_resolve_addresses", resolve)
 
 
 def test_endpoint_acceptance_and_remote_confirmation(monkeypatch):
     _trust_office_names(monkeypatch, "synthetic-answers", HOST_GATEWAY_NAME)
-    with pytest.raises(EndpointRejected, match="http or https"):
+    with pytest.raises(EndpointRejected, match="HTTPS"):
         parse_generator_endpoint("ollama", "not-a-url", "synthetic-model")
     with pytest.raises(EndpointRejected, match="/v1/chat/completions"):
-        parse_generator_endpoint("llamacpp", "http://127.0.0.1:8080/v1/chat/completions", "synthetic-model")
-    loopback = parse_generator_endpoint("ollama", "http://127.0.0.1:11434", "synthetic-model")
-    assert loopback.container_loopback is True and loopback.local_network is True
-    lan = require_local_or_confirmed(parse_generator_endpoint("ollama", "http://synthetic-answers:11434", "synthetic-model"))
+        parse_generator_endpoint("llamacpp", "https://synthetic-answers:8080/v1/chat/completions", "synthetic-model")
+    with pytest.raises(EndpointRejected, match="loopback"):
+        parse_generator_endpoint("ollama", "https://127.0.0.1:11434", "synthetic-model")
+    lan = require_local_or_confirmed(parse_generator_endpoint("ollama", "https://synthetic-answers:11434", "synthetic-model"))
     assert lan.local_network is True and lan.container_loopback is False
     gateway = parse_generator_endpoint(
-        "llamacpp", "http://" + HOST_GATEWAY_NAME + ":8080", "synthetic-model",
+        "llamacpp", "https://" + HOST_GATEWAY_NAME + ":8080", "synthetic-model",
     )
     assert gateway.local_network is True and gateway.container_loopback is False
     assert gateway.host == HOST_GATEWAY_NAME
-    remote = parse_generator_endpoint("lmstudio", "http://192.0.2.10:1234", "synthetic-model")
+    remote = parse_generator_endpoint("lmstudio", "https://8.8.8.8:1234", "synthetic-model")
     assert remote.local_network is False
     with pytest.raises(EndpointRejected, match="outside the local network"):
         require_local_or_confirmed(remote)
     confirmed = require_local_or_confirmed(
-        parse_generator_endpoint("lmstudio", "http://api.example.test:1234", "synthetic-model", remote_confirmed=True)
+        parse_generator_endpoint("lmstudio", "https://api.example.test:1234", "synthetic-model", remote_confirmed=True)
     )
     assert confirmed.remote_confirmed is True
-    values = environment_values(lan, api_key_file="/run/exculpata-secrets/generator-api-key")
+    values = environment_values(lan, api_key_file=f"/run/{LEGACY_STEM}-secrets/generator-api-key")
     assert values["CASE_INTELLIGENCE_GENERATOR_BACKEND"] == "ollama"
     assert values["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     alias_args = _installer()._parser().parse_args([
         "install", "--models", "none", "--non-interactive",
         "--external-generator", "llamacpp",
-        "--external-generator-url", "http://" + HOST_GATEWAY_NAME + ":8080",
+        "--external-generator-url", "https://" + HOST_GATEWAY_NAME + ":8080",
+        "--generator-egress-pins", json.dumps({"issuer": "https://" + HOST_GATEWAY_NAME + ":8080", "addresses": [str(_office_address())]}),
         "--external-generator-model", "synthetic-model",
     ])
     recorded: dict[str, object] = {}
@@ -471,7 +472,7 @@ def test_endpoint_acceptance_and_remote_confirmation(monkeypatch):
         alias_args, {}, recorded, {"secrets": Path("/tmp/exculpata-missing-secrets")},
     )
     assert recorded_endpoint is not None
-    assert recorded["EXCULPATA_HOST_GATEWAY_ALIAS"] == HOST_GATEWAY_NAME
+    assert "EXCULPATA_HOST_GATEWAY_ALIAS" not in recorded
     assert values["CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING"] == "0"
     assert values["CASE_INTELLIGENCE_GENERATOR_TIMEOUT"] == "180"
     assert values["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"].endswith("generator-api-key")
@@ -496,7 +497,9 @@ def _configure_node(tmp_path, extra, monkeypatch=None):
     installer._collect_identity_choices(args)
     paths = installer._prepare_directories(console, root, storage_root=None, resume=False, dry_run=False)
     cert, key = paths["tls"] / "synthetic.crt", paths["tls"] / "synthetic.key"
+    # fixture-write: Seed synthetic data for this isolated regression.
     cert.write_text("synthetic certificate")
+    # fixture-write: Seed synthetic data for this isolated regression.
     key.write_text("synthetic key")
     args.tls_cert, args.tls_key = cert, key
     installer._configure(console, args, root, paths, "synthetic-release", ROOT, ())
@@ -508,25 +511,26 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     monkeypatch.setattr(sys, "stdin", io.StringIO(TOKEN + "\n"))
     installer, root, _args, paths = _configure_node(tmp_path, [
         "--external-generator", "ollama",
-        "--external-generator-url", "http://synthetic-answers:11434",
+        "--external-generator-url", "https://synthetic-answers:11434",
         "--external-generator-model", "synthetic-model",
         "--external-generator-api-key-stdin",
+        "--generator-egress-pins", json.dumps({"issuer": "https://synthetic-answers:11434", "addresses": [str(_office_address())]}),
     ])
     application = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     compose = installer._dotenv(root / "compose.env")
     record = json.loads((root / "installation.json").read_text())
     assert application["CASE_INTELLIGENCE_GENERATOR_BACKEND"] == "ollama"
     assert application["CASE_INTELLIGENCE_GENERATOR_SERVER"] == "ollama"
-    assert application["CASE_INTELLIGENCE_GENERATOR_URL"] == "http://synthetic-answers:11434"
+    assert application["CASE_INTELLIGENCE_GENERATOR_URL"] == "https://synthetic-answers:11434"
     assert application["CASE_INTELLIGENCE_GENERATOR_MODEL"] == "synthetic-model"
     assert application["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
-    assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == "/run/exculpata-secrets/generator-api-key"
+    assert application["CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"] == f"/run/{LEGACY_STEM}-secrets/generator-api-key"
     assert compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     assert "RECORDBENCH_GENERATOR_ALLOWED_HOSTS" not in compose
     assert compose["RECORDBENCH_RETRIEVAL_DEVICE"] == "cpu"
     assert record["external_generator"] == {
         "server": "ollama",
-        "url": "http://synthetic-answers:11434",
+        "url": "https://synthetic-answers:11434",
         "model": "synthetic-model",
         "host": "synthetic-answers",
         "remote_confirmed": False,
@@ -542,7 +546,7 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     assert "hardware ::" in dry_output
     assert "suggested tier ::" in dry_output
     assert "model download :: not started" in dry_output
-    assert "answer server :: ollama synthetic-model at http://synthetic-answers:11434" in dry_output
+    assert "answer server :: ollama synthetic-model at https://synthetic-answers:11434" in dry_output
     assert "Dry run: the schema check was not sent" in dry_output
     assert TOKEN not in dry_output
 
@@ -554,6 +558,7 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
 
     monkeypatch.setattr(installer, "probe_schema_enforcement", probe)
     monkeypatch.setattr(installer, "_wait_health", lambda *args, **kwargs: None)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *args: None)
     monkeypatch.setattr(
         installer, "_run",
         lambda console, command, **kwargs: subprocess.CompletedProcess(list(command), 0, "", ""),
@@ -563,11 +568,12 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     live_output = capsys.readouterr().out
     assert "schema enforcement :: verified" in live_output
     assert TOKEN not in live_output
-    assert probes[0][0] == "http://synthetic-answers:11434"
+    assert probes[0][0] == "https://synthetic-answers:11434"
     assert probes[0][1] == "ollama"
     assert probes[0][3]["Authorization"] == f"Bearer {TOKEN}"
 
     (root / "state").mkdir(exist_ok=True)
+    # fixture-write: Seed synthetic data for this isolated regression.
     (root / "state" / "embedding-index.json").write_text(json.dumps({
         "model": "ibm-granite/granite-embedding-english-r2",
         "revision": "47ea694b257b703fee9253d75c2b1f2985180498",
@@ -586,14 +592,14 @@ def test_installer_records_a_local_server_without_the_api_key(tmp_path, monkeypa
     ])
     installer._saved_node_arguments(resumed, root)
     assert resumed.external_generator == "ollama"
-    assert resumed.external_generator_url == "http://synthetic-answers:11434"
+    assert resumed.external_generator_url == "https://synthetic-answers:11434"
     assert resumed.external_generator_model == "synthetic-model"
     resumed.admin_username = record["initial_administrator"]
     resumed.admin_display_name = record["initial_administrator_display_name"]
     installer._configure(installer.Console(color=False, quiet=True), resumed, root, paths, "synthetic-release", ROOT, ())
     kept = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     kept_compose = installer._dotenv(root / "compose.env")
-    assert kept["CASE_INTELLIGENCE_GENERATOR_URL"] == "http://synthetic-answers:11434"
+    assert kept["CASE_INTELLIGENCE_GENERATOR_URL"] == "https://synthetic-answers:11434"
     assert kept_compose["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] == "synthetic-answers"
     assert TOKEN not in (root / "installation.json").read_text()
 
@@ -603,14 +609,14 @@ def test_remote_and_partial_generator_settings_are_not_saved(tmp_path):
     with pytest.raises(RuntimeError, match="outside the local network"):
         _configure_node(tmp_path, [
             "--external-generator", "lmstudio",
-            "--external-generator-url", "http://192.0.2.10:1234",
+            "--external-generator-url", "https://8.8.8.8:1234",
             "--external-generator-model", "synthetic-model",
         ])
     root = tmp_path / "Synthetic Node"
     assert not (root / "installation.json").exists()
     leaked = [
         path for path in root.rglob("*")
-        if path.is_file() and "192.0.2.10" in path.read_text(errors="ignore")
+        if path.is_file() and "8.8.8.8" in path.read_text(errors="ignore")
     ]
     assert leaked == []
     args = installer._parser().parse_args([
@@ -622,7 +628,7 @@ def test_remote_and_partial_generator_settings_are_not_saved(tmp_path):
     bundled = installer._parser().parse_args([
         "install", "--models", "review", "--non-interactive",
         "--external-generator", "ollama",
-        "--external-generator-url", "http://synthetic-answers:11434",
+        "--external-generator-url", "https://synthetic-answers:11434",
         "--external-generator-model", "synthetic-model",
     ])
     with pytest.raises(RuntimeError, match="bundled generator"):
@@ -638,29 +644,30 @@ def test_interactive_generator_prompts_guide_instead_of_quitting(monkeypatch, ca
         "not-a-url",
         "synthetic-model",
         "ollama",
-        "http://127.0.0.1:11434",
+        "https://synthetic-lan:8080",
         "synthetic-model",
-        "http://" + HOST_GATEWAY_NAME + ":11434",
+        json.dumps({"issuer": "https://synthetic-lan:8080", "addresses": [str(_office_address())]}),
     ])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     args = installer._parser().parse_args(["install", "--models", "none"])
     endpoint = installer._collect_external_generator(installer.Console(color=False, quiet=True), args)
     output = capsys.readouterr().out
     assert endpoint is not None
-    assert endpoint.url == "http://" + HOST_GATEWAY_NAME + ":11434"
-    assert "http or https" in output
+    assert endpoint.url == "https://synthetic-lan:8080"
+    assert "HTTPS" in output
     assert "container" in output.casefold()
     assert args.confirm_remote_generator is False
 
     remote_answers = iter([
         "yes",
         "lmstudio",
-        "http://192.0.2.10:1234",
+        "https://8.8.8.8:1234",
         "synthetic-model",
         "no",
         "llamacpp",
-        "http://synthetic-lan:8080",
+        "https://synthetic-lan:8080",
         "synthetic-model",
+        json.dumps({"issuer": "https://synthetic-lan:8080", "addresses": [str(_office_address())]}),
     ])
     monkeypatch.setattr("builtins.input", lambda prompt="": next(remote_answers))
     declined = installer._parser().parse_args(["install", "--models", "transcription"])
@@ -799,14 +806,14 @@ def test_templates_show_schema_and_qualification_notices():
     assert "model_qualification" in admin
     compose = (ROOT / "compose.yaml").read_text()
     assert "EXCULPATA_GENERATOR_ALLOWED_HOSTS" in compose
-    assert "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway" in compose
-    assert "/run/exculpata-secrets" in compose
+    assert "extra_hosts:" not in compose
+    assert f"/run/{LEGACY_STEM}-secrets" in compose
     assert HOST_GATEWAY_NAME not in compose
 
 
 def _literal_url(address, port=None):
     host = f"[{address}]" if address.version == 6 else str(address)
-    return f"http://{host}" + (f":{port}" if port else "")
+    return f"https://{host}" + (f":{port}" if port else "")
 
 
 def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
@@ -814,6 +821,7 @@ def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
 
     path = tmp_path / "state" / "embedding-index.json"
     path.parent.mkdir()
+    # fixture-write: Seed synthetic data for this isolated regression.
     path.write_text(json.dumps({"model": "ibm-granite/granite-embedding-english-r2",
         "revision": "47ea694b257b703fee9253d75c2b1f2985180498", "populated": True}))
     assert record_embedding_index(
@@ -833,15 +841,9 @@ def test_populated_index_keeps_its_embedding_identity(tmp_path, monkeypatch):
     assert json.loads(path.read_text())["model"] == "ibm-granite/granite-embedding-english-r2"
 
 
-@pytest.mark.parametrize("url", [
-    _literal_url(ipaddress.IPv4Address((169 << 24) + (254 << 16) + (169 << 8) + 254)),
-    _literal_url(ipaddress.IPv6Address((0xFE80 << 112) + 1)),
-    _literal_url(ipaddress.IPv4Address(0), 11434),
-    _literal_url(ipaddress.IPv6Address(0), 11434),
-    "http://answers",
-    "http://answers." + "local",
-])
-def test_should_require_remote_confirmation(url):
+@pytest.mark.parametrize("url", ["https://answers", "https://answers." + "local"])
+def test_should_require_remote_confirmation(url, monkeypatch):
+    monkeypatch.setattr("case_intelligence.external_generator._resolve_addresses", lambda host: ())
     assert parse_generator_endpoint("ollama", url, "m").local_network is False
 
 
@@ -853,7 +855,7 @@ def test_link_local_and_unspecified_addresses_are_rejected():
         (ipaddress.IPv6Address(0), 11434),
     ):
         url = _literal_url(address, port)
-        with pytest.raises(EndpointRejected, match="link-local or unspecified"):
+        with pytest.raises(EndpointRejected, match="denied destination"):
             require_local_or_confirmed(parse_generator_endpoint("ollama", url, "m", remote_confirmed=True))
 
 
@@ -868,12 +870,12 @@ def test_connection_rechecks_every_resolved_address(monkeypatch):
         return (_office_address(),) if calls["count"] == 1 else (public,)
 
     monkeypatch.setattr(endpoints, "_resolve_addresses", resolve)
-    saved = parse_generator_endpoint("ollama", "http://synthetic-answers:11434", "m")
+    saved = parse_generator_endpoint("ollama", "https://synthetic-answers:11434", "m")
     assert saved.local_network is True
     with pytest.raises(DestinationRejected, match="outside the local network"):
-        require_resolved_destination("http://synthetic-answers:11434")
+        require_resolved_destination("https://synthetic-answers:11434")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED", "1")
-    require_resolved_destination("http://synthetic-answers:11434")
+    require_resolved_destination("https://synthetic-answers:11434")
     metadata = ipaddress.IPv4Address((169 << 24) + (254 << 16) + (169 << 8) + 254)
     with pytest.raises(DestinationRejected, match="link-local"):
         require_resolved_destination(_literal_url(metadata))

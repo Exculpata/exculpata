@@ -19,7 +19,7 @@ from case_intelligence.generation import (
     ANSWER_SCHEMA, GenerationUnavailable, OpenAICompatibleGenerator, _bounded_json_get,
 )
 from case_intelligence.generator_schema import probe_schema_enforcement
-from case_intelligence.generator_transport import open_generator_request
+from scripts.generator_host_probe import open_host_generator_request
 from case_intelligence.model_qualification import apply_harness_result, qualification_label
 from case_intelligence.work_product_exports import export_answer, export_full_review
 from tests.test_work_product_exports import _records, _review_records
@@ -52,9 +52,8 @@ class QuietHandler(BaseHTTPRequestHandler):
 def test_special_purpose_ranges_need_consent(address):
     assert not endpoints.host_is_local(address)
     host = f"[{address}]" if ":" in address else address
-    parsed = endpoints.parse_generator_endpoint("ollama", f"http://{host}", "synthetic")
-    with pytest.raises(endpoints.EndpointRejected, match="outside"):
-        endpoints.require_local_or_confirmed(parsed)
+    with pytest.raises(endpoints.EndpointRejected, match="denied destination"):
+        endpoints.parse_generator_endpoint("ollama", f"https://{host}", "synthetic")
 
 
 @pytest.mark.parametrize("confirmed", [False, True])
@@ -62,9 +61,8 @@ def test_special_purpose_ranges_need_consent(address):
 def test_ipv6_metadata_cannot_be_confirmed(confirmed, scope, monkeypatch):
     address = ipaddress.ip_address(str(endpoints._METADATA) + scope)
     url = f"http://[{address}]"
-    endpoint = endpoints.parse_generator_endpoint("ollama", url, "synthetic", remote_confirmed=confirmed)
-    with pytest.raises(endpoints.EndpointRejected, match="metadata"):
-        endpoints.require_local_or_confirmed(endpoint)
+    with pytest.raises(endpoints.EndpointRejected, match="HTTPS|denied destination"):
+        endpoints.parse_generator_endpoint("ollama", url, "synthetic", remote_confirmed=confirmed)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED", str(int(confirmed)))
     with pytest.raises(endpoints.DestinationRejected, match="metadata"):
         endpoints.require_resolved_destination(url)
@@ -91,29 +89,31 @@ def test_dns_deadline_does_not_mutate_socket_defaults(monkeypatch):
 
 def test_installer_host_gateway_alias_does_not_exempt_runtime_dns(monkeypatch):
     monkeypatch.setattr(endpoints, "_resolve_addresses", lambda host: ())
-    url = "http://" + endpoints.HOST_GATEWAY_NAME + ":11434"
+    url = "https://" + endpoints.HOST_GATEWAY_NAME + ":11434"
     endpoint = endpoints.parse_generator_endpoint("ollama", url, "synthetic")
-    assert endpoints.require_local_or_confirmed(endpoint).local_network
+    with pytest.raises(endpoints.EndpointRejected, match="outside"):
+        endpoints.require_local_or_confirmed(endpoint)
     with pytest.raises(endpoints.DestinationRejected, match="did not resolve"):
         endpoints.require_resolved_destination(url)
 
 
 def test_failed_dns_and_rejected_destinations_degrade_availability(monkeypatch):
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "synthetic.example.test")
-    client = OpenAICompatibleGenerator("http://synthetic.example.test", "synthetic")
+    client = OpenAICompatibleGenerator("https://synthetic.example.test", "synthetic")
     for addresses in ((), (endpoints._METADATA,)):
         monkeypatch.setattr(endpoints, "_resolve_addresses", lambda host: addresses)
         assert client.available is False
         assert _bounded_json_get(client.endpoint + "/v1/models", timeout=0.1) == {}
 
 
-def test_transport_uses_approved_numeric_address_and_ignores_proxy(monkeypatch):
+def test_host_probe_uses_approved_numeric_address_and_ignores_proxy(monkeypatch):
     received = []
     class Handler(QuietHandler):
         def do_GET(self):
             received.append(self.headers["Host"])
             self.send_response(200)
             self.end_headers()
+            # fixture-write: Seed synthetic data for this isolated regression.
             self.wfile.write(b'{}')
     with server(Handler) as port:
         lookups = []
@@ -124,7 +124,7 @@ def test_transport_uses_approved_numeric_address_and_ignores_proxy(monkeypatch):
         monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: pytest.fail("second DNS lookup"))
         monkeypatch.setenv("http_proxy", "http://proxy.example.test:9")
         request = urllib.request.Request(f"http://synthetic.example.test:{port}/v1/models")
-        with open_generator_request(request, timeout=1) as response:
+        with open_host_generator_request(request, timeout=1) as response:
             assert response.read() == b'{}'
     assert lookups == ["synthetic.example.test"]
     assert received == [f"synthetic.example.test:{port}"]
@@ -146,7 +146,7 @@ def test_redirect_cannot_forward_authorization(monkeypatch):
         with server(Redirect) as origin:
             req = urllib.request.Request(f"http://127.0.0.1:{origin}/", headers={"Authorization": "Bearer synthetic-token"})
             with pytest.raises(urllib.error.HTTPError) as error:
-                open_generator_request(req, timeout=1)
+                open_host_generator_request(req, timeout=1)
             assert error.value.code == 302
     assert received == []
 
@@ -158,6 +158,7 @@ def test_schema_rejection_is_not_reported_as_unreachable(status, body):
             self.rfile.read(int(self.headers["Content-Length"]))
             self.send_response(status)
             self.end_headers()
+            # fixture-write: Seed synthetic data for this isolated regression.
             self.wfile.write(body)
     with server(Handler) as port:
         result = probe_schema_enforcement(f"http://127.0.0.1:{port}", "llamacpp", "synthetic", timeout=1)
@@ -266,7 +267,7 @@ def test_doctor_schema_probe_uses_saved_consent_and_restores_shell(monkeypatch, 
     app = {
         "CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai",
         "CASE_INTELLIGENCE_GENERATOR_SERVER": "llamacpp",
-        "CASE_INTELLIGENCE_GENERATOR_URL": "http://api.example.test",
+        "CASE_INTELLIGENCE_GENERATOR_URL": "https://api.example.test",
         "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic",
         "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": "api.example.test",
         key: saved,
@@ -307,7 +308,8 @@ def test_selecting_local_generator_clears_previous_remote_consent(tmp_path):
     app = {"CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED": "1"}
     args = installer._parser().parse_args([
         "install", "--models", "none", "--non-interactive", "--external-generator", "ollama",
-        "--external-generator-url", "http://127.0.0.1:11434", "--external-generator-model", "synthetic",
+        "--external-generator-url", "https://" + str(ipaddress.IPv4Address((10 << 24) | 7)) + ":11434", "--external-generator-model", "synthetic",
+        "--generator-egress-pins", json.dumps({"issuer": "https://" + str(ipaddress.IPv4Address((10 << 24) | 7)) + ":11434", "addresses": [str(ipaddress.IPv4Address((10 << 24) | 7))]}),
     ])
     installer._apply_external_generator(args, app, {}, {"secrets": tmp_path})
     assert app["CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"] == "0"

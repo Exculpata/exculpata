@@ -372,6 +372,7 @@ services:
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
+      CASE_INTELLIGENCE_GENERATOR_PROXY: http://egress-proxy:3128
       CASE_INTELLIGENCE_OIDC_PROXY: http://egress-proxy:3128
       HTTPS_PROXY: http://egress-proxy:3128
       https_proxy: http://egress-proxy:3128
@@ -402,15 +403,9 @@ services:
         source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
         target: /run/recordbench-secrets
         read_only: true
-      - type: bind
-        source: ${EXCULPATA_SECRETS_ROOT:-${RECORDBENCH_SECRETS_ROOT:-}}
-        target: /run/exculpata-secrets
-        read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
-    extra_hosts:
-      - "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway"
     # Docker retains embedded service discovery; unknown names stay in this namespace.
     dns: [127.0.0.1]
     dns_search: ["."]
@@ -434,6 +429,8 @@ services:
       # Empty configuration keeps local/Kerberos startup healthy and denies all.
       OIDC_ISSUER: ${OIDC_EGRESS_ISSUER:-}
       OIDC_ISSUER_PINS: ${OIDC_EGRESS_PINS:-}
+      GENERATOR_EGRESS_URL: ${GENERATOR_EGRESS_URL:-}
+      GENERATOR_EGRESS_PINS: ${GENERATOR_EGRESS_PINS:-}
     networks: [app-egress, front]
 
   gateway:

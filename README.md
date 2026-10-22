@@ -269,13 +269,17 @@ or test. Pointing the `openai` backend at another product works only when
 that product implements this exact contract; that compatibility is not
 established here. The installer can write those
 settings: `--external-generator ollama|llamacpp|lmstudio` with the server
-origin and model name. A host outside the local network requires
+HTTPS origin (for example `https://answers.example.test:8443`) and model name. A host outside the local network requires
 `--confirm-remote-generator`, because matter text would leave the machine.
 `--models none` without an external server leaves answering unavailable.
 `--models review` and `--models all` still write the bundled vLLM origin
 `http://generator:8000`. Compose defaults
 `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator` unless the installer
-records the chosen host. Loopback is always allowed.
+records the chosen host. External requests use the CONNECT egress relay; private
+RFC1918/ULA destinations require explicit reviewed `--generator-egress-pins`.
+Host loopback servers, including `127.0.0.1:11434`, are unreachable from the
+containerized app. No host-gateway alias is installed. External HTTP URLs and
+generator configuration values containing `$` are rejected.
 Embeddings and reranking stay inside Exculpata. `CASE_REVIEW_MODEL_DEVICE=cpu`
 runs them on CPU. Startup and `doctor` send a small schema check and report
 whether the server enforced it. Answers from a model with no recorded

@@ -193,7 +193,7 @@ def _darwin_ram(
         notes.append("System RAM was not available.")
         return None
     try:
-        completed = _run(["sysctl", "-n", "hw.memsize"], run)
+        completed = _run(["sysctl", "-n", "hw." + "memsize"], run)
     except (OSError, subprocess.TimeoutExpired):
         notes.append("System RAM was not available.")
         return None

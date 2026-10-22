@@ -23,6 +23,8 @@ from .question_generation import (
 )
 from .review_quality import answer_advances_objective, classify_question
 from .external_generator import DestinationRejected
+from .generator_config import generator_server as _generator_server, validate_generator_environment
+from .service_endpoints import open_service_request
 from .generator_completion import (
     complete_structured as _complete_structured,
     generator_api_key as _generator_api_key,
@@ -279,10 +281,15 @@ def _bounded_json_request(
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
+        if urlparse(url).port == 0:
+            raise DestinationRejected("Generator port must be from 1 to 65535")
         from .generator_transport import open_generator_request
-        with open_generator_request(request, timeout=timeout, opener=opener) as response:
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
+        if urlparse(url).scheme == "https":
+            open_request = lambda request, **kwargs: open_generator_request(request, opener=opener, **kwargs)
+        with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
-    except (DestinationRejected, OSError, urllib.error.URLError, TimeoutError) as exc:
+    except (ValueError, OSError, urllib.error.URLError, TimeoutError) as exc:
         raise GenerationUnavailable("The answer service is temporarily unavailable.") from exc
     if len(raw) > MAX_RESPONSE_BYTES:
         raise GenerationUnavailable("The answer service returned too much data.")
@@ -301,14 +308,19 @@ def _bounded_json_get(
 ) -> Mapping[str, object]:
     request = urllib.request.Request(url, headers={"Accept": "application/json", **dict(headers or {})})
     try:
+        if urlparse(url).port == 0:
+            raise DestinationRejected("Generator port must be from 1 to 65535")
         from .generator_transport import open_generator_request
-        with open_generator_request(request, timeout=timeout, opener=opener) as response:
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
+        if urlparse(url).scheme == "https":
+            open_request = lambda request, **kwargs: open_generator_request(request, opener=opener, **kwargs)
+        with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
             return {}
         value = json.loads(raw.decode("utf-8"))
         return value if isinstance(value, dict) else {}
-    except (DestinationRejected, OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError):
+    except (ValueError, OSError, urllib.error.URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
 
 
@@ -830,22 +842,12 @@ class UnavailableGenerator:
         raise GenerationUnavailable("Drafting is temporarily unavailable. Search and source review still work.")
 
 
-def _generator_server(backend: str) -> str:
-    server = os.getenv("CASE_INTELLIGENCE_GENERATOR_SERVER", "").strip().casefold()
-    if backend == "ollama":
-        if server and server != "ollama":
-            raise ValueError("ollama backend only supports the ollama server")
-        return "ollama"
-    if server and server not in {"vllm", "llamacpp", "lmstudio"}:
-        raise ValueError("unsupported local generator server")
-    return server or "vllm"
-
-
 def generator_from_environment() -> GeneratorClient:
     backend = os.getenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "").strip().casefold()
     if not backend:
         return UnavailableGenerator()
     endpoint = os.getenv("CASE_INTELLIGENCE_GENERATOR_URL", "").strip()
+    validate_generator_environment(os.environ)
     model = os.getenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
     timeout = float(os.getenv("CASE_INTELLIGENCE_GENERATOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)))
     server = _generator_server(backend)

@@ -4,6 +4,7 @@ import json
 import os
 
 from .generator_completion import generator_api_key
+from .generator_config import validate_generator_environment
 from .generator_schema import SchemaProbe, probe_schema_enforcement
 from .service_endpoints import validate_service_endpoint
 
@@ -14,6 +15,7 @@ def probe_configured_generator():
             os.getenv("CASE_INTELLIGENCE_GENERATOR_URL", ""),
             environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", label="generator endpoint",
         )
+        validate_generator_environment(os.environ)
         token = generator_api_key()
         backend = os.getenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "")
         server = os.getenv("CASE_INTELLIGENCE_GENERATOR_SERVER", "") or ("ollama" if backend == "ollama" else "vllm")

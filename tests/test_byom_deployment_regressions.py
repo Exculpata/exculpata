@@ -29,6 +29,7 @@ def test_compose_app_and_retrieval_share_embedding_identity(monkeypatch, tmp_pat
     monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_INDEX_RECORD", str(tmp_path / "index.json"))
     monkeypatch.setenv("CASE_REVIEW_EMBEDDING_MODEL", "synthetic/first")
     monkeypatch.setenv("CASE_REVIEW_EMBEDDING_REVISION", "synthetic-revision-1")
+    # fixture-write: Seed synthetic data for this isolated regression.
     (tmp_path / "index.json").write_text(json.dumps({"model": "synthetic/first",
         "revision": "synthetic-revision-1", "populated": True}))
     assert note_populated_index(populated=True) == ""
@@ -54,7 +55,8 @@ def test_doctor_uses_inline_key_before_file(monkeypatch, tmp_path, with_file):
     token = "synthetic-inline-credential"
     app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai",
            "CASE_INTELLIGENCE_GENERATOR_SERVER": "llamacpp",
-           "CASE_INTELLIGENCE_GENERATOR_URL": "http://127.0.0.1:8000",
+           "CASE_INTELLIGENCE_GENERATOR_URL": "https://answers.example.test:8000",
+           "CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS": "answers.example.test",
            "CASE_INTELLIGENCE_GENERATOR_MODEL": "synthetic",
            "CASE_INTELLIGENCE_GENERATOR_API_KEY": token}
     if with_file:
@@ -131,6 +133,7 @@ def test_unsupported_saved_answer_keeps_notices_after_model_change(tmp_path, vie
         slug, matter_id, _ = _matter(client)
         store = client.app.state.workbench.workspace
         conversation = store.get_conversation(matter_id)
+        # fixture-write: Seed synthetic data for this isolated regression.
         store.append_message(matter_id, conversation.conversation_id, "assistant", "Synthetic missing support", {
             "kind": "not-supported", "missing_information": "Synthetic missing support",
             "model_notice": "unvalidated model", "schema_enforcement": "not enforced / validated locally"})
