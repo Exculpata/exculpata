@@ -6,6 +6,7 @@ from case_intelligence.legacy_names import (
     LEGACY_ENV_PREFIX,
 )
 
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
@@ -24,12 +25,89 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_browser_scripts_use_guarded_staleness_wait():
+    # Ratchet down under https://github.com/Exculpata/exculpata/issues/353;
+    # remove all temporary exceptions before 2026-11-20 UTC.
+    allowed = {
+        'browser-accept-activity.py': 4,
+        'browser-accept-ask-heading.py': 1,
+        'browser-accept-assertions.py': 1,
+        'browser-accept-briefing.py': 1,
+        'browser-accept-cited-context.py': 1,
+        'browser-accept-email-coverage.py': 1,
+        'browser-accept-entities.py': 1,
+        'browser-accept-entity-discovery.py': 1,
+        'browser-accept-evidence-graph.py': 1,
+        'browser-accept-full-text-synthesis.py': 1,
+        'browser-accept-matter-context.py': 1,
+        'browser-accept-matter-knowledge.py': 1,
+        'browser-accept-matter-rename.py': 1,
+        'browser-accept-media-preflight.py': 1,
+        'browser-accept-notebook-conflicts.py': 2,
+        'browser-accept-report-conflicts.py': 1,
+        'browser-accept-reports-bundle.py': 1,
+        'browser-accept-source-folders.py': 1,
+        'browser-accept-upload-occurrences.py': 1,
+        'browser-accept-workflow-handoff.py': 1,
+        'browser-accept-zoom.py': 1,
+        'browser_case_exit.py': 1,
+    }
+    assert not allowed or datetime.now(timezone.utc) < datetime(2026, 11, 20, tzinfo=timezone.utc), (
+        'Browser staleness exceptions expire on 2026-11-20 UTC. '
+        'Migrate remaining sites to browser_navigation.wait_for_replacement, preserving '
+        'assertions, readiness checks, deadlines and unexpected-error behavior, then '
+        'ratchet exceptions down to zero. '
+        'Tracker: https://github.com/Exculpata/exculpata/issues/353'
+    )
+    counts = {
+        path.name: count
+        for path in sorted((ROOT / 'scripts').glob('browser*.py'))
+        if path.name != 'browser_navigation.py'
+        if (count := path.read_text().count('EC.staleness_of('))
+    }
+    assert counts == allowed, (
+        'Browser staleness counts changed; use browser_navigation.wait_for_replacement. '
+        f'Expected {allowed}, found {counts}'
+    )
+
+
+@pytest.mark.parametrize('instant, expired', [
+    (datetime(2026, 11, 19, 23, 59, 59, 999999, tzinfo=timezone.utc), False),
+    (datetime(2026, 11, 20, tzinfo=timezone.utc), True),
+    (datetime(2026, 11, 21, tzinfo=timezone.utc), True),
+])
+def test_browser_staleness_exceptions_expire_at_utc_boundary(monkeypatch, instant, expired):
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            assert tz is timezone.utc
+            return instant
+
+    monkeypatch.setattr(sys.modules[__name__], 'datetime', FrozenDatetime)
+    if expired:
+        with pytest.raises(AssertionError) as failure:
+            test_browser_scripts_use_guarded_staleness_wait()
+        message = str(failure.value)
+        assert '2026-11-20 UTC' in message
+        assert 'https://github.com/Exculpata/exculpata/issues/353' in message
+        assert 'browser_navigation.wait_for_replacement' in message
+    else:
+        test_browser_scripts_use_guarded_staleness_wait()
+
+
 @pytest.fixture
 def runner():
     spec = importlib.util.spec_from_file_location('browser_acceptance_runner', ROOT / 'scripts/run-browser-acceptance.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_journey_names_keep_chrome_socket_paths_short(runner):
+    # Each journey's TMPDIR is <scratch>/<name>/tmp, and Chrome's SingletonSocket
+    # path under it must stay within the Unix socket path limit.
+    names = [row[0] for row in runner.JOURNEYS]
+    assert all(len(name) <= 16 for name in names), names
 
 
 @pytest.fixture(params=['intake-receipts', 'source-roles'])
@@ -366,7 +444,7 @@ def test_existing_output_is_preserved_and_no_journey_runs(runner, tmp_path, monk
     assert marker.read_text() == 'Generated old result'
 
 
-@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18])
+@pytest.mark.parametrize('failure_position', [1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19])
 @pytest.mark.parametrize('failure', ['exit', 'timeout', 'missing', 'failed', 'truncated', 'none'])
 def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_path, monkeypatch, failure, failure_position):
     scratch, output = tmp_path / 'scratch', tmp_path / 'output'
@@ -384,7 +462,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
             values = {'passed': failure != 'failed' or not failing_journey,
                       'checks': ['Generated check'] * runner.JOURNEYS[len(commands) - 1][3]}
             if failure == 'truncated' and failing_journey:
-                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 14, 15: 5, 16: 19, 17: 5, 18: 12}[failure_position]
+                values['checks'] = ['Generated incomplete check'] * {1: 10, 4: 18, 5: 9, 6: 11, 7: 5, 8: 6, 9: 6, 10: 10, 11: 13, 12: 5, 13: 14, 14: 14, 15: 5, 16: 19, 17: 5, 18: 12, 19: 2}[failure_position]
             receipt(raw / name, **values)
         if failing_journey:
             if failure == 'exit':
@@ -395,7 +473,7 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
 
     monkeypatch.setattr(runner, 'run_process', run)
     results = runner.run_journeys(Path('/generated/chrome'), Path('/generated/driver'), scratch, output, 1)
-    assert len(commands) == 18
+    assert len(commands) == 19
     assert '--verify-readiness' in commands[2]
     assert 'browser-accept-dusk.py' in commands[1][1]
     assert 'browser-accept-workspace-layout.py' in commands[3][1]
@@ -413,6 +491,8 @@ def test_all_journeys_run_and_failure_cannot_be_hidden_by_receipt(runner, tmp_pa
     assert 'browser-accept-ask-heading.py' in commands[15][1]
     assert 'browser-accept-source-roles.py' in commands[16][1]
     assert 'browser-accept-timeline-draft.py' in commands[17][1]
+    assert 'browser-accept-assistant-collapse-focus.py' in commands[18][1]
+    assert runner.JOURNEYS[18][3] == 3
     assert results[failure_position - 1]['passed'] is (failure == 'none')
     assert all(result['passed'] for index, result in enumerate(results) if index != failure_position - 1)
     assert json.loads((output / 'journeys.json').read_text()) == results
@@ -509,8 +589,8 @@ def test_mismatched_driver_version_pin_is_rejected(runner, tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize('outcomes,code', [
-    ([index != failing for index in range(18)], 1) for failing in range(18)
-] + [([True] * 18, 0), ([True] * 17, 1), ([], 1)])
+    ([index != failing for index in range(19)], 1) for failing in range(19)
+] + [([True] * 19, 0), ([True] * 18, 1), ([], 1)])
 def test_main_requires_all_journeys_to_pass(runner, tmp_path, monkeypatch, outcomes, code):
     monkeypatch.setattr(runner, 'install_browser', lambda *_: (Path('/generated/chrome'), Path('/generated/driver'), '1.2.3.4'))
     monkeypatch.setattr(runner, 'host_platform', lambda: 'linux64')

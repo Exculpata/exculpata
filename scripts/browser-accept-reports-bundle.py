@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -250,11 +250,39 @@ def main():
             slug = urlparse(driver.current_url).path.split("/")[2]
             prefix = f"/matters/{slug}"
             click("[data-assistant-collapse]")
+            driver.execute_script("""
+                window.__reportsCollapseSettled = false;
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    window.__reportsCollapseSettled = true;
+                }));
+            """)
+            wait.until(lambda d: d.execute_script(
+                "return document.body.classList.contains('assistant-collapsed') "
+                "&& window.__reportsCollapseSettled"))
             # Real selection, preflight, and confirmed browser upload.
             fill("[data-upload-collection-name]", "Synthetic report sources")
+            assert driver.find_element(By.CSS_SELECTOR, "[data-upload-collection-name]").get_attribute(
+                "value") == "Synthetic report sources"
             driver.find_element(By.ID, "source-files").send_keys(str(original))
             wait.until(lambda d: d.find_element(By.CSS_SELECTOR, "[data-upload-preflight-confirm]").is_enabled())
             click("[data-upload-preflight-confirm]")
+            try:
+                WebDriverWait(driver, 10).until(lambda d: d.execute_script("""
+                    return document.querySelector('[data-upload-preflight-status]').textContent.includes('starting upload')
+                        || document.querySelector('[data-upload-preflight-state]').textContent.includes('Uploading reviewed files');
+                """))
+            except TimeoutException as exc:
+                details = driver.execute_script("""
+                    const active = document.activeElement;
+                    return {
+                        preflight_status: document.querySelector('[data-upload-preflight-status]').textContent,
+                        collection_name: document.querySelector('[data-upload-collection-name]').value,
+                        active_element: active ? {
+                            tag: active.tagName, id: active.id, classes: active.className
+                        } : null
+                    };
+                """)
+                raise AssertionError(f"Upload did not start within 10 seconds: {details}") from exc
             bench = app.state.workbench
             matter = bench.matter(slug, ACTOR)
             document = wait.until(lambda _: next((item for item in bench.source_store(matter).documents.values()

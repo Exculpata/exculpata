@@ -10,6 +10,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
 )
+import importlib.util
 import json
 import os
 import stat
@@ -408,6 +409,7 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     release_id, release = installer._stage_release(console, root, dry_run=False)
     manifest = json.loads((release / "RELEASE_MANIFEST.json").read_text())
     assert manifest["release_id"] == release_id
+    assert manifest["network_contract_version"] == 1
     assert len(manifest["source_sha256"]) == 64
     assert (release / "compose.yaml").is_file()
     assert (release / "services/transcription/src").is_dir()
@@ -665,6 +667,7 @@ def ready_host(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(installer.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(installer.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(installer, "_docker_engine_meets_floor", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(installer.shutil, "disk_usage", lambda path: type("Disk", (), {"free": 400 * 1024**3})())
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0", ""))
@@ -1758,6 +1761,36 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
 @pytest.mark.parametrize("auth,options,expected", [
     ("oidc", [], True),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/realm/"], True),
+    ("oidc", ["--oidc-issuer", " https://identity.example.test/realm/ "], True),
+    ("oidc", ["--oidc-issuer", "\thttps://identity.example.test/realm/\t"], True),
+    ("oidc", ["--oidc-issuer", "https://127.1"], False),
+    ("oidc", ["--oidc-issuer", "https://010.0.0.1"], False),
+    ("oidc", ["--oidc-issuer", "https://0x8.8.8.8"], False),
+    ("oidc", ["--oidc-issuer", "https://2130706433"], False),
+    ("oidc", ["--oidc-issuer", "https://0177.0.0.1"], False),
+    ("oidc", ["--oidc-issuer", "https://0x7f000001"], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test./realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\\m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity..example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\tm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\x7fm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity%2eexample.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity+name.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:0/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:65536/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:invalid/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/realm\n'], False),
+    ("oidc", ["--oidc-issuer", 'https://login_eu.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://faß.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://xn--fa-hia.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:000443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://[2606:4700:4700::1111]:8443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real%20m'], True),
+    ("oidc", ["--oidc-issuer", 'https://☃.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://iss\u200buer.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://issuer\u202e.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://ｅｘａｍｐｌｅ.test/realm'], False),
     ("oidc", ["--oidc-issuer", "http://identity.example.test"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test?query=yes"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/#fragment"], False),
@@ -1809,6 +1842,11 @@ def test_preflight_nonsecret_settings_match_identity_runtime(tmp_path, ready_hos
     except (RuntimeError, ValueError):
         runtime_valid = False
     assert runtime_valid is expected
+    if auth == "oidc" and runtime_valid:
+        spec = importlib.util.spec_from_file_location("agreement_relay", installer.PROJECT / "deploy/egress-proxy/proxy.py")
+        relay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(relay)
+        assert relay.issuer_authority(values["oidc_issuer"]) is not None
     result = installer._collect_preflight("none", args)
     assert (checks_by_name(result)["identity-options"].state == "pass") is runtime_valid
     assert not args.root.exists()
@@ -1850,8 +1888,11 @@ def test_oversized_oidc_secret_stops_before_writes(tmp_path, ready_host, monkeyp
     assert not args.root.exists()
 
 
-def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72"):
+def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72", old_release_path=None):
     root, installation, environment = saved_gpu_node(tmp_path)
+    if old_release_path is not None:
+        installation["release_path"] = str(old_release_path)
+        (root / "installation.json").write_text(json.dumps(installation))
     # Build the saved node using the real owner, then emulate the target Linux
     # host for read-only prerequisites and the mocked update lifecycle.
     request.getfixturevalue("ready_host")
@@ -1893,6 +1934,7 @@ def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, f
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
     monkeypatch.setattr(installer, "_stage_release", stage)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", lambda *a, **k: events.append("health"))
     monkeypatch.setattr(installer, "_seal_provisioning", lambda *a, **k: events.append("seal"))
     args = installer._parser().parse_args(["update", "--root", str(root), "--non-interactive", "--no-backup", *(["--dry-run"] if dry_run else [])])
@@ -2189,6 +2231,7 @@ def synthetic_late_gpu_resume(tmp_path, monkeypatch, request, *, after_free=4700
             raise RuntimeError("synthetic health timeout after model startup")
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", health)
     monkeypatch.setattr(installer, "_saved_models_verified", lambda *a, **k: True)
     # Reproduce an actual interruption boundary: provisioning seals its receipt,
@@ -2487,6 +2530,7 @@ def test_saved_account_preflight_allows_missing_leaf_with_initial_password_input
 @pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("product_name", ["Exculpata", f"{LEGACY_PRODUCT}"])
 def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, monkeypatch, bind, target, auth, product_name):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
@@ -2565,6 +2609,7 @@ def test_installed_auth_drift_is_rejected_before_runtime_probe(tmp_path, monkeyp
 @pytest.mark.parametrize("expected", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("effective", ["preview", "test", "local", "oidc", "kerberos"])
 def test_health_checks_running_auth_mode_before_accepting_healthy_node(tmp_path, monkeypatch, expected, effective):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
@@ -2680,6 +2725,7 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
 
 @pytest.mark.parametrize("rollback_auth", ["local", "preview", None])
 def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, request, monkeypatch, capsys, rollback_auth):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     wait_health = installer._wait_health
     root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request)
@@ -2709,6 +2755,47 @@ def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, 
     assert (root / "compose.env").read_bytes() == before[Path("compose.env")]
     output = capsys.readouterr().out
     assert ("Prior release restored and healthy" in output) is (rollback_auth == "local")
+
+
+@pytest.mark.parametrize("old_contract", ["legacy", "marked", "unmarked-egress"])
+def test_failed_egress_update_rechecks_restored_release_contract(tmp_path, request, monkeypatch, capsys, old_contract):
+    import io
+    wait_health = installer._wait_health
+    old = tmp_path.resolve() / "old-release"
+    old.mkdir()
+    (old / "compose.yaml").write_text("services: {}\n")
+    if old_contract == "marked":
+        (old / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    elif old_contract == "unmarked-egress":
+        (old / "compose.yaml").write_text("services:\n  egress-proxy: {}\n")
+    root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request, old_release_path=old)
+    new = tmp_path.resolve() / "new-release"
+    (new / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    monkeypatch.setattr(installer, "_wait_health", wait_health)
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
+    monkeypatch.setattr(installer, "_running_auth_mode", lambda *a: "local")
+    monkeypatch.setattr(installer, "_login_reachable", lambda *a: True)
+    payload = {"product": LEGACY_PRODUCT, "status": "ok", "storage": {"status": "ready"},
+               "capabilities": {"source_review": "ready", "malware_scan": "ready",
+                                "answering": "ready", "search": "word + meaning"}}
+    monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    dns_releases = []
+    def reject_dns(root):
+        _settings, release = installer._installed_release(root)
+        dns_releases.append(release)
+        raise RuntimeError("synthetic DNS acceptance failure")
+    monkeypatch.setattr(installer, "_verify_installed_dns", reject_dns)
+    message = "update failed and rollback was attempted" if old_contract == "legacy" else "rollback also failed"
+    with pytest.raises(RuntimeError, match=message):
+        installer._update(installer.Console(color=False), args, root)
+    assert dns_releases == ([new] if old_contract == "legacy" else [new, old])
+    assert "up-new" in events and "up-old" in events and "seal" not in events
+    assert (root / "installation.json").read_bytes() == before[Path("installation.json")]
+    assert (root / "compose.env").read_bytes() == before[Path("compose.env")]
+    output = capsys.readouterr().out
+    assert ("Prior release restored and healthy" in output) is (old_contract == "legacy")
+    assert ("DNS egress isolation is not verified" in output) is (old_contract == "legacy")
+    assert "DNS boundary ::" not in output
 
 
 def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None):
@@ -3568,3 +3655,62 @@ def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, re
     assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
     installer._apply_storage_profile(args, root, dry_run=False)
     assert _control_bytes(root) == before
+
+
+def test_preflight_blocks_unknown_dns_engine(tmp_path, ready_host, monkeypatch):
+    monkeypatch.setattr(installer, "_docker_engine_meets_floor", lambda: False)
+    result = installer._collect_preflight("none", preflight_args(tmp_path))
+    check = checks_by_name(result)["docker-dns-version"]
+    assert not result.ready and check.blocking and check.state == "fail"
+    assert "challenge" in check.remedy
+
+
+@pytest.mark.parametrize("mode", ["resume", "update"])
+@pytest.mark.parametrize("pins", [
+    "{bad-json", "null", "[]",
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": []}),
+    json.dumps({"issuer": "https://other.example.test/realm", "addresses": ["8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["127.0.0.1"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": "8.8.8.8"}),
+])
+def test_retained_oidc_pins_fail_before_resume_or_update_writes(tmp_path, request, monkeypatch, mode, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    args.command = "install" if mode == "resume" else "update"
+    monkeypatch.setattr(installer, "_run", lambda *a, **k: pytest.fail("invalid pins reached an external command"))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: pytest.fail("invalid pins reached release staging"))
+    monkeypatch.setattr(installer, "_provision", lambda *a, **k: pytest.fail("invalid pins reached provisioning"))
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    operation = installer._resume_node if mode == "resume" else installer._update
+    with pytest.raises(RuntimeError, match="prerequisites"):
+        operation(installer.Console(color=False, quiet=True), args, root)
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("pins", ["", json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "1.1.1.1"]})])
+def test_retained_oidc_pins_accept_valid_or_absent_policy_without_writes(tmp_path, request, monkeypatch, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "pass"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_fresh_oidc_preflight_rejects_reference_adapter_interpolation_before_writes(tmp_path, ready_host):
+    args = preflight_args(tmp_path, "--auth", "oidc", "--dry-run", "--oidc-issuer", "https://identity.example.test/$realm")
+    result = installer._collect_preflight("none", args)
+    assert checks_by_name(result)["identity-options"].state == "fail"
+    assert not args.root.exists()
+
+
+def test_saved_oidc_preflight_uses_the_reference_adapter_literal_rules(tmp_path, request, monkeypatch):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_ISSUER", "https://identity.example.test/$realm")
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before

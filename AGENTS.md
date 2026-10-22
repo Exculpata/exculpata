@@ -6,6 +6,8 @@ publication safeguards and validation, including the
 remains the merge gate. Keep work aligned with the [product north star](docs/PRODUCT_NORTH_STAR.md).
 Use the [ideal architecture contract](docs/IDEAL.md) to review supported paths,
 evidence integrity and the rules that still require human judgment.
+For hand-written policy checks, follow the
+[bounded fail-closed contract](CODING_STANDARDS.md#bounded-fail-closed-checker-contract).
 
 ## Restate the goal before coding
 

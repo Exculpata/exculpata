@@ -22,7 +22,7 @@ from .question_generation import (
     QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
 )
 from .review_quality import answer_advances_objective, classify_question
-from .service_endpoints import validate_service_endpoint
+from .service_endpoints import open_service_request, validate_service_endpoint
 
 MAX_QUESTION_CHARS = 2_000
 MAX_EVIDENCE_ITEMS = DEFAULT_REVIEW_BUDGET.synthesis_inputs
@@ -261,7 +261,7 @@ def _bounded_json_request(
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
         with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except (OSError, urllib.error.URLError, TimeoutError) as exc:
@@ -283,7 +283,7 @@ def _bounded_json_get(
 ) -> Mapping[str, object]:
     request = urllib.request.Request(url, headers={"Accept": "application/json", **dict(headers or {})})
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
         with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:

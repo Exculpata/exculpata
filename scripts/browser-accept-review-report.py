@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -90,7 +90,7 @@ def main() -> None:
             save = form.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", save)
             save.click()
-            wait.until(EC.staleness_of(save))
+            wait_for_replacement(driver, wait, save)
             edit_link = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, 'Edit this draft')))
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", edit_link)
             wait.until(lambda d: d.execute_script("const r=arguments[0].getBoundingClientRect(); return r.top >= 56 && r.bottom < innerHeight;", edit_link))
