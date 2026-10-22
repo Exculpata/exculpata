@@ -338,6 +338,26 @@ def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source
     assert run_contract(contract_tree).returncode == 1
 
 
+@pytest.mark.parametrize("module,member,arguments", [
+    ("huggingface_hub", "snapshot_download", 'repo_id="synthetic/model"'),
+    ("faster_whisper", "WhisperModel", '"synthetic/model"'),
+    ("ctranslate2", "Translator", '"synthetic/model"'),
+    ("av", "open", '"synthetic/media"'),
+    ("av." + "audio", "AudioFrame", ""),
+])
+def test_contract_rejects_unreviewed_model_and_media_clients(contract_tree, module, member, arguments):
+    relative = "src/case_intelligence/synthetic_hub_probe.py"
+    # fixture-write: Seed synthetic imports and calls for static client review without executing them.
+    (contract_tree / relative).write_text(
+        f"from {module} import {member}\n{member}({arguments})\n")
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert result.stderr.splitlines() == [
+        f"{relative}:1: unreviewed outbound client: network import",
+        f"{relative}:2: unreviewed outbound client: {module}.{member}",
+    ]
+
+
 @pytest.mark.parametrize("baseline,addition,detail", [
     ('import httpx as h\ndef probe(destination):\n    pass\n    # NEW\n', 'h.get(destination)', 'httpx.get'),
     ('from urllib.request import urlopen as fetch\ndef probe(destination):\n    pass\n    # NEW\n', 'fetch(destination)', 'urllib.request.urlopen'),

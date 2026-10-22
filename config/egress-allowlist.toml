@@ -5261,6 +5261,30 @@ digest = "997adb8193fc386bcb199ac522863a80691deafd9000f3ddfeaf2f69c52a2fc7"
 detail = "vocabulary.json"
 
 [[source]]
+path = "scripts/corpus_recognition.py"
+kind = "client"
+digest = "f145d671002c9103f0cd269a1839050599282b6b116e4a246326b17c7b3c7b3a"
+detail = "network import"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "client"
+digest = "237876e8c8dd7a151bfd900ddeae58b548e690cc02e3d2c0907095bf76dd4d52"
+detail = "network import"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "client"
+digest = "bc7c8ecac530048a4f6318ca8036d69b485e5fb54e5d3b1d65d86142ff2d0723"
+detail = "huggingface_hub.snapshot_download"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "client"
+digest = "93e1c9140cbf5527cd176ab8bd69ce43770a6871e538fab13ade39ae957506ab"
+detail = "faster_whisper.WhisperModel"
+
+[[source]]
 path = "scripts/demo.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -7587,6 +7611,18 @@ path = "scripts/stage-models.py"
 kind = "client"
 digest = "a6b6ae859d506669072e49aca56ffba648a72f4203bff00bf0cc16414fd91326"
 detail = "urllib.request.urlopen"
+
+[[source]]
+path = "scripts/stage-models.py"
+kind = "client"
+digest = "f7947a26ee602e6f10b53006a1bb627056a73c29afedc40e3aa12a8a84fafed7"
+detail = "network import"
+
+[[source]]
+path = "scripts/stage-models.py"
+kind = "client"
+digest = "7fac623b08e7addec2f135dfb86f8d09dba147d9a8942e59d3311691f98d641b"
+detail = "huggingface_hub.snapshot_download"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
