@@ -5159,6 +5159,108 @@ digest = "31424a6c6ddb6b2d7b2505c586c48bc4e5b0c3c41bf258b46fa6274198efc8df"
 detail = "workspace.sqlite"
 
 [[source]]
+path = "scripts/corpus-history-check.py"
+kind = "host"
+digest = "0bc95072b76855f2694cf3790eaf11576ceead0b67df265a25efb653f16d3f4c"
+detail = "source.tar"
+
+[[source]]
+path = "scripts/corpus-history-check.py"
+kind = "host"
+digest = "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4"
+detail = "::"
+
+[[source]]
+path = "scripts/corpus-history-check.py"
+kind = "host"
+digest = "e1521d32f14c979880c8a0d6ddf8a9fb96b13248e5b0bfe4c5c4acdd2d71f1ec"
+detail = "results.xml"
+
+[[source]]
+path = "scripts/corpus-history-check.py"
+kind = "host"
+digest = "fb6a686182f16eb54af3c628f38593f347f68aba31de903983023c560288d7a1"
+detail = "pytest.ini"
+
+[[source]]
+path = "scripts/corpus-history-check.py"
+kind = "host"
+digest = "71546855d6279ef70d20909b292c42c2dcb02cd06bde01485da52d13e304ebf4"
+detail = "::"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "scripts/corpus_check.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "host"
+digest = "587cb980af76fdc7e52369fd0b9d926dff266976b6f8ac631e358fecc49ff8cf"
+detail = "config.json"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "host"
+digest = "15d442008fc30bee1d28a81d2d926f17005fe428e465c2062627366bf2a68019"
+detail = "model.bin"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "host"
+digest = "224931eb13f8d2471acd38a4a0d7417d20e8ea340160a467ceaa359d25197b87"
+detail = "tokenizer.json"
+
+[[source]]
+path = "scripts/corpus_recognition.py"
+kind = "host"
+digest = "997adb8193fc386bcb199ac522863a80691deafd9000f3ddfeaf2f69c52a2fc7"
+detail = "vocabulary.json"
+
+[[source]]
 path = "scripts/demo.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"

@@ -121,7 +121,10 @@ def test_dns_validated_address_is_used_without_second_resolution(monkeypatch):
         def connect(self, address): connects.append(address)
         def close(self): pass
     monkeypatch.setattr(proxy, "resolve", resolve)
-    monkeypatch.setattr(proxy.socket, "socket", lambda *a: Connection())
+    def open_connection(family, socktype, proto):
+        return Connection()
+
+    monkeypatch.setattr(proxy.socket, "socket", open_connection)
     proxy.dial("issuer.example.test", 443)
     assert len(calls) == 1 and connects == [("8.8.8.8", 443)]
 
@@ -242,7 +245,10 @@ def test_all_dial_attempts_share_one_deadline(monkeypatch):
             clock[0] += self.timeout
             raise TimeoutError()
         def close(self): pass
-    monkeypatch.setattr(proxy.socket, "socket", lambda *a: Connection())
+    def open_connection(family, socktype, proto):
+        return Connection()
+
+    monkeypatch.setattr(proxy.socket, "socket", open_connection)
     with pytest.raises(proxy.Denied):
         proxy.dial("issuer.example.test", 443)
     assert len(attempts) == 32
