@@ -1,5 +1,9 @@
 # Installation playbook
 
+Review the [reference egress model](NETWORK_EGRESS.md) before configuring or
+upgrading OIDC. It covers issuer propagation, the internal app network, named
+stager/updater/gateway exceptions and outstanding live acceptance requirements.
+
 For a first CPU node, follow the short path below, then
 [sign in and create a practice matter](FIRST_RUN.md#cpu-practice-matter).
 The later sections are operator reference and recovery guidance.
@@ -465,9 +469,22 @@ passwords and staging tokens are never passed to the build logger.
 
 ## Hardware and capability profiles
 
-Exculpata targets a modern x86-64 Linux host with Docker Engine and Docker
-Compose v2. The figures below are starting targets for alpha evaluation, not
-validated minimums:
+Exculpata targets a modern x86-64 Linux host with Docker Compose v2 and maintained
+Docker Engine 26.0.0 or newer. Preflight blocks older, prerelease,
+unknown or unavailable versions; no older-engine backport exception is supported.
+Independently, startup, update acceptance and doctor require the
+[container-local behavioral DNS check](NETWORK_EGRESS.md#dns-boundary-and-supported-runtime).
+Install completion, update acceptance and live doctor also verify the non-root
+app identity, effective read-only container root, and root-owned, read-only
+installed application package. Declared Compose
+settings alone do not satisfy this check. Group/world write bits on the package,
+its ancestors or entries are rejected even on a read-only mount. An app-writable
+package or unverified runtime state fails clearly; a failed update check triggers
+the existing rollback path. Prepare-only and dry-run operations do not establish
+live package protection. These checks change no permissions or ownership. See the
+[installed package trust boundary](NETWORK_EGRESS.md), including the explicit
+parent-package bytecode limitation.
+The figures below are starting targets for alpha evaluation, not validated minimums:
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
@@ -592,7 +609,15 @@ For missing prerequisites:
   Kerberos also requires the host SSSD and Kerberos paths.
   Non-secret OIDC settings require an HTTPS issuer, non-loopback external server
   name, and a nonempty client ID of at most 512 characters. OIDC group names can
-  contain at most 256 characters. Kerberos requires a dotted realm, valid group
+  contain at most 256 characters. For a private issuer, supply `--oidc-egress-pins`
+  with one-line JSON containing the exact full `issuer` URL and an `addresses`
+  list of reviewed individual IPs. The shared relay parser validates it before
+  writes; private literal issuers without matching pins, malformed/mismatched
+  JSON and unsafe addresses fail preflight. No DNS lookup or automatic pinning
+  occurs. The installer saves the validated value in the selected application
+  environment, and resume/update preserve it. See [issuer destination policy](NETWORK_EGRESS.md)
+  for safe-address exclusions and private hostname deployment validation.
+  Kerberos requires a dotted realm, valid group
   names (letters, digits, spaces, dots, underscores, dashes, @ or backslashes,
   starting with a letter or digit, at most 255 characters), and at least one
   allowed or administrator group. Both modes allow up to 100 allowed groups and
@@ -991,6 +1016,11 @@ If replacement admission or startup acceptance fails, configuration is returned
 to the previous release and its images are relaunched. A rollback that cannot
 restore health is reported separately for operator recovery. Old releases and
 images are retained for deliberate operator cleanup; the updater never prunes them.
+If the restored capsule predates the egress contract, rollback checks its prior
+application/authentication/storage health and explicitly reports DNS egress
+isolation as unverified. Egress-contract capsules still require behavioral DNS
+proof after rollback. This exception does not apply to normal install, update
+or doctor acceptance; see [network egress](NETWORK_EGRESS.md).
 
 
 Before fresh managed-storage initialization, the reserved names `matters`,

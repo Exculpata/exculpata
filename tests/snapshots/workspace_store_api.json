@@ -30,6 +30,7 @@
   ["cancel_answer_job", "(self, matter_id: 'str', actor_id: 'str', job_id: 'str') -> 'AnswerJobRecord'"],
   ["cancel_document_ingest_job", "(self, matter_id: 'str', document_id: 'str') -> 'None'"],
   ["cancel_ingest_plan", "(self, matter_id: 'str', plan_id: 'str') -> 'None'"],
+  ["cancel_oidc_transaction", "(self, state_digest: 'str') -> 'str | None'"],
   ["cancel_research_job", "(self, matter_id: 'str', actor_id: 'str', job_id: 'str') -> 'ResearchJobRecord'"],
   ["cancel_review_run", "(self, matter_id: 'str', actor_id: 'str', run_id: 'str') -> 'ReviewRunRecord'"],
   ["cancel_upload_session", "(self, matter_id: 'str', actor_id: 'str', session_id: 'str') -> 'tuple[UploadItemRecord, ...]'"],

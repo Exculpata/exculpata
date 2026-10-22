@@ -33,7 +33,7 @@ server {
         proxy_pass http://${EXCULPATA_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Exculpata-Authenticated-User "";
         proxy_set_header X-Exculpata-Proxy-Secret "";
         proxy_set_header X-Exculpata-Auth-Diagnostic "";
@@ -46,7 +46,7 @@ server {
         proxy_pass http://${EXCULPATA_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Exculpata-Authenticated-User "";
         proxy_set_header X-Exculpata-Proxy-Secret "";
         proxy_set_header X-Exculpata-Auth-Diagnostic "";

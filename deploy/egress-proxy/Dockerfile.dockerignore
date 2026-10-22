@@ -1,0 +1,11 @@
+# Repository-root relay context: deny all, then admit only exact public inputs.
+**
+!deploy/egress-proxy/Dockerfile
+!deploy/egress-proxy/proxy.py
+!src/case_intelligence/__init__.py
+!src/case_intelligence/oidc_network_policy.py
+!src/case_intelligence/_idna/__init__.py
+!src/case_intelligence/_idna/idna-3.20.pyz
+!src/case_intelligence/_idna/manifest.json
+!src/case_intelligence/_idna/LICENSE.md
+!src/case_intelligence/_idna/README.md

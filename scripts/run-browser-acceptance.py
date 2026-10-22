@@ -53,6 +53,7 @@ JOURNEYS = (
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
     ('timeline-draft', 'browser-accept-timeline-draft.py', 'receipt.json', 13, ()),
+    ('collapse-focus', 'browser-accept-assistant-collapse-focus.py', 'receipt.json', 3, ()),
 )
 ARTIFACT_NAMES = ('navigation-timeouts.json',) + tuple(
     name
