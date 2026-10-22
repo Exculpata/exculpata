@@ -555,11 +555,3 @@ def test_vllm_qwen_request_disables_thinking_and_keeps_strict_schema(monkeypatch
     assert captured["payload"]["response_format"]["json_schema"]["name"] == "source_review_decision"
     assert "checklist of every required" in captured["payload"]["messages"][0]["content"]
     assert "request or plan is not a completed event" in captured["payload"]["messages"][0]["content"]
-
-
-def test_malformed_model_content_has_specific_unavailable_type():
-    from case_intelligence.generation import GenerationInvalidContent, _parse_model_content
-
-    assert issubclass(GenerationInvalidContent, GenerationUnavailable)
-    with pytest.raises(GenerationInvalidContent):
-        _parse_model_content("not json")

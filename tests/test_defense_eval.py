@@ -411,3 +411,13 @@ def test_comparison_reports_changed_types_in_each_cards_category(tmp_path):
     assert "| fact_lookup | 1/1 -> 0/0 (-1) |" in report
     assert "| chronology | 0/0 -> 0/1 (+0) |" in report
     assert "| overall | 1/1 -> 0/1 (-1) |" in report
+
+
+def test_malformed_model_content_has_specific_unavailable_type():
+    from case_intelligence.generation import (
+        GenerationInvalidContent, GenerationUnavailable, _parse_model_content,
+    )
+
+    assert issubclass(GenerationInvalidContent, GenerationUnavailable)
+    with pytest.raises(GenerationInvalidContent):
+        _parse_model_content("not json")
