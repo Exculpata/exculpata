@@ -53,19 +53,19 @@ jobs:
         if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
           restore-keys: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-
       - name: Install publication inspection dependencies
         timeout-minutes: 6
         run: |
-          scripts/ci-apt-install.sh ffmpeg
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg
           python -m pip install --disable-pip-version-check 'pypdf>=6,<7'
       - name: Save main apt downloads
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Scan exact candidate tree and complete reachable history
         if: ${{ !github.event.deleted }}
         env:
@@ -142,20 +142,20 @@ jobs:
         if: ${{ (!(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule'))) && needs.change-scope.outputs.docs_only != 'true' }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
           restore-keys: apt-application-${{ runner.os }}-${{ runner.arch }}-
       - name: Install document and media test dependencies
         timeout-minutes: 8
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: |
-          scripts/ci-apt-install.sh ffmpeg imagemagick poppler-utils tesseract-ocr \
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg imagemagick poppler-utils tesseract-ocr \
             tesseract-ocr-eng tesseract-ocr-spa
       - name: Save main apt downloads
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) && needs.change-scope.outputs.docs_only != 'true' }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Bootstrap contributor environment
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: make bootstrap SYSTEM_PYTHON=python
@@ -277,18 +277,18 @@ jobs:
         if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
           restore-keys: apt-transcription-${{ runner.os }}-${{ runner.arch }}-
       - name: Install media test dependencies
         timeout-minutes: 8
         run: |
-          scripts/ci-apt-install.sh ffmpeg
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg
       - name: Save main apt downloads
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Install transcription test environment
         run: python -m pip install --disable-pip-version-check -e './services/transcription[dev]'
       - name: Run bundled transcription suite
@@ -326,12 +326,12 @@ jobs:
         if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
           restore-keys: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-
       - name: Install encrypted restore drill dependencies
         timeout-minutes: 8
         run: |
-          scripts/ci-apt-install.sh restic
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" restic
           # Seed and reopen restored matter fields through the real application store.
           python -m pip install --disable-pip-version-check -e . 'pytest>=9.0.3,<10'
           image=pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -342,7 +342,7 @@ jobs:
         if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/ci-apt-install.sh') }}
+          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Run both encrypted restore naming generations without skips
         env:
           EXCULPATA_BACKUP_INTEGRATION: "1"

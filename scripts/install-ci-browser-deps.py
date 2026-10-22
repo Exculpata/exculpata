@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Bound package acquisition on the disposable Ubuntu browser CI runner."""
+"""Bound package acquisition on the disposable Ubuntu CI runner."""
 from __future__ import annotations
 
+import argparse
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -76,16 +77,24 @@ def validate_sources(text: str) -> None:
         raise ValueError("Ubuntu sources contain no active mirror-list stanza.")
 
 
-def acquire(source_options: tuple[str, ...] = ()) -> bool:
+def archive_options(archives: Path | None) -> tuple[str, ...]:
+    # APT verifies cached packages against freshly downloaded signed indexes.
+    return () if archives is None else (
+        "-o", f"Dir::Cache::archives={archives}", "-o", "APT::Keep-Downloaded-Packages=true",
+    )
+
+
+def acquire(source_options: tuple[str, ...] = (), packages: tuple[str, ...] = PACKAGES,
+            archives: Path | None = None) -> bool:
     # Only acquisition is terminated by these deadlines, never dpkg unpacking.
     # Connection/data timeouts alone do not bound a continuously slow download.
     for seconds, arguments in (
         (60, ("update", "--error-on=any")),
-        (180, ("install", "--yes", "--no-install-recommends", "--download-only", *PACKAGES)),
+        (180, ("install", "--yes", "--no-install-recommends", "--download-only", *packages)),
     ):
         result = subprocess.run([
             "sudo", "timeout", "--signal=TERM", "--kill-after=10s", f"{seconds}s",
-            "apt-get", *ACQUIRE_OPTIONS, *source_options, *arguments,
+            "apt-get", *ACQUIRE_OPTIONS, *source_options, *archive_options(archives), *arguments,
         ], check=False)
         if result.returncode:
             print(f"APT acquisition stopped with status {result.returncode}.", flush=True)
@@ -119,31 +128,37 @@ def official_mirrors(mirrors: Path, sources: Path):
                        stdout=subprocess.DEVNULL, check=True)
 
 
-def install(source_options: tuple[str, ...] = ()) -> None:
+def install(source_options: tuple[str, ...] = (), packages: tuple[str, ...] = PACKAGES,
+            archives: Path | None = None) -> None:
     # No timeout/fallback around unpacking. Missing archives remain a hard error.
     subprocess.run([
-        "sudo", "apt-get", "install", *source_options, "--yes", "--no-install-recommends",
-        "--no-download", *PACKAGES,
+        "sudo", "apt-get", "install", *source_options, *archive_options(archives), "--yes", "--no-install-recommends",
+        "--no-download", *packages,
     ], check=True)
 
 
-def install_dependencies(mirrors: Path = MIRRORS, sources: Path = SOURCES) -> None:
-    print("Acquiring browser CI dependencies with bounded downloads.", flush=True)
-    if acquire():
-        install()
-        return
-    print("Retrying acquisition once with the existing official HTTPS mirrors.", flush=True)
-    with official_mirrors(mirrors, sources):
-        # APT parses the .sources main file as Deb822. /dev/null disables the
-        # source-parts directory, excluding unrelated sources during refresh,
-        # package selection/download and offline installation alike.
-        source_options = (
-            "-o", f"Dir::Etc::sourcelist={sources.resolve()}",
-            "-o", "Dir::Etc::sourceparts=/dev/null",
-        )
-        if not acquire(source_options):
-            raise RuntimeError("Browser CI dependency acquisition failed on both attempts; nothing installed.")
-        install(source_options)
+def install_dependencies(mirrors: Path = MIRRORS, sources: Path = SOURCES,
+                         packages: tuple[str, ...] = PACKAGES, archives: Path | None = None) -> None:
+    if archives is not None:
+        (archives / "partial").mkdir(parents=True, exist_ok=True)
+    print("Acquiring CI dependencies with bounded downloads.", flush=True)
+    if acquire(packages=packages, archives=archives):
+        install(packages=packages, archives=archives)
+    else:
+        print("Retrying acquisition once with the existing official HTTPS mirrors.", flush=True)
+        with official_mirrors(mirrors, sources):
+            # APT parses the .sources main file as Deb822. /dev/null disables the
+            # source-parts directory, excluding unrelated sources during refresh,
+            # package selection/download and offline installation alike.
+            source_options = (
+                "-o", f"Dir::Etc::sourcelist={sources.resolve()}",
+                "-o", "Dir::Etc::sourceparts=/dev/null",
+            )
+            if not acquire(source_options, packages, archives):
+                raise RuntimeError("CI dependency acquisition failed on both attempts; nothing installed.")
+            install(source_options, packages, archives)
+    if archives is not None:
+        subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(archives)], check=True)
 
 
 def main() -> int:
@@ -153,7 +168,11 @@ def main() -> int:
     release = platform.freedesktop_os_release()
     if release.get("ID") != "ubuntu" or release.get("VERSION_ID") != "24.04":
         raise RuntimeError("This helper requires Ubuntu 24.04.")
-    install_dependencies()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archives", type=Path)
+    parser.add_argument("packages", nargs="*")
+    args = parser.parse_args()
+    install_dependencies(packages=tuple(args.packages) or PACKAGES, archives=args.archives)
     return 0
 
 
@@ -161,5 +180,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError) as exc:
-        print(f"Browser CI dependency setup failed: {exc}", file=sys.stderr)
+        print(f"CI dependency setup failed: {exc}", file=sys.stderr)
         raise SystemExit(1)
