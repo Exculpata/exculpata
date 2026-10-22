@@ -1,5 +1,10 @@
 """Matter-owned browser playback preparation for uploaded video sources."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import threading
 import time
@@ -45,7 +50,7 @@ class BrowserPlaybackCoordinator:
         self._stop = False
         self._thread = threading.Thread(
             target=self._run,
-            name="recordbench-playback-1",
+            name=f"{LEGACY_STEM}-playback-1",
             daemon=True,
         )
         self._thread.start()

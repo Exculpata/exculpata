@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic separate upload occurrences through Chrome and disposable loopback state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -47,7 +54,7 @@ def main():
         report['checks'].append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-occurrence-browser-') as temp:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-occurrence-browser-") as temp:
         root = Path(temp).resolve()
         bodies = [b'Synthetic copper journal: the first vehicle arrived at noon.\n',
                   b'Synthetic copper journal: the first vehicle arrived at noon.\n',
@@ -102,7 +109,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, 'html')
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 wait.until(lambda _: detached(old))
                 ready()
 
@@ -179,7 +186,7 @@ def main():
                 assert all(d.digest not in driver.page_source for d in documents)
                 comparison_url = driver.current_url
                 old = driver.find_element(By.TAG_NAME, 'html')
-                driver.refresh()
+                refresh_page(driver, wait)
                 wait.until(lambda _: detached(old))
                 ready()
                 assert len(rows()) == 2

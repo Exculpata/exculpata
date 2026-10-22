@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 from dataclasses import replace
 import io
 import json
@@ -160,8 +162,8 @@ def test_stale_support_or_malformed_late_section_creates_no_orphan_report(worksp
 def test_converted_report_transaction_rolls_back_mid_insert_and_checks_membership(workspace):
     _client, bench, matter = workspace
     store = bench.workspace
-    with store._lock, store.connection:  # Background work shares this connection.
-        store.connection.execute("CREATE TEMP TRIGGER reject_second_section BEFORE INSERT ON workbench_report_section WHEN NEW.ordinal=2 BEGIN SELECT RAISE(ABORT, 'synthetic interrupted conversion'); END")
+    with fixture_write(store) as fixture_connection:  # Background work shares this connection.
+        fixture_connection.execute("CREATE TEMP TRIGGER reject_second_section BEFORE INSERT ON workbench_report_section WHEN NEW.ordinal=2 BEGIN SELECT RAISE(ABORT, 'synthetic interrupted conversion'); END")
     sections = [{"heading": "First", "body": "One"}, {"heading": "Second", "body": "Two"}]
     with pytest.raises(sqlite3.IntegrityError):
         store.create_report_from_sections(matter.matter_id, ACTOR, "No orphan", "", origin_id="synthetic-run", sections=sections)
@@ -177,7 +179,8 @@ def test_converted_sections_survive_backup_and_clean_restore(workspace, tmp_path
         origin_id="synthetic-run", sections=[{"heading": "Coverage", "body": "One unavailable source remains."}])
     path = tmp_path / "restored.sqlite"
     with sqlite3.connect(path) as target:
-        bench.workspace.connection.backup(target)
+        with bench.workspace._lock:
+            bench.workspace.connection.backup(target)
     restored = WorkspaceStore(path)
     try:
         assert restored.report_sections(matter.matter_id, report.report_id)[0].body == "One unavailable source remains."
@@ -282,9 +285,9 @@ def test_http_conversion_streams_more_than_one_export_page(workspace):
     run = bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind="full")
     bench.workspace.claim_review_run("synthetic-large-worker")
     count = 100_001
-    with bench.workspace._lock, bench.workspace.connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace) as fixture_connection:  # Background work shares this connection.
         bench.workspace.connection.execute("DELETE FROM workbench_review_decision WHERE run_id=?", (run.run_id,))
-        bench.workspace.connection.execute(
+        fixture_connection.execute(
             "WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM sequence WHERE n<?) "
             "INSERT INTO workbench_review_decision(run_id,matter_id,ordinal,document_id,source_version_id,"
             "action_token,source_name,source_kind,machine_decision,human_decision,human_note,created_at,updated_at) "
@@ -343,7 +346,7 @@ def test_decision_snapshot_does_not_lock_unrelated_reads_or_change_midstream(wor
         title="Snapshot test", instructions="Include bicycle records.")
     run = bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind="full")
     other = bench.workspace.create_matter("Other synthetic matter", "Concurrent access", ACTOR)
-    with bench.workspace._lock, bench.workspace.connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         first = bench.workspace.connection.execute("SELECT * FROM workbench_review_decision WHERE run_id=?", (run.run_id,)).fetchone()
         columns = list(first.keys())
         values = [tuple((ordinal if key == "ordinal" else f"{ordinal:032x}" if key == "document_id" else first[key])
@@ -357,7 +360,7 @@ def test_decision_snapshot_does_not_lock_unrelated_reads_or_change_midstream(wor
     def unrelated_read_and_update():
         try:
             assert bench.workspace.membership(other.matter_id, ACTOR).principal_id == ACTOR
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute("UPDATE workbench_review_decision SET human_note='Later review' WHERE run_id=? AND ordinal=1002", (run.run_id,))
         except Exception as exc:
             errors.append(exc)
@@ -385,7 +388,7 @@ def test_unfinished_check_direct_post_creates_no_report(workspace, state):
     _criterion, version = bench.workspace.create_review_criterion(matter.matter_id, ACTOR,
         title="Unfinished check", instructions="Include bicycle records.")
     run = bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind="full")
-    with bench.workspace._lock, bench.workspace.connection:  # Background work shares this connection.
+    with fixture_write(bench.workspace):  # Background work shares this connection.
         bench.workspace.connection.execute("UPDATE workbench_review_run SET state=? WHERE run_id=?", (state, run.run_id))
     response = client.post(f"/matters/{matter.slug}/full-review/{run.run_id}/report", follow_redirects=False)
     assert response.status_code == 303 and "error=" in response.headers["location"]

@@ -21,8 +21,15 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Complete owner-supplied set, October 19 2026 (#345). SHA-256 of the
+# ASCII-lowercased address bytes; no name, whitespace, or alias rewriting.
+MAINTAINER_EMAIL_DIGESTS = frozenset({
+    "ae7295bb836bc214423bd65843665313b0507c8cf74439c95dcaed2db2d426cd",
+    "3a50f1005a6a06460e89cb24e4e05cdf3fb7c0ac4a505bd890470cc8a9c5dc17",
+    "4c3882fd35d77ecd2853a76cc9aea60a3058689d77d45dec872f41bca51e9329",
+})
 # Owner-reviewed public attribution; exact commit and name/email digest only.
-# This suppresses only the email rule, never deny terms or content checks.
+# This retains historical email attribution, never deny terms or content checks.
 REVIEWED_COMMIT_EMAIL_IDENTITIES = {
     "6735691a938e42173c6c7a309b700be2e19c0668": {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
@@ -43,17 +50,25 @@ REVIEWED_COMMIT_EMAIL_IDENTITIES = {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
     },
 }
-# Owner-reviewed outside contributors who chose to publish their own commit
-# address. Exact SHA-256 of name + NUL + email bytes, on any commit, because
-# squash merges mint a new SHA. Suppresses only the email rule for that exact
-# author/committer identity or an exact Co-authored-by trailer line; deny terms,
-# secrets and every other rule still apply. No case or whitespace folding.
+# Existing reviewed Co-authored-by trailer dispositions. Author/committer
+# addresses now follow MAINTAINER_EMAIL_DIGESTS independently. Exact SHA-256
+# of name + NUL + email bytes; suppresses only the generic content-email rule
+# for an exact trailer line. Deny terms, protected address hashes, secrets and
+# every other rule still apply. No case or whitespace folding.
 # Maintainer identities must stay no-reply and never belong here.
 REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES = frozenset(
     {
         # Fire162: owner review Oct 13 2026, outside contributor PR #234.
         "4fda816440a2b260c0f98662327e8ad67c3e2351a39e0300deb8d8e778ecccb5",
     }
+)
+# Exact media blobs whose raw bytes were reviewed. Local
+# --allow-reviewed-media-digest values are added to this set at scan time.
+# docs/assets/exculpata-launch-16x9.mp4 and site/assets/exculpata-launch-16x9.mp4.
+# docs/assets/exculpata-launch-9x16.mp4 and site/assets/exculpata-launch-9x16.mp4.
+REVIEWED_MEDIA_DIGESTS = (
+    "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
+    "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
 )
 COAUTHOR_TRAILER = re.compile(
     rb"(?m)^Co-authored-by: ([^<>\r\n\0]+) <([^<>\s\0]+)>\r?$"
@@ -123,6 +138,8 @@ PUBLIC_BOT_NOREPLY_ADDRESSES = frozenset(
     {
         b"49699333+dependabot[bot]@users.noreply.github.com",
         b"noreply@" + b"github.com",
+        # Cursor cloud agent commit identity. Exact address only.
+        b"cursoragent@" + b"cursor.com",
     }
 )
 DEPENDABOT_SIGNOFF_LINE = b"Signed-off-by: dependabot[bot] <support@" + b"github.com>"
@@ -233,8 +250,28 @@ def _safe_example_ip(
     return any(address in network for network in ALLOWED_DOCUMENTATION_NETWORKS)
 
 
+def _previous_fixture_home_owners() -> frozenset[str]:
+    """Load retained fixture owners bundled with the reviewed scanner."""
+    path = Path(__file__).with_name("publication_home_owners.py")
+    if not path.is_file():
+        return frozenset()
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_publication_home_owners", path)
+    if spec is None or spec.loader is None:
+        return frozenset()
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    values = getattr(module, "PREVIOUS_FIXTURE_HOME_OWNERS", ())
+    return frozenset(item.casefold() for item in values if isinstance(item, str))
+
+
+_UNIX_HOME_OWNERS = frozenset({"exculpata", "user", "example", *_previous_fixture_home_owners()})
+_WINDOWS_HOME_OWNERS = frozenset({"default", "example", "public", "exculpata", "user", *_previous_fixture_home_owners()})
+
+
 def _recognized_public_automation_email(data: bytes, match: re.Match[bytes]) -> bool:
-    """True only for the two public bot no-reply addresses or Dependabot's exact sign-off line."""
+    """True only for exact public automation addresses or Dependabot's sign-off line."""
     address = match.group(0).lower()
     if address in PUBLIC_BOT_NOREPLY_ADDRESSES:
         return True
@@ -278,6 +315,9 @@ def _scan_bytes(
 ) -> list[Finding]:
     findings: list[Finding] = []
     lowered = data.lower()
+    if any(hashlib.sha256(match.group(0).lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
+           for match in EMAIL.finditer(data)):
+        findings.append(Finding(location, "maintainer-email-address"))
     pem_rules: set[str] = set()
     for rule, marker in PEM_MARKERS:
         if marker.lower() in lowered:
@@ -325,12 +365,12 @@ def _scan_bytes(
             break
     for match in HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"recordbench", "user", "example"}:
+        if owner not in _UNIX_HOME_OWNERS:
             findings.append(Finding(location, "personal-home-path"))
             break
     for match in WINDOWS_HOME_PATH.finditer(data):
         owner = match.group(1).decode("ascii", "ignore").casefold()
-        if owner not in {"default", "example", "public", "recordbench", "user"}:
+        if owner not in _WINDOWS_HOME_OWNERS:
             findings.append(Finding(location, "personal-home-path"))
             break
     if INTERNAL_FQDN.search(data):
@@ -405,7 +445,7 @@ def _scan_media(
         return [Finding(location, "media-inspection-unavailable")]
     try:
         with tempfile.NamedTemporaryFile(
-            prefix="recordbench-publication-",
+            prefix="exculpata-publication-",
             suffix=Path(name).suffix.casefold(),
         ) as handle:
             handle.write(data)
@@ -431,14 +471,20 @@ def _scan_media(
     if result.returncode != 0 or len(result.stdout) > MAX_DERIVED_SCAN_BYTES:
         return [Finding(location, "media-inspection-failed")]
     try:
-        json.loads(result.stdout)
+        metadata = json.loads(result.stdout)
     except (UnicodeDecodeError, json.JSONDecodeError):
         return [Finding(location, "media-inspection-failed")]
-    return _scan_bytes(
+    findings = _scan_bytes(
         result.stdout,
         location=f"{location}#media-metadata",
         deny=deny,
     )
+    if not isinstance(metadata, dict):
+        findings.append(Finding(
+            location,
+            "unsupported-media-metadata; use _scan_media() with ffprobe JSON object output",
+        ))
+    return findings
 
 
 def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> list[Finding]:
@@ -497,6 +543,25 @@ def _scan_archive(data: bytes, *, location: str, deny: tuple[bytes, ...]) -> lis
     return findings
 
 
+# One- or two-character local parts plus a four-character domain are six or
+# seven bytes. Only an exact reviewed media blob may ignore that collision.
+_SHORT_REVIEWED_EMAIL_COLLISION_BYTES = 8
+
+
+def _without_short_email_collisions(data: bytes) -> bytes:
+    masked = bytearray(data)
+    changed = False
+    for match in EMAIL.finditer(data):
+        if match.end() - match.start() >= _SHORT_REVIEWED_EMAIL_COLLISION_BYTES:
+            continue
+        at = data.find(b"@", match.start(), match.end())
+        if at < 0:
+            continue
+        masked[at] = 0
+        changed = True
+    return bytes(masked) if changed else data
+
+
 def _scan_content(
     data: bytes,
     *,
@@ -507,13 +572,16 @@ def _scan_content(
     reviewed_media_digests: tuple[str, ...] = (),
 ) -> list[Finding]:
     # Only a manually reviewed, exact media blob may adjudicate accidental
-    # three-byte matches in compressed bytes. Decoded metadata retains all terms.
+    # three-byte deny terms and sub-8-byte email-shaped runs in its raw bytes.
+    # Longer matches, other files, and decoded metadata retain every check.
     raw_deny = deny
+    scanned = data
     if (Path(name).suffix.casefold() in MEDIA_SUFFIXES
             and hashlib.sha256(data).hexdigest() in reviewed_media_digests):
         raw_deny = tuple(term for term in deny if len(term) != 3)
+        scanned = _without_short_email_collisions(data)
     findings = _scan_bytes(
-        data,
+        scanned,
         location=location,
         deny=raw_deny,
         allowed_deny_literals=allowed_deny_literals,
@@ -744,12 +812,22 @@ def scan_history(
                     (name, email) if (name, email) in allowed_identities else ()
                 ),
             )
-            identity_digest = hashlib.sha256(name + b"\0" + email).hexdigest()
-            if (identity_digest in REVIEWED_COMMIT_EMAIL_IDENTITIES.get(commit, ())
-                    or identity_digest in REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES):
+            # Contributor addresses are allowed only in the author/committer
+            # address fields. Names and all other metadata retain content rules.
+            identity_findings = [
+                item for item in identity_findings
+                if item.rule != "non-example-email-address"
+            ] + [
+                item for item in _scan_bytes(name, location="git-metadata", deny=())
+                if item.rule == "non-example-email-address"
+            ]
+            identity_digest = _identity_digest(name, email)
+            if identity_digest in REVIEWED_COMMIT_EMAIL_IDENTITIES.get(commit, ()):
+                # Retain only the already reviewed exact historical attribution.
+                # This cannot admit the address on any newly created commit.
                 identity_findings = [
                     item for item in identity_findings
-                    if item.rule != "non-example-email-address"
+                    if item.rule != "maintainer-email-address"
                 ]
             findings.extend(identity_findings)
         allowed_spans = []
@@ -908,6 +986,21 @@ def _baseline_public_git_identities(
     return tuple(result)
 
 
+def _legacy_product_name_findings(root: Path) -> list[Finding]:
+    """Working tree only. History still contains the previous product name."""
+    checker = Path(__file__).with_name("legacy_name_check.py")
+    if not checker.is_file():
+        return []
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_legacy_name_check", checker)
+    if spec is None or spec.loader is None:
+        return []
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return [Finding(str(item.location), "legacy-product-name") for item in module.findings(root)]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
@@ -938,13 +1031,14 @@ def main() -> int:
     baseline_identities = _baseline_public_git_identities(
         args.allow_public_baseline_git_identity
     )
-    media_digests = tuple(args.allow_reviewed_media_digest)
+    media_digests = tuple(dict.fromkeys((*REVIEWED_MEDIA_DIGESTS, *args.allow_reviewed_media_digest)))
     merge_commits = tuple(args.allow_public_merge_commit)
     if any(re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) is None for value in merge_commits):
         raise RuntimeError("Public merge must be an exact commit")
     if any(re.fullmatch(r"[0-9a-f]{64}", value) is None for value in media_digests):
         raise RuntimeError("Reviewed media digest must be an exact SHA-256")
     findings = scan_tree(root, deny, public_clone_urls=clone_urls, reviewed_media_digests=media_digests)
+    findings.extend(_legacy_product_name_findings(root))
     if not args.skip_history:
         findings.extend(
             scan_history(

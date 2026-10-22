@@ -93,7 +93,7 @@ The gateway drops forged authentication headers.
   tests/test_local_authentication.py::test_disabled_local_account_cannot_reuse_a_prior_session \
   tests/test_identity_membership_audit.py::test_session_idle_expiry_and_stable_provider_subject \
   tests/test_case_lifecycle.py::test_member_cannot_exit_and_admin_requires_current_session_role
-python3 -m unittest tests.test_gateway_nginx -v
+PYTHONPATH=src python3 -m unittest tests.test_gateway_nginx -v
 ```
 
 **Evidence.** [`docs/AUTHENTICATION.md`](AUTHENTICATION.md) describes local,

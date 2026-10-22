@@ -1,0 +1,2913 @@
+{
+  "format": "exculpata-timeline-draft-v2",
+  "generated_at": null,
+  "source_count": 40,
+  "unit_count": 40,
+  "capped": false,
+  "entries": [
+    {
+      "entry_id": "155149b546233a02ecc6f4a54349493d",
+      "sort_key": "2034-04-16",
+      "date_label": "2034-04-16",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-015\nRecord date: 2034-04-16\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "15-band-printing-note.txt",
+          "document_title": "15-band-printing-note.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 90,
+            "character_end": 215
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-015\nRecord date: 2034-04-16\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "95b7d73e99f01eb93b3d7c419932cb595289ffcf51a53ea468146622c923c91f",
+          "support_token": "",
+          "window": {
+            "start": 90,
+            "end": 215,
+            "original_chars": 528,
+            "omitted_chars": 403
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "7242b2ddb928ab6ed4416a2ac1e96119",
+      "sort_key": "2034-04-16",
+      "date_label": "2034-04-16",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "cf1706557baebe412a9f74e12483785d",
+      "sort_key": "2034-04-16",
+      "date_label": "2034-04-16",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-001\nRecord date: 2034-04-16\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "01-opening-inventory.txt",
+          "document_title": "01-opening-inventory.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 85,
+            "character_end": 231
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-001\nRecord date: 2034-04-16\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "87f7a2e381c6ede202de5f4480ff88ce474b05310b51588970ec71bc8acc0726",
+          "support_token": "",
+          "window": {
+            "start": 85,
+            "end": 231,
+            "original_chars": 601,
+            "omitted_chars": 455
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "2124ffbb8a176c02615fcbd2b5577731",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-038\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nPlanned transfer date: 2034-04-18\nPlanned route: covered west passage\nParcel band: DEMO-HS-271\nContents described by plan: teal lantern kit\nThis sheet is a plan, not a record of the route actually traveled.",
+      "citations": [
+        {
+          "source_id": "38-planned-route-sheet.pdf",
+          "document_title": "38-planned-route-sheet.pdf.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 73,
+            "character_end": 451
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-038\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nPlanned transfer date: 2034-04-18\nPlanned route: covered west passage\nParcel band: DEMO-HS-271\nContents described by plan: teal lantern kit\nThis sheet is a plan, not a record of the route actually traveled.\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d6e5cc1e6612bb045d51a2b076d37912ddb6a4ca076553bca93cb8032bc3825e",
+          "support_token": "",
+          "window": {
+            "start": 73,
+            "end": 451,
+            "original_chars": 666,
+            "omitted_chars": 288
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "2bec2dd60b4d85f5cd3a5199f200090f",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-26\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "26-plan-confirmation.eml",
+          "document_title": "26-plan-confirmation.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 380,
+            "character_end": 551
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-26\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fed37ffa85f05bd0ace6e4c6d279534115f4f989c78b28c6b11983209fae86ee",
+          "support_token": "",
+          "window": {
+            "start": 380,
+            "end": 551,
+            "original_chars": 841,
+            "omitted_chars": 670
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "32e99df7f4228056b473931b512ec9ee",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "551a5d7a22039a96c00a360c7f97bde1",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-27\nRecord date: 2034-04-17\nPerson: Ilex Rovanni\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "27-screen-warning.eml",
+          "document_title": "27-screen-warning.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 381,
+            "character_end": 552
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-27\nRecord date: 2034-04-17\nPerson: Ilex Rovanni\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "e68129c5e3e2022b73364349add48f9355e0d2da240c8e7de78e4fb4b6775fed",
+          "support_token": "",
+          "window": {
+            "start": 381,
+            "end": 552,
+            "original_chars": 793,
+            "omitted_chars": 622
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "61742609072f253b944dc10d96006242",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-016\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "16-trolley-condition.txt",
+          "document_title": "16-trolley-condition.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 90,
+            "character_end": 215
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-016\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "27312cedd9410360174bf03b0c7ba2c92a0c7bc60c1838438ad003bf5b881455",
+          "support_token": "",
+          "window": {
+            "start": 90,
+            "end": 215,
+            "original_chars": 533,
+            "omitted_chars": 408
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "6431c3b32c6aa6beace686cac1219013",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-002\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "02-delivery-plan.txt",
+          "document_title": "02-delivery-plan.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 81,
+            "character_end": 274
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-002\nRecord date: 2034-04-17\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "0aed0a555b0e3a43cc08dc57f04a393ed0d53f172340e09610a9e3c89b1ea143",
+          "support_token": "",
+          "window": {
+            "start": 81,
+            "end": 274,
+            "original_chars": 635,
+            "omitted_chars": 442
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "74db32f0a40b0d97648aac2c3ba74771",
+      "sort_key": "2034-04-17",
+      "date_label": "17 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Folding screen still blocks the west passage\nMessage-ID: <synthetic-harbor-27@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "27-screen-warning.eml",
+          "document_title": "27-screen-warning.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 322
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Folding screen still blocks the west passage\nMessage-ID: <synthetic-harbor-27@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "e68129c5e3e2022b73364349add48f9355e0d2da240c8e7de78e4fb4b6775fed",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 322,
+            "original_chars": 793,
+            "omitted_chars": 471
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b20cab5d7aa0bccb0720601fb5281c53",
+      "sort_key": "2034-04-17",
+      "date_label": "17 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Planned transfer of the teal lantern parcel\nMessage-ID: <synthetic-harbor-26@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "26-plan-confirmation.eml",
+          "document_title": "26-plan-confirmation.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 321
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Planned transfer of the teal lantern parcel\nMessage-ID: <synthetic-harbor-26@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fed37ffa85f05bd0ace6e4c6d279534115f4f989c78b28c6b11983209fae86ee",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 321,
+            "original_chars": 841,
+            "omitted_chars": 520
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "bae9370c2de3638b2b29442908431c81",
+      "sort_key": "2034-04-17",
+      "date_label": "17 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Please sign the parcel receipt after arrival\nMessage-ID: <synthetic-harbor-28@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "28-receipt-request.eml",
+          "document_title": "28-receipt-request.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 322
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Please sign the parcel receipt after arrival\nMessage-ID: <synthetic-harbor-28@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fa06f0dac47c4e1e726c826fe0e178e0676e019e0ecc5fa9ea0b01f4d5dae16b",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 322,
+            "original_chars": 824,
+            "omitted_chars": 502
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "be872a2e31545070ad21e621313ec698",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-017\nRecord date: 2034-04-17\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "17-screen-position.txt",
+          "document_title": "17-screen-position.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 239
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-017\nRecord date: 2034-04-17\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "093b0cd2f6d80913dcb7446037499631c68c6b6348a2e4034453f593aa7d84be",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 239,
+            "original_chars": 522,
+            "omitted_chars": 371
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "da26d9611eee5f0306b976c08bc62df3",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-003\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "03-route-walk.txt",
+          "document_title": "03-route-walk.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 84,
+            "character_end": 256
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-003\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "99401f03409c5532a8f5530ed15c6d008dfb1f7c8a61e9c898a82af567725865",
+          "support_token": "",
+          "window": {
+            "start": 84,
+            "end": 256,
+            "original_chars": 599,
+            "omitted_chars": 427
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "dc27aaf8ac92f2ed3d8cb3be2e837fed",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-018\nRecord date: 2034-04-17\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "18-rehearsal-schedule.txt",
+          "document_title": "18-rehearsal-schedule.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 91,
+            "character_end": 211
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-018\nRecord date: 2034-04-17\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+          "support_token": "",
+          "window": {
+            "start": 91,
+            "end": 211,
+            "original_chars": 533,
+            "omitted_chars": 413
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ef680d488e394f35a2832d1e46cc91d6",
+      "sort_key": "2034-04-17",
+      "date_label": "2034-04-17",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-28\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "28-receipt-request.eml",
+          "document_title": "28-receipt-request.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 381,
+            "character_end": 552
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-28\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fa06f0dac47c4e1e726c826fe0e178e0676e019e0ecc5fa9ea0b01f4d5dae16b",
+          "support_token": "",
+          "window": {
+            "start": 381,
+            "end": 552,
+            "original_chars": 824,
+            "omitted_chars": 653
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "6e2f0d5c6cfe61aed423ef28083684ff",
+      "sort_key": "2034-04-17T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Planned transfer of the teal lantern parcel\nMessage-ID: <synthetic-harbor-26@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "26-plan-confirmation.eml",
+          "document_title": "26-plan-confirmation.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 321
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Planned transfer of the teal lantern parcel\nMessage-ID: <synthetic-harbor-26@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fed37ffa85f05bd0ace6e4c6d279534115f4f989c78b28c6b11983209fae86ee",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 321,
+            "original_chars": 841,
+            "omitted_chars": 520
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "9d7ebc6407fa20cebea55440b5fc54e7",
+      "sort_key": "2034-04-17T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Please sign the parcel receipt after arrival\nMessage-ID: <synthetic-harbor-28@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "28-receipt-request.eml",
+          "document_title": "28-receipt-request.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 322
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Please sign the parcel receipt after arrival\nMessage-ID: <synthetic-harbor-28@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fa06f0dac47c4e1e726c826fe0e178e0676e019e0ecc5fa9ea0b01f4d5dae16b",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 322,
+            "original_chars": 824,
+            "omitted_chars": 502
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "a886a5e3255852397c8a10a4467edc5b",
+      "sort_key": "2034-04-17T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Folding screen still blocks the west passage\nMessage-ID: <synthetic-harbor-27@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "27-screen-warning.eml",
+          "document_title": "27-screen-warning.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 322
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Mon, 17 Apr 2034 12:00:00 +0000\nSubject: Folding screen still blocks the west passage\nMessage-ID: <synthetic-harbor-27@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "e68129c5e3e2022b73364349add48f9355e0d2da240c8e7de78e4fb4b6775fed",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 322,
+            "original_chars": 793,
+            "omitted_chars": 471
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "4acc134921dc071aa50d9f771e8cba58",
+      "sort_key": "2034-04-17T15:20",
+      "date_label": "15:20",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "The route sheet still named the west passage when this inspection ended at\n15:20.",
+      "citations": [
+        {
+          "source_id": "03-route-walk.txt",
+          "document_title": "03-route-walk.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 442,
+            "character_end": 525
+          },
+          "location": "Page 1",
+          "excerpt": "The route sheet still named the west passage when this inspection ended at\n15:20.\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "99401f03409c5532a8f5530ed15c6d008dfb1f7c8a61e9c898a82af567725865",
+          "support_token": "",
+          "window": {
+            "start": 442,
+            "end": 525,
+            "original_chars": 599,
+            "omitted_chars": 516
+          }
+        },
+        {
+          "source_id": "03-route-walk.txt",
+          "document_title": "03-route-walk.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 84,
+            "character_end": 256
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-003\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "99401f03409c5532a8f5530ed15c6d008dfb1f7c8a61e9c898a82af567725865",
+          "support_token": "",
+          "window": {
+            "start": 84,
+            "end": 256,
+            "original_chars": 599,
+            "omitted_chars": 427
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "020434fe8235461dcb17df5b01f31cfc",
+      "sort_key": "2034-04-18",
+      "date_label": "18 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Ilex Rovanni <ilex.rovanni@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Was the west passage open during the transfer\nMessage-ID: <synthetic-harbor-31@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "31-route-sheet-query.eml",
+          "document_title": "31-route-sheet-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 323
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Ilex Rovanni <ilex.rovanni@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Was the west passage open during the transfer\nMessage-ID: <synthetic-harbor-31@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "9de56bd97f6d66c7222807d92830f1b12e213d07aef97f37c8c684a318315472",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 323,
+            "original_chars": 842,
+            "omitted_chars": 519
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "03336f8447034720c5068d792b3b457c",
+      "sort_key": "2034-04-18",
+      "date_label": "18 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: The platform case contains paper dividers\nMessage-ID: <synthetic-harbor-30@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "30-empty-case-query.eml",
+          "document_title": "30-empty-case-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 319
+          },
+          "location": "Page 1",
+          "excerpt": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: The platform case contains paper dividers\nMessage-ID: <synthetic-harbor-30@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "856febe71609cd543721dfa1e157fad641ab6864c5d88a58e08051045104e221",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 319,
+            "original_chars": 840,
+            "omitted_chars": 521
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "0c9939c4884e5a87d0c91bc28fc5845a",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "14083bd59c1c4abae0fe7bd9426b0248",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-012\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "12-ilex-screen-account.txt",
+          "document_title": "12-ilex-screen-account.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 97,
+            "character_end": 248
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-012\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "a1d98aba0ee06b7378a2ae019176f54f36c960dd3126b59f67714a129d71bb57",
+          "support_token": "",
+          "window": {
+            "start": 97,
+            "end": 248,
+            "original_chars": 573,
+            "omitted_chars": 422
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "25c24b7e5e1b0158b5723ed00820dabd",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "The count does not establish which case traveled on 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "39-follow-up-count-sheet.pdf",
+          "document_title": "39-follow-up-count-sheet.pdf.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 505,
+            "character_end": 569
+          },
+          "location": "Page 1",
+          "excerpt": "The count does not establish which case traveled on 2034-04-18.\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "26f61e769fb0fb9a1cdfcf6c5f626dbae4ebde1e74ef3c95f618f810398ee748",
+          "support_token": "",
+          "window": {
+            "start": 505,
+            "end": 569,
+            "original_chars": 692,
+            "omitted_chars": 628
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "3f656e6fbe92508e85eca4130e3423a0",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "41bfecc3071c5014dbd4344a34ea0b31",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-30\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "30-empty-case-query.eml",
+          "document_title": "30-empty-case-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 378,
+            "character_end": 549
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-30\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "856febe71609cd543721dfa1e157fad641ab6864c5d88a58e08051045104e221",
+          "support_token": "",
+          "window": {
+            "start": 378,
+            "end": 549,
+            "original_chars": 840,
+            "omitted_chars": 669
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "511d9fd7266748b6bd0e646ac51ff020",
+      "sort_key": "2034-04-18",
+      "date_label": "18 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Trolley returned after the transfer\nMessage-ID: <synthetic-harbor-29@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "29-trolley-return.eml",
+          "document_title": "29-trolley-return.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 313
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Trolley returned after the transfer\nMessage-ID: <synthetic-harbor-29@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fea21c3027801261f5c01e2b3d53d69e27ddfa0417ac5376b676cb77d804dd2f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 313,
+            "original_chars": 818,
+            "omitted_chars": 505
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "5433968e504223d40c9cf0d0ac66c4ed",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-038\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nPlanned transfer date: 2034-04-18\nPlanned route: covered west passage\nParcel band: DEMO-HS-271\nContents described by plan: teal lantern kit\nThis sheet is a plan, not a record of the route actually traveled.",
+      "citations": [
+        {
+          "source_id": "38-planned-route-sheet.pdf",
+          "document_title": "38-planned-route-sheet.pdf.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 73,
+            "character_end": 451
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-038\nRecord date: 2034-04-17\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nPlanned transfer date: 2034-04-18\nPlanned route: covered west passage\nParcel band: DEMO-HS-271\nContents described by plan: teal lantern kit\nThis sheet is a plan, not a record of the route actually traveled.\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d6e5cc1e6612bb045d51a2b076d37912ddb6a4ca076553bca93cb8032bc3825e",
+          "support_token": "",
+          "window": {
+            "start": 73,
+            "end": 451,
+            "original_chars": 666,
+            "omitted_chars": 288
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "5c14d8b23034a05c43ab1101c8566da8",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-020\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "20-bell-delay.txt",
+          "document_title": "20-bell-delay.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 208
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-020\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "dfcfc83a91d8ca8108cb2d1e44ea6d03ce9017ef9c9bef8e233e41d09bb83acb",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 208,
+            "original_chars": 544,
+            "omitted_chars": 424
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "73bd9d79a97607347a9519322bbb73a0",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-005\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "05-arrival-observation.txt",
+          "document_title": "05-arrival-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 87,
+            "character_end": 228
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-005\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "47c6f4da0027cd4f09a9378beb6fc23970a67ae75388e1234c8ab6a9593cce57",
+          "support_token": "",
+          "window": {
+            "start": 87,
+            "end": 228,
+            "original_chars": 587,
+            "omitted_chars": 446
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "7706e19622e800c77e7304e2d175deff",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "I expect\nto use the west passage on 2034-04-18, subject to the screen being moved.",
+      "citations": [
+        {
+          "source_id": "26-plan-confirmation.eml",
+          "document_title": "26-plan-confirmation.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 630,
+            "character_end": 713
+          },
+          "location": "Page 1",
+          "excerpt": "I expect\nto use the west passage on 2034-04-18, subject to the screen being moved. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fed37ffa85f05bd0ace6e4c6d279534115f4f989c78b28c6b11983209fae86ee",
+          "support_token": "",
+          "window": {
+            "start": 630,
+            "end": 713,
+            "original_chars": 841,
+            "omitted_chars": 758
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "7d96b981adc58e84582038158bf04c08",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-019\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nPerson: Ilex Rovanni\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "19-platform-layout.txt",
+          "document_title": "19-platform-layout.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 229
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-019\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nPerson: Ilex Rovanni\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "1be000b8d908cb078788198c2626e7989268db32ae12b9e53420ef87d966ba91",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 229,
+            "original_chars": 529,
+            "omitted_chars": 388
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "941edcb36b17b23a165cec07ecd76765",
+      "sort_key": "2034-04-18",
+      "date_label": "18 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Screen movement followed the third bell\nMessage-ID: <synthetic-harbor-32@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "32-screen-reply.eml",
+          "document_title": "32-screen-reply.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 317
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Screen movement followed the third bell\nMessage-ID: <synthetic-harbor-32@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "bee501e8db2807df1e7b8a7a86b59c80b9f645452f463ed2d0b4bae4056f258b",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 317,
+            "original_chars": 812,
+            "omitted_chars": 495
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "9808773f6787a0cec60711e57039f9f1",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-010\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "10-nerin-first-account.txt",
+          "document_title": "10-nerin-first-account.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 92,
+            "character_end": 217
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-010\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "384f235d590097dd9277a6dd06b2e0062a135188042087e7f90029617dcb562e",
+          "support_token": "",
+          "window": {
+            "start": 92,
+            "end": 217,
+            "original_chars": 553,
+            "omitted_chars": 428
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "9b41622a1310626938766b55ef56010c",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "18-rehearsal-schedule.txt",
+          "document_title": "18-rehearsal-schedule.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 211,
+            "character_end": 315
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+          "support_token": "",
+          "window": {
+            "start": 211,
+            "end": 315,
+            "original_chars": 533,
+            "omitted_chars": 429
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "aacf6061277693a7a60faf8fd6ef2ef7",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-022\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "22-receipt-envelope.txt",
+          "document_title": "22-receipt-envelope.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 89,
+            "character_end": 230
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-022\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "b381daf04827c63f320bd3b2d3200198f9a4476538f1df04000bfb12451fb5be",
+          "support_token": "",
+          "window": {
+            "start": 89,
+            "end": 230,
+            "original_chars": 557,
+            "omitted_chars": 416
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ae363ed9d6565d14470279349f5a65f8",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-29\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "29-trolley-return.eml",
+          "document_title": "29-trolley-return.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 372,
+            "character_end": 543
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-29\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fea21c3027801261f5c01e2b3d53d69e27ddfa0417ac5376b676cb77d804dd2f",
+          "support_token": "",
+          "window": {
+            "start": 372,
+            "end": 543,
+            "original_chars": 818,
+            "omitted_chars": 647
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "af5dd6f85d9dbfd89db52d8bc6ac6894",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-31\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "31-route-sheet-query.eml",
+          "document_title": "31-route-sheet-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 382,
+            "character_end": 553
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-31\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "9de56bd97f6d66c7222807d92830f1b12e213d07aef97f37c8c684a318315472",
+          "support_token": "",
+          "window": {
+            "start": 382,
+            "end": 553,
+            "original_chars": 842,
+            "omitted_chars": 671
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b367fb00207c6da0574be2b29048f10c",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-021\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "21-west-passage-note.txt",
+          "document_title": "21-west-passage-note.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 85,
+            "character_end": 236
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-021\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "8c788ab9dc5e2f51ab3ca3da7daeb97392ecd6bded3c9f3a4bdded1bc5ad1c8a",
+          "support_token": "",
+          "window": {
+            "start": 85,
+            "end": 236,
+            "original_chars": 538,
+            "omitted_chars": 387
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b580c8673391238aa29b6607e071f01f",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-009\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "09-vela-first-account.txt",
+          "document_title": "09-vela-first-account.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 91,
+            "character_end": 242
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-009\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "71716b1ff9305ff28defe0785acdc0779a46f360c3dafcb3c649442c553bab52",
+          "support_token": "",
+          "window": {
+            "start": 91,
+            "end": 242,
+            "original_chars": 592,
+            "omitted_chars": 441
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "bb6e037b7e80fc6bc37b6a995519b6a5",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "bf25467c23a874d99ca8a380f5ef45e9",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "It did not claim\nthe same offset on 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "23-clock-label.txt",
+          "document_title": "23-clock-label.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 365,
+            "character_end": 414
+          },
+          "location": "Page 1",
+          "excerpt": "It did not claim\nthe same offset on 2034-04-18.\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "cc2106ec3e6439b89f79b4a8cbb6c9f401c7a0a72f381eb92513a4306cbf17ff",
+          "support_token": "",
+          "window": {
+            "start": 365,
+            "end": 414,
+            "original_chars": 488,
+            "omitted_chars": 439
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "c4d269cc28fc83e1d731bb414c1e3c17",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-011\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "11-sovi-first-account.txt",
+          "document_title": "11-sovi-first-account.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 91,
+            "character_end": 211
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-011\nRecord date: 2034-04-18\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "34cf5c8738f09aa73a35205c9d0f022e8abd2b5d957a7d5df47064023fc5f952",
+          "support_token": "",
+          "window": {
+            "start": 91,
+            "end": 211,
+            "original_chars": 519,
+            "omitted_chars": 399
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "d1be4d3fc339fd19d0da19b9ebd215ce",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Vela Quenrix planned to carry the teal lantern parcel from Brindlequay storehouse to\nKestrelune arcade on 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "02-delivery-plan.txt",
+          "document_title": "02-delivery-plan.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 274,
+            "character_end": 392
+          },
+          "location": "Page 1",
+          "excerpt": "Vela Quenrix planned to carry the teal lantern parcel from Brindlequay storehouse to\nKestrelune arcade on 2034-04-18. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "0aed0a555b0e3a43cc08dc57f04a393ed0d53f172340e09610a9e3c89b1ea143",
+          "support_token": "",
+          "window": {
+            "start": 274,
+            "end": 392,
+            "original_chars": 635,
+            "omitted_chars": 517
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "e6155efbad5b7b797b9dde6216b26062",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-006\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "06-parcel-discrepancy.txt",
+          "document_title": "06-parcel-discrepancy.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 86,
+            "character_end": 258
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-006\nRecord date: 2034-04-18\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "3ad9a83db4efc5a520d4e8fb0853594bdfcc6eb3b15f86764ceb55980ca3c95f",
+          "support_token": "",
+          "window": {
+            "start": 86,
+            "end": 258,
+            "original_chars": 656,
+            "omitted_chars": 484
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ea0c80839d6678387cf07ddf39608cb6",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-004\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "04-dispatch-observation.txt",
+          "document_title": "04-dispatch-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 234
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-004\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "762ca6b15ef297b353074adc28b86ed4061e91cf1d601c9eb421e3fe137780d9",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 234,
+            "original_chars": 597,
+            "omitted_chars": 451
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ee14d8aa4d9742fae682e6b2e26e20c4",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "fb078b3d07ec5dfa3cb19755d53880ec",
+      "sort_key": "2034-04-18",
+      "date_label": "2034-04-18",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-32\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "32-screen-reply.eml",
+          "document_title": "32-screen-reply.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 376,
+            "character_end": 547
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-32\nRecord date: 2034-04-18\nPerson: Ilex Rovanni\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "bee501e8db2807df1e7b8a7a86b59c80b9f645452f463ed2d0b4bae4056f258b",
+          "support_token": "",
+          "window": {
+            "start": 376,
+            "end": 547,
+            "original_chars": 812,
+            "omitted_chars": 641
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "89c8f9c27b2dc41eeca10150dba6e4f7",
+      "sort_key": "2034-04-18T09:10",
+      "date_label": "09:10",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "18-rehearsal-schedule.txt",
+          "document_title": "18-rehearsal-schedule.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 211,
+            "character_end": 315
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+          "support_token": "",
+          "window": {
+            "start": 211,
+            "end": 315,
+            "original_chars": 533,
+            "omitted_chars": 429
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "8d8fd33b8b5f935f1343d5723309d165",
+      "sort_key": "2034-04-18T09:14",
+      "date_label": "09:14 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "Nerin Talvex recorded that Vela Quenrix left Brindlequay storehouse at 09:14 carrying a\nteal case with a paper band.",
+      "citations": [
+        {
+          "source_id": "04-dispatch-observation.txt",
+          "document_title": "04-dispatch-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 234,
+            "character_end": 351
+          },
+          "location": "Page 1",
+          "excerpt": "Nerin Talvex recorded that Vela Quenrix left Brindlequay storehouse at 09:14 carrying a\nteal case with a paper band. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "762ca6b15ef297b353074adc28b86ed4061e91cf1d601c9eb421e3fe137780d9",
+          "support_token": "",
+          "window": {
+            "start": 234,
+            "end": 351,
+            "original_chars": 597,
+            "omitted_chars": 480
+          }
+        },
+        {
+          "source_id": "04-dispatch-observation.txt",
+          "document_title": "04-dispatch-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 234
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-004\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "762ca6b15ef297b353074adc28b86ed4061e91cf1d601c9eb421e3fe137780d9",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 234,
+            "original_chars": 597,
+            "omitted_chars": 451
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "8e59b4de9a49294bcbeba538e56e6ceb",
+      "sort_key": "2034-04-18T09:25",
+      "date_label": "09:25 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "18-rehearsal-schedule.txt",
+          "document_title": "18-rehearsal-schedule.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 211,
+            "character_end": 315
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+          "support_token": "",
+          "window": {
+            "start": 211,
+            "end": 315,
+            "original_chars": 533,
+            "omitted_chars": 429
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "0166ad409191704721f7eb431e5a807f",
+      "sort_key": "2034-04-18T09:26",
+      "date_label": "near 09:26 ",
+      "precision": "minute",
+      "uncertainty": "approximate; Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "Sovi Pellune saw Vela Quenrix at Kestrelune arcade near 09:26 with an empty folding\ntrolley.",
+      "citations": [
+        {
+          "source_id": "05-arrival-observation.txt",
+          "document_title": "05-arrival-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 228,
+            "character_end": 321
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune saw Vela Quenrix at Kestrelune arcade near 09:26 with an empty folding\ntrolley. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "47c6f4da0027cd4f09a9378beb6fc23970a67ae75388e1234c8ab6a9593cce57",
+          "support_token": "",
+          "window": {
+            "start": 228,
+            "end": 321,
+            "original_chars": 587,
+            "omitted_chars": 494
+          }
+        },
+        {
+          "source_id": "05-arrival-observation.txt",
+          "document_title": "05-arrival-observation.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 87,
+            "character_end": 228
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-005\nRecord date: 2034-04-18\nPerson: Vela Quenrix\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "47c6f4da0027cd4f09a9378beb6fc23970a67ae75388e1234c8ab6a9593cce57",
+          "support_token": "",
+          "window": {
+            "start": 87,
+            "end": 228,
+            "original_chars": 587,
+            "omitted_chars": 446
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ccf0b671dfcae4a7fb57a1f7c020f6de",
+      "sort_key": "2034-04-18T09:40",
+      "date_label": "09:40\n",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18.",
+      "citations": [
+        {
+          "source_id": "18-rehearsal-schedule.txt",
+          "document_title": "18-rehearsal-schedule.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 211,
+            "character_end": 315
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune drafted three rehearsal bells for Kestrelune arcade: 09:10, 09:25 and 09:40\non 2034-04-18. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+          "support_token": "",
+          "window": {
+            "start": 211,
+            "end": 315,
+            "original_chars": 533,
+            "omitted_chars": 429
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "09a43894fbe4431eff301fa8b469885d",
+      "sort_key": "2034-04-18T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Ilex Rovanni <ilex.rovanni@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Was the west passage open during the transfer\nMessage-ID: <synthetic-harbor-31@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "31-route-sheet-query.eml",
+          "document_title": "31-route-sheet-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 323
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Ilex Rovanni <ilex.rovanni@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Was the west passage open during the transfer\nMessage-ID: <synthetic-harbor-31@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "9de56bd97f6d66c7222807d92830f1b12e213d07aef97f37c8c684a318315472",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 323,
+            "original_chars": 842,
+            "omitted_chars": 519
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "240019b59a4d01a330cdad5083dbf7ff",
+      "sort_key": "2034-04-18T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Screen movement followed the third bell\nMessage-ID: <synthetic-harbor-32@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "32-screen-reply.eml",
+          "document_title": "32-screen-reply.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 317
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Screen movement followed the third bell\nMessage-ID: <synthetic-harbor-32@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "bee501e8db2807df1e7b8a7a86b59c80b9f645452f463ed2d0b4bae4056f258b",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 317,
+            "original_chars": 812,
+            "omitted_chars": 495
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "d0b3a431e00cd0599b2cf8eeb3e8b37a",
+      "sort_key": "2034-04-18T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: The platform case contains paper dividers\nMessage-ID: <synthetic-harbor-30@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "30-empty-case-query.eml",
+          "document_title": "30-empty-case-query.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 319
+          },
+          "location": "Page 1",
+          "excerpt": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: The platform case contains paper dividers\nMessage-ID: <synthetic-harbor-30@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "856febe71609cd543721dfa1e157fad641ab6864c5d88a58e08051045104e221",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 319,
+            "original_chars": 840,
+            "omitted_chars": 521
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ff2a6739069cca6fd82ad2bf5d88f78f",
+      "sort_key": "2034-04-18T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Trolley returned after the transfer\nMessage-ID: <synthetic-harbor-29@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "29-trolley-return.eml",
+          "document_title": "29-trolley-return.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 313
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Tue, 18 Apr 2034 12:00:00 +0000\nSubject: Trolley returned after the transfer\nMessage-ID: <synthetic-harbor-29@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fea21c3027801261f5c01e2b3d53d69e27ddfa0417ac5376b676cb77d804dd2f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 313,
+            "original_chars": 818,
+            "omitted_chars": 505
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "1892cfb9a33c37bc83e06c066018a908",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "1db61afe9f1d2324bb76ca7664418b14",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-008\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "08-follow-up-inventory.txt",
+          "document_title": "08-follow-up-inventory.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 87,
+            "character_end": 280
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-008\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d41b9a4b667a4b6dc3118ee79f12824fc2f4c1cd984fe84ad34cfe55dfac4a0b",
+          "support_token": "",
+          "window": {
+            "start": 87,
+            "end": 280,
+            "original_chars": 684,
+            "omitted_chars": 491
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "1fb2051e753f5e9078145e17461d179d",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-013\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "13-vela-follow-up.txt",
+          "document_title": "13-vela-follow-up.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 95,
+            "character_end": 215
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-013\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d710017d724883ca70c88de31a5a944f7b81c453a9bde681803516232b983962",
+          "support_token": "",
+          "window": {
+            "start": 95,
+            "end": 215,
+            "original_chars": 583,
+            "omitted_chars": 463
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "20a828f0a49206babfda3ed3ed3a34ad",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-007\nRecord date: 2034-04-19\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "07-clock-check.txt",
+          "document_title": "07-clock-check.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 84,
+            "character_end": 230
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-007\nRecord date: 2034-04-19\nPerson: Nerin Talvex\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "8b7d6fd7c02508e063a99a0ee75d0b47cebd824eb0b2a486e064d467df24f99b",
+          "support_token": "",
+          "window": {
+            "start": 84,
+            "end": 230,
+            "original_chars": 609,
+            "omitted_chars": 463
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "2cf60ecb8d0f034b32cf04ff08ec8193",
+      "sort_key": "2034-04-19",
+      "date_label": "19 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Sealed parcel located behind the fabric screen\nMessage-ID: <synthetic-harbor-35@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "35-sealed-parcel-notice.eml",
+          "document_title": "35-sealed-parcel-notice.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 324
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Sealed parcel located behind the fabric screen\nMessage-ID: <synthetic-harbor-35@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fdb1f2ee500e0cf2b920f1f4574c070cd85cf5c2ce140722a054e3fcb800b048",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 324,
+            "original_chars": 842,
+            "omitted_chars": 518
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "545035bf3fd5d90d6d21912158785c44",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-014\nRecord date: 2034-04-19\nPerson: Sovi Pellune\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "14-sovi-follow-up.txt",
+          "document_title": "14-sovi-follow-up.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 95,
+            "character_end": 215
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-014\nRecord date: 2034-04-19\nPerson: Sovi Pellune\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "305ce7275e2bc5f397ea74b0baa90255f0bee03d18cd32decadc0e098bfca4e7",
+          "support_token": "",
+          "window": {
+            "start": 95,
+            "end": 215,
+            "original_chars": 543,
+            "omitted_chars": 423
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "5fb10ae93fba9a16ac1431f919c500e7",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "6fda8a51a30b4bd7a99e82aa52b4f360",
+      "sort_key": "2034-04-19",
+      "date_label": "19 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Arrival estimate came from planned bell times\nMessage-ID: <synthetic-harbor-34@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "34-bell-qualification.eml",
+          "document_title": "34-bell-qualification.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 323
+          },
+          "location": "Page 1",
+          "excerpt": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Arrival estimate came from planned bell times\nMessage-ID: <synthetic-harbor-34@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 323,
+            "original_chars": 815,
+            "omitted_chars": 492
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "775c02ef5923033bc65bef4fd46ecf90",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-024\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "24-parcel-behind-screen.txt",
+          "document_title": "24-parcel-behind-screen.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 88,
+            "character_end": 234
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-024\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "429eb5eabe4e15c838d39b01e06e8f0130fefb858bbfa8bd2009487f78cafaf0",
+          "support_token": "",
+          "window": {
+            "start": 88,
+            "end": 234,
+            "original_chars": 559,
+            "omitted_chars": 413
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "83bf0af34b6b9bcb12184680d5b3ef0b",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-023\nRecord date: 2034-04-19\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse",
+      "citations": [
+        {
+          "source_id": "23-clock-label.txt",
+          "document_title": "23-clock-label.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 84,
+            "character_end": 209
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-023\nRecord date: 2034-04-19\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "cc2106ec3e6439b89f79b4a8cbb6c9f401c7a0a72f381eb92513a4306cbf17ff",
+          "support_token": "",
+          "window": {
+            "start": 84,
+            "end": 209,
+            "original_chars": 488,
+            "omitted_chars": 363
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b278d322610704490556885083a5c2cc",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-34\nRecord date: 2034-04-19\nPerson: Sovi Pellune\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "34-bell-qualification.eml",
+          "document_title": "34-bell-qualification.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 382,
+            "character_end": 553
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-34\nRecord date: 2034-04-19\nPerson: Sovi Pellune\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+          "support_token": "",
+          "window": {
+            "start": 382,
+            "end": 553,
+            "original_chars": 815,
+            "omitted_chars": 644
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b64fedb70e96bf91f4332e02e3d2c341",
+      "sort_key": "2034-04-19",
+      "date_label": "19 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Wall clock compared this morning\nMessage-ID: <synthetic-harbor-33@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "33-clock-comparison.eml",
+          "document_title": "33-clock-comparison.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 310
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Wall clock compared this morning\nMessage-ID: <synthetic-harbor-33@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "6974b6f343faa891ce10a35a4eaab668bbc964dd732930a1b4fe2567f78d94f5",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 310,
+            "original_chars": 819,
+            "omitted_chars": 509
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "cca95091a26b01716682297717d44430",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-33\nRecord date: 2034-04-19\nPerson: Ilex Rovanni\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "33-clock-comparison.eml",
+          "document_title": "33-clock-comparison.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 369,
+            "character_end": 540
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-33\nRecord date: 2034-04-19\nPerson: Ilex Rovanni\nPerson: Nerin Talvex\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "6974b6f343faa891ce10a35a4eaab668bbc964dd732930a1b4fe2567f78d94f5",
+          "support_token": "",
+          "window": {
+            "start": 369,
+            "end": 540,
+            "original_chars": 819,
+            "omitted_chars": 648
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "cdebe2730c978ea791ad6923476bfcc5",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-039\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nBrindlequay storehouse: eleven visible teal cases.",
+      "citations": [
+        {
+          "source_id": "39-follow-up-count-sheet.pdf",
+          "document_title": "39-follow-up-count-sheet.pdf.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 75,
+            "character_end": 318
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-039\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\nBrindlequay storehouse: eleven visible teal cases.\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "26f61e769fb0fb9a1cdfcf6c5f626dbae4ebde1e74ef3c95f618f810398ee748",
+          "support_token": "",
+          "window": {
+            "start": 75,
+            "end": 318,
+            "original_chars": 692,
+            "omitted_chars": 449
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "efd2f1d72f0a24dc9a216f1e53cab011",
+      "sort_key": "2034-04-19",
+      "date_label": "2034-04-19",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-35\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "35-sealed-parcel-notice.eml",
+          "document_title": "35-sealed-parcel-notice.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 383,
+            "character_end": 554
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-35\nRecord date: 2034-04-19\nPerson: Vela Quenrix\nPerson: Sovi Pellune\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fdb1f2ee500e0cf2b920f1f4574c070cd85cf5c2ce140722a054e3fcb800b048",
+          "support_token": "",
+          "window": {
+            "start": 383,
+            "end": 554,
+            "original_chars": 842,
+            "omitted_chars": 671
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "fffbe6e42def1ee8a61f567ab2c5b7f1",
+      "sort_key": "2034-04-19T09:26",
+      "date_label": "09:26 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "The 09:26 estimate should not be\nread as a measured time.",
+      "citations": [
+        {
+          "source_id": "34-bell-qualification.eml",
+          "document_title": "34-bell-qualification.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 694,
+            "character_end": 753
+          },
+          "location": "Page 1",
+          "excerpt": "The 09:26 estimate should not be\nread as a measured time.\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+          "support_token": "",
+          "window": {
+            "start": 694,
+            "end": 753,
+            "original_chars": 815,
+            "omitted_chars": 756
+          }
+        },
+        {
+          "source_id": "34-bell-qualification.eml",
+          "document_title": "34-bell-qualification.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 323
+          },
+          "location": "Page 1",
+          "excerpt": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Arrival estimate came from planned bell times\nMessage-ID: <synthetic-harbor-34@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 323,
+            "original_chars": 815,
+            "omitted_chars": 492
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "a9251222d19885c464ae55c0415c6d89",
+      "sort_key": "2034-04-19T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Wall clock compared this morning\nMessage-ID: <synthetic-harbor-33@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "33-clock-comparison.eml",
+          "document_title": "33-clock-comparison.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 310
+          },
+          "location": "Page 1",
+          "excerpt": "From: Ilex Rovanni <ilex.rovanni@example.test>\nTo: Nerin Talvex <nerin.talvex@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Wall clock compared this morning\nMessage-ID: <synthetic-harbor-33@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "6974b6f343faa891ce10a35a4eaab668bbc964dd732930a1b4fe2567f78d94f5",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 310,
+            "original_chars": 819,
+            "omitted_chars": 509
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b72dc95f61cd682b9afe64f6cf6d4a66",
+      "sort_key": "2034-04-19T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Sealed parcel located behind the fabric screen\nMessage-ID: <synthetic-harbor-35@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "35-sealed-parcel-notice.eml",
+          "document_title": "35-sealed-parcel-notice.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 324
+          },
+          "location": "Page 1",
+          "excerpt": "From: Vela Quenrix <vela.quenrix@example.test>\nTo: Sovi Pellune <sovi.pellune@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Sealed parcel located behind the fabric screen\nMessage-ID: <synthetic-harbor-35@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "fdb1f2ee500e0cf2b920f1f4574c070cd85cf5c2ce140722a054e3fcb800b048",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 324,
+            "original_chars": 842,
+            "omitted_chars": 518
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "c65541149e7bbb9f2b5cca1150540356",
+      "sort_key": "2034-04-19T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Arrival estimate came from planned bell times\nMessage-ID: <synthetic-harbor-34@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "34-bell-qualification.eml",
+          "document_title": "34-bell-qualification.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 323
+          },
+          "location": "Page 1",
+          "excerpt": "From: Sovi Pellune <sovi.pellune@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Wed, 19 Apr 2034 12:00:00 +0000\nSubject: Arrival estimate came from planned bell times\nMessage-ID: <synthetic-harbor-34@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 323,
+            "original_chars": 815,
+            "omitted_chars": 492
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "54eb7dd141cd7827ec3731e9364be239",
+      "sort_key": "2034-04-20",
+      "date_label": "2034-04-20",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-36\nRecord date: 2034-04-20\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "36-record-collection.eml",
+          "document_title": "36-record-collection.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 375,
+            "character_end": 546
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-36\nRecord date: 2034-04-20\nPerson: Nerin Talvex\nPerson: Vela Quenrix\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "1b7bbb60059063f4d6557153def1a36af3e55c0760311dd47da8d20d00b49fa0",
+          "support_token": "",
+          "window": {
+            "start": 375,
+            "end": 546,
+            "original_chars": 893,
+            "omitted_chars": 722
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "82eee1b84572caac6dbf2e8f1d11f59e",
+      "sort_key": "2034-04-20",
+      "date_label": "2034-04-20",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "Matter reference: harbor-street\nID: DEMO-HS-025\nRecord date: 2034-04-20\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade",
+      "citations": [
+        {
+          "source_id": "25-open-questions.txt",
+          "document_title": "25-open-questions.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 104,
+            "character_end": 318
+          },
+          "location": "Page 1",
+          "excerpt": "Matter reference: harbor-street\nID: DEMO-HS-025\nRecord date: 2034-04-20\nPerson: Vela Quenrix\nPerson: Nerin Talvex\nPerson: Sovi Pellune\nPerson: Ilex Rovanni\nObject: Brindlequay Storehouse\nObject: Kestrelune Arcade\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "9e51b19f7784dfec61a8ec8348d01a77a3d6ecbba0ebe023bcaa0a46db7c98ec",
+          "support_token": "",
+          "window": {
+            "start": 104,
+            "end": 318,
+            "original_chars": 767,
+            "omitted_chars": 553
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "ad156946198d4d6578f68f62a19f8b8a",
+      "sort_key": "2034-04-20",
+      "date_label": "20 Apr 2034",
+      "precision": "day",
+      "uncertainty": "",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Thu, 20 Apr 2034 12:00:00 +0000\nSubject: Keep the conflicting accounts together\nMessage-ID: <synthetic-harbor-36@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "36-record-collection.eml",
+          "document_title": "36-record-collection.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 316
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Thu, 20 Apr 2034 12:00:00 +0000\nSubject: Keep the conflicting accounts together\nMessage-ID: <synthetic-harbor-36@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "1b7bbb60059063f4d6557153def1a36af3e55c0760311dd47da8d20d00b49fa0",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 316,
+            "original_chars": 893,
+            "omitted_chars": 577
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "8733fba5522d77ff28d59b45bea04a4e",
+      "sort_key": "2034-04-20T12:00",
+      "date_label": "12:00:00 ",
+      "precision": "minute",
+      "uncertainty": "Resolved against an explicit date in this document; verify the event date and clock basis.",
+      "description": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Thu, 20 Apr 2034 12:00:00 +0000\nSubject: Keep the conflicting accounts together\nMessage-ID: <synthetic-harbor-36@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit",
+      "citations": [
+        {
+          "source_id": "36-record-collection.eml",
+          "document_title": "36-record-collection.eml.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 316
+          },
+          "location": "Page 1",
+          "excerpt": "From: Nerin Talvex <nerin.talvex@example.test>\nTo: Vela Quenrix <vela.quenrix@example.test>\nDate: Thu, 20 Apr 2034 12:00:00 +0000\nSubject: Keep the conflicting accounts together\nMessage-ID: <synthetic-harbor-36@example.test>\nMIME-Version: 1.0\nContent-Type: text/plain; charset=utf-8\nContent-Transfer-Encoding: 8bit\n\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "1b7bbb60059063f4d6557153def1a36af3e55c0760311dd47da8d20d00b49fa0",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 316,
+            "original_chars": 893,
+            "omitted_chars": 577
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    }
+  ],
+  "conflicts": [],
+  "undated": [
+    {
+      "entry_id": "04c4dcef322d5c8cd55cd035a56f013c",
+      "sort_key": "",
+      "date_label": "11:30",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "285caa99042103d82e737f208d0b06d9",
+      "sort_key": "",
+      "date_label": "09:14",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "7ef3aa0bcf0f04228a5c6297212725ab",
+      "sort_key": "",
+      "date_label": "10:00",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "9efd09ae2f903a696c752b3d7fc3a44d",
+      "sort_key": "",
+      "date_label": "09:26 ",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "Sovi Pellune clarified that the earlier 09:26 estimate was reconstructed from the\nrehearsal schedule.",
+      "citations": [
+        {
+          "source_id": "14-sovi-follow-up.txt",
+          "document_title": "14-sovi-follow-up.txt.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 215,
+            "character_end": 317
+          },
+          "location": "Page 1",
+          "excerpt": "Sovi Pellune clarified that the earlier 09:26 estimate was reconstructed from the\nrehearsal schedule. ",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "305ce7275e2bc5f397ea74b0baa90255f0bee03d18cd32decadc0e098bfca4e7",
+          "support_token": "",
+          "window": {
+            "start": 215,
+            "end": 317,
+            "original_chars": 543,
+            "omitted_chars": 441
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "b26e706c43e0d33b8c7da062066b0870",
+      "sort_key": "",
+      "date_label": "09:26",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "d23a6511658dd2cfe04c3aa1af909ea5",
+      "sort_key": "",
+      "date_label": "14:00",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    },
+    {
+      "entry_id": "f7a5cc5a48a0f4ca726b08a99732dc62",
+      "sort_key": "",
+      "date_label": "15:20",
+      "precision": "minute",
+      "uncertainty": "Calendar date unresolved; no century or missing year inferred.",
+      "description": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected",
+      "citations": [
+        {
+          "source_id": "37-transfer-log.csv",
+          "document_title": "37-transfer-log.csv.txt",
+          "locator": {
+            "page": 1,
+            "character_start": 0,
+            "character_end": 1069
+          },
+          "location": "Page 1",
+          "excerpt": "synthetic_record,invented_date,stated_time,person,place,entry,qualification\nDEMO-HS-LOG-A,2034-04-16,14:00,Nerin Talvex,Brindlequay storehouse,twelve teal cases counted,synthetic opening inventory\nDEMO-HS-LOG-B,2034-04-17,15:20,Ilex Rovanni,Brindlequay storehouse,west passage blocked by screen,synthetic route inspection\nDEMO-HS-LOG-C,2034-04-18,09:14,Nerin Talvex,Brindlequay storehouse,teal case observed leaving,wall clock not verified\nDEMO-HS-LOG-D,2034-04-18,09:26,Sovi Pellune,Kestrelune arcade,empty trolley observed,time reconstructed from planned bells\nDEMO-HS-LOG-E,2034-04-18,unknown,Vela Quenrix,Kestrelune arcade,case reportedly left by platform,account without signed receipt\nDEMO-HS-LOG-F,2034-04-18,unknown,Ilex Rovanni,Brindlequay storehouse,screen moved after third bell,bell delay not measured\nDEMO-HS-LOG-G,2034-04-19,10:00,Ilex Rovanni,Brindlequay storehouse,wall clock seven minutes slow,does not establish prior-day offset\nDEMO-HS-LOG-H,2034-04-19,11:30,Vela Quenrix,Brindlequay storehouse,parcel DEMO-HS-271 found,sealed contents not inspected\n",
+          "source_version_id": "synthetic-v1",
+          "excerpt_digest": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+          "support_token": "",
+          "window": {
+            "start": 0,
+            "end": 1069,
+            "original_chars": 1069,
+            "omitted_chars": 0
+          }
+        }
+      ],
+      "conflict_group": null,
+      "end_date": null
+    }
+  ],
+  "notice": "Draft timeline generated from the records for attorney review. Entries are not findings.",
+  "rejected_count": 0,
+  "total_unit_count": 40,
+  "coverage_notice": "Included 40 of 40 passages from ready sources in the date scan.",
+  "coverage_records": []
+}

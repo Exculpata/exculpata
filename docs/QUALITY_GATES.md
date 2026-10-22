@@ -41,8 +41,29 @@ No GPU or model weights are required for the contributor suites.
 The [Quality workflow](../.github/workflows/quality-gates.yml) runs on PRs,
 `main` pushes, merge groups, a daily schedule and manual dispatch. Ordinary
 feature-branch pushes do not duplicate PR runs. Synthetic browser journeys run
-on merge groups, schedules and manual dispatch; a skipped PR browser job is not
-a browser test pass. Fork PRs use the upstream PR run; forks need not enable Actions.
+on merge groups, schedules and manual dispatch, and on PRs changing
+any path under `scripts/` containing `browser`, or any file beneath a `static/`
+or `templates/` directory under `src/`, including nested assets and new names.
+There are no extension or example-file exceptions: even
+`scripts/run-browser-acceptance.py.example` requires browser coverage. The existing
+browser harness dependencies also require coverage: the runner, synthetic
+environment, dependency installer,
+demo and theme-contrast helpers, `config/browser-testing.json`, `pyproject.toml`,
+runner contract tests, scope classifier, and the quality workflow itself. The complete PR diff
+includes added and modified scripts, deletions and both sides of renames;
+unavailable comparisons conservatively require browser coverage. A skipped PR
+browser job is not a browser test pass. Fork PRs use the upstream PR run; forks
+need not enable Actions.
+
+The separate network isolation smoke runs on labeled `network-smoke` PRs,
+merge groups, weekly on Monday at 06:43 UTC, and manual dispatch. It tests
+synthetic OIDC and independent TCP/DNS boundaries, including internal DNS
+controls, six causal container-loopback DNS challenges, a reachable recorder and
+a deliberately forwarding negative control. It builds the production application
+and relay images with production network and routing settings, and tests real
+Authlib redirect/TLS behavior and cleartext/suffix proxy denials. It retains a
+content-free summary. A skipped run is not acceptance; the weekly schedule uses
+the default branch once the workflow is merged.
 
 Plain documentation changes use a bounded fast path. The `application` check runs
 lightweight documentation and scope contracts with pytest. PostgreSQL,
@@ -94,7 +115,12 @@ the job log and exits; the disabled worker restart then fails the run. The limit
 is above the suite's longest in-test subprocess budget and below a merge-queue
 wait, so a silent hang shows its stacks instead of stalling the queue.
 
-CI retains only `application-results.xml` for five days, with the run ID and attempt
-in its artifact name. Hard cancellation can prevent report creation or upload;
+CI retains `application-results.xml` and bounded `application-workers/*.json`
+diagnostics for five days, with the run ID and attempt in the artifact name.
+The JSON records worker exits/signals, current test phases, sampled process
+metrics, runner limits and cgroup-v2 OOM deltas. Missing or partial measurements
+are explicit; SIGKILL alone does not establish OOM. See
+[parallel worker diagnostics](DEVELOPMENT.md#parallel-worker-diagnostics).
+Hard cancellation can prevent report creation or upload;
 use the streamed log for incomplete runs. Missing XML is not evidence of success.
 No workspace, database, media or environment dump is uploaded by this step.

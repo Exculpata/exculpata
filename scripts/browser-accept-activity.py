@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Exercise Activity's real modal lifecycle with delayed synthetic responses."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import asyncio
@@ -68,7 +75,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     report = {'passed': False, 'synthetic_only': True, 'checks': []}
     checks = report['checks']
-    with tempfile.TemporaryDirectory(prefix='recordbench-activity-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-activity-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / 'runtime', auth_mode='test',
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))
@@ -112,7 +119,7 @@ def main():
             wait.until(lambda _: server.started)
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
                 'width': 1024, 'height': 768, 'deviceScaleFactor': 1, 'mobile': False})
-            driver.get(base + f'/matters/{matter.slug}/notebook')
+            navigate_to(driver, base + f'/matters/{matter.slug}/notebook', diagnostics=args.output)
             find = lambda selector: driver.find_element(By.CSS_SELECTOR, selector)
             js = driver.execute_script
             active = lambda: driver.switch_to.active_element
@@ -249,7 +256,7 @@ def main():
             assert active() == find('#main-content')
             checks.append('If the opener disappears, closing returns focus to main content instead of a detached control')
             driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': True})
-            driver.get(base + f'/matters/{matter.slug}/notebook')
+            navigate_to(driver, base + f'/matters/{matter.slug}/notebook', diagnostics=args.output)
             assert not driver.find_elements(By.CSS_SELECTOR, '.matter-section-disclosure')
             ActionChains(driver).send_keys(Keys.TAB).perform()
             assert active() == find('.skip-link')

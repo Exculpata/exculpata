@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import base64
 import hashlib
 import re
@@ -24,7 +28,7 @@ class TicketError(PermissionError):
     pass
 
 
-_TICKET_URI = re.compile(r"^recordbench://ticket/([A-Za-z0-9_-]+)$")
+_TICKET_URI = re.compile(rf"^{LEGACY_STEM}://ticket/([A-Za-z0-9_-]+)$")
 
 
 class TicketStore:
@@ -88,7 +92,7 @@ class TicketStore:
                 self._records.append(record)
                 self._by_digest[digest] = len(self._records) - 1
             return TicketLaunchProjection(
-                uri=f"recordbench://ticket/{token}", expires_at=record.expires_at
+                uri=f"{LEGACY_STEM}://ticket/{token}", expires_at=record.expires_at
             )
 
         return self._registry.perform_active(

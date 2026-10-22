@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from collections import Counter, defaultdict
 
 from case_intelligence.discovery_gold import (
@@ -22,7 +26,7 @@ def test_discovery_gold_is_versioned_unique_and_stable() -> None:
     queries = retrieval_cases()
     classifications = classification_cases()
     criteria = review_criteria()
-    assert GOLD_SUITE_ID == "recordbench-discovery-gold-v1"
+    assert GOLD_SUITE_ID == f"{LEGACY_STEM}-discovery-gold-v1"
     assert GOLD_SCHEMA_VERSION == 1
     assert len(documents) == DEFAULT_DOCUMENT_COUNT == 1_200
     assert len(queries) == 25

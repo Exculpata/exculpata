@@ -10,7 +10,14 @@ Zoom level is log(factor) / log(1.2). Every run proves the preference took effec
 using the unchanged outer window, inverse layout viewport and scaled DPR.
 No viewport, deviceScaleFactor, pinch/page scale or CSS zoom override is used.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import io
@@ -77,7 +84,7 @@ def main():
         'method': 'Native Chrome default zoom in a new temporary profile per factor; fixed 1280x1200 outer window; no emulation or CSS zoom.',
         'unrun_checks': ['OS display scaling', 'Safari/WebKit native zoom', 'physical mobile', 'screen reader']}
     driver = None
-    with tempfile.TemporaryDirectory(prefix='recordbench-zoom-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-zoom-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / 'runtime', auth_mode='test',
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))
@@ -111,7 +118,7 @@ def main():
                 driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
                 wait = WebDriverWait(driver, 20)
                 wait.until(lambda _: server.started)
-                driver.get(base + prefix + '/notebook')
+                navigate_to(driver, base + prefix + '/notebook', diagnostics=args.output)
                 js = driver.execute_script
                 find = lambda selector: driver.find_element(By.CSS_SELECTOR, selector)
                 metrics = js('''return {inner_width:innerWidth,inner_height:innerHeight,
@@ -182,7 +189,7 @@ def main():
                 wait.until(lambda _: support_shown())
                 report['checks'].append(f'{percent}% zoom: Find review suggestions remains reachable, submits, and opens the Suggested place original support')
 
-                driver.get(base + prefix + '/setup?view=list')
+                navigate_to(driver, base + prefix + '/setup?view=list', diagnostics=args.output)
                 no_overflow()
                 # Six destinations appear as direct links when they fit, otherwise
                 # in the section navigator. Both must be keyboard reachable.

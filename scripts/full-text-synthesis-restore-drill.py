@@ -7,7 +7,12 @@ copies every runtime file, then resumes from a clean path with former paths
 unavailable. Rollback uses the matching pre-upgrade backup and baseline reader.
 No installed runtime, model, external service or deployment is used.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -111,7 +116,7 @@ def main():
     spec = importlib.util.spec_from_file_location('full_text_restore_fixture', ROOT / 'scripts/evaluate-full-text-synthesis.py')
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
-    with tempfile.TemporaryDirectory(prefix='recordbench-full-text-restore-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-full-text-restore-") as temporary:
         root = Path(temporary).resolve()
         archive_path = root / 'baseline.tar'
         with archive_path.open('wb') as output:

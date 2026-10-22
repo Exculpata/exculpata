@@ -1,6 +1,6 @@
 # GPU community beta reference journey
 
-Status: candidate instructions; **the community beta has not been released**.
+Status: **v0.1.0-beta.1**, the current community beta prerelease.
 The intended beta promise is a reproducible installation for evaluation and
 contribution: local accounts, document review with cited answers, English and
 Spanish transcription/alignment, and ungated Nemotron diarization. It is not
@@ -13,11 +13,11 @@ host prerequisites, managed service containers and operator-selected models.
 ## Start from the exact reviewed revision
 
 Use a new dedicated Linux x86-64 node, an empty state root, and synthetic data.
-The fresh-node examples use Exculpata names. Existing RecordBench nodes retain
-their original account, root, configuration, images, marker and backup units;
-follow the [naming compatibility guidance](INSTALL.md) rather than moving them
-to the paths below. `--names exculpata` refuses an existing legacy node because
-this release includes no naming migration.
+The fresh-node examples use Exculpata names. Existing nodes keep their original
+account, root, configuration, images, marker and backup units. Follow the
+[naming compatibility guidance](BRANDING.md) rather than moving them to the
+paths below. `--names exculpata` refuses an existing legacy node because this
+release includes no naming migration.
 Start with the account, Docker and storage preparation in
 [the installation playbook](INSTALL.md#cpu-node-quick-start-ubuntu-2404).
 For GPU work, install a suitable NVIDIA driver and the
@@ -26,20 +26,17 @@ on that new node. Toolkit setup can require engine configuration and restart;
 coordinate separately on any shared host. A shell GPU environment variable is
 not a device-isolation boundary.
 
-Initial evaluation target: 16 CPU cores, 64 GiB RAM, at least 300 GiB free SSD,
-and one NVIDIA GPU with 24 GiB VRAM or more. These remain qualification targets,
-not measured minimums. Capacity for images, caches and the storage reserve must
-remain after installation; shared GPUs need a separately bounded plan.
-Record the actual hardware and available capacity with your result.
-
-Before a beta tag exists, the maintainer supplies an exact reviewed commit.
-After release, use its immutable tag. In the public checkout:
+The tested reference is 16 CPU cores, 64 GiB RAM, at least 300 GiB free SSD,
+and one NVIDIA GPU with 24 GiB VRAM. Portable cited answers are admitted from
+16 GiB VRAM. A separate 16 GiB reference run is not recorded. Driver and CUDA
+versions for the 24 GiB run were not recorded. These figures describe the
+machines already exercised, not a guaranteed minimum. Capacity for images,
+caches and the storage reserve must remain after installation; shared GPUs need
+a separately bounded plan. Record the actual hardware with your result.
 
 ```sh
-# Set this to the reviewed full commit or published beta tag, not a moving branch.
-: "${RECORDBENCH_REF:?set the exact reviewed reference}"
-git fetch origin "$RECORDBENCH_REF"
-git switch --detach FETCH_HEAD
+git clone --branch v0.1.0-beta.1 --depth 1 https://github.com/Exculpata/exculpata.git exculpata
+cd exculpata
 git rev-parse HEAD
 python3 scripts/stage-models.py plan --catalog config/models.json \
   --groups review,transcription-asr,transcription-alignment-en,transcription-alignment-es,transcription-diarization \
@@ -68,6 +65,13 @@ COMPOSE_PARALLEL_LIMIT=1 ./install --root /srv/exculpata --models all --auth loc
   --server-name localhost --bind-address 127.0.0.1
 ./install doctor --root /srv/exculpata
 ```
+
+The install console uses `PREPARE RUNTIME`, `CONFIGURE SERVICES`, and
+`START SERVICES`. `NODE ONLINE` prints only after application health and
+sign-in readiness succeed. While those checks are pending, the console
+reports elapsed seconds at most once every 30 seconds. Transient probe
+errors are held for the final timeout diagnostic. The checks and the
+15-minute deadline are unchanged.
 
 Resolve blocking preflight results. Enter the initial administrator password
 at the hidden prompt, and acknowledge the displayed acquisition plan after
@@ -135,7 +139,7 @@ no GPU with a count of 0 and VRAM marked not applicable.
 | Isolated restore and replacement-node boot | Encrypted snapshot/data verification, fresh PostgreSQL import, restored sign-in/access and identical EN/ES exports passed; new-job result belongs to the exact candidate acceptance receipt |
 | Actual image identities/SBOM and advisory dispositions | Initial image set inventoried and audited; available companion-service fixes are being qualified. Remaining native-parser and dependency findings require explicit release disposition |
 | Independent unfamiliar operator and human language-quality review | Not yet available; explicit beta limitation |
-| Tag, checksummed artifacts and release notes | Prepare from accepted commit; explicit maintainer release approval required |
+| Tag `v0.1.0-beta.1` | Published [community beta prerelease](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1). Checksummed source artifacts and recorded image identities are follow-ups |
 
 A completed reference trial plus reviewed final code/CI and release approval
 allows a community beta decision. Broad hardware support, universal model

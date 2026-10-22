@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Synthetic optional orientation: native keyboard edits, conflict and reload."""
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
+
 import argparse
 import json
 from pathlib import Path
@@ -16,7 +18,6 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,7 +84,7 @@ def main():
                 focus(button)
                 button.send_keys(Keys.ENTER)
                 wait.until(lambda _: '/home' in driver.current_url and not driver.find_elements(By.CSS_SELECTOR, '#matter-purpose details[open]'))
-            driver.get(home)
+            navigate_to(driver, home, diagnostics=args.output)
             assert 'Add an objective.' in find('#matter-purpose').text
             driver.save_screenshot(str(args.output / 'purpose-empty-1440.png'))
             print('Empty Home rendered', flush=True)
@@ -98,7 +99,7 @@ def main():
             submit()
             assert bench.workspace.matter_purpose(matter.matter_id, ACTOR)['revision'] == 1
             report['checks'].append('Native keyboard edits both optional fields and saves one revision')
-            driver.refresh()
+            refresh_page(driver, wait)
             assert 'Understand the synthetic arrival timeline.' in find('#matter-purpose').text
             for width in (1440, 390, 320):
                 driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
@@ -108,7 +109,7 @@ def main():
                 focus(find('#matter-objective'))
                 assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
                 driver.save_screenshot(str(args.output / f'purpose-edit-{width}.png'))
-                driver.get(home)
+                navigate_to(driver, home, diagnostics=args.output)
             report['checks'].append('Saved values survive reload; desktop and 390/320 pixel editors have no overflow')
             open_editor()
             find('#matter-objective').clear()
@@ -118,13 +119,13 @@ def main():
             button = find('.matter-purpose-form button')
             focus(button)
             button.send_keys(Keys.ENTER)
-            wait.until(EC.staleness_of(button))
+            wait_for_replacement(driver, wait, button)
             wait.until(lambda _: 'Review your unsaved draft' in find('main').text)
             assert find('#matter-objective').get_attribute('value') == 'Unsaved synthetic draft'
             assert 'Synthetic competing tab edit' in find('main').text
             driver.save_screenshot(str(args.output / 'purpose-conflict-320.png'))
             report['checks'].append('Stale save shows current values and retains unsaved draft without overwrite')
-            driver.get(home)
+            navigate_to(driver, home, diagnostics=args.output)
             open_editor()
             find('#matter-objective').clear()
             find('#matter-background').clear()

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 import hashlib
 import os
 import subprocess
@@ -11,7 +16,7 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import recordbench_backup as backup  # noqa: E402
+import exculpata_backup as backup  # noqa: E402
 
 
 def test_browser_account_profile_is_preserved_and_hashed_in_backup(tmp_path):
@@ -25,7 +30,7 @@ def test_browser_account_profile_is_preserved_and_hashed_in_backup(tmp_path):
     assert f"{hashlib.sha256(account.read_bytes()).hexdigest()}  accounts/local-accounts.json" in (tmp_path / "CONTROL_SHA256SUMS").read_text()
 
 
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_backup_entrypoints_are_executable_and_parse(names) -> None:
     scripts = [
         ROOT / f"scripts/{names}-backup.sh",
@@ -45,7 +50,7 @@ def test_backup_entrypoints_are_executable_and_parse(names) -> None:
 
 
 def test_backup_contract_defers_all_background_work_and_restarts_early() -> None:
-    source = (ROOT / "scripts/recordbench_backup.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts/exculpata_backup.py").read_text(encoding="utf-8")
     for marker in (
         '"ingest_jobs"',
         '"media_jobs"',
@@ -68,7 +73,7 @@ def test_backup_contract_defers_all_background_work_and_restarts_early() -> None
 
 
 def test_restore_is_new_target_only_and_validates_every_store() -> None:
-    source = (ROOT / "scripts/recordbench_backup.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts/exculpata_backup.py").read_text(encoding="utf-8")
     for marker in (
         "target.exists()",
         "CONTROL_SHA256SUMS",
@@ -84,14 +89,14 @@ def test_restore_is_new_target_only_and_validates_every_store() -> None:
 def test_generated_dotenv_parser_handles_quoted_paths_without_shell_evaluation(tmp_path) -> None:
     path = tmp_path / "compose.env"
     path.write_text(
-        '# generated\nRECORDBENCH_STORAGE_ROOT="/srv/Case Files/recordbench"\n'
-        'RECORDBENCH_RELEASE_ID="alpha-1"\n',
+        f'# generated\n{LEGACY_ENV_PREFIX}STORAGE_ROOT="/srv/Case Files/{LEGACY_STEM}"\n'
+        f'{LEGACY_ENV_PREFIX}RELEASE_ID="alpha-1"\n',
         encoding="utf-8",
     )
     path.chmod(0o600)
     assert backup._dotenv(path) == {
-        "RECORDBENCH_STORAGE_ROOT": "/srv/Case Files/recordbench",
-        "RECORDBENCH_RELEASE_ID": "alpha-1",
+        f"{LEGACY_ENV_PREFIX}STORAGE_ROOT": f"/srv/Case Files/{LEGACY_STEM}",
+        f"{LEGACY_ENV_PREFIX}RELEASE_ID": "alpha-1",
     }
 
 
@@ -109,11 +114,11 @@ def test_restore_checksum_rejects_escape_and_accepts_a_control_file(tmp_path) ->
         backup._verify_checksum_line(payload, f"{digest}  ../outside")
 
 
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_quiet_hour_timer_has_retry_and_is_not_host_wide(names) -> None:
     service = (ROOT / f"deploy/systemd/{names}-backup.service.in").read_text()
     timer = (ROOT / f"deploy/systemd/{names}-backup.timer.in").read_text()
-    assert "recordbench_backup.py" not in service
+    assert f"{LEGACY_STEM}_backup.py" not in service
     assert "@TOOL@ backup --node-root @NODE_ROOT@" in service
     assert "UMask=0077" in service
     assert "OnCalendar=*-*-* 03:15:00" in timer

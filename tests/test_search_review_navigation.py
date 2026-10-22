@@ -1,4 +1,8 @@
 """Synthetic search-to-source-to-question navigation with matter-local returns."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import html
 import io
 import re
@@ -131,7 +135,7 @@ def test_search_inspection_and_question_return_is_matter_local(tmp_path, origin)
 
 def test_readonly_administrator_search_hides_source_question(tmp_path):
     from tests.test_matter_management import ADMIN, OWNER, _app, _headers, _principal_id
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         client.get('/auth/login', headers=_headers(OWNER))
         owner = _principal_id(client, OWNER)
         bench = client.app.state.workbench

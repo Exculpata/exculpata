@@ -2,7 +2,7 @@ name: ${EXCULPATA_COMPOSE_PROJECT:-${RECORDBENCH_COMPOSE_PROJECT:-recordbench}}
 
 services:
   postgres:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/postgres:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/postgres:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/postgres
     restart: unless-stopped
@@ -14,6 +14,9 @@ services:
       - postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U recordbench -d recordbench"]
@@ -23,7 +26,7 @@ services:
       start_period: 10s
 
   clamav:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/clamav
     restart: unless-stopped
@@ -55,6 +58,9 @@ services:
       - clamav-signatures:/var/lib/clamav
     depends_on:
       clamav-updater: {condition: service_healthy}
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
@@ -66,7 +72,7 @@ services:
   # Keep the hostile-file parser offline. Only this updater receives egress,
   # and it shares signatures—not uploaded evidence—with the scanner.
   clamav-updater:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/clamav:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/clamav
     restart: unless-stopped
@@ -92,7 +98,7 @@ services:
 
   retrieval:
     profiles: [ai]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/retrieval:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/retrieval:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: retrieval
@@ -105,7 +111,7 @@ services:
     shm_size: 4gb
     gpus: all
     environment:
-      RECORDBENCH_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_ALLOW_CONTAINER_BIND: "1"
       CASE_REVIEW_MODEL_DEVICE: ${EXCULPATA_RETRIEVAL_DEVICE:-${RECORDBENCH_RETRIEVAL_DEVICE:-cpu}}
       CASE_REVIEW_EMBEDDING_MODEL: ${EXCULPATA_EMBEDDING_MODEL:-${RECORDBENCH_EMBEDDING_MODEL:-ibm-granite/granite-embedding-english-r2}}
       CASE_REVIEW_EMBEDDING_REVISION: ${EXCULPATA_EMBEDDING_REVISION:-${RECORDBENCH_EMBEDDING_REVISION:-47ea694b257b703fee9253d75c2b1f2985180498}}
@@ -125,7 +131,10 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/retrieval-native:rw,exec,nosuid,nodev,size=512m
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=32m
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
 
   generator:
@@ -150,6 +159,9 @@ services:
         read_only: true
     tmpfs:
       - /tmp/vllm-cache:rw,exec,nosuid,nodev,size=8g
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
     command:
       - --model
@@ -157,7 +169,7 @@ services:
       - --revision
       - ${EXCULPATA_GENERATOR_REVISION:-${RECORDBENCH_GENERATOR_REVISION:-851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a}}
       - --served-model-name
-      - ${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-recordbench-qwen35-4b}}
+      - ${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-exculpata-qwen35-4b}}
       - --host
       - 0.0.0.0
       - --port
@@ -178,7 +190,7 @@ services:
       - vllm
       - --no-enable-log-requests
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5)); assert any(x.get('id') == '${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-recordbench-qwen35-4b}}' for x in p.get('data',[]))\""]
+      test: ["CMD-SHELL", "python3 -c \"import json,urllib.request; p=json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/models',timeout=5)); assert any(x.get('id') == '${EXCULPATA_GENERATOR_SERVED_NAME:-${RECORDBENCH_GENERATOR_SERVED_NAME:-exculpata-qwen35-4b}}' for x in p.get('data',[]))\""]
       interval: 15s
       timeout: 8s
       retries: 60
@@ -186,7 +198,7 @@ services:
 
   transcription-api:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -221,11 +233,14 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/transcription-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
 
   transcription-worker:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-worker:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-worker:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: worker
@@ -274,7 +289,7 @@ services:
 
   transcription-cleanup:
     profiles: [transcription-tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -298,7 +313,7 @@ services:
 
   transcription-cleanup-daemon:
     profiles: [transcription]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/transcription-api:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: services/transcription
       target: api
@@ -328,7 +343,7 @@ services:
       - while true; do transcription-v2 purge-expired; sleep 300; done
 
   app:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: application
@@ -341,8 +356,9 @@ services:
     env_file:
       - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}
     environment:
-      RECORDBENCH_ALLOW_CONTAINER_BIND: "1"
-      RECORDBENCH_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
+      EXCULPATA_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY: "1"
+      EXCULPATA_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
       CASE_INTELLIGENCE_POSTGRES_DSN_FILE: /run/recordbench-secrets/postgres-dsn
       CASE_INTELLIGENCE_CLAMAV_HOST: clamav
       CASE_INTELLIGENCE_CLAMAV_PORT: "3310"
@@ -354,7 +370,17 @@ services:
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
+      CASE_INTELLIGENCE_OIDC_PROXY: http://egress-proxy:3128
+      HTTPS_PROXY: http://egress-proxy:3128
+      https_proxy: http://egress-proxy:3128
+      HTTP_PROXY: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      ALL_PROXY: http://egress-proxy:3128
+      all_proxy: http://egress-proxy:3128
+      NO_PROXY: ""
+      no_proxy: ""
     depends_on:
+      egress-proxy: {condition: service_healthy}
       postgres: {condition: service_healthy}
       clamav: {condition: service_healthy}
       retrieval: {condition: service_healthy, required: false}
@@ -376,11 +402,34 @@ services:
         read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8g
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=32m
-    networks: [front, services, models]
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
+    networks: [app-egress, services, models]
+
+  egress-proxy:
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/egress-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    build:
+      context: .
+      dockerfile: deploy/egress-proxy/Dockerfile
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 64
+    cpus: "1.0"
+    mem_limit: 128m
+    environment:
+      # The installer derives this one value from the selected app env_file.
+      # Empty configuration keeps local/Kerberos startup healthy and denies all.
+      OIDC_ISSUER: ${OIDC_EGRESS_ISSUER:-}
+      OIDC_ISSUER_PINS: ${OIDC_EGRESS_PINS:-}
+    networks: [app-egress, front]
 
   gateway:
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: ./deploy/gateway
     restart: unless-stopped
@@ -390,9 +439,9 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, NET_BIND_SERVICE, SETGID, SETUID]
     pids_limit: 128
     environment:
-      RECORDBENCH_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-recordbench.example.test}}
-      RECORDBENCH_UPSTREAM: ${EXCULPATA_GATEWAY_UPSTREAM:-${RECORDBENCH_GATEWAY_UPSTREAM:-app:8786}}
-      NGINX_ENVSUBST_FILTER: ^RECORDBENCH_
+      EXCULPATA_SERVER_NAME: ${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-recordbench.example.test}}
+      EXCULPATA_UPSTREAM: ${EXCULPATA_GATEWAY_UPSTREAM:-${RECORDBENCH_GATEWAY_UPSTREAM:-app:8786}}
+      NGINX_ENVSUBST_FILTER: ^EXCULPATA_
     ports:
       - "${EXCULPATA_BIND_ADDRESS:-${RECORDBENCH_BIND_ADDRESS:-127.0.0.1}}:${EXCULPATA_HTTPS_PORT:-${RECORDBENCH_HTTPS_PORT:-8443}}:8443"
     volumes:
@@ -415,7 +464,7 @@ services:
 
   model-stager:
     profiles: [tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/model-stager:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/model-stager:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: deploy/model-stager
     environment:
@@ -440,7 +489,7 @@ services:
     environment:
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
     profiles: [tools]
-    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-recordbench}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/app:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
     build:
       context: .
       target: application
@@ -458,8 +507,8 @@ services:
         target: /var/lib/recordbench/matter-storage
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
-      - /tmp/recordbench-home:rw,noexec,nosuid,nodev,size=16m
-    entrypoint: ["recordbench"]
+      - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=16m
+    entrypoint: ["exculpata"]
 
 volumes:
   postgres-data:
@@ -471,6 +520,8 @@ networks:
   services:
     internal: true
   models:
+    internal: true
+  app-egress:
     internal: true
 
 secrets:

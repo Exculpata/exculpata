@@ -4,7 +4,14 @@
 The deterministic source-echo client exercises workflow plumbing and the real
 grounding verifier. It is not a representative local-model quality evaluation.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 from copy import deepcopy
@@ -78,7 +85,7 @@ def main():
         receipt["checks"].append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-full-text-synthesis-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-full-text-synthesis-browser-") as temporary:
         root = Path(temporary).resolve()
         generator = SourceEcho()
         app = create_workbench_app(root / "runtime", generator=generator, auth_mode="test")
@@ -117,7 +124,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output, readiness_timeout=45)
                 wait.until(lambda _: detached(old))
                 ready()
 

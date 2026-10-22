@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    CURRENT_STEM,
+    LEGACY_ENV_NAME,
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
+import importlib.util
 import json
 import os
 import stat
@@ -12,12 +23,12 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-import recordbench_install as installer  # noqa: E402
+import exculpata_install as installer  # noqa: E402
 
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
-    args = installer._parser().parse_args(["install", "--names", "recordbench", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
+    args = installer._parser().parse_args(["install", "--names", f"{LEGACY_STEM}", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))
     installer._collect_identity_choices(args)
     console = installer.Console(color=False)
     paths = installer._prepare_directories(console, tmp_path / "node", storage_root=None, resume=False, dry_run=False)
@@ -27,14 +38,14 @@ def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
     key.write_text("synthetic private key")
     args.tls_cert, args.tls_key = cert, key
     installer._configure(console, args, root, paths, "synthetic-release", ROOT, ())
-    application = (paths["config"] / "recordbench.env").read_text()
+    application = (paths["config"] / f"{LEGACY_STEM}.env").read_text()
     record = json.loads((root / "installation.json").read_text())
     assert record["local_account_management"] is enabled
     if enabled:
-        assert "/var/lib/recordbench-accounts/local-accounts.json" in application
+        assert f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" in application
         assert "CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT" in application
     else:
-        assert "/run/recordbench-secrets/local-accounts.json" in application
+        assert f"/run/{LEGACY_STEM}-secrets/local-accounts.json" in application
         assert "CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT" not in application
     for release in (None, ROOT):
         command = installer._compose(root, (), release=release)
@@ -48,7 +59,7 @@ def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
 ])
 def test_management_flag_rejects_ambiguous_or_existing_node_before_writes(tmp_path, arguments):
     root = tmp_path / "node"
-    response = subprocess.run([sys.executable, str(ROOT / "scripts/recordbench_install.py"), *arguments,
+    response = subprocess.run([sys.executable, str(ROOT / f"scripts/{LEGACY_STEM}_install.py"), *arguments,
                                "--root", str(root), "--enable-account-management"], capture_output=True, text=True)
     assert response.returncode != 0
     assert not root.exists()
@@ -69,7 +80,8 @@ def test_interrupted_provisioning_resume_retains_canonical_account_profile(tmp_p
     assert calls == [True]
 
 
-def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_host, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("prepare_only", [False, True])
+def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_host, monkeypatch, capsys, prepare_only) -> None:
     node = tmp_path.resolve() / "node"
     monkeypatch.setattr(sys, "argv", [
             str(ROOT / "install"),
@@ -81,10 +93,9 @@ def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_ho
             "--models",
             "none",
             "--non-interactive",
-            "--prepare-only",
             "--dry-run",
             "--no-color",
-        ])
+        ] + (["--prepare-only"] if prepare_only else []))
     assert installer.main() == 0
     output = capsys.readouterr().out
     for marker in (
@@ -92,12 +103,14 @@ def test_installer_dry_run_has_real_phases_and_writes_nothing(tmp_path, ready_ho
         "CLAIM NODE STORAGE",
         "LOAD RELEASE CAPSULE",
         "IDENTITY + FRONT DOOR",
-        "FORGE RUNTIME",
-        "SEAL CONTROL PLANE",
-        "NODE ARMED",
+        "PREPARE RUNTIME",
+        "CONFIGURE SERVICES",
+        "NODE ARMED" if prepare_only else "START SERVICES",
         "PLAN COMPLETE",
     ):
         assert marker in output
+    for retired in ("FORGE RUNTIME", "SEAL CONTROL PLANE", "IGNITE NODE"):
+        assert retired not in output
     assert not node.exists()
     assert "password=" not in output.casefold()
     assert "token=" not in output.casefold()
@@ -194,7 +207,7 @@ def test_gpu_topology_supports_explicit_multi_gpu_overrides() -> None:
         retrieval_device="cuda",
         retrieval_gpu="2",
     )
-    assert plan.environment()["RECORDBENCH_GENERATOR_TENSOR_PARALLEL"] == "4"
+    assert plan.environment()[f"{LEGACY_ENV_PREFIX}GENERATOR_TENSOR_PARALLEL"] == "4"
     assert plan.generator_gpus == ("3", "4", "5", "6")
     assert plan.transcription_gpu == "7"
     assert plan.retrieval_gpu == "2"
@@ -395,9 +408,11 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     release_id, release = installer._stage_release(console, root, dry_run=False)
     manifest = json.loads((release / "RELEASE_MANIFEST.json").read_text())
     assert manifest["release_id"] == release_id
+    assert manifest["network_contract_version"] == 1
     assert len(manifest["source_sha256"]) == 64
     assert (release / "compose.yaml").is_file()
     assert (release / "services/transcription/src").is_dir()
+    assert (release / "CODING_STANDARDS.md").read_bytes() == (ROOT / "CODING_STANDARDS.md").read_bytes()
     for lock in ("requirements/application.lock", "requirements/build.lock",
                  "services/transcription/requirements-api.lock",
                  "deploy/model-stager/requirements.lock"):
@@ -405,6 +420,28 @@ def test_release_capsule_is_content_addressed_and_allowlisted(tmp_path) -> None:
     assert not (release / ".git").exists()
     assert not (release / ".venv").exists()
     assert not (release / "tests").exists()
+
+
+def test_coding_standards_are_staged_and_change_capsule_identity(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    for directory in installer.RELEASE_DIRECTORIES:
+        (source / directory).mkdir()
+    for name in installer.RELEASE_FILES:
+        (source / name).write_text("synthetic release source\n")
+    (source / "AGENTS.md").write_text("Follow [coding standards](CODING_STANDARDS.md).\n")
+    standards = source / "CODING_STANDARDS.md"
+    standards.write_text("Use synthetic examples only.\n")
+    monkeypatch.setattr(installer, "PROJECT", source)
+    console = installer.Console(color=False, quiet=True)
+    root = tmp_path / "node"
+    before_id, before = installer._stage_release(console, root, dry_run=False)
+    assert (before / "CODING_STANDARDS.md").read_bytes() == standards.read_bytes()
+    standards.write_text("Use synthetic examples and preserve review evidence.\n")
+    after_id, after = installer._stage_release(console, root, dry_run=False)
+    assert after_id != before_id
+    assert (after / "CODING_STANDARDS.md").read_bytes() == standards.read_bytes()
+    assert (before / "CODING_STANDARDS.md").read_text() == "Use synthetic examples only.\n"
 
 
 @pytest.mark.parametrize("cache_path", [
@@ -452,13 +489,13 @@ def test_release_identity_still_rejects_included_symlink(tmp_path, monkeypatch):
 
 def test_generated_environment_is_quoted_and_rejects_line_injection() -> None:
     text = installer._env_text(
-        {"RECORDBENCH_PATH": "/srv/Record Bench", "RECORDBENCH_VALUE": 7},
+        {f"{LEGACY_ENV_PREFIX}PATH": "/srv/Record Bench", f"{LEGACY_ENV_PREFIX}VALUE": 7},
         "synthetic",
     )
-    assert 'RECORDBENCH_PATH="/srv/Record Bench"' in text
-    assert 'RECORDBENCH_VALUE="7"' in text
+    assert f'{LEGACY_ENV_PREFIX}PATH="/srv/Record Bench"' in text
+    assert f'{LEGACY_ENV_PREFIX}VALUE="7"' in text
     with pytest.raises(RuntimeError, match="environment value"):
-        installer._env_text({"RECORDBENCH_PATH": "safe\nINJECT=1"}, "synthetic")
+        installer._env_text({f"{LEGACY_ENV_PREFIX}PATH": "safe\nINJECT=1"}, "synthetic")
 
 
 def test_generated_environment_round_trips_through_health_parser(tmp_path) -> None:
@@ -466,18 +503,18 @@ def test_generated_environment_round_trips_through_health_parser(tmp_path) -> No
     path.write_text(
         installer._env_text(
             {
-                "RECORDBENCH_HTTPS_PORT": 18443,
-                "RECORDBENCH_SERVER_NAME": "recordbench.example.test",
-                "RECORDBENCH_PATH": "/srv/Record Bench",
+                f"{LEGACY_ENV_PREFIX}HTTPS_PORT": 18443,
+                f"{LEGACY_ENV_PREFIX}SERVER_NAME": f"{LEGACY_STEM}.example.test",
+                f"{LEGACY_ENV_PREFIX}PATH": "/srv/Record Bench",
             },
             "synthetic",
         ),
         encoding="utf-8",
     )
     values = installer._dotenv(path)
-    assert int(values["RECORDBENCH_HTTPS_PORT"]) == 18443
-    assert values["RECORDBENCH_SERVER_NAME"] == "recordbench.example.test"
-    assert values["RECORDBENCH_PATH"] == "/srv/Record Bench"
+    assert int(values[f"{LEGACY_ENV_PREFIX}HTTPS_PORT"]) == 18443
+    assert values[f"{LEGACY_ENV_PREFIX}SERVER_NAME"] == f"{LEGACY_STEM}.example.test"
+    assert values[f"{LEGACY_ENV_PREFIX}PATH"] == "/srv/Record Bench"
 
 
 def test_existing_secret_must_remain_owner_only(tmp_path) -> None:
@@ -493,7 +530,7 @@ def test_existing_secret_must_remain_owner_only(tmp_path) -> None:
 def test_update_uses_versioned_images_backup_and_rollback_contracts() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
     source = (ROOT / "scripts/exculpata_install.py").read_text(encoding="utf-8")
-    assert "RECORDBENCH_RELEASE_ID" in compose
+    assert f"{LEGACY_ENV_PREFIX}RELEASE_ID" in compose
     assert "SNAPSHOT BEFORE MUTATION" in source
     assert "--no-backup" in source
     assert "Prior release restored and healthy" in source
@@ -629,6 +666,7 @@ def ready_host(monkeypatch, tmp_path):
     monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
     monkeypatch.setattr(installer.os, "geteuid", lambda: 1000)
     monkeypatch.setattr(installer.os, "getegid", lambda: 1000)
+    monkeypatch.setattr(installer, "_docker_engine_meets_floor", lambda: True)
     monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/" + name)
     monkeypatch.setattr(installer.shutil, "disk_usage", lambda path: type("Disk", (), {"free": 400 * 1024**3})())
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0", ""))
@@ -991,7 +1029,7 @@ def test_prepare_protects_all_missing_storage_components_under_any_umask(tmp_pat
             assert stat.S_IMODE(directory.stat().st_mode) == 0o700
 
 
-@pytest.mark.parametrize("name", ["recordbench.example.test", "recordbench-2", "LOCALHOST"])
+@pytest.mark.parametrize("name", [f"{LEGACY_STEM}.example.test", f"{LEGACY_STEM}-2", "LOCALHOST"])
 def test_preflight_accepts_configurable_server_name(tmp_path, ready_host, name):
     result = installer._collect_preflight("none", preflight_args(tmp_path, "--server-name", name))
     assert result.ready
@@ -1119,14 +1157,14 @@ def test_interactive_invalid_hostname_blocks_before_storage_and_release(tmp_path
 
     def ask(prompt, default, *, non_interactive):
         prompts.append(prompt)
-        return "bad_name" if prompt == "RecordBench hostname" else default
+        return "bad_name" if prompt == f"{CURRENT_PRODUCT} hostname" else default
 
     monkeypatch.setattr(installer, "_ask", ask)
     monkeypatch.setattr(installer, "_prepare_directories", lambda *a, **kw: pytest.fail("invalid interactive hostname reached storage creation"))
     monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: pytest.fail("invalid interactive hostname reached release staging"))
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local"])
     assert installer.main() == 1
-    assert prompts.count("RecordBench hostname") == 1
+    assert prompts.count(f"{CURRENT_PRODUCT} hostname") == 1
     assert not node.exists()
 
 
@@ -1171,6 +1209,42 @@ def test_preflight_rejects_execute_only_ancestor_before_preparing_storage(tmp_pa
     assert not selected.exists()
 
 
+def test_fresh_noninteractive_install_defaults_to_current_hostname(tmp_path, ready_host, monkeypatch):
+    node = tmp_path.resolve() / "uncreated node"
+    captured = {}
+
+    def configure(console, args, *positional, **kwargs):
+        captured["server_name"] = args.server_name
+        captured["names"] = args.names
+        return ("local", "none", args.server_name, args.admin_username, args.admin_display_name)
+
+    monkeypatch.setattr(installer, "_configure", configure)
+    monkeypatch.setattr(installer, "_provision", lambda *a, **k: None)
+    monkeypatch.setattr(installer, "_handoff", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local",
+                                      "--non-interactive", "--dry-run"])
+    assert installer.main() == 0
+    assert captured == {"names": "exculpata", "server_name": f"{CURRENT_STEM}.example.test"}
+    assert not node.exists()
+
+
+def test_legacy_interactive_hostname_prompt_keeps_previous_product(tmp_path, ready_host, monkeypatch):
+    node = tmp_path.resolve() / "uncreated node"
+    prompts = []
+
+    def ask(prompt, default, *, non_interactive):
+        prompts.append(prompt)
+        return "bad_name" if prompt == f"{LEGACY_PRODUCT} hostname" else default
+
+    monkeypatch.setattr(installer, "_ask", ask)
+    monkeypatch.setattr(installer, "_prepare_directories", lambda *a, **kw: pytest.fail("invalid interactive hostname reached storage creation"))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: pytest.fail("invalid interactive hostname reached release staging"))
+    monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--names", f"{LEGACY_STEM}", "--models", "none", "--auth", "local"])
+    assert installer.main() == 1
+    assert prompts.count(f"{LEGACY_PRODUCT} hostname") == 1
+    assert not node.exists()
+
+
 def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_path, ready_host, monkeypatch):
     node = tmp_path.resolve() / "uncreated node"
     prompts = []
@@ -1178,7 +1252,7 @@ def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_pa
 
     def ask(prompt, default, *, non_interactive):
         prompts.append(prompt)
-        return "synthetic-node.example.test" if prompt == "RecordBench hostname" else default
+        return "synthetic-node.example.test" if prompt == f"{CURRENT_PRODUCT} hostname" else default
 
     def configure(console, args, *positional, **kwargs):
         assert args.server_name == "synthetic-node.example.test"
@@ -1188,7 +1262,7 @@ def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_pa
     monkeypatch.setattr(installer, "_configure", configure)
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local", "--dry-run"])
     assert installer.main() == 0
-    assert prompts.count("RecordBench hostname") == 1
+    assert prompts.count(f"{CURRENT_PRODUCT} hostname") == 1
     assert not node.exists()
 
 
@@ -1323,11 +1397,11 @@ def saved_gpu_node(tmp_path, *, model_profile="quality", models="review"):
     })
     (root / "installation.json").write_text(json.dumps(installation))
     environment = installer._dotenv(root / "compose.env")
-    environment.update({"RECORDBENCH_GENERATOR_GPU": "0", "RECORDBENCH_TRANSCRIPTION_GPU": "0",
-                   "RECORDBENCH_RETRIEVAL_DEVICE": "cpu", "RECORDBENCH_RETRIEVAL_GPU": "0",
-                   "RECORDBENCH_GPU_LAYOUT": "shared", "RECORDBENCH_GENERATOR_GPU_UTILIZATION": "0.72"})
-    environment.update({key.replace("RECORDBENCH_", "EXCULPATA_", 1): value
-                        for key, value in environment.items() if key.startswith("RECORDBENCH_")})
+    environment.update({f"{LEGACY_ENV_PREFIX}GENERATOR_GPU": "0", f"{LEGACY_ENV_PREFIX}TRANSCRIPTION_GPU": "0",
+                   f"{LEGACY_ENV_PREFIX}RETRIEVAL_DEVICE": "cpu", f"{LEGACY_ENV_PREFIX}RETRIEVAL_GPU": "0",
+                   f"{LEGACY_ENV_PREFIX}GPU_LAYOUT": "shared", f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION": "0.72"})
+    environment.update({key.replace(f"{LEGACY_ENV_PREFIX}", "EXCULPATA_", 1): value
+                        for key, value in environment.items() if key.startswith(f"{LEGACY_ENV_PREFIX}")})
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved GPU plan"))
     (root / "config" / "transcription.env").write_text(
         'TRANSCRIPTION_V2_MIN_FREE_VRAM_MB="16000"\n'
@@ -1419,7 +1493,7 @@ def test_local_identity_preflight_accepts_account_admin_normalization(tmp_path, 
 @pytest.mark.parametrize("dtype,compute", [("half", 7.5), ("half", 8.9), ("bfloat16", 8.0)])
 def test_supported_saved_generator_precision_is_preserved(tmp_path, dtype, compute):
     root, installation, environment = saved_gpu_node(tmp_path)
-    environment["EXCULPATA_GENERATOR_DTYPE"] = environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
+    environment["EXCULPATA_GENERATOR_DTYPE"] = environment[f"{LEGACY_ENV_PREFIX}GENERATOR_DTYPE"] = dtype
     args = installer._parser().parse_args(["install", "--root", str(root)])
     installer._restore_model_options(args, installation, environment, {})
     _, plan = installer._resolve_gpu_plans(args, "review", (installer.GpuDevice("0", "Synthetic GPU", 49152, 47000, compute),))
@@ -1461,9 +1535,9 @@ def test_saved_bfloat16_blocks_older_replacement_gpu_before_commands(
     root, installation, environment = saved_gpu_node(tmp_path)
     request.getfixturevalue("ready_host")
     environment.pop("EXCULPATA_GENERATOR_DTYPE", None)
-    environment.pop("RECORDBENCH_GENERATOR_DTYPE", None)
+    environment.pop(f"{LEGACY_ENV_PREFIX}GENERATOR_DTYPE", None)
     if dtype is not None:
-        environment["EXCULPATA_GENERATOR_DTYPE"] = environment["RECORDBENCH_GENERATOR_DTYPE"] = dtype
+        environment["EXCULPATA_GENERATOR_DTYPE"] = environment[f"{LEGACY_ENV_PREFIX}GENERATOR_DTYPE"] = dtype
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved precision"))
     before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
     monkeypatch.setattr(installer, "_probe", lambda cmd: subprocess.CompletedProcess(cmd, 0,
@@ -1497,7 +1571,7 @@ def test_saved_gpu_preflight_blocks_resume_update_before_commands(
         "transcription": "0, Synthetic Transcription, 49152, 44000, 8.9",
     }
     if shortage == "utilization":
-        environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = "0.90"
+        environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment[f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION"] = "0.90"
         (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved reservation"))
     before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
     monkeypatch.setattr(installer, "_probe", lambda cmd: subprocess.CompletedProcess(cmd, 0,
@@ -1521,7 +1595,7 @@ def test_completed_diarization_resume_uses_saved_plan_without_new_token(tmp_path
     root, installation, environment = saved_gpu_node(tmp_path, model_profile="portable", models="transcription")
     installation["transcription_diarization"] = True
     installation["transcription_languages"] = ["en", "es"]
-    environment["EXCULPATA_TRANSCRIPTION_GPU"] = environment["RECORDBENCH_TRANSCRIPTION_GPU"] = "1"
+    environment["EXCULPATA_TRANSCRIPTION_GPU"] = environment[f"{LEGACY_ENV_PREFIX}TRANSCRIPTION_GPU"] = "1"
     (root / "installation.json").write_text(json.dumps(installation))
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic saved transcription"))
     installer._seal_provisioning(root, installation)
@@ -1673,8 +1747,8 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
     storage.mkdir()
     for name in ("matters", ".matter-purging", "ingestion-staging"):
         (storage / name).mkdir()
-    marker = storage / ".recordbench-managed-storage.json"
-    marker.write_text(json.dumps({"format_version": 1, "product": "RecordBench", "storage_id": "recordbench-storage-synthetic"}))
+    marker = storage / f".{LEGACY_STEM}-managed-storage.json"
+    marker.write_text(json.dumps({"format_version": 1, "product": f"{LEGACY_PRODUCT}", "storage_id": f"{LEGACY_STEM}-storage-synthetic"}))
     (storage / "matters" / "synthetic.txt").write_text("synthetic matter fixture")
     args = preflight_args(tmp_path, "--storage-root", str(storage))
     monkeypatch.setattr(Path, "mkdir", lambda *a, **k: pytest.fail("preflight wrote storage"))
@@ -1686,6 +1760,36 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
 @pytest.mark.parametrize("auth,options,expected", [
     ("oidc", [], True),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/realm/"], True),
+    ("oidc", ["--oidc-issuer", " https://identity.example.test/realm/ "], True),
+    ("oidc", ["--oidc-issuer", "\thttps://identity.example.test/realm/\t"], True),
+    ("oidc", ["--oidc-issuer", "https://127.1"], False),
+    ("oidc", ["--oidc-issuer", "https://010.0.0.1"], False),
+    ("oidc", ["--oidc-issuer", "https://0x8.8.8.8"], False),
+    ("oidc", ["--oidc-issuer", "https://2130706433"], False),
+    ("oidc", ["--oidc-issuer", "https://0177.0.0.1"], False),
+    ("oidc", ["--oidc-issuer", "https://0x7f000001"], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test./realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\\m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity..example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real m'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\tm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real\x7fm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity%2eexample.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity+name.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:0/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:65536/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:invalid/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/realm\n'], False),
+    ("oidc", ["--oidc-issuer", 'https://login_eu.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://faß.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://xn--fa-hia.example.test/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test:000443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://[2606:4700:4700::1111]:8443/realm'], True),
+    ("oidc", ["--oidc-issuer", 'https://identity.example.test/real%20m'], True),
+    ("oidc", ["--oidc-issuer", 'https://☃.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://iss\u200buer.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://issuer\u202e.example.test/realm'], False),
+    ("oidc", ["--oidc-issuer", 'https://ｅｘａｍｐｌｅ.test/realm'], False),
     ("oidc", ["--oidc-issuer", "http://identity.example.test"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test?query=yes"], False),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/#fragment"], False),
@@ -1694,7 +1798,7 @@ def test_preflight_preserves_initialized_storage_without_writes(tmp_path, ready_
     ("oidc", ["--oidc-issuer", "https://127.0.0.1"], False),
     ("oidc", ["--server-name", "localhost"], False),
     ("oidc", ["--server-name", "127.0.0.1"], False),
-    ("oidc", ["--server-name", " RecordBench.Example.Test "], True),
+    ("oidc", ["--server-name", f" {LEGACY_PRODUCT}.Example.Test "], True),
     ("oidc", ["--oidc-issuer", "https://identity.example.test/" + "a" * 1024], False),
     ("oidc", ["--oidc-client-id", ""], False),
     ("oidc", ["--oidc-client-id", "a\tb"], False),
@@ -1727,7 +1831,7 @@ def test_preflight_nonsecret_settings_match_identity_runtime(tmp_path, ready_hos
     try:
         if auth == "oidc":
             OidcSettings(issuer=values["oidc_issuer"],
-                         external_origin=f"https://{installer._valid_host(args.server_name or 'recordbench.example.test')}:{args.https_port}",
+                         external_origin=f"https://{installer._valid_host(args.server_name or installer._default_server_name(args.names))}:{args.https_port}",
                          client_id=values["oidc_client_id"], client_secret="synthetic-secret-value",
                          allowed_groups=groups["allowed_groups"], administrator_groups=groups["admin_groups"])
         else:
@@ -1737,11 +1841,16 @@ def test_preflight_nonsecret_settings_match_identity_runtime(tmp_path, ready_hos
     except (RuntimeError, ValueError):
         runtime_valid = False
     assert runtime_valid is expected
+    if auth == "oidc" and runtime_valid:
+        spec = importlib.util.spec_from_file_location("agreement_relay", installer.PROJECT / "deploy/egress-proxy/proxy.py")
+        relay = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(relay)
+        assert relay.issuer_authority(values["oidc_issuer"]) is not None
     result = installer._collect_preflight("none", args)
     assert (checks_by_name(result)["identity-options"].state == "pass") is runtime_valid
     assert not args.root.exists()
 
-@pytest.mark.parametrize("relative", ["compose.env", "installation.json", "config/recordbench.env", "releases/capsule", "state"])
+@pytest.mark.parametrize("relative", ["compose.env", "installation.json", f"config/{LEGACY_STEM}.env", "releases/capsule", "state"])
 def test_matter_storage_control_path_overlap_stops_before_writes(tmp_path, ready_host, monkeypatch, relative):
     node = tmp_path.resolve() / "new-node"
     flags = ["--root", str(node), "--storage-root", str(node / relative), "--models", "none", "--non-interactive", "--password-stdin"]
@@ -1778,13 +1887,16 @@ def test_oversized_oidc_secret_stops_before_writes(tmp_path, ready_host, monkeyp
     assert not args.root.exists()
 
 
-def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72"):
+def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, fail_command=None, dry_run=False, utilization="0.72", old_release_path=None):
     root, installation, environment = saved_gpu_node(tmp_path)
+    if old_release_path is not None:
+        installation["release_path"] = str(old_release_path)
+        (root / "installation.json").write_text(json.dumps(installation))
     # Build the saved node using the real owner, then emulate the target Linux
     # host for read-only prerequisites and the mocked update lifecycle.
     request.getfixturevalue("ready_host")
-    environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment["RECORDBENCH_GENERATOR_GPU_UTILIZATION"] = utilization
-    environment["EXCULPATA_COMPOSE_PROJECT"] = environment["RECORDBENCH_COMPOSE_PROJECT"] = "recordbench-synthetic-upgrade"
+    environment["EXCULPATA_GENERATOR_GPU_UTILIZATION"] = environment[f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION"] = utilization
+    environment["EXCULPATA_COMPOSE_PROJECT"] = environment[f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT"] = f"{LEGACY_STEM}-synthetic-upgrade"
     (root / "compose.env").write_text(installer._env_text(environment, "synthetic current runtime"))
     old_release = Path(installation["release_path"])
     new_release = tmp_path.resolve() / "new-release"
@@ -1808,7 +1920,7 @@ def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, f
         assert "down" not in command and "--volumes" not in command
         if verb == "stop":
             assert command[command.index("--env-file") + 1] == str(root / "compose.env")
-            assert installer._dotenv(root / "compose.env")["RECORDBENCH_COMPOSE_PROJECT"] == "recordbench-synthetic-upgrade"
+            assert installer._dotenv(root / "compose.env")[f"{LEGACY_ENV_PREFIX}COMPOSE_PROJECT"] == f"{LEGACY_STEM}-synthetic-upgrade"
             assert release == old_release
             if not kwargs.get("dry_run"):
                 state["stopped"] = True
@@ -1821,6 +1933,7 @@ def synthetic_live_update(tmp_path, monkeypatch, request, *, after_free=47000, f
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
     monkeypatch.setattr(installer, "_stage_release", stage)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", lambda *a, **k: events.append("health"))
     monkeypatch.setattr(installer, "_seal_provisioning", lambda *a, **k: events.append("seal"))
     args = installer._parser().parse_args(["update", "--root", str(root), "--non-interactive", "--no-backup", *(["--dry-run"] if dry_run else [])])
@@ -2000,7 +2113,7 @@ def test_cli_preflight_resume_uses_canonical_managed_account_storage(tmp_path, r
     root, _, paths = configured_node(tmp_path.resolve())
     accounts = tmp_path.resolve() / "relocated-accounts"
     paths["accounts"].rename(accounts)
-    installer._replace_env(root / "compose.env", "RECORDBENCH_LOCAL_ACCOUNT_ROOT", str(accounts))
+    installer._replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT", str(accounts))
     # An obsolete legacy copy cannot stand in for the canonical managed mount.
     selected = accounts if account_present else paths["secrets"]
     LocalAccountRepository(selected / "local-accounts.json").initialize(
@@ -2117,6 +2230,7 @@ def synthetic_late_gpu_resume(tmp_path, monkeypatch, request, *, after_free=4700
             raise RuntimeError("synthetic health timeout after model startup")
     monkeypatch.setattr(installer, "_probe", probe)
     monkeypatch.setattr(installer, "_run", run)
+    monkeypatch.setattr(installer, "_verify_installed_package", lambda *a: None)
     monkeypatch.setattr(installer, "_wait_health", health)
     monkeypatch.setattr(installer, "_saved_models_verified", lambda *a, **k: True)
     # Reproduce an actual interruption boundary: provisioning seals its receipt,
@@ -2238,7 +2352,7 @@ def test_oidc_preflight_matches_runtime_decoded_stripped_secret_semantics(tmp_pa
     source.chmod(0o600)
     monkeypatch.setenv("CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE", str(source))
     monkeypatch.setenv("CASE_INTELLIGENCE_OIDC_ISSUER", "https://identity.example.test")
-    monkeypatch.setenv("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", "https://recordbench.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", f"https://{LEGACY_STEM}.example.test")
     monkeypatch.setenv("CASE_INTELLIGENCE_OIDC_CLIENT_ID", "synthetic-client")
     try:
         OidcSettings.from_env()
@@ -2268,8 +2382,8 @@ def synthetic_saved_account_preflight(tmp_path, request, monkeypatch, *, managed
         installation = json.loads((root / "installation.json").read_text())
         installation["local_account_management"] = False
         (root / "installation.json").write_text(json.dumps(installation))
-        installer._replace_env(root / "config/recordbench.env", "CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE", "/run/recordbench-secrets/local-accounts.json")
-        installer._replace_env(root / "config/recordbench.env", "CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT", "")
+        installer._replace_env(root / f"config/{LEGACY_STEM}.env", "CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE", f"/run/{LEGACY_STEM}-secrets/local-accounts.json")
+        installer._replace_env(root / f"config/{LEGACY_STEM}.env", "CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT", "")
     account_file = paths["accounts" if managed else "secrets"] / "local-accounts.json"
     LocalAccountRepository(account_file).initialize("alice.admin", "Alice Administrator", "synthetic-preflight-password", actor="synthetic-operator")
     if mutation == "symlink":
@@ -2413,17 +2527,18 @@ def test_saved_account_preflight_allows_missing_leaf_with_initial_password_input
     ("192.0.2.44", "192.0.2.44"), ("2001:db8::44", "2001:db8::44"),
     ("0.0.0.0", "127.0.0.1"), ("::", "::1")])
 @pytest.mark.parametrize("auth", ["local", "oidc", "kerberos"])
-@pytest.mark.parametrize("product_name", ["Exculpata", "RecordBench"])
+@pytest.mark.parametrize("product_name", ["Exculpata", f"{LEGACY_PRODUCT}"])
 def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, monkeypatch, bind, target, auth, product_name):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
     installation = json.loads((root / "installation.json").read_text())
     installation["auth"] = auth
     (root / "installation.json").write_text(json.dumps(installation))
-    installer._replace_env(root / "config/recordbench.env", "CASE_INTELLIGENCE_AUTH_MODE", auth)
-    installer._replace_env(root / "compose.env", "RECORDBENCH_BIND_ADDRESS", bind)
-    payload = {"product": "RecordBench", "status": "ok", "storage": {"status": "ready"},
+    installer._replace_env(root / f"config/{LEGACY_STEM}.env", "CASE_INTELLIGENCE_AUTH_MODE", auth)
+    installer._replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}BIND_ADDRESS", bind)
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "ok", "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready"}}
     requests = []
     class Connection:
@@ -2431,7 +2546,7 @@ def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, 
             assert address == target and port == 8443
             assert kwargs["timeout"] == 5
         def request(self, method, route, *, headers):
-            assert method == "GET" and headers == {"Host": "recordbench.example.test"}
+            assert method == "GET" and headers == {"Host": f"{LEGACY_STEM}.example.test"}
             requests.append(route)
         def getresponse(self):
             return self
@@ -2448,7 +2563,7 @@ def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, 
     def health_request(request, **kwargs):
         address = f"[{target}]" if ":" in target else target
         assert request.full_url == f"https://{address}:8443/health"
-        assert request.get_header("Host") == "recordbench.example.test"
+        assert request.get_header("Host") == f"{LEGACY_STEM}.example.test"
         requests.append("health-transport")
         return io.BytesIO(json.dumps(payload).encode())
     def internal_probe(console, command, **kwargs):
@@ -2472,7 +2587,7 @@ def test_gateway_acceptance_uses_configured_bind_for_health_and_login(tmp_path, 
 def test_installed_auth_drift_is_rejected_before_runtime_probe(tmp_path, monkeypatch, capsys, saved, operation):
     from tests.test_first_run_handoff import configured_node
     root, args, _ = configured_node(tmp_path.resolve())
-    env_path = root / "config/recordbench.env"
+    env_path = root / f"config/{LEGACY_STEM}.env"
     values = installer._dotenv(env_path)
     if saved is None:
         values.pop("CASE_INTELLIGENCE_AUTH_MODE")
@@ -2493,14 +2608,15 @@ def test_installed_auth_drift_is_rejected_before_runtime_probe(tmp_path, monkeyp
 @pytest.mark.parametrize("expected", ["local", "oidc", "kerberos"])
 @pytest.mark.parametrize("effective", ["preview", "test", "local", "oidc", "kerberos"])
 def test_health_checks_running_auth_mode_before_accepting_healthy_node(tmp_path, monkeypatch, expected, effective):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
     installation = json.loads((root / "installation.json").read_text())
     installation["auth"] = expected
     (root / "installation.json").write_text(json.dumps(installation))
-    installer._replace_env(root / "config/recordbench.env", "CASE_INTELLIGENCE_AUTH_MODE", expected)
-    payload = {"product": "RecordBench", "status": "ok", "storage": {"status": "ready"},
+    installer._replace_env(root / f"config/{LEGACY_STEM}.env", "CASE_INTELLIGENCE_AUTH_MODE", expected)
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "ok", "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready"}}
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
     monkeypatch.setattr(installer, "_run", lambda command, *a, **k: subprocess.CompletedProcess(command, 0, json.dumps(payload), ""))
@@ -2533,7 +2649,7 @@ def test_health_never_accepts_unavailable_live_auth_or_reports_probe_output(tmp_
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
-    payload = {"product": "RecordBench", "status": "ok", "storage": {"status": "ready"},
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "ok", "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready"}}
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
     def diagnostic(command):
@@ -2571,9 +2687,9 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
     import hmac
     import io
     key = b"s" * key_length
-    proof = hmac.new(key, b"recordbench/auth-mode-diagnostic/v1", hashlib.sha256).hexdigest()
+    proof = hmac.new(key, (f"{LEGACY_STEM}/auth-mode-diagnostic/v1").encode(), hashlib.sha256).hexdigest()
     def key_file(path, mode):
-        assert path == "/var/lib/recordbench/runtime/identity-session.key" and mode == "rb"
+        assert path == f"/var/lib/{LEGACY_STEM}/runtime/identity-session.key" and mode == "rb"
         return io.BytesIO(key)
     calls = []
     class Connection:
@@ -2582,7 +2698,7 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
             self.status = status
         def request(self, method, path, headers):
             assert method == "GET" and path == "/internal/auth-mode"
-            assert headers == {"X-RecordBench-Auth-Diagnostic": proof}
+            assert headers == {f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic": proof}
             calls.append("request")
         def getresponse(self):
             return self
@@ -2608,12 +2724,13 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
 
 @pytest.mark.parametrize("rollback_auth", ["local", "preview", None])
 def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, request, monkeypatch, capsys, rollback_auth):
+    monkeypatch.setattr(installer, "_verify_installed_dns", lambda root: None)  # Separate DNS tests exercise this gate.
     import io
     wait_health = installer._wait_health
     root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request)
     monkeypatch.setattr(installer, "_wait_health", wait_health)
     monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
-    payload = {"product": "RecordBench", "status": "ok", "storage": {"status": "ready"},
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "ok", "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready",
                          "answering": "ready", "search": "word + meaning"}}
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
@@ -2639,19 +2756,60 @@ def test_update_auth_drift_rolls_back_and_rechecks_previous_live_mode(tmp_path, 
     assert ("Prior release restored and healthy" in output) is (rollback_auth == "local")
 
 
+@pytest.mark.parametrize("old_contract", ["legacy", "marked", "unmarked-egress"])
+def test_failed_egress_update_rechecks_restored_release_contract(tmp_path, request, monkeypatch, capsys, old_contract):
+    import io
+    wait_health = installer._wait_health
+    old = tmp_path.resolve() / "old-release"
+    old.mkdir()
+    (old / "compose.yaml").write_text("services: {}\n")
+    if old_contract == "marked":
+        (old / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    elif old_contract == "unmarked-egress":
+        (old / "compose.yaml").write_text("services:\n  egress-proxy: {}\n")
+    root, args, events, before = synthetic_live_update(tmp_path, monkeypatch, request, old_release_path=old)
+    new = tmp_path.resolve() / "new-release"
+    (new / "RELEASE_MANIFEST.json").write_text(json.dumps({"network_contract_version": 1}))
+    monkeypatch.setattr(installer, "_wait_health", wait_health)
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **k: ())
+    monkeypatch.setattr(installer, "_running_auth_mode", lambda *a: "local")
+    monkeypatch.setattr(installer, "_login_reachable", lambda *a: True)
+    payload = {"product": LEGACY_PRODUCT, "status": "ok", "storage": {"status": "ready"},
+               "capabilities": {"source_review": "ready", "malware_scan": "ready",
+                                "answering": "ready", "search": "word + meaning"}}
+    monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    dns_releases = []
+    def reject_dns(root):
+        _settings, release = installer._installed_release(root)
+        dns_releases.append(release)
+        raise RuntimeError("synthetic DNS acceptance failure")
+    monkeypatch.setattr(installer, "_verify_installed_dns", reject_dns)
+    message = "update failed and rollback was attempted" if old_contract == "legacy" else "rollback also failed"
+    with pytest.raises(RuntimeError, match=message):
+        installer._update(installer.Console(color=False), args, root)
+    assert dns_releases == ([new] if old_contract == "legacy" else [new, old])
+    assert "up-new" in events and "up-old" in events and "seal" not in events
+    assert (root / "installation.json").read_bytes() == before[Path("installation.json")]
+    assert (root / "compose.env").read_bytes() == before[Path("compose.env")]
+    output = capsys.readouterr().out
+    assert ("Prior release restored and healthy" in output) is (old_contract == "legacy")
+    assert ("DNS egress isolation is not verified" in output) is (old_contract == "legacy")
+    assert "DNS boundary ::" not in output
+
+
 def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None):
     from tests.test_first_run_handoff import configured_node
     root, _, paths = configured_node(tmp_path.resolve())
     installation = json.loads((root / "installation.json").read_text())
     installation.update(auth=auth, local_account_management=False)
     (root / "installation.json").write_text(json.dumps(installation))
-    environment = installer._dotenv(root / "config/recordbench.env")
+    environment = installer._dotenv(root / f"config/{LEGACY_STEM}.env")
     environment["CASE_INTELLIGENCE_AUTH_MODE"] = auth
     if auth == "oidc":
-        environment.update({"CASE_INTELLIGENCE_EXTERNAL_ORIGIN": "https://recordbench.example.test:8443",
+        environment.update({"CASE_INTELLIGENCE_EXTERNAL_ORIGIN": f"https://{LEGACY_STEM}.example.test:8443",
             "CASE_INTELLIGENCE_OIDC_ISSUER": "https://identity.example.test/realm",
             "CASE_INTELLIGENCE_OIDC_CLIENT_ID": "synthetic-client",
-            "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": "/run/recordbench-secrets/oidc-client-secret",
+            "CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/oidc-client-secret",
             "CASE_INTELLIGENCE_OIDC_ALLOWED_GROUPS": "synthetic-reviewers",
             "CASE_INTELLIGENCE_OIDC_ADMIN_GROUPS": "synthetic-administrators",
             "CASE_INTELLIGENCE_OIDC_SCOPES": "openid profile email"})
@@ -2661,13 +2819,13 @@ def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None
         environment.update({"CASE_INTELLIGENCE_KERBEROS_REALM": "EXAMPLE.TEST",
             "CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS": "synthetic-users@example.test",
             "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS": "synthetic-admins@example.test",
-            "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": "/run/recordbench-secrets/kerberos-proxy-secret"})
+            "CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE": f"/run/{LEGACY_STEM}-secrets/kerberos-proxy-secret"})
         compose = installer._dotenv(root / "compose.env")
-        compose["EXCULPATA_KERBEROS_PRINCIPAL"] = "HTTP/recordbench.example.test@EXAMPLE.TEST"
+        compose["EXCULPATA_KERBEROS_PRINCIPAL"] = f"HTTP/{LEGACY_STEM}.example.test@EXAMPLE.TEST"
         (root / "compose.env").write_text(installer._env_text(compose, "Synthetic Kerberos node"))
         credential = paths["secrets"] / "kerberos-proxy-secret"
         installer._private_write(credential, "synthetic_proxy_secret_" + "x" * 32 + "\r\n")
-        installer._private_write(paths["secrets"] / "recordbench.keytab", "synthetic opaque keytab bytes")
+        installer._private_write(paths["secrets"] / f"{LEGACY_STEM}.keytab", "synthetic opaque keytab bytes")
     invalid_options = {
         "issuer": ("CASE_INTELLIGENCE_OIDC_ISSUER", "http://identity.example.test"),
         "client": ("CASE_INTELLIGENCE_OIDC_CLIENT_ID", ""),
@@ -2676,10 +2834,10 @@ def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None
         "claim": ("CASE_INTELLIGENCE_OIDC_GROUPS_CLAIM", "bad claim"),
         "token-auth": ("CASE_INTELLIGENCE_OIDC_TOKEN_AUTH_METHOD", "unsupported"),
         "origin": ("CASE_INTELLIGENCE_EXTERNAL_ORIGIN", "https://wrong.example.test"),
-        "oidc-source": ("CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE", "/run/recordbench-secrets/other-secret"),
+        "oidc-source": ("CASE_INTELLIGENCE_OIDC_CLIENT_SECRET_FILE", f"/run/{LEGACY_STEM}-secrets/other-secret"),
         "realm": ("CASE_INTELLIGENCE_KERBEROS_REALM", "INVALID"),
         "kerberos-groups": ("CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS", "bad/group"),
-        "proxy-source": ("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", "/run/recordbench-secrets/other-secret"),
+        "proxy-source": ("CASE_INTELLIGENCE_KERBEROS_PROXY_SECRET_FILE", f"/run/{LEGACY_STEM}-secrets/other-secret"),
     }
     if mutation in invalid_options:
         key, value = invalid_options[mutation]
@@ -2688,9 +2846,9 @@ def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None
         environment["CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS"] = ""
         environment["CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS"] = ""
     if mutation == "principal":
-        installer._replace_env(root / "compose.env", "RECORDBENCH_KERBEROS_PRINCIPAL", "HTTP/other.example.test@EXAMPLE.TEST")
+        installer._replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}KERBEROS_PRINCIPAL", "HTTP/other.example.test@EXAMPLE.TEST")
     if mutation and mutation.startswith("keytab-"):
-        credential = paths["secrets"] / "recordbench.keytab"
+        credential = paths["secrets"] / f"{LEGACY_STEM}.keytab"
     if mutation and mutation.endswith("-missing") and not mutation.startswith("host-"):
         credential.unlink()
     elif mutation and mutation.endswith("-mode"):
@@ -2705,7 +2863,7 @@ def synthetic_saved_provider(tmp_path, request, monkeypatch, auth, mutation=None
         credential.write_text("synthetic\ninvalid")
     elif mutation == "proxy-invalid":
         credential.write_text("synthetic invalid proxy secret!" * 2)
-    (root / "config/recordbench.env").write_text(installer._env_text(environment, "synthetic retained provider configuration"))
+    (root / f"config/{LEGACY_STEM}.env").write_text(installer._env_text(environment, "synthetic retained provider configuration"))
     request.getfixturevalue("ready_host")
     original_is_dir, original_is_file = Path.is_dir, Path.is_file
     monkeypatch.setattr(Path, "is_dir", lambda path: mutation != "host-sssd-missing" if path == Path("/var/lib/sss/pipes") else original_is_dir(path))
@@ -2760,7 +2918,7 @@ def test_saved_provider_preflight_accepts_explicit_principal_admission(tmp_path,
     root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "kerberos")
     for key, value in {"CASE_INTELLIGENCE_KERBEROS_ALLOWED_GROUPS": "", "CASE_INTELLIGENCE_KERBEROS_ADMIN_GROUPS": "",
         "CASE_INTELLIGENCE_KERBEROS_ALLOWED_PRINCIPALS": "synthetic.user@EXAMPLE.TEST"}.items():
-        installer._replace_env(root / "config/recordbench.env", key, value)
+        installer._replace_env(root / f"config/{LEGACY_STEM}.env", key, value)
     result = installer._collect_preflight("none", args, needs_model_staging=False)
     assert result.ready
     assert checks_by_name(result)["saved-provider-options"].state == "pass"
@@ -2769,7 +2927,7 @@ def test_saved_provider_preflight_accepts_explicit_principal_admission(tmp_path,
 @pytest.mark.parametrize("auth", ["oidc", "kerberos"])
 def test_saved_provider_malformed_environment_is_a_blocking_json_check(tmp_path, request, monkeypatch, capsys, auth):
     root, _args = synthetic_saved_provider(tmp_path, request, monkeypatch, auth)
-    (root / "config/recordbench.env").write_text('INVALID="unterminated\n')
+    (root / f"config/{LEGACY_STEM}.env").write_text('INVALID="unterminated\n')
     capsys.readouterr()
     monkeypatch.setattr(installer, "_run", lambda *a, **k: pytest.fail("malformed saved provider reached a runtime command"))
     monkeypatch.setattr(sys, "argv", ["install", "preflight", "--root", str(root), "--resume", "--non-interactive", "--json"])
@@ -2836,9 +2994,9 @@ def test_retained_oidc_ca_is_required_before_resume(tmp_path, request, monkeypat
     elif mutation == 'invalid':
         ca.write_text('synthetic invalid certificate')
     value = ('/missing/organization-ca.pem' if mutation == 'outside' else
-             '/run/recordbench-secrets/../organization-ca.pem' if mutation == 'traversal' else
-             '/run/recordbench-secrets/organization-ca.pem')
-    installer._replace_env(root / 'config/recordbench.env', 'CASE_INTELLIGENCE_OIDC_CA_FILE', value)
+             f"/run/{LEGACY_STEM}-secrets/../organization-ca.pem" if mutation == 'traversal' else
+             f"/run/{LEGACY_STEM}-secrets/organization-ca.pem")
+    installer._replace_env(root / f"config/{LEGACY_STEM}.env", 'CASE_INTELLIGENCE_OIDC_CA_FILE', value)
     monkeypatch.setattr(installer, '_run', lambda *a, **k: pytest.fail('invalid CA reached provisioning'))
     with pytest.raises(RuntimeError, match='prerequisites'):
         installer._resume_node(installer.Console(color=False, quiet=True), args, root)
@@ -2850,7 +3008,7 @@ def test_retained_oidc_ca_accepts_a_readable_certificate(tmp_path, request, monk
     subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                     '-subj', '/CN=Synthetic CA', '-keyout', str(tmp_path / 'synthetic.key'), '-out', str(ca)],
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    installer._replace_env(root / 'config/recordbench.env', 'CASE_INTELLIGENCE_OIDC_CA_FILE', '/run/recordbench-secrets/organization-ca.pem')
+    installer._replace_env(root / f"config/{LEGACY_STEM}.env", 'CASE_INTELLIGENCE_OIDC_CA_FILE', f"/run/{LEGACY_STEM}-secrets/organization-ca.pem")
     assert installer._collect_preflight('none', args, needs_model_staging=False).ready
 
 
@@ -2863,8 +3021,8 @@ def test_resume_refuses_missing_prepared_account_store_before_password_or_comman
     installation['local_account_management'] = management
     (root / 'installation.json').write_text(json.dumps(installation))
     if not management:
-        installer._replace_env(paths['config'] / 'recordbench.env', 'CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE', '/run/recordbench-secrets/local-accounts.json')
-        installer._replace_env(paths['config'] / 'recordbench.env', 'CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT', '')
+        installer._replace_env(paths['config'] / f"{LEGACY_STEM}.env", 'CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE', f"/run/{LEGACY_STEM}-secrets/local-accounts.json")
+        installer._replace_env(paths['config'] / f"{LEGACY_STEM}.env", 'CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT', '')
     installer._seal_provisioning(root, installation)
     marker = installer._provision_marker(root)
     if seal == 'older-release':
@@ -2890,9 +3048,9 @@ def test_resume_refuses_inconsistent_application_account_paths_before_commands(t
     installation = json.loads((root / 'installation.json').read_text())
     installation['local_account_management'] = management
     (root / 'installation.json').write_text(json.dumps(installation))
-    app = paths['config'] / 'recordbench.env'
-    installer._replace_env(app, 'CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE', '/var/lib/recordbench-accounts/local-accounts.json' if management else '/run/recordbench-secrets/local-accounts.json')
-    installer._replace_env(app, 'CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT', '/var/lib/recordbench-accounts' if management else '')
+    app = paths['config'] / f"{LEGACY_STEM}.env"
+    installer._replace_env(app, 'CASE_INTELLIGENCE_LOCAL_ACCOUNTS_FILE', f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json" if management else f"/run/{LEGACY_STEM}-secrets/local-accounts.json")
+    installer._replace_env(app, 'CASE_INTELLIGENCE_LOCAL_ACCOUNT_MANAGEMENT_ROOT', f"/var/lib/{LEGACY_STEM}-accounts" if management else '')
     account_root = paths['accounts'] if management else paths['secrets']
     LocalAccountRepository(account_root / 'local-accounts.json').initialize('alice.admin', 'Alice Administrator', 'synthetic-retained-password', actor='synthetic-operator')
     installer._replace_env(app, field, '/synthetic-wrong-account-path')
@@ -2929,7 +3087,7 @@ def test_retained_account_auxiliary_metadata_rejected(tmp_path, request, monkeyp
 
 
 @pytest.mark.parametrize("problem", ["missing", "unset", "relative", "file", "symlink", "shared", "foreign", "inaccessible"])
-@pytest.mark.parametrize("names", ["recordbench", "exculpata"])
+@pytest.mark.parametrize("names", [f"{LEGACY_STEM}", "exculpata"])
 def test_preflight_blocks_unusable_compose_home_without_writes(tmp_path, ready_host, monkeypatch, problem, names):
     home = Path(os.environ["HOME"])
     if problem == "missing":
@@ -2988,7 +3146,7 @@ def test_health_timeout_has_actionable_host_remedy(tmp_path, monkeypatch, cause)
     import io
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path.resolve())
-    payload = {"product": "RecordBench", "status": "degraded",
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "degraded",
         "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready"}}
     if cause == "reserve":
@@ -3119,7 +3277,7 @@ def test_update_builds_companion_images_before_node_swap(tmp_path, monkeypatch, 
     assert events.index("build-new") < events.index("stop-old") < events.index("up-new")
 
 
-@pytest.mark.parametrize("prefixes", [("RECORDBENCH",), ("EXCULPATA",), ("RECORDBENCH", "EXCULPATA")])
+@pytest.mark.parametrize("prefixes", [(f"{LEGACY_ENV_NAME}",), ("EXCULPATA",), (f"{LEGACY_ENV_NAME}", "EXCULPATA")])
 @pytest.mark.parametrize("ending", ["\n", "\r\n", ""])
 def test_saved_alias_updates_preserve_keys_and_unchanged_bytes(tmp_path, prefixes, ending):
     path = tmp_path / "compose.env"
@@ -3129,12 +3287,12 @@ def test_saved_alias_updates_preserve_keys_and_unchanged_bytes(tmp_path, prefixe
     # are accepted operator formatting and should survive a no-op update.
     path.write_bytes(original.encode())
     path.chmod(0o600)
-    for name in ("RECORDBENCH_HTTPS_PORT", "EXCULPATA_HTTPS_PORT"):
+    for name in (f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "EXCULPATA_HTTPS_PORT"):
         installer._replace_env(path, name, "8443")
         assert path.read_bytes() == original.encode()
-    installer._replace_env(path, "RECORDBENCH_ABSENT", "synthetic")
+    installer._replace_env(path, f"{LEGACY_ENV_PREFIX}ABSENT", "synthetic")
     assert path.read_bytes() == original.encode()
-    installer._replace_env(path, "RECORDBENCH_HTTPS_PORT", "9443")
+    installer._replace_env(path, f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "9443")
     expected = original
     for prefix in prefixes:
         expected = expected.replace(f"  {prefix}_HTTPS_PORT= 8443  ", f'{prefix}_HTTPS_PORT="9443"')
@@ -3148,8 +3306,8 @@ def test_configuration_writes_new_names_only_and_keeps_existing_old_file_byte_id
     path = root / "compose.env"
     fresh = path.read_bytes()
     assert b"EXCULPATA_" in fresh
-    assert b"RECORDBENCH_" not in fresh
-    old = b"# Synthetic operator note\r\n" + fresh.replace(b"EXCULPATA_", b"RECORDBENCH_").replace(b"\n", b"\r\n")
+    assert (f"{LEGACY_ENV_PREFIX}").encode() not in fresh
+    old = b"# Synthetic operator note\r\n" + fresh.replace(b"EXCULPATA_", (f"{LEGACY_ENV_PREFIX}").encode()).replace(b"\n", b"\r\n")
     path.write_bytes(old)
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
                          "synthetic-release", ROOT, ())
@@ -3161,7 +3319,7 @@ def test_update_preserves_old_only_compose_settings(tmp_path, monkeypatch, reque
     root, args, events, _ = synthetic_live_update(tmp_path, monkeypatch, request)
     path = root / "compose.env"
     settings = installer._dotenv(path)
-    old = {key.replace("EXCULPATA_", "RECORDBENCH_", 1): value
+    old = {key.replace("EXCULPATA_", f"{LEGACY_ENV_PREFIX}", 1): value
            for key, value in settings.items()}
     original = installer._env_text(old, "Synthetic old-only node").encode()
     path.write_bytes(original)
@@ -3178,13 +3336,13 @@ def test_update_preserves_old_only_compose_settings(tmp_path, monkeypatch, reque
         # A new capsule changes the existing release coordinate, never the
         # spelling, order, or value of any other saved setting.
         assert path.read_bytes() == original.replace(
-            b'RECORDBENCH_RELEASE_ID="synthetic-release"',
-            b'RECORDBENCH_RELEASE_ID="synthetic-new"')
+            (f'{LEGACY_ENV_PREFIX}RELEASE_ID="synthetic-release"').encode(),
+            (f'{LEGACY_ENV_PREFIX}RELEASE_ID="synthetic-new"').encode())
         assert "up-new" in events
     assert b"EXCULPATA_" not in path.read_bytes()
 
 
-@pytest.mark.parametrize("prefix", ["RECORDBENCH", "EXCULPATA"])
+@pytest.mark.parametrize("prefix", [f"{LEGACY_ENV_NAME}", "EXCULPATA"])
 @pytest.mark.parametrize("final_newline", [True, False])
 def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, monkeypatch, prefix, final_newline):
     from tests.test_first_run_handoff import configured_node
@@ -3195,12 +3353,14 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
         before = before.removesuffix(b"\n")
     path.write_bytes(before)
     assert b"KERBEROS_PRINCIPAL" not in before
-    assert json.loads((root / "installation.json").read_text())["auth"] == "local"
+    record = json.loads((root / "installation.json").read_text())
+    assert record["auth"] == "local"
+    host = record["server_name"]
     args.auth = "kerberos"
     args.kerberos_realm = "EXAMPLE.TEST"
     args.kerberos_allowed_groups = "synthetic-reviewers@example.test"
     args.kerberos_admin_groups = "synthetic-administrators@example.test"
-    installer._private_write(paths["secrets"] / "recordbench.keytab", "synthetic opaque keytab bytes")
+    installer._private_write(paths["secrets"] / f"{LEGACY_STEM}.keytab", "synthetic opaque keytab bytes")
     original_is_dir, original_is_file = Path.is_dir, Path.is_file
     monkeypatch.setattr(Path, "is_dir", lambda value: True if value == Path("/var/lib/sss/pipes") else original_is_dir(value))
     monkeypatch.setattr(Path, "is_file", lambda value: True if value == Path("/etc/krb5.conf") else original_is_file(value))
@@ -3208,11 +3368,11 @@ def test_reconfigure_adds_kerberos_setting_using_saved_naming_style(tmp_path, mo
     installer._configure(installer.Console(color=False, quiet=True), args, root, paths,
                          "synthetic-release", ROOT, ())
 
-    principal = "HTTP/recordbench.example.test@EXAMPLE.TEST"
+    principal = f"HTTP/{host}@EXAMPLE.TEST"
     added = f"{prefix}_KERBEROS_PRINCIPAL={json.dumps(principal)}\n".encode()
     expected = before + (b"" if final_newline else b"\n") + added
     assert path.read_bytes() == expected
-    other = "EXCULPATA" if prefix == "RECORDBENCH" else "RECORDBENCH"
+    other = "EXCULPATA" if prefix == f"{LEGACY_ENV_NAME}" else f"{LEGACY_ENV_NAME}"
     assert not any(key.startswith(other + "_") for key in installer._dotenv(path))
     assert installer._dotenv(path)[f"{prefix}_KERBEROS_PRINCIPAL"] == principal
     assert json.loads((root / "installation.json").read_text())["auth"] == "kerberos"
@@ -3232,7 +3392,7 @@ def _free_disk(monkeypatch, gib: float) -> None:
 def _control_bytes(root: Path) -> dict[str, bytes]:
     return {
         "installation": (root / "installation.json").read_bytes(),
-        "app": (root / "config" / "recordbench.env").read_bytes(),
+        "app": (root / "config" / f"{LEGACY_STEM}.env").read_bytes(),
         "transcription": (root / "config" / "transcription.env").read_bytes(),
     }
 
@@ -3332,7 +3492,7 @@ def test_evaluation_capacity_target_follows_the_selected_model_footprint():
 def test_production_configuration_omits_evaluation_profile(tmp_path):
     from tests.test_first_run_handoff import configured_node
     root, _, paths = configured_node(tmp_path)
-    application = (paths["config"] / "recordbench.env").read_text()
+    application = (paths["config"] / f"{LEGACY_STEM}.env").read_text()
     transcription = (paths["config"] / "transcription.env").read_text()
     record = json.loads((root / "installation.json").read_text())
     assert 'CASE_INTELLIGENCE_STORAGE_RESERVE_GIB="100"' in application
@@ -3344,7 +3504,7 @@ def test_production_configuration_omits_evaluation_profile(tmp_path):
 def test_evaluation_configuration_persists_profile_reserve_and_transcription_minimum(tmp_path):
     from tests.test_first_run_handoff import configured_node
     root, _, paths = configured_node(tmp_path, storage_profile="evaluation", evaluation_reserve_gib=10)
-    application = installer._dotenv(paths["config"] / "recordbench.env")
+    application = installer._dotenv(paths["config"] / f"{LEGACY_STEM}.env")
     transcription = installer._dotenv(paths["config"] / "transcription.env")
     record = json.loads((root / "installation.json").read_text())
     assert application["CASE_INTELLIGENCE_STORAGE_PROFILE"] == "evaluation"
@@ -3370,7 +3530,7 @@ def test_doctor_reports_storage_profile(tmp_path, capsys):
 def test_doctor_rejects_a_storage_profile_that_disagrees_with_the_application(tmp_path):
     from tests.test_first_run_handoff import configured_node
     root, _, _ = configured_node(tmp_path)
-    installer._replace_env(root / "config" / "recordbench.env", "CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
+    installer._replace_env(root / "config" / f"{LEGACY_STEM}.env", "CASE_INTELLIGENCE_STORAGE_PROFILE", "evaluation")
     args = installer._parser().parse_args(["doctor", "--root", str(root), "--dry-run"])
     with pytest.raises(RuntimeError, match="storage profile disagrees"):
         installer._doctor(installer.Console(color=False, quiet=True), args, root)
@@ -3402,7 +3562,7 @@ def test_production_to_evaluation_downgrade_is_refused_without_the_explicit_flag
     installer._apply_storage_profile(allowed, root, dry_run=False)
     record = json.loads((root / "installation.json").read_text())
     assert record["storage_profile"] == "evaluation" and record["storage_reserve_gib"] == 10
-    assert installer._dotenv(root / "config" / "recordbench.env")["CASE_INTELLIGENCE_STORAGE_PROFILE"] == "evaluation"
+    assert installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")["CASE_INTELLIGENCE_STORAGE_PROFILE"] == "evaluation"
     assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == str(10 * 1024**3)
 
 
@@ -3422,7 +3582,7 @@ def test_evaluation_to_production_rechecks_the_100_gib_reserve(tmp_path, ready_h
     _free_disk(monkeypatch, 101)
     assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
     installer._apply_storage_profile(args, root, dry_run=False)
-    application = installer._dotenv(root / "config" / "recordbench.env")
+    application = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     record = json.loads((root / "installation.json").read_text())
     assert "storage_profile" not in record and "storage_reserve_gib" not in record
     assert "CASE_INTELLIGENCE_STORAGE_PROFILE" not in application
@@ -3473,7 +3633,7 @@ def test_one_off_evaluation_environment_leaves_a_production_node_unchanged_on_re
     )
     installer._update(installer.Console(color=False, quiet=True), upgrade, root)
     assert _control_bytes(root) == before
-    application = installer._dotenv(root / "config" / "recordbench.env")
+    application = installer._dotenv(root / "config" / f"{LEGACY_STEM}.env")
     assert application["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] == "100"
     assert "CASE_INTELLIGENCE_STORAGE_PROFILE" not in application
     assert installer._dotenv(root / "config" / "transcription.env")["TRANSCRIPTION_V2_MIN_FREE_DISK_BYTES"] == "107374182400"
@@ -3494,3 +3654,62 @@ def test_saved_evaluation_reserve_is_not_lowered_by_the_environment(tmp_path, re
     assert checks_by_name(installer._collect_preflight("none", args))["node-storage-reserve"].state == "pass"
     installer._apply_storage_profile(args, root, dry_run=False)
     assert _control_bytes(root) == before
+
+
+def test_preflight_blocks_unknown_dns_engine(tmp_path, ready_host, monkeypatch):
+    monkeypatch.setattr(installer, "_docker_engine_meets_floor", lambda: False)
+    result = installer._collect_preflight("none", preflight_args(tmp_path))
+    check = checks_by_name(result)["docker-dns-version"]
+    assert not result.ready and check.blocking and check.state == "fail"
+    assert "challenge" in check.remedy
+
+
+@pytest.mark.parametrize("mode", ["resume", "update"])
+@pytest.mark.parametrize("pins", [
+    "{bad-json", "null", "[]",
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": []}),
+    json.dumps({"issuer": "https://other.example.test/realm", "addresses": ["8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["127.0.0.1"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "8.8.8.8"]}),
+    json.dumps({"issuer": "https://identity.example.test/realm", "addresses": "8.8.8.8"}),
+])
+def test_retained_oidc_pins_fail_before_resume_or_update_writes(tmp_path, request, monkeypatch, mode, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    args.command = "install" if mode == "resume" else "update"
+    monkeypatch.setattr(installer, "_run", lambda *a, **k: pytest.fail("invalid pins reached an external command"))
+    monkeypatch.setattr(installer, "_stage_release", lambda *a, **k: pytest.fail("invalid pins reached release staging"))
+    monkeypatch.setattr(installer, "_provision", lambda *a, **k: pytest.fail("invalid pins reached provisioning"))
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    operation = installer._resume_node if mode == "resume" else installer._update
+    with pytest.raises(RuntimeError, match="prerequisites"):
+        operation(installer.Console(color=False, quiet=True), args, root)
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+@pytest.mark.parametrize("pins", ["", json.dumps({"issuer": "https://identity.example.test/realm", "addresses": ["8.8.8.8", "1.1.1.1"]})])
+def test_retained_oidc_pins_accept_valid_or_absent_policy_without_writes(tmp_path, request, monkeypatch, pins):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_EGRESS_PINS", pins)
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "pass"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
+def test_fresh_oidc_preflight_rejects_reference_adapter_interpolation_before_writes(tmp_path, ready_host):
+    args = preflight_args(tmp_path, "--auth", "oidc", "--dry-run", "--oidc-issuer", "https://identity.example.test/$realm")
+    result = installer._collect_preflight("none", args)
+    assert checks_by_name(result)["identity-options"].state == "fail"
+    assert not args.root.exists()
+
+
+def test_saved_oidc_preflight_uses_the_reference_adapter_literal_rules(tmp_path, request, monkeypatch):
+    root, args = synthetic_saved_provider(tmp_path, request, monkeypatch, "oidc")
+    installer._replace_env(installer._app_env(root), "CASE_INTELLIGENCE_OIDC_ISSUER", "https://identity.example.test/$realm")
+    before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    result = installer._collect_preflight("none", args, needs_model_staging=False)
+    assert checks_by_name(result)["saved-provider-options"].state == "fail"
+    assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before

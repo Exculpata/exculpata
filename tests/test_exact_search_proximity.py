@@ -1,4 +1,8 @@
 """Synthetic positional meaning, complete enumeration, and plain controls."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import hashlib
 import html
 import json
@@ -82,16 +86,16 @@ def test_boolean_precedence_roundtrip_document_not_and_version_boundary():
     for expression in expressions:
         parsed = parse_query(expression)
         assert parse_query(parsed.normalized).expression == parsed.expression
-        assert parsed.to_dict()["grammar_version"] == "recordbench-exact-v2"
+        assert parsed.to_dict()["grammar_version"] == f"{LEGACY_STEM}-exact-v2"
         for text in documents:
             assert parse_query(parsed.normalized).matches_units([text]) == parsed.matches_units([text])
     assert parse_query("NOT red NEAR/0 bicycle").matches_units(["red", "bicycle"])
     assert not parse_query("red NEAR/0 bicycle NOT depot").matches_units(["red bicycle", "depot"])
-    assert parse_query("red AND bicycle", grammar_version="recordbench-exact-v1").grammar_version == "recordbench-exact-v1"
-    assert parse_query("red BEFORE bicycle", grammar_version="recordbench-exact-v1").matches_units(["red before bicycle"])
-    assert not parse_query("red BEFORE bicycle", grammar_version="recordbench-exact-v1").matches_units(["red bicycle"])
+    assert parse_query("red AND bicycle", grammar_version=f"{LEGACY_STEM}-exact-v1").grammar_version == f"{LEGACY_STEM}-exact-v1"
+    assert parse_query("red BEFORE bicycle", grammar_version=f"{LEGACY_STEM}-exact-v1").matches_units(["red before bicycle"])
+    assert not parse_query("red BEFORE bicycle", grammar_version=f"{LEGACY_STEM}-exact-v1").matches_units(["red bicycle"])
     with pytest.raises(QuerySyntaxError, match="v2"):
-        parse_query("red NEAR/1 bicycle", grammar_version="recordbench-exact-v1")
+        parse_query("red NEAR/1 bicycle", grammar_version=f"{LEGACY_STEM}-exact-v1")
     with pytest.raises(QuerySyntaxError, match="supported"):
         parse_query("red", grammar_version="unknown")
 
@@ -247,7 +251,7 @@ def test_preview_retains_only_explaining_occurrences_for_repeated_matches(monkey
 
 @pytest.mark.parametrize("word", ["W", "PRE", "BEFORE", "w", "pre"])
 def test_v1_preserves_standalone_words_reserved_only_by_v2(word):
-    assert parse_query(word, grammar_version="recordbench-exact-v1").matches_units([word])
+    assert parse_query(word, grammar_version=f"{LEGACY_STEM}-exact-v1").matches_units([word])
 
 
 def test_reverse_order_match_is_found_before_scanning_large_tail():

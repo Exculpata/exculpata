@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import importlib.util
 import io
 import json
@@ -16,7 +22,7 @@ ROOT = Path(__file__).parents[1]
 PASSWORD = "synthetic-handoff-password"
 
 
-def configured_node(tmp_path, *, storage_root=None, names="recordbench", storage_profile=None, evaluation_reserve_gib=None):
+def configured_node(tmp_path, *, storage_root=None, names=f"{LEGACY_STEM}", storage_profile=None, evaluation_reserve_gib=None):
     root = tmp_path / "Synthetic Node"
     console = installer.Console(color=False)
     extra = []
@@ -41,7 +47,7 @@ def test_prepared_handoff_does_not_claim_browser_login_or_running(tmp_path, caps
     installer._install_phase(root, "prepared", "complete")
     installer._handoff(installer.Console(color=False), root)
     output = capsys.readouterr().out
-    assert "https://recordbench.example.test:8443/auth/login" in output
+    assert f"https://{LEGACY_STEM}.example.test:8443/auth/login" in output
     assert "Initial administrator username: alice.admin" in output
     assert "prepared: complete" in output and "running: not verified" in output
     assert "Browser sign-in: not verified" in output and "ACCESS GRANTED" not in output
@@ -76,7 +82,7 @@ def test_resume_keeps_identity_sources_secrets_and_verified_models(tmp_path, mon
             assert repository.read()["alice.admin"].enabled
         elif "storage" in command and "init" in command:
             counts["storage"] += 1
-            (paths["storage"] / ".recordbench-managed-storage.json").write_text("synthetic marker")
+            (paths["storage"] / f".{LEGACY_STEM}-managed-storage.json").write_text("synthetic marker")
             source.write_text("synthetic source remains intact")
         elif "storage" in command and "status" in command:
             assert source.read_text() == "synthetic source remains intact"
@@ -116,14 +122,14 @@ def test_health_records_useful_cpu_capability_without_claiming_failed_model_read
     installation = json.loads((root / "installation.json").read_text())
     installation["models"] = "review"
     (root / "installation.json").write_text(json.dumps(installation))
-    payload = {"product": "RecordBench", "status": "degraded", "storage": {"status": "ready"},
+    payload = {"product": f"{LEGACY_PRODUCT}", "status": "degraded", "storage": {"status": "ready"},
         "capabilities": {"source_review": "ready", "malware_scan": "ready", "answering": "temporarily unavailable", "search": "word search only"}}
     monkeypatch.setattr(installer.urllib.request, "urlopen", lambda *a, **kw: io.BytesIO(json.dumps(payload).encode()))
     monkeypatch.setattr(installer, "_login_reachable", lambda root: True)
     monkeypatch.setattr(installer, "_probe", lambda command: subprocess.CompletedProcess(command, 0, '{"auth_mode": "local"}', ""))
-    clock = iter([0, 0, 1, 2, 901])
-    monkeypatch.setattr(installer.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(installer.time, "sleep", lambda _: None)
+    clock = [0]
+    monkeypatch.setattr(installer.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(installer.time, "sleep", lambda _: clock.__setitem__(0, 901))
     with pytest.raises(RuntimeError, match="selected capabilities"):
         installer._wait_health(installer.Console(color=False), root)
     phases = installer._install_progress(root)["phases"]
@@ -222,11 +228,11 @@ def test_model_receipt_rejects_unrecorded_snapshot_artifacts(tmp_path, monkeypat
         extra_directory.mkdir()
         (extra_directory / "config.json").write_text('{"synthetic": "extra"}')
         candidate.symlink_to(extra_directory)
-    before = (root / ".recordbench-stage-receipt.json").read_bytes()
+    before = (root / f".{LEGACY_STEM}-stage-receipt.json").read_bytes()
     monkeypatch.setattr(module.urllib.request, "urlopen", lambda *a, **k: pytest.fail("inventory verification must stay offline"))
     with pytest.raises(RuntimeError, match="inventory|unrecorded|linked directory"):
         module._verify_stage(root, catalog, groups, "portable")
-    assert (root / ".recordbench-stage-receipt.json").read_bytes() == before
+    assert (root / f".{LEGACY_STEM}-stage-receipt.json").read_bytes() == before
 
 
 def test_model_receipt_limits_inventory_to_selected_snapshot(tmp_path):
@@ -299,7 +305,7 @@ def test_model_receipt_retains_distinct_snapshot_paths_sharing_a_blob(tmp_path, 
     for link in links:
         link.symlink_to("../../blobs/shared")
     module._stage_receipt(root, catalog, frozenset({"review"}), "portable", links)
-    receipt = root / ".recordbench-stage-receipt.json"
+    receipt = root / f".{LEGACY_STEM}-stage-receipt.json"
     value = json.loads(receipt.read_text())
     assert value["format_version"] == 2
     assert set(value["files"]) == {link.relative_to(root).as_posix() for link in links}
@@ -339,7 +345,7 @@ def test_model_receipt_rejects_unsafe_snapshot_relationships(tmp_path, kind):
         candidate = root / "linked-directory/artifact.bin"
     with pytest.raises((OSError, RuntimeError)):
         module._stage_receipt(root, catalog, frozenset({"review"}), "portable", [candidate])
-    assert not (root / ".recordbench-stage-receipt.json").exists()
+    assert not (root / f".{LEGACY_STEM}-stage-receipt.json").exists()
 
 
 @pytest.mark.parametrize("command", ["resume", "update"])
@@ -352,9 +358,9 @@ def test_resume_and_update_preflight_uses_saved_coordinates_and_model_options(tm
     installation.update(models="review", review_model_profile="quality", transcription_languages=["es"],
                         server_name="synthetic-node.example.test", profiles=["ai"])
     (root / "installation.json").write_text(json.dumps(installation))
-    for key, value in {"RECORDBENCH_SERVER_NAME": "synthetic-node.example.test", "RECORDBENCH_HTTPS_PORT": "9443",
-                       "RECORDBENCH_BIND_ADDRESS": "0.0.0.0", "RECORDBENCH_GENERATOR_GPU": "7",
-                       "RECORDBENCH_GENERATOR_GPU_UTILIZATION": "0.72", "COMPOSE_PROFILES": "ai"}.items():
+    for key, value in {f"{LEGACY_ENV_PREFIX}SERVER_NAME": "synthetic-node.example.test", f"{LEGACY_ENV_PREFIX}HTTPS_PORT": "9443",
+                       f"{LEGACY_ENV_PREFIX}BIND_ADDRESS": "0.0.0.0", f"{LEGACY_ENV_PREFIX}GENERATOR_GPU": "7",
+                       f"{LEGACY_ENV_PREFIX}GENERATOR_GPU_UTILIZATION": "0.72", "COMPOSE_PROFILES": "ai"}.items():
         installer._replace_env(root / "compose.env", key, value)
     calls = []
 
@@ -393,7 +399,7 @@ def test_resume_refuses_conflicting_or_replaced_saved_mounts_before_external_com
     if mutation == "storage-coordinate":
         other = tmp_path / "other-storage"
         other.mkdir(mode=0o700)
-        installer._replace_env(root / "compose.env", "RECORDBENCH_STORAGE_ROOT", str(other))
+        installer._replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}STORAGE_ROOT", str(other))
     else:
         name = "runtime" if mutation == "runtime-symlink" else "config"
         retained = root / (name + "-retained")
@@ -469,7 +475,7 @@ def test_resume_keeps_a_safe_external_canonical_account_directory(tmp_path, monk
     paths["accounts"].rename(external)
     repository = LocalAccountRepository(external / "local-accounts.json")
     repository.initialize("alice.admin", "Alice Administrator", PASSWORD, actor="synthetic-operator")
-    installer._replace_env(root / "compose.env", "RECORDBENCH_LOCAL_ACCOUNT_ROOT", str(external))
+    installer._replace_env(root / "compose.env", f"{LEGACY_ENV_PREFIX}LOCAL_ACCOUNT_ROOT", str(external))
     original = repository.path.read_bytes()
     monkeypatch.setattr(installer, "_preflight", lambda *a, **kw: ())
     commands = []
@@ -478,7 +484,7 @@ def test_resume_keeps_a_safe_external_canonical_account_directory(tmp_path, monk
         commands.append(command)
         if "accounts" in command:
             assert "init" not in command
-            assert command[-1] == "/var/lib/recordbench-accounts/local-accounts.json"
+            assert command[-1] == f"/var/lib/{LEGACY_STEM}-accounts/local-accounts.json"
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(installer, "_run", run)
@@ -506,6 +512,8 @@ def test_doctor_recovers_prepared_progress_without_reprovisioning(tmp_path, monk
         for phase in ('running', 'login_reachable', 'basic_review', 'selected_capabilities'):
             installer._install_phase(root, phase, 'complete')
     monkeypatch.setattr(installer, '_wait_health', healthy)
+    monkeypatch.setattr(installer, '_verify_installed_dns', lambda root: None)
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda root: None)
     installer._doctor(installer.Console(color=False), args, root)
     capsys.readouterr()
     installer._handoff(installer.Console(color=False), root)
@@ -528,6 +536,7 @@ def test_successful_update_handoff_retains_completed_preparation(tmp_path, monke
     def healthy(console, root):
         for phase in ('running', 'login_reachable', 'basic_review', 'selected_capabilities'):
             installer._install_phase(root, phase, 'complete')
+    monkeypatch.setattr(installer, '_verify_installed_package', lambda *a: None)
     monkeypatch.setattr(installer, '_wait_health', healthy)
     installer._update(installer.Console(color=False), args, root)
     capsys.readouterr()

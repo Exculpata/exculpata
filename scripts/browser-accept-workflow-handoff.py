@@ -4,7 +4,14 @@
 Uses generated speech, controlled transcription/ranking, and a source-echo client.
 This verifies workflow and provenance boundaries, not ASR or model quality.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import hashlib
@@ -154,7 +161,7 @@ def main():
         return original_popen(command(args), *pos, **kwargs)
     receipt["host_tool_mapping"] = sorted(Path(name).name for name in mapped)
     receipt["native_pdf_address_space_limit_omitted"] = sys.platform == "darwin"
-    with tempfile.TemporaryDirectory(prefix="recordbench-cedar-browser-") as temporary, \
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-cedar-browser-") as temporary, \
             patch("subprocess.run", run), patch("subprocess.Popen", popen):
         root = Path(temporary).resolve()
         audio, segments = speech(root)
@@ -247,7 +254,7 @@ def main():
                     return True
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output, readiness_timeout=45)
                 wait.until(lambda _: detached(old))
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete" and
                            urlparse(d.current_url).path == urlparse(base + path).path)

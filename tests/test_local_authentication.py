@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 import re
 
@@ -54,7 +58,7 @@ def test_local_account_login_uses_argon2_session_and_admin_role(tmp_path):
         local_settings=settings,
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         page = client.get("/auth/login")
         assert page.status_code == 200
         assert "Alice Reviewer" not in page.text
@@ -72,7 +76,8 @@ def test_local_account_login_uses_argon2_session_and_admin_role(tmp_path):
             follow_redirects=False,
         )
         assert denied.status_code == 303
-        assert "username+or+password" in denied.headers["location"]
+        assert "error=local_credentials" in denied.headers["location"]
+        assert "The username or password is incorrect." in client.get(denied.headers["location"]).text
         assert client.cookies.get(SESSION_COOKIE) is None
 
         refreshed = client.get("/auth/login")
@@ -130,7 +135,7 @@ def test_disabled_local_account_cannot_reuse_a_prior_session(tmp_path):
         local_settings=settings,
         answer_workers=1,
     )
-    with TestClient(app, base_url="https://recordbench.example.test") as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         page = client.get("/auth/login")
         login = client.post(
             "/auth/local",

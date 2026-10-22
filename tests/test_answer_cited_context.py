@@ -3,7 +3,12 @@
 All sources and answers are synthetic. Deterministic answer/transcript fixtures
 exercise persistence and review behavior, not model or speech-recognition quality.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 from dataclasses import asdict, replace
 import hashlib
@@ -474,7 +479,7 @@ def test_admin_demotion_with_retained_membership_cannot_expose_foreign_navigatio
     from tests.test_matter_management import _app, _headers, ADMIN, USER_GROUP
 
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         assert client.get("/matters/new", headers=_headers(ADMIN)).status_code == 200
         bench, identity = client.app.state.workbench, client.app.state.identity
         actor = identity.resolve(client.cookies.get(SESSION_COOKIE)).principal_id

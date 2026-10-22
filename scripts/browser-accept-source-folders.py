@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic folder navigation through Chrome and disposable loopback state."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -47,7 +54,7 @@ def main():
         report['checks'].append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-folder-browser-') as temp:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-folder-browser-") as temp:
         root = Path(temp).resolve()
         folder = root / 'Generated collection'
         fixtures = {
@@ -107,7 +114,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, 'html')
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 wait.until(lambda _: detached(old))
                 ready()
 
@@ -158,7 +165,7 @@ def main():
             child('Sub')
             assert len(rows()) == 1 and 'notes.txt' in rows()[0].text
             old = driver.find_element(By.TAG_NAME, 'html')
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: detached(old))
             ready()
             assert len(rows()) == 1

@@ -1,7 +1,8 @@
 # Configuration
 
 `compose.env` controls host paths, ports, GPU assignment, and the pinned model
-portfolio. `config/recordbench.env` controls application behavior.
+portfolio. `config/exculpata.env` controls application behavior on a fresh
+node. A legacy node keeps `config/recordbench.env`.
 `config/transcription.env` controls the bundled media queue and worker. The
 installer writes all three outside Git with mode `0600`.
 

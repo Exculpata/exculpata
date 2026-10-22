@@ -1,7 +1,8 @@
-# Public contributor alpha
+# Public contributor boundary
 
-The maintainer authorizes publication of the environment-neutral source as a
-development alpha. This is distinct from a supported production release.
+The maintainer authorizes publication of the environment-neutral source. The
+current prerelease is community beta v0.1.0-beta.1. This is distinct from a
+supported production release.
 First-party Apache-2.0 approval is recorded in [release readiness](RELEASE_READINESS.md).
 The repository does not publish private deployments or represent an operator's
 endorsement. No model weights, credentials, or live evidence are distributed.
@@ -14,11 +15,13 @@ an independent secret scanner, and a private operator deny list kept outside
 the repository; reviews synthetic media and third-party notices; and inspects
 GitHub descriptions, discussions, logs, artifacts, releases, and settings.
 False positives require a narrow, recorded disposition rather than removal of
-the underlying check. New public author identities are deliberate and should use GitHub
-no-reply email addresses. The maintainer explicitly accepted the existing
+the underlying check. New public author identities are deliberate; contributors
+may publish their chosen author and committer email addresses. Maintainer-created
+commits continue to use the validated GitHub no-reply identity.
+The maintainer explicitly accepted the existing
 author/committer email on commit `d2f1e779e70063b94fece1291169f547c7c44d83`.
 The scanner records that reviewed attribution by exact commit and identity
-digest, suppressing only the non-example-email finding for those metadata
+digest, retaining only the already reviewed email attribution for those metadata
 fields. It does not permit the address in file content, commit messages, other
 commits, or unrelated identities. Operator deny terms still apply unless the
 operator explicitly supplies the same exact commit/name/email through the
@@ -38,10 +41,9 @@ commit-and-identity boundary above and grants no exception to later commits.
 The maintainer approved the existing attribution on commit
 `f8ccae72b39704942c23caecb8195874a74e7699` under the same exact-commit and
 identity-digest rule. This historical disposition does not rewrite published
-history. New commits and merges must use the responsible contributor's validated
-GitHub no-reply attribution; this exception does not authorize later
-personal-address attribution. Contributors use their own public GitHub username
-and no-reply address and retain credit for their work. A maintainer's identity
+history. This exception does not authorize later protected maintainer-address
+attribution. Contributors retain their own authorship and may use their chosen
+address, including on merge-queue squash commits. A maintainer's identity
 applies only to commits created by that maintainer or on their behalf; it is not
 an identity requirement for outside contributors. Preserve contributor authorship
 when landing a PR, and use the maintainer's no-reply identity for any new merge
@@ -78,13 +80,38 @@ It does not permit email addresses in content or messages, cover other commits,
 or relax operator deny checks. The recorded dispositions do not change account
 email or privacy settings.
 
+## Contributor attribution and protected addresses
+
+The author and committer **address fields** accept contributor email addresses
+without a per-contributor allowlist or commit exception. This includes new
+merge-queue squash commits. Names, commit messages, files, extracted metadata,
+archive members and refs retain their existing content-email rules; the existing
+exact reviewed co-author trailer dispositions are unchanged.
+
+`MAINTAINER_EMAIL_DIGESTS` in `scripts/publication-check.py` contains the complete
+three-address set privately supplied for #345. Each value is SHA-256 of the
+ASCII-lowercased address bytes (both local part and domain). The address alone
+is hashed; the identity name is irrelevant. No whitespace trimming, Unicode
+normalization, plus-alias stripping or provider-specific rewriting is performed.
+Matching uses the scanner's existing ASCII email-token grammar and reports only
+`maintainer-email-address`, never the matched address. All configured entries
+are checked before example-domain, bot or contributor-trailer exceptions.
+
+The already reviewed exact historical commit-and-identity dispositions above
+remain in force for their original author/committer fields only. They cannot
+admit a protected address on a new commit, in a name under another identity, or
+in content/messages. Operator deny terms and every non-email publication rule
+continue to apply, including secret scanning and metadata inspection. The hash
+list adds no general exception to those controls. Keep future denylist inputs
+private and commit only their normalized digests, with synthetic test fixtures.
+
 ## Prevent disclosure before publishing
 
 CI runs after content reaches GitHub. It cannot prevent an initial disclosure.
 Install the local pre-push check in every publishing checkout:
 
 ```console
-python3 scripts/install-publication-hook.py ~/.local/share/recordbench-publication-guard/reviewed-v1
+python3 scripts/install-publication-hook.py ~/.local/share/exculpata-publication-guard/reviewed-v1
 ```
 
 Run the installer from a trusted, reviewed checkout with the Python environment
@@ -106,7 +133,9 @@ address and Dependabot's public no-reply identity
 `49699333+dependabot[bot]@users.noreply.github.com` are recognized. Dependabot's
 Signed-off-by trailer is recognized only when the whole line is that bot's
 sign-off; the same support mailbox anywhere else still blocks. Other non-example
-addresses and configured deny terms still block. A removed file still exists in history and
+addresses in content and configured deny terms still block. Contributor
+author/committer address fields follow the hash policy above.
+A removed file still exists in history and
 still blocks. Keep sensitive work in a separate repository with no public
 remote. Never use mirror pushes or push private deployment histories.
 
@@ -114,14 +143,16 @@ Operators developing alongside private deployments must additionally configure
 an owner-only deny file outside the checkout:
 
 ```console
-git config --local recordbench.requirePrivatePublicationCheck true
-git config --local recordbench.publicationDenyFile /secure/path/private-deny.txt
+git config --local exculpata.requirePrivatePublicationCheck true
+git config --local exculpata.publicationDenyFile /secure/path/private-deny.txt
 ```
 
 Exact public clone URL and author-identity exceptions use the scanner's
-documented adjudication options. The hook reads `recordbench.publicCloneUrl`,
-`recordbench.publicGitIdentity` (tab-separated name/email), and
-`recordbench.publicBaselineIdentity` (tab-separated commit/name/email).
+documented adjudication options. The hook reads `exculpata.publicCloneUrl`,
+`exculpata.publicGitIdentity` (tab-separated name/email), and
+`exculpata.publicBaselineIdentity` (tab-separated commit/name/email).
+The same suffixes under `recordbench.` are still read when the `exculpata.`
+entry is absent.
 Do not add general exceptions for private names or paths.
 
 Hooks are local safeguards, not a security sandbox: another client, an API

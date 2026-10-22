@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic two-reviewer Report conflicts, source support, export, and close in Chrome."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import json
@@ -42,7 +49,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
-    with tempfile.TemporaryDirectory(prefix='recordbench-report-conflicts-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-report-conflicts-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()
@@ -99,7 +106,7 @@ def main():
                     links[0].click()
                     WebDriverWait(driver, 20).until(detached(links[0]))
             def go(driver, path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 enter_editor(driver)
             def fill(driver, selector, value):
                 field = driver.find_element(By.CSS_SELECTOR, selector)

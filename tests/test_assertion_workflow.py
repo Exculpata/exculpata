@@ -1,4 +1,8 @@
 """Synthetic source-to-entity-to-assertion journeys, authority and complete recovery."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 from case_intelligence.workspace_store import WorkspaceProblem
 import html
@@ -298,7 +302,7 @@ def test_csrf_revoked_member_and_inaccessible_exports_fail_closed(tmp_path, monk
     from tests.test_matter_management import OWNER, OTHER, _app as protected_app, _csrf, _headers, _principal_id
     from tests.test_matter_management import _create_matter as create_protected_matter
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
-    with TestClient(protected_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(protected_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_protected_matter(client, principal=OWNER, csrf_token=csrf, name='Synthetic protected assertions')
         _upload(client, slug, headers=_headers(OWNER), csrf=csrf)
@@ -369,7 +373,7 @@ def protected_assertion(tmp_path, monkeypatch):
     from tests.test_matter_management import OWNER, OTHER, _app as protected_app, _csrf, _headers, _principal_id
     from tests.test_matter_management import _create_matter as create_protected_matter
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
-    with TestClient(protected_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(protected_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_protected_matter(client, principal=OWNER, csrf_token=csrf, name='Synthetic in-flight revocation')
         _upload(client, slug, headers=_headers(OWNER), csrf=csrf)

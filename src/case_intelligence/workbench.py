@@ -1,5 +1,13 @@
 """Milestone A staff workbench: matters, uploads, retrieval, generation, support."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    LEGACY_ENV_PREFIX,
+    LEGACY_HEADER_PREFIX,
+    LEGACY_STEM,
+)
 
 from .review_budget import DEFAULT_REVIEW_BUDGET, ReviewBudget, validate_primary_limit
 from .investigation_planner import PLANNER_VERSION, initial_query, propose_searches, query_key, validate_proposal
@@ -8,11 +16,13 @@ from time import monotonic
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
 import os
 import re
+import socket
 import stat
 import sqlite3
 import tempfile
@@ -46,7 +56,9 @@ from starlette.concurrency import run_in_threadpool
 
 from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
 from .static_assets import asset_url, static_cache_control
+from .source_cache import SourceCacheLock, source_cache_guard
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
+from .citation_highlight import has_readable_highlight, highlight_segments
 from .answer_jobs import AnswerCoordinator, AnswerJobFailure, AnswerResult
 from .answer_queries import MAX_SEARCH_CHARS, append_notebook_query, contextual_query, query_windows, search_windows
 from .answer_presentation import GENERATED_REVIEW_NOTICE, answer_content, answer_introduction, answer_limitation, answer_failure_notice, modality_coverage_notice, research_content, rejected_answer_content, rejected_answer_notice, review_rejection_notice, REJECTED_ANSWER_NOTICE
@@ -57,6 +69,9 @@ from .exact_search_results import (
     ExactSearchBackend, ExactSearchChanged, ExactSearchPage, ExactSearchUnavailable, ReferenceExactSearchBackend,
     build_search_query,
 )
+from .local_login_devices import DEVICE_COOKIE, set_device_cookie
+from .login_errors import login_error_code, login_error_feedback, login_error_message
+from .oidc_callback_feedback import OidcCallbackFailure, finish_oidc_callback
 from .identity import (
     KERBEROS_SECRET_HEADER,
     KERBEROS_USER_HEADER,
@@ -174,7 +189,7 @@ from .source_locations import (
     SourceLocationRegistry,
     source_registry_from_environment,
 )
-from .service_endpoints import validate_service_endpoint
+from .service_endpoints import open_service_request, validate_service_endpoint
 from .workspace_store import (
     AUTOMATIC_DISCOVERY_PRINCIPAL,
     AnswerJobRecord,
@@ -235,6 +250,7 @@ from .work_product_exports import (
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
+_AUDIT_DEVICE_REPLAY = ".".join(("auth", "device", "replay"))
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 DEFAULT_RUNTIME = PROJECT_ROOT / ".tmp/milestone-a-workbench"
 MAX_QUESTION_CHARS = 2_000
@@ -433,8 +449,8 @@ def _backup_status_projection() -> dict[str, object]:
     """Read one administrator-safe backup receipt, never repository content."""
 
     configured = env(
-        "RECORDBENCH_BACKUP_STATUS_FILE",
-        "/srv/recordbench/.local/state/recordbench-backup/status.json",
+        f"{LEGACY_ENV_PREFIX}BACKUP_STATUS_FILE",
+        f"/srv/{LEGACY_STEM}/.local/state/{LEGACY_STEM}-backup/status.json",
     ).strip()
     path = Path(configured)
     fallback = {
@@ -769,6 +785,15 @@ class SupportView:
     end_ms: int
     autoplay: bool
 
+    @property
+    def highlighted_lines(self) -> tuple[tuple[tuple[str, bool], ...], ...]:
+        # Mark readable cited text only; OCR symbol noise stays visible unmarked.
+        return highlight_segments(self.lines)
+
+    @property
+    def has_readable_highlight(self) -> bool:
+        return has_readable_highlight(self.highlighted_lines)
+
 
 class MatterMaintenanceCoordinator:
     """Run bounded lifecycle maintenance without tying it to an HTTP request."""
@@ -792,7 +817,7 @@ class MatterMaintenanceCoordinator:
         self._last_error = ""
         self._thread = threading.Thread(
             target=self._loop,
-            name="recordbench-maintenance",
+            name=f"{LEGACY_STEM}-maintenance",
             daemon=True,
         )
         self._thread.start()
@@ -834,7 +859,7 @@ class MatterMaintenanceCoordinator:
         self._thread.join(timeout=5)
 
 
-LOGGER = logging.getLogger("recordbench.workbench")
+LOGGER = logging.getLogger(f"{LEGACY_STEM}.workbench")
 MAX_AUTOMATIC_DISCOVERY_UNITS = 20000
 # Bounds one matter's steps per run; each step seals or processes durable work.
 MAX_AUTOMATIC_DISCOVERY_STEPS = 400
@@ -870,7 +895,7 @@ class AutomaticDiscoveryCoordinator:
         self._sweep_due = True
         self._last_error = ""
         self._thread = threading.Thread(
-            target=self._loop, name="recordbench-discovery", daemon=True
+            target=self._loop, name=f"{LEGACY_STEM}-discovery", daemon=True
         )
         self._thread.start()
 
@@ -980,7 +1005,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         self.workspace.recover_interrupted_matter_purges()
         self.workspace.recover_running_analysis_runs()
         self._stores: dict[str, PilotStore] = {}
-        self._store_lock = threading.RLock()
+        self._store_lock = SourceCacheLock(lambda: self.workspace._lock)
         self._matter_source_locks: dict[str, threading.RLock] = {}
         self._storage_reservation_lock = threading.RLock()
         self._playback_reservations: dict[tuple[str, str], int] = {}
@@ -1215,7 +1240,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         except ValueError:
             return False
         try:
-            with urllib.request.urlopen(endpoint + "/health", timeout=2) as response:
+            with open_service_request(endpoint + "/health", timeout=2, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS") as response:
                 payload = json.load(response)
             return bool(
                 isinstance(payload, dict)
@@ -1245,7 +1270,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             self.media.close()
         if self.ingestion is not None:
             self.ingestion.close()
-        with self._store_lock:
+        with source_cache_guard(self):
             stores = tuple(self._stores.values())
             self._stores.clear()
         for store in stores:
@@ -3002,9 +3027,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
 
     def entity_service(self, matter, *, automatic=False, store=None):
         from .entity_service import EntityService, current_reference_indexes, current_source_indexes
-        # Resolve the cache before taking a source guard/workspace transaction.
-        # Opening another matter holds the cache lock while syncing its catalog;
-        # callbacks under the workspace lock must never re-enter that cache.
+        # Capture the live store before the snapshot; callbacks keep validating
+        # against that object without another shared-cache lookup.
         store = store if store is not None else self.source_store(matter)
         return EntityService(
             self.workspace.entity_repository(automatic=automatic),
@@ -6314,6 +6338,63 @@ class _MatterResponseSendLeaseMiddleware:
                         self.release_clip(*clip)
 
 
+_LOGIN_TRUST_WARNINGS: dict[str, float] = {}
+_LOGIN_TRUST_WARNING_LOCK = threading.Lock()
+
+
+def _local_login_trust_warning(kind: str, message: str, *, once: bool = False) -> None:
+    with _LOGIN_TRUST_WARNING_LOCK:
+        now = monotonic()
+        previous = _LOGIN_TRUST_WARNINGS.get(kind)
+        if previous is not None and (once or now - previous < 300):
+            return
+        _LOGIN_TRUST_WARNINGS[kind] = now
+    LOGGER.warning(message)
+
+
+def _local_login_client_key(
+    request: Request, trusted_gateway_peers: tuple[str, ...] | None = None,
+) -> str:
+    """Use one gateway-written IP literal only after checking its direct TCP peer."""
+    peer = request.client.host if request.client is not None else "unknown"
+    values = request.headers.getlist("x-forwarded-for")
+    configured = env(f"{LEGACY_ENV_PREFIX}LOCAL_LOGIN_TRUST_GATEWAY", "")
+    container = env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1"
+    if container and not configured:
+        _local_login_trust_warning("unset", "Local login gateway trust is unset in container mode.", once=True)
+    if trusted_gateway_peers is None:
+        trusted_gateway_peers = ()
+        if configured == "1":
+            try:
+                trusted_gateway_peers = tuple(
+                    str(ipaddress.ip_address(address[0])) for family, _, _, _, address in socket.getaddrinfo(
+                        "gateway", None, type=socket.SOCK_STREAM,
+                    ) if family in {socket.AF_INET, socket.AF_INET6}
+                )
+                if not trusted_gateway_peers:
+                    raise ValueError("no gateway addresses")
+            except (OSError, ValueError):
+                _local_login_trust_warning("resolve", "Local login gateway resolution failed; using the direct peer.")
+    try:
+        trusted = {ipaddress.ip_address(value) for value in trusted_gateway_peers}
+        trusted = {getattr(address, "ipv4_mapped", None) or address for address in trusted}
+        address = ipaddress.ip_address(peer)
+        is_trusted = (getattr(address, "ipv4_mapped", None) or address) in trusted
+    except ValueError:
+        is_trusted = False
+    if not is_trusted:
+        if values and (container or configured == "1"):
+            _local_login_trust_warning("untrusted", "Local login ignored a forwarded header from an untrusted peer.")
+        return peer
+    try:
+        if len(values) != 1 or len(values[0]) > 45 or "%" in values[0]:
+            raise ValueError("invalid forwarded header")
+        return str(ipaddress.ip_address(values[0]))
+    except ValueError:
+        _local_login_trust_warning("malformed", "Local login gateway header is missing or malformed; using the direct peer.")
+        return peer
+
+
 def create_workbench_app(
     runtime_dir: Path | None = None,
     *,
@@ -6331,6 +6412,7 @@ def create_workbench_app(
     auth_mode: str | None = None,
     secure_cookie: bool | None = None,
     local_settings: LocalAccountSettings | None = None,
+    local_gateway_peers: tuple[str, ...] | None = None,
     oidc_settings: OidcSettings | None = None,
     oidc_client: OidcProviderClient | None = None,
     kerberos_settings: KerberosSettings | None = None,
@@ -6471,7 +6553,7 @@ def create_workbench_app(
                 request.method != "GET"
                 or request.client is None
                 or request.client.host not in {"127.0.0.1", "::1"}
-                or not identity.auth_diagnostic_authorized(header(request.headers, "X-RecordBench-Auth-Diagnostic"))
+                or not identity.auth_diagnostic_authorized(header(request.headers, f"{LEGACY_HEADER_PREFIX}Auth-Diagnostic"))
             ):
                 return Response(status_code=404, headers={"Cache-Control": "no-store"})
             return JSONResponse({"auth_mode": identity.auth_mode}, headers={"Cache-Control": "no-store"})
@@ -8201,8 +8283,8 @@ def create_workbench_app(
                 if capabilities["answering"] == "ready" and storage["ready"]
                 else "degraded"
             ),
-            "product": "RecordBench",
-            "data": "private RecordBench node",
+            "product": CURRENT_PRODUCT,
+            "data": f"private {CURRENT_PRODUCT} node",
             "capabilities": capabilities,
             "ingest_jobs": bench.workspace.ingest_counts(),
             "media_jobs": bench.workspace.media_job_counts(),
@@ -8234,12 +8316,14 @@ def create_workbench_app(
     def login_page(
         request: Request,
         next_path: str = Query("/", alias="next", max_length=2_048),
-        error: str = Query("", max_length=240),
     ):
         destination = IdentityService.safe_next(next_path)
+        feedback = login_error_feedback(
+            request.query_params.getlist("error"), request.query_params.getlist("retry_minutes"))
         existing = identity.resolve(request.cookies.get(SESSION_COOKIE))
         if (
             existing is not None
+            and not (identity.auth_mode == "oidc" and feedback)
             and (
                 identity.auth_mode != "kerberos"
                 or identity.kerberos_request_valid(
@@ -8269,7 +8353,7 @@ def create_workbench_app(
                         "identities": (),
                         "login_challenge": "",
                         "next_path": destination,
-                        "error": str(exc),
+                        "error": login_error_message([login_error_code(exc)]),
                         "auth_mode": identity.auth_mode,
                         "oidc_start_url": "",
                         "kerberos_continue_url": _query_url(
@@ -8315,7 +8399,8 @@ def create_workbench_app(
                 "identities": identity.preview_identities(),
                 "login_challenge": challenge,
                 "next_path": destination,
-                "error": error,
+                "error": feedback,
+                "signed_in_return_url": destination if existing and feedback else "",
                 "auth_mode": identity.auth_mode,
                 "oidc_start_url": _query_url("/auth/oidc/start", next=destination),
                 "kerberos_continue_url": _query_url("/auth/login", next=destination),
@@ -8365,7 +8450,7 @@ def create_workbench_app(
                 details={"auth_method": "oidc"},
             )
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
                 status_code=303,
             )
         response = RedirectResponse(start.authorization_url, status_code=302)
@@ -8379,20 +8464,12 @@ def create_workbench_app(
     @app.get("/auth/oidc/callback", include_in_schema=False)
     async def oidc_callback(
         request: Request,
-        code: str | None = Query(None, max_length=4_096),
-        state: str | None = Query(None, max_length=256),
-        error: str | None = Query(None, max_length=128),
     ):
         if identity.auth_mode != "oidc":
             raise HTTPException(404, "Organization sign-in is unavailable.")
         try:
-            context, raw_token, destination = await identity.finish_oidc_login(
-                cookie_state=request.cookies.get(OIDC_STATE_COOKIE),
-                returned_state=state,
-                code=code,
-                provider_error=error,
-            )
-        except OidcAuthenticationError as exc:
+            context, raw_token, destination = await finish_oidc_callback(identity, request)
+        except OidcCallbackFailure as exc:
             audit(
                 request,
                 "auth.login",
@@ -8400,7 +8477,8 @@ def create_workbench_app(
                 details={"auth_method": "oidc"},
             )
             response = RedirectResponse(
-                _query_url("/auth/login", error=str(exc)),
+                _query_url("/auth/login", error=login_error_code(exc),
+                           **({"next": exc.destination} if exc.destination != "/" else {})),
                 status_code=303,
             )
             response.delete_cookie(OIDC_STATE_COOKIE, path="/auth/oidc")
@@ -8434,7 +8512,7 @@ def create_workbench_app(
                 _query_url(
                     "/auth/login",
                     next=destination,
-                    error="The sign-in page expired. Please choose your preview identity again.",
+                    error="preview_expired",
                 ),
                 status_code=303,
             )
@@ -8442,7 +8520,7 @@ def create_workbench_app(
             context, raw_token = identity.login_preview(identity_subject)
         except WorkspaceProblem as exc:
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
                 status_code=303,
             )
         audit(
@@ -8477,27 +8555,38 @@ def create_workbench_app(
                 _query_url(
                     "/auth/login",
                     next=destination,
-                    error="The sign-in page expired. Please try again.",
+                    error="login_expired",
                 ),
                 status_code=303,
             )
         try:
-            context, raw_token = identity.login_local(
+            result = identity.login_local(
                 username,
                 password,
-                client_key=request.client.host if request.client is not None else "unknown",
+                client_key=_local_login_client_key(request, local_gateway_peers),
+                device_cookie=request.cookies.get(DEVICE_COOKIE),
             )
         except LocalAuthenticationError as exc:
+            if exc.device_replayed:
+                audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
             audit(
                 request,
                 "auth.login",
                 "denied",
                 details={"auth_method": "local"},
             )
+            code = login_error_code(exc)
+            retry = ({"retry_minutes": str(max(1, min(1440, (exc.retry_after_seconds + 59) // 60)))}
+                     if code == "local_throttled" and exc.retry_after_seconds is not None else {})
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=str(exc)),
+                _query_url("/auth/login", next=destination, error=code, **retry),
                 status_code=303,
+                headers=({"Retry-After": str(exc.retry_after_seconds)}
+                         if exc.retry_after_seconds is not None else None),
             )
+        context, raw_token = result
+        if result.device_replayed:
+            audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
         audit(
             request,
             "auth.login",
@@ -8514,6 +8603,7 @@ def create_workbench_app(
             destination = "/admin/setup"
         response = RedirectResponse(destination, status_code=303)
         response.set_cookie(SESSION_COOKIE, raw_token, **identity.session_cookie_options)
+        set_device_cookie(response, result.device_cookie, secure=identity.secure_cookie)
         response.delete_cookie(LOGIN_CHALLENGE_COOKIE, path="/auth")
         return response
 
@@ -11483,7 +11573,7 @@ def create_workbench_app(
             malware_scan_mode=bench.malware_scan_mode,
             scanner_ready=scanner_projection.ready,
             duplicate_token_scope=(
-                f"recordbench:loose-file-preflight:v1:{matter.matter_id}:{selection_nonce}"
+                f"{LEGACY_STEM}:loose-file-preflight:v1:{matter.matter_id}:{selection_nonce}"
                 if selection_nonce is not None
                 else None
             ),
@@ -13935,6 +14025,8 @@ def create_workbench_app(
                              require_csrf=require_csrf, templates=templates, base_context=base_context,
                              audit=audit, require_response_lease=require_matter_response_lease,
                              transfer_response_lease=transfer_matter_response_lease)
+    from .timeline_routes import install_timeline_routes
+    install_timeline_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes
     install_evidence_graph_routes(app, assertions_for=bench.assertion_service,
                                   authorized_matter=authorized_matter, auth_context=auth_context,
@@ -16537,7 +16629,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.host != "127.0.0.1" and not (
         args.host == "0.0.0.0"
-        and env("RECORDBENCH_ALLOW_CONTAINER_BIND", "") == "1"
+        and env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1"
     ):
         parser.error(
             "non-loopback binding is allowed only in the isolated container profile"

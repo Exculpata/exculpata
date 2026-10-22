@@ -1,6 +1,6 @@
 """Strict operator-configured boundaries for private companion services.
 
-RecordBench accepts service URLs only from process configuration, never from a
+Exculpata accepts service URLs only from process configuration, never from a
 browser request. Even so, configuration should not silently turn the
 application into an unrestricted network client. Loopback is always permitted;
 container DNS names or appliance addresses must be named in an exact allowlist.
@@ -10,6 +10,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import urllib.request
 from urllib.parse import urlparse
 
 
@@ -76,3 +77,15 @@ def validate_service_endpoint(
             f"{label} must use an exact host allowed by {environment_name}"
         )
     return value
+
+
+class _NoServiceRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        return None
+
+
+def open_service_request(request, *, timeout, environment_name):
+    """Open only an exact approved companion host, without env proxies/redirects."""
+    value = request.full_url if isinstance(request, urllib.request.Request) else request
+    validate_service_endpoint(value, environment_name=environment_name, label="companion request")
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoServiceRedirect()).open(request, timeout=timeout)

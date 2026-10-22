@@ -1,4 +1,8 @@
 """Public synthetic #247 output replay; no model weights, network or changed benchmark."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 from pathlib import Path
 import runpy
@@ -177,8 +181,8 @@ def test_replay_keeps_distinct_case_outputs_when_topics_or_entire_inputs_repeat(
         text = ('Why' if index == 3 else 'What') + ' does the record say about ' + excerpt
         outputs.append(dict(id=key, attempts=[{'questions': [{'text': text, 'evidence_ids': ['S1']}]}]))
     source, raw = tmp_path / 'cases.json', tmp_path / 'raw.json'
-    source.write_text(json.dumps(dict(format='recordbench-question-draft-set-v1', synthetic_only=True, cases=cases)))
-    raw.write_text(json.dumps(dict(format='recordbench-question-replay-v1', synthetic_only=True, cases=outputs)))
+    source.write_text(json.dumps(dict(format=f"{LEGACY_STEM}-question-draft-set-v1", synthetic_only=True, cases=cases)))
+    raw.write_text(json.dumps(dict(format=f"{LEGACY_STEM}-question-replay-v1", synthetic_only=True, cases=outputs)))
     result = replay_receipt(raw, source, explain=True)
     assert result['cases'][0]['raw'] is None
     for case, original in zip(result['cases'][1:], outputs[1:]):

@@ -649,8 +649,9 @@
         <p>This passage comes from a machine transcript. Listen at the cited time before relying on wording or speaker identity.</p>
       </section>
       {% endif %}
+      {% if not support.has_readable_highlight %}<p class="support-excerpt-note">This cited section has little readable text. It may be scanner or OCR noise; open the full source to review it.</p>{% endif %}
       <div class="support-excerpt">
-        {% for line in support.lines %}<p><mark>{{ line }}</mark></p>{% endfor %}
+        {% for line in support.highlighted_lines %}<p>{% for text, marked in line %}{% if marked %}<mark>{{ text }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}</p>{% endfor %}
       </div>
     </div>
   </aside>

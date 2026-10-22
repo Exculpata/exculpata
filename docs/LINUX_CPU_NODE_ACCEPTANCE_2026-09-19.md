@@ -128,7 +128,7 @@ branding assertion tied to the old favicon template expression: **3,171 passed,
 asset correction; no additional runtime or visual change was needed. Hosted
 Quality on that corrected candidate passed on 2026-09-20 UTC.
 
-All six jobs passed in [Quality run 35478490846](https://github.com/neilofneils404/recordbench-oss/actions/runs/35478490846)
+All six jobs passed in [Quality run 35478490846](https://github.com/neilofneils404/exculpata-oss/actions/runs/35478490846)
 for `d232e1ec66ddcfd38d38ff4a553bb80d3f639d02`: application, PostgreSQL
 integration, synthetic-browser, transcription, deployment-contract and
 secret-scan. The full application suite passed with **3,172 passed and 9

@@ -28,7 +28,7 @@ grant broad permissions or expose services to make checks pass.
 
 ## Code and acceptance
 
-Start with `scripts/recordbench_install.py::_preflight`, the `install` entry
+Start with `scripts/exculpata_install.py::_preflight`, the `install` entry
 point, `docs/INSTALL.md`, and `tests/test_oss_installer.py`. Platform launchers
 may consume the contract without changing its meaning.
 

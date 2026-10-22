@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Run the synthetic loose-file preflight through the real browser path."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import base64
@@ -290,7 +297,7 @@ def main() -> int:
     server_thread: threading.Thread | None = None
     server_socket: socket.socket | None = None
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-slice1a-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-slice1a-browser-") as temporary:
         temporary_root = Path(temporary)
         files = _fixtures(temporary_root / "fixtures")
         app = create_workbench_app(
@@ -350,13 +357,8 @@ def main() -> int:
             driver.set_page_load_timeout(20)
             driver.set_script_timeout(60)
             wait = WebDriverWait(driver, 20)
-            original_get = driver.get
-            def navigate(url):
-                original_get(url)
-                wait.until(lambda current: current.execute_script("return document.readyState") in {"interactive", "complete"})
-            driver.get = navigate
             base_url = f"http://127.0.0.1:{port}"
-            driver.get(f"{base_url}/matters/new")
+            navigate_to(driver, f"{base_url}/matters/new", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             driver.find_element(By.ID, "matter-name").send_keys(
                 "Synthetic Slice 1A Browser Matter"
             )
@@ -380,7 +382,7 @@ def main() -> int:
                 "Emulation.setScriptExecutionDisabled", {"value": True}
             )
             try:
-                driver.refresh()
+                refresh_page(driver, wait)
                 no_script_folder_input = driver.find_element(By.ID, "source-folder")
                 no_script_folder_chooser = driver.find_element(
                     By.CSS_SELECTOR, "[data-folder-chooser]"
@@ -399,7 +401,7 @@ def main() -> int:
                 driver.execute_cdp_cmd(
                     "Emulation.setScriptExecutionDisabled", {"value": False}
                 )
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-folder-chooser]"
@@ -1139,7 +1141,7 @@ def main() -> int:
                 "Generated resume checkpoint isolation acceptance",
                 ACTOR,
             )
-            driver.get(f"{base_url}/matters/{checkpoint_matter.slug}/setup")
+            navigate_to(driver, f"{base_url}/matters/{checkpoint_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             file_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -1396,7 +1398,7 @@ def main() -> int:
                 ACTOR,
             )
             partial_key = f"case-intelligence:upload:{partial_matter.slug}"
-            driver.get(f"{base_url}/matters/{partial_matter.slug}/setup")
+            navigate_to(driver, f"{base_url}/matters/{partial_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             partial_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -1561,9 +1563,7 @@ def main() -> int:
             capacity_resume_key = (
                 f"case-intelligence:upload:{capacity_resume_matter.slug}"
             )
-            driver.get(
-                f"{base_url}/matters/{capacity_resume_matter.slug}/setup"
-            )
+            navigate_to(driver, f"{base_url}/matters/{capacity_resume_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             capacity_resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -1630,7 +1630,7 @@ def main() -> int:
             # The following fixture represents a checkpoint created before
             # receipts existed; discard only the modern bootstrap's browser key.
             driver.execute_script("window.localStorage.removeItem(arguments[0] + ':selection-receipt');", capacity_resume_key)
-            driver.refresh()
+            refresh_page(driver, wait)
             capacity_resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -1930,7 +1930,7 @@ def main() -> int:
                 ),
             )
 
-            driver.get(f"{base_url}/matters/{slug}/setup")
+            navigate_to(driver, f"{base_url}/matters/{slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             file_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2228,7 +2228,7 @@ def main() -> int:
                 ACTOR,
             )
             terminal_key = f"case-intelligence:upload:{terminal_matter.slug}"
-            driver.get(f"{base_url}/matters/{terminal_matter.slug}/setup")
+            navigate_to(driver, f"{base_url}/matters/{terminal_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             terminal_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2409,7 +2409,7 @@ def main() -> int:
             )
 
             terminal_new_state = json.loads(terminal_saved)
-            driver.refresh()
+            refresh_page(driver, wait)
             bench.workspace.cancel_upload_session(
                 terminal_matter.matter_id,
                 ACTOR,
@@ -2479,7 +2479,7 @@ def main() -> int:
                 *,
                 should_release: bool,
             ) -> None:
-                driver.get(f"{base_url}/matters/{terminal_matter.slug}/setup")
+                navigate_to(driver, f"{base_url}/matters/{terminal_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
                 checkpoint = json.dumps(
                     {
                         "version": 3,
@@ -2643,7 +2643,7 @@ def main() -> int:
                         ),
                     )
                     new_session_id = json.loads(checkpoint_after)["session_id"]
-                    driver.refresh()
+                    refresh_page(driver, wait)
                     bench.workspace.cancel_upload_session(
                         terminal_matter.matter_id, ACTOR, new_session_id
                     )
@@ -2704,7 +2704,7 @@ def main() -> int:
                 ACTOR,
             )
             resume_key = f"case-intelligence:upload:{resume_matter.slug}"
-            driver.get(f"{base_url}/matters/{resume_matter.slug}/setup")
+            navigate_to(driver, f"{base_url}/matters/{resume_matter.slug}/setup", diagnostics=args.output, page_load_timeout=20, readiness_timeout=20)
             resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2759,7 +2759,7 @@ def main() -> int:
             original_resume_session = saved_resume_state["session_id"]
             original_resume_collection = saved_resume_state["collection_id"]
 
-            driver.refresh()
+            refresh_page(driver, wait)
             resume_input = wait.until(
                 lambda current: current.find_element(
                     By.CSS_SELECTOR, "[data-file-input]"
@@ -2827,7 +2827,7 @@ def main() -> int:
                 "exact resume created a second upload session",
             )
 
-            driver.refresh()
+            refresh_page(driver, wait)
             missing_resume_state = {
                 **saved_resume_state,
                 "session_id": "upload-session-ffffffffffffffffffffffffffffffff",
@@ -2907,7 +2907,7 @@ def main() -> int:
                 "v4 resume mismatch did not fail closed with its checkpoint preserved",
             )
 
-            driver.refresh()
+            refresh_page(driver, wait)
             driver.execute_script(
                 "window.localStorage.setItem(arguments[0], arguments[1]);",
                 resume_key,

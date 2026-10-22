@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Exercise compact account controls with a disposable authenticated session."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import json
@@ -43,7 +50,7 @@ def main():
     report = {'passed': False, 'synthetic_only': True, 'checks': [],
         'provenance': 'Temporary local account and browser profile; loopback only; no installed runtime.'}
     driver = None
-    with tempfile.TemporaryDirectory(prefix='recordbench-account-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-account-browser-") as temporary:
         root = Path(temporary).resolve()
         accounts = LocalAccountRepository(root / 'accounts/accounts.json')
         accounts.initialize('synthetic.reviewer', 'Synthetic Reviewer',
@@ -75,7 +82,7 @@ def main():
             js = driver.execute_script
             driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride',
                 {'width': 320, 'height': 568, 'deviceScaleFactor': 1, 'mobile': False})
-            driver.get(base + '/auth/login?next=/matters/new')
+            navigate_to(driver, base + '/auth/login?next=/matters/new', diagnostics=args.output)
             find('[name=username]').send_keys('synthetic.reviewer')
             find('[name=password]').send_keys('synthetic-account-password')
             login = find('.local-login-form button')
@@ -92,13 +99,13 @@ def main():
             wait.until(lambda _: '/matters/m-' in driver.current_url)
             prefix = '/'.join(driver.current_url[len(base):].split('/')[:3])
             protected = base + prefix + '/notebook'
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: js('return document.documentElement.scrollWidth <= innerWidth'))
             report['checks'].append('Authenticated long-name header fits 320px without horizontal overflow')
             from browser_appearance import select_appearance
             select_appearance(driver, wait, 'light', 'cyan')
             select_appearance(driver, wait, 'dark', 'amber')
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js('return document.documentElement.dataset.theme') == 'dark'
                        and js('return document.documentElement.dataset.accent') == 'amber')
             report['checks'].append('Compact account appearance controls persist Dark and Amber across reload')
@@ -115,12 +122,12 @@ def main():
             wait.until(lambda _: '/auth/login' in driver.current_url)
             assert driver.get_cookie(SESSION_COOKIE) is None
             report['checks'].append('Keyboard sign-out clears the authenticated browser session')
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: '/auth/login' in driver.current_url)
             # A replayed pre-logout token must also fail, proving server revocation.
             driver.add_cookie({'name': SESSION_COOKIE, 'value': session['value'],
                 'path': '/', 'secure': True, 'httpOnly': True})
-            driver.get(protected)
+            navigate_to(driver, protected, diagnostics=args.output)
             wait.until(lambda _: '/auth/login' in driver.current_url)
             report['checks'].append('Protected matter rejects both signed-out access and the revoked session')
             report['passed'] = True

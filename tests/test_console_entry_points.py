@@ -1,4 +1,10 @@
 """Installed command compatibility, using help and synthetic delegation only."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_NAME,
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 from importlib.metadata import distribution
 import json
 import os
@@ -14,10 +20,10 @@ from case_intelligence import cli
 
 ROOT = Path(__file__).resolve().parents[1]
 ALIASES = {
-    'recordbench': 'exculpata',
-    'recordbench-workbench': 'exculpata-workbench',
+    f"{LEGACY_STEM}": 'exculpata',
+    f"{LEGACY_STEM}-workbench": 'exculpata-workbench',
     'case-intelligence-workbench': 'exculpata-workbench',
-    'recordbench-retrieval-worker': 'exculpata-retrieval-worker',
+    f"{LEGACY_STEM}-retrieval-worker": 'exculpata-retrieval-worker',
     'case-review-bench': 'python -m case_intelligence.review_bench',
 }
 COMMANDS = [*ALIASES, 'exculpata', 'exculpata-workbench',
@@ -51,10 +57,10 @@ def test_installed_command_help(command):
 
 
 @pytest.mark.parametrize('command,wrapper,module', [
-    ('recordbench', cli.admin, 'admin_cli'),
-    ('recordbench-workbench', cli.workbench, 'workbench'),
+    (f"{LEGACY_STEM}", cli.admin, 'admin_cli'),
+    (f"{LEGACY_STEM}-workbench", cli.workbench, 'workbench'),
     ('case-intelligence-workbench', cli.workbench, 'workbench'),
-    ('recordbench-retrieval-worker', cli.retrieval_worker, 'retrieval_worker'),
+    (f"{LEGACY_STEM}-retrieval-worker", cli.retrieval_worker, 'retrieval_worker'),
     ('case-review-bench', cli.review_bench, 'review_bench'),
     ('exculpata', cli.admin, 'admin_cli'),
     ('exculpata-workbench', cli.workbench, 'workbench'),
@@ -85,23 +91,28 @@ def test_shim_preserves_arguments_return_and_failure(monkeypatch, capsys, comman
     assert error.value.code == 23
 
 
-@pytest.mark.parametrize('prefix', ['EXCULPATA', 'RECORDBENCH'])
+@pytest.mark.parametrize('prefix', ['EXCULPATA', f"{LEGACY_ENV_NAME}"])
 def test_compose_package_entry_points_exist(tmp_path, prefix):
     compose = ROOT / 'compose.yaml'
     environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith(('EXCULPATA_', 'RECORDBENCH_', 'COMPOSE_'))}
+                   if not key.startswith(('EXCULPATA_', f"{LEGACY_ENV_PREFIX}", 'COMPOSE_'))}
     for name in ('CONFIG_ROOT', 'SECRETS_ROOT', 'RUNTIME_ROOT', 'STORAGE_ROOT',
                  'TRANSCRIPTION_ROOT', 'STATE_ROOT', 'MODEL_ROOT', 'TLS_CERT', 'TLS_KEY'):
         environment[f'{prefix}_{name}'] = str(tmp_path / name.lower())
     config_root = Path(environment[f'{prefix}_CONFIG_ROOT'])
     config_root.mkdir()
-    for filename in ('recordbench.env', 'transcription.env'):
+    for filename in (f"{LEGACY_STEM}.env", 'transcription.env'):
         (config_root / filename).touch()
     config = json.loads(subprocess.check_output([
         'docker', 'compose', '-f', str(compose), '--profile', '*',
         'config', '--format', 'json'], env=environment, text=True))
     services = config['services']
-    assert services['account-admin']['entrypoint'] == ['recordbench']
+    assert services['account-admin']['entrypoint'] == ['exculpata']
+    executable = Path(sys.executable).parent / services['account-admin']['entrypoint'][0]
+    result = subprocess.run([str(executable), 'storage', '--help'], cwd=ROOT,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ''
     assert services['transcription-cleanup']['command'][0] == 'transcription-v2'
     installed = {entry.name for name in ('exculpata', 'exculpata-transcription-v2')
                  for entry in distribution(name).entry_points}
@@ -113,9 +124,9 @@ def test_compose_package_entry_points_exist(tmp_path, prefix):
                 tokens = [tokens]
             for token in tokens:
                 referenced.update(re.findall(
-                    r'\b(?:recordbench(?:-workbench|-retrieval-worker)?|'
+                    rf"\b(?:{LEGACY_STEM}(?:-workbench|-retrieval-worker)?|"
                     r'exculpata(?:-workbench|-retrieval-worker)?|transcription-v2)\b', token))
-    assert referenced == {'recordbench', 'transcription-v2'}
+    assert referenced == {'exculpata', 'transcription-v2'}
     assert referenced <= installed
     for dockerfile in (ROOT / 'Dockerfile', ROOT / 'services/transcription/Dockerfile'):
         for line in dockerfile.read_text().splitlines():

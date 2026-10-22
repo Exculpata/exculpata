@@ -5,7 +5,14 @@ The controlled answer client and retrieval population test persistence and UI
 behavior, not model quality. TXT sources and a silent PCM carrier use real
 ingestion; the deterministic transcript does not evaluate speech recognition.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import asyncio
@@ -190,7 +197,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-cited-context-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-cited-context-browser-") as temporary:
         runtime = Path(temporary).resolve() / 'runtime'
         seeded = seed(runtime)
         app = app_at(runtime)
@@ -275,7 +282,7 @@ def main():
                     return x >= 0 && x < innerWidth && y >= 0 && y < innerHeight &&
                         (hit === arguments[0] || arguments[0].contains(hit));''', element)
 
-            driver.get(base + conversation_path)
+            navigate_to(driver, base + conversation_path, diagnostics=args.output)
             assert len(cards()) == 4, 'Every claim and limitation citation needs its own comparison'
             assert not requests, 'Collapsed comparisons must not request excerpts'
             assert all(not excerpt(card).text for card in cards())
@@ -363,7 +370,7 @@ def main():
             assert metadata_context['excerpt_digest'] == seeded['exact_digest']
             assert not metadata_context['excerpt'] and not metadata_context['source_href']
             driver.execute_cdp_cmd('Emulation.setScriptExecutionDisabled', {'value': True})
-            driver.get(base + fallback)
+            navigate_to(driver, base + fallback, diagnostics=args.output)
             assert STATEMENTS[0] in driver.find_element(By.TAG_NAME, 'body').text
             assert '&lt;script&gt;window.syntheticInjection=true&lt;/script&gt;' in driver.page_source
             assert not driver.find_elements(By.CSS_SELECTOR, 'img[src="x"]')
@@ -372,7 +379,7 @@ def main():
                 raw_context['source_name'] + ' · ' + raw_context['location'])
             assert [item.get_attribute('textContent') for item in driver.find_elements(By.CSS_SELECTOR,
                 'main.cited-context-page details code')] == [raw_context['source_version_id'], seeded['exact_digest']]
-            driver.get(base + seeded['metadata_path'])
+            navigate_to(driver, base + seeded['metadata_path'], diagnostics=args.output)
             assert driver.find_elements(By.CSS_SELECTOR, 'main.cited-context-page h2')[1].get_attribute('textContent') == (
                 PRESENTED_METADATA_NAME + ' · ' + PRESENTED_METADATA_LOCATION)
             assert not driver.find_elements(By.CSS_SELECTOR, '.cited-context-excerpt')
@@ -388,7 +395,7 @@ def main():
             # this synthetic origin's preferences so the next explicit choice
             # changes the selected conversation rather than selecting it again.
             driver.execute_script('localStorage.clear()')
-            driver.get(base + prefix + '/notebook?conversation=' + seeded['conversations'][0])
+            navigate_to(driver, base + prefix + '/notebook?conversation=' + seeded['conversations'][0], diagnostics=args.output)
             dock = driver.find_element(By.CSS_SELECTOR, '[data-assistant-dock]')
             if not driver.find_element(By.CSS_SELECTOR, '[data-assistant-conversation-picker]').is_displayed():
                 driver.find_element(By.CSS_SELECTOR, '[data-assistant-expand]').send_keys(Keys.ENTER)
@@ -427,7 +434,7 @@ def main():
             record('The replaced assistant comparison fits 390 and 320 pixels, with independently scrollable excerpt and unobstructed keyboard source link')
 
             driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride', {})
-            driver.get(base + conversation_path)
+            navigate_to(driver, base + conversation_path, diagnostics=args.output)
             first = cards()[0]
             open_card(first)
             summary(first).send_keys(Keys.ENTER)
@@ -456,7 +463,7 @@ def main():
 
             answer_anchor = '#answer-support-' + seeded['transcript_message']
             transcript_path = prefix + '?conversation=' + seeded['transcript_conversation']
-            driver.get(base + transcript_path + answer_anchor)
+            navigate_to(driver, base + transcript_path + answer_anchor, diagnostics=args.output)
             transcript_card = next(card for card in cards()
                 if '/messages/' + seeded['transcript_message'] + '/' in card.get_attribute('data-context-url'))
             open_card(transcript_card)
@@ -490,7 +497,7 @@ def main():
             wait.until(lambda _: unobstructed(driver.find_element(By.ID, answer_anchor[1:])),
                 'The source return did not reveal the compared answer')
             assert driver.find_element(By.ID, 'answer-support-' + seeded['newer_message'])
-            driver.get(base + comparison_path)
+            navigate_to(driver, base + comparison_path, diagnostics=args.output)
             return_answer = driver.find_element(By.LINK_TEXT, 'Return to answer')
             assert urlparse(return_answer.get_attribute('href')).fragment == answer_anchor[1:]
             return_answer.send_keys(Keys.ENTER)

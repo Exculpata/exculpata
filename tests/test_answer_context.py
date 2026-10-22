@@ -1,3 +1,9 @@
+
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Synthetic C workflow and dispatch invariants; mock output is not model quality."""
 import hashlib
@@ -124,7 +130,7 @@ def test_new_conversation_complete_context_citations_receipts_and_exports(case):
         markdown = '\n'.join(archive.read(n).decode() for n in archive.namelist() if n.endswith('.md'))
         assert 'Context supplied for this answer' in markdown
     notes = client.get(f'/matters/{slug}/notebook/export?format=markdown')
-    assert notes.status_code == 200 and 'recordbench-dispatch' not in notes.text
+    assert notes.status_code == 200 and f"{LEGACY_STEM}-dispatch" not in notes.text
     assert 'Use my saved matter context' in page.text
 
 
@@ -265,8 +271,8 @@ def test_snapshot_and_manifest_immutable_and_sqlite_clean_restore(case, tmp_path
     for sql in ['UPDATE workbench_answer_context SET snapshot_json=snapshot_json',
                 'UPDATE workbench_answer_context_attempt SET manifest_json=manifest_json']:
         with pytest.raises(sqlite3.IntegrityError):
-            with store._lock, store.connection:
-                store.connection.execute(sql)
+            with fixture_write(store) as connection:
+                connection.execute(sql)
     backup = tmp_path / 'synthetic-control-backup.sqlite3'
     with store._lock, sqlite3.connect(backup) as target:
         store.connection.backup(target)
@@ -275,7 +281,7 @@ def test_snapshot_and_manifest_immutable_and_sqlite_clean_restore(case, tmp_path
         assert AnswerContextRepository(restored).receipt(job.matter_id, job.job_id) == receipt
         assert restored.connection.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert not restored.connection.execute('PRAGMA foreign_key_check').fetchall()
-        with restored._lock, restored.connection:
+        with fixture_write(restored):
             restored.connection.execute('DELETE FROM workbench_answer_job WHERE job_id=?', (job.job_id,))
         assert not restored.connection.execute('SELECT 1 FROM workbench_answer_context').fetchone()
         assert not restored.connection.execute('SELECT 1 FROM workbench_answer_context_attempt').fetchone()
@@ -294,7 +300,7 @@ def test_source_set_does_not_admit_one_side_and_scope_changes_fence_execution(ca
     complete = bench.workspace.create_source_set(matter.matter_id, 'Complete deliberate scope', all_ids, WEB_ACTOR)
     assert submit(case, source_set=complete.source_set_id).status_code == 202
     job = bench.workspace.claim_answer_job('scope-worker')
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_source_set_item WHERE source_set_id=? AND document_id=?',
                                           (complete.source_set_id, refs[0]['document_id']))
     with pytest.raises(AnswerJobFailure, match='source set changed'):
@@ -337,7 +343,7 @@ def test_authority_revocation_fences_every_dispatch_and_save(case, monkeypatch, 
     assert submit(case).status_code == 202
     store = case['bench'].workspace
     def revoke():
-        with store._lock, store.connection:
+        with fixture_write(store):
             store.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (WEB_ACTOR,))
     original = generation._bounded_json_request
     def transport(url, payload, **kwargs):
@@ -459,7 +465,9 @@ def test_no_write_transaction_during_runtime_and_prepared_before_attempt(case, m
         row = store.connection.execute('SELECT state FROM workbench_answer_context_attempt ORDER BY ordinal DESC LIMIT 1').fetchone()
         assert row[0] == 'dispatch_attempted'
         # A different SQLite writer can enter while inference is in progress.
+        # fixture-write: Independent writer proves inference does not retain a write transaction.
         with sqlite3.connect(store.path, timeout=.2) as second:
+            # fixture-write: Independent writer proves inference releases the SQLite write transaction.
             second.execute('BEGIN IMMEDIATE')
         return original(url, payload, **kwargs)
     monkeypatch.setattr(generation, '_bounded_json_request', observed)
@@ -539,7 +547,7 @@ def test_off_mode_dispatch_omits_selection_but_retains_old_chat(case):
     assert all(kind == 'completions' for kind, _ in case['calls'])
     prompt = case['calls'][0][1]['messages'][1]['content']
     assert 'Synthetic old-chat orientation' in prompt
-    assert 'Unsourced hypothesis' not in prompt and 'recordbench-answer-context-v1' not in prompt
+    assert 'Unsourced hypothesis' not in prompt and f"{LEGACY_STEM}-answer-context-v1" not in prompt
 
 
 def test_oversized_support_group_never_admits_one_side(case):

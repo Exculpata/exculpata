@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
+  and source-coverage rows plus coverage/schema columns. Importers must select
+  `row_type == 'citation'` when importing timeline citations. Exact totals are
+  reported only for complete coverage; named unreadable-source gaps remain
+  visible while later readable sources are included. Export limits and output
+  are deterministic, and CSV/Markdown presentation protections are strengthened.
+
+- The supporting-source drawer no longer highlights OCR noise, such as a line
+  reading `=3s .`, as cited text. Low-content runs stay visible but unmarked,
+  readable sentences in the same cited section keep their highlight, and the
+  citation is never removed. A section with no readable text shows a short
+  notice instead of a highlight.
+
+## 0.1.0-beta.1 - 2026-10-16
+
+First community beta. Evaluation on synthetic data; not production certification.
+
+- Renamed to Exculpata (visible branding, fresh-install names, theme, landing page); existing nodes keep their names.
+- Installer: Ubuntu 24.04 CPU path, evaluation storage profile, password rules, build progress, uninstall, reproducible offline GPU install.
+- Home discovery briefing, cited-answer statements, drafted witness questions/discovery requests, matter-wide search.
+- Automatic entities/dates/assertions with review inbox; transcript search and synthesis fixes.
+- Local-account management, team groups, explicit deletion, encrypted backup with restore verification.
+- Beta ethics assessment kit and hardware report issue form.
+
 - Disabled buttons outside the source library keep their Light borders when
   Dusk is selected. Disabled controls inside the source library still use the
   Dusk treatment.
@@ -18,8 +42,8 @@
 - Add the Exculpata wordmark, icon, and favicon. The README uses the wordmark
   and the tagline "your discovery, cited."
 
-- Renamed to Exculpata. Visible product branding changes only; existing package,
-  deployment and data identifiers remain unchanged.
+- Renamed the visible product to Exculpata. Fresh installs use Exculpata names.
+  Existing nodes keep their configuration, database, and container paths.
 
 - Keep a bounded source list beside document and recording inspection, with
   library-scoped previous/next, keyboard navigation and retained folder/filter

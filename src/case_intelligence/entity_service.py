@@ -1,4 +1,8 @@
 """Manual entity workflows with explicit source and workspace authority."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import asdict
 import json
 
@@ -61,7 +65,7 @@ class EntityService:
     def export(self, matter_id, actor_id, entity_id):
         with self.source_guard(), self.repository.transaction(matter_id, actor_id) as repo:
             entity, mentions, history, _ = self._detail(repo, matter_id, actor_id, entity_id)
-            return dict(format="recordbench-entity-v1", entity=entity, mentions=mentions, history=history,
+            return dict(format=f"{LEGACY_STEM}-entity-v1", entity=entity, mentions=mentions, history=history,
                 reconciliations=repo.reconciliations(matter_id, entity_id))
 
     def create(self, matter_id, actor_id, *, support='', **values):

@@ -1,4 +1,10 @@
 """Synthetic source-backed briefing, including provenance and complete pagination."""
+
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import FrozenInstanceError, replace
 import sqlite3
 import time
@@ -152,7 +158,7 @@ def test_failed_extraction_and_skipped_intake_keep_recorded_reasons(workbench):
     upload_path(client, bench, matter, 'Generated/failed.txt', b'Alex Example in a readable source.', 'a')
     [document] = bench.source_store(matter).documents.values()
     # Extraction may mark a source ready before the durable indexing job fails.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_ingest_job SET state='failed',message='Synthetic index could not be built' WHERE matter_id=? AND document_id=?", (matter.matter_id, document.document_id))
     assert bench.workspace.source_catalog_record(matter.matter_id, document.document_id).tone == 'ready'
     receipt = selection(client, matter.slug, [descriptor('Unsupported/opaque.bin', 25)], [], key='b' * 32)
@@ -239,9 +245,11 @@ def test_catalog_streams_beyond_one_page_and_counts_root_and_nested_folders(work
     monkeypatch.setattr(bench.workspace, 'ingest_job', no_library_pages)
     monkeypatch.setattr(bench.workspace, 'media_job', no_library_pages)
     queries = []
-    bench.workspace.connection.set_trace_callback(queries.append)
+    with bench.workspace._lock:
+        bench.workspace.connection.set_trace_callback(queries.append)
     briefing = assemble(bench, matter)
-    bench.workspace.connection.set_trace_callback(None)
+    with bench.workspace._lock:
+        bench.workspace.connection.set_trace_callback(None)
     job_reads = [query for query in queries if query.startswith('SELECT j.* FROM workbench_')]
     assert len(job_reads) == 2
     assert briefing.section('arrived').total == 105
@@ -259,7 +267,7 @@ def test_receipt_pages_and_display_omissions_are_complete_and_source_linked(work
     assert briefing.section('unread').omitted == 1
     assert len(lines(briefing, 'unread')) == 100
     # Use a late row with a name that sorts first to show the second receipt page.
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_intake_item SET relative_path='AAA/late.bin' WHERE receipt_id=? AND ordinal=100", (receipt['receipt_id'],))
     first = lines(assemble(bench, matter, max_incomplete=1), 'unread')[0]
     assert first.links[0].href.endswith('?page=2')
@@ -328,7 +336,7 @@ def test_legacy_upload_review_checks_membership_matter_session_and_item(tmp_path
     from tests.test_matter_management import ADMIN, OWNER, OTHER, _app, _csrf, _headers, _principal_id
     from tests.test_matter_management import _create_matter as create_authorized
     monkeypatch.setenv('CASE_INTELLIGENCE_STORAGE_RESERVE_GIB', '0')
-    with TestClient(_app(tmp_path), base_url='https://recordbench.example.test') as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized(client, principal=OWNER, csrf_token=csrf, name='Synthetic upload review')
         bench = client.app.state.workbench
@@ -388,8 +396,10 @@ def test_external_change_and_short_receipt_page_refuse_partial_briefing(workbenc
     date_draft = service.date_draft
     def changed(*args, **kwargs):
         result = date_draft(*args, **kwargs)
+        # fixture-write: Independent writer deliberately changes the database during briefing reads.
         with sqlite3.connect(bench.workspace.path) as other:
-            other.create_function('recordbench_case_content_cleanup', 1, lambda _matter_id: 0)
+            other.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1, lambda _matter_id: 0)  # fixture-write: Configure only this independent competing SQLite writer, never the shared workspace connection.
+            # fixture-write: Independent writer deliberately changes the database during briefing reads.
             other.execute("UPDATE workbench_matter SET descriptor='Synthetic concurrent edit' WHERE matter_id=?", (matter.matter_id,))
         return result
     monkeypatch.setattr(service, 'date_draft', changed)

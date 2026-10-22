@@ -51,12 +51,12 @@ replacement-host recovery. See [team group rollback constraints](TEAM_GROUPS.md)
 
 ```console
 python -m pytest tests/test_team_groups.py tests/test_identity_membership_audit.py tests/test_workspace_store.py tests/test_team_onboarding.py tests/test_report_compilation_jobs.py tests/test_browser_local_accounts.py tests/test_local_authentication.py -q
-python scripts/qa-team-groups-browser.py --artifacts /tmp/recordbench-group-acceptance
+python scripts/qa-team-groups-browser.py --artifacts /tmp/exculpata-group-acceptance
 ```
 
 The browser runner requires Node, OpenSSL, Playwright and a supported installed
 browser. `PLAYWRIGHT_MODULE` can select the installed module and
-`RECORDBENCH_QA_BROWSER_CHANNEL=chrome` can select Chrome. It starts a temporary
+`EXCULPATA_QA_BROWSER_CHANNEL=chrome` can select Chrome. It starts a temporary
 loopback HTTPS application with synthetic accounts and disposes of it afterward.
 Generated captures stay outside the repository. No existing deployment is used.
 

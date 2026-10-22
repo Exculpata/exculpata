@@ -4,7 +4,14 @@
 The deterministic answer client checks routing and cited-answer presentation;
 it does not measure model quality. Every action uses the existing product UI.
 """
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import io
@@ -96,7 +103,7 @@ def main(argv=None):
     os.environ["CASE_INTELLIGENCE_DEEPER_INVESTIGATION"] = "1"
     report = {"synthetic_only": True, "passed": False, "checks": []}
     checks = report["checks"]
-    with tempfile.TemporaryDirectory(prefix="recordbench-one-box-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-one-box-") as temporary:
         generator = SyntheticAnswerGenerator()
         app = create_workbench_app(Path(temporary) / "runtime", generator=generator,
             auth_mode="test", learned_retrieval=False, background_ingestion=False)
@@ -186,7 +193,7 @@ def main(argv=None):
                 raise AssertionError("The requested control is absent from the native keyboard tab order")
 
             def home_submit(text, *, keyboard=False):
-                driver.get(base + prefix + "/home")
+                navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
                 field = find("#one-box-question")
                 assert field.is_enabled()
                 if keyboard:
@@ -222,7 +229,7 @@ def main(argv=None):
                 assert bench.workspace.review_runs(matter.matter_id, ACTOR) == ()
                 assert bench.workspace.review_criteria(matter.matter_id, ACTOR) == ()
 
-            driver.get(base + prefix + "/home")
+            navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
             field = find("#one-box-question")
             assert field.accessible_name == "Ask, search or find records"
             assert js("return Array.from(arguments[0].labels).some(e=>e.getClientRects().length)", field)
@@ -249,7 +256,7 @@ def main(argv=None):
             assert SOURCE_TEXT in find("main").text
             checks.append("Exact search opens the original synthetic source")
 
-            driver.get(exact_url)
+            navigate_to(driver, exact_url, diagnostics=args.output)
             controls = alternatives("exact")
             checks.append("The route switch exposes exactly the other two choices through a native keyboard disclosure")
             choose = next(item for item in controls if item.get_attribute("data-one-box-kind") == "every_source")
@@ -275,7 +282,7 @@ def main(argv=None):
 
             driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
                 "width": 430, "height": 932, "deviceScaleFactor": 1, "mobile": False})
-            driver.get(base + prefix + "/home")
+            navigate_to(driver, base + prefix + "/home", diagnostics=args.output)
             no_overflow()
             field = find("#one-box-question")
             keyboard_to(field)
@@ -304,7 +311,7 @@ def main(argv=None):
             assert SOURCE_TEXT in find(".support-pane").text
             checks.append("The generated answer citation opens the original supporting passage")
 
-            driver.get(base + f"/matters/{empty.slug}/home")
+            navigate_to(driver, base + f"/matters/{empty.slug}/home", diagnostics=args.output)
             assert not find("#one-box-question").is_enabled()
             assert not find("[data-one-box-form] button[type=submit]").is_enabled()
             described = find("#one-box-question").get_attribute("aria-describedby").split()
@@ -331,7 +338,7 @@ def main(argv=None):
             messages = bench.workspace.messages(matter.matter_id, conversation_id)
             assert any(message.role == "user" and message.content == UNSUPPORTED_QUESTION for message in messages)
             assert any(message.role == "assistant" and message.payload.get("kind") == "not-supported" for message in messages)
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js("return !!document.querySelector('[data-deeper-investigation]')"))
             offers = driver.find_elements(By.CSS_SELECTOR, "[data-deeper-investigation]")
             assert len(offers) == 1
@@ -358,7 +365,7 @@ def main(argv=None):
             assert job.state == "queued" and job.actor_id == ACTOR
             assert job.idempotency_key.startswith("research-request-")
             assert UNSUPPORTED_QUESTION in find(".conversation-research-progress").text
-            driver.refresh()
+            refresh_page(driver, wait)
             wait.until(lambda _: js("return !!document.querySelector('.conversation-research-progress')"))
             assert len(bench.workspace.research_jobs(matter.matter_id, ACTOR)) == 1
             assert generator.calls == 2

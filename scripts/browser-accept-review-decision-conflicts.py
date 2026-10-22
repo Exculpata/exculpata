@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic shared source-validation conflicts, support, export and revocation in Chrome."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -17,7 +24,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,7 +60,7 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     checks = []
-    with tempfile.TemporaryDirectory(prefix='recordbench-decision-conflicts-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-decision-conflicts-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()
@@ -97,7 +103,7 @@ def main():
             wait = WebDriverWait(owner, 20)
             wait.until(lambda _: server.started)
             def go(driver, path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
             def fill(driver, selector, value):
                 field = driver.find_element(By.CSS_SELECTOR, selector)
                 field.clear()
@@ -109,7 +115,7 @@ def main():
                 return button
             def submit(driver, selector):
                 button = click(driver, selector)
-                WebDriverWait(driver, 20).until(EC.staleness_of(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
             def body(driver):
                 return driver.find_element(By.TAG_NAME, 'body').text
 

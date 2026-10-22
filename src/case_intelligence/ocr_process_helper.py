@@ -4,6 +4,7 @@ Applying limits here keeps the threaded application out of ``preexec_fn`` and
 leaves its own process limits unchanged. Exec preserves the parent's timeout
 and kill target; it does not leave a second, unsupervised recognition child.
 """
+
 from __future__ import annotations
 
 import os
@@ -12,6 +13,9 @@ import signal
 import sys
 
 MAX_OUTPUT_BYTES = 16 * 1024 * 1024
+# Isolated helper: python -I -S cannot import the package. The prefix is a
+# wire format shared with the parent and stays stable across the rename.
+_OCR_LIMIT_RECEIPT_PREFIX = "recordbench-ocr-limit"
 
 
 def main(arguments: list[str]) -> int:
@@ -30,7 +34,7 @@ def main(arguments: list[str]) -> int:
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         # Report the limit actually installed in this process, including a
         # tighter inherited limit. This pipe write is not subject to RLIMIT_FSIZE.
-        receipt = f"recordbench-ocr-limit:{effective}\n".encode("ascii")
+        receipt = f"{_OCR_LIMIT_RECEIPT_PREFIX}:{effective}\n".encode("ascii")
         if os.write(sys.stdout.fileno(), receipt) != len(receipt):
             return 125
         os.execv(command[0], command)

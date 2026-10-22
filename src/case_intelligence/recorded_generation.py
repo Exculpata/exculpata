@@ -1,4 +1,8 @@
 """Exact application requests and runtime tokenizer admission for the vLLM profile."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import hashlib
 import json
 
@@ -22,7 +26,7 @@ class RecordedDispatch:
         # transport serializer. Headers (including credentials) are never saved.
         wire = encode_request(request)
         request = json.loads(wire)
-        manifest = dict(format='recordbench-dispatch-v1', request=request,
+        manifest = dict(format=f"{LEGACY_STEM}-dispatch-v1", request=request,
             purpose='tokenization' if path == '/tokenize' else 'generation',
             serialized_request_utf8=wire.decode('utf-8'),
             serialized_utf8_sha256=hashlib.sha256(wire).hexdigest(), serialized_utf8_bytes=len(wire),

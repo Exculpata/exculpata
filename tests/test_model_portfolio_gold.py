@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from case_intelligence.model_portfolio_gold import (
     MODEL_PORTFOLIO_SCHEMA_VERSION,
     MODEL_PORTFOLIO_SUITE_ID,
@@ -8,7 +12,7 @@ from case_intelligence.model_portfolio_gold import (
 
 def test_model_portfolio_gold_is_frozen_and_structurally_valid() -> None:
     cases = model_portfolio_cases()
-    assert MODEL_PORTFOLIO_SUITE_ID == "recordbench-model-portfolio-gold-v1"
+    assert MODEL_PORTFOLIO_SUITE_ID == f"{LEGACY_STEM}-model-portfolio-gold-v1"
     assert MODEL_PORTFOLIO_SCHEMA_VERSION == 1
     assert len(cases) == 10
     assert len({item.case_id for item in cases}) == len(cases)

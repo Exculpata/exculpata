@@ -8,7 +8,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 
 @pytest.fixture
-def dusk_script():
+def dusk_script(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / 'scripts'))
     path = Path(__file__).resolve().parents[1] / 'scripts/browser-accept-dusk.py'
     spec = importlib.util.spec_from_file_location('browser_dusk_snapshot', path)
     module = importlib.util.module_from_spec(spec)
@@ -50,3 +51,17 @@ def test_matching_light_snapshot_passes_immediately(dusk_script):
     snapshot = Mock(return_value=LIGHT)
     dusk_script.wait_for_light_snapshot(WebDriverWait(None, 1), snapshot, LIGHT)
     snapshot.assert_called_once_with()
+
+
+def test_compositing_probe_rejects_wrong_inherited_background_and_cleans_up(dusk_script):
+    driver = Mock()
+    probe = object()
+    driver.execute_script.side_effect = [
+        probe,
+        {'fg': [255, 255, 255, 1], 'bg': [255, 255, 255, 1]},
+        None,
+    ]
+    with pytest.raises(AssertionError, match='inherited dark surface'):
+        dusk_script.verify_contrast_compositing(driver)
+    driver.execute_script.assert_called_with(
+        'arguments[0].parentElement.parentElement.remove()', probe)

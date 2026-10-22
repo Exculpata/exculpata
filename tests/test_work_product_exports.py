@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import csv
 import io
 import json
@@ -496,7 +501,7 @@ def test_every_source_csv_and_json_keep_exact_support_without_internal_metadata(
     assert "full-review" not in json_artifact.filename
     payload = json.loads(json_artifact.body)
     _assert_portable_json(payload)
-    assert payload["schema"] == "recordbench-source-check-v1"
+    assert payload["schema"] == f"{LEGACY_STEM}-source-check-v1"
     assert payload["matter"] == {"name": matter.display_name}
     assert payload["check"]["scope"] == "Every source"
     assert payload["check"]["status"] == "Succeeded"
@@ -505,7 +510,7 @@ def test_every_source_csv_and_json_keep_exact_support_without_internal_metadata(
             "ordinal": 1,
             "source_name": "Generated register.pdf",
             "source_kind": "PDF",
-            "recordbench_label": "Included",
+            f"{LEGACY_STEM}_label": "Included",
             "rationale": "The contemporaneous entry meets the saved criterion.",
             "citations": [
                 {
@@ -538,7 +543,7 @@ def test_every_source_csv_and_json_keep_exact_support_without_internal_metadata(
         "Ordinal",
         "Source",
         "Type",
-        "RecordBench label",
+        f"{LEGACY_PRODUCT} label",
         "Rationale",
         "Cited support",
         "Needs attention",
@@ -551,7 +556,7 @@ def test_every_source_csv_and_json_keep_exact_support_without_internal_metadata(
         "Generated register.pdf — Page 4 — "
         "The generated event was entered at 21:14."
     )
-    assert rows[0]["RecordBench label"] == "Included"
+    assert rows[0][f"{LEGACY_PRODUCT} label"] == "Included"
     assert rows[0]["Staff decision"] == "Agree"
     assert rows[0]["Reviewed at"] == STAMP
     for marker in (

@@ -1,4 +1,8 @@
 """Manual events and assertions: attributed original accounts, independent review."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from datetime import date
 import json
 import re
@@ -100,7 +104,7 @@ class AssertionService:
 
     def export(self, matter_id, actor_id, assertion_id):
         with self.entities.source_guard(), self.repository.transaction(matter_id, actor_id) as repo:
-            return dict(format='recordbench-assertion-v1', **self._detail(repo, matter_id, assertion_id))
+            return dict(format=f"{LEGACY_STEM}-assertion-v1", **self._detail(repo, matter_id, assertion_id))
 
     def chronology_export(self, matter_id, actor_id, *, entity_id=''):
         with self.entities.source_guard(), self.repository.transaction(matter_id, actor_id) as repo:
@@ -119,7 +123,7 @@ class AssertionService:
             available = self.entities.validate_references(accounts)
             for index, account in enumerate(accounts):
                 account['available'] = index in available
-            result = dict(format='recordbench-chronology-v1', records=records,
+            result = dict(format=f"{LEGACY_STEM}-chronology-v1", records=records,
                 ordering='Explicit reviewer-entered calendar dates first; records without ordering dates follow separately. Raw date wording is not inferred.')
             if len(json.dumps(result, indent=2).encode('utf-8')) > MAX_STORAGE_BYTES:
                 raise WorkspaceProblem('This chronology exceeds the export payload limit. No partial export was produced.')

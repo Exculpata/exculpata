@@ -1,5 +1,10 @@
 """Synthetic real-process checks for OCR's enforced output-file boundary."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import shutil
 import subprocess
@@ -232,7 +237,7 @@ os.execv(sys.argv[1], sys.argv[1:])
         bounded = command[:index] + [sys.executable, "-I", "-S", "-c", "pass"]
         result = run([sys.executable, "-I", "-S", "-c", launcher, *bounded], **kwargs)
         assert result.returncode == 0
-        assert result.stdout == b"recordbench-ocr-limit:0\n"
+        assert result.stdout == (f"{LEGACY_STEM}-ocr-limit:0\n").encode()
         return result
 
     monkeypatch.setattr(pilot_uploads.subprocess, "run", synthetic_tesseract)
@@ -241,8 +246,8 @@ os.execv(sys.argv[1], sys.argv[1:])
     assert raised.value.status == "output_limit"
 
 
-@pytest.mark.parametrize("receipt", [b"", b"recordbench-ocr-limit:1024", b"recordbench-ocr-limit:-1\n",
-                                    b"recordbench-ocr-limit:16777217\n", b"junk\nrecordbench-ocr-limit:1024\n"])
+@pytest.mark.parametrize("receipt", [b"", (f"{LEGACY_STEM}-ocr-limit:1024").encode(), (f"{LEGACY_STEM}-ocr-limit:-1\n").encode(),
+                                    (f"{LEGACY_STEM}-ocr-limit:16777217\n").encode(), (f"junk\n{LEGACY_STEM}-ocr-limit:1024\n").encode()])
 def test_success_without_valid_limit_receipt_fails_closed(monkeypatch, receipt):
     directories = []
 

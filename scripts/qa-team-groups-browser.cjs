@@ -2,11 +2,12 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const origin = process.env.RECORDBENCH_QA_ORIGIN;
+const qa = (name) => process.env[`EXCULPATA_QA_${name}`] || process.env[`RECORDBENCH_QA_${name}`];
+const origin = qa('ORIGIN');
 assert.match(origin || '', /^https:\/\/127\.0\.0\.1:\d+$/);
 const password = 'synthetic-browser-password';
 (async () => {
-  const browser = await chromium.launch({headless: true, channel: process.env.RECORDBENCH_QA_BROWSER_CHANNEL || undefined});
+  const browser = await chromium.launch({headless: true, channel: qa('BROWSER_CHANNEL') || undefined});
   try {
     const options = {ignoreHTTPSErrors: true, viewport: {width: 1440, height: 1000}};
     const admin = await (await browser.newContext(options)).newPage();
@@ -46,12 +47,12 @@ const password = 'synthetic-browser-password';
     await admin.getByLabel('Add person to Alpha team', {exact: true}).selectOption({label: 'Synthetic Reviewer'});
     await admin.getByRole('button', {name: 'Add to Alpha team', exact: true}).click();
     await admin.getByRole('button', {name: 'Remove Synthetic Reviewer', exact: true}).waitFor();
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'team-groups-desktop.png'), fullPage: true, animations: 'disabled'});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'team-groups-desktop.png'), fullPage: true, animations: 'disabled'});
     await admin.setViewportSize({width: 390, height: 844});
     await admin.reload();
     await admin.getByRole('heading', {name: 'Team groups', exact: true}).waitFor();
     assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'team-groups-mobile.png'), fullPage: true, animations: 'disabled'});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'team-groups-mobile.png'), fullPage: true, animations: 'disabled'});
     await admin.setViewportSize({width: 1440, height: 1000});
     for (const [i, name] of ['Alpha team', 'Beta team'].entries()) {
       await admin.goto(origin + '/matters/' + slugs[i] + '/setup');
@@ -67,7 +68,7 @@ const password = 'synthetic-browser-password';
     await admin.getByLabel('Add a case team member').selectOption({label: 'Synthetic Reviewer'});
     await admin.getByRole('button', {name: 'Add member', exact: true}).click();
     await admin.getByText('Direct member; Group: Alpha team', {exact: true}).waitFor();
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'matter-access-reasons.png'), fullPage: true, animations: 'disabled'});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'matter-access-reasons.png'), fullPage: true, animations: 'disabled'});
     await admin.goto(origin + '/admin/groups');
     await admin.getByRole('button', {name: 'Remove Synthetic Reviewer', exact: true}).click();
     await admin.getByText('No members yet.').first().waitFor();

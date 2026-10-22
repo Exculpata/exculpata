@@ -1,3 +1,8 @@
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from tests.case_lifecycle_web_helpers import claim_bench_exit
 """Real HTTP context flows, source returns, authority and portable exports."""
 import html
@@ -72,7 +77,7 @@ def test_http_selection_conflicts_sources_exports_no_model_and_reload(connection
         assert 'explicit focused-answer opt-in' in manifest['consumption']
         assert len(manifest['selections'][0]['entries']) == 3
     notes = client.get(f'/matters/{slug}/notebook/export?format=markdown')
-    assert notes.status_code == 200 and 'recordbench-context-selections' not in notes.text
+    assert notes.status_code == 200 and f"{LEGACY_STEM}-context-selections" not in notes.text
     assert client.post(path, data=form(client.get(path), 'clear')).status_code == 200
     assert 'No selected context.' in client.get(path).text
 
@@ -264,8 +269,8 @@ def test_read_only_identity_checks_never_commit_or_mutate_sessions(protected_ass
     token = c['client'].cookies.get(SESSION_COOKIE)
     actor = identity.resolve(token)
     for state in ('current','expired','bad_roles'):
-        with store._lock:
-            store.connection.execute('BEGIN IMMEDIATE')
+        with fixture_write(store) as connection:
+            connection.execute('BEGIN IMMEDIATE')
             if state == 'expired':
                 store.connection.execute("UPDATE workbench_session SET idle_expires_at='2000-01-01T00:00:00Z' WHERE session_id=?",(actor.session.session_id,))
             elif state == 'bad_roles':
@@ -274,4 +279,4 @@ def test_read_only_identity_checks_never_commit_or_mutate_sessions(protected_ass
             current = identity.resolve(token,read_only=True)
             assert (current is not None) == (state == 'current')
             assert store.connection.in_transaction and store.connection.total_changes == before
-            store.connection.rollback()
+            connection.rollback()

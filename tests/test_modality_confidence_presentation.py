@@ -1,6 +1,8 @@
 """Synthetic modality notices describe citation coverage without promising truth."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import copy
 import io
 import json
@@ -134,7 +136,7 @@ def test_saved_research_notice_views_exports_bundle_preserve_ledger(workspace, m
     result = copy.deepcopy(job.result)
     result["answer"]["modality_coverage"] = coverage(mode, historical)
     encoded = json.dumps(result)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
             (encoded, job.job_id))
     page = client.get(f"/matters/{matter.slug}/research", params={"job": job.job_id})
@@ -190,7 +192,7 @@ def test_export_does_not_reclassify_custom_notice_after_whitespace_cleanup(works
         job, _ = saved_research(bench, matter)
         result = copy.deepcopy(job.result)
         result["answer"]["modality_coverage"] = coverage("complete", custom)
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute("UPDATE workbench_research_job SET result_json=? WHERE job_id=?",
                 (json.dumps(result), job.job_id))
         response = client.get(f"/matters/{matter.slug}/research/{job.job_id}/export?format=json")

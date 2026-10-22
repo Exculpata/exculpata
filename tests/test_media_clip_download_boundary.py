@@ -1,4 +1,10 @@
 """Synthetic authorization and response-lifecycle checks for rendered clips."""
+
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import asyncio
 import io
 import threading
@@ -22,17 +28,18 @@ def seed_clip(bench, matter, actor, monkeypatch):
     document, _ = store.store_stream("synthetic.wav", "audio/wav",
                                     io.BytesIO(b"RIFF synthetic audio"))
     bench.media.close()
-    job = bench.workspace.queue_media_job(
-        matter.matter_id, document.document_id, document.version_id, actor,
-        source_sha256=document.digest, byte_size=document.size, media_type="audio/wav", duration_ms=2000)
-    assert bench.workspace.claim_media_job("synthetic-clip-worker").media_job_id == job.media_job_id
-    bench.workspace.import_media_transcript(job.media_job_id, segments=({
-        "external_segment_id": "synthetic-segment", "start_ms": 0, "end_ms": 2000,
-        "speaker_cluster": "SPEAKER_00", "model_text": "Synthetic recording.",
-    },), warnings=(), quality={}, provenance={})
-    bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="Synthetic ready")
-    clip = bench.workspace.create_media_clip(matter.matter_id, document.document_id, document.version_id,
-        title="Synthetic interval", start_ms=0, end_ms=2000, actor_id=actor)
+    with fixture_write(bench.workspace, media=True):
+        job = bench.workspace.queue_media_job(
+            matter.matter_id, document.document_id, document.version_id, actor,
+            source_sha256=document.digest, byte_size=document.size, media_type="audio/wav", duration_ms=2000)
+        assert bench.workspace.claim_media_job("synthetic-clip-worker").media_job_id == job.media_job_id
+        bench.workspace.import_media_transcript(job.media_job_id, segments=({
+            "external_segment_id": "synthetic-segment", "start_ms": 0, "end_ms": 2000,
+            "speaker_cluster": "SPEAKER_00", "model_text": "Synthetic recording.",
+        },), warnings=(), quality={}, provenance={})
+        bench.workspace.finish_media_job(job.media_job_id, degraded=False, message="Synthetic ready")
+        clip = bench.workspace.create_media_clip(matter.matter_id, document.document_id, document.version_id,
+            title="Synthetic interval", start_ms=0, end_ms=2000, actor_id=actor)
     return f"/matters/{matter.slug}/sources/{store.action_token(document)}/clips/{clip.clip_id}/download"
 
 
@@ -40,7 +47,7 @@ def seed_clip(bench, matter, actor, monkeypatch):
 @pytest.mark.parametrize("revocation", ["membership", "session", "principal", "administrator"])
 def test_clip_rechecks_authority_after_render(tmp_path, monkeypatch, revocation):
     monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
-    with TestClient(_app(tmp_path), base_url="https://recordbench.example.test") as client:
+    with TestClient(_app(tmp_path), base_url=f"https://{LEGACY_STEM}.example.test") as client:
         client.get("/auth/login", headers=_headers(OWNER))
         bench = client.app.state.workbench
         owner = _principal_id(client, OWNER)
@@ -62,11 +69,12 @@ def test_clip_rechecks_authority_after_render(tmp_path, monkeypatch, revocation)
             elif revocation == "administrator":
                 monkeypatch.setattr(client.app.state.identity, "kerberos_group_resolver", lambda _: set())
             else:
-                with bench.workspace._lock, bench.workspace.connection:
+                revoked_at = bench.workspace._now() if revocation == "session" else None
+                with fixture_write(bench.workspace):
                     if revocation == "session":
                         bench.workspace.connection.execute(
                             "UPDATE workbench_session SET revoked_at=? WHERE principal_id=?",
-                            (bench.workspace._now(), reader))
+                            (revoked_at, reader))
                     else:
                         bench.workspace.connection.execute(
                             "UPDATE workbench_principal SET active=0 WHERE principal_id=?", (reader,))

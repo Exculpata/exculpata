@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Convert synthetic research, edit its gaps, and download the retained basis."""
 
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -34,7 +41,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="recordbench-review-report-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-review-report-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / "downloads"
         downloads.mkdir()
@@ -55,12 +62,12 @@ def main() -> None:
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             wait = WebDriverWait(driver, 20)
             wait.until(lambda _: server.started)
-            driver.get(base + "/")
+            navigate_to(driver, base + "/", diagnostics=args.output)
             bench = app.state.workbench
             bench.research.close()
             matter = bench.workspace.create_matter("Synthetic Report review", "Browser acceptance", ACTOR)
             job, _ = saved_research(bench, matter)
-            driver.get(base + f"/matters/{matter.slug}/research?job={job.job_id}")
+            navigate_to(driver, base + f"/matters/{matter.slug}/research?job={job.job_id}", diagnostics=args.output)
             for details in driver.find_elements(By.CSS_SELECTOR, 'details'):
                 if details.find_elements(By.CSS_SELECTOR, 'form[action$="/report"]'):
                     driver.execute_script("arguments[0].open = true", details)
@@ -83,7 +90,7 @@ def main() -> None:
             save = form.find_element(By.CSS_SELECTOR, 'button[type="submit"]')
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", save)
             save.click()
-            wait.until(EC.staleness_of(save))
+            wait_for_replacement(driver, wait, save)
             edit_link = wait.until(EC.element_to_be_clickable((By.LINK_TEXT, 'Edit this draft')))
             driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", edit_link)
             wait.until(lambda d: d.execute_script("const r=arguments[0].getBoundingClientRect(); return r.top >= 56 && r.bottom < innerHeight;", edit_link))

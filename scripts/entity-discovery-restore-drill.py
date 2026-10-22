@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Content-free slice-16 -> slice-17 migration and clean rollback receipt."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import json
 import os
 from pathlib import Path
@@ -11,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = '3f96b290ca71adbaef37b92e2d9f4d01cf7d226f'
-with tempfile.TemporaryDirectory(prefix='recordbench-discovery-migration-') as temporary:
+with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-discovery-migration-") as temporary:
     root = Path(temporary)
     archive_path = root / 'baseline.tar'
     with archive_path.open('wb') as output:

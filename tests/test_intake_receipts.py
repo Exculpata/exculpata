@@ -1,5 +1,7 @@
 """Synthetic complete-selection accounting, resumable metadata and receipt boundaries."""
 
+from tests.fixture_write import fixture_write
+
 from tests.case_lifecycle_helpers import lifecycle_session
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -144,7 +146,7 @@ def test_receipt_authority_is_rechecked_for_reads_and_mutations(tmp_path, kind):
             w.revoke_member(m.matter_id, MEMBER, OWNER)
             actor = MEMBER
         elif kind == 'inactive':
-            with w.connection:
+            with fixture_write(w):
                 w.connection.execute('UPDATE workbench_principal SET active=0 WHERE principal_id=?', (OWNER,))
         elif kind == 'closing':
             w.case_lifecycle.begin_exit(m.slug, OWNER, session_id=lifecycle_session(w, OWNER, administrator_override=False).session_id)
@@ -187,7 +189,8 @@ def test_concurrent_metadata_creation_and_upload_binding_make_one_record(tmp_pat
         return create(IntakeReceipts(store), m, 1, (0,))['receipt_id']
     try:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            ids = list(pool.map(begin, [w, peer]))
+            pending = [pool.submit(begin, store) for store in (w, peer)]
+            ids = [future.result() for future in pending]
         assert ids[0] == ids[1]
         receipt = receipts.get(m.matter_id, OWNER, ids[0])
         append(receipts, m, receipt, [descriptor('one.txt')])
@@ -198,7 +201,8 @@ def test_concurrent_metadata_creation_and_upload_binding_make_one_record(tmp_pat
                 [{'display_name': 'one.txt', 'relative_path': 'one.txt', 'media_type': 'text/plain', 'expected_size': 48}],
                 intake_receipt_id=ids[0], intake_ordinals=[0])[0].upload_session_id
         with ThreadPoolExecutor(max_workers=2) as pool:
-            sessions = list(pool.map(bind, [w, peer]))
+            pending = [pool.submit(bind, store) for store in (w, peer)]
+            sessions = [future.result() for future in pending]
         assert sessions[0] == sessions[1]
     finally:
         peer.close(); w.close()

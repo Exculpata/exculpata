@@ -160,15 +160,19 @@ def test_fixture_continues_each_recording_check_only_once(request, monkeypatch):
     decide = WorkspaceStore.decide_media_preflight
 
     def hold_requeued_worker(workspace, *args, **kwargs):
-        if continued.is_set() and not release.is_set():
-            return None
-        return claim(workspace, *args, **kwargs)
+        # The store lock covers the gate and the claim together. Checking the
+        # event first lets a claim already inside the store pick up the requeue.
+        with workspace._lock:
+            if continued.is_set() and not release.is_set():
+                return None
+            return claim(workspace, *args, **kwargs)
 
     def continue_once(workspace, *args, **kwargs):
-        continued.set()
-        job = decide(workspace, *args, **kwargs)
-        decisions.append(job.media_job_id)
-        return job
+        with workspace._lock:
+            continued.set()
+            job = decide(workspace, *args, **kwargs)
+            decisions.append(job.media_job_id)
+            return job
 
     def observe_queued_decision(workspace, *args, **kwargs):
         job = media_job(workspace, *args, **kwargs)

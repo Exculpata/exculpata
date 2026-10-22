@@ -24,10 +24,11 @@ tools can support other legal and investigation teams.
 Exculpata is designed to run on infrastructure you control. Its bundled AI
 workflows use local models for retrieval, answers, and media transcription.
 
-> **Community beta candidate:** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
-> with synthetic material. The beta has not been released yet; final reference
-> acceptance and maintainer approval are pending. This is not production
-> certification for confidential casework. See the [candidate release notes](docs/BETA_RELEASE_NOTES.md).
+> **Community beta v0.1.0-beta.1.** Follow the [GPU reference installation](docs/BETA_REFERENCE_INSTALL.md)
+> with synthetic material. This prerelease is for evaluation and contribution.
+> It is not production certification for confidential casework. See the
+> [beta release notes](docs/BETA_RELEASE_NOTES.md). Checksummed source artifacts
+> and recorded image and model identities are follow-ups for a later beta.
 
 The beta ethics kit provides an evidence-linked [data-handling statement](docs/ethics/DATA_HANDLING.md),
 [vendor-vetting checklist](docs/ethics/VENDOR_VETTING_CHECKLIST.md), and
@@ -36,24 +37,22 @@ It supports a lawyer’s assessment of a specific installation and use; it is no
 
 ## See Exculpata in action
 
-Follow a fictional Harbor Street matter from adding records to source-linked
-answers, media review, notes, timelines, reports, and export. These desktop and
-mobile walkthroughs use synthetic records and demonstrate the development alpha.
+A one-minute launch video follows a fictional Calder Reservoir administrative
+inquiry built from synthetic records. Desktop (16:9) is first, then the vertical
+(9:16) cut. The case is fictional; the app and its actions are real. This is a
+preview, not production validation.
 
-### Desktop walkthrough · 4:47
+### Launch video · 1:00 · 16:9
 
-https://github.com/user-attachments/assets/e14f468e-7ea6-46de-84e0-d9c865e1db53
+https://github.com/user-attachments/assets/aac555ae-8c88-4deb-9719-69a5d646e279
 
-[Watch or download the desktop walkthrough](docs/assets/recordbench-desktop-walkthrough.mp4?raw=true)
+[Watch or download the 16:9 launch video](docs/assets/exculpata-launch-16x9.mp4?raw=true)
 
-### Mobile walkthrough · 5:34
+### Launch video · 1:00 · 9:16
 
-https://github.com/user-attachments/assets/2506daba-2922-4f8a-b2a0-b5e518b10a27
+https://github.com/user-attachments/assets/1a71e2e1-eee5-4c60-8055-c647edc7e11f
 
-[Watch or download the mobile walkthrough](docs/assets/recordbench-mobile-walkthrough.mp4?raw=true)
-
-On-screen labels explain each step. The case is fictional; the app and its
-actions are real. These walkthroughs are previews, not production validation.
+[Watch or download the 9:16 launch video](docs/assets/exculpata-launch-9x16.mp4?raw=true)
 
 Want to help shape it? [Help build Exculpata](#help-build-it)—workflow feedback,
 synthetic test material, and clear bug reports are as useful as code.
@@ -89,7 +88,7 @@ See the [corpus provenance](demo_data/README.md).
 
 ## Help build Exculpata
 
-This is a maintainer-led community beta candidate. It does not publish any
+This is the maintainer-led community beta, v0.1.0-beta.1. It does not publish any
 organization's private deployment, records, or endorsement. Contributions use
 synthetic examples only, including issue descriptions, screenshots, and logs.
 
@@ -277,17 +276,23 @@ Limits and the remaining keys are in
 
 ## Hardware planning targets
 
-These are starting targets for prerelease evaluation, not validated minimums or
-collection-size and concurrency guarantees. Larger matters, longer recordings,
-and more simultaneous users need additional storage and capacity. Consult
+These are evaluation configurations, not guaranteed minimums or collection-size
+and concurrency limits. Larger matters, longer recordings, and more simultaneous
+users need additional storage and capacity. Cited answers with the portable
+model are admitted from 16 GB of NVIDIA VRAM. The reference GPU journey
+(portable answers, English and Spanish transcription, and Nemotron speaker
+labels) ran on 24 GB. A separate 16 GB reference run is not recorded. Driver
+and CUDA versions for the 24 GB run were not recorded. File another result on
+the [hardware report](https://github.com/Exculpata/exculpata/issues/new?template=hardware_report.yml)
+form. Collected rows live in [compatibility](docs/COMPATIBILITY.md). Consult
 [release readiness](docs/RELEASE_READINESS.md) before treating a configuration
 as supported.
 
 | Intended use | CPU | RAM | NVIDIA GPU | Free SSD before matter data |
 | --- | ---: | ---: | --- | ---: |
 | **CPU evaluation** — intake, OCR, word search, source review, and exports | 8 cores | 16 GB | None | 150 GB production, or 13 GB with `--storage-profile evaluation` |
-| **Local document review** — evaluation features plus semantic retrieval, reranking, and local answers | 12 cores | 32 GB | 1 GPU with 16 GB VRAM | 200 GB |
-| **Every-source checks and media** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM | 300 GB |
+| **Local document review and cited answers** — evaluation features plus semantic retrieval, reranking, and local answers with the portable model | 12 cores | 32 GB | 1 GPU with 16 GB VRAM minimum | 200 GB |
+| **Transcription and speaker labels** — document review plus transcription and optional diarization | 16 cores | 64 GB | 1 GPU with 24 GB VRAM, tested reference | 300 GB |
 
 Use a modern x86-64 Linux host with Docker Engine and Docker Compose v2. GPU
 profiles require an NVIDIA card with compute capability 7.5 or newer and the
@@ -356,12 +361,12 @@ and the evidence already in this repository. It is not a security certification
 and it does not promise a result.
 
 ```bash
-./install doctor --root /srv/recordbench
-./install backup --root /srv/recordbench --repository /mnt/backup/recordbench \
-  --recovery-key-output /mnt/recovery/recordbench-password
-./install restore --root /srv/recordbench \
-  --restore-target /srv/recordbench-restore-test
-./install update --root /srv/recordbench
+./install doctor --root /srv/exculpata
+./install backup --root /srv/exculpata --repository /mnt/backup/exculpata \
+  --recovery-key-output /mnt/recovery/exculpata-password
+./install restore --root /srv/exculpata \
+  --restore-target /srv/exculpata-restore-test
+./install update --root /srv/exculpata
 ```
 
 ## Data and repository boundaries
@@ -426,10 +431,12 @@ details out of issues, pull requests, and screenshots.
 
 ## Project status
 
-Exculpata is preparing its first community beta. The reviewed source is
-available for evaluation and contribution; the beta tag and final reference
-acceptance remain pending. Supported production-release requirements remain open. Sharing the source and supporting confidential casework each require the evidence described
-in [release readiness](docs/RELEASE_READINESS.md) and the
+Exculpata [v0.1.0-beta.1](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1)
+is the published community beta prerelease. The tagged source is available for
+evaluation and contribution. Checksummed source artifacts and recorded image and
+model identities are follow-ups for a later beta. Supported production-release requirements remain
+open. Sharing the source and supporting confidential casework each require the
+evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 [publication checklist](docs/PUBLICATION_CHECKLIST.md).
 
 ## Documentation
@@ -443,7 +450,7 @@ in [release readiness](docs/RELEASE_READINESS.md) and the
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
-- [Brand](docs/BRAND.md)
+- [Visual identity: logo, type, color, and positioning](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)
 
 ## License
@@ -451,10 +458,9 @@ in [release readiness](docs/RELEASE_READINESS.md) and the
 Exculpata is licensed under [Apache-2.0](LICENSE). Dependencies, containers,
 and models retain their respective licenses and terms. Their notice inventory
 remains part of the [publication review](docs/PUBLICATION_CHECKLIST.md).
-The new desktop and mobile walkthroughs, including their audio, are also
-licensed under Apache-2.0. Only the previous teaser's original soundtrack is
-excluded from the software license;
-see [media rights](docs/assets/MEDIA_RIGHTS.md).
+The launch videos, including their soundtracks, are also licensed under
+Apache-2.0. Only the previous teaser's original soundtrack is excluded from
+the software license; see [media rights](docs/assets/MEDIA_RIGHTS.md).
 
 Outside contributors sign the [CLA](CLA.md) once, via the CLA Assistant
 GitHub app. The Exculpata name and logo are not licensed under Apache-2.0; see

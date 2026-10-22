@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import re
 import json
 import shutil
@@ -15,7 +19,7 @@ from case_intelligence.workbench import create_workbench_app
 from tests.test_local_authentication import _challenge
 
 PASSWORD = "synthetic-browser-password"
-ORIGIN = "https://recordbench.example.test"
+ORIGIN = f"https://{LEGACY_STEM}.example.test"
 
 
 def configured_app(tmp_path, *, enabled=True):
@@ -284,7 +288,10 @@ def test_self_change_reports_completion_audit_failure_at_sign_in(tmp_path, monke
         assert response.status_code == 303
         destination = urlsplit(response.headers["location"])
         assert destination.path == "/auth/login"
-        assert "Audit completion needs operator attention" in parse_qs(destination.query)["error"][0]
+        assert parse_qs(destination.query)["error"] == ["account_changed_audit"]
+        page = admin.get(response.headers["location"])
+        assert "Your account changed. Sign in again to continue." in page.text
+        assert "Audit completion needs operator attention; tell the installation operator." in page.text
         assert admin.get("/admin/people", follow_redirects=False).status_code == 303
 
 

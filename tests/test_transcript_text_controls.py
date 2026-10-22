@@ -1,5 +1,12 @@
 """Synthetic legacy transcript export regressions; no media intake acceptance."""
+
 from __future__ import annotations
+
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import csv
 import hashlib
@@ -78,7 +85,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
             store._save((document.document_id,))
         workspace = bench.workspace
         # Keep the real media worker from claiming the synthetic seed job.
-        with workspace._lock:
+        with fixture_write(workspace, media=True):
             job = workspace.queue_media_job(
                 matter.matter_id, document.document_id, document.version_id, ACTOR,
                 source_sha256=document.digest, byte_size=document.size,
@@ -103,7 +110,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
         )
         # Only the synthetic revision emulates legacy controls; today's import
         # and edit validators remain strict and are not bypassed in production.
-        with workspace._lock, workspace.connection:
+        with fixture_write(workspace):
             workspace.connection.execute(
                 "UPDATE workbench_transcript_segment_revision SET text=? WHERE segment_id=?",
                 (RAW_TEXT, segment.segment_id),
@@ -119,7 +126,7 @@ def test_legacy_transcript_downloads_and_bundle_preserve_saved_basis(tmp_path):
         for format_name in ("markdown", "csv", "txt", "srt", "vtt", "json"):
             response = client.get(f"/matters/{slug}/sources/{token}/transcript-export", params={"format": format_name})
             assert response.status_code == 200
-            assert response.headers["x-recordbench-export"] == "work-product"
+            assert response.headers[f"x-{LEGACY_STEM}-export"] == "work-product"
             if format_name == "json":
                 assert response.json()["segments"][0]["text"] == RAW_TEXT
                 continue

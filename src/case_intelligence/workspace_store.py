@@ -1,5 +1,10 @@
 """Persistent development matters and conversations for Milestone A."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import hashlib
 import json
@@ -193,12 +198,12 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
         )
         self.principal_enabled = principal_enabled or (lambda provider, subject: provider != "local")
         self.connection.create_function(
-            "recordbench_principal_enabled", 2,
+            f"{LEGACY_STEM}_principal_enabled", 2,
             lambda provider, subject: int(self.principal_enabled(provider, subject)),
         )
-        self.connection.create_function("recordbench_case_lifecycle_writer", 0, lambda: 2)
+        self.connection.create_function(f"{LEGACY_STEM}_case_lifecycle_writer", 0, lambda: 2)
         self._case_cleanup_matter = None
-        self.connection.create_function("recordbench_case_content_cleanup", 1,
+        self.connection.create_function(f"{LEGACY_STEM}_case_content_cleanup", 1,
             lambda matter_id: int(self._case_cleanup_matter == matter_id))
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode = WAL")
@@ -1110,6 +1115,23 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             ).rowcount
         return row["next_path"] if changed == 1 else None
 
+    def cancel_oidc_transaction(self, state_digest: str) -> str | None:
+        """Cancel browser state without taking a consumed callback's pending request."""
+        if not re.fullmatch(r"[0-9a-f]{64}", state_digest):
+            return None
+        with self._lock, self.connection:
+            row = self.connection.execute(
+                "SELECT next_path FROM workbench_oidc_transaction WHERE state_digest=?",
+                (state_digest,),
+            ).fetchone()
+            self.connection.execute(
+                "DELETE FROM workbench_oidc_transaction WHERE state_digest=? "
+                "AND (consumed_at IS NULL OR NOT EXISTS "
+                "(SELECT 1 FROM workbench_case_oidc_request WHERE state_digest=?))",
+                (state_digest, state_digest),
+            )
+        return row["next_path"] if row else None
+
     def team_groups(self) -> tuple[dict, ...]:
         with self._lock:
             return tuple(dict(row) for row in self.connection.execute(
@@ -1282,7 +1304,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                         "JOIN workbench_principal principal "
                         "ON principal.principal_id=matter.owner_id "
                         "WHERE matter.matter_id=? AND matter.owner_id=? "
-                        "AND principal.active=1 AND recordbench_principal_enabled(principal.provider,principal.provider_subject)=1 "
+                        f"AND principal.active=1 AND {LEGACY_STEM}_principal_enabled(principal.provider,principal.provider_subject)=1 "
                         "AND lifecycle.state='purge_failed'",
                         (matter_id, actor),
                     ).fetchone()

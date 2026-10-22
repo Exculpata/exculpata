@@ -1,3 +1,7 @@
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from case_intelligence.model_portfolio import (
     APPROVED_GENERATOR_MODEL,
     DISCOVERY_GOLD_FINGERPRINT,
@@ -67,8 +71,16 @@ def test_unreviewed_generator_is_visible_but_not_reported_ready() -> None:
     assert projection["generator"]["configured_model"] == "unreviewed-candidate"
 
 
+def test_previous_portable_served_name_stays_a_reviewed_configuration() -> None:
+    projection = _projection(_Service(model=f"{LEGACY_STEM}-qwen35-4b"))
+
+    assert projection["ready"] is True
+    assert projection["generator"]["profile"] == "portable"
+    assert projection["generator"]["repository"] == "Qwen/Qwen3.5-4B"
+
+
 def test_quality_generator_tier_is_also_a_reviewed_configuration() -> None:
-    projection = _projection(_Service(model="recordbench-qwen35-9b"))
+    projection = _projection(_Service(model=f"{LEGACY_STEM}-qwen35-9b"))
 
     assert projection["ready"] is True
     assert projection["generator"]["profile"] == "quality"

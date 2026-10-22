@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import re
 from pathlib import Path
 
@@ -63,9 +67,9 @@ def test_workflow_pages_default_to_quick_question_without_overriding_user_choice
             assert 'data-assistant-default="collapsed"' in page.text
             assert 'data-assistant-presentation="quick"' in page.text
             assert "Quick question" in page.text
-        assert "recordbench:assistant:display:v2" in (
-            client.get("/static/case-intelligence.js").text
-        )
+        script = client.get("/static/case-intelligence.js").text
+        assert 'const assistantPreferenceKey = "exculpata:assistant:display:v2"' in script
+        assert f'key.replace(/^exculpata:/, "{LEGACY_STEM}:")' in script
 
 
 def test_activity_center_is_global_matter_bound_and_content_minimized(tmp_path):

@@ -3,6 +3,10 @@
 No independent connection, implicit transaction, or name-based identity lookup.
 The service owns the source guard; this repository owns the workspace transaction.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from contextlib import contextmanager
 import hashlib
 import json
@@ -355,7 +359,7 @@ class EntityRepository:
         for row in self.connection.execute(
                 'SELECT entity_id FROM workbench_entity WHERE matter_id=? ORDER BY entity_id', (matter_id,)):
             entity_id = row[0]
-            yield dict(format='recordbench-entity-v1', entity=self.get(matter_id, entity_id),
+            yield dict(format=f"{LEGACY_STEM}-entity-v1", entity=self.get(matter_id, entity_id),
                        mentions=self.mentions(matter_id, entity_id), history=self.history(matter_id, entity_id),
                        reconciliations=self.reconciliations(matter_id, entity_id),
                        source_support='Retained original-source support; availability is not revalidated in this bundle.')
@@ -723,7 +727,7 @@ class EntityRepository:
             (matter_id, operation_id))
 
     def discovery_export(self, matter_id):
-        return dict(format='recordbench-entity-discovery-v1',
+        return dict(format=f"{LEGACY_STEM}-entity-discovery-v1",
             source_support='Retained frozen coverage; current source availability is not revalidated in this bundle.',
             sources=[dict(row) for row in self.connection.execute(
                 'SELECT s.* FROM workbench_text_review_source s JOIN workbench_review_run r ON r.run_id=s.run_id WHERE r.matter_id=?', (matter_id,))],

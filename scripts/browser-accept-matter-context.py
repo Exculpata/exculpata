@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic durable context workflow through the existing pinned browser runner."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to, refresh_page
 
 import argparse
 import importlib.util
@@ -60,7 +67,7 @@ def main():
     def record(message):
         checks.append(message)
         print(message, flush=True)
-    with tempfile.TemporaryDirectory(prefix='recordbench-context-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-context-browser-") as temporary:
         runtime = Path(temporary)/'runtime'
         context = knowledge.seed(runtime)
         # Persist a note selection, stop all app writers, and open a new app below.
@@ -96,10 +103,10 @@ def main():
             def activate(element):
                 activate_context_action(driver, wait, element)
             def inspect(kind, identifier):
-                driver.get(base+path+f'?kind={kind}&object_id={identifier}')
+                navigate_to(driver, base+path+f'?kind={kind}&object_id={identifier}', diagnostics=args.output)
             def no_overflow():
                 assert driver.execute_script('return document.documentElement.scrollWidth <= innerWidth')
-            driver.get(base+path)
+            navigate_to(driver, base+path, diagnostics=args.output)
             assert 'Working note about Alex' in body() and 'Unchanged' in body()
             assert 'Saved selections change answers only when' in body()
             record('Restart retains approved selection and explains explicit opt-in; selection operations call no generator')
@@ -110,17 +117,17 @@ def main():
             assert len(driver.find_elements(By.CSS_SELECTOR,'article[id^="selected-"]')) == 3
             assert context['person'] in body() and context['other'] in body()
             record('Two same-name identities are independently selected by stable ID; unavailable support stays labeled')
-            driver.get(base+path)
+            navigate_to(driver, base+path, diagnostics=args.output)
             original_tab = driver.current_window_handle
             driver.switch_to.new_window('tab')
-            driver.get(base+path)
+            navigate_to(driver, base+path, diagnostics=args.output)
             other = driver.find_element(By.ID,'selected-'+context['other'])
             activate(button('Move up',other))
             driver.switch_to.window(original_tab)
             activate(button('Clear selection'))
             assert 'Your unsaved choice' in body() and 'another tab' in body()
             assert len(driver.find_elements(By.CSS_SELECTOR,'article[id^="selected-"]')) == 3
-            driver.refresh()
+            refresh_page(driver, wait)
             assert len(driver.find_elements(By.CSS_SELECTOR,'article[id^="selected-"]')) == 3
             record('Concurrent tabs cannot overwrite a reorder; conflict retains the unsaved choice and current selection')
             bench = app.state.workbench
@@ -133,7 +140,7 @@ def main():
             assert 'Alex Corrected' in body()
             current = driver.find_element(By.ID,'selected-'+context['person'])
             activate(button('Remove from context',current))
-            driver.refresh()
+            refresh_page(driver, wait)
             assert not driver.find_elements(By.ID,'selected-'+context['person'])
             record('Source-record edits require explicit reapproval; explicit removal survives reload without re-add')
             inspect('entity',context['person'])
@@ -142,7 +149,7 @@ def main():
             wait.until(lambda _: driver.find_elements(By.ID,'support-pane'))
             activate(driver.find_element(By.LINK_TEXT,'Return to review context'))
             assert urlparse(driver.current_url).path == path
-            driver.get(base+path+f'?kind=entity&object_id={context["person"]}')
+            navigate_to(driver, base+path+f'?kind=entity&object_id={context["person"]}', diagnostics=args.output)
             for _ in range(180):
                 active = driver.switch_to.active_element
                 if active.tag_name == 'button' and active.text == 'Use as context':
@@ -213,7 +220,7 @@ def main():
                 service.change(matter.matter_id,knowledge.ACTOR,expected_revision=selection['revision'],action='add',kind='assertion',object_id=assertion_id,approval=candidate['approval'])
                 conversation = bench.workspace.create_conversation(matter.matter_id, 'Synthetic C new conversation', actor_id=knowledge.ACTOR)
                 driver.execute_cdp_cmd('Emulation.clearDeviceMetricsOverride',{})
-                driver.get(base+f'/matters/{context["slug"]}?conversation={conversation.conversation_id}')
+                navigate_to(driver, base+f'/matters/{context["slug"]}?conversation={conversation.conversation_id}', diagnostics=args.output)
                 driver.find_element(By.CSS_SELECTOR,'.composer-notebook-context > summary').send_keys(Keys.ENTER)
                 checkbox = driver.find_element(By.NAME,'use_saved_context')
                 assert not checkbox.is_selected()

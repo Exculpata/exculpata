@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Generated email coverage through actual Chrome upload, review and export."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    CURRENT_STEM,
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 from email.message import EmailMessage
@@ -64,7 +72,7 @@ def main():
         report["checks"].append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-email-browser-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-email-browser-") as temporary:
         root = Path(temporary).resolve()
         original = root / "generated.eml"
         message = EmailMessage()
@@ -143,7 +151,7 @@ def main():
 
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
                 wait.until(lambda _: detached(old))
                 ready()
 
@@ -268,7 +276,7 @@ def main():
 
             go(prefix + "?" + urlencode({"conversation": conversation.conversation_id}))
             main_window = driver.current_window_handle
-            driver.execute_script("window.emailMixedCoverage = false; window.addEventListener('recordbench:readiness', event => { if (event.detail.attention_count === 1) window.emailMixedCoverage = true; });")
+            driver.execute_script(f"window.emailMixedCoverage = false; window.addEventListener('{CURRENT_STEM}:readiness', event => {{ if (event.detail.attention_count === 1) window.emailMixedCoverage = true; }});")
             damaged = root / "damaged.pdf"
             damaged.write_bytes(b"%PDF-1.4\nGenerated damaged document.\n%%EOF\n")
             driver.switch_to.new_window("tab")

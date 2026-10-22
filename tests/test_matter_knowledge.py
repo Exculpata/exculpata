@@ -1,4 +1,6 @@
 """Synthetic saved-knowledge projection: bounds, provenance and authority."""
+
+from tests.fixture_write import fixture_write
 from contextlib import contextmanager
 
 import pytest
@@ -64,9 +66,11 @@ def test_independent_pages_clamp_after_deletion_and_no_histories(knowledge_case,
     monkeypatch.setattr(assertions, 'detail', forbidden)
     projection = MatterKnowledgeService(assertions)
     traced = []
-    store.connection.set_trace_callback(traced.append)
+    with store._lock:
+        store.connection.set_trace_callback(traced.append)
     first = projection.page(matter.matter_id, ACTOR)
-    store.connection.set_trace_callback(None)
+    with store._lock:
+        store.connection.set_trace_callback(None)
     second = projection.page(matter.matter_id, ACTOR, entity_page=2, assertion_page=2)
     assert len(first['entities']['items']) == 8 and first['entities']['omitted'] == 3
     assert len(second['entities']['items']) == 3 and second['entities']['omitted'] == 8
@@ -104,8 +108,9 @@ def test_reference_validation_batched_inside_source_guard_and_same_transaction(k
     # reference sharing a valid token: it must not borrow the mention's validity.
     refs['b' * 40] = dict(refs['b' * 40], source_version_id='synthetic-replacement')
     with assertions.repository.transaction(matter.matter_id, ACTOR):
-        store.connection.execute('UPDATE workbench_assertion_account SET excerpt_digest=? '
-            'WHERE assertion_id=? AND stance=?', ('f' * 64, record['assertion_id'], 'supporting'))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_assertion_account SET excerpt_digest=? '
+                'WHERE assertion_id=? AND stance=?', ('f' * 64, record['assertion_id'], 'supporting'))
     calls = []
     validate = entities.validate_references
     def checked(references):
@@ -166,8 +171,9 @@ def test_oversized_saved_excerpt_is_not_silently_truncated_to_valid_support(know
     store, matter, _, assertions, center = knowledge_case
     assertions.create(matter.matter_id, ACTOR, **values(center))
     with assertions.repository.transaction(matter.matter_id, ACTOR):
-        store.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE matter_id=?',
-                                 ('x' * 6001, matter.matter_id))
+        with fixture_write(store):
+            store.connection.execute('UPDATE workbench_assertion_account SET excerpt=? WHERE matter_id=?',
+                                     ('x' * 6001, matter.matter_id))
     with pytest.raises(WorkspaceProblem, match='preview limit'):
         MatterKnowledgeService(assertions).page(matter.matter_id, ACTOR)
 

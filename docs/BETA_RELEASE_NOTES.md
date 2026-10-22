@@ -1,7 +1,9 @@
-# RecordBench 0.1.0-beta.1 candidate
+# Exculpata 0.1.0-beta.1
 
-**Unreleased.** Version metadata identifies the candidate being qualified; it
-does not mean the tag, release assets or final acceptance have been approved.
+**Published community beta prerelease.** Install from the
+[`v0.1.0-beta.1` release](https://github.com/Exculpata/exculpata/releases/tag/v0.1.0-beta.1).
+Checksummed source artifacts and recorded image and model identities are
+follow-ups for a later beta, not prerequisites for this prerelease.
 
 This milestone targets a reproducible Linux GPU installation for evaluation and
 contribution. The reference journey covers local accounts, document review with
@@ -34,17 +36,14 @@ They document network exceptions and bounded tests, not a blanket offline,
 privacy or legal-compliance guarantee. Complete the assessment for the actual
 installation and client before use. Not legal advice. Verify the rules in your jurisdiction.
 
-## Qualification still required before tagging
+## What this prerelease already exercised
 
-The initial candidate passed synthetic GPU document review, English/Spanish
+The reference run passed synthetic GPU document review, English/Spanish
 Nemotron workflows, offline-network and worker-restart checks, and replacement
 node restoration of accounts, saved answers and transcript exports. These are
-bounded evaluation results, not clean-host or human-quality acceptance. The
-final image set must retain those results and requalify affected paths after
-security updates, including new inference after recovery. Record final source/image/model identities, image advisory
-dispositions and required CI results. Publish checksummed source artifacts only
-from the accepted commit after maintainer approval. Pending checks are not
-represented as passed by this document.
+bounded evaluation results, not clean-host or human-quality acceptance.
+Checksummed source artifacts, recorded image and model identities, and image
+advisory dispositions are follow-ups for a later beta.
 
 ## Limits that remain after a community beta decision
 

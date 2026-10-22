@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import io
 import json
 import re
@@ -642,7 +648,7 @@ def test_video_playback_survives_transcription_failure_with_browser_copy(tmp_pat
         head = client.head(f"/matters/{slug}/sources/{token}/content")
         assert head.status_code == 200
         assert head.headers["content-type"].startswith("video/mp4")
-        assert head.headers["x-recordbench-playback"] == "compatible-copy"
+        assert head.headers[f"x-{LEGACY_STEM}-playback"] == "compatible-copy"
         assert int(head.headers["content-length"]) == document.playback_size
         prefix = client.get(
             f"/matters/{slug}/sources/{token}/content",
@@ -1049,7 +1055,7 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
             assert overview_export.status_code == 200
             assert marker in overview_export.content
             assert (
-                overview_export.headers["x-recordbench-export"]
+                overview_export.headers[f"x-{LEGACY_STEM}-export"]
                 == "work-product"
             )
             assert document.document_id[:12] not in overview_export.headers[
@@ -1071,7 +1077,7 @@ def test_media_upload_transcript_review_range_citations_exports_and_clips(tmp_pa
             )
             assert exported.status_code == 200
             assert marker in exported.content
-            assert exported.headers["x-recordbench-export"] == "work-product"
+            assert exported.headers[f"x-{LEGACY_STEM}-export"] == "work-product"
             assert document.document_id[:12] not in exported.headers[
                 "content-disposition"
             ]
@@ -1593,7 +1599,7 @@ def test_existing_transcript_overview_is_backfilled_automatically_on_restart(tmp
         # legacy snapshot without racing a background SQLite transaction.
         bench.media.close()
         bench.media = None
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "DELETE FROM workbench_media_summary WHERE transcript_id=?",
                 (transcript.transcript_id,),
@@ -1878,7 +1884,7 @@ def test_interrupted_overview_at_automatic_limit_requires_manual_retry(tmp_path)
         failed = _wait_for_summary(bench, matter, document, "failed")
         # The media coordinator still shares this connection. Hold the workspace
         # lock for the fixture write so it cannot overlap a worker statement.
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_media_summary SET state='running',attempts=? "
                 "WHERE transcript_id=?",
@@ -1988,7 +1994,7 @@ def test_report_media_clip_export_re_resolves_exact_timestamped_source(tmp_path)
 
         foreign_marker = "Generated foreign recording label"
         # Report and media workers still share this connection.
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_report_citation SET source_name=? "
                 "WHERE matter_id=? AND report_id=? AND kind='media_clip'",
@@ -2245,14 +2251,14 @@ def test_transcript_overview_export_requires_current_exact_timestamps(
         if corruption == "citation":
             payload = json.loads(json.dumps(summary.payload))
             payload["claims"][0]["citations"][0]["start_ms"] += 1
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_media_summary SET payload_json=? "
                     "WHERE transcript_id=?",
                     (json.dumps(payload), summary.transcript_id),
                 )
         else:
-            with bench.workspace._lock, bench.workspace.connection:
+            with fixture_write(bench.workspace):
                 bench.workspace.connection.execute(
                     "UPDATE workbench_media_summary SET basis_digest=? "
                     "WHERE transcript_id=?",

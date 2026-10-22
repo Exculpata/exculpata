@@ -8,12 +8,12 @@ only after its own tests, hosted code/security reviews and maintainer acceptance
 
 | Component | Outcome | Preserved head |
 | --- | --- | --- |
-| [#32](https://github.com/neilofneils404/recordbench-oss/pull/32) | Check final export readiness and link Reports needing repair | `d8801d90cc62382f96bab5279d5e67dd380576cd` |
-| [#35](https://github.com/neilofneils404/recordbench-oss/pull/35) | Plan portable installation, search, review, and work-product slices | `c4261579881904a0ecb877a6ced7c08449082f94` |
-| [#36](https://github.com/neilofneils404/recordbench-oss/pull/36) | Define strict exact-search grammar and known-answer corpus | `25455cdb9a61b67bc09adf45f8f2c2b5ab308a73` |
-| [#37](https://github.com/neilofneils404/recordbench-oss/pull/37) | Check complete candidate history without unrelated fetched branches | `5155a418b58dfe3e8d0d7e3546a1a875ccc7bdaf` |
-| [#38](https://github.com/neilofneils404/recordbench-oss/pull/38) | Preserve findings, gaps, and human review in Reports | `1de30e5eb43164e11c8dffc04f1a3c2d1ebcda08` |
-| [#40](https://github.com/neilofneils404/recordbench-oss/pull/40) | Make investigation budgets and coverage limits explicit | `cd4fa734c416687d52e4d36103364e582eed2dc0` |
+| [#32](https://github.com/neilofneils404/exculpata-oss/pull/32) | Check final export readiness and link Reports needing repair | `d8801d90cc62382f96bab5279d5e67dd380576cd` |
+| [#35](https://github.com/neilofneils404/exculpata-oss/pull/35) | Plan portable installation, search, review, and work-product slices | `c4261579881904a0ecb877a6ced7c08449082f94` |
+| [#36](https://github.com/neilofneils404/exculpata-oss/pull/36) | Define strict exact-search grammar and known-answer corpus | `25455cdb9a61b67bc09adf45f8f2c2b5ab308a73` |
+| [#37](https://github.com/neilofneils404/exculpata-oss/pull/37) | Check complete candidate history without unrelated fetched branches | `5155a418b58dfe3e8d0d7e3546a1a875ccc7bdaf` |
+| [#38](https://github.com/neilofneils404/exculpata-oss/pull/38) | Preserve findings, gaps, and human review in Reports | `1de30e5eb43164e11c8dffc04f1a3c2d1ebcda08` |
+| [#40](https://github.com/neilofneils404/exculpata-oss/pull/40) | Make investigation budgets and coverage limits explicit | `cd4fa734c416687d52e4d36103364e582eed2dc0` |
 
 The visible additions are **Check export**, fuller saved-review-to-Report
 conversion, and explicit investigation budgets. The exact-search parser is a

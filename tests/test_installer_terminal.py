@@ -1,5 +1,11 @@
 """Synthetic console/subprocess contracts; these are not Linux install acceptance."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 
 import io
 import errno
@@ -238,14 +244,14 @@ def test_unsafe_log_creation_remains_refused(synthetic_docker, monkeypatch, unsa
 
 @pytest.mark.parametrize("generation,username,display", [
     ("exculpata", "exculpata.admin", "Exculpata Administrator"),
-    ("recordbench", "recordbench.admin", "RecordBench Administrator"),
+    (f"{LEGACY_STEM}", f"{LEGACY_STEM}.admin", f"{LEGACY_PRODUCT} Administrator"),
 ])
 def test_admin_defaults_follow_detected_generation(tmp_path, monkeypatch, generation, username, display):
     monkeypatch.setattr(installer, "_legacy_account", lambda: False)
     root = tmp_path / "node"
-    if generation == "recordbench":
+    if generation == f"{LEGACY_STEM}":
         (root / "config").mkdir(parents=True)
-        (root / "config/recordbench.env").write_text("# synthetic legacy node\n")
+        (root / f"config/{LEGACY_STEM}.env").write_text("# synthetic legacy node\n")
     args = installer._parser().parse_args(["--root", str(root), "--auth", "local", "--non-interactive"])
     assert installer._select_names(args, root) == generation
     installer._collect_identity_choices(args)

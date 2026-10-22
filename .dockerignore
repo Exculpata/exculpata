@@ -48,7 +48,17 @@ services/transcription/data
 **/backups/**
 **/recordbench-node
 **/recordbench-node/**
+**/exculpata-node
+**/exculpata-node/**
 **/runtime
 **/runtime/**
 **/state
 **/state/**
+
+# Legacy builders use this root policy; admit only reviewed offline IDNA inputs.
+src/case_intelligence/_idna/**
+!src/case_intelligence/_idna/__init__.py
+!src/case_intelligence/_idna/idna-3.20.pyz
+!src/case_intelligence/_idna/manifest.json
+!src/case_intelligence/_idna/LICENSE.md
+!src/case_intelligence/_idna/README.md

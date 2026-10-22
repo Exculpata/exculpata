@@ -2,13 +2,14 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const origin = process.env.RECORDBENCH_QA_ORIGIN;
+const qa = (name) => process.env[`EXCULPATA_QA_${name}`] || process.env[`RECORDBENCH_QA_${name}`];
+const origin = qa('ORIGIN');
 assert.match(origin || '', /^https:\/\/127\.0\.0\.1:\d+$/);
 const password = 'synthetic-browser-password';
 const changedPassword = 'synthetic-reset-password';
 
 (async () => {
-  const browser = await chromium.launch({headless: true, channel: process.env.RECORDBENCH_QA_BROWSER_CHANNEL || undefined});
+  const browser = await chromium.launch({headless: true, channel: qa('BROWSER_CHANNEL') || undefined});
   try {
     const options = {ignoreHTTPSErrors: true, viewport: {width: 1440, height: 1000}};
     const admin = await (await browser.newContext(options)).newPage();
@@ -38,11 +39,11 @@ const changedPassword = 'synthetic-reset-password';
     await login(admin, 'alice.admin');
     assert.equal(new URL(admin.url()).pathname, '/admin/setup');
     await admin.getByRole('heading', {name: 'Bring your team into Exculpata'}).waitFor();
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'setup-desktop.png'), fullPage: true});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'setup-desktop.png'), fullPage: true});
     await admin.setViewportSize({width: 390, height: 844});
     await admin.reload();
     assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'setup-mobile.png'), fullPage: true});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'setup-mobile.png'), fullPage: true});
     await admin.setViewportSize({width: 1440, height: 1000});
     await admin.reload();
     await create('first.reviewer', 'First Reviewer');
@@ -81,11 +82,11 @@ const changedPassword = 'synthetic-reset-password';
     await admin.goto(origin + '/matters/' + slug + '/setup');
     await admin.getByText('Renamed Offline Reviewer', {exact: true}).first().waitFor();
     await admin.goto(origin + '/admin/people');
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'people-desktop.png'), fullPage: true});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'people-desktop.png'), fullPage: true});
     await admin.setViewportSize({width: 390, height: 844});
     await admin.reload();
     assert.equal(await admin.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
-    await admin.screenshot({path: path.join(process.env.RECORDBENCH_QA_ARTIFACTS, 'people-mobile.png'), fullPage: true});
+    await admin.screenshot({path: path.join(qa('ARTIFACTS'), 'people-mobile.png'), fullPage: true});
     console.log('PASS: Team setup entry and access evidence, People creation, keyboard entry, two-user matter authorization, reset/disable revocation, disabled-account team-name refresh, and 390px layout.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error.message); process.exitCode = 1; });

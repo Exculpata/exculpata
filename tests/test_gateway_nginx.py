@@ -1,8 +1,13 @@
 """Run the deployed gateway template against an observing upstream.
 
-Requires Docker and OpenSSL; also runs directly with the standard library in
-CI's deployment-contract job so a missing runtime cannot silently skip it.
+Requires Docker and OpenSSL. CI's deployment-contract job sets PYTHONPATH=src
+so the naming constants import without installing the package. A missing
+runtime still cannot silently skip the test.
 """
+
+from case_intelligence.legacy_names import (
+    LEGACY_PRODUCT,
+)
 from pathlib import Path
 import subprocess
 import tempfile
@@ -24,7 +29,7 @@ class GatewayHeaderContract(unittest.TestCase):
                      (ROOT / "deploy/gateway/Dockerfile").read_text().splitlines()
                      if line.startswith("FROM "))
         container = f"synthetic-gateway-{uuid.uuid4().hex}"
-        names = [f"X-{brand}-{suffix}" for brand in ("Exculpata", "RecordBench")
+        names = [f"X-{brand}-{suffix}" for brand in ("Exculpata", LEGACY_PRODUCT)
                  for suffix in ("Authenticated-User", "Proxy-Secret", "Auth-Diagnostic")]
         absent = "|".join("" for _ in names)
         with tempfile.TemporaryDirectory(prefix="synthetic-gateway-") as temporary:
@@ -33,8 +38,8 @@ class GatewayHeaderContract(unittest.TestCase):
                 "-keyout", str(scratch / "tls.key"), "-out", str(scratch / "tls.crt"),
                 "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost")
             template = (ROOT / "deploy/gateway/default.conf.template").read_text()
-            rendered = template.replace("${RECORDBENCH_SERVER_NAME}", "localhost").replace(
-                "${RECORDBENCH_UPSTREAM}", "127.0.0.1:8786")
+            rendered = template.replace("${EXCULPATA_SERVER_NAME}", "localhost").replace(
+                "${EXCULPATA_UPSTREAM}", "127.0.0.1:8786")
             # A separate HTTP server observes the headers that actually arrive
             # after proxying; the TLS gateway configuration is otherwise intact.
             variables = "|".join("$http_" + name.lower().replace("-", "_") for name in names)
@@ -66,12 +71,12 @@ class GatewayHeaderContract(unittest.TestCase):
                         with self.subTest(path=path, mode=mode):
                             forged = {}
                             for name in names:
-                                if mode == "new-only" and "RecordBench" in name:
+                                if mode == "new-only" and LEGACY_PRODUCT in name:
                                     continue
                                 if mode == "old-only" and "Exculpata" in name:
                                     continue
                                 forged[name] = ("synthetic-different" if mode == "both-different"
-                                                and "RecordBench" in name else "synthetic-forged")
+                                                and LEGACY_PRODUCT in name else "synthetic-forged")
                             # A control for every case proves the observer sees
                             # supplied headers when the gateway is bypassed.
                             self.assertEqual(request(path, forged, direct=True),

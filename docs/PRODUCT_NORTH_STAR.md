@@ -3,7 +3,7 @@
 Exculpata is a free, local-first review workspace for case teams. Its purpose
 is to help attorneys, investigators, and support staff understand their records,
 find source-supported information, preserve what they learn, and make informed
-human decisions. Federal criminal defense and teams serving people who cannot
+human decisions. Public criminal defense and teams serving people who cannot
 afford counsel are central to that purpose.
 
 This is the product direction, not a claim that the alpha already delivers it.

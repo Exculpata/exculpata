@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import asdict, replace
 
 import pytest
@@ -61,7 +65,9 @@ def test_exact_citation_tamper_fails_whole_run_and_projection_is_safe(tmp_path):
     flattened = repr(projected).casefold()
     for forbidden in ("relative_path", "sha256", "synthetic_root", "unc", "rrf", "score", "processor", "lane", "traceback"):
         assert forbidden not in flattened
-    store.connection.execute("UPDATE segment SET text=text||'tampered' WHERE matter_id='matter-alpha'")
+    with store.transaction():
+        # fixture-write: Isolated SQLiteStore citation tampering uses its public explicit transaction in native legacy-autocommit mode.
+        store.connection.execute("UPDATE segment SET text=text||'tampered' WHERE matter_id='matter-alpha'")
     with pytest.raises(RetrievalIntegrityError):
         service.search("actor-alpha", SearchRequest("tampered", "matter-alpha", "shared red bicycle"))
     store.close()
@@ -73,7 +79,7 @@ def test_explicit_selection_fresh_validates_then_mints_opaque_ticket(tmp_path):
     result = service.search("actor-alpha", SearchRequest("select", "matter-alpha", "shared red bicycle")).results[0]
     launch = service.mint_open_source("actor-alpha", "matter-alpha", result.segment_navigation_id)
     assert launch.model_dump().keys() == {"uri", "expires_at"}
-    assert launch.uri.startswith("recordbench://ticket/")
+    assert launch.uri.startswith(f"{LEGACY_STEM}://ticket/")
     assert "matter" not in launch.uri and "report" not in launch.uri
     assert len(tickets.records) == 1
 

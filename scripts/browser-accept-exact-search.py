@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Exercise plain exact/proximity search with temporary synthetic sources."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import io
@@ -48,11 +55,11 @@ def main():
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     # This acceptance process must not inherit deployed storage, source mounts,
-    # PostgreSQL, or worker endpoints from the host's RecordBench environment.
+    # PostgreSQL, or worker endpoints from the host's Exculpata environment.
     for name in tuple(os.environ):
         if name.startswith(("CASE_INTELLIGENCE_", "CASE_REVIEW_")):
             os.environ.pop(name)
-    with tempfile.TemporaryDirectory(prefix="recordbench-exact-search-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-exact-search-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / "runtime", auth_mode="test",
             generator=SyntheticAnswerGenerator(), learned_retrieval=False, background_ingestion=False)
         listener = socket.socket()
@@ -70,7 +77,7 @@ def main():
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             wait = WebDriverWait(driver, 20)
             wait.until(lambda _: server.started)
-            driver.get(base + "/")
+            navigate_to(driver, base + "/", diagnostics=args.output)
             bench = app.state.workbench
             matter = bench.create_matter("Synthetic nearby details", "Invented browser acceptance records", ACTOR)
             store = bench.source_store(matter)
@@ -112,7 +119,7 @@ def main():
                 assert driver.execute_script("return document.documentElement.scrollWidth <= window.innerWidth")
                 driver.save_screenshot(str(args.output / f"{name}.png"))
 
-            driver.get(base + f"/matters/{matter.slug}/home")
+            navigate_to(driver, base + f"/matters/{matter.slug}/home", diagnostics=args.output)
             click(driver.find_element(By.CSS_SELECTOR, '.matter-section-tabs a[href$="/exact-search"]'))
             wait.until(lambda d: d.current_url == path)
             assert driver.find_element(By.CSS_SELECTOR, '.matter-section-tabs [aria-current="page"]').text == "Search"
@@ -163,7 +170,7 @@ def main():
             assert len(driver.find_elements(By.CSS_SELECTOR, ".find-document")) == 6
 
 
-            driver.get(path)
+            navigate_to(driver, path, diagnostics=args.output)
             click(driver.find_element(By.CSS_SELECTOR, ".find-refinements > summary"))
             fill("find-proximity-first", "red bicycle")
             fill("find-proximity-second", "depot")
@@ -187,7 +194,7 @@ def main():
             assert driver.execute_script("return document.documentElement.scrollWidth <= window.innerWidth")
 
             # Retained basic words may not replace an expression submitted by Enter.
-            driver.get(path + "?words=missing")
+            navigate_to(driver, path + "?words=missing", diagnostics=args.output)
             click(driver.find_element(By.CSS_SELECTOR, ".find-refinements > summary"))
             click(driver.find_element(By.CSS_SELECTOR, ".find-advanced > summary"))
             fill("find-query", '"red bicycle" NEAR/4 depot').send_keys(Keys.ENTER)
@@ -204,7 +211,7 @@ def main():
             # highlights, including a literal inside the proximity span.
             mixed = "red " + "neutral " * 50 + "anchor " + "neutral " * 49 + "bicycle"
             store.store_stream("Synthetic mixed evidence.txt", "text/plain", io.BytesIO(mixed.encode()))
-            driver.get(path + "?" + urlencode({"q": "anchor AND red NEAR/100 bicycle"}))
+            navigate_to(driver, path + "?" + urlencode({"q": "anchor AND red NEAR/100 bicycle"}), diagnostics=args.output)
             wait.until(lambda d: "1 source found" in d.find_element(By.ID, "find-results-heading").text)
             excerpt = driver.find_element(By.CSS_SELECTOR, ".find-excerpt").text
             assert all(word in excerpt for word in ("anchor", "red", "bicycle"))

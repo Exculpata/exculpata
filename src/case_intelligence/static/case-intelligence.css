@@ -3330,6 +3330,12 @@ html[data-theme="dark"] .workspace-page .conversation-history-item.selected {
   font: 10px/1.45 var(--font-ui);
 }
 
+.support-excerpt-note {
+  margin: 18px 0 0;
+  color: var(--x-warning);
+  font: 10px/1.45 var(--font-ui);
+}
+
 .support-excerpt {
   padding: 22px 0;
   font-family: var(--font-reading);

@@ -1,6 +1,8 @@
 """Synthetic legacy-record coverage for presentation-only export handling."""
 from __future__ import annotations
 
+from tests.fixture_write import fixture_write
+
 import copy
 import csv
 import hashlib
@@ -451,7 +453,7 @@ def test_http_legacy_note_presentation_keeps_html_escaping_and_stored_text(tmp_p
         assert response.status_code == 303
         item = bench.workspace.all_notebook_items(matter.matter_id, actor)[0]
         # Emulate an older saved row; rendering must not rewrite its text.
-        with bench.workspace._lock, bench.workspace.connection:
+        with fixture_write(bench.workspace):
             bench.workspace.connection.execute(
                 "UPDATE workbench_notebook_item SET body=? WHERE item_id=?", (raw, item.item_id),
             )

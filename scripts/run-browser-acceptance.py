@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Run pinned, synthetic browser journeys and retain bounded diagnostics only."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import hashlib
@@ -31,7 +36,7 @@ MAX_SUMMARY_LINES = 12
 NATIVE_FRAME = re.compile(r'\s*(?:#\d+ 0x[0-9a-f]+\b|\d+\s+\S+\s+0x[0-9a-f]+\b)')
 JOURNEYS = (
     ('intake', 'browser-accept-intake-receipts.py', 'receipt-browser-result.json', 11, ()),
-    ('dusk', 'browser-accept-dusk.py', 'receipt.json', 12, ()),
+    ('dusk', 'browser-accept-dusk.py', 'receipt.json', 164, ()),
     ('reports', 'browser-accept-reports-bundle.py', 'receipt.json', 16, ('--verify-readiness',)),
     ('workspace-layout', 'browser-accept-workspace-layout.py', 'receipt.json', 19, ()),
     ('activity', 'browser-accept-activity.py', 'receipt.json', 10, ()),
@@ -47,8 +52,10 @@ JOURNEYS = (
     ('matter-purpose', 'browser-accept-matter-purpose.py', 'receipt.json', 6, ()),
     ('ask-heading', 'browser-accept-ask-heading.py', 'receipt.json', 20, ()),
     ('source-roles', 'browser-accept-source-roles.py', 'receipt.json', 6, ()),
+    ('timeline-draft', 'browser-accept-timeline-draft.py', 'receipt.json', 13, ()),
+    ('collapse-focus', 'browser-accept-assistant-collapse-focus.py', 'receipt.json', 3, ()),
 )
-ARTIFACT_NAMES = tuple(
+ARTIFACT_NAMES = ('navigation-timeouts.json',) + tuple(
     name
     for mode in ('dark', 'light') for accent in ('cyan', 'green', 'amber')
     for name in (f'ask-heading-{mode}-{accent}-1440.png', f'ask-heading-{mode}-{accent}-390.png',
@@ -61,6 +68,7 @@ ARTIFACT_NAMES = tuple(
 
     'source-role-1440.png', 'source-role-390.png', 'source-role-320.png', 'source-role-conflict-320.png',
     'receipt-browser-result.json', 'receipt.json', 'failure.png', 'failure.html',
+    'timeline-1440.png', 'timeline-390.png',
     'purpose-empty-1440.png', 'purpose-edit-1440.png', 'purpose-edit-390.png',
     'purpose-edit-320.png', 'purpose-conflict-320.png',
     'accent-status.png', 'accent-filters.png', 'accent-bulk.png', 'accent-focus.png',
@@ -299,6 +307,30 @@ def failure_summary(log: Path) -> list[str]:
     return [line[:300] for line in lines[-MAX_SUMMARY_LINES:]]
 
 
+def warn_navigation_retries(raw: Path, journey: str) -> None:
+    """Surface recovery outside PR CI without changing journey acceptance."""
+    if os.environ.get('GITHUB_EVENT_NAME') in {'pull_request', 'pull_request_target'}:
+        return
+    path = raw / 'navigation-timeouts.json'
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_RECEIPT_BYTES:
+            return
+        payload = json.loads(path.read_text())
+        events = payload.get('events', []) if isinstance(payload, dict) else []
+        if not isinstance(events, list):
+            return
+        retries = sum(isinstance(event, dict) and event.get('retry') is True for event in events)
+    except (OSError, ValueError):
+        return
+    if retries:
+        message = (f'{journey} recorded {retries} renderer navigation retry event(s); '
+                   'inspect navigation-timeouts.json')
+        # GitHub workflow-command data escaping; the title is a fixed property.
+        message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f'::warning title=Renderer navigation retry::{message}', flush=True)
+
+
 def run_journeys(chrome: Path, driver: Path, scratch: Path, output: Path, timeout: float) -> list[dict]:
     results = []
     remaining = MAX_ARTIFACT_BYTES
@@ -329,6 +361,7 @@ def run_journeys(chrome: Path, driver: Path, scratch: Path, output: Path, timeou
             results.append(result)
             (output / 'journeys.json').write_text(json.dumps(results, indent=2) + '\n')
         print(f"{name}: {'passed' if result['passed'] else 'FAILED'}", flush=True)
+        warn_navigation_retries(raw, name)
         if not result['passed']:
             if result.get('error'):
                 print(f"  {result['error'][:300]}", flush=True)
@@ -356,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
     previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
     summary = {'synthetic_only': True, 'passed': False}
     try:
-        with tempfile.TemporaryDirectory(prefix='recordbench-browser-ci-') as temporary:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-browser-ci-") as temporary:
             scratch = Path(temporary).resolve()
             name = host_platform()
             chrome, driver, version = install_browser(scratch, name, args.archives)

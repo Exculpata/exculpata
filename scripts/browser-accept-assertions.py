@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Synthetic original-source/event review in a disposable app with no model."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import json
@@ -53,7 +60,7 @@ def main():
         checks.append(message)
         print(message, flush=True)
 
-    with tempfile.TemporaryDirectory(prefix='recordbench-assertions-browser-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-assertions-browser-") as temporary:
         root = Path(temporary).resolve()
         downloads = root / 'downloads'
         downloads.mkdir()
@@ -95,7 +102,7 @@ def main():
                     return ''
 
             def go(path):
-                driver.get(base + path)
+                navigate_to(driver, base + path, diagnostics=args.output)
 
             def detached(element):
                 def check(current):
@@ -325,7 +332,7 @@ def main():
             record('A separate assertion can be corrected and removed from chronology')
             go(event_path)
             other = browser()
-            other.get(base + event_path)
+            navigate_to(other, base + event_path, diagnostics=args.output)
             fill('title', 'Another reviewer saved title', action='update', current=other)
             submit('update', current=other)
             fill('title', 'Unsaved reviewer correction', action='update')

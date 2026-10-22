@@ -112,7 +112,7 @@ source on `PYTHONPATH`. Both input and destination paths below are illustrative:
 
 ```console
 PYTHONPATH=services/transcription/src python -m transcription_v2.model_import \
-  /srv/model-transfer/prepared-cache /srv/recordbench-models/candidate-cache \
+  /srv/model-transfer/prepared-cache /srv/exculpata-models/candidate-cache \
   --max-bytes 21474836480
 ```
 

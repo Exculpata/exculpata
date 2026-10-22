@@ -1,4 +1,10 @@
 """Synthetic explicit widening of persisted model abstentions."""
+
+from tests.fixture_write import fixture_write
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from dataclasses import replace
 from html.parser import HTMLParser
 import io
@@ -167,11 +173,11 @@ def test_job_binding_membership_and_missing_source_scope_cannot_broaden_request(
     helper = template_helper(bench)['deeper_investigation_offer']
     assert helper(None, replace(matter, matter_id='other-matter'), message) is None
     assert template_helper(bench, 'synthetic-nonmember')['deeper_investigation_offer'](None, matter, message) is None
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_source_set_item WHERE source_set_id=?', (scope.source_set_id,))
     result = helper(None, matter, message)
     assert result['disabled'] and result['source_set'] == scope.source_set_id
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute("UPDATE workbench_message SET content='Different question' WHERE message_id=?", (job.question_message_id,))
     assert helper(None, matter, message) is None
 
@@ -181,7 +187,7 @@ def test_recorded_scope_without_binding_does_not_fall_back_to_all_sources(app_cl
     scope = bench.workspace.create_source_set(matter.matter_id, 'Synthetic recorded scope', [document.document_id], WEB_ACTOR)
     payload = {**CaseIntelligenceWorkbench._answer_payload(unsupported(), {}), 'source_scope': scope.name}
     _conversation, job, message = save_answer(bench, matter, scope=scope.source_set_id, payload=payload)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('DELETE FROM workbench_answer_source_scope WHERE job_id=?', (job.job_id,))
     assert template_helper(bench)['deeper_investigation_offer'](None, matter, message) is None
 
@@ -210,7 +216,7 @@ def test_store_basis_enforces_member_matter_and_conversation_boundaries(app_clie
 def test_store_basis_requires_a_completed_job(app_client, state):
     _client, bench, matter, _document = app_client
     conversation, job, message = save_answer(bench, matter)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_answer_job SET state=? WHERE job_id=?', (state, job.job_id))
     assert bench.workspace.answer_investigation_basis(
         matter.matter_id, WEB_ACTOR, conversation.conversation_id, message.message_id) is None
@@ -221,7 +227,7 @@ def test_store_basis_bounds_question_without_truncating(app_client, length):
     _client, bench, matter, _document = app_client
     conversation, job, message = save_answer(bench, matter)
     question = 'x' * length
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute('UPDATE workbench_answer_job SET question=? WHERE job_id=?', (question, job.job_id))
         bench.workspace.connection.execute('UPDATE workbench_message SET content=? WHERE message_id=?', (question, job.question_message_id))
     basis = bench.workspace.answer_investigation_basis(matter.matter_id, WEB_ACTOR, conversation.conversation_id, message.message_id)
@@ -243,7 +249,7 @@ def test_template_offer_uses_only_public_store_basis(app_client):
 def test_store_basis_does_not_create_a_conversation_when_none_is_active(app_client):
     _client, bench, matter, _document = app_client
     conversation, _job, message = save_answer(bench, matter)
-    with bench.workspace._lock, bench.workspace.connection:
+    with fixture_write(bench.workspace):
         bench.workspace.connection.execute(
             "UPDATE workbench_conversation_organization SET state='archived',archived_at=updated_at,archived_by=? "
             "WHERE matter_id=?", (WEB_ACTOR, matter.matter_id))
@@ -313,7 +319,7 @@ def test_offer_submission_preserves_real_csrf_membership_and_admin_boundaries(tm
     bench.research.close()
     bench.research = None
     bench.generator = GroundedGenerationService(FakeGenerator(RAW_FALSE))
-    with TestClient(app, base_url='https://recordbench.example.test') as client:
+    with TestClient(app, base_url=f"https://{LEGACY_STEM}.example.test") as client:
         csrf = _csrf(client.get('/matters/new', headers=_headers(OWNER)).text)
         slug = create_authorized(client, principal=OWNER, csrf_token=csrf, name='Synthetic protected offer')
         actor = _principal_id(client, OWNER)

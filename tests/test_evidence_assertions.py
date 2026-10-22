@@ -355,7 +355,8 @@ def test_migration_mirror_backup_clean_restore_export_and_purge(tmp_path):
     expected = assertions.export(matter.matter_id, ACTOR, record['assertion_id'])
     backup = tmp_path / 'backup.sqlite'
     with sqlite3.connect(backup) as target:
-        store.connection.backup(target)
+        with store._lock:
+            store.connection.backup(target)
     restored_path = tmp_path / 'clean-restore' / 'workspace.sqlite'
     restored_path.parent.mkdir()
     with sqlite3.connect(backup) as source, sqlite3.connect(restored_path) as target:

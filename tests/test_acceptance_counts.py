@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 from datetime import timedelta
 
 from case_intelligence.contracts import (
@@ -190,12 +194,12 @@ def test_raw_ticket_and_lease_bypass_count_is_zero_of_fourteen() -> None:
     ticket_attempt(fence_then_redeem)
     ticket_attempt(
         lambda store, clock, access, registry, uri: _redeem(
-            store, access, "recordbench://ticket/unknown"
+            store, access, f"{LEGACY_STEM}://ticket/unknown"
         )
     )
     ticket_attempt(
         lambda store, clock, access, registry, uri: _redeem(
-            store, access, "recordbench://ticket/bad?query"
+            store, access, f"{LEGACY_STEM}://ticket/bad?query"
         )
     )
 

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Measure Ask and Review readability with the offline Harbor Street demo."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import json
@@ -37,7 +44,7 @@ def main():
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     report = {'synthetic_only': True, 'passed': False, 'checks': [], 'measurements': []}
-    with tempfile.TemporaryDirectory(prefix='recordbench-ask-heading-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-ask-heading-") as temporary:
         print('Preparing isolated synthetic Harbor Street demo', flush=True)
         with seed_demo(Path(temporary)) as demo, socket.socket() as listener:
             print('Synthetic intake and indexing finished; starting Chrome', flush=True)
@@ -78,14 +85,14 @@ def main():
                     selected = one('.matter-section-tabs [aria-current="page"] > span')
                     assert selected.get_attribute('textContent') == label
 
-                driver.get(base + demo.home_path)
+                navigate_to(driver, base + demo.home_path, diagnostics=args.output)
                 navigate(one('button[name="identity_subject"][value="taylor-morgan"]'))
                 wait.until(lambda _: urlsplit(driver.current_url).path == demo.home_path)
                 for width, height in ((1440, 1000), (390, 844)):
                     # CDP sets an exact CSS viewport, including below desktop window minimums.
                     driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
                         'width': width, 'height': height, 'deviceScaleFactor': 1, 'mobile': False})
-                    driver.get(base + demo.home_path)
+                    navigate_to(driver, base + demo.home_path, diagnostics=args.output)
                     navigate(one(f'.matter-section-tabs a[href="{prefix}"]'))
                     current_section('Ask')
                     assert one('.matter-heading h1').text == 'Harbor Street'
@@ -131,7 +138,7 @@ def main():
                 for mode, accent in (('light', 'cyan'), *APPEARANCES, ('light', 'cyan')):
                     appearance = f'{mode}-{accent}'
                     select_appearance(driver, wait, mode, accent)
-                    driver.get(base + prefix + '/setup')
+                    navigate_to(driver, base + prefix + '/setup', diagnostics=args.output)
                     assert one('.setup-heading h1').text == 'Review'
                     assert one('.source-intake-heading h2').text == 'Add sources'
                     review = one('.setup-heading h1')
@@ -142,7 +149,7 @@ def main():
                     driver.save_screenshot(str(output / f'ask-heading-review-{appearance}-1920.png'))
                     report['checks'].append(f'1920px {appearance}: Review / Add sources heading visible')
 
-                    driver.get(base + prefix + '?conversation=' + conversations[0])
+                    navigate_to(driver, base + prefix + '?conversation=' + conversations[0], diagnostics=args.output)
                     selected = one('.conversation-history-item.selected')
                     assert selected.get_attribute('aria-current') == 'true'
                     assert selected.find_element(By.CSS_SELECTOR, 'span').text == 'Harbor Street timeline'

@@ -1,4 +1,8 @@
 """Synthetic regressions for bounded OCR outcomes and preserved native text."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import io
 import subprocess
 from types import SimpleNamespace
@@ -138,7 +142,7 @@ def _fake_ocr(monkeypatch, readings, *, raster=_RASTER):
                 handle.write("\n".join(rows) + "\n")
         return SimpleNamespace(
             returncode=0,
-            stdout=f"recordbench-ocr-limit:{pilot_uploads.MAX_OCR_TSV_BYTES}\n".encode("ascii"),
+            stdout=f"{LEGACY_STEM}-ocr-limit:{pilot_uploads.MAX_OCR_TSV_BYTES}\n".encode("ascii"),
         )
 
     monkeypatch.setattr(pilot_uploads.subprocess, "run", run)

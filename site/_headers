@@ -1,6 +1,27 @@
 /*
-  Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/*.html
+  Content-Type: text/html; charset=utf-8
+
+/*.css
+  Content-Type: text/css; charset=utf-8
+
+/assets/*.mp4
+  Content-Type: video/mp4
+
+/assets/*.jpg
+  Content-Type: image/jpeg
+
+/assets/*.svg
+  Content-Type: image/svg+xml
+
+/assets/fonts/*.woff2
+  Content-Type: font/woff2
+
+/assets/fonts/*.txt
+  Content-Type: text/plain; charset=utf-8

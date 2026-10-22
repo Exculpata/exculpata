@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Check shared alignment and independent scrolling using synthetic records."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    CURRENT_STEM,
+    LEGACY_STEM,
+)
+
+from browser_navigation import navigate_to
 
 import argparse
 import io
@@ -89,7 +97,7 @@ def main(argv=None):
         "measurements": measurements, "viewports": viewports,
         "unrun_checks": ["native browser zoom", "OS text scaling", "WebKit", "physical mobile", "screen reader", "authenticated sign-out"]}
 
-    with tempfile.TemporaryDirectory(prefix="recordbench-layout-") as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-layout-") as temporary:
         app = create_workbench_app(Path(temporary).resolve() / "runtime", auth_mode="test",
             generator=UnavailableGenerator(), learned_retrieval=False, background_ingestion=False,
             storage_policy=StoragePolicy(reserve_bytes=0))
@@ -131,7 +139,7 @@ def main(argv=None):
                 wait.until(lambda _: js("return document.fonts.status === 'loaded'"))
 
             def open_page(suffix):
-                driver.get(base + prefix + suffix)
+                navigate_to(driver, base + prefix + suffix, diagnostics=args.output)
                 settle_fonts()
 
             def go(suffix):
@@ -458,14 +466,18 @@ def main(argv=None):
             viewport(1024, 768)
             open_page(paths["notes"])
             expanded_panels()
-            preference = "recordbench:assistant:display:v2"
-            js("localStorage.setItem(arguments[0], 'open')", preference + ":compact")
+            preference = f"{CURRENT_STEM}:assistant:display:v2"
+            legacy_compact_preference = f"{LEGACY_STEM}:assistant:display:v2:compact"
+            js("localStorage.removeItem(arguments[0])", preference + ":compact")
+            js("localStorage.setItem(arguments[0], 'open')", legacy_compact_preference)
             question = find("#assistant-question")
             question.send_keys("Synthetic unsent question")
             picker = find("[data-assistant-conversation-picker]")
             picker.send_keys(Keys.NULL)
             viewport(820, 768)
             wait.until(lambda _: driver.switch_to.active_element == picker and picker.is_displayed())
+            wait.until(lambda _: js("return localStorage.getItem(arguments[0])", preference + ":compact") == "open")
+            assert js("return localStorage.getItem(arguments[0])", legacy_compact_preference) is None
             viewport(1024, 768)
             wait.until(lambda _: driver.switch_to.active_element == picker and picker.is_displayed())
             viewport(390, 844)

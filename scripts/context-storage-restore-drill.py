@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """Synthetic baseline upgrade, clean restore and matching-version rollback."""
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 import argparse
 import json
 import os
@@ -19,7 +23,7 @@ BASELINE = 'd21c1d4849b46b8ae85db19b4d2ce80c8a9669a8' if args.answer_context els
 if args.matter_purpose:
     BASELINE = '7f37c72c2922c983762d621a4573f1aa32078bb2'
 ACTOR = 'synthetic-context-reviewer'
-with tempfile.TemporaryDirectory(prefix='recordbench-context-upgrade-') as temporary:
+with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-context-upgrade-") as temporary:
     root = Path(temporary)
     archive_path = root/'baseline.tar'
     with archive_path.open('wb') as output:

@@ -1,3 +1,9 @@
+
+from case_intelligence.legacy_names import (
+    CURRENT_PRODUCT,
+    LEGACY_PRODUCT,
+    LEGACY_STEM,
+)
 import io
 import json
 import zipfile
@@ -28,7 +34,8 @@ def test_exculpata_identity_preserves_health_contract_and_brands_login_and_mark(
     ) as client:
         health = client.get("/health")
         assert health.status_code == 200
-        assert health.json()["product"] == "RecordBench"
+        assert health.json()["product"] == CURRENT_PRODUCT
+        assert health.json()["data"] == f"private {CURRENT_PRODUCT} node"
 
         login = client.get("/auth/login")
         assert login.status_code == 200
@@ -136,7 +143,7 @@ def test_export_branding_preserves_machine_readable_identifiers():
     review = export_full_review(*args, "markdown", exported_at=STAMP)
     assert "Exculpata labels do not replace" in review.body.decode()
     payload = json.loads(export_full_review(*args, "json", exported_at=STAMP).body)
-    assert payload["product"] == "RecordBench"
-    assert payload["schema"] == "recordbench-source-check-v1"
+    assert payload["product"] == f"{LEGACY_PRODUCT}"
+    assert payload["schema"] == f"{LEGACY_STEM}-source-check-v1"
     csv = export_full_review(*args, "csv", exported_at=STAMP).body.decode("utf-8-sig")
-    assert "RecordBench label" in csv.splitlines()[0]
+    assert f"{LEGACY_PRODUCT} label" in csv.splitlines()[0]

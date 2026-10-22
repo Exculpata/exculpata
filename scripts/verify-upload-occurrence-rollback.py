@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Stopped previous-reader and forward-retry check using generated source bytes."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_STEM,
+)
 
 import argparse
 import json
@@ -21,7 +26,7 @@ def main():
     previous = args.previous_source.resolve()
     if not (previous / 'src/case_intelligence/pilot_uploads.py').is_file():
         raise SystemExit('Choose the previous source checkout.')
-    with tempfile.TemporaryDirectory(prefix='recordbench-occurrence-reader-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-occurrence-reader-") as temporary:
         root = Path(temporary)
         store = PilotStore(root / 'sources')
         body = b'Generated repeated occurrence reader fixture.\n'

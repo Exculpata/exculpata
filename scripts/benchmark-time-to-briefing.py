@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Measure synthetic folder intake with the real app; write only outside the checkout."""
+
 from __future__ import annotations
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+)
 
 import argparse
 from contextlib import contextmanager
@@ -136,7 +142,7 @@ def profile_summary(profiles: list) -> dict | None:
 
 def isolate_environment() -> None:
     for key in tuple(os.environ):
-        if key.startswith(("CASE_INTELLIGENCE_", "RECORDBENCH_", "PG")):
+        if key.startswith(("CASE_INTELLIGENCE_", f"{LEGACY_ENV_PREFIX}", "PG")):
             del os.environ[key]
     os.environ.update(CASE_INTELLIGENCE_AUTOMATIC_DISCOVERY="1",
         CASE_INTELLIGENCE_STORAGE_RESERVE_GIB="0",
@@ -344,7 +350,7 @@ def main() -> None:
     args.temp_root.mkdir(parents=True, exist_ok=True)
     if args.worker:
         isolate_environment()
-        with tempfile.TemporaryDirectory(prefix="recordbench-timing-", dir=args.temp_root) as directory:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-timing-", dir=args.temp_root) as directory:
             with profile_all_threads(args.profile) as profiles:
                 run = run_one(args.sizes[0], args.seed, args.density, Path(directory), args.timeout, args.briefing)
             run["profile"] = profile_summary(profiles)
@@ -365,7 +371,7 @@ def main() -> None:
         "configuration": {"seed": args.seed, "poll_seconds": POLL_SECONDS, "ingestion_workers": 2,
             "profiled": args.profile, "runtime": "sqlite_basic_offline", "density": args.density}, "runs": []}
     for count in args.sizes:
-        with tempfile.TemporaryDirectory(prefix="recordbench-receipt-", dir=args.temp_root) as directory:
+        with tempfile.TemporaryDirectory(prefix=f"{LEGACY_STEM}-receipt-", dir=args.temp_root) as directory:
             output = Path(directory) / "run.json"
             command = [sys.executable, str(Path(__file__).resolve()), "--worker", "--sizes", str(count),
                 "--seed", str(args.seed), "--output", str(output), "--temp-root", str(Path(directory) / "work"),
