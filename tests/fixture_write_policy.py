@@ -258,6 +258,8 @@ class _Check(ast.NodeVisitor):
     def __init__(self, source: str, filename: str, tree: ast.AST):
         self.filename = filename
         self.aliases: dict[str, _Value] = {}
+        self.capture_references: dict[ast.AST, tuple[ast.AST, ...]] = {}
+        self.yield_results: dict[ast.AST, bool] = {}
         self.class_outer_aliases: dict[str, _Value] | None = None
         self.class_outer_names: set[str] = set()
         self.eager_variable_annotations = True
@@ -343,9 +345,11 @@ class _Check(ast.NodeVisitor):
         if node in self.evaluated_values:
             return self.evaluated_values[node]
         if isinstance(node, ast.Name):
-            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None,
-                                                   builtin_classes=frozenset({node.id}) if node.id in _KNOWN_BUILTIN_CLASSES else frozenset(),
-                                                   builtin_callable=node.id in _BUILTIN_CALLABLE_NAMES))
+            if node.id in self.aliases:
+                return self.aliases[node.id]
+            return _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None,
+                          builtin_classes=frozenset({node.id}) if node.id in _KNOWN_BUILTIN_CLASSES else frozenset(),
+                          builtin_callable=node.id in _BUILTIN_CALLABLE_NAMES)
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
@@ -1019,7 +1023,8 @@ class _Check(ast.NodeVisitor):
         # every observed binding in its lexical scope, including an intermediate
         # live connection later replaced by an independent one. Defaults remain
         # the values captured separately when the definition was encountered.
-        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+        late = {name: values[0] if values and all(value is values[0] or value == values[0] for value in values) else
+                self.merge_aliases(*({name: value} for value in values))[name]
                 for name, values in self.late_bindings.items()}
         while self.deferred:
             jobs, self.deferred = self.deferred, []
@@ -1036,10 +1041,21 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def merge_aliases(*states: dict[str, _Value]) -> dict[str, _Value]:
+        if states and all(state is states[0] or state == states[0] for state in states[1:]):
+            return states[0].copy()
         result = {}
         for name in set().union(*(state.keys() for state in states)):
-            values = [state.get(name, _Value(symbol=name, scalar_converter=True if name == "str" else None)) for state in states]
-            if all(value == values[0] for value in values):
+            first = states[0].get(name)
+            if first is not None and all(state.get(name) is first for state in states[1:]):
+                result[name] = first
+                continue
+            values = []
+            for state in states:
+                if name in state:
+                    values.append(state[name])
+                else:
+                    values.append(_Value(symbol=name, scalar_converter=True if name == "str" else None))
+            if all(value is values[0] or value == values[0] for value in values):
                 result[name] = values[0]
             elif all(value.elements is not None for value in values) and len({len(value.elements) for value in values}) == 1:
                 result[name] = _Value(elements=tuple(
@@ -1748,7 +1764,8 @@ class _Check(ast.NodeVisitor):
                     if node.args.kwarg is not None:
                         variadic_values.extend(value for name, value in mapping if name not in fixed_names)
         bindings = {**defaults, **supplied}
-        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+        late = {name: values[0] if values and all(value is values[0] or value == values[0] for value in values) else
+                self.merge_aliases(*({name: value} for value in values))[name]
                 for name, values in history.items() if name not in local_names}
         environment = {**lexical, **late}
         captures = self.captured_values(node, environment)
@@ -1816,7 +1833,9 @@ class _Check(ast.NodeVisitor):
             *(value.elements or ()), *(item for _, item in value.mapping or ()),
         ))
 
-    def captured_values(self, node, environment):
+    def captured_references(self, node):
+        if node in self.capture_references:
+            return self.capture_references[node]
         # Only referenced lexical values count, not every ambient workspace.
         # Collect this function's local binders before looking at references;
         # Python shadows a closure/global for the whole function, not just after
@@ -1854,9 +1873,6 @@ class _Check(ast.NodeVisitor):
             else:
                 pending.extend(ast.iter_child_nodes(item))
         local -= declared
-        previous = self.aliases
-        self.aliases = environment
-
         def collect(item, shadowed):
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
                 return
@@ -1875,24 +1891,35 @@ class _Check(ast.NodeVisitor):
                 while isinstance(root, ast.Attribute):
                     root = root.value
                 if isinstance(root, ast.Name) and root.id not in shadowed:
-                    references.append(self.value(item))
+                    references.append(item)
             for child in ast.iter_child_nodes(item):
                 collect(child, shadowed)
 
         for item in node.body if isinstance(node.body, list) else [node.body]:
             collect(item, local)
-        self.aliases = previous
-        return references
+        self.capture_references[node] = tuple(references)
+        return self.capture_references[node]
 
-    @staticmethod
-    def has_yield(node) -> bool:
+    def captured_values(self, node, environment):
+        references = self.captured_references(node)
+        previous = self.aliases
+        self.aliases = environment
+        values = [self.value(item) for item in references]
+        self.aliases = previous
+        return values
+
+    def has_yield(self, node) -> bool:
+        if node in self.yield_results:
+            return self.yield_results[node]
         pending = list(node.body) if isinstance(node.body, list) else [node.body]
         while pending:
             item = pending.pop()
             if isinstance(item, (ast.Yield, ast.YieldFrom)):
+                self.yield_results[node] = True
                 return True
             if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
                 pending.extend(ast.iter_child_nodes(item))
+        self.yield_results[node] = False
         return False
 
     def visit_Return(self, node: ast.Return) -> None:
