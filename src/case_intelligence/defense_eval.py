@@ -18,11 +18,11 @@ import sys
 import time
 from typing import Any, Callable, Mapping, Sequence
 
+from . import generation
 from .service_endpoints import open_service_request
 
 from .generation import (
     EvidenceItem,
-    GenerationInvalidContent,
     GenerationRejected,
     GenerationUnavailable,
     GroundedGenerationService,
@@ -666,7 +666,8 @@ class ConfiguredAnswerer:
             ))
         try:
             verified = self.service.answer(question.text, evidence)
-        except (GenerationRejected, GenerationInvalidContent) as exc:
+        # The baseline checkout may predate GenerationInvalidContent, so resolve it at run time.
+        except (GenerationRejected, getattr(generation, "GenerationInvalidContent", GenerationRejected)) as exc:
             return ModelAnswer(False, "", (), rejection=exc.__class__.__name__)
         except (GenerationUnavailable, ValueError, OSError) as exc:
             return ModelAnswer(False, "", (), error=exc.__class__.__name__)

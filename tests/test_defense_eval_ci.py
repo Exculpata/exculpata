@@ -55,7 +55,7 @@ def test_workflow_runs_stub_cards_on_every_pr_and_retains_failures():
     assert "models]" not in commands and "[dev" not in commands
 
 
-def product_checkout(root: Path) -> Path:
+def product_checkout(root: Path, invalid_content: bool = True) -> Path:
     package = root / "src" / "case_intelligence"
     package.mkdir(parents=True)
     # fixture-write: Prepare synthetic input or evidence for this regression.
@@ -71,8 +71,8 @@ def product_checkout(root: Path) -> Path:
         "class EvidenceItem: pass\n"
         "class GenerationRejected(Exception): pass\n"
         "class GenerationUnavailable(Exception): pass\n"
-        "class GenerationInvalidContent(GenerationUnavailable): pass\n"
-        "class GroundedGenerationService: pass\n"
+        + ("class GenerationInvalidContent(GenerationUnavailable): pass\n" if invalid_content else "")
+        + "class GroundedGenerationService: pass\n"
         "def generator_from_environment():\n"
         "    raise AssertionError('CI must not configure a generator')\n"
     )
@@ -93,7 +93,8 @@ def invoke(*args: str | Path, env: dict[str, str] | None = None) -> subprocess.C
 
 
 def test_child_imports_baseline_product_not_candidate_editable_install(tmp_path):
-    baseline = product_checkout(tmp_path / "main")
+    # Main predates GenerationInvalidContent; the candidate evaluator must still import there.
+    baseline = product_checkout(tmp_path / "main", invalid_content=False)
     git(baseline, "init")
     git(baseline, "add", ".")
     git(baseline, "commit", "-m", "Synthetic product checkout")
