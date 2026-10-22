@@ -16,20 +16,23 @@ from pathlib import Path
 import re
 import sys
 import time
-import urllib.request
 from typing import Any, Callable, Mapping, Sequence
+
+from . import generation
+from .service_endpoints import open_service_request
 
 from .generation import (
     EvidenceItem,
     GenerationRejected,
     GenerationUnavailable,
     GroundedGenerationService,
+    _TRANSCRIPT_ATTRIBUTION,
     generator_from_environment,
 )
 
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SUITE = ROOT / "benchmarks" / "defense-workflow" / "v2" / "suite.json"
+DEFAULT_SUITE = (ROOT / "benchmarks" / "defense-workflow" / "v2" / "suite").with_suffix(".json")
 _POSTGRES_DSN_ENV = "CASE_REVIEW_POSTGRES_TEST_DSN"
 _LEARNED_DENSE_FLOOR = 0.72
 _LEARNED_RERANK_FLOOR = 0.80
@@ -135,6 +138,7 @@ class ModelAnswer:
     text: str
     citations: tuple[Citation, ...]
     error: str = ""
+    rejection: str = ""
 
 
 Answerer = Callable[[Question, Sequence[Passage]], ModelAnswer]
@@ -411,7 +415,10 @@ def _healthy_retrieval_worker() -> str | None:
     except ValueError:
         return None
     try:
-        with urllib.request.urlopen(endpoint + "/health", timeout=2) as response:
+        with open_service_request(
+            endpoint + "/health", timeout=2,
+            environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS",
+        ) as response:
             payload = json.load(response)
     except (OSError, ValueError):
         return None
@@ -656,16 +663,26 @@ class ConfiguredAnswerer:
             ))
         try:
             verified = self.service.answer(question.text, evidence)
-        except (GenerationUnavailable, GenerationRejected, ValueError, OSError) as exc:
+        except (GenerationRejected, getattr(generation, "GenerationInvalidContent", GenerationRejected)) as exc:
+            return ModelAnswer(False, "", (), rejection=exc.__class__.__name__)
+        except (GenerationUnavailable, ValueError, OSError) as exc:
             return ModelAnswer(False, "", (), error=exc.__class__.__name__)
         citations: list[Citation] = []
         seen: set[tuple[str, str]] = set()
         claims = list(verified.claims)
-        if verified.limitation is not None:
-            claims.append(verified.limitation)
+        limitation = verified.source_limitation if verified.verification_notice else verified.limitation
+        if limitation is not None:
+            claims.append(limitation)
+        by_id = {passage.passage_id: passage for passage in passages}
         for claim in claims:
             for evidence_id in claim.evidence_ids:
-                key = (mapping[evidence_id], claim.text)
+                passage = by_id[mapping[evidence_id]]
+                text = claim.text
+                if passage.evidence_kind == "transcript":
+                    attribution = _TRANSCRIPT_ATTRIBUTION.match(text)
+                    if attribution is not None:
+                        text = text[attribution.end():].lstrip(" ,:;-\u2013\u2014")
+                key = (passage.passage_id, text)
                 if key not in seen:
                     seen.add(key)
                     citations.append(Citation(*key))
@@ -675,10 +692,10 @@ class ConfiguredAnswerer:
 def _fact_cited(fact: Fact, citations: Sequence[Citation], passages: Mapping[str, Passage]) -> bool:
     for citation in citations:
         passage = passages.get(citation.passage_id)
-        if passage is None:
+        if passage is None or not _contains(passage.text, citation.support_text):
             continue
         for support in fact.supports:
-            if citation.passage_id == support.passage_id and _contains(passage.text, support.support_text):
+            if citation.passage_id == support.passage_id and _contains(citation.support_text, support.support_text):
                 return True
     return False
 
@@ -688,7 +705,7 @@ def _citation_allowed(citation: Citation, question: Question, passages: Mapping[
     if passage is None or not _contains(passage.text, citation.support_text):
         return False
     return any(
-        citation.passage_id == support.passage_id and _contains(passage.text, support.support_text)
+        citation.passage_id == support.passage_id and _contains(citation.support_text, support.support_text)
         for fact in question.required_facts
         for support in fact.supports
     )
@@ -710,8 +727,8 @@ def score_question(
     else:
         retrieval_hit = None
     forbidden = any(_contains(answer.text, fact) for fact in question.forbidden_facts)
-    abstention_correct = answer.abstained is question.expect_abstention and not answer.error
-    if answer.error:
+    abstention_correct = answer.abstained is question.expect_abstention and not (answer.error or answer.rejection)
+    if answer.error or answer.rejection:
         answer_correct = False
         citation_support = False
         missed = [fact.fact_id for fact in question.required_facts]
@@ -748,8 +765,10 @@ def score_question(
         "cited_passage_ids": [citation.passage_id for citation in answer.citations],
         "missed_facts": missed,
         "unsupported_citations": unsupported,
+        "unsupported_citation_count": len(unsupported),
         "answer_text": answer.text,
         "error": answer.error,
+        "rejection": answer.rejection,
         "llm_judge": None,
     }
 
@@ -831,6 +850,9 @@ def _scorecard(
         },
         "aggregates": {
             "questions": total,
+            "errors": sum(bool(row["error"]) for row in rows),
+            "rejections": sum(bool(row["rejection"]) for row in rows),
+            "unsupported_citation_count": sum(row["unsupported_citation_count"] for row in rows),
             "answer_correct": sum(bool(row["answer_correct"]) for row in rows),
             "answer_correct_rate": _rate(sum(bool(row["answer_correct"]) for row in rows), total),
             "citation_support": sum(bool(row["citation_support"]) for row in rows),
@@ -894,7 +916,10 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
         "## Deterministic totals",
         "",
         f"- Answer correctness: {aggregates['answer_correct']}/{aggregates['questions']}",
+        f"- Harness/model errors: {aggregates['errors']}",
+        f"- Rejected model outputs: {aggregates['rejections']}",
         f"- Citation support: {aggregates['citation_support']}/{aggregates['questions']}",
+        f"- Unsupported citations: {aggregates['unsupported_citation_count']}",
         f"- Abstention correctness: {aggregates['abstention_correct']}/{aggregates['questions']}",
         f"- Retrieval hit: {aggregates['retrieval_hit']}/{aggregates['retrieval_applicable']}",
         f"- Latency mean/max ms: {aggregates['latency_ms_mean']} / {aggregates['latency_ms_max']}",
@@ -928,7 +953,7 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
         lines.append(
             f"- `{row['question_id']}` missed facts `{', '.join(row['missed_facts']) or 'none'}`; "
             f"unsupported citations `{', '.join(row['unsupported_citations']) or 'none'}`; "
-            f"error `{row['error'] or 'none'}`."
+            f"error `{row['error'] or 'none'}`; rejection `{row['rejection'] or 'none'}`."
         )
     lines.append("")
     return "\n".join(lines)
@@ -937,8 +962,8 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
 def write_scorecard(directory: Path, scorecard: Mapping[str, Any], *, force: bool = False) -> tuple[Path, Path]:
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    json_path = directory / "scorecard.json"
-    markdown_path = directory / "scorecard.md"
+    json_path = (directory / "scorecard").with_suffix(".json")
+    markdown_path = (directory / "scorecard").with_suffix(".md")
     if not force and (json_path.exists() or markdown_path.exists()):
         raise DefenseEvalError("scorecard already exists; choose a new directory or pass --force")
     text = json.dumps(scorecard, indent=2, ensure_ascii=False, allow_nan=False, sort_keys=True) + "\n"
@@ -957,7 +982,7 @@ def _model_record(mode: str, profile: str | None) -> dict[str, Any]:
         "profile": None,
     }
     if profile:
-        manifest = json.loads((ROOT / "config" / "models.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "config" / "models").with_suffix(".json").read_text(encoding="utf-8"))
         matches = [
             item for item in manifest.get("models", [])
             if item.get("role") == "generator" and item.get("profile") == profile
@@ -1004,8 +1029,12 @@ def _read_scorecard(path: Path) -> dict[str, Any]:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise DefenseEvalError("a scorecard is not readable JSON") from exc
-    if not isinstance(payload, dict) or not isinstance(payload.get("questions"), list):
+    if (not isinstance(payload, dict) or not isinstance(payload.get("questions"), list)
+            or not payload["questions"]):
         raise DefenseEvalError("a scorecard has no question list")
+    if any(not isinstance(payload.get(key), str) or not payload[key]
+           for key in ("fingerprint", "suite_version")):
+        raise DefenseEvalError("a scorecard has no suite fingerprint or version")
     rows: dict[str, Mapping[str, Any]] = {}
     for row in payload["questions"]:
         if (
@@ -1016,8 +1045,8 @@ def _read_scorecard(path: Path) -> dict[str, Any]:
         ):
             raise DefenseEvalError("a scorecard has a malformed question")
         for key, _label in _COMPARE_METRICS:
-            value = row.get(key)
-            if value is not None and type(value) is not bool:
+            if key not in row or (type(row[key]) is not bool
+                                  and not (key == "retrieval_hit" and row[key] is None)):
                 raise DefenseEvalError("a scorecard has a malformed score")
         rows[row["question_id"]] = row
     payload = dict(payload)
@@ -1110,7 +1139,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="record the pinned generator profile beside the configured model name")
     parser.add_argument("--retriever", choices=("lexical", "postgres"), default="lexical",
                         help="lexical is the GPU-free database-free default; postgres runs hybrid search and the reranker")
-    parser.add_argument("--compare", nargs=2, metavar=("A.json", "B.json"),
+    parser.add_argument("--compare", nargs=2, metavar=("BASELINE", "CANDIDATE"),
                         help="print per-category deltas of scorecard B minus scorecard A")
     args = parser.parse_args(argv)
     if args.compare:
@@ -1179,6 +1208,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"abstention {totals['abstention_correct']}/{totals['questions']}; "
         f"retrieval {totals['retrieval_hit']}/{totals['retrieval_applicable']}"
     )
+    if totals["errors"]:
+        print("Evaluation errors occurred; inspect the retained scorecard.", file=sys.stderr)
+        return 2
     return 0
 
 

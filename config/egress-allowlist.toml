@@ -7877,3 +7877,9 @@ path = "scripts/test-egress-smoke.py"
 kind = "host"
 digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
 detail = "installed-package-control.log"
+
+[[source]]
+path = "src/case_intelligence/defense_eval.py"
+kind = "client"
+digest = "89ac0135f08ed5f661ff9d57414136063fd4c722aca01f646fa9a319c6930772"
+detail = "service_endpoints.open_service_request"

@@ -235,6 +235,58 @@ jobs:
             --junitxml="$RUNNER_TEMP/postgres-results.xml"
           python scripts/check-postgres-test-report.py "$RUNNER_TEMP/postgres-results.xml"
 
+  defense-eval:
+    # Independent of change-scope: even documentation-only PRs get scorecards.
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        env:
+          POSTGRES_USER: exculpata
+          POSTGRES_DB: exculpata_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U exculpata -d exculpata_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CASE_REVIEW_POSTGRES_TEST_DSN: postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test
+    steps:
+      - name: Check out integration candidate and fetched main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify integration checkout
+        env:
+          EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install candidate runtime and PostgreSQL driver without models
+        run: python -m pip install --disable-pip-version-check -e '.[postgres]'
+      - name: Write lexical stub and product retrieval scorecards plus main delta
+        run: >-
+          python scripts/defense-eval-ci.py
+          --output-dir "$RUNNER_TEMP/defense-eval-artifacts"
+          --work-root "$RUNNER_TEMP"
+      - name: Retain scorecards, comparison and provenance even on failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: defense-eval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/defense-eval-artifacts
+          if-no-files-found: error
+          retention-days: 5
+
   transcription:
     needs: change-scope
     if: ${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}

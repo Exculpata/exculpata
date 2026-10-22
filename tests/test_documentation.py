@@ -105,8 +105,12 @@ def test_pull_request_jobs_test_the_merge_and_scan_the_exact_head_separately() -
     assert "EXPECTED_PUBLICATION_SHA:" in publication_job
     assert "python scripts/check-publication-candidate.py" in publication_job
     assert "python -m pytest -q tests/test_documentation.py tests/test_quality_change_scope.py" in application_job
-    assert workflow.count("EXPECTED_INTEGRATION_SHA: ${{ github.sha }}") == 5
-    assert workflow.count('test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"') == 5
+    assert workflow.count("EXPECTED_INTEGRATION_SHA: ${{ github.sha }}") == 6
+    assert workflow.count('test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"') == 6
+    defense_eval_job = workflow.split("\n  defense-eval:\n", 1)[1].split("\n  transcription:\n", 1)[0]
+    assert exact_ref not in defense_eval_job
+    assert "EXPECTED_INTEGRATION_SHA: ${{ github.sha }}" in defense_eval_job
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"' in defense_eval_job
     assert "python scripts/check-publication-candidate.py" in workflow
     assert '--expected-head "$EXPECTED_PUBLICATION_SHA"' in workflow
     assert '--publication-ref "$PUBLICATION_REF"' in workflow
