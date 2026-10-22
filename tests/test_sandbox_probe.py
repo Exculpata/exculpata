@@ -1,7 +1,7 @@
 """Synthetic regressions for bounded TestClient environment checks."""
 
 from contextlib import contextmanager
-import importlib.util
+import ast
 import os
 from pathlib import Path
 import subprocess
@@ -327,10 +327,10 @@ def synthetic_module(tmp_path, monkeypatch):
         path = tmp_path / 'synthetic_helpers.py'
         # fixture-write: Provide inspectable synthetic helper functions and classes.
         path.write_text(dedent(source))
-        spec = importlib.util.spec_from_file_location('synthetic_helpers', path)
-        module = importlib.util.module_from_spec(spec)
-        monkeypatch.setitem(sys.modules, spec.name, module)
-        spec.loader.exec_module(module)
+        module = ModuleType('synthetic_helpers')
+        module.__file__ = str(path)
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        exec(compile(path.read_text(), str(path), 'exec'), vars(module))
         return module
 
     return load
@@ -461,8 +461,8 @@ def test_helper_detection_is_cached_and_depth_bounded(synthetic_module, tmp_path
 
     monkeypatch.setattr(hooks.inspect, 'getsource', record_source)
     for _ in range(2):
-        assert hooks._function_uses_testclient(module.helper_0, tmp_path) is False
-    assert inspected == [f'helper_{i}' for i in range(7)]
+        assert hooks._function_uses_testclient(module.helper_0, tmp_path) is True
+    assert inspected == [f'helper_{i}' for i in range(8)]
     assert hooks._function_uses_testclient(module.helper_2, tmp_path) is True
 
 
@@ -511,6 +511,9 @@ def test_unavailable_source_keeps_fail_closed_detection(synthetic_module, tmp_pa
     assert hooks._function_uses_testclient(module.entry, tmp_path) is False
     item = SimpleNamespace(obj=module.helper, config=SimpleNamespace(rootpath=tmp_path))
     assert hooks._item_uses_testclient(item)
+    assert hooks._scan_testclient(module.helper, tmp_path, fixture=True) is False
+    module.Client = type('TestClient', (), {'__module__': 'starlette.testclient'})
+    assert hooks._scan_testclient(module.helper, tmp_path, fixture=True) is True
 
 
 def test_default_portal_timeout_message(monkeypatch, working_primitives):
@@ -545,3 +548,460 @@ def test_successful_probe_is_cached(monkeypatch):
     hooks.pytest_runtest_setup(item)
     hooks.pytest_runtest_setup(item)
     assert calls == [True]
+
+
+def _run_detection_tests(tmp_path, ci, fixtures, tests, blocked, passed):
+    root = Path(__file__).resolve().parents[1]
+    message = probe.skip_message('synthetic primitive', 'blocked')
+    # fixture-write: Isolate the synthetic pytest configuration.
+    (tmp_path / 'pytest.ini').write_text('[pytest]\n')
+    # fixture-write: Install synthetic fixtures and a deterministic probe failure.
+    (tmp_path / 'conftest.py').write_text(
+        'import pytest\n'
+        'from tests import conftest as hooks\n'
+        'pytest_plugins = ["tests.conftest"]\n'
+        'def pytest_configure(config):\n'
+        f'    hooks.probe_testclient = lambda: {message!r}\n'
+        + dedent(fixtures)
+    )
+    # fixture-write: Supply synthetic route and plain cases for hook classification.
+    (tmp_path / 'test_detection.py').write_text(dedent(tests))
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(root), str(root / 'src')]))
+    env.pop('CI', None)
+    if ci:
+        env['CI'] = 'true'
+    result = subprocess.run(
+        ['timeout', '25', sys.executable, '-m', 'pytest', '-v', '-rs', '-p', 'no:cacheprovider'],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode == (1 if ci else 0), output
+    assert message in output, output
+    for name in blocked:
+        assert f'test_detection.py::{name} ' + ('ERROR' if ci else 'SKIPPED') in output, output
+    for name in passed:
+        assert f'test_detection.py::{name} PASSED' in output, output
+    assert f'{len(passed)} passed' in output, output
+    assert f'{len(blocked)} ' + ('errors' if ci else 'skipped') in output, output
+
+
+@pytest.mark.parametrize('ci', [False, True])
+def test_getfixturevalue_hook_integration(tmp_path, ci):
+    _run_detection_tests(tmp_path, ci, '''
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        @pytest.fixture
+        def client_fixture():
+            with TestClient(FastAPI()) as client:
+                yield client
+        @pytest.fixture
+        def plain_fixture():
+            return 42
+        @pytest.fixture
+        def indirect_fixture(request):
+            return request.getfixturevalue('client_fixture')
+        @pytest.fixture
+        def transitive_fixture(indirect_fixture):
+            return indirect_fixture
+    ''', '''
+        import pytest
+        def test_dynamic(request):
+            assert request.getfixturevalue('client_fixture') is not None
+        @pytest.mark.parametrize('mode', ('route', 'plain'))
+        def test_selected(request, mode):
+            assert request.getfixturevalue('client_fixture' if mode == 'route' else 'plain_fixture') is not None
+        def helper(request):
+            return request.getfixturevalue('transitive_fixture')
+        def test_helper(request):
+            assert helper(request) is not None
+        def test_plain():
+            assert 'TestClient'.startswith('Test')
+    ''', ['test_dynamic', 'test_selected[route]', 'test_helper'],
+        ['test_selected[plain]', 'test_plain'])
+
+
+@pytest.mark.parametrize('ci', [False, True])
+def test_module_object_hook_integration(tmp_path, ci):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    # fixture-write: Provide a synthetic dynamically loaded TestClient helper.
+    (scripts / 'helper_script.py').write_text(
+        'from fastapi import FastAPI\n'
+        'from fastapi.testclient import TestClient\n'
+        'def make(): return TestClient(FastAPI())\n'
+        'def noop(): return 42\n'
+    )
+    _run_detection_tests(tmp_path, ci, '''
+        import importlib.util
+        from pathlib import Path
+        ROOT = Path(__file__).parent
+        def load_script(name, filename):
+            spec = importlib.util.spec_from_file_location(name, ROOT / 'scripts' / filename)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+        @pytest.fixture
+        def script_fixture():
+            return load_script('fixture_helper', 'helper_script.py')
+    ''', '''
+        import importlib.util
+        from pathlib import Path
+        import pytest
+        spec = importlib.util.spec_from_file_location('module_helper', Path(__file__).parent / 'scripts' / 'helper_script.py')
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        def test_module():
+            assert mod.make() is not None
+        def test_fixture(script_fixture):
+            assert script_fixture.make() is not None
+        def test_plain_fixture(script_fixture):
+            assert script_fixture.noop() == 42
+        def test_inspect_only():
+            import inspect
+            assert 'TestClient' in inspect.getsource(mod.make)
+        @pytest.mark.parametrize('mode', ('route', 'plain'))
+        def test_selected_module(mode):
+            if mode == 'route':
+                assert mod.make() is not None
+            else:
+                assert mod.noop() == 42
+        def test_plain():
+            assert 'TestClient'.startswith('Test')
+    ''', ['test_module', 'test_fixture', 'test_selected_module[route]'],
+        ['test_plain_fixture', 'test_inspect_only', 'test_selected_module[plain]', 'test_plain'])
+
+
+@pytest.mark.parametrize('expression, params, expected', [
+    ("'plain_fixture'", {}, 'plain_fixture'),
+    ("'client_fixture' if mode == 'route' else 'plain_fixture'", {'mode': 'plain'}, 'plain_fixture'),
+    ("'client_fixture' if mode != 'plain' and not disabled else 'plain_fixture'",
+     {'mode': 'route', 'disabled': False}, 'client_fixture'),
+    ("'client_fixture' if 0 < count <= +2 or ~flag == -1 else 'plain_fixture'",
+     {'count': 1, 'flag': 1}, 'client_fixture'),
+    ("name", {'name': 'plain_fixture'}, 'plain_fixture'),
+    ("unknown", {}, None),
+    ("str(mode)", {'mode': 'plain_fixture'}, None),
+    ("mode.name", {'mode': SimpleNamespace(name='plain_fixture')}, None),
+    ("'plain_' + 'fixture'", {}, None),
+    ("42", {}, None),
+])
+def test_fixture_name_expression(expression, params, expected):
+    tree = ast.parse(expression, mode='eval')
+    assert hooks._fixture_name_expression(tree.body, params) == expected
+
+
+@pytest.mark.parametrize('expression', ["'missing_fixture'", 'unknown', 'str(42)'])
+def test_unresolved_fixture_lookup_fails_closed(synthetic_module, tmp_path, expression):
+    module = synthetic_module(f'''
+        def entry(request):
+            return request.getfixturevalue({expression})
+    ''')
+    resolved = []
+
+    def getfixturedefs(name, item):
+        resolved.append(name)
+        return None
+
+    item = SimpleNamespace(
+        obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+        fixturenames=[], session=SimpleNamespace(
+            _fixturemanager=SimpleNamespace(getfixturedefs=getfixturedefs)),
+    )
+    assert hooks._item_uses_testclient(item)
+    assert resolved == (['missing_fixture'] if expression == "'missing_fixture'" else [])
+
+
+@pytest.mark.parametrize('loader', [
+    "importlib.util.spec_from_file_location('synthetic', 'missing.py')",
+    "importlib.import_module('missing')",
+    "runpy.run_path('missing.py')",
+    "runpy.run_module('missing')",
+])
+def test_unresolved_dynamic_module_fails_closed(synthetic_module, tmp_path, loader):
+    module = synthetic_module(f'''
+        import importlib.util
+        import runpy
+        def loader_only():
+            return {loader}
+        def entry():
+            loaded = {loader}
+            return loaded.missing()
+    ''')
+    assert hooks._function_uses_testclient(module.loader_only, tmp_path) is False
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is True
+
+
+def test_dynamic_plain_module_stays_plain(synthetic_module, tmp_path):
+    # fixture-write: Supply a plain module to distinguish loading from TestClient use.
+    (tmp_path / 'plain_helper.py').write_text('def noop(): return "TestClient"\n')
+    module = synthetic_module('''
+        import importlib.util
+        def load_script(filename):
+            return importlib.util.spec_from_file_location('synthetic', filename)
+        def entry():
+            return load_script('plain_helper.py')
+        class Record:
+            def label(self):
+                return 'plain'
+        def build_record():
+            load_script('plain_helper.py')
+            return Record()
+        def call_record():
+            record = build_record()
+            return record.label()
+    ''')
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+    assert hooks._function_uses_testclient(module.call_record, tmp_path) is False
+
+
+def test_dynamic_fixture_cycles_are_bounded(synthetic_module, tmp_path):
+    module = synthetic_module('''
+        def first(request):
+            return request.getfixturevalue('second')
+        def second(first):
+            return first
+        def entry(request):
+            return request.getfixturevalue('first')
+    ''')
+    definitions = {
+        'first': [SimpleNamespace(func=module.first, argnames=('request',))],
+        'second': [SimpleNamespace(func=module.second, argnames=('first',))],
+    }
+    item = SimpleNamespace(
+        obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+        fixturenames=[], session=SimpleNamespace(
+            _fixturemanager=SimpleNamespace(getfixturedefs=lambda name, item: definitions.get(name))),
+    )
+    assert hooks._item_uses_testclient(item) is False
+
+
+@pytest.mark.parametrize('extra', [0, 1])
+def test_plain_helpers_at_depth_boundary(synthetic_module, tmp_path, extra):
+    depth = hooks._helper_depth_limit + extra
+    module = synthetic_module(
+        'from fastapi.testclient import TestClient as Client\n'
+        + ''.join(f'def helper_{i}(): return helper_{i + 1}()\n' for i in range(depth))
+        + f'def helper_{depth}(): return True\n'
+    )
+    assert hooks._function_uses_testclient(module.helper_0, tmp_path) is bool(extra)
+
+
+@pytest.mark.parametrize('client_at_end', [False, True])
+def test_import_closure_controls_deep_helper_leaves(
+    synthetic_module, tmp_path, monkeypatch, client_at_end,
+):
+    depth = hooks._helper_depth_limit + 3
+    for index in reversed(range(depth)):
+        name = f'synthetic_chain_{index}'
+        if index < depth - 1:
+            source = (f'from synthetic_chain_{index + 1} import helper as following\n'
+                      'def helper(): return following()\n')
+        elif client_at_end:
+            source = ('from fastapi.testclient import TestClient as Client\n'
+                      'def helper(): return Client\n')
+        else:
+            source = 'def helper(): return "testclient"\n'
+        path = tmp_path / f'{name}.py'
+        # fixture-write: Build a synthetic local import chain beyond the depth limit.
+        path.write_text(source)
+        module = ModuleType(name)
+        module.__file__ = str(path)
+        monkeypatch.setitem(sys.modules, name, module)
+        exec(compile(source, str(path), 'exec'), vars(module))
+    entry = synthetic_module('''
+        from synthetic_chain_0 import helper
+        def entry():
+            return helper()
+    ''')
+    assert hooks._function_uses_testclient(entry.entry, tmp_path) is client_at_end
+    info = hooks._module_imports.cache_info()
+    assert hooks._module_is_testclient_free(tmp_path / 'synthetic_chain_0.py', tmp_path) is not client_at_end
+    assert hooks._module_imports.cache_info().misses == info.misses
+
+
+def test_dynamic_module_filename_in_followed_helper(synthetic_module, tmp_path):
+    # fixture-write: Supply a plain script whose filename comes from a helper.
+    (tmp_path / 'plain_helper.py').write_text('def noop(): return "TestClient"\n')
+    module = synthetic_module('''
+        import importlib.util
+        def filename():
+            return 'plain_helper.py'
+        def entry():
+            return importlib.util.spec_from_file_location('synthetic', filename())
+    ''')
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+
+
+@pytest.mark.parametrize('ending, expected', [
+    ('from . import first\ndef helper(): return "TestClient"\n', True),
+    ('from . import first\nfrom fastapi.testclient import TestClient as Client\n', False),
+    ('from . import missing\n', False),
+    ('from .missing import helper\n', False),
+    ('from importlib import import_module as load\ndef helper(name): return load(name)\n', False),
+    ('def helper(source): return exec(source)\n', False),
+    ('def helper(request): return request.getfixturevalue("client")\n', False),
+])
+def test_module_import_proof_handles_cycles_and_unknowns(tmp_path, ending, expected):
+    package = tmp_path / 'synthetic_package'
+    package.mkdir()
+    for name, source in {
+        '__init__': '',
+        'first': 'from .second import helper\n',
+        'second': ending,
+    }.items():
+        # fixture-write: Model safe and unsafe cyclic local import closures.
+        (package / f'{name}.py').write_text(source)
+    assert hooks._module_is_testclient_free(package / 'first.py', tmp_path) is expected
+
+
+@pytest.mark.parametrize('initializer, expected', [
+    ('LABEL = "testclient"\n', True),
+    ('from fastapi.testclient import TestClient as LABEL\n', False),
+])
+def test_relative_package_attributes_remain_in_import_closure(tmp_path, initializer, expected):
+    package = tmp_path / 'synthetic_package'
+    package.mkdir()
+    # fixture-write: Distinguish an ordinary package constant from a TestClient alias.
+    (package / '__init__.py').write_text(initializer)
+    # fixture-write: Exercise a relative import of an attribute rather than a module.
+    (package / 'helper.py').write_text('from . import LABEL\ndef helper(): return LABEL\n')
+    assert hooks._module_is_testclient_free(package / 'helper.py', tmp_path) is expected
+
+
+@pytest.mark.parametrize('expression', [
+    "ROOT / 'scripts' / ('plain_' + 'helper.py')",
+    "Path(__file__).resolve().parents[0] / 'scripts' / 'plain_helper.py'",
+    "Path(__file__).parent / f'scripts/{filename}'",
+])
+def test_dynamic_paths_follow_specific_reexport(synthetic_module, tmp_path, expression):
+    scripts = tmp_path / 'scripts'
+    scripts.mkdir()
+    # fixture-write: A reexport must resolve without importing or executing its module.
+    (scripts / 'plain_helper.py').write_text(
+        'from synthetic_navigation import noop\n'
+        'raise AssertionError("detector executed a module")\n'
+    )
+    # fixture-write: Unrelated TestClient use must not flag the selected plain helper.
+    (scripts / 'synthetic_navigation.py').write_text(
+        'from fastapi.testclient import TestClient as Client\n'
+        'def noop(): return 42\n'
+        'def route(): return Client\n'
+    )
+    module = synthetic_module(f'''
+        import importlib.util
+        from pathlib import Path
+        ROOT = Path(__file__).parent
+        def entry():
+            filename = 'plain_helper.py'
+            spec = importlib.util.spec_from_file_location('synthetic', {expression})
+            loaded = importlib.util.module_from_spec(spec)
+            return loaded.noop()
+    ''')
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+
+
+def test_dynamic_loader_ignores_unrelated_keyword_unpacking(synthetic_module, tmp_path):
+    module = synthetic_module('''
+        from fastapi.testclient import TestClient as Client
+        def build(**kwargs):
+            return object()
+        def entry(options):
+            record = build(**options)
+            return record.label(), Client
+        def plain(options):
+            record = build(**options)
+            return record.label()
+    ''')
+    assert hooks._function_uses_testclient(module.plain, tmp_path) is False
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is True
+
+
+def test_dynamic_paths_preserve_parameter_types(synthetic_module, tmp_path):
+    for filename, source in {
+        'True.py': 'def main(): return 42\n',
+        '1.py': 'from fastapi.testclient import TestClient\ndef main(): return TestClient\n',
+    }.items():
+        # fixture-write: Equal parameter values with distinct types select different modules.
+        (tmp_path / filename).write_text(source)
+    module = synthetic_module('''
+        import importlib.util
+        from pathlib import Path
+        ROOT = Path(__file__).parent
+        def entry(mode):
+            spec = importlib.util.spec_from_file_location('synthetic', ROOT / f'{mode}.py')
+            loaded = importlib.util.module_from_spec(spec)
+            return loaded.main()
+    ''')
+    for mode, expected in ((True, False), (1, True)):
+        item = SimpleNamespace(
+            obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+            fixturenames=[], callspec=SimpleNamespace(params={'mode': mode}),
+        )
+        assert hooks._item_uses_testclient(item) is expected
+
+
+def test_shared_helpers_use_shortest_path_before_depth_limit(synthetic_module, tmp_path):
+    module = synthetic_module(
+        ''.join(f'def helper_{i}(): return helper_{i + 1}()\n' for i in range(8))
+        + 'def helper_8(): return True\n'
+        + 'def entry(): return helper_0(), helper_4()\n'
+    )
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+
+
+def test_parameter_source_cache_preserves_value_types(synthetic_module, tmp_path):
+    module = synthetic_module('''
+        from fastapi.testclient import TestClient as Client
+        def entry(mode):
+            if mode is True:
+                return Client
+            return 'plain'
+    ''')
+    for mode, expected in ((True, True), (1, False)):
+        item = SimpleNamespace(
+            obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+            fixturenames=[], callspec=SimpleNamespace(params={'mode': mode}),
+        )
+        assert hooks._item_uses_testclient(item) is expected
+
+
+def test_annotated_class_ignores_synthetic_helpers(synthetic_module, tmp_path):
+    module = synthetic_module('''
+        class Record:
+            label: str
+        def entry():
+            return Record()
+    ''')
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+    annotate = getattr(module.Record, '__annotate__', None)
+    if annotate is not None:
+        assert hooks._local_callable(annotate, tmp_path) is False
+
+
+def test_parameter_variants_share_source_analysis(synthetic_module, tmp_path, monkeypatch):
+    module = synthetic_module('''
+        from fastapi.testclient import TestClient as Client
+        def route():
+            return Client
+        def entry(mode):
+            if mode == 'route':
+                return route()
+            return 'plain'
+    ''')
+    inspected = []
+    getsource = hooks.inspect.getsource
+
+    def record_source(function):
+        inspected.append(function)
+        return getsource(function)
+
+    monkeypatch.setattr(hooks.inspect, 'getsource', record_source)
+    before = hooks._selected_references.cache_info().misses
+    for mode in ('route', 'plain', 'another', 'route'):
+        item = SimpleNamespace(
+            obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+            fixturenames=[], callspec=SimpleNamespace(params={'mode': mode}),
+        )
+        assert hooks._item_uses_testclient(item) is (mode == 'route')
+    assert inspected == [module.entry, module.route]
+    assert hooks._selected_references.cache_info().misses - before == 3

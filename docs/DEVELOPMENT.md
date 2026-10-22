@@ -59,6 +59,12 @@ tests; it does not install anything.
 Tests whose bodies, fixtures or class methods reference TestClient get a lazy,
 bounded socketpair wakeup and AnyIO portal probe. Detection includes aliases,
 subclasses and local helpers referenced from the test or its fixtures.
+It also follows getfixturevalue requests and specific helpers called through
+local module objects, including dynamically loaded modules with statically
+resolvable paths. Helpers in modules whose local import closure is proven free
+of TestClient are leaves and do not consume the helper-depth budget. Other
+helper paths still trigger the probe when they exceed six steps. Unresolved
+dynamic module calls and fixture lookups conservatively trigger the probe.
 Unreadable test source, or fixture source from a module using TestClient,
 conservatively triggers the probe.
 If a primitive fails, route tests skip with the cause and a terminal summary.
