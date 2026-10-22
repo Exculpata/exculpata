@@ -33,14 +33,18 @@ def _md_escape(text: str) -> str:
     return re.sub(r'^[ \t]+', lambda match: ''.join(f'&#{ord(c)};' for c in match[0]), value)
 
 
+def _md_single_line(text: str) -> str:
+    return _md_escape(_export_presentation_text(text).rstrip())
+
+
 def md_inline(text: object) -> str:
     value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', '' if text is None else str(text))
-    return _md_escape(_export_presentation_text(value).rstrip())
+    return _md_single_line(value)
 
 
 def md_block_quoted(text: object) -> str:
     value = re.sub(r'\r\n|[\r\u2028\u2029]', '\n', '' if text is None else str(text))
-    return '\n'.join('> ' + _md_escape(line) for line in value.split('\n'))
+    return '\n'.join('> ' + _md_single_line(line) for line in value.split('\n'))
 
 
 def export_timeline(payload, format_name):
@@ -65,15 +69,19 @@ def export_timeline(payload, format_name):
                     citation['source_id'] + ' · ' + citation['document_title'], json.dumps(citation['locator']), citation['excerpt'], entry['conflict_group'])] + ['citation'] + [''] * 6 + [payload['format']])
         return stream.getvalue()
     lines = ['# Draft timeline', '', md_inline(payload['notice']), '', md_inline(payload['coverage_notice']),
-             '', 'Capped: ' + md_inline(str(payload['capped'])), '']
+             '', ' '.join(filter(None, ['Capped:', md_inline(str(payload['capped']))])), '']
     for record in payload['coverage_records']:
-        lines += ['Source coverage: ' + md_inline(record['source_name']) + ' (' + md_inline(record['source_id']) +
-                  ') — ' + md_inline(record['status']), '']
+        lines += [' '.join(filter(None, ['Source coverage:', md_inline(record['source_name']),
+                                         '(' + md_inline(record['source_id']) + ')',
+                                         '—', md_inline(record['status'])])), '']
     for entry in entries:
-        lines += ['## ' + md_inline(entry['date_label']), '', md_block_quoted(entry['description']), '',
-                  'Date uncertainty: ' + md_inline(entry['uncertainty']),
-                  'Conflict group: ' + md_inline(str(entry['conflict_group'] or 'None'))]
+        lines += ['## ' + (md_inline(entry['date_label']) or '(no date label)'),
+                  '', md_block_quoted(entry['description']), '',
+                  ' '.join(filter(None, ['Date uncertainty:', md_inline(entry['uncertainty'])])),
+                  ' '.join(filter(None, ['Conflict group:', md_inline(str(entry['conflict_group'] or 'None'))]))]
         for c in entry['citations']:
-            lines += ['', 'Source: ' + md_inline(c['source_id']) + ' · ' + md_inline(c['document_title']),
-                      'Locator: ' + md_inline(json.dumps(c['locator'])), '', md_block_quoted(c['excerpt'])]
+            lines += ['', ' '.join(filter(None, ['Source:', md_inline(c['source_id']),
+                                                '·', md_inline(c['document_title'])])),
+                      ' '.join(filter(None, ['Locator:', md_inline(json.dumps(c['locator']))])),
+                      '', md_block_quoted(c['excerpt'])]
     return '\n'.join(lines) + '\n'

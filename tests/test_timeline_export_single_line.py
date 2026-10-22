@@ -222,7 +222,10 @@ def test_payload_cannot_escape_its_markdown_slot(path, suffix, bucket):
     baseline = payload()
     set_field(baseline, path, 'SlotMarker')
     data = deepcopy(baseline)
-    set_field(data, path, 'SlotMarker' + suffix)
+    value = 'SlotMarker' + suffix
+    if path[-1] in {'description', 'excerpt'}:
+        value += '\nnext'
+    set_field(data, path, value)
     if bucket == 'undated':
         for item in (baseline, data):
             item['undated'], item['entries'] = item['entries'], []
@@ -244,13 +247,15 @@ def test_payload_cannot_escape_its_markdown_slot(path, suffix, bucket):
 
 @FIELDS
 def test_single_line_fields_cannot_add_hard_breaks(path):
-    if path[-1] in {'description', 'excerpt'}:
-        return
     data = payload()
-    set_field(data, path, 'SlotMarker  \t ')
+    value = 'SlotMarker  \t '
+    if path[-1] in {'description', 'excerpt'}:
+        value += '\nnext'
+    set_field(data, path, value)
 
     body = export_timeline(data, 'markdown')
-    assert not any(line.endswith((' ', '\t')) for line in body.splitlines() if line)
+    assert not any(line.endswith(('  ', '\t')) for line in body.splitlines())
+    assert not any(line.endswith(' ') for line in body.splitlines() if line != '> ')
     assert not any(child.type == 'hardbreak' for block in markdown_blocks(data)
                    for token in block for child in token.children or [])
 
@@ -261,16 +266,18 @@ def test_single_line_fields_cannot_add_hard_breaks(path):
                          ids=['zero-width', 'bidi', 'bom-joiner', 'isolate', 'mixed'])
 @pytest.mark.parametrize('bucket', ['entries', 'undated'])
 def test_single_line_trailing_format_controls_cannot_add_hard_breaks(path, suffix, bucket):
-    if path[-1] in {'description', 'excerpt'}:
-        return
     data = payload()
-    set_field(data, path, 'SlotMarker' + suffix)
+    value = 'SlotMarker' + suffix
+    if path[-1] in {'description', 'excerpt'}:
+        value += '\nnext'
+    set_field(data, path, value)
     if bucket == 'undated':
         data['undated'], data['entries'] = data['entries'], []
 
     body = export_timeline(data, 'markdown')
 
-    assert not any(line.endswith((' ', '\t')) for line in body.splitlines() if line)
+    assert not any(line.endswith(('  ', '\t')) for line in body.splitlines())
+    assert not any(line.endswith(' ') for line in body.splitlines() if line != '> ')
     assert not any(child.type == 'hardbreak' for block in markdown_blocks(data)
                    for token in block for child in token.children or [])
 
@@ -395,3 +402,97 @@ def test_bidi_controls_do_not_survive_into_markdown(control, field):
     body = export_timeline(data, "markdown")
     assert control not in body
     assert control not in MarkdownIt("commonmark").render(body)
+
+
+@pytest.mark.parametrize("field", ["description", "excerpt"])
+@pytest.mark.parametrize("value", [
+    "line one\u200b\u200b\nline two",
+    "a\u202e\u202c\nb",
+    "a \u200b\nb",
+    "a\ufeff\u200d\nb",
+    "a\t\u200b\u200b\nb",
+    "a\u0085\u0085\nb",
+    "a\x0b\x0c\nb",
+    "a  \nb",
+])
+def test_quoted_lines_cannot_gain_a_hard_break(field, value):
+    data = payload()
+    path = (("entries", 0, "description") if field == "description"
+            else ("entries", 0, "citations", 0, "excerpt"))
+    set_field(data, path, value)
+    quoted = [line for line in export_timeline(data, "markdown").splitlines()
+              if line.startswith(">")]
+    assert not any(line.endswith("  ") for line in quoted)
+    assert not any(child.type == "hardbreak" for block in markdown_blocks(data)
+                   for token in block for child in token.children or [])
+    assert "<br" not in MarkdownIt("commonmark").render(export_timeline(data, "markdown"))
+
+
+@pytest.mark.parametrize("value", ["", "\u200b\u200b", "\u00a0\u00a0"])
+def test_empty_source_id_keeps_a_single_separator_space(value):
+    data = payload()
+    data["entries"][0]["citations"][0]["source_id"] = value
+    line = next(line for line in export_timeline(data, "markdown").splitlines()
+                if line.startswith("Source:"))
+    assert line == "Source: · Synthetic"
+
+
+@pytest.mark.parametrize('separator', ['\u2028', '\u2029'])
+@pytest.mark.parametrize('field', ['description', 'excerpt'])
+def test_unicode_quoted_lines_trim_after_splitting(separator, field):
+    data = payload()
+    path = (('entries', 0, 'description') if field == 'description'
+            else ('entries', 0, 'citations', 0, 'excerpt'))
+    set_field(data, path, 'a\u200b\u200b' + separator + 'b')
+    quoted = [line for line in export_timeline(data, 'markdown').splitlines()
+              if line.startswith('>')]
+    assert '> a' in quoted and '> b' in quoted
+    assert not any(line[-1:].isspace() for line in quoted)
+
+
+@pytest.mark.parametrize('value', ['', '\u200b\u200b'])
+def test_empty_date_label_has_a_visible_fallback(value):
+    data = payload()
+    data['entries'][0]['date_label'] = value
+    body = export_timeline(data, 'markdown')
+    assert '## ' not in body.splitlines()
+    assert '## (no date label)' in body.splitlines()
+    tokens = MarkdownIt('commonmark').parse(body)
+    for index, token in enumerate(tokens):
+        if token.type == 'heading_open':
+            assert tokens[index + 1].content.strip()
+
+
+@pytest.mark.parametrize('value', ['', '\u200b\u200b'])
+@pytest.mark.parametrize('path', [
+    ('entries', 0, 'citations', 0, 'document_title'),
+    ('coverage_records', 0, 'source_name'),
+    ('coverage_records', 0, 'source_id'),
+    ('coverage_records', 0, 'status'),
+    ('entries', 0, 'uncertainty'),
+    ('entries', 0, 'conflict_group'),
+    ('capped',),
+])
+def test_empty_metadata_has_no_extra_spaces(path, value):
+    data = payload()
+    set_field(data, path, value)
+    lines = export_timeline(data, 'markdown').splitlines()
+    assert not any(line.endswith((' ', '\t')) for line in lines if line != '> ')
+    assert not any('  ' in line for line in lines)
+    if path == ('coverage_records', 0, 'source_id'):
+        assert 'Source coverage: Synthetic () — unreadable' in lines
+    if path == ('entries', 0, 'uncertainty'):
+        assert 'Date uncertainty:' in lines
+
+
+@pytest.mark.parametrize('value', ['', '  ', '\t\u200b\u200b'])
+@pytest.mark.parametrize('field', ['description', 'excerpt'])
+def test_empty_normalized_quoted_line_keeps_its_prefix(field, value):
+    data = payload()
+    path = (('entries', 0, 'description') if field == 'description'
+            else ('entries', 0, 'citations', 0, 'excerpt'))
+    set_field(data, path, value + '\nnext')
+    lines = export_timeline(data, 'markdown').splitlines()
+    assert '> ' in lines
+    assert '> next' in lines
+    assert not any(line.endswith(('  ', '\t')) for line in lines)
