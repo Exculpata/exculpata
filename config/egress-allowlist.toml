@@ -7504,6 +7504,37 @@ kind = "host"
 digest = "18aedd26acf92baed120db3fc1497bdbc1951ac87f9f387a6e42c4a2d6545016"
 detail = "issuer.example.test:8443"
 
+# Synthetic generator endpoint, TLS name and pin-mismatch diagnostic in the live smoke.
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "a26f06635fe3406de897c9abba5d6aef2dbc9b84d43271a6083b9bd46c808fca"
+detail = "generator.example.test:8443"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "78c896ead16bec395153b9601a598a17e56bf8084602e316d5b6be441656fd8b"
+detail = "generator-pin-mismatch-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
