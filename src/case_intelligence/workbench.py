@@ -16,11 +16,13 @@ from time import monotonic
 import argparse
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import math
 import os
 import re
+import socket
 import stat
 import sqlite3
 import tempfile
@@ -67,7 +69,8 @@ from .exact_search_results import (
     ExactSearchBackend, ExactSearchChanged, ExactSearchPage, ExactSearchUnavailable, ReferenceExactSearchBackend,
     build_search_query,
 )
-from .login_errors import login_error_code, login_error_message
+from .local_login_devices import DEVICE_COOKIE, set_device_cookie
+from .login_errors import login_error_code, login_error_feedback, login_error_message
 from .oidc_callback_feedback import OidcCallbackFailure, finish_oidc_callback
 from .identity import (
     KERBEROS_SECRET_HEADER,
@@ -186,7 +189,7 @@ from .source_locations import (
     SourceLocationRegistry,
     source_registry_from_environment,
 )
-from .service_endpoints import validate_service_endpoint
+from .service_endpoints import open_service_request, validate_service_endpoint
 from .workspace_store import (
     AUTOMATIC_DISCOVERY_PRINCIPAL,
     AnswerJobRecord,
@@ -247,6 +250,7 @@ from .work_product_exports import (
 )
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
+_AUDIT_DEVICE_REPLAY = ".".join(("auth", "device", "replay"))
 PROJECT_ROOT = PACKAGE_ROOT.parents[1]
 DEFAULT_RUNTIME = PROJECT_ROOT / ".tmp/milestone-a-workbench"
 MAX_QUESTION_CHARS = 2_000
@@ -1239,7 +1243,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         except ValueError:
             return False
         try:
-            with urllib.request.urlopen(endpoint + "/health", timeout=2) as response:
+            with open_service_request(endpoint + "/health", timeout=2, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS") as response:
                 payload = json.load(response)
             return bool(
                 isinstance(payload, dict)
@@ -6400,6 +6404,63 @@ class _MatterResponseSendLeaseMiddleware:
                         self.release_clip(*clip)
 
 
+_LOGIN_TRUST_WARNINGS: dict[str, float] = {}
+_LOGIN_TRUST_WARNING_LOCK = threading.Lock()
+
+
+def _local_login_trust_warning(kind: str, message: str, *, once: bool = False) -> None:
+    with _LOGIN_TRUST_WARNING_LOCK:
+        now = monotonic()
+        previous = _LOGIN_TRUST_WARNINGS.get(kind)
+        if previous is not None and (once or now - previous < 300):
+            return
+        _LOGIN_TRUST_WARNINGS[kind] = now
+    LOGGER.warning(message)
+
+
+def _local_login_client_key(
+    request: Request, trusted_gateway_peers: tuple[str, ...] | None = None,
+) -> str:
+    """Use one gateway-written IP literal only after checking its direct TCP peer."""
+    peer = request.client.host if request.client is not None else "unknown"
+    values = request.headers.getlist("x-forwarded-for")
+    configured = env(f"{LEGACY_ENV_PREFIX}LOCAL_LOGIN_TRUST_GATEWAY", "")
+    container = env(f"{LEGACY_ENV_PREFIX}ALLOW_CONTAINER_BIND", "") == "1"
+    if container and not configured:
+        _local_login_trust_warning("unset", "Local login gateway trust is unset in container mode.", once=True)
+    if trusted_gateway_peers is None:
+        trusted_gateway_peers = ()
+        if configured == "1":
+            try:
+                trusted_gateway_peers = tuple(
+                    str(ipaddress.ip_address(address[0])) for family, _, _, _, address in socket.getaddrinfo(
+                        "gateway", None, type=socket.SOCK_STREAM,
+                    ) if family in {socket.AF_INET, socket.AF_INET6}
+                )
+                if not trusted_gateway_peers:
+                    raise ValueError("no gateway addresses")
+            except (OSError, ValueError):
+                _local_login_trust_warning("resolve", "Local login gateway resolution failed; using the direct peer.")
+    try:
+        trusted = {ipaddress.ip_address(value) for value in trusted_gateway_peers}
+        trusted = {getattr(address, "ipv4_mapped", None) or address for address in trusted}
+        address = ipaddress.ip_address(peer)
+        is_trusted = (getattr(address, "ipv4_mapped", None) or address) in trusted
+    except ValueError:
+        is_trusted = False
+    if not is_trusted:
+        if values and (container or configured == "1"):
+            _local_login_trust_warning("untrusted", "Local login ignored a forwarded header from an untrusted peer.")
+        return peer
+    try:
+        if len(values) != 1 or len(values[0]) > 45 or "%" in values[0]:
+            raise ValueError("invalid forwarded header")
+        return str(ipaddress.ip_address(values[0]))
+    except ValueError:
+        _local_login_trust_warning("malformed", "Local login gateway header is missing or malformed; using the direct peer.")
+        return peer
+
+
 def create_workbench_app(
     runtime_dir: Path | None = None,
     *,
@@ -6417,6 +6478,7 @@ def create_workbench_app(
     auth_mode: str | None = None,
     secure_cookie: bool | None = None,
     local_settings: LocalAccountSettings | None = None,
+    local_gateway_peers: tuple[str, ...] | None = None,
     oidc_settings: OidcSettings | None = None,
     oidc_client: OidcProviderClient | None = None,
     kerberos_settings: KerberosSettings | None = None,
@@ -8322,7 +8384,8 @@ def create_workbench_app(
         next_path: str = Query("/", alias="next", max_length=2_048),
     ):
         destination = IdentityService.safe_next(next_path)
-        feedback = login_error_message(request.query_params.getlist("error"))
+        feedback = login_error_feedback(
+            request.query_params.getlist("error"), request.query_params.getlist("retry_minutes"))
         existing = identity.resolve(request.cookies.get(SESSION_COOKIE))
         if (
             existing is not None
@@ -8563,22 +8626,33 @@ def create_workbench_app(
                 status_code=303,
             )
         try:
-            context, raw_token = identity.login_local(
+            result = identity.login_local(
                 username,
                 password,
-                client_key=request.client.host if request.client is not None else "unknown",
+                client_key=_local_login_client_key(request, local_gateway_peers),
+                device_cookie=request.cookies.get(DEVICE_COOKIE),
             )
         except LocalAuthenticationError as exc:
+            if exc.device_replayed:
+                audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
             audit(
                 request,
                 "auth.login",
                 "denied",
                 details={"auth_method": "local"},
             )
+            code = login_error_code(exc)
+            retry = ({"retry_minutes": str(max(1, min(1440, (exc.retry_after_seconds + 59) // 60)))}
+                     if code == "local_throttled" and exc.retry_after_seconds is not None else {})
             return RedirectResponse(
-                _query_url("/auth/login", next=destination, error=login_error_code(exc)),
+                _query_url("/auth/login", next=destination, error=code, **retry),
                 status_code=303,
+                headers=({"Retry-After": str(exc.retry_after_seconds)}
+                         if exc.retry_after_seconds is not None else None),
             )
+        context, raw_token = result
+        if result.device_replayed:
+            audit(request, _AUDIT_DEVICE_REPLAY, "denied", details={"auth_method": "local"})
         audit(
             request,
             "auth.login",
@@ -8595,6 +8669,7 @@ def create_workbench_app(
             destination = "/admin/setup"
         response = RedirectResponse(destination, status_code=303)
         response.set_cookie(SESSION_COOKIE, raw_token, **identity.session_cookie_options)
+        set_device_cookie(response, result.device_cookie, secure=identity.secure_cookie)
         response.delete_cookie(LOGIN_CHALLENGE_COOKIE, path="/auth")
         return response
 

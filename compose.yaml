@@ -14,6 +14,9 @@ services:
       - postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U recordbench -d recordbench"]
@@ -55,6 +58,9 @@ services:
       - clamav-signatures:/var/lib/clamav
     depends_on:
       clamav-updater: {condition: service_healthy}
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
@@ -126,6 +132,9 @@ services:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/retrieval-native:rw,exec,nosuid,nodev,size=512m
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
 
   generator:
@@ -150,6 +159,9 @@ services:
         read_only: true
     tmpfs:
       - /tmp/vllm-cache:rw,exec,nosuid,nodev,size=8g
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [models]
     command:
       - --model
@@ -221,6 +233,9 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=2g
       - /tmp/transcription-home:rw,noexec,nosuid,nodev,size=32m
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
     networks: [services]
 
   transcription-worker:
@@ -342,6 +357,7 @@ services:
       - ${EXCULPATA_CONFIG_ROOT:-${RECORDBENCH_CONFIG_ROOT:-}}/${EXCULPATA_APP_ENV_FILE:-${RECORDBENCH_APP_ENV_FILE:-recordbench.env}}
     environment:
       EXCULPATA_ALLOW_CONTAINER_BIND: "1"
+      EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY: "1"
       EXCULPATA_BACKUP_STATUS_FILE: /var/lib/recordbench/state/backup-status.json
       CASE_INTELLIGENCE_POSTGRES_DSN_FILE: /run/recordbench-secrets/postgres-dsn
       CASE_INTELLIGENCE_CLAMAV_HOST: clamav
@@ -356,7 +372,17 @@ services:
       CASE_INTELLIGENCE_TRANSCRIPTION_TOKEN_FILE: /run/recordbench-secrets/transcription-token
       EXCULPATA_STORAGE_NAMES: ${EXCULPATA_STORAGE_NAMES:-${RECORDBENCH_STORAGE_NAMES:-recordbench}}
       CASE_INTELLIGENCE_MANAGED_STORAGE_ROOT: /var/lib/recordbench/matter-storage
+      CASE_INTELLIGENCE_OIDC_PROXY: http://egress-proxy:3128
+      HTTPS_PROXY: http://egress-proxy:3128
+      https_proxy: http://egress-proxy:3128
+      HTTP_PROXY: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      ALL_PROXY: http://egress-proxy:3128
+      all_proxy: http://egress-proxy:3128
+      NO_PROXY: ""
+      no_proxy: ""
     depends_on:
+      egress-proxy: {condition: service_healthy}
       postgres: {condition: service_healthy}
       clamav: {condition: service_healthy}
       retrieval: {condition: service_healthy, required: false}
@@ -385,7 +411,30 @@ services:
       - /tmp/exculpata-home:rw,noexec,nosuid,nodev,size=32m
     extra_hosts:
       - "${EXCULPATA_HOST_GATEWAY_ALIAS:-${RECORDBENCH_HOST_GATEWAY_ALIAS:-host-gateway.example.test}}:host-gateway"
-    networks: [front, services, models]
+    # Docker retains embedded service discovery; unknown names stay in this namespace.
+    dns: [127.0.0.1]
+    dns_search: ["."]
+    networks: [app-egress, services, models]
+
+  egress-proxy:
+    image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/egress-proxy:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
+    build:
+      context: .
+      dockerfile: deploy/egress-proxy/Dockerfile
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 64
+    cpus: "1.0"
+    mem_limit: 128m
+    environment:
+      # The installer derives this one value from the selected app env_file.
+      # Empty configuration keeps local/Kerberos startup healthy and denies all.
+      OIDC_ISSUER: ${OIDC_EGRESS_ISSUER:-}
+      OIDC_ISSUER_PINS: ${OIDC_EGRESS_PINS:-}
+    networks: [app-egress, front]
 
   gateway:
     image: ${EXCULPATA_IMAGE_NAMESPACE:-${RECORDBENCH_IMAGE_NAMESPACE:-exculpata}}/gateway:${EXCULPATA_RELEASE_ID:-${RECORDBENCH_RELEASE_ID:-dev}}
@@ -479,6 +528,8 @@ networks:
   services:
     internal: true
   models:
+    internal: true
+  app-egress:
     internal: true
 
 secrets:

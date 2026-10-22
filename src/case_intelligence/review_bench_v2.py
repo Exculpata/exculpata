@@ -12,6 +12,7 @@ import re
 import json
 import subprocess
 import sys
+from .service_endpoints import open_service_request
 import urllib.request
 import urllib.error
 from contextlib import nullcontext
@@ -338,7 +339,7 @@ def _model_request(base_url: str, operation: str, body: bytes, timeout: float):
     request = urllib.request.Request(f"{base_url}/{operation}", data=body,
         headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with open_service_request(request, timeout=timeout, environment_name="CASE_INTELLIGENCE_RETRIEVAL_ALLOWED_HOSTS") as response:
             return json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code in {413, 422}:
