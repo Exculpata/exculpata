@@ -308,7 +308,7 @@ for(const raw of EXPRESSIONS){
 
 
 def test_application_route_suffixes_preserve_scope_and_encoding():
-    wanted = [66,1394,1602,1605,1630,3744,4698]
+    wanted = [66,1394,1602,1605,1630,3746,4700]
     expressions = dict(node_expressions('src/case_intelligence/static/case-intelligence.js',
                                        'template_string', lambda source: '${' in source))
     source = '[' + ','.join(expressions[line] for line in wanted) + ']'

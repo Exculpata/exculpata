@@ -306,6 +306,26 @@ def test_media_metadata_is_scanned(monkeypatch) -> None:
     ]
 
 
+def test_unsupported_media_root_preserves_content_findings(monkeypatch) -> None:
+    metadata = [{"comment": "reviewer@" + "private.invalid synthetic-denied-marker"}]
+    monkeypatch.setattr(publication.shutil, "which", lambda _name: "/usr/bin/ffprobe")
+    monkeypatch.setattr(
+        publication.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps(metadata).encode("utf-8")
+        ),
+    )
+    findings = publication._scan_content(
+        b"synthetic-media", name="fixture.wav", location="fixture.wav",
+        deny=(b"synthetic-denied-marker",),
+    )
+    assert any("unsupported-media-metadata" in item.rule and "_scan_media" in item.rule
+               for item in findings)
+    assert publication.Finding("fixture.wav#media-metadata", "non-example-email-address") in findings
+    assert publication.Finding("fixture.wav#media-metadata", "operator-deny-term") in findings
+
+
 def test_history_scan_finds_a_forbidden_blob_after_it_is_deleted(tmp_path) -> None:
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(
@@ -331,7 +351,11 @@ def test_history_scan_finds_a_forbidden_blob_after_it_is_deleted(tmp_path) -> No
     assert any("old-config.txt" in item.location for item in findings)
 
 
-def test_history_scan_checks_author_and_committer_identity(tmp_path) -> None:
+def test_history_scan_checks_author_and_committer_identity(tmp_path, monkeypatch) -> None:
+    import hashlib
+    monkeypatch.setattr(publication, "MAINTAINER_EMAIL_DIGESTS", frozenset({
+        hashlib.sha256(b"maintainer@" + b"agency.example.org").hexdigest(),
+    }))
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(
         ["git", "config", "user.name", "Synthetic Maintainer"],
@@ -353,7 +377,7 @@ def test_history_scan_checks_author_and_committer_identity(tmp_path) -> None:
     subprocess.run(["git", "commit", "-q", "-m", "synthetic"], cwd=tmp_path, check=True)
 
     assert publication.Finding(
-        "git-metadata", "non-example-email-address"
+        "git-metadata", "maintainer-email-address"
     ) in publication.scan_history(tmp_path, ())
 
 
@@ -424,8 +448,12 @@ def test_public_bot_identities_and_dependabot_signoff_are_exact():
     assert denied in publication._scan_bytes(signoff, location="git-metadata", deny=(b"support",))
 
 
-def test_dependabot_commit_identity_is_public_and_personal_mail_still_blocks(tmp_path):
+def test_dependabot_commit_identity_is_public_and_denied_mail_still_blocks(tmp_path, monkeypatch):
     import os
+    import hashlib
+    monkeypatch.setattr(publication, "MAINTAINER_EMAIL_DIGESTS", frozenset({
+        hashlib.sha256(b"ada@" + b"personal.example").hexdigest(),
+    }))
 
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     bot = {
@@ -456,7 +484,7 @@ def test_dependabot_commit_identity_is_public_and_personal_mail_still_blocks(tmp
         check=True,
     )
     assert publication.Finding(
-        "git-metadata", "non-example-email-address"
+        "git-metadata", "maintainer-email-address"
     ) in publication.scan_history(tmp_path, ())
 
 
@@ -497,7 +525,10 @@ def test_reviewed_email_disposition_is_exact_and_metadata_only(tmp_path, monkeyp
     git('commit', '--allow-empty', '-qm', 'synthetic approved attribution')
     commit = git('rev-parse', 'HEAD')
     digest = hashlib.sha256((name + '\0' + email).encode()).hexdigest()
-    expected = publication.Finding('git-metadata', 'non-example-email-address')
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
+        hashlib.sha256(email.encode().lower()).hexdigest(),
+    }))
+    expected = publication.Finding('git-metadata', 'maintainer-email-address')
     assert expected in publication.scan_history(tmp_path, ())
     monkeypatch.setattr(publication, 'REVIEWED_COMMIT_EMAIL_IDENTITIES', {commit: {digest}})
     assert publication.scan_history(tmp_path, ()) == []
@@ -580,8 +611,11 @@ def test_reviewed_attribution_does_not_cover_other_metadata(tmp_path, monkeypatc
                    cwd=tmp_path, env=environment, check=True)
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=tmp_path, text=True).strip()
     digest = hashlib.sha256((name + '\0' + email).encode()).hexdigest()
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset(
+        hashlib.sha256(value.encode().lower()).hexdigest() for value in (email, other_email)
+    ))
     monkeypatch.setattr(publication, 'REVIEWED_COMMIT_EMAIL_IDENTITIES', {commit: {digest}})
-    assert publication.Finding('git-metadata', 'non-example-email-address') in publication.scan_history(tmp_path, ())
+    assert publication.Finding('git-metadata', 'maintainer-email-address') in publication.scan_history(tmp_path, ())
 
 
 @pytest.mark.parametrize("location,tail", [
@@ -631,6 +665,96 @@ def test_seeded_contributor_identities_are_digests_only():
         assert re.fullmatch(r'[0-9a-f]{64}', digest)
 
 
+def test_maintainer_denylist_has_three_address_digests():
+    assert len(publication.MAINTAINER_EMAIL_DIGESTS) == 3
+    assert all(re.fullmatch(r'[0-9a-f]{64}', value)
+               for value in publication.MAINTAINER_EMAIL_DIGESTS)
+
+
+@pytest.mark.parametrize('role', ['author', 'committer'])
+@pytest.mark.parametrize('case', ['lower', 'upper'])
+def test_maintainer_addresses_block_each_identity_field(tmp_path, monkeypatch, role, case):
+    import hashlib
+    denied = 'maintainer@' + 'synthetic.invalid'
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
+        hashlib.sha256(denied.encode()).hexdigest(),
+    }))
+    denied = getattr(denied, case)()
+    contributor = 'contributor@' + 'synthetic.invalid'
+    _contributor_repo(tmp_path, 'Arbitrary Name', denied if role == 'author' else contributor,
+                      'synthetic squash (#345)',
+                      committer=('Different Name', denied if role == 'committer' else contributor))
+    findings = publication.scan_history(tmp_path, ())
+    assert findings == [publication.Finding('git-metadata', 'maintainer-email-address')]
+    assert denied not in repr(findings)
+
+
+@pytest.mark.parametrize('payload', ['file', 'name', 'message', 'trailer'])
+def test_maintainer_hash_check_cannot_be_masked_by_other_email_exceptions(tmp_path, monkeypatch, payload):
+    import hashlib
+    email = 'maintainer@example.com'
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
+        hashlib.sha256(email.encode()).hexdigest(),
+    }))
+    name = 'Synthetic Contributor'
+    monkeypatch.setattr(publication, 'REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES', frozenset({
+        publication._identity_digest(name.encode(), email.encode()),
+    }))
+    value = 'allowed@' + 'synthetic.invalid' + '\n' + email.upper()
+    message = 'synthetic'
+    if payload == 'name':
+        name = email.upper()
+    elif payload == 'message':
+        message = value
+    elif payload == 'trailer':
+        message += '\n\nCo-authored-by: ' + name + ' <' + email + '>'
+    _contributor_repo(tmp_path, name, 'contributor@example.com', message)
+    if payload == 'file':
+        (tmp_path / 'fixture.txt').write_text(value)
+        findings = publication.scan_tree(tmp_path, ())
+    else:
+        findings = publication.scan_history(tmp_path, ())
+    assert any(item.rule == 'maintainer-email-address' for item in findings)
+    assert email not in repr(findings).lower()
+
+
+def test_unlisted_contributor_squash_author_and_committer_pass(tmp_path):
+    git = _contributor_repo(tmp_path, 'New Contributor', 'author@' + 'synthetic.invalid',
+                            'synthetic change (#345)',
+                            committer=('Other Contributor', 'committer@' + 'synthetic.invalid'))
+    assert publication.scan_history(tmp_path, ()) == []
+    git('-c', 'user.name=Another Contributor', '-c', 'user.email=next@' + 'synthetic.invalid',
+        'commit', '--allow-empty', '-qm', 'another squash (#346)')
+    assert publication.scan_history(tmp_path, ()) == []
+
+
+def test_denied_address_in_path_is_not_echoed(tmp_path, monkeypatch):
+    import hashlib
+    email = 'maintainer@example.com'
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
+        hashlib.sha256(email.encode()).hexdigest(),
+    }))
+    directory = tmp_path / email.upper()
+    directory.mkdir()
+    (directory / 'fixture.txt').write_text('synthetic')
+    findings = publication.scan_tree(tmp_path, ())
+    assert findings == [publication.Finding('tree-entry[1]-name', 'maintainer-email-address')]
+    assert email not in repr(findings).lower()
+
+
+@pytest.mark.parametrize('value,rule', [
+    ('10.' + '23.45.67', 'private-network-address'),
+    ('/home/' + 'specific.operator/runtime', 'personal-home-path'),
+    ('-----BEGIN ' + 'PRIVATE KEY-----', 'private-key-material'),
+    ('private-organization-marker', 'operator-deny-term'),
+    ('name@' + 'synthetic.invalid', 'non-example-email-address'),
+])
+def test_contributor_identity_permission_preserves_other_checks(tmp_path, value, rule):
+    _contributor_repo(tmp_path, value, 'contributor@' + 'synthetic.invalid', 'synthetic')
+    assert publication.Finding('git-metadata', rule) in publication.scan_history(
+        tmp_path, (b'private-organization-marker',))
+
+
 def test_reviewed_contributor_squash_commit_passes_on_any_commit(tmp_path, monkeypatch):
     import hashlib
     name = 'Synthetic Contributor'
@@ -652,7 +776,7 @@ def test_reviewed_contributor_squash_commit_passes_on_any_commit(tmp_path, monke
         tmp_path, (b'Synthetic Contributor',))
 
 
-def test_reviewed_contributor_identity_is_exact_and_email_rule_only(tmp_path, monkeypatch):
+def test_contributor_addresses_are_allowed_but_trailer_content_stays_exact(tmp_path, monkeypatch):
     import hashlib
     name = 'Synthetic Contributor'
     email = 'contributor@' + 'synthetic.invalid'
@@ -670,7 +794,7 @@ def test_reviewed_contributor_identity_is_exact_and_email_rule_only(tmp_path, mo
         repo = tmp_path / str(index)
         repo.mkdir()
         _contributor_repo(repo, author, address, label)
-        assert email_rule in publication.scan_history(repo, ()), label
+        assert publication.scan_history(repo, ()) == [], label
     trailer = 'Co-authored-by: ' + name + ' <' + email + '>'
     extra = 'other@' + 'synthetic.invalid'
     bad_messages = [
@@ -694,4 +818,4 @@ def test_reviewed_contributor_identity_is_exact_and_email_rule_only(tmp_path, mo
     repo = tmp_path / 'committer'
     repo.mkdir()
     _contributor_repo(repo, name, email, 'x', committer=('Maintainer', 'maint@' + 'synthetic.invalid'))
-    assert email_rule in publication.scan_history(repo, ())
+    assert publication.scan_history(repo, ()) == []

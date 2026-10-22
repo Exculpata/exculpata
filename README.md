@@ -450,7 +450,7 @@ evidence described in [release readiness](docs/RELEASE_READINESS.md) and the
 - [Storage, backup, and restore](docs/STORAGE_AND_BACKUP.md)
 - [Security model](docs/SECURITY_MODEL.md)
 - [Release readiness](docs/RELEASE_READINESS.md)
-- [Brand](docs/BRAND.md)
+- [Visual identity: logo, type, color, and positioning](docs/BRAND.md)
 - [Brand assets and project copy](docs/BRANDING.md)
 
 ## License

@@ -3586,6 +3586,8 @@
     if (focus) {
       window.requestAnimationFrame(() => {
         window.scrollTo(pageX, pageY);
+        if (document.activeElement && document.activeElement !== previousFocus
+            && document.activeElement !== document.body) return;
         const previousVisible = preserveFocus && previousFocus?.isConnected
           && !previousFocus.disabled && previousFocus.getClientRects().length
           && getComputedStyle(previousFocus).visibility !== "hidden";

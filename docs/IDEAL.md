@@ -39,10 +39,10 @@ New callers preserve these contracts rather than invent parallel state or parser
 **L1 — No implicit outbound runtime calls.** Models and evidence processing stay
 local by default. New outbound use requires explicit operator configuration and
 review of what leaves the installation; companion URLs require an exact allowlist.
-The reference stack isolates service/model networks and disconnects transcription
-workers. Its app/front network is not a universal egress firewall: configured OIDC,
-the separate signature updater, and explicit model staging are documented exceptions.
-See [the network contract](../tests/test_reference_network_boundary.py).
+The app uses internal networks and a constrained relay for configured OIDC.
+The separate signature updater and explicit model staging retain outbound access.
+Internal bridges are not a host firewall; operator overlays still require review.
+See [the reference egress contract](NETWORK_EGRESS.md) and [boundary tests](../tests/test_reference_network_boundary.py).
 
 **L2 — Stage immutable inputs before runtime.** Models and assets come from
 pinned local revisions with license and manifest/hash records; workers use offline
@@ -85,7 +85,7 @@ Review-only entries identify gaps, not permission to skip existing checks.
 | A1 | [Matter isolation](../tests/test_milestone_a_workbench.py), [hybrid retrieval isolation](../tests/test_review_bench_v2.py); ownership of new services is review only because no global authority checker exists. |
 | A2 | Review only: no repository-wide import/transaction boundary checker; compare new dependencies with [core evolution](CORE_EVOLUTION.md). |
 | A3 | [Exact search](../tests/test_exact_search_results.py), [full-text review](../tests/test_full_text_review.py), [export readiness](../tests/test_export_readiness.py); reuse by new callers is review only because no duplicate-path detector exists. |
-| L1 | [Network topology contract](../tests/test_reference_network_boundary.py), [generator endpoint allowlist](../tests/test_generation.py); deployment egress and new exceptions are review only because these tests do not audit live overlays. |
+| L1 | [Network boundary and inventory](../tests/test_reference_network_boundary.py), [live synthetic egress](../tests/test_egress_proxy_live.py), [generator endpoint allowlist](../tests/test_generation.py); operator overlays and host services remain review only because repository tests cannot attest deployed configuration. |
 | L2 | [Model staging](../tests/test_operator_model_staging.py), [offline retrieval startup](../tests/test_review_bench_v2.py), [manifest integrity](../services/transcription/tests/test_model_manifest.py); license, asset completeness and representative model quality are review only because fixtures cannot attest deployment acceptance. |
 | L3 | [Real gateway header stripping](../tests/test_gateway_nginx.py), [authentication entry points](../tests/test_auth_entrypoints.py), [network topology](../tests/test_reference_network_boundary.py). |
 | E1 | [Source/version resolution](../tests/test_source_references.py), [changed-original archive rejection](../tests/test_matter_archive.py), [review content basis](../tests/test_review_content_basis_regressions.py). |

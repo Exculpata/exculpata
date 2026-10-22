@@ -49,6 +49,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 case_intelligence = [
+  "_idna/*.pyz",
+  "_idna/*.json",
+  "_idna/*.md",
   "demo_data/*.json",
   "demo_data/*.pdf",
   "demo_data/sources/*/*",

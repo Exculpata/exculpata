@@ -1,10 +1,13 @@
 # Exculpata brand assets and project copy
 
+Asset and project-copy reference: launch media, descriptions, and compatibility.
+
 Use these assets and descriptions for the repository, project pages, and
 presentations. They describe community beta v0.1.0-beta.1; they do not imply an
 institutional endorsement or production acceptance.
 
-Visual colors, the wordmark, and the icon are specified in [BRAND.md](BRAND.md).
+For the visual identity (logo, type, color, and positioning), see
+[BRAND.md](BRAND.md).
 
 ## Identity
 
@@ -154,15 +157,17 @@ and `recordbench.publicationDenyFile` are still read.
 
 The previous installer and backup commands remain as shims and print a
 one-line deprecation notice. Historical changelog entries use the previous
-name. The README uses the Exculpata wordmark. The earlier banner remains at
-[assets/exculpata-banner.svg](assets/exculpata-banner.svg), and the original
-banner remains at [assets/recordbench-banner.svg](assets/recordbench-banner.svg).
+name. The README uses the Exculpata wordmark. The legacy
+[RecordBench banner](assets/recordbench-banner.svg) is superseded by
+[exculpata-banner.svg](assets/exculpata-banner.svg) for current branding.
 
 The rename contract check inspects complete repository file and directory names,
 including symlink names without following their targets. It checks all decoded
 UTF-8 text, including NUL-containing text, CSS, configuration files and
 extensionless tools; binary filenames must also use declared names. Historical fixtures, cached dependencies,
-and historical assets keep their existing exclusions.
+and historical assets keep their existing exclusions. The exact data/config paths
+`.gitleaksignore` and `config/egress-allowlist.toml`, and the vendored third-party
+directory `src/case_intelligence/_idna`, are also excluded.
 Python files, extensionless tools and Python-shebang files receive syntax inspection
 without executing source. Parsed string and UTF-8 bytes literals expose escaped
 spellings;
@@ -222,8 +227,12 @@ contracts for existing analysis or transport operations that remain outside this
 grammar. Forty-five concern diagnostic text analysis; the remaining 132 concern
 existing setting validation/output, authenticated dependency metadata replacement,
 lifecycle SQL rendering, warning-once bookkeeping, thread-object storage and two exact frozen dataclass namespaces carrying retained configuration or grammar defaults. Those two class receipts are not a general exemption for dataclasses.
-The unknown-call restriction adds 77 exact records: four scanner-analysis operations and 73 existing consumer operations, primarily argparse configuration, storage-marker reads and validation, thread startup, logger calls, regex/query parsing and settings or metadata validation. The existing publication-selector result inspection has its own additional record; its implementation is unchanged. All preceding 100 records remain. Additional diagnostic records cover empty-placeholder and captured-callable scanner analysis, export serialization, diagnostic-proof validation and the existing upload-admission scope hash. These do not authorize additional operational names. The local-call restriction adds 43 exact call-site records for existing diagnostic, selector, command, serialization, export and audit consumers. Their implementations are unchanged, including the publication guard; there is no general helper-name exemption or argument interpreter. Each record names the exact path, complete module source digest, diagnostic line
-and text, semantic reason and validation suite. These are proposed for explicit
+The unknown-call restriction adds 77 exact records: four scanner-analysis operations and 73 existing consumer operations, primarily argparse configuration, storage-marker reads and validation, thread startup, logger calls, regex/query parsing and settings or metadata validation. The existing publication-selector result inspection has its own additional record; its implementation is unchanged. All preceding 100 records remain. Additional diagnostic records cover empty-placeholder and captured-callable scanner analysis, export serialization, diagnostic-proof validation and the existing upload-admission scope hash. These do not authorize additional operational names. The local-call restriction adds 43 exact call-site records for existing diagnostic, selector, command, serialization, export and audit consumers. Their implementations are unchanged, including the publication guard; there is no general helper-name exemption or argument interpreter. Each version 2 record names the exact path, diagnostic identifier, SHA-256 of the
+flagged source line, reviewed line number, semantic reason and validation suite.
+The line anchor normalizes CRLF to LF and removes only the line terminator,
+preserving all other whitespace. Matching ignores the reviewed line number and
+JavaScript position text while retaining the JavaScript expression SHA-256.
+Receipts match as a multiset, so each covers at most one finding. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
 Source hashes prove identity, not semantic safety. Operational key and path
 receipts identify the input origin, fixed namespace or path boundary, and intended
@@ -241,9 +250,11 @@ while other unparseable extensionless source fails closed. Shell ANSI-C quoting
 is unsupported as a whole family. Shell text is also scanned after conservatively
 removing backslash-newline pairs, retaining raw checks even inside quoted text.
 These parse and shell diagnostics cannot receive source receipts.
-The gate still scans every file and checks all literal and resolved identifiers.
-An extra diagnostic is blocked. Any source change invalidates that file's records,
-and records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.
+Within the stated scope, the gate still checks all literal and resolved identifiers.
+An extra diagnostic is blocked. An edited flagged line invalidates its receipt;
+unrelated edits and line relocation do not. Changes to surrounding context still
+require review because a line anchor does not establish semantic equivalence.
+Records for diagnostics that are no longer emitted must be removed or reviewed. Deleted, renamed, excluded, binary or unscanned source cannot leave an unused receipt behind.
 No command automatically accepts a new finding or refreshes these records.
 
 The JavaScript records cover the reviewed inventory of 67 additions, 24 addition

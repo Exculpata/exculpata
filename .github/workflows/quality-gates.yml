@@ -84,6 +84,10 @@ jobs:
             echo 'Secret scan blocked. Maintainer must inspect privately; no matched values or artifacts uploaded.'
             exit 1
           fi
+      - name: Verify exact historical exception and synthetic detection controls
+        env:
+          GITLEAKS: /tmp/gitleaks
+        run: python3 tests/test_gitleaks_exception.py
 
   application:
     needs: [change-scope]
@@ -144,6 +148,9 @@ jobs:
       - name: Compile Python sources
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: .venv/bin/python -m compileall -q src scripts tests
+      - name: Enforce repository network contract
+        if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
+        run: make network-contract
       - name: Run application suite
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         env:

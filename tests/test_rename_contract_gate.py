@@ -787,8 +787,9 @@ def test_dynamic_row_selection_retains_a_legacy_name_member(tmp_path):
 
 
 @pytest.mark.parametrize("mutation", [None, "count", "body", "literal"])
-def test_analysis_helper_disposition_is_exact_and_keeps_literal_scanning(tmp_path, mutation):
+def test_analysis_helper_disposition_is_exact_and_keeps_literal_scanning(tmp_path, monkeypatch, mutation):
     import ast
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', tmp_path / 'absent-forms.json')
     source = (ROOT / "scripts/doc_identifier_check.py").read_text()
     module = ast.parse(source)
     helper = next(node for node in module.body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
@@ -853,6 +854,7 @@ def test_reviewed_safe_members_and_foreign_scopes_do_not_inherit_origins(tmp_pat
 
 def test_reviewed_helper_fingerprint_is_independent_of_ast_schema(monkeypatch, tmp_path):
     import ast
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', tmp_path / 'absent-forms.json')
     source = (ROOT / "scripts/doc_identifier_check.py").read_text()
     helper = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef) and node.name == "_swap")
     source = 'from case_intelligence.legacy_names import *\n' + ast.get_source_segment(source, helper) + '\n'
@@ -965,26 +967,135 @@ def test_environment_selector_contract_requires_unchanged_implementation(tmp_pat
 
 def test_source_form_receipts_are_exact_and_cannot_hide_names():
     import hashlib
-    text = 'synthetic source\n'
+    text = 'synthetic source\nsynthetic source\n'
     location = 'src/synthetic.py'
     diagnostic = 'unsupported legacy composition; use a contract key'
-    records = {location: {'source_sha256': hashlib.sha256(text.encode()).hexdigest(),
-                         'diagnostics': [{'line': 2, 'identifier': diagnostic}]}}
-    allowed = checker.Finding(location + ':2', diagnostic)
-    extra = checker.Finding(location + ':3', diagnostic)
-    literal = checker.Finding(location + ':2', 'recordbench-unregistered-v99')
+    records = {location: {'diagnostics': [{'line': 99, 'identifier': diagnostic,
+        'source_line_sha256': hashlib.sha256(b'synthetic source').hexdigest()}]}}
+    allowed = checker.Finding(location + ':1', diagnostic)
+    extra = checker.Finding(location + ':2', diagnostic)
+    literal = checker.Finding(location + ':1', 'recordbench-unregistered-v99')
     assert checker.apply_source_forms(location, text, [allowed, extra, literal], records) == [extra, literal]
+    assert checker.apply_source_forms(location, text, [allowed, allowed], records) == [allowed]
     assert checker.apply_source_forms('other.py', text, [allowed], records) == [allowed]
-    assert checker.apply_source_forms(location, text + '# changed\n', [allowed], records) == [allowed]
-    found = checker.apply_source_forms(location, text + '# changed\n', [], records, require_current=True)
-    assert len(found) == 1 and 'explicit review required' in found[0].identifier
+    assert checker.apply_source_forms(location, text + 'unrelated\n', [allowed], records) == []
+    found = checker.apply_source_forms(location, text, [], records, require_current=True)
+    assert len(found) == 1 and 'stale source-form' in found[0].identifier
+
+
+@pytest.mark.parametrize('prefix,newline', [('\n\n', '\n'), ('\r\n', '\r\n')])
+def test_source_form_line_relocation_preserves_review(prefix, newline):
+    import hashlib
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\nvalues = []\nvalues.append(LEGACY_STEM)\n'
+    location = 'synthetic.py'
+    findings = checker.scan_python(location, source, NAME_CONTRACTS)
+    assert len(findings) == 1
+    records = {location: {'diagnostics': [{'line': 3, 'identifier': findings[0].identifier,
+        'source_line_sha256': hashlib.sha256(source.split('\n')[2].encode()).hexdigest()}]}}
+    relocated = prefix + source.replace('\n', newline)
+    current = checker.scan_python(location, relocated, NAME_CONTRACTS)
+    assert current[0].location != findings[0].location
+    assert checker.apply_source_forms(location, relocated, current, records, require_current=True) == []
+    duplicated = relocated + 'values.append(LEGACY_STEM)' + newline
+    current = checker.scan_python(location, duplicated, NAME_CONTRACTS)
+    remaining = checker.apply_source_forms(location, duplicated, current, records, require_current=True)
+    assert len(remaining) == 1 and remaining[0] == current[-1]
+
+
+@pytest.mark.parametrize('edited', ['changed', ' synthetic source', 'synthetic source ', 'synthetic source\t'])
+def test_changed_flagged_line_invalidates_only_its_receipt(edited):
+    import hashlib
+    location = 'synthetic.py'
+    diagnostic = 'unsupported legacy composition; use a contract key'
+    lines = ['synthetic source', 'other source']
+    records = {location: {'diagnostics': [{'line': index, 'identifier': diagnostic,
+        'source_line_sha256': hashlib.sha256(line.encode()).hexdigest()}
+        for index, line in enumerate(lines, 1)]}}
+    findings = [checker.Finding(f'{location}:{line}', diagnostic) for line in (1, 2)]
+    remaining = checker.apply_source_forms(location, edited + '\n' + lines[1], findings, records, require_current=True)
+    assert remaining[0] == findings[0] and findings[1] not in remaining
+    assert len(remaining) == 2 and 'stale source-form' in remaining[1].identifier
+
+
+def test_repeated_python_analysis_visits_consume_one_receipt_per_source_location(tmp_path, monkeypatch):
+    import hashlib
+    import json
+    source = ('from case_intelligence.legacy_names import LEGACY_STEM\n'
+              'marker = unknown(LEGACY_STEM)\n'
+              'if marker.is_symlink() or not marker.is_file():\n pass\n')
+    location = 'synthetic.py'
+    findings = checker.scan_python(location, source, NAME_CONTRACTS)
+    assert len(set(findings)) == 1
+    manifest = tmp_path / 'forms.json'
+    manifest.write_text(json.dumps({'version': 2, 'files': {location: {'diagnostics': [{
+        'line': 3, 'identifier': findings[0].identifier,
+        'source_line_sha256': hashlib.sha256(source.split('\n')[2].encode()).hexdigest(),
+        'reason': 'synthetic', 'validation': 'synthetic',
+    }]}}}))
+    path = tmp_path / location
+    path.write_text(source)
+    monkeypatch.setattr(checker, 'ROOT', tmp_path)
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
+    assert checker.findings(tmp_path) == []
+    path.write_text(source + 'if marker.is_symlink() or not marker.is_file():\n pass\n')
+    assert checker.findings(tmp_path) == [checker.Finding(location + ':5', findings[0].identifier)]
+
+
+@pytest.mark.parametrize('relative,excluded', [
+    ('.gitleaksignore', True), ('config/egress-allowlist.toml', True),
+    ('src/case_intelligence/_idna/__init__.py', True),
+    ('src/case_intelligence/_idna/nested/x.py', True),
+    ('src/case_intelligence/_idna_extra/x.py', False),
+    ('src/other/_idna/x.py', False), ('config/other.toml', False),
+    ('config/egress-allowlist.toml.extra', False), ('other/.gitleaksignore', False),
+])
+def test_nonoperational_source_exclusions_are_exact(tmp_path, relative, excluded):
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('FORMAT = "recordbench-unregistered-v99"\n')
+    assert bool(checker.findings(tmp_path)) is not excluded
+
+
+@pytest.mark.parametrize('mutation', ['version_one', 'missing_anchor', 'invalid_anchor', 'nonstring_anchor',
+    'old_file_hash', 'nonobject_document', 'nonobject_record', 'nonobject_diagnostic', 'missing_diagnostics', 'empty_diagnostics'])
+def test_source_form_contracts_reject_old_or_malformed_records(tmp_path, monkeypatch, mutation):
+    import json
+    item = {'line': 1, 'identifier': 'unsupported legacy composition; use a contract key',
+            'source_line_sha256': 'a' * 64, 'reason': 'synthetic', 'validation': 'synthetic'}
+    record = {'diagnostics': [item]}
+    document = {'version': 2, 'files': {'synthetic.py': record}}
+    if mutation == 'version_one':
+        document['version'] = 1
+    elif mutation == 'missing_anchor':
+        del item['source_line_sha256']
+    elif mutation == 'invalid_anchor':
+        item['source_line_sha256'] = 'not a digest'
+    elif mutation == 'nonstring_anchor':
+        item['source_line_sha256'] = 123
+    elif mutation == 'old_file_hash':
+        record['source_sha256'] = 'a' * 64
+    elif mutation == 'nonobject_document':
+        document = []
+    elif mutation == 'nonobject_record':
+        document['files']['synthetic.py'] = []
+    elif mutation == 'nonobject_diagnostic':
+        record['diagnostics'] = [None]
+    elif mutation == 'missing_diagnostics':
+        del record['diagnostics']
+    elif mutation == 'empty_diagnostics':
+        record['diagnostics'] = []
+    path = tmp_path / 'forms.json'
+    path.write_text(json.dumps(document))
+    monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', path)
+    with pytest.raises(ValueError, match='contract'):
+        checker.source_form_contracts()
 
 
 def test_source_form_contracts_never_accept_literal_diagnostics(tmp_path, monkeypatch):
     import json
     source = tmp_path / 'forms.json'
-    source.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
-        'source_sha256': 'a' * 64, 'diagnostics': [{'line': 1, 'identifier': 'recordbench-unregistered-v99',
+    source.write_text(json.dumps({'version': 2, 'files': {'synthetic.py': {
+         'diagnostics': [{'source_line_sha256': 'a' * 64, 'line': 1, 'identifier': 'recordbench-unregistered-v99',
                                                  'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', source)
     with pytest.raises(ValueError, match='diagnostic contract'):
@@ -1043,8 +1154,8 @@ def test_final_review_exact_literal_dots(tmp_path, prefix, suffix):
 def test_final_review_missing_receipt_source(tmp_path, monkeypatch):
     import json
     path = tmp_path / 'forms.json'
-    path.write_text(json.dumps({'version': 1, 'files': {'missing.py': {
-        'source_sha256': 'a' * 64, 'diagnostics': [{'line': 1,
+    path.write_text(json.dumps({'version': 2, 'files': {'missing.py': {
+         'diagnostics': [{'source_line_sha256': 'a' * 64, 'line': 1,
         'identifier': 'unsupported legacy composition; use a contract key',
         'reason': 'synthetic fixture', 'validation': 'synthetic fixture'}]}}}))
     monkeypatch.setattr(checker, 'ROOT', tmp_path)
@@ -1107,25 +1218,25 @@ def test_final_review_source_syntax_does_not_exempt_decoded_literals(tmp_path, v
     assert checker.findings(tmp_path)
 
 
-@pytest.mark.parametrize('state', ['missing', 'renamed', 'nonpython', 'binary', 'excluded'])
+@pytest.mark.parametrize('state', ['missing', 'renamed', 'nonpython', 'binary', 'excluded', 'clean'])
 def test_final_review_unused_receipt_variants(tmp_path, monkeypatch, state):
-    import hashlib
     import json
     source = 'synthetic = True\n'
-    path = {'renamed': 'other.py', 'nonpython': 'source.txt', 'binary': 'source.py', 'excluded': 'tests/source.py'}.get(state)
+    path = {'clean': 'source.py', 'renamed': 'other.py', 'nonpython': 'source.txt', 'binary': 'source.py', 'excluded': 'tests/source.py'}.get(state)
     recorded = 'source.txt' if state == 'nonpython' else 'tests/source.py' if state == 'excluded' else 'source.py'
     if path:
         p = tmp_path / path
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b'\xff' if state == 'binary' else source.encode())
     manifest = tmp_path / 'forms.json'
-    manifest.write_text(json.dumps({'version': 1, 'files': {recorded: {
-        'source_sha256': hashlib.sha256(source.encode()).hexdigest(),
-        'diagnostics': [{'line': 1, 'identifier': 'unsupported legacy composition; use a contract key',
+    manifest.write_text(json.dumps({'version': 2, 'files': {recorded: {
+
+        'diagnostics': [{'source_line_sha256': 'a' * 64, 'line': 1, 'identifier': 'unsupported legacy composition; use a contract key',
                          'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
     monkeypatch.setattr(checker, 'ROOT', tmp_path)
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
-    assert any('unused source-form' in item.identifier for item in checker.findings(tmp_path))
+    assert any(('stale source-form' if state == 'clean' else 'unused source-form') in item.identifier
+               for item in checker.findings(tmp_path))
 
 
 def test_final_review_js_regex_comment_ambiguity_does_not_hide_escapes(tmp_path):
@@ -1779,9 +1890,9 @@ def test_javascript_unknown_composition_families_fail_closed(expression):
 def test_unknown_python_ast_diagnostic_cannot_receive_source_receipt(tmp_path, monkeypatch):
     import json
     manifest = tmp_path / 'forms.json'
-    manifest.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
-        'source_sha256': 'a' * 64,
-        'diagnostics': [{'line': 1,
+    manifest.write_text(json.dumps({'version': 2, 'files': {'synthetic.py': {
+
+        'diagnostics': [{'source_line_sha256': 'a' * 64, 'line': 1,
                          'identifier': 'unsupported Python AST node (FutureSyntax); use case_intelligence.legacy_names.name_value',
                          'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
@@ -1941,9 +2052,9 @@ def test_shell_continuation_controls_keep_registered_names_and_plain_text(source
 def test_parse_and_shell_rejections_cannot_receive_source_receipts(tmp_path, monkeypatch, diagnostic):
     import json
     manifest = tmp_path / 'forms.json'
-    manifest.write_text(json.dumps({'version': 1, 'files': {'synthetic.py': {
-        'source_sha256': 'a' * 64,
-        'diagnostics': [{'line': 1, 'identifier': diagnostic, 'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
+    manifest.write_text(json.dumps({'version': 2, 'files': {'synthetic.py': {
+
+        'diagnostics': [{'source_line_sha256': 'a' * 64, 'line': 1, 'identifier': diagnostic, 'reason': 'synthetic', 'validation': 'synthetic'}]}}}))
     monkeypatch.setattr(checker, 'SOURCE_FORM_CONTRACT_PATH', manifest)
     with pytest.raises(ValueError, match='diagnostic contract'):
         checker.source_form_contracts()

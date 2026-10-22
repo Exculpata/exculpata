@@ -10,6 +10,7 @@ import ast
 import copy
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 import re
@@ -71,6 +72,9 @@ SKIP_DIRS = {
 # The existing independently reviewed guard contains literal matching rules,
 # not operational names. Neither its implementation nor its policy is changed.
 SKIP_FILES = {"CHANGELOG.md", "scripts/legacy_name_check.py"}
+# Vendored third-party package and data/config files are not operational source.
+SKIP_RELATIVE_DIRS = {Path("src/case_intelligence/_idna")}
+SKIP_FILES |= {".gitleaksignore", "config/egress-allowlist.toml"}
 HISTORICAL_ASSET = f"{LEGACY_STEM}-banner.svg"
 # This exact helper translates candidate identifiers for documentation analysis;
 # it does not emit operational names. Only unresolved-composition diagnostics
@@ -1864,15 +1868,19 @@ def source_form_contracts() -> dict:
     if not SOURCE_FORM_CONTRACT_PATH.exists():
         return {}
     document = json.loads(SOURCE_FORM_CONTRACT_PATH.read_text())
-    if document.get("version") != 1 or not isinstance(document.get("files"), dict):
+    if not isinstance(document, dict) or type(document.get("version")) is not int or document["version"] != 2 or not isinstance(document.get("files"), dict):
         raise ValueError("invalid source-form contract document")
     records = document["files"]
     for path, record in records.items():
-        if not isinstance(path, str) or not re.fullmatch(r"[a-f0-9]{64}", record.get("source_sha256", "")):
+        if (not isinstance(path, str) or not path or not isinstance(record, dict)
+                or "source_sha256" in record or not isinstance(record.get("diagnostics"), list)
+                or not record["diagnostics"]):
             raise ValueError("invalid source-form contract identity")
-        for item in record.get("diagnostics", []):
-            if (type(item.get("line")) is not int or item["line"] < 1
-                    or not item.get("reason") or not item.get("validation")
+        for item in record["diagnostics"]:
+            if (not isinstance(item, dict) or type(item.get("line")) is not int or item["line"] < 1
+                    or any(not isinstance(item.get(field), str) or not item[field]
+                           for field in ("identifier", "reason", "validation", "source_line_sha256"))
+                    or not re.fullmatch(r"[a-f0-9]{64}", item["source_line_sha256"])
                     or not item.get("identifier", "").startswith(("unsupported legacy syntax (", "unsupported legacy composition;", "unsupported JavaScript construction ("))):
                 raise ValueError("invalid source-form diagnostic contract")
             if item["identifier"].startswith("unsupported JavaScript construction (") and not re.fullmatch(
@@ -1881,18 +1889,33 @@ def source_form_contracts() -> dict:
     return records
 
 
+def source_form_identifier(identifier: str) -> str:
+    if identifier.startswith("unsupported JavaScript construction ("):
+        return re.sub(r" at [1-9][0-9]*-[1-9][0-9]*:[1-9][0-9]*(?= sha256=)", "", identifier, count=1)
+    return identifier
+
+
 def apply_source_forms(location: str, text: str, items: list[Finding], records: dict,
                        *, require_current: bool = False) -> list[Finding]:
     record = records.get(location)
     if record is None:
         return items
-    digest = hashlib.sha256(text.replace("\r\n", "\n").encode()).hexdigest()
-    if digest != record["source_sha256"]:
-        return [*items, *([Finding(f"{location}:1", "source-form contract changed; explicit review required")]
-                         if require_current else [])]
-    allowed = {(f"{location}:{item['line']}", item["identifier"]) for item in record["diagnostics"]}
-    remaining = [item for item in items if tuple(item) not in allowed]
-    if require_current and not allowed <= {tuple(item) for item in items}:
+    lines = text.replace("\r\n", "\n").split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    allowed = Counter((source_form_identifier(item["identifier"]), item["source_line_sha256"])
+                      for item in record["diagnostics"])
+    remaining = []
+    for item in items:
+        path, separator, number = item.location.rpartition(":")
+        line = int(number) if separator and number.isdecimal() else 0
+        digest = hashlib.sha256(lines[line - 1].encode()).hexdigest() if path == location and 1 <= line <= len(lines) else None
+        key = source_form_identifier(item.identifier), digest
+        if allowed[key]:
+            allowed[key] -= 1
+        else:
+            remaining.append(item)
+    if require_current and any(allowed.values()):
         remaining.append(Finding(f"{location}:1", "stale source-form contract; remove or review the unused diagnostic"))
     return remaining
 
@@ -1910,6 +1933,8 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         if any(part in SKIP_DIRS or part.endswith(".egg-info") for part in relative.parts):
+            continue
+        if any(relative == directory or directory in relative.parents for directory in SKIP_RELATIVE_DIRS):
             continue
         if relative.as_posix() in SKIP_FILES or relative.as_posix().startswith("docs/assets/"):
             continue
@@ -1996,7 +2021,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
                 python_source = True
         if python_source:
             consumed_source_forms.add(relative.as_posix())
-            syntactic = scan_python(relative.as_posix(), text, contracts, tree=authority)
+            syntactic = list(dict.fromkeys(scan_python(relative.as_posix(), text, contracts, tree=authority)))
             found.extend(apply_source_forms(relative.as_posix(), text, syntactic, source_forms,
                                             require_current=root.resolve() == ROOT.resolve()))
     if root.resolve() == ROOT.resolve():

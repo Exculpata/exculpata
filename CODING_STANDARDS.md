@@ -41,13 +41,78 @@ a synthetic regression for a reported failure and a meta-test showing an unknown
 AST node fails closed, including when no known origin has been detected.
 
 Keep literal checks, ambiguity and resource-limit failures active. Any permitted
-source receipt must identify one reviewed diagnostic in exact source, include a
-semantic reason and validation, and fail on changed source or extra diagnostics;
+source receipt must identify one reviewed diagnostic by its identifier and exact
+source-line SHA-256 anchor, include a semantic reason and validation, and fail on
+changed flagged lines or extra diagnostics while allowing line relocation;
 it is never a file exclusion or automatic acceptance of unknown syntax. After
 required validation, request one final review. Consolidate precision-only
 suggestions into one follow-up issue; correctness, security and required
 acceptance failures still block readiness. This rule does not waive publication
 guards or change either analyzer's task-specific acceptance requirements.
+
+## Bounded fail-closed checker contract
+
+Hand-written checkers recognize specific input forms; they do not prove arbitrary
+Python, JavaScript, shell, document or network behavior safe. For each supported
+boundary, preserve a synthetic supported control and an unmodeled-input probe in
+`tests/test_checker_fail_closed_contract.py`. Each adapter accepts the pytest
+monkeypatch fixture and a boolean selecting the unsupported input, invokes the
+real checker, and returns its diagnostics as strings. The shared test requires
+an empty result for the control and an explicit unsupported diagnostic naming a
+supported helper for the probe. Unexpected exceptions, an empty result for the
+probe, and loss of the control all fail the test. Substitute external processes
+only; do not mock the checker into returning the desired verdict.
+
+This test currently covers two available interfaces:
+
+- **Fixture writes:** `tests.fixture_write_policy.check_fixture_writes` parses
+  Python source, checks exact AST node types/fields against `_AST_FIELDS`, then
+  follows its bounded local provenance rules. The probe uses valid Python
+  `except*` (`ast.TryStar`), absent from that reviewed grammar. Ordinary `try` /
+  `except` around a direct `with fixture_write(workspace) as connection:` SQL
+  write is the supported control. Use `tests.fixture_write.fixture_write` with
+  explicit named workspace/connection handles; comments do not license unknown
+  AST forms. This row does not prove local-class, reflective or delayed-callback
+  resolution. The stricter fixture-specific tests, inventory and standards
+  remain owned by #315; #333 is not expanded by this shared harness.
+- **Publication media:** `scripts/publication-check.py` routes recognized media
+  suffixes through `_scan_media()`. Its external input is successful ffprobe
+  `format_tags:stream_tags` JSON object output, within the existing size limit.
+  A JSON array is not a modeled metadata response and must fail, with the helper
+  named in the diagnostic. Object output still goes through the complete byte
+  scanner; this is a root-shape contract, not a nested metadata schema or a
+  guarantee that every possible media format is inspectable. Use the existing
+  `scan_tree()` / `scan_history()` entry points and `_scan_media()` inspection
+  path; no digest, comment or extension-based escape is introduced. All existing
+  raw-content, metadata, history and installed pre-push checks remain required.
+
+Two integrations remain pending; they are not skipped tests or passing coverage:
+
+- **Rename source policy (#316):** main's `legacy_name_check.py` scans literal
+  text with compatibility exceptions; `doc_identifier_check.py` grounds selected
+  documented identifiers using a bounded string evaluator. Neither substitutes
+  for #316's `rename_contract_check.py` and `rename_javascript_policy.py`.
+  Integrate their actual public checker interfaces after landing, with a
+  registered `case_intelligence.legacy_names.name_value` control and a selected
+  unsupported construction. The inspected pending Python policy models bounded
+  immutable values and rejects unknown AST forms and dynamic execution; its
+  helper-return and mutable-state restrictions must not be replaced by arbitrary
+  class resolution. Reinspect the final grammar before selecting the probes.
+- **Network source policy (#320):** main's
+  `test_reference_network_boundary.py` checks literal Compose layout, not Python
+  outbound-call provenance. The pending `scripts/network-contract.py` inventories
+  recognized imports, aliases, client references and host literals. Its resolver
+  returns an empty result for unmodeled expressions; it is explicitly a review
+  inventory, not a Python sandbox. A blanket unsupported-AST rejection would be
+  a materially different design. Define a bounded unsupported networking form
+  and a supported `case_intelligence.service_endpoints.open_service_request`
+  control with that owner before integrating an adapter. Runtime network
+  isolation and egress tests remain separate requirements.
+
+Keep #334 in draft until those integrations and their scope decisions are
+resolved, required full validation is green and fresh review is complete. Do not
+import unmerged branches, add blanket exemptions, weaken existing tests or claim
+that this finite probe set establishes universal checker soundness.
 
 ## Cursor Cloud development environment
 
