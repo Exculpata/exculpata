@@ -1,0 +1,1568 @@
+{
+  "schema_version": "1",
+  "suite_id": "defense-workflow",
+  "suite_version": "2",
+  "synthetic_only": true,
+  "description": "Version 2 grades fact lookup, cross-document chronology, witness contradictions, impeachment material, machine-transcript questions, and questions whose answer is not in the record. It covers two synthetic matters, Harbor Street and Lumen Yard, and names near-miss passages that must not be treated as support. No real person or case is represented.",
+  "fingerprint": "4b1b985b6ebe748fc11cbbfa2b5e03de70c233013b843668000f601ec6a6caab",
+  "passages": [
+    {
+      "passage_id": "hs-email-26",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/26-plan-confirmation.eml",
+      "sha256": "fed37ffa85f05bd0ace6e4c6d279534115f4f989c78b28c6b11983209fae86ee",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-26"
+    },
+    {
+      "passage_id": "hs-email-27",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/27-screen-warning.eml",
+      "sha256": "e68129c5e3e2022b73364349add48f9355e0d2da240c8e7de78e4fb4b6775fed",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-27"
+    },
+    {
+      "passage_id": "hs-email-28",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/28-receipt-request.eml",
+      "sha256": "fa06f0dac47c4e1e726c826fe0e178e0676e019e0ecc5fa9ea0b01f4d5dae16b",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-28"
+    },
+    {
+      "passage_id": "hs-email-29",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/29-trolley-return.eml",
+      "sha256": "fea21c3027801261f5c01e2b3d53d69e27ddfa0417ac5376b676cb77d804dd2f",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-29"
+    },
+    {
+      "passage_id": "hs-email-30",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/30-empty-case-query.eml",
+      "sha256": "856febe71609cd543721dfa1e157fad641ab6864c5d88a58e08051045104e221",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-30"
+    },
+    {
+      "passage_id": "hs-email-31",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/31-route-sheet-query.eml",
+      "sha256": "9de56bd97f6d66c7222807d92830f1b12e213d07aef97f37c8c684a318315472",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-31"
+    },
+    {
+      "passage_id": "hs-email-32",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/32-screen-reply.eml",
+      "sha256": "bee501e8db2807df1e7b8a7a86b59c80b9f645452f463ed2d0b4bae4056f258b",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-32"
+    },
+    {
+      "passage_id": "hs-email-33",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/33-clock-comparison.eml",
+      "sha256": "6974b6f343faa891ce10a35a4eaab668bbc964dd732930a1b4fe2567f78d94f5",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-33"
+    },
+    {
+      "passage_id": "hs-email-34",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/34-bell-qualification.eml",
+      "sha256": "08099393d1de218d1bd23524293131cf7e818203be7c3a2d273f0f123a385cba",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-34"
+    },
+    {
+      "passage_id": "hs-email-35",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/35-sealed-parcel-notice.eml",
+      "sha256": "fdb1f2ee500e0cf2b920f1f4574c070cd85cf5c2ce140722a054e3fcb800b048",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-35"
+    },
+    {
+      "passage_id": "hs-email-36",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/emails/36-record-collection.eml",
+      "sha256": "1b7bbb60059063f4d6557153def1a36af3e55c0760311dd47da8d20d00b49fa0",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-36"
+    },
+    {
+      "passage_id": "hs-interview-09",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/09-vela-first-account.txt",
+      "sha256": "71716b1ff9305ff28defe0785acdc0779a46f360c3dafcb3c649442c553bab52",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-009"
+    },
+    {
+      "passage_id": "hs-interview-10",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/10-nerin-first-account.txt",
+      "sha256": "384f235d590097dd9277a6dd06b2e0062a135188042087e7f90029617dcb562e",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-010"
+    },
+    {
+      "passage_id": "hs-interview-11",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/11-sovi-first-account.txt",
+      "sha256": "34cf5c8738f09aa73a35205c9d0f022e8abd2b5d957a7d5df47064023fc5f952",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-011"
+    },
+    {
+      "passage_id": "hs-interview-12",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/12-ilex-screen-account.txt",
+      "sha256": "a1d98aba0ee06b7378a2ae019176f54f36c960dd3126b59f67714a129d71bb57",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-012"
+    },
+    {
+      "passage_id": "hs-interview-13",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/13-vela-follow-up.txt",
+      "sha256": "d710017d724883ca70c88de31a5a944f7b81c453a9bde681803516232b983962",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-013"
+    },
+    {
+      "passage_id": "hs-interview-14",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/interviews/14-sovi-follow-up.txt",
+      "sha256": "305ce7275e2bc5f397ea74b0baa90255f0bee03d18cd32decadc0e098bfca4e7",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-014"
+    },
+    {
+      "passage_id": "hs-note-15",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/15-band-printing-note.txt",
+      "sha256": "95b7d73e99f01eb93b3d7c419932cb595289ffcf51a53ea468146622c923c91f",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-015"
+    },
+    {
+      "passage_id": "hs-note-16",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/16-trolley-condition.txt",
+      "sha256": "27312cedd9410360174bf03b0c7ba2c92a0c7bc60c1838438ad003bf5b881455",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-016"
+    },
+    {
+      "passage_id": "hs-note-17",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/17-screen-position.txt",
+      "sha256": "093b0cd2f6d80913dcb7446037499631c68c6b6348a2e4034453f593aa7d84be",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-017"
+    },
+    {
+      "passage_id": "hs-note-18",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/18-rehearsal-schedule.txt",
+      "sha256": "2cc46a05ba5a87d849c4a365096aeffde2384183feaccf0a34cd5b81df127d9f",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-018"
+    },
+    {
+      "passage_id": "hs-note-19",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/19-platform-layout.txt",
+      "sha256": "1be000b8d908cb078788198c2626e7989268db32ae12b9e53420ef87d966ba91",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-019"
+    },
+    {
+      "passage_id": "hs-note-20",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/20-bell-delay.txt",
+      "sha256": "dfcfc83a91d8ca8108cb2d1e44ea6d03ce9017ef9c9bef8e233e41d09bb83acb",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-020"
+    },
+    {
+      "passage_id": "hs-note-21",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/21-west-passage-note.txt",
+      "sha256": "8c788ab9dc5e2f51ab3ca3da7daeb97392ecd6bded3c9f3a4bdded1bc5ad1c8a",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-021"
+    },
+    {
+      "passage_id": "hs-note-22",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/22-receipt-envelope.txt",
+      "sha256": "b381daf04827c63f320bd3b2d3200198f9a4476538f1df04000bfb12451fb5be",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-022"
+    },
+    {
+      "passage_id": "hs-note-23",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/23-clock-label.txt",
+      "sha256": "cc2106ec3e6439b89f79b4a8cbb6c9f401c7a0a72f381eb92513a4306cbf17ff",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-023"
+    },
+    {
+      "passage_id": "hs-note-24",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/24-parcel-behind-screen.txt",
+      "sha256": "429eb5eabe4e15c838d39b01e06e8f0130fefb858bbfa8bd2009487f78cafaf0",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-024"
+    },
+    {
+      "passage_id": "hs-note-25",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/notes/25-open-questions.txt",
+      "sha256": "9e51b19f7784dfec61a8ec8348d01a77a3d6ecbba0ebe023bcaa0a46db7c98ec",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-025"
+    },
+    {
+      "passage_id": "hs-report-01",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/01-opening-inventory.txt",
+      "sha256": "87f7a2e381c6ede202de5f4480ff88ce474b05310b51588970ec71bc8acc0726",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-001"
+    },
+    {
+      "passage_id": "hs-report-02",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/02-delivery-plan.txt",
+      "sha256": "0aed0a555b0e3a43cc08dc57f04a393ed0d53f172340e09610a9e3c89b1ea143",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-002"
+    },
+    {
+      "passage_id": "hs-report-03",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/03-route-walk.txt",
+      "sha256": "99401f03409c5532a8f5530ed15c6d008dfb1f7c8a61e9c898a82af567725865",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-003"
+    },
+    {
+      "passage_id": "hs-report-04",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/04-dispatch-observation.txt",
+      "sha256": "762ca6b15ef297b353074adc28b86ed4061e91cf1d601c9eb421e3fe137780d9",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-004"
+    },
+    {
+      "passage_id": "hs-report-05",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/05-arrival-observation.txt",
+      "sha256": "47c6f4da0027cd4f09a9378beb6fc23970a67ae75388e1234c8ab6a9593cce57",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-005"
+    },
+    {
+      "passage_id": "hs-report-06",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/06-parcel-discrepancy.txt",
+      "sha256": "3ad9a83db4efc5a520d4e8fb0853594bdfcc6eb3b15f86764ceb55980ca3c95f",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-006"
+    },
+    {
+      "passage_id": "hs-report-07",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/07-clock-check.txt",
+      "sha256": "8b7d6fd7c02508e063a99a0ee75d0b47cebd824eb0b2a486e064d467df24f99b",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-007"
+    },
+    {
+      "passage_id": "hs-report-08",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/reports/08-follow-up-inventory.txt",
+      "sha256": "d41b9a4b667a4b6dc3118ee79f12824fc2f4c1cd984fe84ad34cfe55dfac4a0b",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-008"
+    },
+    {
+      "passage_id": "hs-table-37",
+      "matter_id": "harbor-street",
+      "path": "demo_data/harbor-street/tables/37-transfer-log.csv",
+      "sha256": "d0eab16acafcfa7a90e9ef225d9c381fdc0f28179936c899afdbdd469987f59f",
+      "evidence_kind": "document",
+      "locator": "37-transfer-log.csv"
+    },
+    {
+      "passage_id": "hs-transcript-041",
+      "matter_id": "harbor-street",
+      "path": "benchmarks/defense-workflow/v1/extensions/vela-recorded-statement.txt",
+      "sha256": "b567f94b07aa4927b961a362db968577085992f8b89fb6771726252baa2b3330",
+      "evidence_kind": "transcript",
+      "locator": "DEMO-HS-041"
+    },
+    {
+      "passage_id": "hs-ext-misread",
+      "matter_id": "harbor-street",
+      "path": "benchmarks/defense-workflow/v2/extensions/harbor-misread-band.txt",
+      "sha256": "6e0aa8cf8d21e9d6b59f908fd4260e71ae8b490891e6ec2b4b759dbe9fca5c1e",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-217-DRAFT"
+    },
+    {
+      "passage_id": "hs-ext-unused-line",
+      "matter_id": "harbor-street",
+      "path": "benchmarks/defense-workflow/v2/extensions/harbor-unused-rehearsal-line.txt",
+      "sha256": "018e1a693024bec2ad5abd67c45b2a7f148a36acdc360b38ea39af8ec03a0e20",
+      "evidence_kind": "document",
+      "locator": "DEMO-HS-042"
+    },
+    {
+      "passage_id": "ly-count",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/01-spool-count.txt",
+      "sha256": "fe6c9aeb69cf50b4faacc168deb538c14c693298bf3662997a19515db052e554",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-101"
+    },
+    {
+      "passage_id": "ly-practice",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/02-practice-tag.txt",
+      "sha256": "44816101fb79120692aa4b766317f49ae9089cf7779c24595f4e5eb7bf74778e",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-102"
+    },
+    {
+      "passage_id": "ly-plan",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/03-transfer-plan.txt",
+      "sha256": "260db72aa2d7ebb176e29e86c63c7e039b461022124e6a9c3a2e0c9545ddcc4a",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-103"
+    },
+    {
+      "passage_id": "ly-depart",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/04-departure-note.txt",
+      "sha256": "20fd73f9587454166155ab6125ea252b0d40f2f2f92d6eb72d9f8eff53b12014",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-104"
+    },
+    {
+      "passage_id": "ly-arrive",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/05-arrival-note.txt",
+      "sha256": "41c5fa31e4d11f0e2654b89ac433bd88b43e3b64c2a488890dfce3e833b9e5a6",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-105"
+    },
+    {
+      "passage_id": "ly-inspect",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/06-walk-inspection.txt",
+      "sha256": "468748bb3ae6654b0f4dc27ed758cb8d8584d09c6802ebfd320bdea90ae28d9a",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-106"
+    },
+    {
+      "passage_id": "ly-account-pim",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/07-pim-account.txt",
+      "sha256": "5854ea089ff095be252be24cb189363a7509865d96fdc91613c0ecede300f9c8",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-107"
+    },
+    {
+      "passage_id": "ly-cores",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/08-cardboard-cores.txt",
+      "sha256": "20ed1a17cbb85c234aa1981fa5227c7bca2e052ea35388da943e82133bc98a90",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-108"
+    },
+    {
+      "passage_id": "ly-account-sable",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/09-sable-account.txt",
+      "sha256": "dd6235c695d4c1bab270a16f0e1a60dc3c07255ddb40cad1a89159bb9480b607",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-109"
+    },
+    {
+      "passage_id": "ly-chime",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/10-chime-check.txt",
+      "sha256": "afe24ebb936b8eb9a80a5821cad90202b7990dda2b77b06d0654e071326e11a5",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-110"
+    },
+    {
+      "passage_id": "ly-label",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/11-chime-label.txt",
+      "sha256": "2cb0af4af135ceb8a380016114295847456d2dd260eb40183bfd3a2fbd77b7d3",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-111"
+    },
+    {
+      "passage_id": "ly-unobserved",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/12-joss-walk-note.txt",
+      "sha256": "2e13d80c72eed8bf5ebbde63d884dc309a11e2c8ae5243ad93547a110064fdae",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-112"
+    },
+    {
+      "passage_id": "ly-transcript",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/13-recorded-statement.txt",
+      "sha256": "65dafc8f9ec455a0e13e783fbd53e9acdf4450a00e502dd803fdfedb3bb80bed",
+      "evidence_kind": "transcript",
+      "locator": "DEMO-LY-113"
+    },
+    {
+      "passage_id": "ly-near-cloth",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/14-unused-cloth-line.txt",
+      "sha256": "01e4dd0c551ea12d91be48a46333259a681ca9ab9aa74c102611d2303f3cbd30",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-114"
+    },
+    {
+      "passage_id": "ly-near-ribbon",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/15-green-ribbon-sample.txt",
+      "sha256": "434ca9925591ec5953e3a6e3a793e27a8e9e26fce3cd7087cad4672131dadd5f",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-115"
+    },
+    {
+      "passage_id": "ly-near-tag",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/16-rejected-count.txt",
+      "sha256": "434e390306c02a0dd770e834309f5034ba5e033536f6d0f7bcf83e8b8c6f4dc6",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-116"
+    },
+    {
+      "passage_id": "ly-near-payer",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/17-rejected-payer.txt",
+      "sha256": "11cd919e8fd05f595c46cd3a4769811b00714046c3f1111090279225f0620596",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-117"
+    },
+    {
+      "passage_id": "ly-cart",
+      "matter_id": "lumen-yard",
+      "path": "benchmarks/defense-workflow/v2/extensions/lumen-yard/18-hand-cart.txt",
+      "sha256": "f96d9cef2caf21a4e440056dcad23cf799e21a45576c158aab32b7986356c19c",
+      "evidence_kind": "document",
+      "locator": "DEMO-LY-118"
+    }
+  ],
+  "questions": [
+    {
+      "question_id": "dw-opening-count",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "On 2034-04-16, how many teal lantern cases did Vela Quenrix and Nerin Talvex count at Brindlequay Storehouse?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "twelve",
+          "answer_text": "twelve",
+          "supports": [
+            {
+              "passage_id": "hs-report-01",
+              "support_text": "counted twelve teal lantern cases"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-08",
+        "hs-ext-misread"
+      ]
+    },
+    {
+      "question_id": "dw-band-identifier",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "In the opening inventory, what paper band marked the sealed demonstration parcel?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "band",
+          "answer_text": "DEMO-HS-271",
+          "supports": [
+            {
+              "passage_id": "hs-report-01",
+              "support_text": "sealed with a paper band marked DEMO-HS-271"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-15",
+        "hs-ext-misread"
+      ]
+    },
+    {
+      "question_id": "dw-spare-case",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "Did the opening inventory include the spare empty case in the signed count of teal lantern cases?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "excluded",
+          "answer_text": "excluded from the count",
+          "supports": [
+            {
+              "passage_id": "hs-report-01",
+              "support_text": "excluded from the count"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-19"
+      ]
+    },
+    {
+      "question_id": "dw-dispatch-arrival",
+      "matter_id": "harbor-street",
+      "type": "chronology",
+      "question": "Using the dispatch observation and the arrival observation, what time was recorded for Vela Quenrix leaving Brindlequay Storehouse, and what time was associated with seeing Vela at Kestrelune Arcade?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "departed",
+          "answer_text": "09:14",
+          "supports": [
+            {
+              "passage_id": "hs-report-04",
+              "support_text": "left Brindlequay storehouse at 09:14"
+            }
+          ]
+        },
+        {
+          "fact_id": "seen",
+          "answer_text": "09:26",
+          "supports": [
+            {
+              "passage_id": "hs-report-05",
+              "support_text": "at Kestrelune arcade near 09:26"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-18"
+      ]
+    },
+    {
+      "question_id": "dw-inspection-plan",
+      "matter_id": "harbor-street",
+      "type": "chronology",
+      "question": "At what time did the route inspection end, and on what date did Vela Quenrix plan to carry the teal lantern parcel to Kestrelune Arcade?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "inspection-ended",
+          "answer_text": "15:20",
+          "supports": [
+            {
+              "passage_id": "hs-report-03",
+              "support_text": "inspection ended at 15:20"
+            }
+          ]
+        },
+        {
+          "fact_id": "planned-date",
+          "answer_text": "2034-04-18",
+          "supports": [
+            {
+              "passage_id": "hs-report-02",
+              "support_text": "planned to carry the teal lantern parcel from Brindlequay storehouse to Kestrelune arcade on 2034-04-18"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-18",
+        "hs-note-23"
+      ]
+    },
+    {
+      "question_id": "dw-platform-contents",
+      "matter_id": "harbor-street",
+      "type": "contradiction",
+      "question": "How do Vela Quenrix's first account and the parcel discrepancy report differ about the teal case beside the rehearsal platform?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "sealed-case",
+          "answer_text": "sealed teal case",
+          "supports": [
+            {
+              "passage_id": "hs-interview-09",
+              "support_text": "leaving a sealed teal case on the rehearsal platform"
+            }
+          ]
+        },
+        {
+          "fact_id": "dividers",
+          "answer_text": "paper dividers",
+          "supports": [
+            {
+              "passage_id": "hs-report-06",
+              "support_text": "contained paper dividers rather than lanterns"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-19",
+        "hs-ext-unused-line"
+      ]
+    },
+    {
+      "question_id": "dw-clock-impeachment",
+      "matter_id": "harbor-street",
+      "type": "impeachment",
+      "question": "What in the record undercuts using the 09:14 dispatch time as a verified clock time?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unchecked",
+          "answer_text": "had not been checked",
+          "supports": [
+            {
+              "passage_id": "hs-report-04",
+              "support_text": "had not been checked that morning"
+            }
+          ]
+        },
+        {
+          "fact_id": "slow",
+          "answer_text": "seven minutes slow",
+          "supports": [
+            {
+              "passage_id": "hs-report-07",
+              "support_text": "seven minutes slow during this comparison"
+            }
+          ]
+        },
+        {
+          "fact_id": "unproven-offset",
+          "answer_text": "could not establish",
+          "supports": [
+            {
+              "passage_id": "hs-report-07",
+              "support_text": "could not establish the earlier clock offset"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-23"
+      ]
+    },
+    {
+      "question_id": "dw-passage-observation",
+      "matter_id": "harbor-street",
+      "type": "impeachment",
+      "question": "Compare the first account from Vela Quenrix, the first account from Nerin Talvex, and the west passage note. What do they say about whether another person observed the passage Vela took?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "east",
+          "answer_text": "east passage",
+          "supports": [
+            {
+              "passage_id": "hs-interview-09",
+              "support_text": "taking the east passage"
+            }
+          ]
+        },
+        {
+          "fact_id": "nerin-unobserved",
+          "answer_text": "did not observe which passage",
+          "supports": [
+            {
+              "passage_id": "hs-interview-10",
+              "support_text": "did not observe which passage was actually taken"
+            }
+          ]
+        },
+        {
+          "fact_id": "ilex-unobserved",
+          "answer_text": "did not observe Vela",
+          "supports": [
+            {
+              "passage_id": "hs-note-21",
+              "support_text": "did not observe Vela Quenrix during the transfer"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-email-27"
+      ]
+    },
+    {
+      "question_id": "dw-transcript-placement",
+      "matter_id": "harbor-street",
+      "type": "media_transcript",
+      "question": "According to the machine transcript of Vela Quenrix's recorded statement, beside what did Vela say the teal case was set?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "striped-cover",
+          "answer_text": "striped cover",
+          "supports": [
+            {
+              "passage_id": "hs-transcript-041",
+              "support_text": "beside the striped cover before the second bell"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-ext-unused-line",
+        "hs-interview-13"
+      ]
+    },
+    {
+      "question_id": "dw-grip-color",
+      "matter_id": "harbor-street",
+      "type": "not_in_record",
+      "question": "What color was the folding trolley's handle grip?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-16"
+      ]
+    },
+    {
+      "question_id": "dw-vehicle-plate",
+      "matter_id": "harbor-street",
+      "type": "not_in_record",
+      "question": "What plate or license identifier does the record give for a vehicle that carried the teal lantern parcel?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-04"
+      ]
+    },
+    {
+      "question_id": "dw-practice-band",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "In the paper band preparation note, what identifier marked the practice band that was discarded?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "practice",
+          "answer_text": "DEMO-HS-270",
+          "supports": [
+            {
+              "passage_id": "hs-note-15",
+              "support_text": "practice band marked DEMO-HS-270"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-ext-misread",
+        "hs-report-01"
+      ]
+    },
+    {
+      "question_id": "dw-screen-purpose",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "According to the screen position note, what was the folding screen used to protect?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "scenery",
+          "answer_text": "paper scenery",
+          "supports": [
+            {
+              "passage_id": "hs-note-17",
+              "support_text": "protect paper scenery from a draft"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-email-27"
+      ]
+    },
+    {
+      "question_id": "dw-eleven-count",
+      "matter_id": "harbor-street",
+      "type": "fact_lookup",
+      "question": "In the follow-up inventory, how many teal cases were counted at Brindlequay Storehouse?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "eleven",
+          "answer_text": "eleven",
+          "supports": [
+            {
+              "passage_id": "hs-report-08",
+              "support_text": "counted eleven teal cases"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-01"
+      ]
+    },
+    {
+      "question_id": "dw-planned-bells",
+      "matter_id": "harbor-street",
+      "type": "chronology",
+      "question": "What three rehearsal bell times does the rehearsal schedule note draft for Kestrelune arcade on 2034-04-18?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "first",
+          "answer_text": "09:10",
+          "supports": [
+            {
+              "passage_id": "hs-note-18",
+              "support_text": "09:10"
+            }
+          ]
+        },
+        {
+          "fact_id": "second",
+          "answer_text": "09:25",
+          "supports": [
+            {
+              "passage_id": "hs-note-18",
+              "support_text": "09:25"
+            }
+          ]
+        },
+        {
+          "fact_id": "third",
+          "answer_text": "09:40",
+          "supports": [
+            {
+              "passage_id": "hs-note-18",
+              "support_text": "09:40"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-04",
+        "hs-report-05"
+      ]
+    },
+    {
+      "question_id": "dw-screen-then-transfer",
+      "matter_id": "harbor-street",
+      "type": "chronology",
+      "question": "What passage does the folding-screen email ask Vela Quenrix to use if the screen remains tomorrow, and what time does the dispatch observation record for leaving Brindlequay storehouse?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "tomorrow",
+          "answer_text": "east passage",
+          "supports": [
+            {
+              "passage_id": "hs-email-27",
+              "support_text": "Please use the east passage if the screen remains tomorrow"
+            }
+          ]
+        },
+        {
+          "fact_id": "departed",
+          "answer_text": "09:14",
+          "supports": [
+            {
+              "passage_id": "hs-report-04",
+              "support_text": "left Brindlequay storehouse at 09:14"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-interview-09"
+      ]
+    },
+    {
+      "question_id": "dw-vela-consistency",
+      "matter_id": "harbor-street",
+      "type": "contradiction",
+      "question": "How does the first account from Vela Quenrix differ from the follow-up account about distinguishing the delivery case from the spare empty case?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "sealed",
+          "answer_text": "sealed teal case",
+          "supports": [
+            {
+              "passage_id": "hs-interview-09",
+              "support_text": "leaving a sealed teal case on the rehearsal platform"
+            }
+          ]
+        },
+        {
+          "fact_id": "indistinct",
+          "answer_text": "could not distinguish",
+          "supports": [
+            {
+              "passage_id": "hs-interview-13",
+              "support_text": "could not distinguish the delivery case from the spare empty"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-19"
+      ]
+    },
+    {
+      "question_id": "dw-band-seen",
+      "matter_id": "harbor-street",
+      "type": "contradiction",
+      "question": "Compare the dispatch observation with the first account from Sovi Pellune. What does each say about a paper band being read or seen?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unread",
+          "answer_text": "did not read the band number",
+          "supports": [
+            {
+              "passage_id": "hs-report-04",
+              "support_text": "did not read the band number"
+            }
+          ]
+        },
+        {
+          "fact_id": "unseen",
+          "answer_text": "could not say whether that case had a paper band",
+          "supports": [
+            {
+              "passage_id": "hs-interview-11",
+              "support_text": "could not say whether that case had a paper band"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-transcript-041"
+      ]
+    },
+    {
+      "question_id": "dw-platform-empty",
+      "matter_id": "harbor-street",
+      "type": "contradiction",
+      "question": "How do the platform layout note and the first account from Vela Quenrix differ about the teal case beside the platform?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "empty",
+          "answer_text": "empty teal case",
+          "supports": [
+            {
+              "passage_id": "hs-note-19",
+              "support_text": "an empty teal case remained beside the platform steps"
+            }
+          ]
+        },
+        {
+          "fact_id": "sealed",
+          "answer_text": "sealed teal case",
+          "supports": [
+            {
+              "passage_id": "hs-interview-09",
+              "support_text": "leaving a sealed teal case on the rehearsal platform"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-06"
+      ]
+    },
+    {
+      "question_id": "dw-label-impeachment",
+      "matter_id": "harbor-street",
+      "type": "impeachment",
+      "question": "What does the clock label note say about whether the measured offset applied on 2034-04-18?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unclaimed",
+          "answer_text": "did not claim",
+          "supports": [
+            {
+              "passage_id": "hs-note-23",
+              "support_text": "did not claim the same offset on 2034-04-18"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-07"
+      ]
+    },
+    {
+      "question_id": "dw-receipt-impeachment",
+      "matter_id": "harbor-street",
+      "type": "impeachment",
+      "question": "What does the receipt envelope note say about a signature and an observed delivery time?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unsigned",
+          "answer_text": "unsigned delivery receipt",
+          "supports": [
+            {
+              "passage_id": "hs-note-22",
+              "support_text": "found the unsigned delivery receipt"
+            }
+          ]
+        },
+        {
+          "fact_id": "no-time",
+          "answer_text": "no observed delivery time",
+          "supports": [
+            {
+              "passage_id": "hs-note-22",
+              "support_text": "no observed delivery time"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-05"
+      ]
+    },
+    {
+      "question_id": "dw-transcript-band",
+      "matter_id": "harbor-street",
+      "type": "media_transcript",
+      "question": "According to the machine transcript of the recorded statement, did Vela Quenrix read a band number into the recording?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unread",
+          "answer_text": "did not read a band number",
+          "supports": [
+            {
+              "passage_id": "hs-transcript-041",
+              "support_text": "I did not read a band number into this recording."
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-04"
+      ]
+    },
+    {
+      "question_id": "dw-transcript-passage",
+      "matter_id": "harbor-street",
+      "type": "media_transcript",
+      "question": "Does the machine transcript of the recorded statement say which passage Vela Quenrix walked?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unsaid",
+          "answer_text": "does not say which passage",
+          "supports": [
+            {
+              "passage_id": "hs-transcript-041",
+              "support_text": "This recording does not say which passage I walked."
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [
+        "east passage"
+      ],
+      "near_misses": [
+        "hs-interview-09"
+      ]
+    },
+    {
+      "question_id": "dw-lantern-weight",
+      "matter_id": "harbor-street",
+      "type": "not_in_record",
+      "question": "What weight does the record give for one teal lantern?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-report-01"
+      ]
+    },
+    {
+      "question_id": "dw-wheel-color",
+      "matter_id": "harbor-street",
+      "type": "not_in_record",
+      "question": "What color was the folding trolley's left wheel?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "hs-note-16"
+      ]
+    },
+    {
+      "question_id": "ly-spool-count",
+      "matter_id": "lumen-yard",
+      "type": "fact_lookup",
+      "question": "In the opening spool count, how many amber ribbon spools were counted at Lumen Yard?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "six",
+          "answer_text": "six",
+          "supports": [
+            {
+              "passage_id": "ly-count",
+              "support_text": "counted six amber ribbon spools"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-near-tag",
+        "ly-near-ribbon"
+      ]
+    },
+    {
+      "question_id": "ly-tag-identifier",
+      "matter_id": "lumen-yard",
+      "type": "fact_lookup",
+      "question": "In the opening spool count, what paper tag marked the sealed demonstration spool?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "tag",
+          "answer_text": "LY-DEMO-14",
+          "supports": [
+            {
+              "passage_id": "ly-count",
+              "support_text": "sealed with a paper tag marked LY-DEMO-14"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-practice",
+        "ly-near-tag"
+      ]
+    },
+    {
+      "question_id": "ly-spare-bell",
+      "matter_id": "lumen-yard",
+      "type": "fact_lookup",
+      "question": "Did the opening spool count include the spare glass bell in the signed spool count?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "excluded",
+          "answer_text": "excluded from the spool count",
+          "supports": [
+            {
+              "passage_id": "ly-count",
+              "support_text": "excluded from the spool count"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-near-ribbon"
+      ]
+    },
+    {
+      "question_id": "ly-practice-tag",
+      "matter_id": "lumen-yard",
+      "type": "fact_lookup",
+      "question": "In the practice tag note, what identifier marked the practice tag that was discarded?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "practice",
+          "answer_text": "LY-DEMO-41",
+          "supports": [
+            {
+              "passage_id": "ly-practice",
+              "support_text": "practice tag marked LY-DEMO-41"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-near-tag",
+        "ly-count"
+      ]
+    },
+    {
+      "question_id": "ly-departure-arrival",
+      "matter_id": "lumen-yard",
+      "type": "chronology",
+      "question": "Using the departure note and the arrival note, what time was recorded for Pim Quill leaving Lumen Yard, and what time was associated with seeing Pim at Copper Annex?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "departed",
+          "answer_text": "11:08",
+          "supports": [
+            {
+              "passage_id": "ly-depart",
+              "support_text": "left Lumen Yard at 11:08"
+            }
+          ]
+        },
+        {
+          "fact_id": "seen",
+          "answer_text": "11:22",
+          "supports": [
+            {
+              "passage_id": "ly-arrive",
+              "support_text": "at Copper Annex near 11:22"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-plan"
+      ]
+    },
+    {
+      "question_id": "ly-inspection-plan",
+      "matter_id": "lumen-yard",
+      "type": "chronology",
+      "question": "At what time did the walk inspection end, and on what date did the transfer plan say Pim Quill would carry the amber ribbon spool to Copper Annex?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "ended",
+          "answer_text": "16:05",
+          "supports": [
+            {
+              "passage_id": "ly-inspect",
+              "support_text": "inspection ended at 16:05"
+            }
+          ]
+        },
+        {
+          "fact_id": "planned",
+          "answer_text": "2034-06-04",
+          "supports": [
+            {
+              "passage_id": "ly-plan",
+              "support_text": "planned to carry the amber ribbon spool from Lumen Yard to Copper Annex on 2034-06-04"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-label"
+      ]
+    },
+    {
+      "question_id": "ly-spool-contents",
+      "matter_id": "lumen-yard",
+      "type": "contradiction",
+      "question": "How do the account from Pim Quill and the contents note differ about the amber spool beside the loading bench?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "sealed",
+          "answer_text": "sealed amber spool",
+          "supports": [
+            {
+              "passage_id": "ly-account-pim",
+              "support_text": "leaving a sealed amber spool on the loading bench"
+            }
+          ]
+        },
+        {
+          "fact_id": "cores",
+          "answer_text": "empty cardboard cores",
+          "supports": [
+            {
+              "passage_id": "ly-cores",
+              "support_text": "held empty cardboard cores rather than ribbon"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-near-ribbon"
+      ]
+    },
+    {
+      "question_id": "ly-walk-direction",
+      "matter_id": "lumen-yard",
+      "type": "contradiction",
+      "question": "Compare the account from Pim Quill with the account from Sable Morn. What do they say about which walk was described and whether that walk was observed?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "south",
+          "answer_text": "south walk",
+          "supports": [
+            {
+              "passage_id": "ly-account-pim",
+              "support_text": "taking the south walk"
+            }
+          ]
+        },
+        {
+          "fact_id": "unobserved",
+          "answer_text": "did not observe which walk",
+          "supports": [
+            {
+              "passage_id": "ly-account-sable",
+              "support_text": "did not observe which walk was actually taken"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-inspect"
+      ]
+    },
+    {
+      "question_id": "ly-chime-impeachment",
+      "matter_id": "lumen-yard",
+      "type": "impeachment",
+      "question": "What in the departure note and the chime comparison undercuts using the 11:08 departure time as a verified chime time?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unchecked",
+          "answer_text": "had not been checked",
+          "supports": [
+            {
+              "passage_id": "ly-depart",
+              "support_text": "had not been checked that morning"
+            }
+          ]
+        },
+        {
+          "fact_id": "fast",
+          "answer_text": "four minutes fast",
+          "supports": [
+            {
+              "passage_id": "ly-chime",
+              "support_text": "four minutes fast during this comparison"
+            }
+          ]
+        },
+        {
+          "fact_id": "unproven",
+          "answer_text": "could not establish",
+          "supports": [
+            {
+              "passage_id": "ly-chime",
+              "support_text": "could not establish the earlier chime offset"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-label"
+      ]
+    },
+    {
+      "question_id": "ly-label-impeachment",
+      "matter_id": "lumen-yard",
+      "type": "impeachment",
+      "question": "What does the chime label note say about whether the measured offset applied on 2034-06-04?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unclaimed",
+          "answer_text": "did not claim",
+          "supports": [
+            {
+              "passage_id": "ly-label",
+              "support_text": "did not claim the same offset on 2034-06-04"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-chime"
+      ]
+    },
+    {
+      "question_id": "ly-unobserved-impeachment",
+      "matter_id": "lumen-yard",
+      "type": "impeachment",
+      "question": "What does the walk note from Joss Wicker say about whether Joss observed Pim Quill during the transfer?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unobserved",
+          "answer_text": "did not observe Pim Quill",
+          "supports": [
+            {
+              "passage_id": "ly-unobserved",
+              "support_text": "did not observe Pim Quill during the transfer"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-account-sable"
+      ]
+    },
+    {
+      "question_id": "ly-transcript-cloth",
+      "matter_id": "lumen-yard",
+      "type": "media_transcript",
+      "question": "According to the machine transcript of Pim Quill's recorded statement, beside what cloth was the amber spool set?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "cloth",
+          "answer_text": "blue cloth",
+          "supports": [
+            {
+              "passage_id": "ly-transcript",
+              "support_text": "beside the blue cloth before the third chime"
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-near-cloth"
+      ]
+    },
+    {
+      "question_id": "ly-transcript-payer",
+      "matter_id": "lumen-yard",
+      "type": "media_transcript",
+      "question": "Does the machine transcript of the recorded statement name a payer for the amber spool?",
+      "expect_abstention": false,
+      "required_facts": [
+        {
+          "fact_id": "unnamed",
+          "answer_text": "does not name a payer",
+          "supports": [
+            {
+              "passage_id": "ly-transcript",
+              "support_text": "This recording does not name a payer."
+            }
+          ]
+        }
+      ],
+      "forbidden_facts": [
+        "Quill Desk"
+      ],
+      "near_misses": [
+        "ly-near-payer"
+      ]
+    },
+    {
+      "question_id": "ly-grip-color",
+      "matter_id": "lumen-yard",
+      "type": "not_in_record",
+      "question": "What color was the hand cart's grip?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-cart"
+      ]
+    },
+    {
+      "question_id": "ly-vehicle-plate",
+      "matter_id": "lumen-yard",
+      "type": "not_in_record",
+      "question": "What plate or license identifier does the record give for a vehicle that carried the amber ribbon spool?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-depart"
+      ]
+    },
+    {
+      "question_id": "ly-bell-weight",
+      "matter_id": "lumen-yard",
+      "type": "not_in_record",
+      "question": "What weight does the record give for the spare glass bell?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-count"
+      ]
+    },
+    {
+      "question_id": "ly-weather",
+      "matter_id": "lumen-yard",
+      "type": "not_in_record",
+      "question": "What weather does the record describe for the 2034-06-04 transfer?",
+      "expect_abstention": true,
+      "required_facts": [],
+      "forbidden_facts": [],
+      "near_misses": [
+        "ly-plan"
+      ]
+    }
+  ]
+}

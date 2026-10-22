@@ -130,3 +130,13 @@ original media bytes, transcript and speaker revisions, and retained metadata
 in the full archive. Only that media test-node/file and aggregate content digests
 were refreshed. Case definitions, fixture bytes and their fingerprints remain
 unchanged; the integrity checks still reject undeclared changes.
+
+## Defense-workflow scorecard
+
+`benchmarks/defense-workflow/v2/suite.json` is the current versioned synthetic
+discovery set for grading answer correctness, citation support, abstention, and
+latency across Harbor Street and Lumen Yard. Version 1 stays loadable. Stub
+mode with the lexical retriever runs without a model or a database and is
+covered by `tests/test_defense_eval.py`. The PostgreSQL hybrid path is covered
+by `tests/test_defense_eval_postgres.py`. A perfect stub score is a harness
+check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).

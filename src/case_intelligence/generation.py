@@ -80,6 +80,10 @@ class GenerationUnavailable(RuntimeError):
     """The configured local generator cannot currently answer."""
 
 
+class GenerationInvalidContent(GenerationUnavailable):
+    """The service returned text that is not a structured model answer."""
+
+
 class GenerationRejected(RuntimeError):
     """The generated response could not pass independent support checks."""
 
@@ -511,9 +515,9 @@ def _parse_model_content(content: object) -> Mapping[str, object]:
     try:
         payload = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise GenerationUnavailable("The answer service did not return structured content.") from exc
+        raise GenerationInvalidContent("The answer service did not return structured content.") from exc
     if not isinstance(payload, dict):
-        raise GenerationUnavailable("The answer service returned invalid structured content.")
+        raise GenerationInvalidContent("The answer service returned invalid structured content.")
     return payload
 
 

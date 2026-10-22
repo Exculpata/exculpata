@@ -390,17 +390,18 @@ loopback applications and require no model downloads or deployment access.
 
 The `postgres-integration` Quality gates job starts a disposable, loopback-only
 PostgreSQL 17/pgvector service from an immutable image digest and installs the
-existing PostgreSQL test dependencies. It runs the seven existing database
-acceptance tests for migration/reopen, page citations, media projection,
-matter isolation, deletion and rebuild. The report check fails on missing,
-empty, incomplete, skipped or unsuccessful results. Additional database tests
-in the same module are included automatically.
+existing PostgreSQL test dependencies. It runs the database acceptance tests
+for migration/reopen, page citations, media projection, matter isolation,
+deletion and rebuild, plus the defense-workflow hybrid retrieval check. The
+report check fails on missing, empty, incomplete, skipped or unsuccessful
+results. Additional database tests in those modules are included when the job
+names the module.
 
 To reproduce against an isolated disposable database, set
 `CASE_REVIEW_POSTGRES_TEST_DSN`, install `.[dev,postgres]`, then run:
 
 ```console
-python -m pytest -q tests/test_review_bench_v2_postgres.py \
+python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
   --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
   --junitxml=/tmp/exculpata-postgres-results.xml
 python scripts/check-postgres-test-report.py /tmp/exculpata-postgres-results.xml
