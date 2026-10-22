@@ -3,7 +3,6 @@ import io
 import ipaddress
 import json
 import socket
-import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -201,9 +200,10 @@ def test_generator_model_dollar_rejected_before_save(monkeypatch):
 
 
 def test_app_networks_and_extra_hosts_equal_main():
-    main = yaml.safe_load(subprocess.check_output(["git", "show", "347f108:compose.yaml"], cwd=ROOT, text=True))["services"]["app"]
+    # Copied from main 347f108 compose.yaml services.app: networks [app-egress, services, models], no extra_hosts.
+    main = {"networks": ["app-egress", "services", "models"], "extra_hosts": None}
     app = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["app"]
-    assert {key: app.get(key) for key in ("networks", "extra_hosts")} == {key: main.get(key) for key in ("networks", "extra_hosts")}
+    assert {key: app.get(key) for key in ("networks", "extra_hosts")} == main
 
 
 def test_installer_derives_generator_relay_from_selected_file(tmp_path, monkeypatch):
