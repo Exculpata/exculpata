@@ -43,8 +43,6 @@ def probe(proxy, target, expect, *, cafile=None, server_name=None):
             except ConnectionResetError:
                 value = b''
             if not value:
-                if expect == 'deny' and status != 200:
-                    return
                 raise ValueError('proxy closed before a complete CONNECT response')
             header.extend(value)
             if status is None and b'\r\n' in header:
@@ -59,7 +57,7 @@ def probe(proxy, target, expect, *, cafile=None, server_name=None):
                 raise ValueError('CONNECT response header too large')
         if expect == 'deny':
             if status != 403:
-                raise ValueError(f'expected HTTP 403 or close, received HTTP {status}')
+                raise ValueError(f'expected HTTP 403, received HTTP {status}')
         elif status != 200:
             raise ValueError(f'expected HTTP 200, received HTTP {status}')
         elif context is not None:

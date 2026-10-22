@@ -741,11 +741,23 @@ def test_cpu_embeddings_and_rerank_stay_in_process(monkeypatch):
     assert "device" not in calls[-1][2]
 
 
-def test_answers_and_exports_label_unvalidated_models():
+@pytest.mark.parametrize("backend", ["openai", "ollama"])
+@pytest.mark.parametrize("qualification_unavailable", [False, True])
+def test_answers_and_exports_label_unvalidated_models(monkeypatch, backend, qualification_unavailable):
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", backend)
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "https://answers.example.test:8080")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "answers.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "synthetic-model")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "0")
+    if qualification_unavailable:
+        def unavailable(model):
+            raise OSError("synthetic qualification unavailable")
+        monkeypatch.setattr("case_intelligence.generation.qualification_label", unavailable)
+    client = generator_from_environment()
+    assert client.model_notice == UNVALIDATED_MODEL_LABEL
+    client.schema_mode = "validate_and_retry"
     holder = CaseIntelligenceWorkbench.__new__(CaseIntelligenceWorkbench)
-    holder.generator = SimpleNamespace(client=SimpleNamespace(
-        model_notice=UNVALIDATED_MODEL_LABEL, schema_mode="validate_and_retry",
-    ))
+    holder.generator = SimpleNamespace(client=client)
     answer = VerifiedAnswer(False, "Review the synthetic source.", (), None, "The passages do not answer it.", (), True, 1)
     payload = CaseIntelligenceWorkbench._noted_answer_payload(holder, answer, {})
     assert payload["model_notice"] == UNVALIDATED_MODEL_LABEL
@@ -764,8 +776,8 @@ def test_answers_and_exports_label_unvalidated_models():
             "introduction": "The synthetic record supports one sentence.",
             "missing_information": "A synthetic synthesis.",
             "claims": [{"text": "A synthetic vehicle arrived.", "citations": []}],
-            "model_notice": UNVALIDATED_MODEL_LABEL,
-            "schema_enforcement": "not enforced / validated locally",
+            "model_notice": payload["model_notice"],
+            "schema_enforcement": payload["schema_enforcement"],
         },
         STAMP,
     )

@@ -3,6 +3,8 @@ from contextlib import nullcontext
 import runpy
 from pathlib import Path
 import ssl
+import socket
+import threading
 
 import pytest
 
@@ -31,8 +33,9 @@ class ResponseSocket:
     (b'HTTP/1.1 200 Connection Established\r\n\r\n', 'tunnel', True),
     (b'HTTP/1.1 403 Forbidden\r\n\r\n', 'tunnel', False),
     (b'HTTP/1.1 403 Forbidden\r\n\r\n', 'deny', True),
-    (b'', 'deny', True),
+    (b'', 'deny', False),
     (b'', 'tunnel', False),
+    (b'HTTP/1.1 403 Forbidden\r\n', 'deny', False),
     (b'HTTP/1.1 200 Connection Established\r\n\r\n', 'deny', False),
     (b'HTTP/1.1 200 Connection Established\r\n', 'deny', False),
     (b'HTTP/1.1 502 Bad Gateway\r\n\r\n', 'deny', False),
@@ -48,6 +51,55 @@ def test_connect_expectation(monkeypatch, response, expect, success, capsys):
     assert client.request == (b'CONNECT generator.example.test:8443 HTTP/1.1\r\n'
                               b'Host: generator.example.test:8443\r\n\r\n')
     assert len(capsys.readouterr().err.splitlines()) == (0 if success else 1)
+
+
+def test_accept_then_close_is_not_a_denial(capsys):
+    requests = []
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen(1)
+        listener.settimeout(3)
+        def accept_and_close():
+            with listener.accept()[0] as connection:
+                connection.settimeout(3)
+                request = bytearray()
+                while not request.endswith(b'\r\n\r\n'):
+                    value = connection.recv(1)
+                    if not value:
+                        break
+                    request.extend(value)
+                requests.append(bytes(request))
+        thread = threading.Thread(target=accept_and_close, daemon=True)
+        thread.start()
+        try:
+            result = PROBE['main'](['--proxy', f'127.0.0.1:{listener.getsockname()[1]}',
+                '--target', 'generator.example.test:8443', '--expect', 'deny'])
+        finally:
+            thread.join(5)
+        assert not thread.is_alive()
+    assert requests == [b'CONNECT generator.example.test:8443 HTTP/1.1\r\n'
+                        b'Host: generator.example.test:8443\r\n\r\n']
+    assert result == 1
+    assert capsys.readouterr().err.splitlines() == [
+        'generator probe failed: proxy closed before a complete CONNECT response',
+    ]
+
+
+@pytest.mark.parametrize('expect', ['deny'])
+def test_reset_before_complete_response_fails(monkeypatch, expect, capsys):
+    client = ResponseSocket(b'HTTP/1.1 403 Forbidden\r\n')
+    receive = client.recv
+    def reset_at_end(size):
+        if not client.response:
+            raise ConnectionResetError('synthetic reset')
+        return receive(size)
+    monkeypatch.setattr(client, 'recv', reset_at_end)
+    monkeypatch.setattr(PROBE['socket'], 'create_connection', lambda *a, **k: nullcontext(client))
+    assert PROBE['main'](['--proxy', 'relay.example.test:3128',
+        '--target', 'generator.example.test:8443', '--expect', expect]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        'generator probe failed: proxy closed before a complete CONNECT response',
+    ]
 
 
 @pytest.mark.parametrize('error', [TimeoutError('synthetic timeout'), ConnectionRefusedError('synthetic refusal')])

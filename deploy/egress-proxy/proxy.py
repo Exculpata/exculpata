@@ -186,6 +186,10 @@ class Server(socketserver.ThreadingTCPServer):
 OPERATOR_DESTINATIONS = (("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),)
 
 
+class DestinationConfigurationError(Denied):
+    pass
+
+
 def configured_destinations(environment):
     """Exact authorities mapped to their pins; conflicting pins on a shared authority fail closed."""
     issuer = environment.get("OIDC_ISSUER", "")
@@ -195,17 +199,25 @@ def configured_destinations(environment):
     for url_setting, pins_setting in OPERATOR_DESTINATIONS:
         url = environment.get(url_setting, "")
         pin_value = environment.get(pins_setting, "")
-        if "$" in url or "$" in pin_value:
-            raise Denied("destination interpolation denied")
-        if not url:
-            if pin_value:
-                raise Denied("destination pins require a URL")
-            continue
-        validated_https_url(url)
-        destination = issuer_authority(url)
-        destination_pins = issuer_pins(pin_value, url)
-        if destination in destinations and destinations[destination] != destination_pins:
-            raise Denied("conflicting authority pins")
+        reason = "destination interpolation denied"
+        try:
+            if "$" in url or "$" in pin_value:
+                raise Denied(reason)
+            if not url:
+                reason = "destination pins require a URL"
+                if pin_value:
+                    raise Denied(reason)
+                continue
+            reason = "invalid HTTPS URL"
+            validated_https_url(url)
+            destination = issuer_authority(url)
+            reason = "invalid destination pins"
+            destination_pins = issuer_pins(pin_value, url)
+            reason = "conflicting authority pins"
+            if destination in destinations and destinations[destination] != destination_pins:
+                raise Denied(reason)
+        except ValueError:
+            raise DestinationConfigurationError(f"{url_setting}/{pins_setting}: {reason}") from None
         destinations[destination] = destination_pins
     return destinations
 
@@ -220,5 +232,7 @@ if __name__ == "__main__":
             raise SystemExit(0)
         with Server(("0.0.0.0", 3128), configured_destinations(os.environ)) as server:
             server.serve_forever()
+    except DestinationConfigurationError as error:
+        raise SystemExit(f"Egress proxy configuration invalid: {error}") from None
     except (OSError, ValueError):
         raise SystemExit("Egress proxy configuration or listener unavailable") from None

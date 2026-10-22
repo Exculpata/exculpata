@@ -17,6 +17,7 @@ from case_intelligence import external_generator as endpoints
 from case_intelligence import generator_completion as completion
 from case_intelligence.generation import (
     ANSWER_SCHEMA, GenerationUnavailable, OpenAICompatibleGenerator, _bounded_json_get,
+    generator_from_environment,
 )
 from case_intelligence.generator_schema import probe_schema_enforcement
 from scripts.generator_host_probe import open_host_generator_request
@@ -230,7 +231,14 @@ def test_mutable_model_alias_never_inherits_an_unattested_pass():
 
 
 @pytest.mark.parametrize("format_name", ["csv", "json", "markdown", "docx"])
-def test_every_source_exports_keep_unattested_model_label(format_name):
+def test_every_source_exports_keep_unattested_model_label(format_name, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", "openai")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", "https://answers.example.test:8080")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "answers.example.test")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "synthetic-model")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "0")
+    client = generator_from_environment()
+    assert client.model_notice == "unvalidated model"
     matter, *_ = _records()
     criterion, version, run, decision, metrics = _review_records(matter)
     artifact = export_full_review(matter, criterion, version, run, (decision,), metrics, format_name)
@@ -239,6 +247,7 @@ def test_every_source_exports_keep_unattested_model_label(format_name):
         with zipfile.ZipFile(io.BytesIO(body)) as archive:
             body = archive.read("word/document.xml")
     assert b"unvalidated model" in body
+    assert client.model_notice.encode() in body
 
 
 @pytest.mark.parametrize("format_name", ["markdown", "docx"])

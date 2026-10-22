@@ -205,7 +205,11 @@ before resolution, even when a resolver would interpret one as a public IP. DNS 
 each connection; every answer must pass validation before any connection is
 made, and the proxy dials that validated numeric address without resolving it
 again. Empty issuer configuration denies the issuer slot for local and Kerberos
-sign-in; a configured generator slot remains independent. Requests, destinations and tunneled bytes are not logged. Concurrency,
+sign-in while leaving a valid configured generator slot working. Startup validates
+every configured destination before listening. An invalid generator URL or pins
+setting stops the whole proxy, including OIDC egress, with exit code 1 and an error
+naming the generator settings without printing their values. Requests, destinations
+and tunneled bytes are not logged. Concurrency,
 header size/time, tunnel duration and transferred bytes are bounded by eight
 connection slots, operation timeouts and byte limits. DNS and all connection
 attempts share one five-second budget. Each address receives an equal share of
