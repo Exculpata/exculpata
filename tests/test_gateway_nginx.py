@@ -9,6 +9,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
 )
 from pathlib import Path
+import hashlib
 import re
 import subprocess
 import tempfile
@@ -22,6 +23,35 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(*command, timeout=60):
     return subprocess.run(command, check=True, capture_output=True, text=True,
                           timeout=timeout).stdout.strip()
+
+
+def assert_reviewed_nginx_conf(config):
+    # Pin the enclosing scopes, includes and inherited logging directives, not
+    # just the template. Image updates require review of both configurations.
+    assert hashlib.sha256(config).hexdigest() == (
+        "4dee6b0c7c8278f6a9b827261c25d3215c9ea8955e41ff7fe3eabdd5297edce7"
+    ), "nginx.conf changed: review gateway logging scopes/settings before updating the pin"
+
+
+class GatewayNginxConfigPin(unittest.TestCase):
+    def test_gateway_nginx_conf_matches_reviewed_pin(self):
+        assert_reviewed_nginx_conf(
+            (ROOT / "tests/fixtures/gateway/nginx.conf").read_bytes())
+
+    def test_gateway_nginx_conf_pin_rejects_logging_drift(self):
+        config = (ROOT / "tests/fixtures/gateway/nginx.conf").read_bytes()
+        mutations = (
+            (b'"$request"', b'"$request_uri"'),
+            (b"access_log  /var/log/nginx/access.log  main;", b"access_log off;"),
+            (b"error.log notice;", b"error.log debug;"),
+            (b"include /etc/nginx/conf.d/*.conf;",
+             b"include /etc/nginx/conf.d/*.conf;\n    error_log /dev/stderr;"),
+        )
+        for before, after in mutations:
+            with self.subTest(directive=before):
+                self.assertIn(before, config)
+                with self.assertRaisesRegex(AssertionError, "nginx.conf changed"):
+                    assert_reviewed_nginx_conf(config.replace(before, after, 1))
 
 
 class GatewayHeaderContract(unittest.TestCase):
@@ -50,6 +80,10 @@ class GatewayHeaderContract(unittest.TestCase):
                 run("docker", "run", "-d", "--name", container, "--network", "none",
                     "-v", f'{scratch / "default.conf"}:/etc/nginx/conf.d/default.conf:ro',
                     "-v", f"{scratch}:/run/tls:ro", image, timeout=180)
+                nginx_conf = subprocess.run(
+                    ["docker", "exec", container, "cat", "/etc/nginx/nginx.conf"],
+                    check=True, capture_output=True, timeout=15).stdout
+                assert_reviewed_nginx_conf(nginx_conf)
 
                 def request(path, headers=None, *, direct=False):
                     command = ["docker", "exec", container, "curl", "--silent", "--show-error",
