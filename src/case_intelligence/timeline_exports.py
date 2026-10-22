@@ -35,7 +35,7 @@ def _md_escape(text: str) -> str:
 
 def md_inline(text: object) -> str:
     value = re.sub(r'\r\n|[\n\r\u2028\u2029]', ' ', '' if text is None else str(text))
-    return _md_escape(presentation_text(value).rstrip())
+    return _md_escape(_export_presentation_text(value).rstrip())
 
 
 def md_block_quoted(text: object) -> str:

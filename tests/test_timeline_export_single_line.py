@@ -256,6 +256,39 @@ def test_single_line_fields_cannot_add_hard_breaks(path):
 
 
 @FIELDS
+@pytest.mark.parametrize('suffix', ['\u200b\u200b', '\u202e\u202c', '\ufeff\u200d',
+                                    '\u2066\u2069', '\u200b \u200b'],
+                         ids=['zero-width', 'bidi', 'bom-joiner', 'isolate', 'mixed'])
+@pytest.mark.parametrize('bucket', ['entries', 'undated'])
+def test_single_line_trailing_format_controls_cannot_add_hard_breaks(path, suffix, bucket):
+    if path[-1] in {'description', 'excerpt'}:
+        return
+    data = payload()
+    set_field(data, path, 'SlotMarker' + suffix)
+    if bucket == 'undated':
+        data['undated'], data['entries'] = data['entries'], []
+
+    body = export_timeline(data, 'markdown')
+
+    assert not any(line.endswith((' ', '\t')) for line in body.splitlines() if line)
+    assert not any(child.type == 'hardbreak' for block in markdown_blocks(data)
+                   for token in block for child in token.children or [])
+
+
+def test_document_title_trailing_format_controls_stay_on_one_line():
+    data = payload()
+    set_field(data, ('entries', 0, 'citations', 0, 'document_title'), 'SlotMarker\u200b\u200b')
+
+    body = export_timeline(data, 'markdown')
+    lines = body.splitlines()
+
+    source_index = next(index for index, line in enumerate(lines) if line.startswith('Source: '))
+    assert lines[source_index] == 'Source: source-a · SlotMarker'
+    assert lines[source_index + 1].startswith('Locator: ')
+    assert '<br' not in MarkdownIt('commonmark').render(body)
+
+
+@FIELDS
 @pytest.mark.parametrize('value', ['- SlotMarker', '+ SlotMarker', '1. SlotMarker',
                                   '    SlotMarker', '\tSlotMarker', '```SlotMarker',
                                   '# SlotMarker', '[a]: http://x'])
