@@ -241,7 +241,7 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -259,7 +259,7 @@ jobs:
     env:
       CASE_REVIEW_POSTGRES_TEST_DSN: postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test
     steps:
-      - name: Check out integration candidate and fetched main
+      - name: Check out candidate and complete base history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -271,11 +271,13 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Install candidate runtime and PostgreSQL driver without models
-        run: python -m pip install --disable-pip-version-check -e '.[postgres]'
       - name: Write lexical stub and product retrieval scorecards plus main delta
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         run: >-
           python scripts/defense-eval-ci.py
+          --locked-environments
+          --base-sha "$EXPECTED_BASE_SHA"
           --output-dir "$RUNNER_TEMP/defense-eval-artifacts"
           --work-root "$RUNNER_TEMP"
       - name: Retain scorecards, comparison and provenance even on failure

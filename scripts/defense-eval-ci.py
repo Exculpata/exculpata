@@ -19,6 +19,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "case_intelligence"
 EVAL_MODULE = ".".join((PACKAGE, "defense_eval"))
+LOCK_PATH = Path("requirements/application.lock")
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -88,9 +89,10 @@ def run_child(product: Path, evaluator: Path, retriever: str, output: Path) -> i
             result = module.main(["--mode", "stub", "--retriever", retriever,
                                   "--output-dir", str(output)])
     finally:
-        write_json((output / "provenance").with_suffix(".json"), {
+        write_json(output / "provenance.json", {
             "product_root": str(product),
             "product_sha": product_sha,
+            "interpreter": sys.executable,
             "database": database[0] if database else None,
             "evaluator_sha256": hashlib.sha256(evaluator.read_bytes()).hexdigest(),
             "fingerprint": suite.fingerprint,
@@ -100,10 +102,12 @@ def run_child(product: Path, evaluator: Path, retriever: str, output: Path) -> i
 
 
 def validate_card(module, suite, directory: Path, retriever: str) -> None:
-    card = json.loads((directory / "scorecard").with_suffix(".json").read_text())
+    card = json.loads((directory / "scorecard.json").read_text())
     if any(card[key] != getattr(suite, key) for key in ("suite_id", "suite_version", "fingerprint")):
         raise ValueError("Scorecard suite identity mismatch")
     rows = card["questions"]
+    if not suite.questions or not rows:
+        raise ValueError("Suite or scorecard has no questions")
     if [(row["question_id"], row["type"]) for row in rows] != [
         (question.question_id, question.type) for question in suite.questions
     ]:
@@ -116,7 +120,9 @@ def validate_card(module, suite, directory: Path, retriever: str) -> None:
         if row["error"] != "" or any(type(row[key]) is not bool for key in (
             "answer_correct", "citation_support", "abstention_correct", "abstained", "expect_abstention",
         )):
-            raise ValueError("Scorecard has an error or invalid score")
+            raise ValueError(f"Scorecard has an error or invalid score: {row['error']}")
+        if row["rejection"] and row["answer_correct"]:
+            raise ValueError("Scorecard marks a rejected answer correct")
         if row["retrieval_hit"] is not None and type(row["retrieval_hit"]) is not bool:
             raise ValueError("Invalid retrieval score")
         if type(row["latency_ms"]) is not int or row["latency_ms"] < 0:
@@ -135,11 +141,27 @@ def git(candidate: Path, *args: str) -> str:
                           capture_output=True, text=True, timeout=60).stdout.strip()
 
 
-def run_comparison(candidate: Path, output: Path, work_root: Path) -> int:
+def build_environment(product: Path, environment: Path) -> Path:
+    subprocess.run([sys.executable, "-m", "venv", str(environment)], check=True, timeout=60)
+    interpreter = environment / "bin/python"
+    subprocess.run(
+        [str(interpreter), "-m", "pip", "install", "--disable-pip-version-check",
+         "--require-hashes", "-r", str(product / LOCK_PATH)],
+        check=True, timeout=300,
+    )
+    return interpreter
+
+
+def run_comparison(candidate: Path, output: Path, work_root: Path,
+                   base_sha: str = "", locked_environments: bool = False) -> int:
     output.mkdir(parents=True, exist_ok=True)
     work_root.mkdir(parents=True, exist_ok=True)
-    main_sha = git(candidate, "rev-parse", "--verify", "origin/main^{commit}")
+    main_sha = git(candidate, "rev-parse", "--verify", "HEAD^1^{commit}")
     candidate_sha = git(candidate, "rev-parse", "HEAD")
+    if main_sha == candidate_sha:
+        raise ValueError("Baseline equals candidate")
+    if base_sha and base_sha != main_sha:
+        raise ValueError("Event base does not match first parent of candidate")
     evaluator = (candidate / "src" / PACKAGE / "defense_eval").with_suffix(".py")
     module = load_evaluator(candidate, evaluator)
     suite = module.load_suite()
@@ -149,11 +171,23 @@ def run_comparison(candidate: Path, output: Path, work_root: Path) -> int:
         "evaluator_sha256": hashlib.sha256(evaluator.read_bytes()).hexdigest(),
         "fingerprint": suite.fingerprint,
     }
-    write_json((output / "provenance").with_suffix(".json"), provenance)
+    provenance_path = output / "provenance.json"
+    write_json(provenance_path, provenance)
     with tempfile.TemporaryDirectory(prefix="defense-eval-", dir=work_root) as temporary:
         baseline = Path(temporary) / "main"
         git(candidate, "worktree", "add", "--detach", str(baseline), main_sha)
         try:
+            environments = {}
+            for side, product in (("main", baseline), ("candidate", candidate)):
+                environments[side] = {
+                    "interpreter": str(build_environment(product, Path(temporary) / (side + "-venv")))
+                    if locked_environments else sys.executable,
+                    "lock_path": str(LOCK_PATH) if locked_environments else None,
+                    "lock_sha256": hashlib.sha256((product / LOCK_PATH).read_bytes()).hexdigest()
+                    if locked_environments else None,
+                }
+            provenance["environments"] = environments
+            write_json(provenance_path, provenance)
             # Sequential children must finish database cleanup before proceeding.
             for label, product, retriever in (
                 ("candidate-lexical", candidate, "lexical"),
@@ -162,17 +196,19 @@ def run_comparison(candidate: Path, output: Path, work_root: Path) -> int:
             ):
                 directory = output / label
                 directory.mkdir()
+                interpreter = environments["main" if product == baseline else "candidate"]["interpreter"]
                 with (directory / "run").with_suffix(".log").open("w") as log:
                     subprocess.run(
-                        [sys.executable, "-I", "-B", str(Path(__file__).resolve()),
+                        [interpreter, "-I", "-B", str(Path(__file__).resolve()),
                          "--product-root", str(product), "--evaluator", str(evaluator),
                          "--retriever", retriever, "--output-dir", str(directory)],
                         stdout=log, stderr=subprocess.STDOUT, check=True, timeout=300,
                     )
                 validate_card(module, suite, directory, retriever)
-                receipt = json.loads((directory / "provenance").with_suffix(".json").read_text())
+                receipt = json.loads((directory / "provenance.json").read_text())
                 if (receipt["product_root"] != str(product)
                         or receipt["product_sha"] != (main_sha if product == baseline else candidate_sha)
+                        or receipt["interpreter"] != interpreter
                         or any(receipt[key] != provenance[key] for key in ("fingerprint", "evaluator_sha256"))):
                     raise ValueError("Child evaluator or product provenance mismatch")
         finally:
@@ -180,13 +216,15 @@ def run_comparison(candidate: Path, output: Path, work_root: Path) -> int:
     report = (
         "# Defense evaluation: main vs integration candidate\n\n"
         f"Main: `{main_sha}`. Candidate: `{candidate_sha}`.\n\n"
+        "The baseline is the candidate's exact first parent (HEAD^1), including main pushes. "
+        "An event-provided base must match that parent.\n\n"
         f"Evaluator SHA-256: `{provenance['evaluator_sha256']}`.\n\n"
         "Both products use the shared candidate evaluator and candidate fixture bytes. "
         "This measures product retrieval with a reference stub, not real-model quality; "
         "it does not compare historical evaluator versions. Score deltas are informational.\n\n"
         + module.compare_scorecards(
-            (output / "main-postgres" / "scorecard").with_suffix(".json"),
-            (output / "candidate-postgres" / "scorecard").with_suffix(".json"),
+            output / "main-postgres" / "scorecard.json",
+            output / "candidate-postgres" / "scorecard.json",
         )
     )
     (output / "comparison").with_suffix(".md").write_text(report)
@@ -204,6 +242,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--candidate-root", type=Path, default=ROOT)
     parser.add_argument("--work-root", type=Path, default=Path(tempfile.gettempdir()))
+    parser.add_argument("--base-sha", default="")
+    parser.add_argument("--locked-environments", action="store_true")
     parser.add_argument("--product-root", type=Path)
     parser.add_argument("--evaluator", type=Path)
     parser.add_argument("--retriever", choices=("lexical", "postgres"), default="lexical")
@@ -216,9 +256,13 @@ def main() -> int:
             return run_child(args.product_root.resolve(), args.evaluator.resolve(),
                              args.retriever, args.output_dir.resolve())
         return run_comparison(args.candidate_root.resolve(), args.output_dir.resolve(),
-                              args.work_root.resolve())
+                              args.work_root.resolve(), args.base_sha, args.locked_environments)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        message = f"Defense evaluation failed: {exc}\n"
+        errors = [str(exc)]
+        while exc.__context__ is not None:
+            exc = exc.__context__
+            errors.append(str(exc))
+        message = "Defense evaluation failed: " + "\nFollowed by: ".join(reversed(errors)) + "\n"
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / "harness-error").with_suffix(".txt").write_text(message)
         print(message, end="", file=sys.stderr)

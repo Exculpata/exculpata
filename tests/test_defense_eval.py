@@ -200,18 +200,21 @@ def test_suite_rejects_fingerprint_hash_and_support_edits(tmp_path):
     payload = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
     payload["description"] += " edited"
     path = tmp_path / "suite.json"
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(DefenseEvalError, match="fingerprint"):
         load_suite(path)
     payload = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
     payload["passages"][0]["sha256"] = "0" * 64
     payload["fingerprint"] = suite_fingerprint(payload)
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(DefenseEvalError, match="bytes do not match"):
         load_suite(path)
     payload = json.loads(DEFAULT_SUITE.read_text(encoding="utf-8"))
     payload["questions"][0]["required_facts"][0]["supports"][0]["support_text"] = "not written in that record"
     payload["fingerprint"] = suite_fingerprint(payload)
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(DefenseEvalError, match="not in the named passage"):
         load_suite(path)
@@ -273,6 +276,7 @@ def test_near_miss_cannot_be_the_reference_passage(tmp_path):
     question["near_misses"] = [question["required_facts"][0]["supports"][0]["passage_id"]]
     payload["fingerprint"] = suite_fingerprint(payload)
     path = tmp_path / "suite.json"
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(DefenseEvalError, match="competing passage"):
         load_suite(path)
@@ -281,6 +285,7 @@ def test_near_miss_cannot_be_the_reference_passage(tmp_path):
     question["required_facts"][0]["answer_text"] = "teal"
     question["required_facts"][0]["supports"][0]["support_text"] = "teal"
     payload["fingerprint"] = suite_fingerprint(payload)
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(DefenseEvalError, match="contains a reference span"):
         load_suite(path)
@@ -289,6 +294,7 @@ def test_near_miss_cannot_be_the_reference_passage(tmp_path):
 def test_compare_prints_per_category_deltas(tmp_path, capsys):
     left = tmp_path / "a.json"
     right = tmp_path / "b.json"
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     left.write_text(json.dumps({
         "fingerprint": "same",
         "suite_version": "2",
@@ -299,6 +305,7 @@ def test_compare_prints_per_category_deltas(tmp_path, capsys):
              "citation_support": False, "abstention_correct": True, "retrieval_hit": True},
         ],
     }), encoding="utf-8")
+    # fixture-write: Prepare synthetic input or evidence for this regression.
     right.write_text(json.dumps({
         "fingerprint": "other",
         "suite_version": "2",
@@ -370,3 +377,37 @@ def test_learned_retrieval_floors_follow_worker_health(monkeypatch):
         ),
     )
     assert _healthy_retrieval_worker() is None
+
+
+def test_suite_rejects_cross_matter_support(tmp_path, suite):
+    payload = json.loads(DEFAULT_SUITE.read_text())
+    question = payload["questions"][0]
+    other = next(passage for passage in suite.passages if passage.matter_id != question["matter_id"])
+    question["required_facts"][0]["supports"] = [
+        {"passage_id": other.passage_id, "support_text": other.text}
+    ]
+    payload["fingerprint"] = suite_fingerprint(payload)
+    path = tmp_path / "suite.json"
+    # fixture-write: Pin a synthetic suite whose valid support belongs to another matter.
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match=question["question_id"] + ".*matter"):
+        load_suite(path)
+
+
+def test_comparison_reports_changed_types_in_each_cards_category(tmp_path):
+    from case_intelligence.defense_eval import compare_scorecards
+
+    row = {"question_id": "q1", "type": "fact_lookup", "answer_correct": True,
+           "citation_support": True, "abstention_correct": True, "retrieval_hit": True}
+    left, right = tmp_path / "a.json", tmp_path / "b.json"
+    # fixture-write: Supply a synthetic scorecard before a question category change.
+    left.write_text(json.dumps({"fingerprint": "before", "suite_version": "2", "questions": [row]}))
+    row = dict(row, type="chronology", answer_correct=False)
+    # fixture-write: Supply the same question id with a new category and score.
+    right.write_text(json.dumps({"fingerprint": "after", "suite_version": "3", "questions": [row]}))
+    report = compare_scorecards(left, right)
+    assert "Changed question types" in report
+    assert "`q1`: fact_lookup -> chronology" in report
+    assert "| fact_lookup | 1/1 -> 0/0 (-1) |" in report
+    assert "| chronology | 0/0 -> 0/1 (+0) |" in report
+    assert "| overall | 1/1 -> 0/1 (-1) |" in report

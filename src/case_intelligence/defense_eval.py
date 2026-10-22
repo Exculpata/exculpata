@@ -18,11 +18,11 @@ import sys
 import time
 from typing import Any, Callable, Mapping, Sequence
 
-from . import generation
 from .service_endpoints import open_service_request
 
 from .generation import (
     EvidenceItem,
+    GenerationInvalidContent,
     GenerationRejected,
     GenerationUnavailable,
     GroundedGenerationService,
@@ -277,7 +277,7 @@ def _load_questions(
             raise DefenseEvalError("expect_abstention must be a boolean")
         if record["matter_id"] not in {passage.matter_id for passage in passages}:
             raise DefenseEvalError(f"{question_id} names an unknown matter")
-        facts = _load_facts(record["required_facts"], by_id, question_id)
+        facts = _load_facts(record["required_facts"], by_id, question_id, record["matter_id"])
         forbidden = record["forbidden_facts"]
         if not isinstance(forbidden, list) or any(not isinstance(item, str) or not item for item in forbidden):
             raise DefenseEvalError(f"{question_id} has a malformed forbidden fact")
@@ -321,7 +321,8 @@ def _load_near_misses(
     return tuple(near)
 
 
-def _load_facts(records: object, passages: Mapping[str, Passage], question_id: str) -> tuple[Fact, ...]:
+def _load_facts(records: object, passages: Mapping[str, Passage], question_id: str,
+                matter_id: str) -> tuple[Fact, ...]:
     if not isinstance(records, list):
         raise DefenseEvalError(f"{question_id} facts are malformed")
     facts: list[Fact] = []
@@ -343,6 +344,8 @@ def _load_facts(records: object, passages: Mapping[str, Passage], question_id: s
                 raise DefenseEvalError(f"{question_id} has malformed support")
             _require_keys(support, _SUPPORT_KEYS, "support")
             passage = passages.get(support["passage_id"])
+            if passage is not None and passage.matter_id != matter_id:
+                raise DefenseEvalError(f"{question_id} support belongs to another matter")
             if passage is None or normalize(support["support_text"]) not in normalize(passage.text):
                 raise DefenseEvalError(
                     f"{question_id} support for {fact_id} is not in the named passage"
@@ -663,7 +666,7 @@ class ConfiguredAnswerer:
             ))
         try:
             verified = self.service.answer(question.text, evidence)
-        except (GenerationRejected, getattr(generation, "GenerationInvalidContent", GenerationRejected)) as exc:
+        except (GenerationRejected, GenerationInvalidContent) as exc:
             return ModelAnswer(False, "", (), rejection=exc.__class__.__name__)
         except (GenerationUnavailable, ValueError, OSError) as exc:
             return ModelAnswer(False, "", (), error=exc.__class__.__name__)
@@ -1082,17 +1085,28 @@ def compare_scorecards(left_path: Path, right_path: Path) -> str:
     else:
         lines.append("Fingerprints match. Deltas are B minus A on the shared questions.")
     lines.append("")
-    categories = ["overall", *sorted({left["questions"][item]["type"] for item in shared})]
+    changed_types = [item for item in shared
+                     if left["questions"][item]["type"] != right["questions"][item]["type"]]
+    if changed_types:
+        lines.extend(["## Changed question types", ""])
+        lines.extend(f"- `{item}`: {left['questions'][item]['type']} -> {right['questions'][item]['type']}"
+                     for item in changed_types)
+        lines.append("")
+    categories = ["overall", *sorted({card["questions"][item]["type"]
+                                      for card in (left, right) for item in shared})]
     lines.append("| Category | " + " | ".join(label for _key, label in _COMPARE_METRICS) + " |")
     lines.append("| --- | " + " | ".join("---" for _ in _COMPARE_METRICS) + " |")
     for category in categories:
-        ids = shared if category == "overall" else [
+        left_ids = shared if category == "overall" else [
             item for item in shared if left["questions"][item]["type"] == category
+        ]
+        right_ids = shared if category == "overall" else [
+            item for item in shared if right["questions"][item]["type"] == category
         ]
         cells = [
             _delta_cell(
-                _metric_counts(left["questions"], ids, key),
-                _metric_counts(right["questions"], ids, key),
+                _metric_counts(left["questions"], left_ids, key),
+                _metric_counts(right["questions"], right_ids, key),
             )
             for key, _label in _COMPARE_METRICS
         ]

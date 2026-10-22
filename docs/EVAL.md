@@ -119,9 +119,13 @@ with deterministic adapters, without GPU inference or model downloads.
 
 Both product checkouts use the same candidate evaluator and pinned question set.
 This lets the baseline run even before this evaluator exists on main, and keeps
-scoring changes out of the product comparison. Main is resolved to an exact
-commit before evaluation; provenance records it, the candidate integration
-commit and the shared evaluator. The two runs import product code separately,
+scoring changes out of the product comparison. The baseline is the candidate's
+exact first parent (`HEAD^1`), including the previous commit for a push to main.
+Any event-provided base must equal that parent; equal baseline and candidate
+revisions fail as a harness error. Provenance records both commits and the shared
+evaluator. Each checkout gets a separate environment installed from its own
+`requirements/application.lock` with `--require-hashes`. Provenance records each
+lock path, SHA-256 and interpreter. The two runs import product code separately,
 and the delta is candidate minus main. A missing baseline, failed run or malformed
 card fails the job; a negative or positive quality delta does not. Partial
 artifacts are retained on failure and must not be described as complete results.
@@ -204,6 +208,9 @@ combined with `--mode`. Exit 0 means both cards were readable. A negative delta
 is still exit 0; the table is how a pull request shows a regression. Questions
 present on only one card are listed and left out of the rates. When the
 fingerprints differ, the report says so before the deltas.
+Shared ids whose types changed appear under "Changed question types". Each
+card contributes to its own category totals, while overall totals still include
+all shared ids.
 
 ```console
 python -m case_intelligence.defense_eval \
