@@ -172,7 +172,8 @@ def test_contributor_entry_points_stay_short_and_public_safe() -> None:
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
     assert len(contributing.split()) <= 500
     for marker in ("make bootstrap", "make check-fast", "good first issue",
-                   "draft PR", "synthetic data only", "Never include real case material"):
+                   "draft PR", "synthetic data only", "Never include real case material",
+                   "docs/VELOCITY_REPORT.md"):
         assert marker in contributing
     template = (ROOT / ".github/pull_request_template.md").read_text()
     assert len(template.splitlines()) <= 23
