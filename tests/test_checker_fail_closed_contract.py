@@ -16,13 +16,22 @@ from tests.fixture_write_policy import check_fixture_writes
 from tests.test_publication_gate import publication
 
 
-def _pr_body(monkeypatch, unsupported):
+def _pr_body_module():
     path = Path(__file__).resolve().parents[1] / "scripts" / "check-pr-body.py"
     spec = importlib.util.spec_from_file_location("pr_body_checker", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def _pr_body(monkeypatch, unsupported):
     head = "not-a-sha" if unsupported else "a" * 40
-    return module.check_body("Synthetic description", head, "main")
+    return _pr_body_module().check_body("Synthetic description", head, "main")
+
+
+def _pr_body_allowance(monkeypatch, unsupported):
+    allowed = "not-a-sha" if unsupported else "b1234567" * 5
+    return _pr_body_module().check_body("Head: b123456", "a" * 40, "main", (allowed,))
 
 
 def _fixture(monkeypatch, unsupported):
@@ -57,6 +66,7 @@ def _publication(monkeypatch, unsupported):
 
 @pytest.mark.parametrize("check,helper", [
     pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
+    pytest.param(_pr_body_allowance, "check_body", id="pr-body-invalid-allowance"),
     pytest.param(_fixture, "fixture_write", id="fixture-python-exception-group"),
     pytest.param(_publication, "_scan_media", id="publication-non-object-metadata"),
 ])
