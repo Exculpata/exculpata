@@ -1,5 +1,6 @@
 """Recognition receipts must describe the settings actually executed."""
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -30,19 +31,28 @@ def test_recognition_rejects_manifest_execution_mismatch(monkeypatch, tmp_path, 
         corpus_recognition.recognize(tmp_path, manifest)
 
 
-def test_recognition_executes_manifest_runtime_and_compute_type(monkeypatch, tmp_path):
+@pytest.fixture
+def recognition_runtime(monkeypatch, tmp_path):
     manifest = json.loads(MANIFEST.read_text())
     manifest['models']['ocr']['sha256'] = {}
-    pin = copy.deepcopy(manifest['models']['asr'])
+    weights = b'synthetic-weights-not-a-model'
+    pin = manifest['models']['asr']
+    weights_file = corpus_recognition.ASR_FILES[1]
+    pin['sha256'] = {weights_file: hashlib.sha256(weights).hexdigest()}
+    model_path = tmp_path / pin['revision']
+    # fixture-write: Create a synthetic cached model revision.
+    model_path.mkdir()
+    # fixture-write: Seed synthetic weights, never a real model.
+    (model_path / weights_file).write_bytes(weights)
     versions, snapshots, model_calls, transcription_calls = [], [], [], []
 
     def version(name):
         versions.append(name)
         return {'faster-whisper': '1.2.1', 'ctranslate2': '4.8.2', 'av': '18.1.0'}[name]
 
-    def snapshot(settings, *, offline):
-        snapshots.append((settings, offline))
-        return str(tmp_path / settings['revision'])
+    def snapshot_download(model_id, **kwargs):
+        snapshots.append((model_id, kwargs))
+        return str(tmp_path / kwargs['revision'])
 
     class Model:
         def __init__(self, path, **kwargs):
@@ -54,10 +64,40 @@ def test_recognition_executes_manifest_runtime_and_compute_type(monkeypatch, tmp
 
     monkeypatch.setitem(sys.modules, 'faster_whisper', SimpleNamespace(WhisperModel=Model))
     monkeypatch.setattr(corpus_recognition.importlib.metadata, 'version', version)
-    monkeypatch.setattr(corpus_recognition, 'snapshot', snapshot)
+    monkeypatch.setitem(sys.modules, 'huggingface_hub',
+                        SimpleNamespace(snapshot_download=snapshot_download))
+    return manifest, versions, snapshots, model_calls, transcription_calls
+
+
+@pytest.mark.parametrize('defect', ['weights', 'missing-pin', 'revision'])
+def test_recognition_rejects_unpinned_weights(recognition_runtime, tmp_path, defect):
+    manifest, _, snapshots, model_calls, _ = recognition_runtime
+    pin = manifest['models']['asr']
+    if defect == 'weights':
+        pin['sha256'] = json.loads(MANIFEST.read_text())['models']['asr'].get('sha256', {})
+    elif defect == 'missing-pin':
+        pin.pop('sha256')
+    else:
+        # fixture-write: Give the synthetic snapshot the mutable revision name.
+        (tmp_path / pin['revision']).rename(tmp_path / 'main')
+        pin['revision'] = 'main'
+    message = 'ASR revision' if defect == 'revision' else 'ASR model.bin does not match the pinned corpus digest'
+    with pytest.raises(ValueError, match=message):
+        corpus_recognition.recognize(tmp_path, manifest)
+    assert not model_calls
+    if defect == 'revision':
+        assert not snapshots
+
+
+def test_recognition_executes_manifest_runtime_and_compute_type(recognition_runtime, tmp_path):
+    manifest, versions, snapshots, model_calls, transcription_calls = recognition_runtime
+    pin = copy.deepcopy(manifest['models']['asr'])
     observations, transcripts = corpus_recognition.recognize(tmp_path, manifest)
     assert versions == ['faster-whisper', 'ctranslate2', 'av']
-    assert snapshots == [(pin, True)]
+    assert snapshots == [(pin['model_id'], {
+        'revision': pin['revision'], 'allow_patterns': corpus_recognition.ASR_FILES,
+        'local_files_only': True,
+    })]
     assert model_calls == [(str(tmp_path / pin['revision']), {
         'device': 'cpu', 'compute_type': pin['compute_type'], 'cpu_threads': 2,
         'num_workers': 1, 'local_files_only': True,
@@ -76,7 +116,23 @@ def test_recognition_executes_manifest_runtime_and_compute_type(monkeypatch, tmp
 
 
 @pytest.mark.parametrize('full', [False, True])
-def test_coverage_contract_excludes_production_service_acceptance(full):
+def test_coverage_contract_excludes_production_service_acceptance(full, recognition_runtime, monkeypatch, tmp_path):
+    blocked = ('transcription_v2', 'service_endpoints')
+    def production_module(name):
+        return (any(name == prefix or name.startswith(prefix + '.') for prefix in blocked)
+                or name.split('.')[:2] == ['services', 'transcription'])
+
+    class NoProductionImports:
+        def find_spec(self, fullname, path=None, target=None):
+            assert not production_module(fullname), f'Production service imported: {fullname}'
+            assert not any('/services/transcription/' in str(directory) + '/' for directory in path or [])
+
+    for name in list(sys.modules):
+        if production_module(name):
+            monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, 'meta_path', [NoProductionImports(), *sys.meta_path])
+    corpus_recognition.recognize(tmp_path, recognition_runtime[0])
+    assert not any(production_module(name) for name in sys.modules)
     coverage = corpus_recognition.coverage_contract(full=full)
     assert coverage['schema_version'] == 1
     assert ('image_pdf_ocr' in coverage['product_paths']) is full

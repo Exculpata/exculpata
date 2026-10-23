@@ -8015,3 +8015,33 @@ path = "scripts/test-egress-smoke.py"
 kind = "host"
 digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
 detail = "installed-package-control.log"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "client"
+digest = "db760184910167bcc0189fb8e5a948a4fbf34c7f2dd521497dc259b6a6ba4ea8"
+detail = "network import"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "client"
+digest = "eb885c72a4368895d12a0578b3fa615676d22e7bc2746bff3a8f0dd941218c6d"
+detail = "urllib.request.urlretrieve"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "host"
+digest = "dce9ba69237bcd0d3c424e56b4d5126d3d8b35ee1d7d4d60fea7efb71efde92a"
+detail = "raw.githubusercontent.com"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "client"
+digest = "bc86d29c992e7be584866d5f913a3bc9fcf15d1eaf49a3a56bf7b41b0c97045d"
+detail = "network import"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/pipeline.py"
+kind = "client"
+digest = "621ea0ba988aa052dbba51c1b74141fe1f413cb73daab4a69c2141a4c9e09293"
+detail = "huggingface_hub.snapshot_download"

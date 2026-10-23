@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import re
 import sys
+import shlex
+import textwrap
 import tomllib
 
 import yaml
@@ -71,7 +73,61 @@ def source_inventory(root):
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             raise ValueError(f"{relative}:1: symlinked source")
-        tree = ast.parse(path.read_text(), filename=relative)
+        found.extend(python_inventory(relative, path.read_text(), 0))
+    for path in sorted(set(root.glob('.github/workflows/*.yml')) |
+                       set(root.glob('.github/workflows/*.yaml'))):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            raise ValueError(f"{relative}:1: symlinked workflow")
+        document = yaml.compose(path.read_text())
+        def fields(node):
+            return {key.value: value for key, value in node.value}
+        for job in fields(fields(document)['jobs']).values():
+            steps = fields(job).get('steps')
+            for step in steps.value if steps else []:
+                run = fields(step).get('run')
+                if run is not None:
+                    offset = run.start_mark.line + (run.style == '|')
+                    found.extend(workflow_inventory(relative, run.value, offset))
+    return found
+
+
+def workflow_inventory(relative, source, line_offset):
+    """Inspect simple Python heredocs and quoted, single-argument -c commands."""
+    found = []
+    lines = source.splitlines()
+    index = 0
+    while index < len(lines):
+        command = lines[index].strip()
+        heredoc = re.fullmatch(r"python3?\s+-\s*[^<]*<<\s*(['\"]?)(\w+)\1", command)
+        if heredoc:
+            start = index + 1
+            index = start
+            while index < len(lines) and lines[index].strip() != heredoc[2]:
+                index += 1
+            if index == len(lines):
+                raise SyntaxError('unterminated Python heredoc', (relative, line_offset + start, 1, command))
+            found.extend(python_inventory(relative, textwrap.dedent('\n'.join(lines[start:index])),
+                                          line_offset + start))
+        elif re.match(r'python3?\s+-c\b', command):
+            try:
+                arguments = shlex.split(command)
+            except ValueError as exc:
+                raise SyntaxError(str(exc), (relative, line_offset + index + 1, 1, command)) from exc
+            if len(arguments) != 3:
+                raise SyntaxError('unsupported Python command', (relative, line_offset + index + 1, 1, command))
+            found.extend(python_inventory(relative, arguments[2], line_offset + index))
+        elif re.match(r'python3?\s+-(?:\s|$)', command):
+            raise SyntaxError('unsupported Python heredoc', (relative, line_offset + index + 1, 1, command))
+        index += 1
+    return found
+
+
+def python_inventory(relative, source_text, line_offset):
+    found = []
+    try:
+        tree = ast.parse(source_text, filename=relative)
+        ast.increment_lineno(tree, line_offset)
         aliases = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -117,6 +173,9 @@ def source_inventory(root):
                 return resolve(node.value, scope) + "." + node.attr
             if isinstance(node, ast.Call):
                 name = resolve(node.func, scope)
+                module = network_import(node, name)
+                if module:
+                    return module
                 if name.rsplit('.', 1)[-1] in {"Client", "AsyncClient", "Session", "ClientSession", "OAuth", "build_opener", "OpenerDirector", "create_connection"}:
                     return name
                 return ""
@@ -131,6 +190,13 @@ def source_inventory(root):
 
         def networking(name):
             return any(name == module or name.startswith(module + ".") for module in NETWORK_MODULES)
+
+        def network_import(node, callee):
+            if callee in {"importlib.import_module", "__import__"} and node.args:
+                argument = node.args[0]
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str) and networking(argument.value):
+                    return argument.value
+            return ""
 
         # A bounded fixed point also follows aliases assigned after their use.
         for _ in range(12):
@@ -164,8 +230,12 @@ def source_inventory(root):
                          else [str(node.module)])
                 if any(networking(name) for name in names):
                     kind, detail = "client", "network import"
-            elif isinstance(node, ast.Call) and networking(resolve(node.func)):
-                kind, detail = "client", resolve(node.func)
+            elif isinstance(node, ast.Call):
+                name = resolve(node.func)
+                if network_import(node, name):
+                    kind, detail = "client", "network import"
+                elif networking(name):
+                    kind, detail = "client", name
             elif isinstance(node, (ast.Attribute, ast.Name)) and isinstance(node.ctx, ast.Load) and networking(resolve(node)):
                 # Outermost reference only; calls have their own full argument fingerprint.
                 parent = parents.get(node)
@@ -194,6 +264,10 @@ def source_inventory(root):
                         pass
                 for host in sorted(hosts):
                     found.append((relative, node.lineno, "host", fingerprint(node.value), host.lower()))
+    except SyntaxError as exc:
+        exc.lineno += line_offset
+        raise
+
     return found
 
 

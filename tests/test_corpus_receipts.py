@@ -25,6 +25,9 @@ def checkout(tmp_path, *, change_during_run=False, change_corpus_during_run=None
         source.extractall(root, filter='data')
     (root / 'scripts/corpus_check.py').write_text(CHECKER_SOURCE)
     (root / 'scripts/corpus_recognition.py').write_text(RECOGNITION_SOURCE)
+    # fixture-write: Overlay the current corpus pin on the archived synthetic checkout.
+    (root / 'benchmarks/corpus/v1/manifest.json').write_bytes(
+        (ROOT / 'benchmarks/corpus/v1/manifest.json').read_bytes())
     if change_during_run:
         product = root / 'scripts/corpus_product.py'
         product.write_text(product.read_text() + '''

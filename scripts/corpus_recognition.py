@@ -4,10 +4,12 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import re
 from pathlib import Path
 
 
-ASR_FILES = ['config.json', 'model.bin', 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
+ASR_WEIGHTS_FILE = 'model.bin'
+ASR_FILES = ['config.json', ASR_WEIGHTS_FILE, 'preprocessor_config.json', 'tokenizer.json', 'vocabulary.json']
 INDEPENDENT_ASR_ADAPTER = 'faster_whisper.WhisperModel'
 
 
@@ -68,9 +70,19 @@ def recognize(root, manifest):
     for language, digest in models['ocr']['sha256'].items():
         if hashlib.sha256((data_root / (language+'.traineddata')).read_bytes()).hexdigest() != digest:
             raise ValueError('OCR data does not match the pinned corpus revision')
+    if not re.fullmatch(r'[0-9a-f]{40}', pin['revision']):
+        raise ValueError('ASR revision must be an immutable commit')
     model_path = snapshot(pin, offline=True)
     if Path(model_path).name != pin['revision']:
         raise ValueError('ASR snapshot is not the pinned revision')
+    expected_digest = pin.get('sha256', {}).get(ASR_WEIGHTS_FILE)
+    digest = hashlib.sha256()
+    if expected_digest:
+        with (Path(model_path) / ASR_WEIGHTS_FILE).open('rb') as weights:
+            for chunk in iter(lambda: weights.read(1024 * 1024), b''):
+                digest.update(chunk)
+    if not expected_digest or digest.hexdigest() != expected_digest:
+        raise ValueError('ASR model.bin does not match the pinned corpus digest')
     from faster_whisper import WhisperModel
     model = WhisperModel(model_path, device='cpu', compute_type=pin['compute_type'], cpu_threads=2, num_workers=1, local_files_only=True)
     observations, transcripts = {}, {}

