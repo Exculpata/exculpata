@@ -95,3 +95,45 @@ def test_invalid_input_does_not_rewrite_manifest(synthetic_pack):
         assert result.returncode != 0
         assert "missing" in result.stderr
         assert manifest.read_bytes() == original
+
+
+def test_self_verification_rejects_invalid_regenerated_pins(
+    synthetic_pack, monkeypatch, capsys,
+):
+    spec = importlib.util.spec_from_file_location("regenerate_acceptance_pins", SCRIPT)
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    manifest = synthetic_pack / "pack.json"
+    original = manifest.read_bytes()
+    # Corrupt only generation; the real verifier keeps its independent hash helper.
+    monkeypatch.setattr(script, "canonical_sha256", lambda value: "0" * 64)
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "--root", str(synthetic_pack), "--pack", "pack.json",
+    ])
+
+    assert script.main() == 1
+    output = capsys.readouterr()
+    assert "Cannot regenerate acceptance pins" in output.err
+    assert "case fingerprint does not match" in output.err
+    assert manifest.read_bytes() == original
+
+
+def test_regeneration_refuses_symlink_outside_repository(synthetic_pack, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside-repository") / "scenario.json"
+    # fixture-write: synthetic scenario outside the isolated repository boundary.
+    outside.write_text('{"expected": "synthetic"}\n', encoding="utf-8")
+    scenario = synthetic_pack / "scenario.json"
+    scenario.unlink()
+    # fixture-write: synthetic symlink probing resolved-path containment.
+    scenario.symlink_to(outside)
+    manifest = synthetic_pack / "pack.json"
+    original = manifest.read_bytes()
+    outside_original = outside.read_bytes()
+
+    result = run_script(synthetic_pack)
+
+    assert result.returncode == 1
+    assert "Cannot regenerate acceptance pins" in result.stderr
+    assert "not a repository file: scenario.json" in result.stderr
+    assert manifest.read_bytes() == original
+    assert outside.read_bytes() == outside_original
