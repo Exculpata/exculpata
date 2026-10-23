@@ -56,7 +56,7 @@ jobs:
           key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
           restore-keys: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-
       - name: Install publication inspection dependencies
-        timeout-minutes: 6
+        timeout-minutes: 8
         run: |
           python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg
           python -m pip install --disable-pip-version-check 'pypdf>=6,<7'
