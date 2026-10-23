@@ -22,11 +22,16 @@ def application_command(tmp_path):
     command = command.replace('${{ runner.temp }}', str(tmp_path))
     argv = shlex.split(command)
     argv[0] = sys.executable
+    argv[argv.index('-n') + 1] = '1'
+    argv += ['--basetemp', str(tmp_path / 'pt'), '-o', 'tmp_path_retention_policy=failed']
     return argv
 
 
 def run_synthetic(tmp_path, source):
+    # fixture-write: Synthetic pytest source exercises failure and crash reports.
     (tmp_path / 'test_synthetic.py').write_text(source)
+    # fixture-write: Substitute the shard manifest with one synthetic test file.
+    (tmp_path / 'application-test-files.txt').write_text('test_synthetic.py\n')
     env = dict(os.environ)
     # Do not inherit a caller's selection, tracing or plugin configuration.
     env.pop('PYTEST_ADDOPTS', None)
@@ -35,7 +40,7 @@ def run_synthetic(tmp_path, source):
     # Load the distribution and diagnostics plugins explicitly, just as the
     # hosted suite discovers them. Bound this nested synthetic
     # run independently of the outer suite's worker count to avoid oversubscription.
-    env['PYTEST_XDIST_AUTO_NUM_WORKERS'] = '2'
+    env['PYTEST_XDIST_AUTO_NUM_WORKERS'] = '1'
     env['PYTHONPATH'] = str(ROOT)
     command = application_command(tmp_path) + ['-p', 'xdist.plugin', '-p', 'tests.worker_diagnostics']
     return subprocess.run(command, cwd=tmp_path, env=env,
@@ -72,7 +77,7 @@ def test_after_failure():
     diagnostics = tmp_path / 'application-workers'
     assert (diagnostics / 'runner-start.json').is_file()
     exits = [json.loads(path.read_text()) for path in diagnostics.glob('*-exit.json')]
-    assert len(exits) == 2 and not any(row['crashed'] for row in exits)
+    assert len(exits) == 1 and not any(row['crashed'] for row in exits)
 
 
 @pytest.mark.parametrize('phase', ['setup', 'call', 'teardown'])
