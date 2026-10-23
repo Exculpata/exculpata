@@ -56,6 +56,25 @@ def test_warning_is_once_per_name_under_concurrency_and_later_conflict(caplog):
     assert sum("differ" in record.message for record in caplog.records) == 1
 
 
+@pytest.mark.parametrize("suffix", ["OIDC_ISSUER", "OIDC_EGRESS_PINS"])
+@pytest.mark.parametrize("equal", [False, True])
+def test_oidc_alias_reads_refuse_conflicts_without_values(suffix, equal, caplog):
+    current, legacy = f"EXCULPATA_{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
+    source = {current: "synthetic-current", legacy: "synthetic-current" if equal else "synthetic-legacy"}
+    for name in (suffix, current, legacy):
+        for _ in range(2):
+            if equal:
+                assert compat_env.env(name, environ=source) == "synthetic-current"
+            else:
+                with pytest.raises(RuntimeError, match="differ|conflict") as error:
+                    compat_env.env(name, environ=source)
+                assert current in str(error.value) and legacy in str(error.value)
+                assert "synthetic-current" not in str(error.value)
+                assert "synthetic-legacy" not in str(error.value)
+    assert "synthetic-current" not in caplog.text
+    assert "synthetic-legacy" not in caplog.text
+
+
 @pytest.mark.parametrize("suffix", ["Authenticated-User", "Proxy-Secret", "Auth-Diagnostic", "Export", "Playback", "Theme"])
 @pytest.mark.parametrize("mode", ["new-only", "old-only", "both-equal", "both-different"])
 def test_header_alias_selection_is_case_insensitive_and_rejects_conflicts(suffix, mode):
@@ -89,8 +108,13 @@ def test_installer_and_backup_read_saved_aliases_and_update_only_existing_keys(t
     assert installer._gateway_probe_address(installer._dotenv(path)) == "127.0.0.1"
     installer._replace_env(path, f"{LEGACY_ENV_PREFIX}HTTPS_PORT", "7443")
     assert installer._dotenv(path) == {key: "7443" for key in settings}
-    path.write_text(installer._env_text(settings, "Synthetic node", aliases=True))
-    assert installer._dotenv(path) == {"EXCULPATA_HTTPS_PORT": "8443"}
+    if mode == "both-different":
+        with pytest.raises(RuntimeError, match="conflicting values"):
+            installer._env_text(settings, "Synthetic node", aliases=True)
+        assert installer._dotenv(path) == {key: "7443" for key in settings}
+    else:
+        path.write_text(installer._env_text(settings, "Synthetic node", aliases=True))
+        assert installer._dotenv(path) == {"EXCULPATA_HTTPS_PORT": "8443"}
     generated = installer._env_text({f"{LEGACY_ENV_PREFIX}RELEASE_ID": "synthetic-release"}, "Synthetic node", aliases=True)
     assert 'EXCULPATA_RELEASE_ID="synthetic-release"' in generated
     assert f"{LEGACY_ENV_PREFIX}" not in generated

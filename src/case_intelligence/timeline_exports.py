@@ -26,8 +26,9 @@ def safe(value):
 
 def _md_escape(text: str) -> str:
     value = html.escape(_export_presentation_text(text), quote=False)
-    for character in ('\\', '`', '*', '_', '[', ']', '#', '|', '!', '~', '='):
+    for character in ('\\', '`', '*', '_', '[', ']', '(', ')', '#', '|', '!', '~', '='):
         value = value.replace(character, '\\' + character)
+    value = value.replace('—', '&#8212;').replace('·', '&#183;')
     value = re.sub(r'^([-+]|[0-9]{1,9}[.)])',
                    lambda match: match[0][:-1] + '\\' + match[0][-1], value)
     return re.sub(r'^[ \t]+', lambda match: ''.join(f'&#{ord(c)};' for c in match[0]), value)
@@ -75,10 +76,11 @@ def export_timeline(payload, format_name):
                                          '(' + md_inline(record['source_id']) + ')',
                                          '—', md_inline(record['status'])])), '']
     for entry in entries:
-        lines += ['## ' + (md_inline(entry['date_label']) or '(no date label)'),
+        date_label = md_inline(entry['date_label'])
+        lines += ['## Date: ' + date_label if date_label else '## No date label',
                   '', md_block_quoted(entry['description']), '',
                   ' '.join(filter(None, ['Date uncertainty:', md_inline(entry['uncertainty'])])),
-                  ' '.join(filter(None, ['Conflict group:', md_inline(str(entry['conflict_group'] or 'None'))]))]
+                  'Conflict group: ' + (md_inline(entry['conflict_group']) or 'None')]
         for c in entry['citations']:
             lines += ['', ' '.join(filter(None, ['Source:', md_inline(c['source_id']),
                                                 '·', md_inline(c['document_title'])])),

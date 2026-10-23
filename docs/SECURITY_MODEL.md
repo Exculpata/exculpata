@@ -49,6 +49,14 @@ Doctor checks bundled generators from the existing app container namespace;
 external doctor probes run directly on the host and cannot prove app reachability.
 See [model configuration](MODEL_CONFIGURATION.md).
 
+Gateway access logs retain only timestamp, HTTP status, response byte count and
+request duration, including rejected and failed requests. They exclude client
+addresses, methods, paths and matter names, query strings, headers and bodies.
+Request-context nginx error diagnostics are suppressed because they can contain
+request content; startup/process diagnostics remain available, and application
+security audit events are unchanged. This trades request-specific gateway error
+detail for content-free failure accounting.
+
 The publication gate scans both the working tree and available Git history for
 private addresses, personal paths, credential material, secret-shaped literals,
 and operator-supplied internal deny terms. It also inspects extracted PDF

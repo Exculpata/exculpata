@@ -8,11 +8,6 @@ not resolvable from the checkout. No existing node is contacted or modified.
 
 from __future__ import annotations
 
-from case_intelligence.legacy_names import (
-    LEGACY_ENV_PREFIX,
-    LEGACY_STEM,
-)
-
 import argparse
 import os
 from pathlib import Path
@@ -26,6 +21,12 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+
+from case_intelligence.legacy_names import (
+    LEGACY_ENV_PREFIX,
+    LEGACY_STEM,
+    name_value,
+)
 
 
 def _isolate_environment() -> None:
@@ -81,7 +82,10 @@ def main() -> int:
             artifacts = args.artifacts.resolve() if args.artifacts else root / "screenshots"
             artifacts.mkdir(parents=True, exist_ok=True)
             env = os.environ.copy()
-            env.update(EXCULPATA_QA_ORIGIN=f"https://127.0.0.1:{listener.getsockname()[1]}", EXCULPATA_QA_ARTIFACTS=str(artifacts))
+            env.update({
+                name_value("environment", suffix="QA_ORIGIN"): f"https://127.0.0.1:{listener.getsockname()[1]}",
+                name_value("environment", suffix="QA_ARTIFACTS"): str(artifacts),
+            })
             result = subprocess.run(["node", str(ROOT / "scripts/qa-team-groups-browser.cjs")], env=env, cwd=ROOT)
             return result.returncode
         finally:

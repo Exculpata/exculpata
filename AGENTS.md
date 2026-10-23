@@ -47,6 +47,26 @@ A comment that explains a workaround needs a linked issue and an expiry
 (date or explicit removal condition). Delete stale comments; convert missing
 behavioral guarantees into tests or track the remaining work in an issue.
 
+## Agent working practice
+
+Coding agents state a goal and a pass/fail check before starting. Write a
+failing test first where a cheap test exists. Check what else the change could
+break before pushing, and prove the change works against the real artifact
+before calling it done.
+
+Keep each PR to about 500 changed lines or less. Split bigger work into ordered
+small PRs.
+
+The PR author owns the PR to green: fix review findings, CI flakes and stale PR
+body text without waiting to be asked, with one push per round.
+
+After two review rounds, only security, privacy or evidence-integrity findings
+block; move other findings to follow-up issues. The linked review policy remains
+the merge gate.
+
+Merges, pushes to main and ruleset changes need the maintainer's explicit yes.
+Never force-push or use `--no-verify`.
+
 ## Rule enforcement
 
 | Rule | Enforced by |
@@ -57,5 +77,10 @@ behavioral guarantees into tests or track the remaining work in an issue.
 | Supply a synthetic regression and name the failing commit. | Required regression field; the application CI suite runs tests; PR review verifies the historical failure evidence. |
 | Encode intent in implementation; give workaround comments an issue and expiry. | Code review checks intent, workaround relevance and expiry because syntax alone cannot establish them. |
 | Follow the linked coding, publication and validation standards. | `make check-fast`, the installed pre-push publication guard and the linked review policy; review covers public text outside Git. |
+| State a goal and pass/fail check, test first where cheap, assess breakage and verify the real artifact. | PR review checks the goal, regression sequence, affected paths and artifact evidence; document checks cannot establish that the work occurred. |
+| Keep PRs to about 500 changed lines or less; split bigger work into ordered small PRs. | PR review checks diff size and the split order because coherent boundaries require judgment. |
+| The author owns the PR to green, including findings, flakes and current body text, with one push per round. | PR review checks revision history, CI results and body accuracy; repository tests cannot establish author follow-through. |
+| After two review rounds, only security, privacy or evidence-integrity findings block; track other findings in follow-up issues. | Reviewers classify findings and verify follow-up issues under the linked review policy. |
+| Obtain the maintainer's explicit yes for merges, pushes to main and ruleset changes; never force-push or use `--no-verify`. | Maintainer review and repository protections govern authority; review checks actions and hook use beyond repository test visibility. |
 
 Add a row for each new judgment rule; delete its row once the mistake cannot happen.

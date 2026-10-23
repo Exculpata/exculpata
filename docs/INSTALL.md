@@ -42,6 +42,10 @@ served-model id already saved in its environment. Application health reports
 the previous product name.
 
 `./install doctor --root <node-root>` reports the naming generation.
+The [checked rename contract](BRANDING.md#rename-contract) records aliases,
+generation-specific coordinates, and retained container/database identifiers.
+Its generated documentation and QA names are validated in CI; existing nodes
+keep their saved naming generation.
 `--names exculpata` explicitly selects the new generation on a fresh node;
 on a detected legacy node it refuses before changing state. This installer does
 not migrate or rename a node. Do not create a new service account, move state,

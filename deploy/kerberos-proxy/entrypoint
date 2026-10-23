@@ -2,8 +2,14 @@
 set -euo pipefail
 umask 077
 
-server_name="${EXCULPATA_SERVER_NAME:-${RECORDBENCH_SERVER_NAME:-}}"
-expected_principal="${EXCULPATA_KERBEROS_PRINCIPAL:-${RECORDBENCH_KERBEROS_PRINCIPAL:-}}"
+server_name="${EXCULPATA_SERVER_NAME:-}"
+if [[ -z "$server_name" ]]; then
+    server_name="${RECORDBENCH_SERVER_NAME:-}"
+fi
+expected_principal="${EXCULPATA_KERBEROS_PRINCIPAL:-}"
+if [[ -z "$expected_principal" ]]; then
+    expected_principal="${RECORDBENCH_KERBEROS_PRINCIPAL:-}"
+fi
 source_keytab=/run/recordbench-secrets/recordbench.keytab
 source_secret=/run/recordbench-secrets/kerberos-proxy-secret
 runtime=/run/recordbench-auth
