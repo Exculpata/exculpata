@@ -90,6 +90,20 @@ The runner invokes each category independently and emits a content-free JSON
 status report. It does not claim that a configured production model passed; the
 model-specific evaluation record described above remains a separate gate.
 
+After reviewing changes to pack cases, test helpers or fixture bytes, regenerate
+the derived pins rather than editing digests by hand:
+
+```bash
+.venv/bin/python scripts/regenerate-acceptance-pins.py
+.venv/bin/python scripts/regenerate-acceptance-pins.py --check
+```
+
+`--check` exits 1 for stale pins and writes nothing. Write mode updates only
+derived fingerprints and digest maps; it does not infer or change expected
+outcomes. Review the diff and run `tests/test_review_acceptance_pack.py` alongside
+the affected workflow tests. For a separate synthetic pack, use `--root PATH`
+and `--pack RELATIVE_PATH`; all referenced inputs must remain inside that root.
+
 September 8, 2026 test correction: the cross-modal regression now inspects the
 requested written-only question instead of assuming the last generator call
 cannot be a background transcript overview. The corresponding test-node, helper

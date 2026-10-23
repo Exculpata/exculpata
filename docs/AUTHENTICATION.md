@@ -301,6 +301,25 @@ revocation, provider boundaries, migration 0031 and backup/rollback constraints.
 
 ## Compatible HTTP headers
 
+Directory sign-in can pin its trusted request headers with
+`CASE_INTELLIGENCE_KERBEROS_HEADER_FAMILY=current` or `legacy`. Any request header
+from the other `X-Exculpata-*` or legacy family returns HTTP 401 before login,
+diagnostics, health handling or session processing, even if its value is empty
+or matches the accepted copy. Rejected requests do not revoke valid sessions.
+Header names are case-insensitive. An unset setting defaults to `both` for
+existing installations; explicit `both` also preserves the compatibility rules
+below. Any other value, including an empty string, prevents startup.
+
+Only `CASE_INTELLIGENCE_KERBEROS_HEADER_FAMILY` is read; the `EXCULPATA_`
+and `RECORDBENCH_` aliases are ignored, as with the other `KERBEROS` settings.
+
+Before pinning, configure the trusted proxy to strip client-supplied identity,
+proof and diagnostic headers from both families and emit only the selected
+family. The current reference proxy emits both families, so leave the setting
+unset with that template until it supports selecting one family. Installer
+defaults and reference proxy selection are follow-up work in #351. Local and
+OIDC sign-in do not use this setting.
+
 Trusted proxies may send `X-Exculpata-Authenticated-User` and
 `X-Exculpata-Proxy-Secret`, or the existing `X-RecordBench-Authenticated-User`
 and `X-RecordBench-Proxy-Secret`.

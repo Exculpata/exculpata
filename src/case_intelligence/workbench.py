@@ -55,6 +55,7 @@ from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 
 from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
+from .header_policy import header_family_allowed
 from .static_assets import asset_url, static_cache_control
 from .source_cache import SourceCacheLock, source_cache_guard
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
@@ -6546,6 +6547,10 @@ def create_workbench_app(
 
     @app.middleware("http")
     async def identity_boundary(request: Request, call_next):
+        if identity.kerberos_settings is not None and not header_family_allowed(
+            request.headers, identity.kerberos_settings.header_family
+        ):
+            return Response(status_code=401, headers={"Cache-Control": "no-store"})
         if any(header_conflicts(request.headers, name) for name in (KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER)):
             return Response(status_code=401, headers={"Cache-Control": "no-store"})
         if request.url.path == "/internal/auth-mode":
@@ -11579,13 +11584,14 @@ def create_workbench_app(
             ),
         )
         try:
-            result["matter_capacity"] = await run_in_threadpool(
+            capacity = await run_in_threadpool(
                 bench.upload_preflight_capacity_projection,
                 matter,
                 context.principal_id,
                 checkpoint_session_id=checkpoint_session_id,
                 checkpoint_collection_id=checkpoint_collection_id,
             )
+            result = dict(result, matter_capacity=capacity)
         except (OSError, RuntimeError):
             return JSONResponse(
                 {"message": "Matter upload capacity is temporarily unavailable."},
