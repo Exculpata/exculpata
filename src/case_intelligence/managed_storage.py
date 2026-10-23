@@ -6,6 +6,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
     accepts_product,
+    name_value,
 )
 
 import json
@@ -24,8 +25,8 @@ DEFAULT_UPLOAD_SESSION_BYTES = 100 * GIB
 DEFAULT_MEDIA_FILE_BYTES = 100 * GIB
 DEFAULT_DOCUMENT_FILE_BYTES = 512 * MIB
 DEFAULT_STORAGE_RESERVE_BYTES = 100 * GIB
-MARKER_NAME = ".exculpata-managed-storage.json"
-LEGACY_MARKER_NAME = f".{LEGACY_STEM}-managed-storage.json"
+MARKER_NAME = name_value("storage_marker")
+LEGACY_MARKER_NAME = name_value("storage_marker", LEGACY_STEM)
 MARKER_VERSION = 1
 _OWNED_DIRECTORIES = ("matters", ".matter-purging", "ingestion-staging")
 
@@ -265,18 +266,19 @@ class ManagedMatterStorage:
             os.close(descriptor)
 
     def _validate_root(self) -> None:
-        if not self.root.is_absolute() or self.root == Path("/"):
+        root = Path(self.root)
+        if not root.is_absolute() or root == Path("/"):
             raise RuntimeError("the managed storage root must be an exact absolute directory")
-        if self.root.is_symlink() or not self.root.is_dir():
+        if root.is_symlink() or not root.is_dir():
             raise RuntimeError("the managed storage root is unavailable or unsafe")
-        if any(parent.is_symlink() for parent in self.root.parents):
+        if any(parent.is_symlink() for parent in root.parents):
             raise RuntimeError("the managed storage path cannot traverse a symbolic link")
-        if not os.access(self.root, os.R_OK | os.W_OK | os.X_OK):
+        if not os.access(root, os.R_OK | os.W_OK | os.X_OK):
             raise RuntimeError("the managed storage root is not writable")
         if not self.require_marker:
             return
-        markers = [self.root / name for name in (MARKER_NAME, LEGACY_MARKER_NAME)
-                   if (self.root / name).exists() or (self.root / name).is_symlink()]
+        markers = [root / name for name in (MARKER_NAME, LEGACY_MARKER_NAME)
+                   if (root / name).exists() or (root / name).is_symlink()]
         if len(markers) != 1:
             raise RuntimeError("the Exculpata managed storage marker is unavailable or ambiguous")
         marker = markers[0]

@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as temporary:
         token = app.state.workbench.source_store(matter).action_token(document)
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0))
-        print(json.dumps(dict(base='http://127.0.0.1:' + str(listener.getsockname()[1]),
+        print(json.dumps(dict(base=f'http://127.0.0.1:{listener.getsockname()[1]}',
             reader=f'/matters/{matter.slug}/sources/{token}?unit=1&q=gauge&conversation={conversation.conversation_id}',
             matter=f'/matters/{matter.slug}', conversation=conversation.conversation_id, alternate=alternate.conversation_id, save_url=save_url)), flush=True)
         uvicorn.Server(uvicorn.Config(app, lifespan='off', log_level='warning')).run(sockets=[listener])
@@ -84,7 +84,7 @@ const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root
   let release, intercepted;
   const arrived = new Promise(resolve => intercepted = resolve);
   const hold = new Promise(resolve => release = resolve);
-  await page.route('**' + fixture.save_url, async route => {
+  await page.route(`**${fixture.save_url}`, async route => {
     const response = await route.fetch(); intercepted(); await hold;
     await route.fulfill({ response });
   });
@@ -96,12 +96,12 @@ const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root
   assert.equal(await page.locator('#assistant-question').inputValue(), 'New synthetic draft while save is pending.');
   assert.equal(await page.locator('[data-assistant-dock]').getAttribute('data-conversation-id'), '');
   checks.push('Late save response does not replace a new chat or its draft.');
-  await page.unroute('**' + fixture.save_url);
+  await page.unroute(`**${fixture.save_url}`);
   await page.goto(fixture.base + fixture.reader);
   let releaseNavigation, navigationArrived;
   const navigationHold = new Promise(resolve => releaseNavigation = resolve);
   const navigationRequest = new Promise(resolve => navigationArrived = resolve);
-  await page.route('**' + fixture.save_url, async route => {
+  await page.route(`**${fixture.save_url}`, async route => {
     const response = await route.fetch(); navigationArrived(); await navigationHold;
     await route.fulfill({ response }).catch(() => {}); // old page may already be gone
   });
@@ -114,16 +114,16 @@ const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root
   await page.locator('#assistant-question').fill('Draft in the next section.');
   assert.equal(await page.locator('#assistant-question').inputValue(), 'Draft in the next section.');
   checks.push('Navigation to the next source section remains intact while an earlier save is pending.');
-  await page.unroute('**' + fixture.save_url);
+  await page.unroute(`**${fixture.save_url}`);
   await page.goto(fixture.base + fixture.reader);
   const reader = page.url();
-  await page.goto(fixture.base + fixture.matter + '/notebook');
+  await page.goto(`${fixture.base}${fixture.matter}/notebook`);
   // Let the existing saved-chat preference finish replacing the notebook's
   // default chat before testing browser history. A document load alone does
   // not await that independent fragment request.
   await page.locator(`[data-assistant-dock][data-conversation-id="${fixture.conversation}"][data-bound="true"]`).waitFor();
   await page.goBack(); assert.equal(page.url(), reader);
-  await page.goForward(); assert.equal(new URL(page.url()).pathname, fixture.matter + '/notebook');
+  await page.goForward(); assert.equal(new URL(page.url()).pathname, `${fixture.matter}/notebook`);
   await page.locator(`[data-assistant-dock][data-conversation-id="${fixture.conversation}"][data-bound="true"]`).waitFor();
   await page.goBack(); await page.reload();
   await page.locator(`[data-assistant-dock][data-conversation-id="${fixture.conversation}"][data-bound="true"]`).waitFor();
@@ -132,13 +132,13 @@ const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root
   checks.push('Back, Forward and reload retain source navigation and saved-note deduplication.');
   // Transport failures are shown in the originating claim, without navigation.
   for (const status of [403, 409]) {
-    await page.route('**' + fixture.save_url, route => route.fulfill({ status,
+    await page.route(`**${fixture.save_url}`, route => route.fulfill({ status,
       contentType: 'application/json', body: JSON.stringify({ detail: status === 403 ? 'Access unavailable' : 'Source support changed' }) }));
     const state = await snapshot();
     await page.locator('[data-assistant-save-passage]').first().locator('button').click();
     await page.locator('[data-save-passage-status]').filter({ hasText: 'safely try saving again' }).waitFor();
     assert.deepEqual(await snapshot(), state);
-    await page.unroute('**' + fixture.save_url);
+    await page.unroute(`**${fixture.save_url}`);
   }
   checks.push('Lost-access and stale-support responses stay inline; route tests verify the real no-write boundaries.');
   await page.locator('[data-assistant-conversation-picker]').selectOption(fixture.alternate);

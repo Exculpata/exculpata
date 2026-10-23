@@ -190,6 +190,19 @@ def test_workflows_do_not_request_codex_reviews_automatically() -> None:
         assert "@codex" not in path.read_text()
 
 
+def test_rename_contract_is_checked_on_documentation_only_changes() -> None:
+    """The lightweight CI path must not let docs whitelist their own typos."""
+    import subprocess
+    import sys
+
+    for script in ("rename_contract_check.py", "rename_contract_artifacts.py"):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / script)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
 DOCUMENT = ROOT / "docs/IDEAL.md"
 LINK = re.compile(r"\[[^\]]+\]\(([^\s)]+)\)")
 
