@@ -375,6 +375,7 @@ while conflicting authentication headers fail closed.
 | git_config | `recordbench.{suffix}` | `exculpata.{suffix}` | alias |
 | gpu_lock | `/tmp/recordbench-transcription-gpu.lock` | `/tmp/recordbench-transcription-gpu.lock` | retained |
 | header | `X-RecordBench-{suffix}` | `X-Exculpata-{suffix}` | alias |
+| header_prefix_lower | `x-recordbench-` | `x-exculpata-` | alias |
 | host_root | `/srv/recordbench` | `/srv/exculpata` | generation |
 | hostname | `recordbench.example.test` | `exculpata.example.test` | generation |
 | ignored_node_directory | `recordbench-node` | `recordbench-node` | retained |

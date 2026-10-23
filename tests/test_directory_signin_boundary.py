@@ -6,6 +6,7 @@ from starlette.datastructures import Headers
 
 from case_intelligence import compat_env
 from case_intelligence.generation import UnavailableGenerator
+from case_intelligence.header_policy import header_family_allowed
 from case_intelligence.identity import KerberosSettings, SESSION_COOKIE
 from case_intelligence.legacy_names import (
     CURRENT_ENV_PREFIX, CURRENT_HEADER_PREFIX, LEGACY_ENV_PREFIX, LEGACY_HEADER_PREFIX,
@@ -47,15 +48,15 @@ def test_raw_mixed_case_header_is_classified_by_family(family):
     ])
     assert rejected_name in list(headers)
     assert compat_env.header(headers, f"{LEGACY_HEADER_PREFIX}Authenticated-User") == PRINCIPAL
-    assert compat_env.header_family_allowed(headers, "both") is True
-    assert compat_env.header_family_allowed(headers, family) is False
+    assert header_family_allowed(headers, "both") is True
+    assert header_family_allowed(headers, family) is False
 
 
 def test_unknown_family_is_rejected_for_a_valid_header():
     headers = Headers(_headers("current"))
     assert compat_env.header(headers, f"{LEGACY_HEADER_PREFIX}Authenticated-User") == PRINCIPAL
-    assert compat_env.header_family_allowed(headers, "current") is True
-    assert compat_env.header_family_allowed(headers, "unknown") is False
+    assert header_family_allowed(headers, "current") is True
+    assert header_family_allowed(headers, "unknown") is False
 
 
 @pytest.mark.parametrize("prefix", [CURRENT_ENV_PREFIX, LEGACY_ENV_PREFIX])

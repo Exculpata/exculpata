@@ -54,7 +54,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 
-from .compat_env import env, header, header_conflicts, header_family_allowed, kerberos_headers, response_headers
+from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
+from .header_policy import header_family_allowed
 from .static_assets import asset_url, static_cache_control
 from .source_cache import SourceCacheLock, source_cache_guard
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find

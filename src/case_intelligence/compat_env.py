@@ -70,18 +70,6 @@ def header_conflicts(headers: Mapping[str, str], legacy: str) -> bool:
     return new in headers and legacy in headers and headers[new] != headers[legacy]
 
 
-def header_family_allowed(headers: Mapping[str, str], family: str) -> bool:
-    if family == "both":
-        return True
-    if family == "current":
-        rejected_prefix = LEGACY_HEADER_PREFIX
-    elif family == "legacy":
-        rejected_prefix = CURRENT_HEADER_PREFIX
-    else:
-        return False
-    return not any(name.lower().startswith(rejected_prefix.lower()) for name in headers)
-
-
 def header(headers: Mapping[str, str], legacy: str) -> str | None:
     """Accept either header; ambiguous proof never grants authority."""
     if legacy in headers:

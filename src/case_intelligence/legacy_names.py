@@ -30,6 +30,7 @@ NAME_CONTRACTS = MappingProxyType({
     "product": NameContract("RecordBench", "Exculpata", "alias"),
     "environment": NameContract("RECORDBENCH_{suffix}", "EXCULPATA_{suffix}", "alias"),
     "header": NameContract("X-RecordBench-{suffix}", "X-Exculpata-{suffix}", "alias"),
+    "header_prefix_lower": NameContract("x-recordbench-", "x-exculpata-", "alias"),
     "git_config": NameContract("recordbench.{suffix}", "exculpata.{suffix}", "alias"),
     "host_root": NameContract("/srv/recordbench", "/srv/exculpata", "generation"),
     "app_env": NameContract("recordbench.env", "exculpata.env", "generation"),
