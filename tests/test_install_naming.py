@@ -43,6 +43,15 @@ def test_install_and_update_build_proxy_without_changing_model_selection(auth, m
     assert set(installer._build_targets(auth, models)) == expected
 
 
+def _proxy_destinations(oidc=("", ""), generator=("", "")):
+    """Expected egress-proxy environment: one (URL, pins) pair per relay destination."""
+    pairs = {
+        ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): oidc,
+        ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): generator,
+    }
+    return {setting: value for settings, values in pairs.items() for setting, value in zip(settings, values)}
+
+
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
 @pytest.mark.parametrize("auth", ["oidc", "local", "kerberos"])
 def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
@@ -66,7 +75,7 @@ def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
                             env=environment, capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
     proxy = graph["services"]["egress-proxy"]
-    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert proxy["environment"] == _proxy_destinations(oidc=(environment["OIDC_EGRESS_ISSUER"], ""))
     assert not any(key in proxy for key in ("volumes", "secrets", "ports"))
     assert graph["services"]["app"]["environment"]["CASE_INTELLIGENCE_OIDC_CA_FILE"] == "/run/example/ca.pem"
 
@@ -93,7 +102,7 @@ def test_egress_dotenv_matches_compose_literals(tmp_path, mode, issuer):
     app = services["app"]["environment"]
     assert app["CASE_INTELLIGENCE_AUTH_MODE"].strip().lower() == "oidc"
     assert app["CASE_INTELLIGENCE_OIDC_ISSUER"] == env["OIDC_EGRESS_ISSUER"] == "https://issuer.example.test/realm"
-    assert services["egress-proxy"]["environment"] == {"OIDC_ISSUER": env["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert services["egress-proxy"]["environment"] == _proxy_destinations(oidc=(env["OIDC_EGRESS_ISSUER"], ""))
     assert "SYNTHETIC_SECRET" not in env
     assert app["https_proxy"] == "http://egress-proxy:3128"
 
@@ -130,7 +139,8 @@ def test_egress_pins_are_selected_without_sharing_other_environment(tmp_path, au
                             capture_output=True, text=True, check=True)
     proxy = json.loads(result.stdout)["services"]["egress-proxy"]
     assert proxy["environment"]["OIDC_ISSUER_PINS"] == expected
-    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
+    assert set(proxy["environment"]) == set(_proxy_destinations())
+    assert proxy["environment"]["GENERATOR_EGRESS_URL"] == proxy["environment"]["GENERATOR_EGRESS_PINS"] == ""
 
 
 def test_fresh_defaults_and_generated_coordinates(tmp_path):

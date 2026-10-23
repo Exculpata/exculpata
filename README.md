@@ -261,17 +261,30 @@ The application can also call an operator-configured answer service instead of
 the bundled vLLM container. Set `CASE_INTELLIGENCE_GENERATOR_BACKEND` to
 `ollama` or `openai`, `CASE_INTELLIGENCE_GENERATOR_URL` to that service's
 origin, and `CASE_INTELLIGENCE_GENERATOR_MODEL` to a model the service lists.
-`ollama` uses the native `/api/tags` and `/api/chat` contract.
-`openai` uses `/v1/models` and `/v1/chat/completions` with a strict JSON schema.
-There is no Open WebUI adapter, installer flag, or test. Pointing the `openai`
-backend at another product works only when that product implements this exact
-contract; that compatibility is not established here.
-The installer flag `--models none` leaves the backend empty, so answering stays
-unavailable. `--models review` and `--models all` write the bundled vLLM origin
-`http://generator:8000`. No installer flag selects an external server.
-Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator`.
-Loopback is always allowed; any other host must be on that allowlist.
-Limits and the remaining keys are in
+`ollama` uses the native `/api/tags` and `/api/chat` contract, with the answer
+schema in `format`. `openai` uses `/v1/models` and `/v1/chat/completions`.
+llama.cpp and LM Studio use that OpenAI path with the nested
+`response_format.json_schema.schema` form. There is no Open WebUI adapter
+or test. Pointing the `openai` backend at another product works only when
+that product implements this exact contract; that compatibility is not
+established here. The installer can write those
+settings: `--external-generator ollama|llamacpp|lmstudio` with the server
+HTTPS origin (for example `https://answers.example.test:8443`) and model name. A host outside the local network requires
+`--confirm-remote-generator`, because matter text would leave the machine.
+`--models none` without an external server leaves answering unavailable.
+`--models review` and `--models all` still write the bundled vLLM origin
+`http://generator:8000`. Compose defaults
+`CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to `generator` unless the installer
+records the chosen host. External requests use the CONNECT egress relay; private
+RFC1918/ULA destinations require explicit reviewed `--generator-egress-pins`.
+Host loopback servers, including `127.0.0.1:11434`, are unreachable from the
+containerized app. No host-gateway alias is installed. External HTTP URLs and
+generator configuration values containing `$` are rejected.
+Embeddings and reranking stay inside Exculpata. `CASE_REVIEW_MODEL_DEVICE=cpu`
+runs them on CPU. Startup and `doctor` send a small schema check and report
+whether the server enforced it. Answers from a model with no recorded
+claim-evaluation pass are labeled `unvalidated model`. Limits and the remaining
+keys are in
 [model configuration](docs/MODEL_CONFIGURATION.md#existing-answer-endpoints).
 
 ## Hardware planning targets

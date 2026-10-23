@@ -29,8 +29,8 @@ BOUNDARY = ('This receipt lists files supplied by the browser. Empty folders are
 
 
 def portable_receipt(receipt: Mapping) -> dict:
-    allowed = ('collection_name', 'selected_count', 'recorded_count', 'state', 'created_at', 'updated_at', 'counts')
-    result = {key: receipt[key] for key in allowed}
+    allowed = ('collection_name', 'selected_count', 'recorded_count', 'state', 'created_at', 'updated_at', 'counts', 'model_notice')
+    result = {key: receipt[key] for key in allowed if key in receipt}
     result['boundary'] = BOUNDARY
     result['items'] = [{key: value for key, value in row.items()
         if key not in {'document_id', 'catalog_document_id', 'version_id', 'source_url', 'receipt_id'}}
@@ -38,8 +38,12 @@ def portable_receipt(receipt: Mapping) -> dict:
     return result
 
 
-def export_intake_receipt(receipt: Mapping, format_name: str) -> ExportArtifact:
-    portable = portable_receipt(receipt)
+def export_intake_receipt(receipt: Mapping, format_name: str, model_notice: str = "") -> ExportArtifact:
+    stamped = dict(receipt)
+    notice = str(stamped.get("model_notice") or model_notice or "")
+    if notice:
+        stamped["model_notice"] = notice
+    portable = portable_receipt(stamped)
     counts = portable['counts']
     if format_name == 'json':
         body = json.dumps({'schema': f"{LEGACY_STEM}-intake-receipt-v1", **portable}, ensure_ascii=False, indent=2).encode('utf-8')
@@ -48,28 +52,31 @@ def export_intake_receipt(receipt: Mapping, format_name: str) -> ExportArtifact:
         stream = io.StringIO(newline='')
         writer = csv.writer(stream)
         writer.writerow(['Selection', 'Selected files', 'Recorded rows', 'Unrecorded rows', 'Row', 'Relative path or name',
-            'Expected bytes', 'Selection disposition', 'Filename check', 'Received bytes', 'Transfer', 'Availability', 'Reason', 'Reported selection review', 'Filename check reason', 'Processing message'])
+            'Expected bytes', 'Selection disposition', 'Filename check', 'Received bytes', 'Transfer', 'Availability', 'Reason', 'Reported selection review', 'Filename check reason', 'Processing message', 'Model notice'])
         for row in portable['items']:
             writer.writerow([_csv_safe(str(value)) for value in [portable['collection_name'], portable['selected_count'],
                 portable['recorded_count'], counts['unrecorded'], row['ordinal'] + 1,
                 row['relative_path'] or row['display_name'], row['expected_size'] if row['expected_size'] is not None else '',
                 LABELS[row['selection_state']], LABELS[row['preflight_state']], row['received_size'],
                 LABELS[row['transfer_state']], LABELS[row['availability']], row['reviewed_reason'],
-                LABELS[row['reviewed_state']], row['reason'], row.get('upload_message') or '']])
+                LABELS[row['reviewed_state']], row['reason'], row.get('upload_message') or '', portable.get('model_notice', '')]])
         if not portable['items']:
             writer.writerow([_csv_safe(str(value)) for value in [portable['collection_name'], portable['selected_count'],
                 portable['recorded_count'], counts['unrecorded'], '', '', '', '', '', '', '', '',
-                'Selection recording is incomplete. No file rows were recorded. Reselect the same files to finish the receipt.', '', '', '']])
+                'Selection recording is incomplete. No file rows were recorded. Reselect the same files to finish the receipt.', '', '', '', portable.get('model_notice', '')]])
         body = stream.getvalue().encode('utf-8-sig')
         media_type = 'text/csv; charset=utf-8'
     elif format_name == 'markdown':
         def literal(value):
             return str(value).replace('\\', '\\\\').replace('`', '\\`').replace('*', '\\*').replace('_', '\\_').replace('<', '&lt;').replace('>', '&gt;').replace('[', '\\[').replace(']', '\\]').replace('#', '\\#')
-        lines = ['# Selected-file receipt', '', literal(portable['collection_name']), '',
+        lines = ['# Selected-file receipt', '']
+        if portable.get('model_notice'):
+            lines.extend([literal(portable['model_notice']), ''])
+        lines.extend([literal(portable['collection_name']), '',
             f"{counts['selected']} selected · {counts['included']} included in recorded rows · {counts['skipped']} skipped · {counts['unrecorded']} not yet recorded", '',
             f"{counts['received']} received · {counts['partial']} partly received · {counts['not_received']} included files not received", '',
             f"{counts['searchable']} searchable · {counts['processing']} uploading/processing · {counts['playback_only']} playback only · {counts['needs_review']} need review · {counts['failed']} failed/cancelled · {counts['unavailable']} unavailable · {counts['not_started']} not started", '',
-            BOUNDARY, '']
+            BOUNDARY, ''])
         for row in portable['items']:
             lines.extend([f"## {row['ordinal'] + 1}. {literal(row['relative_path'] or row['display_name'])}", '',
                 f"{LABELS[row['selection_state']]} · Reported selection review: {LABELS[row['reviewed_state']]} · Filename check: {LABELS[row['preflight_state']]} · {LABELS[row['transfer_state']]} · {LABELS[row['availability']]}", '',

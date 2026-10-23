@@ -61,6 +61,26 @@ from case_intelligence.legacy_names import (
     accepts_product,
     name_value,
 )
+from case_intelligence.external_generator import (
+    REMOTE_CONFIRMATION,
+    EndpointRejected,
+    GeneratorEndpoint,
+    environment_values as _external_environment_values,
+    parse_generator_endpoint,
+    require_local_or_confirmed,
+)
+from case_intelligence.embedding_index import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
+    embedding_change_warning,
+    load_embedding_index,
+)
+from case_intelligence.generator_schema import SchemaProbe, probe_schema_enforcement, _urllib_transport
+from case_intelligence.generator_config import (
+    bundled_generator, generator_literal, generator_pins, validate_generator_url,
+)
+from generator_host_probe import open_host_generator_request
+from case_intelligence.hardware_profile import detect_hardware, suggest_tier
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
 STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
@@ -217,7 +237,7 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     # Compose must report). Unrelated shell values were removed above.
     config = Path(_env(f"{LEGACY_ENV_PREFIX}CONFIG_ROOT", "", environ=saved))
     result = dict(result, **{name_value("environment", suffix="APP_ENV_FILE"): _selected_app_env(config, saved).name})
-    # Share only the issuer with the relay. Never give it the application's
+    # Share only destination URLs and pins. Never give the relay the application's
     # env_file, CA, client secret or secrets mount; TLS stays end-to-end.
     selected = _selected_app_env(config, saved)
     application = _dotenv(selected, literal_keys={
@@ -232,6 +252,22 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         application.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
         if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     ))
+    generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
+    pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
+    try:
+        if generator:
+            generator = validate_generator_url(generator.strip())
+        if generator and not bundled_generator(generator):
+            generator_pins(pins, generator)
+            result["GENERATOR_EGRESS_URL"] = generator
+            result["GENERATOR_EGRESS_PINS"] = pins
+        else:
+            if pins:
+                raise RuntimeError("Generator pins require an external HTTPS URL")
+            result["GENERATOR_EGRESS_URL"] = ""
+            result["GENERATOR_EGRESS_PINS"] = ""
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid saved generator egress configuration: {exc}") from exc
     return result
 
 
@@ -360,6 +396,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-account-management", action="store_true", help="enable browser account changes for an explicit --auth local installation")
     parser.add_argument("--models", choices=("none", "review", "transcription", "all"), default=None)
     parser.add_argument(
+        "--external-generator",
+        choices=("ollama", "llamacpp", "lmstudio"),
+        help="use an Ollama, llama.cpp, or LM Studio server instead of the bundled generator",
+    )
+    parser.add_argument("--generator-egress-pins", default="", help="reviewed exact address pins as JSON with issuer (generator URL) and addresses")
+    parser.add_argument("--external-generator-url", help="HTTPS origin of that server, without /v1 or /api/chat; host loopback is unreachable from the app")
+    parser.add_argument("--external-generator-model", help="model name the server lists; nothing is downloaded")
+    parser.add_argument("--external-generator-api-key-stdin", action="store_true",
+                        help="read an optional API key from stdin; it is stored only in the node secrets directory")
+    parser.add_argument("--confirm-remote-generator", action="store_true",
+                        help="allow an answer server outside the local network to receive matter text")
+    parser.add_argument(
         "--gpu-layout",
         choices=("auto", "shared", "split"),
         default="auto",
@@ -439,6 +487,144 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--delete-data", action="store_true",
                         help="uninstall also removes this node's volumes, namespace images, and node data")
     return parser
+
+
+def _hardware_suggestion() -> object:
+    try:
+        return suggest_tier(detect_hardware())
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return suggest_tier(detect_hardware(cpu_count=None, meminfo=None, system="Linux", machine="x86_64"))
+
+
+def _print_hardware_suggestion(console: Console) -> None:
+    suggestion = _hardware_suggestion()
+    for line in suggestion.lines():
+        if suggestion.fallback and line.startswith("hardware detection"):
+            console.warn(line)
+        else:
+            console.note(line)
+
+
+def _external_from_args(args: argparse.Namespace) -> GeneratorEndpoint | None:
+    server = getattr(args, "external_generator", None)
+    url = getattr(args, "external_generator_url", None)
+    model = getattr(args, "external_generator_model", None)
+    if not any((server, url, model)):
+        return None
+    if not server or not url or not model:
+        raise RuntimeError(
+            "An external answer server needs --external-generator, --external-generator-url, "
+            "and --external-generator-model together. Enter the server origin and the model "
+            "name it lists. Nothing is downloaded."
+        )
+    if args.models in {"review", "all"}:
+        raise RuntimeError(
+            "The review and all profiles start the bundled generator. "
+            "Use --models none or --models transcription with your own answer server."
+        )
+    try:
+        endpoint = require_local_or_confirmed(parse_generator_endpoint(
+            server, url, model, remote_confirmed=bool(args.confirm_remote_generator),
+        ))
+        pins = generator_pins(getattr(args, "generator_egress_pins", ""), endpoint.url)
+        if endpoint.local_network and not pins:
+            raise ValueError("Private answer servers require explicit reviewed --generator-egress-pins.")
+        return endpoint
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
+def _collect_external_generator(console: Console, args: argparse.Namespace) -> GeneratorEndpoint | None:
+    """Ask for a local answer server. Invalid answers are asked again."""
+
+    if args.models in {"review", "all"}:
+        if args.external_generator:
+            raise RuntimeError(
+                "The review and all profiles start the bundled generator. "
+                "Use --models none or --models transcription with your own answer server."
+            )
+        return None
+    if args.non_interactive or args.external_generator or args.external_generator_url or args.external_generator_model:
+        return _external_from_args(args)
+    print("Answer generation can use your Ollama, llama.cpp, or LM Studio server.")
+    print("Nothing is downloaded. Embeddings and reranking stay inside Exculpata.")
+    choice = _choose(
+        "Use my Ollama / llama.cpp server / LM Studio at a URL",
+        ("no", "yes"),
+        "no",
+        non_interactive=False,
+    )
+    if choice != "yes":
+        return None
+    while True:
+        server = _choose("Answer server", ("ollama", "llamacpp", "lmstudio"), "ollama", non_interactive=False)
+        url = input("Server HTTPS URL (origin only; host loopback is unreachable from the app): ").strip()
+        model = input("Model name the server lists: ").strip()
+        try:
+            endpoint = parse_generator_endpoint(server, url, model, remote_confirmed=False)
+        except EndpointRejected as exc:
+            print(str(exc))
+            continue
+        if not endpoint.local_network:
+            try:
+                require_local_or_confirmed(parse_generator_endpoint(
+                    server, endpoint.url, model, remote_confirmed=True,
+                ))
+            except EndpointRejected as exc:
+                print(str(exc))
+                continue
+            print(REMOTE_CONFIRMATION)
+            if input("Type yes to send matter text to this host: ").strip() != "yes":
+                print("That host was not confirmed. Enter a different URL.")
+                continue
+            endpoint = require_local_or_confirmed(parse_generator_endpoint(
+                server, endpoint.url, model, remote_confirmed=True,
+            ))
+        if endpoint.local_network and not getattr(args, "generator_egress_pins", ""):
+            args.generator_egress_pins = input("Reviewed private address pins (JSON with issuer URL and addresses): ").strip()
+        try:
+            pins = generator_pins(args.generator_egress_pins, endpoint.url)
+            if endpoint.local_network and not pins:
+                raise ValueError("Private answer servers require explicit reviewed generator egress pins.")
+        except ValueError as exc:
+            print(str(exc))
+            args.generator_egress_pins = ""
+            continue
+        args.external_generator = endpoint.server
+        args.external_generator_url = endpoint.url
+        args.external_generator_model = endpoint.model
+        args.confirm_remote_generator = endpoint.remote_confirmed
+        console.note(
+            f"external generator :: {endpoint.server} {endpoint.model} at {endpoint.url}"
+        )
+        return endpoint
+
+
+def _apply_external_generator(
+    args: argparse.Namespace,
+    app_values: dict[str, object],
+    compose_values: dict[str, object],
+    paths: Mapping[str, Path],
+) -> GeneratorEndpoint | None:
+    endpoint = _external_from_args(args)
+    if endpoint is None:
+        return None
+    api_key_file = ""
+    secret_path = paths["secrets"] / "generator-api-key"
+    if args.external_generator_api_key_stdin and not args.dry_run:
+        secret = sys.stdin.readline(4097)
+        if not secret.strip() or len(secret) > 4096:
+            raise RuntimeError("The generator API key is missing or too long. Enter it on one line.")
+        _private_write(secret_path, secret if secret.endswith("\n") else secret + "\n")
+        api_key_file = f"{CONTAINER_SECRETS}/generator-api-key"
+    elif secret_path.is_file():
+        api_key_file = f"{CONTAINER_SECRETS}/generator-api-key"
+    values = _external_environment_values(endpoint, api_key_file=api_key_file)
+    app_values.update(values)
+    compose_values["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
+    app_values["CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS"] = getattr(args, "generator_egress_pins", "")
+    app_values["CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"] = "1" if endpoint.remote_confirmed else "0"
+    return endpoint
 
 
 def _ask(prompt: str, default: str, *, non_interactive: bool) -> str:
@@ -920,6 +1106,13 @@ def _secret(path: Path, size: int = 48) -> str:
     return value
 
 
+def _generator_literal(key, value):
+    try:
+        generator_literal(key, value)
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
 def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = False) -> str:
     values = dict(values)
     if aliases:
@@ -940,6 +1133,7 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
     for key, value in values.items():
         if re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None:
             raise RuntimeError("generated environment key is invalid")
+        _generator_literal(key, value)
         encoded = str(value)
         if any(character in encoded for character in ("\x00", "\r", "\n")):
             raise RuntimeError(f"generated environment value is invalid: {key}")
@@ -995,6 +1189,7 @@ def _dotenv(path: Path, *, literal_keys: set[str] | None = None) -> dict[str, st
             raise RuntimeError(error)
         if key in (literal_keys or ()) and "$" in value:
             raise RuntimeError(f"unsupported node environment interpolation on line {number}; write the resolved auth/issuer literal (see docs/NETWORK_EGRESS.md)")
+        _generator_literal(key, value)
         values[key] = value
     return values
 
@@ -1602,10 +1797,10 @@ class PreflightResult:
                 "checks": [asdict(check) for check in self.checks]}
 
 
-def _probe(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+def _probe(command: Sequence[str], *, timeout: int = 20) -> subprocess.CompletedProcess[str]:
     # Diagnostic commands never print arbitrary runtime output (which may contain
     # operator topology) and cannot hang an unattended first-run check forever.
-    return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=20, check=False)
+    return subprocess.run(command, env=_compose_environment(command), capture_output=True, text=True, timeout=timeout, check=False)
 
 
 def _docker_engine_meets_floor() -> bool:
@@ -2955,6 +3150,7 @@ def _configure(
     gpu_devices: tuple[GpuDevice, ...],
 ) -> tuple[str, str, str, str | None, str | None]:
     console.phase(4, "IDENTITY + FRONT DOOR", "Sealing sessions, service credentials, and HTTPS coordinates")
+    _print_hardware_suggestion(console)
     names = _select_names(args, root)
     product = "Exculpata" if names == "exculpata" else f"{LEGACY_PRODUCT}"
     auth = args.auth
@@ -3198,6 +3394,12 @@ def _configure(
         "HF_DATASETS_OFFLINE": 1,
         "PYANNOTE_METRICS_ENABLED": 0,
     }
+    external = _apply_external_generator(args, app_values, compose_values, paths)
+    if external is not None:
+        console.ok(f"external generator :: {external.server} {external.model} at {external.url}")
+        console.note("Embeddings and reranking stay inside Exculpata. Nothing was downloaded.")
+        if not external.local_network:
+            console.warn("Matter text will be sent to a host outside the local network")
     if not args.dry_run:
         compose_path = root / "compose.env"
         if compose_path.exists():
@@ -3244,6 +3446,15 @@ def _configure(
                         ),
                     },
                     "review_model_profile": review_model.profile,
+                    **(
+                        {"external_generator": {
+                            "server": external.server,
+                            "url": external.url,
+                            "model": external.model,
+                            "host": external.host,
+                            "remote_confirmed": external.remote_confirmed,
+                        }} if external is not None else {}
+                    ),
                     "server_name": server_name,
                     "profiles": profile_values,
                 },
@@ -3293,6 +3504,7 @@ def hashlib_short(path: Path) -> str:
 
 
 def _replace_env(path: Path, key: str, value: str, *, add_missing_aliases: bool = False) -> None:
+    _generator_literal(key, value)
     original = path.read_bytes().decode("utf-8")
     saved = _dotenv(path)
     keys = {key}
@@ -3878,6 +4090,106 @@ def _wait_health(console: Console, root: Path, *, rollback: bool = False) -> Non
     raise RuntimeError(f"node did not reach health before timeout ({last}). {_startup_remedy(root)}")
 
 
+def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
+    _print_hardware_suggestion(console)
+    app_env = _dotenv(_app_env(root))
+    compose_env = _dotenv(root / "compose.env")
+    backend = app_env.get("CASE_INTELLIGENCE_GENERATOR_BACKEND", "").strip()
+    if not backend:
+        console.note("answer server :: not configured")
+        return
+    server = app_env.get("CASE_INTELLIGENCE_GENERATOR_SERVER", "").strip() or (
+        "ollama" if backend == "ollama" else "vllm"
+    )
+    url = app_env.get("CASE_INTELLIGENCE_GENERATOR_URL", "").strip()
+    model = app_env.get("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
+    console.note(f"answer server :: {server} {model} at {url}")
+    device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
+    console.note(f"embed and rerank :: in-process Granite and ModernBERT; device {device}")
+    embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
+    revision = compose_env.get(name_value("environment", suffix="EMBEDDING_REVISION")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_REVISION")) or DEFAULT_EMBEDDING_REVISION
+    index_warning = embedding_change_warning(
+        load_embedding_index(root / "state" / ("embedding-index" + ".json")),
+        model=embedding,
+        revision=revision,
+    )
+    if index_warning:
+        console.warn(index_warning)
+    if dry_run:
+        console.note("Dry run: the schema check was not sent")
+        return
+    hosts = (
+        compose_env.get(name_value("environment", suffix="GENERATOR_ALLOWED_HOSTS"))
+        or compose_env.get(name_value("environment", LEGACY_STEM, suffix="GENERATOR_ALLOWED_HOSTS"))
+        or app_env.get("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
+        or "generator"
+    )
+    previous = os.environ.get("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
+    os.environ["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] = hosts
+    try:
+        from case_intelligence.service_endpoints import validate_service_endpoint
+
+        validate_generator_url(url)
+        validate_service_endpoint(
+            url,
+            environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS",
+            label="generator endpoint",
+        )
+    except ValueError as exc:
+        console.warn(f"schema enforcement :: not checked; {exc}")
+        return
+    finally:
+        if previous is None:
+            os.environ.pop("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", None)
+        else:
+            os.environ["CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS"] = previous
+    if urllib.parse.urlparse(url).hostname == "generator":
+        _doctor_bundled_generator(console, root)
+        return
+    headers: dict[str, str] = {}
+    token = app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY", "")
+    if not token and app_env.get("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE"):
+        key_path = root / "secrets" / "generator-api-key"
+        try:
+            token = key_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            console.warn("schema enforcement :: not checked; the generator API key file is unreadable")
+            return
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    consent_key = "CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED"
+    previous_consent = os.environ.get(consent_key)
+    os.environ[consent_key] = app_env.get(consent_key, "0")
+    try:
+        result = probe_schema_enforcement(url, server, model, headers=headers, timeout=15,
+                                          transport=_urllib_transport(15, open_request=open_host_generator_request))
+    finally:
+        if previous_consent is None:
+            os.environ.pop(consent_key, None)
+        else:
+            os.environ[consent_key] = previous_consent
+    console.note(f"schema enforcement :: {result.label}")
+    console.note(result.detail)
+    if result.fix:
+        console.warn(result.fix)
+
+
+def _doctor_bundled_generator(console: Console, root: Path) -> None:
+    command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
+    try:
+        response = _probe(command, timeout=55)
+        if response.returncode or len(response.stdout) > 4096:
+            raise ValueError("schema probe unavailable")
+        result = SchemaProbe(**json.loads(response.stdout))
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        console.warn("schema enforcement :: not checked; the application network probe is unavailable")
+        return
+    console.note(f"schema enforcement :: {result.label}")
+    console.note(result.detail)
+    if result.fix:
+        console.warn(result.fix)
+
+
 def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
     console.phase(1, "NODE DIAGNOSTIC", "Checking configuration, permissions, Compose graph, and live health")
     console.ok(f"naming generation :: {_node_names(root)}")
@@ -3906,6 +4218,7 @@ def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
         _wait_health(console, root)
     else:
         console.note("Dry run: installed package protection, running authentication mode, DNS boundary and live health are not verified")
+    _doctor_generator(console, root, dry_run=args.dry_run)
     if not args.dry_run:
         installation, _ = _installed_release(root)
         _record_prepared_phases(root, installation)
@@ -3992,6 +4305,19 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
     args.storage_root = _existing_storage_path(Path(storage))
     args.resume = True
     args.auth, args.models = auth, models
+    external = installation.get("external_generator")
+    if external is not None:
+        if not isinstance(external, dict):
+            raise RuntimeError("installed external generator record is invalid")
+        server, url, model_name = external.get("server"), external.get("url"), external.get("model")
+        if not isinstance(server, str) or not isinstance(url, str) or not isinstance(model_name, str):
+            raise RuntimeError("installed external generator record is invalid")
+        args.external_generator = server
+        args.external_generator_url = url
+        args.external_generator_model = model_name
+        args.confirm_remote_generator = bool(external.get("remote_confirmed"))
+        args.generator_egress_pins = app_env.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
+        _external_from_args(args)
     args.enable_account_management = account_management
     paths = _paths(root, args.storage_root)
     mount_keys = {"config": "CONFIG", "secrets": "SECRETS", "runtime": "RUNTIME",
@@ -4359,7 +4685,7 @@ def _update(console: Console, args: argparse.Namespace, root: Path) -> None:
         rollback_error: Exception | None = None
         if not args.dry_run:
             try:
-                _atomic_private_write(root / "compose.env", old_compose_text)
+                _atomic_private_write(root / ("compose" + ".env"), old_compose_text)
                 _atomic_private_write(root / "installation.json", old_installation_text)
                 _atomic_private_write(app_path, old_app_text)
                 _atomic_private_write(root / "config" / "transcription.env", old_transcription_text)
@@ -4750,13 +5076,17 @@ def main() -> int:
             _resume_node(console, args, root)
             _handoff(console, root, dry_run=args.dry_run)
             return 0
-        if args.models is None:
+        choose_models = args.models is None
+        if choose_models:
+            _print_hardware_suggestion(console)
             args.models = _choose(
                 "Capability profile",
                 ("none", "review", "transcription", "all"),
                 "none",
                 non_interactive=args.non_interactive,
             )
+        if choose_models or any((args.external_generator, args.external_generator_url, args.external_generator_model)):
+            _collect_external_generator(console, args)
         models = args.models
         if args.storage_root is None and not args.non_interactive:
             args.storage_root = Path(

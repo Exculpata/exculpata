@@ -29,6 +29,26 @@ OIDC, and Kerberos modes require secure cookies and trusted TLS. Real secrets
 are file-backed and excluded from Git. The installer never prints or retains a
 Hugging Face token.
 
+Operator-supplied answer servers are an explicit exception to local model
+processing. Their configured hostname must be on the exact generator allowlist;
+destinations outside RFC1918 and IPv6 ULA additionally require saved
+remote consent. Questions, matter text and cited passages can then leave the
+installation for that server. Consent is installation-wide, not a per-matter
+policy or a claim about the server's retention. Operators must account for that
+disclosure before enabling the option. The default private Compose services and
+offline workers keep their existing boundaries.
+
+External generator traffic uses HTTPS through the constrained CONNECT relay.
+The relay resolves and validates every DNS answer and dials only approved numeric
+addresses. RFC1918/ULA destinations need reviewed exact pins. Metadata, loopback,
+link-local, multicast, unspecified, reserved and transition addresses remain denied.
+The app retains consent, exact-host and destination checks; TLS hostname verification
+stays end to end and redirects are refused. Ambient proxies cannot bypass the relay.
+Only the bundled internal generator uses HTTP and the companion transport.
+Doctor checks bundled generators from the existing app container namespace;
+external doctor probes run directly on the host and cannot prove app reachability.
+See [model configuration](MODEL_CONFIGURATION.md).
+
 Gateway access logs retain only timestamp, HTTP status, response byte count and
 request duration, including rejected and failed requests. They exclude client
 addresses, methods, paths and matter names, query strings, headers and bodies.

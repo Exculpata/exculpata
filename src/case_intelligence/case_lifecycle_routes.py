@@ -83,6 +83,8 @@ def register_case_lifecycle_routes(app, *, bench, identity, templates, auth_cont
                 'confirmation': confirmation,
                 'download_complete': bool(exit_record and bench.workspace.case_lifecycle.downloads.receipt(
                     exit_record, context.principal_id)),
+                'download_notice': bench.workspace.case_lifecycle.downloads.visible_note(
+                    str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or "")),
                 'active_work': bench.matter_active_work_counts(matter.matter_id),
                 'busy': any(bench.matter_active_work_counts(matter.matter_id).values()),
                 'conversation_count': max(counts['conversations'], lifecycle.conversation_count),

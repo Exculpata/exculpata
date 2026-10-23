@@ -190,8 +190,15 @@ after the job finishes. This contract does not delay ordinary source viewing.
 
 Model workers have no published ports and run on an internal Docker network.
 The transcription worker has no network namespace at runtime. The app may need
-egress only for a configured OIDC provider. Companion-service URLs require an
-exact operator allowlist.
+egress for a configured OIDC provider or an explicitly confirmed external answer
+server. Companion-service URLs require an exact operator host allowlist. BYOM
+remote consent permits questions, matter text and selected passages to leave the
+installation for that configured server; it does not alter the Compose networks
+or publish worker ports. Generator requests validate every resolved destination,
+connect to those vetted numeric addresses, preserve TLS hostname verification,
+disable environment proxies and refuse redirects. Metadata, link-local,
+multicast and unspecified destinations remain blocked even with consent. See
+[model configuration](MODEL_CONFIGURATION.md) and the [security model](SECURITY_MODEL.md).
 
 Matter storage is configurable and may be a dedicated host-mounted NAS path.
 Matter bytes stay until an owner or administrator closes the matter and

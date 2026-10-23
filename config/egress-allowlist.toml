@@ -7517,6 +7517,37 @@ kind = "host"
 digest = "18aedd26acf92baed120db3fc1497bdbc1951ac87f9f387a6e42c4a2d6545016"
 detail = "issuer.example.test:8443"
 
+# Synthetic generator endpoint, TLS name and pin-mismatch diagnostic in the live smoke.
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "a26f06635fe3406de897c9abba5d6aef2dbc9b84d43271a6083b9bd46c808fca"
+detail = "generator.example.test:8443"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "78c896ead16bec395153b9601a598a17e56bf8084602e316d5b6be441656fd8b"
+detail = "generator-pin-mismatch-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
+detail = "generator.example.test"
+
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
@@ -7890,6 +7921,188 @@ path = "scripts/test-egress-smoke.py"
 kind = "host"
 digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
 detail = "installed-package-control.log"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "2e77691141355fddbb88333dd18df59494206660759c6f41f857cc09fca661fb"
+detail = "urllib.request.HTTPRedirectHandler"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "0834bf0b762420b34fde77b52cca1fe771c48760b4e94f6b2ddf4aa7ddfc024e"
+detail = "urllib.request.HTTPHandler"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "53575bc81448481f0b431768f4699c193e787214b01d203aaaa568878d98301c"
+detail = "urllib.request.HTTPSHandler"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "ad64ef8fdd998c8fa07b6a8e545c083f4a4cb6472ab866a27d208ae790450320"
+detail = "urllib.request.build_opener"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "17174468bc587aab506d881393be3c6c4ba3aa4f0a5be6458b29d4248d7c40c9"
+detail = "urllib.request.build_opener.open"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "83925823e6851046a397331d8a5d5fb80ebb92d4ff6d0402c55ebc41e29546a2"
+detail = "urllib.request.ProxyHandler"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "a64fed7fe9584f88161386c5a14b074dde202cc6cde9c58309804c8b5d58ea2e"
+detail = "socket.socket"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "c7f225500e407b706c2c3b738339c43dc6513f4450523f4821e5136f11ce38a3"
+detail = "socket.AF_INET6"
+
+# Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
+[[source]]
+path = "scripts/generator_host_probe.py"
+kind = "client"
+digest = "01ba5e5def7040c341114755842f4c321e886a76abf6c6b37d84e226f0bc2694"
+detail = "socket.AF_INET"
+
+# Host-side installer/doctor DNS checks for consent and destination denial; app external transport delegates DNS to the constrained relay.
+[[source]]
+path = "src/case_intelligence/external_generator.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+# Host-side installer/doctor DNS checks for consent and destination denial; app external transport delegates DNS to the constrained relay.
+[[source]]
+path = "src/case_intelligence/external_generator.py"
+kind = "client"
+digest = "faf3482a3f96d427e175feff69d694d5a220d0a4ecb8b3b3e56981a8fe17c1a5"
+detail = "socket.getaddrinfo"
+
+# Host-side installer/doctor DNS checks for consent and destination denial; app external transport delegates DNS to the constrained relay.
+[[source]]
+path = "src/case_intelligence/external_generator.py"
+kind = "client"
+digest = "c81bd752354dc3c2805e557355ca35803a58d5f9e3b38f1c57df2604161aaa63"
+detail = "socket.SOCK_STREAM"
+
+# Bounded synthetic schema probe; bundled requests use the exact companion allowlist, external requests use generator_transport CONNECT.
+[[source]]
+path = "src/case_intelligence/generator_schema.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+# Bounded synthetic schema probe; bundled requests use the exact companion allowlist, external requests use generator_transport CONNECT.
+[[source]]
+path = "src/case_intelligence/generator_schema.py"
+kind = "client"
+digest = "880487fe304f1f91d7a466c73cc92e134a0112c6dded5bf045d8795a0c421adc"
+detail = "urllib.request.Request"
+
+# Bounded synthetic schema probe; bundled requests use the exact companion allowlist, external requests use generator_transport CONNECT.
+[[source]]
+path = "src/case_intelligence/generator_schema.py"
+kind = "client"
+digest = "cec81f1437d889ca337bb5bc361375ec188522bf774eaf0611296a4c0ac0b994"
+detail = "service_endpoints.open_service_request"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "2e77691141355fddbb88333dd18df59494206660759c6f41f857cc09fca661fb"
+detail = "urllib.request.HTTPRedirectHandler"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "2a9a3b37659057326026457cb7b4c235af50cbd72e62820350a317a4213ad2a3"
+detail = "urllib.request.HTTPSHandler"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "e61c0109b85b5cd71874366fb64e323ec4a489d65b479263be12254943a85f6e"
+detail = "urllib.request.build_opener"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "27e8788bc250c123f0e3e567b2415d77ecd599038cd610fdd8edbbdc4d413b90"
+detail = "urllib.request.build_opener.open"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "f06a766810df95daa6f8e34e6714ea6ae934d6e46c8537b93baf762178b6e550"
+detail = "urllib.request.ProxyHandler"
+
+# External HTTPS client: explicit relay connection and CONNECT, verified target TLS identity, exact host and consent/pin validation, no redirects or ambient proxy bypass.
+[[source]]
+path = "src/case_intelligence/generator_transport.py"
+kind = "client"
+digest = "49cb073942b4775ea59005f9a2bac4636468332c7d2045f320d834fea07d1c04"
+detail = "http.client.HTTPSConnection"
 
 [[source]]
 path = "scripts/rename_contract_check.py"

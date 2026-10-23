@@ -14,7 +14,7 @@ Accuracy and resource requirements depend on the selected models and inputs.
 
 | Component | Existing integration | Current limit |
 |---|---|---|
-| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. It does not select an external server. A compatible-looking API is not automatically qualified. |
+| Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. `--external-generator` with `--models none` or `--models transcription` points at an operator server. A compatible-looking API is not automatically qualified. |
 | Embeddings | `CASE_REVIEW_EMBEDDING_MODEL` and `CASE_REVIEW_EMBEDDING_REVISION` configure the SentenceTransformer worker | Local files are required; remote model code is disabled. Embedding dimensions, index compatibility and reindexing must be checked before changing a populated deployment. |
 | Reranking | `CASE_REVIEW_RERANKER_MODEL` and `CASE_REVIEW_RERANKER_REVISION` configure the CrossEncoder worker | Local files are required; remote model code is disabled. Ranking/output behavior still needs evaluation. |
 | Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
@@ -42,13 +42,14 @@ not. The two configured backends are:
 
 | Backend | Contract the code calls | Required settings |
 |---|---|---|
-| `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` ([lines 536–576](../src/case_intelligence/generation.py)) | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL` |
-| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with `response_format.type` `json_schema` and `strict` true ([lines 642–696](../src/case_intelligence/generation.py)) | The same URL and model keys. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY` sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` sends `chat_template_kwargs.enable_thinking` false. |
+| `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL`. Set `CASE_INTELLIGENCE_GENERATOR_SERVER=ollama`. |
+| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` sends `chat_template_kwargs.enable_thinking` false. |
 
 `{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
 The URL is an origin or path prefix. It is not a URL that already ends in
-`/v1/chat/completions` or `/api/chat`. The host must be loopback
-(`127.0.0.1`, `localhost`, or `::1`) or an exact name in
+`/v1/chat/completions` or `/api/chat`. External endpoints must use HTTPS,
+for example `https://answers.example.test:8443`. Only the bundled
+`http://generator:8000` endpoint permits HTTP. The host must be an exact name in
 `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS`
 ([`src/case_intelligence/service_endpoints.py`](../src/case_intelligence/service_endpoints.py),
 lines 16–49 and 53–77). Usernames, passwords, queries, and fragments are
@@ -65,24 +66,143 @@ lines 14–17:
 - A response larger than 1 MiB is rejected.
 - Question drafting uses `CASE_INTELLIGENCE_GENERATOR_QUESTION_PROFILE` and is a separate policy. See [question drafts](QUESTION_DRAFTS.md).
 
-The bundled installer does not point this client at an existing server.
+The bundled installer can point this client at an existing server.
 [`scripts/exculpata_install.py`](../scripts/exculpata_install.py) accepts
-`--models none|review|transcription|all` (line 265). `none` writes an empty
-backend. `review` and `all` write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
+`--models none|review|transcription|all`. `none` writes an empty backend unless
+`--external-generator ollama|llamacpp|lmstudio` is set with
+`--external-generator-url` and `--external-generator-model`. `review` and `all`
+write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
-name, thinking disabled, and a 180-second timeout (lines 2601–2605). That URL
-is the vLLM service in [`compose.yaml`](../compose.yaml) (the `generator`
-service). Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` to
-`generator` (line 352), which overrides the application env file. A
-non-loopback host is refused until that allowlist is changed. Changing Compose
-is not an installer flag. Inside the app container, loopback is the container
-itself, so a service on the host is not reached by `127.0.0.1`.
+name, thinking disabled, and a 180-second timeout. That URL is the vLLM service
+in [`compose.yaml`](../compose.yaml) (the `generator` service). They cannot be
+combined with an external server.
 
-There is no Open WebUI setting, adapter, or test. An Open WebUI process is
-usable only if it serves the `openai` contract above at `{URL}/v1/...` and the
-host is allowed. This repository does not establish that. A tested Open WebUI
-integration, and an installer flag that replaces bundled vLLM with an operator
-endpoint, are not in this version.
+Compose sets `CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS` from
+`EXCULPATA_GENERATOR_ALLOWED_HOSTS`, falling back to an older
+`RECORDBENCH_GENERATOR_ALLOWED_HOSTS` value only when the Exculpata name is
+unset, and otherwise defaulting to `generator`. The external-generator option
+writes the host it just checked into `EXCULPATA_GENERATOR_ALLOWED_HOSTS`, so a
+stale value cannot replace it. The app uses the internal companion transport for
+`http://generator:8000`. All external requests tunnel through the explicitly
+configured `CASE_INTELLIGENCE_GENERATOR_PROXY` relay. Ambient proxy variables
+and `NO_PROXY` cannot bypass it; redirects are refused. TLS hostname and
+certificate verification stay in the app, end to end. The relay never decrypts.
+Its existing five-second setup budget, 60-second tunnel deadline and 8 MiB tunnel
+limit also apply to generator traffic; a longer client timeout does not extend them.
+
+A server bound to host loopback (`127.0.0.1:11434`, `localhost`, or `::1`) cannot
+be reached by the containerized app. There is no host-gateway alias or alternate
+route. Expose an operator-managed HTTPS endpoint reachable by the relay, with a
+trusted certificate. HTTP is rejected in interactive and non-interactive install,
+endpoint parsing, and environment settings construction.
+
+The installer checks local/remote consent on the host. Public destinations need
+`--confirm-remote-generator` (or interactive confirmation) because matter text
+and cited passages leave the installation. Private RFC1918/ULA destinations need
+explicit reviewed pins. Supply `--generator-egress-pins` as single-line JSON:
+`{"issuer":"https://answers.example.test:8443","addresses":["<reviewed-IP>"]}`.
+Replace the placeholder with an exact reviewed IP address; it is not accepted
+literally. The `issuer` field name matches the shared OIDC pin format but binds
+to the complete generator URL. The installer never infers pins from DNS.
+
+Pins are saved as `CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS`. Installer Compose
+commands derive `GENERATOR_EGRESS_URL` and `GENERATOR_EGRESS_PINS` from the selected
+app env file, ignoring shell overrides. Empty configuration denies the generator
+slot. Recreate the relay and app through the installer after changing the saved
+URL or pins. Each relay connection resolves DNS and validates the entire answer
+set before dialing only those numeric addresses. Every answer must match explicit
+pins when supplied; otherwise only public addresses are permitted. Loopback,
+link-local, metadata, multicast, unspecified, reserved and transition addresses
+remain denied even with pins or remote consent. The app retains consent and
+destination checks using literal addresses and reviewed pins; external DNS belongs
+to the relay because app DNS is isolated. Host-side doctor probes retain direct
+address validation and do not establish app reachability.
+
+Generator values containing `$` are rejected before writing, when reading retained
+env files, and at app settings construction. This intentionally uses resolved
+literals instead of adding Compose escape/decode semantics that differ between
+generated and operator-maintained files. API key file contents are not Compose
+environment values. Relay URL and pin values also reject `$`.
+
+Startup sends one small strict-schema request. `doctor` sends the same request
+unless `--dry-run` is set. Ollama is checked with native `format`. llama.cpp,
+LM Studio, and vLLM are checked with nested `json_schema.schema`. If the body
+does not match, generation validates locally and retries, then refuses the
+answer. The first probe asks for a value the schema rejects, so a model that
+only follows the prompt is not reported as enforced. The doctor line and the
+administrator page say `verified`, `not enforced / validated locally`,
+`refused`, or `not checked`. Every response is also validated locally, including
+recorded-context dispatches and replies from a verified server. Each recorded
+repair has its own admission and dispatch receipts. Periodic schema refreshes
+run once in the background and return cached status to pages and health checks.
+HTTP rejection or malformed response bodies report refusal, not network failure.
+
+`doctor` and the installer also print CPU cores, RAM, GPU VRAM when a tool
+reports it, and Apple Silicon when the host is Darwin arm64. The suggestion
+comes from [`config/model_profiles.json`](../config/model_profiles.json). A
+missing tool selects the CPU profile and says so. Nothing is downloaded.
+
+Embeddings and reranking stay in-process. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
+Granite and the ModernBERT reranker on CPU. When an index already contains
+vectors and the embedding model or revision changes, `doctor` and startup say
+that existing indexes must be rebuilt. Exculpata does not rebuild them
+automatically. An API key for the answer server is read from
+`/run/recordbench-secrets/generator-api-key` on the existing read-only secrets mount.
+
+A populated index with missing, unreadable, incomplete or non-populated
+provenance stays **unknown**. The app does not stamp today's configuration onto
+existing vectors. Doctor warns when provenance cannot be established; startup
+uses the actual global vector count when available. A single document upload,
+including an empty document, cannot relabel or clear global index provenance.
+This tracking code does not attest a new or rebuilt index automatically: until
+a trusted rebuild records the producing model/revision, an unknown index keeps
+its warning. No automatic rebuild or migration is performed.
+
+Ollama and OpenAI-compatible clients use the same configured inline-key-before-
+file precedence. Ollama forwards the credential on availability checks, schema
+probes, answers, source classification and question drafting; it is never put in
+the URL. Generator redirects and ambient proxies remain disabled.
+
+The unconditional metadata deny set also covers the documented
+[Alibaba ECS metadata service](https://www.alibabacloud.com/help/en/ecs/user-guide/view-instance-metadata/),
+including IPv4-mapped IPv6 forms and hostnames resolving to that destination.
+Remote consent cannot permit it.
+
+Qualification requires a passing record for both the model ID and a runtime-attested
+immutable SHA-256 revision. A mutable name or tag cannot inherit a pass. Current
+BYOM adapters do not attest the served revision, so their answers remain labeled
+`unvalidated model` in the workspace and exports, including rejected answers.
+Every-source review records also lack immutable model attestation: all their
+CSV, JSON, Markdown and Word exports conservatively retain that label, independent
+of the currently configured model. This does not claim historical qualification
+that was never recorded. No storage migration is introduced.
+
+[`config/model_qualifications.json`](../config/model_qualifications.json) retains
+revision-scoped records. A future attested adapter may supply the exact revision
+to `qualification_for(model_id, revision=...)` or `qualification_label`; the harness
+records passes through `apply_harness_result` with the same digest. A pinned
+catalog ID alone is not a measured pass.
+
+The wheel includes the registry and its schema under `case_intelligence/config`,
+loaded with package resources. The repository `config/` copies are editable
+mirrors: update both copies together when recording a reviewed qualification;
+the parity regression rejects divergent contents. Installed applications do not
+depend on the source checkout. Current BYOM adapters still lack revision
+attestation and therefore cannot inherit a recorded pass.
+
+Compose passes the same effective embedding model and revision to the app and
+retrieval worker so populated-index mismatch warnings reflect the worker's
+configuration. Doctor probes bundled generators inside the existing app
+namespace, while external probes use saved endpoint consent and the runtime's
+inline-key-before-file precedence. Saved unsupported answers and compiled
+reports retain the qualification notice from their generating client even if
+the active model later changes.
+
+There is no Open WebUI setting or adapter. An Open WebUI process is usable
+only if it serves the `openai` contract above at `{URL}/v1/...` and the host
+is allowed. This repository does not establish that. MLX, a bundled llama.cpp
+container, automatic model downloads, and whisper.cpp are not part of this
+version. User-chosen models keep their own license terms.
 
 ## What Exculpata distributes or acquires
 
@@ -146,3 +266,10 @@ Changing embeddings may require a new index; changing a transcription model
 must not relabel historical transcripts as if the new model produced them.
 See [installation](INSTALL.md), [release readiness](RELEASE_READINESS.md) and
 the [contribution guide](../CONTRIBUTING.md).
+
+Evaluation capture remains distinct from accepting an answer. The fixed synthetic
+claim-evaluation harness records a schema-rejected JSON object for independent
+grading after the normal validator rejects it. That capture performs one attempt
+and does not hide repair drafts. Ordinary generation validates and bounds repair
+attempts, and the workflow evaluator checks model identity around each actual
+request, including schema repairs.

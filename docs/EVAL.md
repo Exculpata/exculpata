@@ -102,6 +102,9 @@ Exit 2 means the suite, arguments, retrieval, output or model call could not be
 evaluated. Captured runtime errors retain a card with a nonzero `errors` count
 and still fail the command. A rejected model response is a scored failure,
 reported as `rejection` and in aggregate `rejections`, not a harness error.
+Parsed objects that fail the answer schema use the `GenerationRejected` scorecard
+category; they remain unavailable to product callers. Connection failures and
+unreadable response envelopes still count as harness errors.
 Unexpected uncaught errors also fail the process.
 Inspect the totals either way. A perfect stub card means the selected retriever
 found every reference passage and the scorer accepted those quotes.

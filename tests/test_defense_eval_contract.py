@@ -88,11 +88,15 @@ def test_score_changes_are_successful_cli_measurements(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("backend", ["openai", "ollama"])
 def test_configured_cli_uses_real_http_and_writes_scorecards(backend, monkeypatch, tmp_path):
-    """A synthetic HTTP service proves transport, not learned-model quality."""
+    """Exercise the bundled companion route with real synthetic HTTP replies."""
+    import socket
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from case_intelligence.generator_schema import PROBE_MARKER
 
     requests = []
+    probes = []
+    hosts = []
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -104,6 +108,7 @@ def test_configured_cli_uses_real_http_and_writes_scorecards(backend, monkeypatc
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            # fixture-write: Send a synthetic reply over the local HTTP connection.
             self.wfile.write(body)
 
         def do_GET(self):
@@ -114,8 +119,12 @@ def test_configured_cli_uses_real_http_and_writes_scorecards(backend, monkeypatc
 
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            requests.append((self.path, payload))
-            content = json.dumps({
+            hosts.append(self.headers["Host"])
+            schema = (payload["response_format"]["json_schema"]["schema"] if backend == "openai"
+                      else payload["format"])
+            is_probe = "marker" in schema["properties"]
+            (probes if is_probe else requests).append((self.path, payload))
+            content = json.dumps({"marker": PROBE_MARKER} if is_probe else {
                 "answerable": False, "claims": [], "limitation": None,
                 "missing_information": "The supplied sources do not answer the question.",
             })
@@ -126,11 +135,22 @@ def test_configured_cli_uses_real_http_and_writes_scorecards(backend, monkeypatc
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    endpoint = f"http://127.0.0.1:{server.server_port}"
+    endpoint = "http://generator:8000"
+    resolve = socket.getaddrinfo
+
+    def bundled_address(host, port, *args, **kwargs):
+        assert (host, port) == ("generator", 8000)
+        return resolve("127.0.0.1", server.server_port, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", bundled_address)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_BACKEND", backend)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_URL", endpoint)
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", "generator")
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", "synthetic-eval")
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "1")
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_SERVER", raising=False)
     monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", raising=False)
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE", raising=False)
     try:
         assert evaluation.main(["--mode", "configured", "--output-dir", str(tmp_path)]) == 0
     finally:
@@ -138,6 +158,8 @@ def test_configured_cli_uses_real_http_and_writes_scorecards(backend, monkeypatc
         server.server_close()
         thread.join(timeout=5)
     card = json.loads((tmp_path / "scorecard.json").read_text())
+    assert len(probes) == 1
+    assert all(host == "generator:8000" for host in hosts)
     assert len(requests) == len(card["questions"]) == len(evaluation.load_suite().questions)
     assert all(payload["model"] == "synthetic-eval" for _, payload in requests)
     expected_path = "/v1/chat/completions" if backend == "openai" else "/api/chat"
@@ -162,6 +184,7 @@ def test_comparison_rejects_missing_scores(metric, tmp_path):
     card = comparison_card()
     del card["questions"][0][metric]
     path = tmp_path / "broken.json"
+    # fixture-write: Persist a synthetic malformed scorecard to exercise CLI validation.
     path.write_text(json.dumps(card))
     assert evaluation.main(["--compare", str(path), str(path)]) == 2
 
@@ -171,6 +194,7 @@ def test_comparison_rejects_non_boolean_scores(value, tmp_path):
     card = comparison_card()
     card["questions"][0]["answer_correct"] = value
     path = tmp_path / "broken.json"
+    # fixture-write: Persist a synthetic malformed scorecard to exercise CLI validation.
     path.write_text(json.dumps(card))
     assert evaluation.main(["--compare", str(path), str(path)]) == 2
 
@@ -180,6 +204,7 @@ def test_comparison_rejects_missing_metadata(metadata, tmp_path):
     card = comparison_card()
     del card[metadata]
     path = tmp_path / "broken.json"
+    # fixture-write: Persist a synthetic malformed scorecard to exercise CLI validation.
     path.write_text(json.dumps(card))
     assert evaluation.main(["--compare", str(path), str(path)]) == 2
 
@@ -189,5 +214,6 @@ def test_comparison_rejects_empty_or_duplicate_questions(duplicate, tmp_path):
     card = comparison_card()
     card["questions"] *= 2 if duplicate else 0
     path = tmp_path / "broken.json"
+    # fixture-write: Persist a synthetic malformed scorecard to exercise CLI validation.
     path.write_text(json.dumps(card))
     assert evaluation.main(["--compare", str(path), str(path)]) == 2
