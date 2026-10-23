@@ -229,8 +229,11 @@ class KerberosSettings:
     allowed_groups: frozenset[str] = frozenset()
     administrator_principals: frozenset[str] = frozenset()
     administrator_groups: frozenset[str] = frozenset()
+    header_family: str = "both"
 
     def __post_init__(self) -> None:
+        if self.header_family not in ("current", "legacy", "both"):
+            raise RuntimeError("Directory sign-in header family is invalid")
         realm = _normalized_realm(self.realm)
         object.__setattr__(self, "realm", realm)
         if not isinstance(self.proxy_secret, str) or not _PROXY_SECRET.fullmatch(
@@ -340,6 +343,7 @@ class KerberosSettings:
             allowed_groups=allowed_groups,
             administrator_principals=administrator_principals,
             administrator_groups=administrator_groups,
+            header_family=os.getenv("CASE_INTELLIGENCE_KERBEROS_HEADER_FAMILY", "both"),
         )
 
 
