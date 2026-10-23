@@ -32,6 +32,10 @@ from .generator_completion import (
     refresh_generator_schema,
     repair_message as _repair_message,
 )
+from .generation_errors import (
+    GenerationUnavailable, GenerationSchemaRejected, GenerationInvalidContent,
+    GenerationRejected, GenerationGroundingRejected,
+)
 from .generator_schema import openai_response_format
 from .model_qualification import UNVALIDATED_MODEL_LABEL, qualification_label
 from .service_endpoints import validate_service_endpoint
@@ -86,30 +90,6 @@ MEDIA_TRANSCRIPT_NOTICE = (
     "was identified correctly. Transcription, translation, and diarization can be "
     "mistaken; review the recording at the cited timestamps."
 )
-
-
-class GenerationUnavailable(RuntimeError):
-    """The configured local generator cannot currently answer."""
-
-
-class GenerationSchemaRejected(GenerationUnavailable):
-    """A parsed object failed local validation; only explicit evaluation retains it."""
-
-    def __init__(self, payload):
-        super().__init__("The reply did not match the JSON schema. Answering is unavailable for this request.")
-        self.payload = payload
-
-
-class GenerationInvalidContent(GenerationUnavailable):
-    """The service returned text that is not a structured model answer."""
-
-
-class GenerationRejected(RuntimeError):
-    """The generated response could not pass independent support checks."""
-
-
-class GenerationGroundingRejected(GenerationRejected):
-    """The response was well formed, but no generated claim was supportable."""
 
 
 @dataclass(frozen=True)
