@@ -138,3 +138,13 @@ digest and aggregate content fingerprint were refreshed; all acceptance nodes,
 case definitions, case fingerprint and fixture bytes retain their original pins.
 Earlier receipts remain distinguishable by content fingerprint, and undeclared
 test or fixture changes still fail the integrity checks.
+
+## Defense-workflow scorecard
+
+`benchmarks/defense-workflow/v2/suite.json` is the current versioned synthetic
+discovery set for grading answer correctness, citation support, abstention, and
+latency across Harbor Street and Lumen Yard. Version 1 stays loadable. Stub
+mode with the lexical retriever runs without a model or a database and is
+covered by `tests/test_defense_eval.py`. The PostgreSQL hybrid path is covered
+by `tests/test_defense_eval_postgres.py`. A perfect stub score is a harness
+check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).

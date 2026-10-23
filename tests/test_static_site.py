@@ -194,3 +194,12 @@ def test_workers_static_assets_config_has_no_account_binding():
     deploy = (SITE / "README.md").read_text()
     assert "npx wrangler versions upload --preview-alias <name>" in deploy
     assert "npx wrangler versions deploy" in deploy
+
+
+def test_cite_sweep_has_a_static_reduced_motion_final_state():
+    css = (SITE / "styles.css").read_text()
+    assert r'[DOC-0412 / p.14 / \00B6 3]' in css
+    reduced_motion = css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    assert ".hero::after, h1 span::after { animation: none; display: none; }" in reduced_motion
+    assert "h1 span::before { animation: none; opacity: 1; }" in reduced_motion
+    assert "h1::after { animation: none; opacity: 1; }" in reduced_motion
