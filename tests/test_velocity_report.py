@@ -24,6 +24,57 @@ def data():
     return json.loads((ROOT / "tests/fixtures/velocity/report.json").read_text())
 
 
+@pytest.mark.parametrize("since, until, expected", [
+    ("2026-10-09T12:30:00Z", "2026-10-20T15:00:00Z", [
+        ("2026-10-05", "2026-10-09T12:30:00+00:00", "2026-10-12T00:00:00+00:00", True),
+        ("2026-10-12", "2026-10-12T00:00:00+00:00", "2026-10-19T00:00:00+00:00", False),
+        ("2026-10-19", "2026-10-19T00:00:00+00:00", "2026-10-20T15:00:00+00:00", True),
+    ]),
+    ("2026-10-12", "2026-10-23T15:00:00Z", [
+        ("2026-10-12", "2026-10-12T00:00:00+00:00", "2026-10-19T00:00:00+00:00", False),
+        ("2026-10-19", "2026-10-19T00:00:00+00:00", "2026-10-23T15:00:00+00:00", True),
+    ]),
+])
+def test_cli_week_windows(report, data, monkeypatch, capsys, since, until, expected):
+    class FixedClock(report.datetime):
+        @classmethod
+        def now(cls, tz):
+            return report.timestamp(until).astimezone(tz)
+
+    monkeypatch.setattr(report, "datetime", FixedClock)
+    monkeypatch.setattr(report, "collect", lambda since: data)
+    assert report.main(["--since", since, "--json"]) == 0
+    weeks = json.loads(capsys.readouterr().out)["weeks"]
+    assert [(w["week_start"], w["window_start"], w["window_end"], w["partial"])
+            for w in weeks] == expected
+    assert report.main(["--since", since]) == 0
+    output = capsys.readouterr().out
+    for monday, start, end, partial in expected:
+        status = "partial" if partial else "full"
+        assert f"Week {monday} ({status}: {start} to {end})" in output
+
+
+@pytest.mark.parametrize("now", ["2026-10-23T15:00:00Z", "2026-10-19T00:00:00Z", "2026-10-25T23:59:59Z"])
+def test_default_since_is_previous_full_week_monday(report, data, monkeypatch, capsys, now):
+    class FixedClock(report.datetime):
+        @classmethod
+        def now(cls, tz):
+            return report.timestamp(now).astimezone(tz)
+
+    collected = []
+
+    def collect(since):
+        collected.append(since)
+        return data
+
+    monkeypatch.setattr(report, "datetime", FixedClock)
+    monkeypatch.setattr(report, "collect", collect)
+    assert report.main(["--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["since"] == "2026-10-12T00:00:00+00:00"
+    assert collected == [report.timestamp("2026-10-12")]
+
+
 def test_weekly_metrics(report, data):
     result = report.summarize(data, report.timestamp("2026-10-05"), report.timestamp("2026-10-19"))
     week, empty = result["weeks"]

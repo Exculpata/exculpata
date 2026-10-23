@@ -12,9 +12,19 @@ endpoints and a GraphQL query through `gh api`; it does not change GitHub or
 handle credentials. Use your existing CLI authentication with repository and
 Actions read access. No third-party Python packages are needed.
 
-Weeks start Monday at 00:00 UTC. `--since` is inclusive (default: seven days ago
-at midnight UTC); collection time is exclusive. First and last weeks may be
-partial. Empty samples print `n/a` (`null` in JSON), never a fabricated zero.
+Weeks start Monday at 00:00 UTC. `--since` is inclusive and defaults to the Monday
+of the previous full week at midnight UTC; collection time is exclusive. For
+example, a run on Friday 2026-10-23 defaults to 2026-10-12, covering the previous
+full week and the current week to date.
+
+Each JSON week includes `window_start` (inclusive) and `window_end` (exclusive)
+as UTC ISO timestamps, plus the boolean `partial`. A week is partial when its
+window is shorter than Monday to the next Monday or ends at the report's current
+time cutoff. Text headers show the same bounds and `partial` or `full`, for
+example `Week 2026-10-12 (partial: 2026-10-16T00:00:00+00:00 to
+2026-10-19T00:00:00+00:00)`. The Monday label identifies the calendar week;
+metrics cover only the displayed window. Empty samples print `n/a` (`null` in
+JSON), never a fabricated zero.
 
 - **Open-to-merge:** median elapsed hours for PRs merged in the week.
 - **Commits tested per PR:** distinct Actions head SHAs matching the PR's commit

@@ -195,6 +195,9 @@ def summarize(data, since, until):
                 workflows.setdefault(run["name"], []).append(duration)
         weeks.append({
             "week_start": monday.date().isoformat(),
+            "window_start": start.isoformat(),
+            "window_end": end.isoformat(),
+            "partial": start != monday or end != monday + timedelta(days=7) or end == until,
             "merged_prs": len(merged),
             "open_to_merge_hours_median": median([(timestamp(p["merged_at"]) - timestamp(p["created_at"])).total_seconds() / 3600 for p in merged]),
             "commits_tested_per_pr": tested,
@@ -224,13 +227,14 @@ def error_message(exc):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--since", default=(datetime.now(timezone.utc) - timedelta(days=7)).date().isoformat(),
-                        help="inclusive UTC date or timezone-qualified ISO timestamp (default: seven days ago)")
+    until = datetime.now(timezone.utc)
+    previous_monday = (until - timedelta(days=until.weekday() + 7)).date().isoformat()
+    parser.add_argument("--since", default=previous_monday,
+                        help="inclusive UTC date or timezone-qualified ISO timestamp (default: Monday of the previous full week)")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args(argv)
     try:
         since = timestamp(args.since)
-        until = datetime.now(timezone.utc)
         if since >= until:
             raise ValueError("--since must be before now")
     except ValueError as exc:
@@ -245,9 +249,10 @@ def main(argv=None):
     else:
         print(f"{REPOSITORY} weekly velocity (UTC)\n{result['measurement']}")
         for week in result["weeks"]:
-            print(f"\nWeek {week['week_start']}")
+            status = "partial" if week["partial"] else "full"
+            print(f"\nWeek {week['week_start']} ({status}: {week['window_start']} to {week['window_end']})")
             for key, value in week.items():
-                if key != "week_start":
+                if key not in {"week_start", "window_start", "window_end", "partial"}:
                     print(f"  {key}: {'n/a' if value is None else value}")
     return 0
 
