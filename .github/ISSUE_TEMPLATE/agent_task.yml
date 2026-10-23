@@ -23,9 +23,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Before coding, the agent posts its own restatement as its first kickoff comment,
+        Before coding, the agent writes a "Kickoff" section in its task file or PR body:
+        goal restated (including the user-visible outcome), expected files to touch,
+        acceptance check, and issue link. The agent
         checks it matches this issue, and resolves any mismatch with the issue author.
-        This form entry does not replace that comment; link the agent's comment in the PR for review.
+        This form entry does not replace the agent's kickoff; link the task file in the PR if used.
   - type: dropdown
     id: level
     attributes:

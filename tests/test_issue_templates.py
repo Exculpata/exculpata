@@ -60,8 +60,9 @@ def test_agent_task_preserves_fix_hierarchy_and_kickoff_process() -> None:
     assert fields['why_level']['validations']['required'] is False
     kickoff = '\n'.join(field['attributes']['value'] for field in form['body']
                         if field['type'] == 'markdown')
-    for requirement in ('Before coding', 'first kickoff comment', 'matches this issue',
-                        'resolves any mismatch'):
+    for requirement in ('Before coding', '"Kickoff" section', 'task file or PR body',
+                        'goal restated', 'expected files', 'acceptance check', 'issue link',
+                        'matches this issue', 'resolves any mismatch'):
         assert requirement in kickoff
     regression = fields['regression']['attributes']['description']
     assert 'synthetic test' in regression and 'commit it must fail on' in regression
@@ -113,15 +114,34 @@ def test_agent_kickoff_is_verified_separately_from_the_authors_form_entry() -> N
     assert "Issue author's goal" in kickoff['label']
     instructions = '\n'.join(field['attributes']['value'] for field in agent_form()['body']
                              if field['type'] == 'markdown')
-    assert 'This form entry does not replace that comment' in instructions
+    assert 'This form entry does not replace the agent\'s kickoff' in instructions
     guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
     pr = (ROOT / '.github/pull_request_template.md').read_text(encoding='utf-8')
-    assert 'Kickoff permalink:' in pr
+    assert '## Kickoff\n' in pr
+    assert 'not applicable' in pr
+    for part in ('Goal restated:', 'Expected files:', 'Acceptance check:', 'Issue link:'):
+        assert part in pr
+    for requirement in ('Before coding', '"Kickoff" section', 'task file or PR body',
+                        'goal restated', 'expected files', 'acceptance check', 'issue link'):
+        assert requirement in guide
+    assert "The issue author's form entry is not the agent's kickoff" in guide
     for text in (guide, pr):
-        assert "comment's author" in text
-        assert 'first implementation commit' in text
+        assert 'reviewer' in text.lower()
+        assert 'goal and user-visible outcome match the issue' in text
         assert 'blocks readiness' in text
     assert 'human review verifies the actual evidence' in guide
+
+
+@pytest.mark.parametrize('path', [
+    'AGENTS.md',
+    '.github/ISSUE_TEMPLATE/agent_task.yml',
+    '.github/pull_request_template.md',
+])
+def test_kickoff_guidance_does_not_require_issue_comments(path: str) -> None:
+    text = (ROOT / path).read_text(encoding='utf-8').lower()
+    for retired in ('kickoff comment', 'kickoff permalink', "agent's comment",
+                    "comment's author", 'that comment'):
+        assert retired not in text, f'{path} must record kickoff in the task file or PR body'
 
 
 def test_neutral_language_rule_has_a_durable_enforcement_contract() -> None:
