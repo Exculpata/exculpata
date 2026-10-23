@@ -142,3 +142,54 @@ footer > a { color: var(--accent); }
   .audience h2 { font-size: 44px; }
   .hero-intro > p:first-child { font-size: 20px; }
 }
+
+/* Hero direction B: cite-sweep. CSS only, no markup change. */
+html, body { overflow-x: clip; }
+.hero { position: relative; isolation: isolate; }
+.hero::before,
+.hero::after { content: ""; position: absolute; inset: -150px calc(50% - 50vw) 0; z-index: -1; pointer-events: none; }
+.hero::before {
+  background: repeating-linear-gradient(180deg, rgba(237, 234, 226, .03) 0 1px, transparent 1px 4px);
+  -webkit-mask: linear-gradient(180deg, transparent 6%, #000 30%, #000 70%, transparent);
+  mask: linear-gradient(180deg, transparent 6%, #000 30%, #000 70%, transparent);
+}
+.hero::after {
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, .075) 50%, transparent) 0 -200px / 100% 200px no-repeat;
+  animation: hero-beam 2.2s cubic-bezier(.4, 0, .2, 1) .15s 1 both;
+}
+h1 { position: relative; align-self: start; }
+h1 span { position: relative; }
+h1 span::after {
+  content: ""; position: absolute; inset: .1em -.08em .02em; background: var(--accent);
+  mix-blend-mode: difference; transform: scaleX(0); transform-origin: left;
+  animation: cite-sweep 1.25s cubic-bezier(.7, 0, .3, 1) .45s 1 both;
+}
+h1 span::before {
+  content: ""; position: absolute; left: calc(100% + .1em); bottom: .17em; width: .34em; height: .68em;
+  background: var(--accent); opacity: 0;
+  animation: cite-cursor 1s steps(1) 1.5s 3 forwards;
+}
+h1::after {
+  content: "[DOC-0412 / p.14 / \00B6 3]"; content: "[DOC-0412 / p.14 / \00B6 3]" / "";
+  position: absolute; left: .06em; top: calc(100% + 18px);
+  color: var(--muted); font: 400 14px/1 "JetBrains Mono", ui-monospace, monospace; letter-spacing: 0; white-space: pre;
+  opacity: 0; animation: cite-tag .5s ease-out 1.45s 1 forwards;
+}
+@keyframes hero-beam { from { background-position: 0 -200px; } to { background-position: 0 calc(100% + 200px); } }
+@keyframes cite-sweep {
+  0% { transform: scaleX(0); transform-origin: left; }
+  45%, 55% { transform: scaleX(1); transform-origin: left; }
+  55.01% { transform-origin: right; }
+  100% { transform: scaleX(0); transform-origin: right; }
+}
+@keyframes cite-cursor { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes cite-tag { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (max-width: 800px) {
+  .hero::before, .hero::after { display: none; }
+  h1::after { top: calc(100% + 10px); font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero::after, h1 span::after { animation: none; display: none; }
+  h1 span::before { animation: none; opacity: 1; }
+  h1::after { animation: none; opacity: 1; }
+}
