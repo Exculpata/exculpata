@@ -890,6 +890,124 @@ def test_import_parse_cache_refreshes_changed_dependency(tmp_path, monkeypatch, 
     assert parsed == [entry.read_text(), plain, route]
 
 
+@pytest.mark.parametrize('dependency_source, expected', [
+    ('VALUE = 42\n', True),
+    ('from fastapi.testclient import TestClient\n', False),
+])
+def test_unchanged_import_closure_is_not_rescanned(
+    tmp_path, monkeypatch, dependency_source, expected,
+):
+    entry = tmp_path / 'synthetic_entry.py'
+    # fixture-write: Supply a synthetic transitive import shared by repeated probes.
+    entry.write_text('import synthetic_dependency\n')
+    # fixture-write: Exercise caching of both plain and TestClient import closures.
+    (tmp_path / 'synthetic_dependency.py').write_text(dependency_source)
+    scanned = []
+    module_imports = hooks._module_imports
+
+    def record_imports(*args):
+        scanned.append(args[0])
+        return module_imports(*args)
+
+    record_imports.cache_clear = module_imports.cache_clear
+    monkeypatch.setattr(hooks, '_module_imports', record_imports)
+    assert hooks._module_is_testclient_free(entry, tmp_path) is expected
+    first_scan = list(scanned)
+    assert first_scan
+    for _ in range(3):
+        assert hooks._module_is_testclient_free(entry, tmp_path) is expected
+        assert scanned == first_scan
+
+
+@pytest.mark.parametrize('package', [False, True])
+def test_cached_import_closure_notices_created_and_removed_modules(tmp_path, package):
+    entry = tmp_path / 'synthetic_entry.py'
+    # fixture-write: The imported module is initially absent from the search path.
+    entry.write_text('import synthetic_dependency\n')
+    assert hooks._module_is_testclient_free(entry, tmp_path)
+    dependency = tmp_path / 'synthetic_dependency.py'
+    if package:
+        directory = tmp_path / 'synthetic_dependency'
+        directory.mkdir()
+        dependency = directory / '__init__.py'
+    # fixture-write: Make an unresolved import resolve to a synthetic TestClient module.
+    dependency.write_text('from fastapi.testclient import TestClient\n')
+    assert not hooks._module_is_testclient_free(entry, tmp_path)
+    # fixture-write: Restore the missing synthetic import without changing its caller.
+    dependency.unlink()
+    assert hooks._module_is_testclient_free(entry, tmp_path)
+
+
+def test_cached_import_closure_notices_search_path_changes(tmp_path, monkeypatch):
+    entry = tmp_path / 'synthetic_entry.py'
+    # fixture-write: Start with an import outside the current search path.
+    entry.write_text('import synthetic_late_dependency\n')
+    directory = tmp_path / 'helpers'
+    directory.mkdir()
+    # fixture-write: Supply a TestClient dependency in a newly added search directory.
+    (directory / 'synthetic_late_dependency.py').write_text(
+        'from fastapi.testclient import TestClient\n')
+    assert hooks._module_is_testclient_free(entry, tmp_path)
+    with monkeypatch.context() as context:
+        context.syspath_prepend(str(directory))
+        assert not hooks._module_is_testclient_free(entry, tmp_path)
+    assert hooks._module_is_testclient_free(entry, tmp_path)
+
+
+def test_loader_attributes_share_one_source_walk(synthetic_module, tmp_path, monkeypatch):
+    # fixture-write: Provide a synthetic dynamic loader target without executing it.
+    (tmp_path / 'synthetic_loaded.py').write_text('def main(): return 42\n')
+    module = synthetic_module('''
+        import importlib.util
+        from pathlib import Path
+        ROOT = Path(__file__).parent
+        def factory(selected):
+            spec = importlib.util.spec_from_file_location('synthetic', ROOT / 'synthetic_loaded.py')
+            loaded = importlib.util.module_from_spec(spec)
+            loaded.first = unknown
+            loaded.first = getattr(loaded, selected)
+            loaded.second = getattr(loaded, selected)
+            return loaded
+    ''')
+    tree = hooks._callable_source(module.factory)[0]
+    walked = []
+    walk = ast.walk
+
+    def record_walk(node):
+        if node is tree:
+            walked.append(node)
+        return walk(node)
+
+    monkeypatch.setattr(ast, 'walk', record_walk)
+    for selected in ('main', 'other'):
+        for attribute in ('first', 'second', 'third'):
+            target = attribute if attribute == 'third' else selected
+            assert hooks._loader_info(
+                module.factory, tmp_path,
+                parameters=(('selected', str, selected),), attribute=attribute,
+            ) == (True, ((tmp_path / 'synthetic_loaded.py', target),))
+            assert walked == [tree]
+
+
+def test_scan_plan_validates_each_helper_module_once(synthetic_module, tmp_path, monkeypatch):
+    module = synthetic_module('''
+        import importlib
+        def first(): return 1
+        def second(): return 2
+        def entry(): return first(), second()
+    ''')
+    checked = []
+    module_free = hooks._module_is_testclient_free
+
+    def record_module(path, rootdir):
+        checked.append(path)
+        return module_free(path, rootdir)
+
+    monkeypatch.setattr(hooks, '_module_is_testclient_free', record_module)
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is False
+    assert checked == [Path(module.__file__)]
+
+
 def test_dynamic_module_filename_in_followed_helper(synthetic_module, tmp_path):
     # fixture-write: Supply a plain script whose filename comes from a helper.
     (tmp_path / 'plain_helper.py').write_text('def noop(): return "TestClient"\n')

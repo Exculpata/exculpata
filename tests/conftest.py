@@ -31,6 +31,39 @@ _stdlib_roots = tuple(
 )
 _helper_depth_limit = 6
 _unresolved = object()
+_module_closures = {}
+
+
+def _path_version(path):
+    try:
+        metadata = path.stat()
+    except OSError:
+        return None
+    return (metadata.st_mtime_ns, metadata.st_size, metadata.st_ino,
+            metadata.st_dev, metadata.st_mode)
+
+
+class _ImportSnapshot:
+    def __init__(self):
+        self.versions = {}
+
+    def watch(self, path):
+        while path not in self.versions:
+            version = _path_version(path)
+            if version is not None or path.parent == path:
+                self.versions[path] = version
+                return
+            path = path.parent
+
+    def is_file(self, path):
+        result = path.is_file()
+        self.watch(path)
+        self.watch(path.parent)
+        return result
+
+    def unchanged(self):
+        return all(_path_version(path) == version
+                   for path, version in self.versions.items())
 
 
 def _namespace_uses_testclient(namespace):
@@ -84,21 +117,24 @@ def _tree_uses_testclient(tree):
 
 
 @cache
-def _import_paths(name, directory, rootdir):
+def _import_paths(name, directory, rootdir, snapshot=None):
+    is_file = Path.is_file if snapshot is None else snapshot.is_file
     parts = name.split('.')
     roots = dict.fromkeys((directory, rootdir, _repository_root, *map(Path, sys.path)))
     for root in roots:
         base = root.joinpath(*parts)
         candidates = (base.with_suffix('.py'), base / '__init__.py')
         for path in candidates:
-            if path.is_file() and _local_path(path, rootdir):
+            if is_file(path) and _local_path(path, rootdir):
                 parents = [root.joinpath(*parts[:index]) / '__init__.py'
                            for index in range(1, len(parts))]
-                return tuple(p.resolve() for p in (*parents, path) if p.is_file())
+                return tuple(p.resolve() for p in (*parents, path) if is_file(p))
     return ()
 
 
-def _module_source(path):
+def _module_source(path, snapshot=None):
+    if snapshot is not None:
+        snapshot.watch(path)
     try:
         stat = path.stat()
     except OSError:
@@ -139,14 +175,15 @@ def _module_source_at_version(path, mtime_ns, size):
 
 
 @cache
-def _module_bound_names(path):
-    source = _module_source(path)
+def _module_bound_names(path, snapshot=None):
+    source = _module_source(path, snapshot)
     return frozenset() if source is None else source[0]
 
 
 @cache
-def _module_imports(path, rootdir):
-    source = _module_source(path)
+def _module_imports(path, rootdir, snapshot=None):
+    is_file = Path.is_file if snapshot is None else snapshot.is_file
+    source = _module_source(path, snapshot)
     if source is None or source[1] is None:
         return None
     dependencies = set()
@@ -169,22 +206,22 @@ def _module_imports(path, rootdir):
             if node.level:
                 initializers = [directory / '__init__.py']
                 for _ in range(node.level - 1):
-                    if not (directory / '__init__.py').is_file():
+                    if not is_file(directory / '__init__.py'):
                         return None
                     directory = directory.parent
                     initializers.append(directory / '__init__.py')
-                dependencies.update(p.resolve() for p in initializers if p.is_file())
+                dependencies.update(p.resolve() for p in initializers if is_file(p))
                 base = directory.joinpath(*(node.module or '').split('.'))
                 candidates = (base.with_suffix('.py'), base / '__init__.py')
-                resolved = [p.resolve() for p in candidates if p.is_file()]
+                resolved = [p.resolve() for p in candidates if is_file(p)]
                 if not resolved or not all(_local_path(p, rootdir) for p in resolved):
                     return None
                 dependencies.update(resolved)
                 for alias in node.names:
                     candidates = (base / f'{alias.name}.py', base / alias.name / '__init__.py')
-                    imported = [p.resolve() for p in candidates if p.is_file()]
+                    imported = [p.resolve() for p in candidates if is_file(p)]
                     if (node.module is None and not imported
-                            and alias.name not in _module_bound_names(base / '__init__.py')):
+                            and alias.name not in _module_bound_names(base / '__init__.py', snapshot)):
                         return None
                     if not all(_local_path(p, rootdir) for p in imported):
                         return None
@@ -196,35 +233,50 @@ def _module_imports(path, rootdir):
         else:
             continue
         for name in names:
-            dependencies.update(_import_paths(name, directory, rootdir))
+            dependencies.update(_import_paths(name, directory, rootdir, snapshot))
     return frozenset(dependencies)
 
 
 def _module_is_testclient_free(path, rootdir):
+    path = Path(path).resolve()
+    key = path, rootdir, os.getcwd(), tuple(sys.path)
+    previous = _module_closures.get(key)
+    if previous is not None and previous[0].unchanged():
+        return previous[1]
     _module_imports.cache_clear()
     _module_bound_names.cache_clear()
     _import_paths.cache_clear()
-    pending = [Path(path).resolve()]
+    snapshot = _ImportSnapshot()
+    pending = [path]
     visited = set()
+    result = True
     while pending:
         current = pending.pop()
         if current in visited:
             continue
         visited.add(current)
-        dependencies = _module_imports(current, rootdir)
+        dependencies = _module_imports(current, rootdir, snapshot)
         if dependencies is None:
-            return False
+            result = False
+            break
         pending.extend(dependencies - visited)
-    return True
+    _module_closures[key] = snapshot, result
+    return result
 
 
-def _testclient_free_callable(function, rootdir):
+def _testclient_free_callable(function, rootdir, modules=None):
     try:
         path = inspect.getsourcefile(inspect.unwrap(function))
     except (OSError, TypeError, ValueError):
         return False
-    return (path is not None and _local_path(path, rootdir)
-            and _module_is_testclient_free(Path(path).resolve(), rootdir))
+    if path is None or not _local_path(path, rootdir):
+        return False
+    if modules is not None and path in modules:
+        return modules[path]
+    result = _module_is_testclient_free(Path(path).resolve(), rootdir)
+    if modules is not None:
+        modules[path] = result
+    return result
 
 
 def _parameter_nodes(tree, branches):
@@ -536,22 +588,30 @@ def _loader_values(function, node, params, seen=frozenset()):
 
 
 @cache
+def _loader_attribute_assignments(function):
+    source = _callable_source(function)
+    assignments = {}
+    if source is not None:
+        for node in ast.walk(source[0]):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Attribute):
+                        assignments[target.attr] = node.value
+    return assignments
+
+
+@cache
 def _loader_info(function, rootdir, binding=None, parameters=(), attribute=None):
     bindings, returned, _ = _loader_bindings(function)
     params = {name: value for name, _, value in parameters}
     selected_attributes = (attribute,)
-    source = _callable_source(function)
-    if source is not None:
-        for node in ast.walk(source[0]):
-            if (isinstance(node, ast.Assign) and any(
-                    isinstance(target, ast.Attribute) and target.attr == attribute
-                    for target in node.targets)):
-                value = node.value
-                if (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
-                        and value.func.id == 'getattr' and len(value.args) == 2):
-                    selected_attributes = _loader_values(function, value.args[1], params)
-                else:
-                    selected_attributes = (_unresolved,)
+    value = _loader_attribute_assignments(function).get(attribute)
+    if value is not None:
+        if (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                and value.func.id == 'getattr' and len(value.args) == 2):
+            selected_attributes = _loader_values(function, value.args[1], params)
+        else:
+            selected_attributes = (_unresolved,)
     pending = [(function, node, parameters, 0) for node in
                (bindings.get(binding, ()) if binding is not None else returned)]
     visited = set()
@@ -684,6 +744,7 @@ def _scan_plan(function, rootdir, parameters):
     visited = set()
     fixture_names = []
     fixture_attributes = []
+    modules = {}
 
     pending.append((function, _helper_depth_limit))
     while pending:
@@ -715,7 +776,7 @@ def _scan_plan(function, rootdir, parameters):
             if inspect.isfunction(target) or inspect.isclass(target):
                 targets.append(target)
         for target in targets:
-            if (not _testclient_free_callable(target, rootdir)
+            if (not _testclient_free_callable(target, rootdir, modules)
                     and _local_callable(target, rootdir)):
                 pending.append((target, depth - 1))
     return False, tuple(fixture_names), tuple(fixture_attributes)
