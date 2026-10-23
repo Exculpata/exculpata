@@ -13,15 +13,14 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Mapping
 
-from jsonschema import Draft202012Validator
-
-
 UNVALIDATED_MODEL_LABEL = "unvalidated model"
 _REGISTRY = files("case_intelligence").joinpath("config", "model_qualifications.json")
 _SCHEMA = files("case_intelligence").joinpath("config", "model_qualifications.schema.json")
 
 
 def qualification_schema(path: Path | None = None) -> dict[str, object]:
+    from jsonschema import Draft202012Validator
+
     schema = json.loads((path or _SCHEMA).read_text(encoding="utf-8"))
     if not isinstance(schema, dict):
         raise ValueError("model qualification schema is invalid")
@@ -30,6 +29,8 @@ def qualification_schema(path: Path | None = None) -> dict[str, object]:
 
 
 def load_qualifications(path: Path | None = None) -> dict[str, object]:
+    from jsonschema import Draft202012Validator
+
     document = json.loads((path or _REGISTRY).read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise ValueError("model qualification registry is invalid")
@@ -79,6 +80,8 @@ def apply_harness_result(
     string is an operator note such as a synthetic scorecard name, not a
     quality claim by itself.
     """
+
+    from jsonschema import Draft202012Validator
 
     model = model_id.strip()
     suite = harness.strip()
