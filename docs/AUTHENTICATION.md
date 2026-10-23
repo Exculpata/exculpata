@@ -310,6 +310,9 @@ Header names are case-insensitive. An unset setting defaults to `both` for
 existing installations; explicit `both` also preserves the compatibility rules
 below. Any other value, including an empty string, prevents startup.
 
+Only `CASE_INTELLIGENCE_KERBEROS_HEADER_FAMILY` is read; the `EXCULPATA_`
+and `RECORDBENCH_` aliases are ignored, as with the other `KERBEROS` settings.
+
 Before pinning, configure the trusted proxy to strip client-supplied identity,
 proof and diagnostic headers from both families and emit only the selected
 family. The current reference proxy emits both families, so leave the setting

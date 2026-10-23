@@ -2,10 +2,14 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
 
+from case_intelligence import compat_env
 from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.identity import KerberosSettings, SESSION_COOKIE
-from case_intelligence.legacy_names import CURRENT_HEADER_PREFIX, LEGACY_HEADER_PREFIX
+from case_intelligence.legacy_names import (
+    CURRENT_ENV_PREFIX, CURRENT_HEADER_PREFIX, LEGACY_ENV_PREFIX, LEGACY_HEADER_PREFIX,
+)
 from case_intelligence.workbench import create_workbench_app
 
 
@@ -30,6 +34,36 @@ def directory_environment(tmp_path, monkeypatch):
 def _headers(family):
     prefix = PREFIXES[family]
     return {f"{prefix}Authenticated-User": PRINCIPAL, f"{prefix}Proxy-Secret": PROOF}
+
+
+@pytest.mark.parametrize("family", ["current", "legacy"])
+def test_raw_mixed_case_header_is_classified_by_family(family):
+    other = "legacy" if family == "current" else "current"
+    accepted_name = f"{PREFIXES[family]}Authenticated-User".lower()
+    rejected_name = f"{PREFIXES[other]}Authenticated-User"
+    headers = Headers(raw=[
+        (accepted_name.encode("ascii"), PRINCIPAL.encode("ascii")),
+        (rejected_name.encode("ascii"), PRINCIPAL.encode("ascii")),
+    ])
+    assert rejected_name in list(headers)
+    assert compat_env.header(headers, f"{LEGACY_HEADER_PREFIX}Authenticated-User") == PRINCIPAL
+    assert compat_env.header_family_allowed(headers, "both") is True
+    assert compat_env.header_family_allowed(headers, family) is False
+
+
+def test_unknown_family_is_rejected_for_a_valid_header():
+    headers = Headers(_headers("current"))
+    assert compat_env.header(headers, f"{LEGACY_HEADER_PREFIX}Authenticated-User") == PRINCIPAL
+    assert compat_env.header_family_allowed(headers, "current") is True
+    assert compat_env.header_family_allowed(headers, "unknown") is False
+
+
+@pytest.mark.parametrize("prefix", [CURRENT_ENV_PREFIX, LEGACY_ENV_PREFIX])
+def test_header_family_environment_alias_is_ignored(monkeypatch, directory_environment, prefix):
+    for alias_prefix in (CURRENT_ENV_PREFIX, LEGACY_ENV_PREFIX):
+        monkeypatch.delenv(f"{alias_prefix}KERBEROS_HEADER_FAMILY", raising=False)
+    monkeypatch.setenv(f"{prefix}KERBEROS_HEADER_FAMILY", "current")
+    assert KerberosSettings.from_env().header_family == "both"
 
 
 def _app(tmp_path):
