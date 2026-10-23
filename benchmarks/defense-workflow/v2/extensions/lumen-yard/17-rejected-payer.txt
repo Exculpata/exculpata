@@ -1,0 +1,10 @@
+Rejected payer draft
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-117
+Record date: 2034-06-05
+
+A discarded invoice draft named payer Quill Desk. The draft was not adopted. The recorded
+statement is a different record and does not use that draft name.
+
+All names, locations, dates, and identifiers in this record were invented.

@@ -8189,3 +8189,45 @@ path = "src/case_intelligence/legacy_names.py"
 kind = "host"
 digest = "6b67ac9b6bedfab0d3c0747b8d996ebfffee9807cd52da54173e1906dd935175"
 detail = "exculpata-restore-drill.sh"
+
+[[source]]
+path = "src/case_intelligence/defense_eval.py"
+kind = "client"
+digest = "89ac0135f08ed5f661ff9d57414136063fd4c722aca01f646fa9a319c6930772"
+detail = "service_endpoints.open_service_request"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
+detail = "provenance.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
+detail = "provenance.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
+detail = "provenance.json"
