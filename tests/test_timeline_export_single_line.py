@@ -50,7 +50,7 @@ def test_markdown_metadata_stays_on_one_line(separator, bucket, field):
         expected = 'Source coverage: ' + expected + ' (source-a)'
     elif field == 'date_label':
         entry['date_label'] = value
-        expected = '## ' + expected
+        expected = '## Date: ' + expected
     elif field == 'locator':
         citation['locator'] = {'label': value}
         escaped_separator = separator.encode('unicode_escape').decode().replace('\\', '\\\\')
@@ -450,17 +450,59 @@ def test_unicode_quoted_lines_trim_after_splitting(separator, field):
     assert not any(line[-1:].isspace() for line in quoted)
 
 
-@pytest.mark.parametrize('value', ['', '\u200b\u200b'])
+@pytest.mark.parametrize('value', ['', '  ', '\t\u200b\u200b', '\u00a0'])
 def test_empty_date_label_has_a_visible_fallback(value):
     data = payload()
     data['entries'][0]['date_label'] = value
     body = export_timeline(data, 'markdown')
     assert '## ' not in body.splitlines()
-    assert '## (no date label)' in body.splitlines()
+    assert '## No date label' in body.splitlines()
     tokens = MarkdownIt('commonmark').parse(body)
     for index, token in enumerate(tokens):
         if token.type == 'heading_open':
             assert tokens[index + 1].content.strip()
+
+
+@FIELDS
+@pytest.mark.parametrize(('value', 'escaped'), [
+    ('(Synthetic)', r'\(Synthetic\)'),
+    ('Synthetic — value', 'Synthetic &#8212; value'),
+    ('Synthetic · value', 'Synthetic &#183; value'),
+])
+def test_metadata_delimiters_are_escaped_in_payload_fields(path, value, escaped):
+    data = payload()
+    set_field(data, path, value)
+    if 'locator' in path:
+        if not value.isascii():
+            escaped = json.dumps(value)[1:-1].replace('\\', '\\\\')
+        value = json.dumps({'label': value})
+
+    body = export_timeline(data, 'markdown')
+
+    assert escaped in body
+    assert any(value in child.content for block in markdown_blocks(data)
+               for token in block for child in token.children or [] if child.type == 'text')
+
+
+@pytest.mark.parametrize('value', [None, '', '  ', '\t\u200b\u200b', '\u00a0'])
+def test_conflict_group_fallback_follows_normalization_and_trimming(value):
+    data = payload()
+    data['entries'][0]['conflict_group'] = value
+
+    assert 'Conflict group: None' in export_timeline(data, 'markdown').splitlines()
+
+
+@pytest.mark.parametrize('value', ['(no date label)', 'No date label'])
+def test_supplied_date_label_is_distinct_from_empty_heading(value):
+    data = payload(value)
+    headings = [block_text(block) for block in markdown_blocks(data)
+                if block[0].type == 'heading_open']
+    assert headings[-1] == [('Date: ' + md_inline(value), [('text', 'Date: ' + value)])]
+
+    data['entries'][0]['date_label'] = ''
+    empty_headings = [block_text(block) for block in markdown_blocks(data)
+                      if block[0].type == 'heading_open']
+    assert empty_headings[-1] == [('No date label', [('text', 'No date label')])]
 
 
 @pytest.mark.parametrize('value', ['', '\u200b\u200b'])
