@@ -25,7 +25,7 @@ const headers = Object.fromEntries(fs.readFileSync(path.join(site, '_headers'), 
   }));
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
-  const file = path.resolve(site, '.' + (pathname === '/' ? '/index.html' : pathname));
+  const file = path.resolve(site, `.${pathname === '/' ? '/index.html' : pathname}`);
   if (!file.startsWith(site + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
     response.writeHead(404).end();
     return;
@@ -95,11 +95,11 @@ const server = http.createServer((request, response) => {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'main');
     assert([...requests].every(url => url.startsWith('/')), 'External resource request');
     assert.deepEqual(errors, []);
-    fs.writeFileSync(path.join(output, 'receipt.json'), JSON.stringify({
+    fs.writeFileSync(path.join(output, 'receipt.json'), `${JSON.stringify({
       head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
       dirty: Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim()),
       observations, requests: [...requests], errors,
-    }, null, 2) + '\n');
+    }, null, 2)}\n`);
     console.log('Static-site browser acceptance passed: five viewports, simple GitHub header, readable sections, keyboard and local resources.');
   } finally {
     if (browser) await browser.close();

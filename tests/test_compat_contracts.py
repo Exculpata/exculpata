@@ -92,27 +92,20 @@ def test_configuration_docs_show_the_deployed_fallback():
 
 
 def test_qa_launchers_and_drivers_share_environment_names():
-    helper = (
-        "const qa = (name) => process.env[`" + CURRENT_ENV_PREFIX
-        + "QA_${name}`] || process.env[`" + LEGACY_ENV_PREFIX + "QA_${name}`];"
-    )
-    direct = "process.env." + LEGACY_ENV_PREFIX + "QA_"
     for name in ("qa-people-browser.cjs", "qa-team-groups-browser.cjs"):
         text = _read("scripts/" + name)
-        assert helper in text
-        assert direct not in text
+        assert "require('./qa-env.cjs')" in text
         assert "qa('ORIGIN')" in text
         assert "qa('ARTIFACTS')" in text
-        assert "qa('BROWSER_CHANNEL')" in text
     for name in ("qa-people-browser.py", "qa-team-groups-browser.py"):
         text = _read("scripts/" + name)
-        assert CURRENT_ENV_PREFIX + "QA_ORIGIN" in text
-        assert CURRENT_ENV_PREFIX + "QA_ARTIFACTS" in text
+        assert 'suffix="QA_ORIGIN"' in text
+        assert 'suffix="QA_ARTIFACTS"' in text
     node = shutil.which("node")
     if node is None:
         return
     script = "\n".join((
-        helper,
+        "const qa = require(" + json.dumps(str(ROOT / "scripts/qa-env.cjs")) + ");",
         "const current = " + repr(CURRENT_ENV_PREFIX) + ";",
         "const legacy = " + repr(LEGACY_ENV_PREFIX) + ";",
         "process.env[current + 'QA_ORIGIN'] = 'https://current.example';",

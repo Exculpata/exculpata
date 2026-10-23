@@ -69,12 +69,15 @@ Format characters and Unicode line/paragraph separators become spaces. Formula
 prefix detection also covers pipe/percent, fullwidth equivalents, and Unicode minus;
 normalization is used only for detection, without rewriting the source representation.
 Markdown is a lossy presentation: it escapes notices, coverage records, and entry
-fields, and replaces every Unicode format character (including joiners, zero-width
+fields, including parentheses, em dashes, and middle dots within values, and
+replaces every Unicode format character (including joiners, zero-width
 characters, and bidi controls) with a space, including in cited excerpts. Single-line
 fields also turn line breaks and Unicode line/paragraph separators into spaces and
 trim trailing whitespace. Quoted description and excerpt lines trim trailing whitespace
-after format characters become spaces. Empty metadata parts are omitted, and an
-empty date label is shown as "(no date label)". JSON is the exact source-text
+after format characters become spaces. Empty metadata parts are omitted; conflict
+groups use "None" when empty after normalization and trimming. Supplied date headings
+start with "Date:"; an empty date label uses the heading "No date label" instead.
+JSON is the exact source-text
 representation; presentation changes never alter source digests or locators.
 Promotion rechecks current source support and requires
 an explicitly selected entity/revision and role, following AssertionService's existing

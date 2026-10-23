@@ -312,9 +312,12 @@ Keep membership, completion and support rechecks inside the existing snapshot;
 capture the store object, not an earlier readiness or authorization result.
 
 The frozen Review acceptance pack pins test nodes and their complete files,
-including helpers. Changes to those files require reviewed node/file digests
-and an updated aggregate content fingerprint, even when case selection and
-expected outcomes stay the same. Run `tests/test_review_acceptance_pack.py`
+including helpers. After reviewing changes to those files, regenerate pins with
+`.venv/bin/python scripts/regenerate-acceptance-pins.py`; never hand-edit pins.
+Use `--check` to detect stale pins without writing (exit 1 when stale).
+The script refreshes case, node, file, fixture and aggregate fingerprints while
+preserving case definitions and expected outcomes. Review the resulting diff.
+Run `tests/test_review_acceptance_pack.py`
 alongside the affected workflow tests when updating these fixtures.
 
 Lease tests use the queue's injected clock for ownership deadlines and retain

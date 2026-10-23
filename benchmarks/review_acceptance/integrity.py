@@ -113,6 +113,10 @@ def referenced_test_nodes(payload: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(sorted(set(nodes)))
 
 
+def referenced_test_files(payload: Mapping[str, object]) -> tuple[str, ...]:
+    return tuple(sorted({node.partition("::")[0] for node in referenced_test_nodes(payload)}))
+
+
 def referenced_fixture_files(payload: Mapping[str, object]) -> tuple[str, ...]:
     cases = payload.get("cases")
     if not isinstance(cases, list):
@@ -166,7 +170,7 @@ def verify_pack_integrity(root: Path, payload: Mapping[str, object]) -> str:
         integrity.get("fixture_file_sha256"), label="fixture digest"
     )
     expected_nodes = referenced_test_nodes(payload)
-    expected_test_files = tuple(sorted({node.partition("::")[0] for node in expected_nodes}))
+    expected_test_files = referenced_test_files(payload)
     expected_fixtures = referenced_fixture_files(payload)
     if tuple(sorted(node_digests)) != expected_nodes:
         raise PackIntegrityError("acceptance test-node digest set does not match cases")

@@ -23,6 +23,35 @@ apply before upload, independently of review.
 
 ## Local validation
 
+Check a PR description locally with
+`python scripts/check-pr-body.py --head <full-head-sha> --base main body.md`.
+Pass `--allow <full-base-sha> --allow <full-merge-base-sha>` to also accept the
+base and merge-base revisions; the caller supplies these, without a Git lookup.
+Omit the file (or use `-`) to read UTF-8 stdin. The checker prints one line per
+problem and exits 1 on findings or unreadable input, 0 on clean text. CLI usage
+errors exit 2. It is not wired into CI.
+
+This literal-text check recognizes standalone 7-40-character hex tokens containing
+both a digit and an a-f letter, case-insensitively. It ignores URL contents,
+all-digit IDs, all-letter words and 64-hex digests (including `sha256:` values).
+Head and allowed inputs must be full 40- or 64-hex object IDs; their 7-40-character
+citations match by prefix. Only explicit current-head claims are checked:
+`current head`, `current PR head`, `current branch head`, `latest head`, `Head:`,
+`Current:`, and `on/against/at/for this head`. Context ends at a line break,
+semicolon or sentence-ending punctuation followed by whitespace or end of line.
+Within that context, the nearest preceding current or historical marker owns a
+citation; a citation before any marker uses the first marker. Historical markers
+are `Based on main` (also `Based on current main`), `Regression baseline`,
+`starting commit`, `Earlier evidence` and `earlier head`. They allow historical
+citations until the next marker or context boundary. Unlabelled earlier evidence
+outside a current-head claim needs no special label.
+It also rejects em dashes and, when the base is `main` or
+`refs/heads/main`, the phrases `Stacked on #N` and `after rebase`, ignoring case
+and allowing whitespace between words. Unsupported head/base/allowed inputs fail
+explicitly through `check_body`; the shared bounded checker contract exercises
+invalid-head and invalid-allowance probes. This does not verify test results, resolve Git history or
+judge whether prose accurately describes earlier evidence; review still does.
+
 Run `make bootstrap` to install dependencies and the external pre-push hook, then
 `make check-fast` before pushing. See [development setup](DEVELOPMENT.md) for
 Python 3.12, host packages and custom environment paths.
