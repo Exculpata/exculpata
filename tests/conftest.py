@@ -98,12 +98,20 @@ def _import_paths(name, directory, rootdir):
     return ()
 
 
+def _module_source(path):
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return _module_source_at_version(path, stat.st_mtime_ns, stat.st_size)
+
+
 @cache
-def _module_bound_names(path):
+def _module_source_at_version(path, mtime_ns, size):
     try:
         tree = ast.parse(path.read_text(encoding='utf-8'))
     except (OSError, SyntaxError, UnicodeError):
-        return frozenset()
+        return None
     names = set()
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -113,18 +121,10 @@ def _module_bound_names(path):
             names.update(target.id for target in targets if isinstance(target, ast.Name))
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             names.update(alias.asname or alias.name.split('.')[0] for alias in node.names)
-    return frozenset(names)
-
-
-@cache
-def _module_imports(path, rootdir):
-    try:
-        tree = ast.parse(path.read_text(encoding='utf-8'))
-    except (OSError, SyntaxError, UnicodeError):
-        return None
+    names = frozenset(names)
     if _tree_uses_testclient(tree):
-        return None
-    dependencies = set()
+        return names, None
+    imports = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             name = node.func.attr if isinstance(node.func, ast.Attribute) else (
@@ -132,7 +132,25 @@ def _module_imports(path, rootdir):
             if name in {'__import__', 'exec', 'eval', 'import_module', 'spec_from_file_location',
                         'module_from_spec', 'exec_module', 'run_module', 'run_path',
                         'getfixturevalue'}:
-                return None
+                return names, None
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imports.append(node)
+    return names, tuple(imports)
+
+
+@cache
+def _module_bound_names(path):
+    source = _module_source(path)
+    return frozenset() if source is None else source[0]
+
+
+@cache
+def _module_imports(path, rootdir):
+    source = _module_source(path)
+    if source is None or source[1] is None:
+        return None
+    dependencies = set()
+    for node in source[1]:
         if isinstance(node, ast.Import):
             if any(alias.name in {'importlib', 'importlib.util', 'runpy'}
                    for alias in node.names):

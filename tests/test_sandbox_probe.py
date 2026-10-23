@@ -834,6 +834,62 @@ def test_import_closure_reflects_same_path_rewrites(tmp_path, rewrite_dependency
         assert hooks._module_is_testclient_free(entry, tmp_path) is expected
 
 
+def test_items_share_unchanged_module_parse(synthetic_module, tmp_path, monkeypatch):
+    module = synthetic_module(
+        'def helper(): return 42\n'
+        + ''.join(f'def entry_{index}(): return helper()\n' for index in range(4))
+    )
+    source = Path(module.__file__).read_text()
+    parsed = []
+    parse = ast.parse
+
+    def record_parse(text, *args, **kwargs):
+        if text == source:
+            parsed.append(text)
+        return parse(text, *args, **kwargs)
+
+    monkeypatch.setattr(ast, 'parse', record_parse)
+    for index in range(4):
+        item = SimpleNamespace(
+            obj=getattr(module, f'entry_{index}'), cls=None,
+            config=SimpleNamespace(rootpath=tmp_path), fixturenames=[],
+        )
+        assert hooks._item_uses_testclient(item) is False
+        assert parsed == [source]
+
+
+@pytest.mark.parametrize('change', ['mtime', 'size'])
+def test_import_parse_cache_refreshes_changed_dependency(tmp_path, monkeypatch, change):
+    entry = tmp_path / 'synthetic_entry.py'
+    dependency = tmp_path / 'synthetic_dependency.py'
+    plain = 'VALUE = 42\n'
+    route = 'from fastapi.testclient import TestClient\n'
+    if change == 'mtime':
+        plain = plain.ljust(len(route))
+    # fixture-write: Supply an unchanged entry importing a rewritten dependency.
+    entry.write_text('import synthetic_dependency\n')
+    # fixture-write: Start with a synthetic dependency free of TestClient.
+    dependency.write_text(plain)
+    original = dependency.stat()
+    parsed = []
+    parse = ast.parse
+
+    def record_parse(text, *args, **kwargs):
+        parsed.append(text)
+        return parse(text, *args, **kwargs)
+
+    monkeypatch.setattr(ast, 'parse', record_parse)
+    assert hooks._module_is_testclient_free(entry, tmp_path)
+    # fixture-write: Introduce a TestClient import at the same dependency path.
+    dependency.write_text(route)
+    # fixture-write: Change exactly one cache-key field without a timing race.
+    os.utime(dependency, ns=(original.st_atime_ns, original.st_mtime_ns + (
+        1_000_000_000 if change == 'mtime' else 0)))
+    assert not hooks._module_is_testclient_free(entry, tmp_path)
+    assert not hooks._module_is_testclient_free(entry, tmp_path)
+    assert parsed == [entry.read_text(), plain, route]
+
+
 def test_dynamic_module_filename_in_followed_helper(synthetic_module, tmp_path):
     # fixture-write: Supply a plain script whose filename comes from a helper.
     (tmp_path / 'plain_helper.py').write_text('def noop(): return "TestClient"\n')
