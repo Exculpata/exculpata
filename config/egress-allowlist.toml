@@ -4,6 +4,49 @@
 # Runtime exceptions: gateway ingress, operator model-stager, signature-only clamav-updater.
 # Proxy destination authority is supplied by the selected application configuration.
 
+# Disposable verification uses only an ephemeral loopback listener and HTTP client.
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "client"
+digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
+detail = "network import"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "client"
+digest = "b5a33e5ad63782f8d2ce18f5df1aed881f91c2ed0e697b0c19314e25c8db2401"
+detail = "network import"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "client"
+digest = "2d743bdb03134a97fe8a36265fdeaea0af960dc78269fd3fae3e2168c62ac9fc"
+detail = "socket.socket"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "host"
+digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
+detail = "127.0.0.1:"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "host"
+digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
+detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/verify-exculpata.py"
+kind = "client"
+digest = "62e40a4b6088d1959f43e4c449d81f2e9be99ec6194299c998652297185f9d9f"
+detail = "httpx.Client"
+
 [compose]
 "compose.kerberos.yaml" = '''
 {
