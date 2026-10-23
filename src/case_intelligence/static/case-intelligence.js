@@ -851,7 +851,7 @@
     let bodyBytes = emptyBytes;
     const flush = () => {
       if (!entries.length) return;
-      const body = prefix + entries.map((entry) => entry.serialized).join(",") + suffix;
+      const body = `${prefix}${entries.map((entry) => entry.serialized).join(",")}${suffix}`;
       batches.push({ entries, body, bytes: encoder.encode(body).byteLength });
       entries = [];
       bodyBytes = emptyBytes;

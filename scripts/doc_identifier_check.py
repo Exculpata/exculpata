@@ -69,7 +69,7 @@ _BASE_ENV = {
 def _pattern() -> re.Pattern[str]:
     stems = "|".join(re.escape(stem) for stem in _STEMS)
     env = "|".join(re.escape(prefix) for prefix in _ENV_PREFIXES)
-    headers = "|".join(re.escape(prefix) for prefix in _HEADER_PREFIXES)
+    headers = "|".join(re.escape(prefix).replace(r"\-", "-") for prefix in _HEADER_PREFIXES)
     return re.compile(
         rf"(?P<version>\d+\.\d+\.\d+\+(?:{stems})\.\d+)"
         rf"|(?P<env>(?:{env})[A-Z0-9_]+)"

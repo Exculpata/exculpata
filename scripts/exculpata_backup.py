@@ -30,6 +30,7 @@ from case_intelligence.legacy_names import (
     LEGACY_PRODUCT,
     LEGACY_STEM,
     accepts_product,
+    name_value,
 )
 sys.path.pop(0)
 from exculpata_install import NamingError, STORAGE_MARKERS, _node_names, _compose_environment
@@ -597,7 +598,7 @@ def backup(args: argparse.Namespace) -> int:
         _run((*compose, "stop", "--timeout", "120", "gateway", "app"), capture=False)
         (payload / "postgres").mkdir()
         postgres_dump = _run(
-            (*compose, "exec", "-T", "postgres", "pg_dump", "-U", f"{LEGACY_STEM}", "-d", f"{LEGACY_STEM}", "--format=custom")
+            (*compose, "exec", "-T", "postgres", "pg_dump", "-U", name_value("database"), "-d", name_value("database"), "--format=custom")
         )
         (payload / "postgres" / "review-index.dump").write_bytes(postgres_dump.stdout)
         _run(

@@ -64,9 +64,23 @@ def _publication(monkeypatch, unsupported):
     )]
 
 
+def _gateway_logging(monkeypatch, unsupported):
+    from tests.test_gateway_nginx import ROOT, assert_gateway_logging
+
+    template = (ROOT / "deploy/gateway/default.conf.template").read_text()
+    if unsupported:
+        template += "\ninclude /synthetic/unreviewed.conf;\n"
+    try:
+        assert_gateway_logging(template)
+    except AssertionError as error:
+        return [str(error)]
+    return []
+
+
 @pytest.mark.parametrize("check,helper", [
     pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
     pytest.param(_pr_body_allowance, "check_body", id="pr-body-invalid-allowance"),
+    pytest.param(_gateway_logging, "assert_gateway_logging", id="gateway-unreviewed-include"),
     pytest.param(_fixture, "fixture_write", id="fixture-python-exception-group"),
     pytest.param(_publication, "_scan_media", id="publication-non-object-metadata"),
 ])

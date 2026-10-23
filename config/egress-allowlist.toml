@@ -5941,24 +5941,6 @@ detail = "transcription.env"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
-detail = "exculpata.env"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
 digest = "8f0178ee6570e427a34e4921e835dc36b5cae9c15c55ffbd3dd95dd7ad44e7a0"
 detail = "generator:8000"
 
@@ -6003,18 +5985,6 @@ path = "scripts/exculpata_install.py"
 kind = "host"
 digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
 detail = "backup.json"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "f209713eb89a95247143df1110e527dfc8a1e2dde48dacc1687b1d403400b1cc"
-detail = "exculpata.admin"
-
-[[source]]
-path = "scripts/exculpata_install.py"
-kind = "host"
-digest = "f209713eb89a95247143df1110e527dfc8a1e2dde48dacc1687b1d403400b1cc"
-detail = "exculpata.admin"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -7877,6 +7847,348 @@ path = "scripts/test-egress-smoke.py"
 kind = "host"
 digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
 detail = "installed-package-control.log"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
+detail = "changelog.md"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "e6e7cef12b654b93b46a2753429428e4222e09412fc6575ceb566dfb03a8c833"
+detail = "os.path.join"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "4a64e285c9f52d5c3335c4abc5310814b5b733ff6b15527e4be9b38e45902139"
+detail = "posixpath.join"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "c043c4137791e88e577bd95f540d4472d6da9c0feda1cb5042eb88b498bec6df"
+detail = "ntpath.join"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "7626af6efc8be66afb91a6728c89cfbdde4f2a6d5b8cdcf1fddff7f5c0c37060"
+detail = "pathlib.purepath"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "2adfbae523dfd1c892a4a0c1dfdf7c195895c9181517162f53cfccf36c09685b"
+detail = "pathlib.pureposixpath"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "2ab6400a38e4a23d94c910b834dfe767d81e810bd3ab26699423108124a97dc7"
+detail = "pathlib.purewindowspath"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "0e0372d6fa1e0eb695189f0c1598278b78803df75dde7719cc6fc7cc9e6375bd"
+detail = "pathlib.posixpath"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "eeaae0be10f430a36a3abf2d7a49dd0af5f037bf6e8c1abb74ac6216a5cfd429"
+detail = "pathlib.windowspath"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "d6a252cbda10dfff63a028694528c9090f1a119de43721f700feb5f70dcf120e"
+detail = "builtins.str"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "0cb8aba4f2c0518b0d338e13e2c12651b7ad3e236e7b5f6b6af6e6f07b3a6088"
+detail = "builtins.dict"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "4c2cf020f3da712ad440fea8adf8ce2e82752e7a680a6f6a724035cf0d37b4cd"
+detail = "argparse.argumentparser"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "6b1418738e9193c62e76fd0c6d702bb20a31b1e381e815a1f20cc798f823440a"
+detail = "builtins.len"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "56e248daa1d9a1ce836531663f43d318f1ae7656661537f29dcc8500fb26f6f1"
+detail = "builtins.bool"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "9b0d1b68cb67be1538543b6a924026179fdd8102d8b4a53bc91185a7db539b76"
+detail = "builtins.int"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "e96c6f4bdc7085453812f5012f8f74f12b7c8e271108cd6b4a6da384e602184e"
+detail = "builtins.float"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "9026d485e945202bb0fee746e78ff4aa6f9bc4be7f898e469fa4423cf9311f24"
+detail = "string.template"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "0ac98e6b34629a7b8e51ef1181c536c35d93d39fdb05f444f005fbafd7695478"
+detail = "os.getenv"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ceb969f320cba2e578b06f4f9d96fb5850ad6d4fd643fee79819ab3d96952b09"
+detail = "os.environ.get"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "943fbe1ea90b46be97c31451246519119ee6da8ba48ea313530f39f8b09c6754"
+detail = "builtins.list"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "2b32123eb982ae7c3563635fee2812b50d83ad7b5430b43aecf9349fd9950367"
+detail = "builtins.tuple"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "cf793dd3c620569efc10e8f82037ac01bdcf759819103403d27f4c48c62d6d8f"
+detail = "builtins.set"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "943fbe1ea90b46be97c31451246519119ee6da8ba48ea313530f39f8b09c6754"
+detail = "builtins.list"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "2b32123eb982ae7c3563635fee2812b50d83ad7b5430b43aecf9349fd9950367"
+detail = "builtins.tuple"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "cf793dd3c620569efc10e8f82037ac01bdcf759819103403d27f4c48c62d6d8f"
+detail = "builtins.set"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "fa38486e3a9d36c7e1ee884c9c2c9042d3d9bf630eeb80d6012eff7d753d4737"
+detail = "pathlib.path.home"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "a3bb68fd7bb63852ba3837c693b8f54a844225ad67c2f650c15620ac29711c52"
+detail = "pathlib.path.cwd"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "d6a252cbda10dfff63a028694528c9090f1a119de43721f700feb5f70dcf120e"
+detail = "builtins.str"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ae23da37330152c6ed55249a3bba077d58fa5dbbf14dd63069f8f69ab2a75334"
+detail = "json.dumps"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "d59a415d9c9d06f432ce695c305aa381bbeeb6d26b54cd2ca4f719a52fd1ea41"
+detail = "re.escape"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "c34a618f6349df4d8d3656c7d93145a3bc3dc19cc2afb4ae749dfbb312cb51a9"
+detail = "builtins.exec"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "cfc1144b743262b5ebf3d367af6c501b7aaacb0edb3d5bb11e16400ed8de09f3"
+detail = "builtins.eval"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "f008d2036f85f2cb247202fc682050744bb31d7687f5b0b158f3fc7d61920d94"
+detail = "builtins.getattr"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "0cb8aba4f2c0518b0d338e13e2c12651b7ad3e236e7b5f6b6af6e6f07b3a6088"
+detail = "builtins.dict"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "scripts/rename_contract_check.py"
+kind = "host"
+digest = "ad212966bb9b793053a5d91f7d78b9ec11aa24298bac2e23aedee6adf1335c46"
+detail = "pathlib.path"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "4b311dd89853c73af0336d2faec2051c882a5cb108bbaa4a0b55edfa1f107825"
+detail = "recordbench.env"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "8c1abc9c523d9507af0bd996e6e45eaafa1acf5d24c9b3c10481ec14e22b5747"
+detail = "exculpata.env"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "4f402e66f92aa628b4c394ccdb1840f55da6c7bd7e63077e4077046fda028df3"
+detail = "recordbench.example.test"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "0785c0358af71b358dbcbf33d649e20d84fe9ae6c6972bb3542573b5920e06c6"
+detail = "exculpata.example.test"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "b6af589bd6aeb3ce147998db956cad34f523f7a7bcc92b86e2fe34ee72be2051"
+detail = "recordbench.admin"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "f209713eb89a95247143df1110e527dfc8a1e2dde48dacc1687b1d403400b1cc"
+detail = "exculpata.admin"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "c75b11c9be0863155c0e6ec2c21bc0717c36a3dbe722cbe0c82b90a1406c60f0"
+detail = "recordbench-auth.conf.template"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "c75b11c9be0863155c0e6ec2c21bc0717c36a3dbe722cbe0c82b90a1406c60f0"
+detail = "recordbench-auth.conf.template"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "bc4f25aaec615c6e6d39297a2692cbcdcf28a24d831e08d43ad127aa39645bf1"
+detail = "recordbench.keytab"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "bc4f25aaec615c6e6d39297a2692cbcdcf28a24d831e08d43ad127aa39645bf1"
+detail = "recordbench.keytab"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "194228fe3f256dfe1468b140ece7e858d28afbbc613af28266dd9bad064dfc59"
+detail = "recordbench-backup.sh"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "dd4ddf3337ff244a90c538b1752e487b5da826cbb3977cbf63493ceee90bd9bb"
+detail = "exculpata-backup.sh"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "6d665105f9d6343e68ee3db400465c44c0632ed9bf9e7bbd548a4ac5c9fdd6f9"
+detail = "recordbench-backup-status.sh"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "4dc941c99663690a74a7003b281efcfd0f79654da21a05118c7128d4a952f6f0"
+detail = "exculpata-backup-status.sh"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "9aaee14dc4542608a2a20073c1a4ee01c1b8c4cf0a4a9a2002f13f26b319761d"
+detail = "recordbench-restore-drill.sh"
+
+[[source]]
+path = "src/case_intelligence/legacy_names.py"
+kind = "host"
+digest = "6b67ac9b6bedfab0d3c0747b8d996ebfffee9807cd52da54173e1906dd935175"
+detail = "exculpata-restore-drill.sh"
 
 [[source]]
 path = "src/case_intelligence/defense_eval.py"
