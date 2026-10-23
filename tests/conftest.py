@@ -182,8 +182,10 @@ def _module_imports(path, rootdir):
     return frozenset(dependencies)
 
 
-@cache
 def _module_is_testclient_free(path, rootdir):
+    _module_imports.cache_clear()
+    _module_bound_names.cache_clear()
+    _import_paths.cache_clear()
     pending = [Path(path).resolve()]
     visited = set()
     while pending:
@@ -198,7 +200,6 @@ def _module_is_testclient_free(path, rootdir):
     return True
 
 
-@cache
 def _testclient_free_callable(function, rootdir):
     try:
         path = inspect.getsourcefile(inspect.unwrap(function))

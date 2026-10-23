@@ -814,9 +814,24 @@ def test_import_closure_controls_deep_helper_leaves(
             return helper()
     ''')
     assert hooks._function_uses_testclient(entry.entry, tmp_path) is client_at_end
-    info = hooks._module_imports.cache_info()
     assert hooks._module_is_testclient_free(tmp_path / 'synthetic_chain_0.py', tmp_path) is not client_at_end
-    assert hooks._module_imports.cache_info().misses == info.misses
+
+
+@pytest.mark.parametrize('rewrite_dependency', [False, True])
+def test_import_closure_reflects_same_path_rewrites(tmp_path, rewrite_dependency):
+    entry = tmp_path / 'synthetic_entry.py'
+    changed = tmp_path / 'synthetic_dependency.py' if rewrite_dependency else entry
+    if rewrite_dependency:
+        # fixture-write: Keep the entry unchanged while its imported source changes.
+        entry.write_text('import synthetic_dependency\n')
+    for source, expected in [
+        ('import pathlib\n', True),
+        ('from fastapi.testclient import TestClient\n', False),
+        ('import pathlib\n', True),
+    ]:
+        # fixture-write: Rewrite imports at the same path between closure probes.
+        changed.write_text(source)
+        assert hooks._module_is_testclient_free(entry, tmp_path) is expected
 
 
 def test_dynamic_module_filename_in_followed_helper(synthetic_module, tmp_path):
