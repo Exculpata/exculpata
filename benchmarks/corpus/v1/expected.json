@@ -1,0 +1,262 @@
+{
+  "documents": {
+    "bicycle": {
+      "text": "Synthetic discovery sample. The blue bicycle arrived at Cedar Gate at 09:15.",
+      "cer": 0.0,
+      "pages": 1
+    },
+    "parcel": {
+      "text": "Synthetic discovery sample. The orange parcel was stored in locker seven.",
+      "cer": 0.0,
+      "pages": 1
+    },
+    "scan-en": {
+      "text": "Synthetic discovery sample. The green lantern was collected at Pine Bridge.",
+      "cer": 0.03,
+      "pages": 1
+    },
+    "scan-es": {
+      "text": "Muestra de descubrimiento sintetica. La bicicleta roja llego a la puerta norte.",
+      "cer": 0.03,
+      "pages": 1
+    }
+  },
+  "audio": {
+    "audio-bicycle": {
+      "text": "This is a synthetic recording. The blue bicycle arrived at Cedar Gate at nine fifteen.",
+      "wer": 0.15,
+      "locator": {
+        "start_ms": 0,
+        "end_ms": 5615,
+        "tolerance_ms": 500
+      },
+      "layouts": [
+        [
+          {
+            "text": "This is a synthetic recording. The blue bicycle arrived at Cedar Gate at nine fifteen.",
+            "start_ms": 0,
+            "end_ms": 5400
+          }
+        ]
+      ]
+    },
+    "audio-parcel": {
+      "text": "This is a synthetic recording. The orange parcel was stored in locker seven.",
+      "wer": 0.15,
+      "locator": {
+        "start_ms": 0,
+        "end_ms": 4861,
+        "tolerance_ms": 500
+      },
+      "layouts": [
+        [
+          {
+            "text": "This is a synthetic recording. The orange parcel was stored in locker seven.",
+            "start_ms": 0,
+            "end_ms": 4650
+          }
+        ],
+        [
+          {
+            "text": "This is a synthetic recording.",
+            "start_ms": 0,
+            "end_ms": 2040
+          },
+          {
+            "text": "The orange parcel was stored in Locker 7.",
+            "start_ms": 2040,
+            "end_ms": 4480
+          }
+        ]
+      ]
+    }
+  },
+  "search": {
+    "search-bicycle": {
+      "document_ids": [
+        "bicycle",
+        "audio-bicycle"
+      ],
+      "citations": [
+        {
+          "document_id": "bicycle",
+          "span": "blue bicycle"
+        },
+        {
+          "document_id": "audio-bicycle",
+          "span": "blue bicycle"
+        }
+      ]
+    },
+    "search-parcel": {
+      "document_ids": [
+        "parcel",
+        "audio-parcel"
+      ],
+      "citations": [
+        {
+          "document_id": "parcel",
+          "span": "orange parcel"
+        },
+        {
+          "document_id": "audio-parcel",
+          "span": "orange parcel"
+        }
+      ]
+    },
+    "search-gate": {
+      "document_ids": [
+        "bicycle",
+        "audio-bicycle"
+      ],
+      "citations": [
+        {
+          "document_id": "bicycle",
+          "span": "Cedar Gate"
+        },
+        {
+          "document_id": "audio-bicycle",
+          "span": "Cedar Gate"
+        }
+      ]
+    },
+    "search-locker": {
+      "document_ids": [
+        "parcel",
+        "audio-parcel"
+      ],
+      "citations": [
+        {
+          "document_id": "parcel",
+          "span": "locker seven"
+        },
+        {
+          "document_id": "audio-parcel",
+          "span": "locker seven",
+          "alternative_spans": [
+            "Locker 7"
+          ]
+        }
+      ]
+    },
+    "search-spoken": {
+      "document_ids": [
+        "audio-bicycle",
+        "audio-parcel"
+      ],
+      "citations": [
+        {
+          "document_id": "audio-bicycle",
+          "span": "synthetic recording"
+        },
+        {
+          "document_id": "audio-parcel",
+          "span": "synthetic recording"
+        }
+      ]
+    },
+    "search-scan-en": {
+      "document_ids": [
+        "scan-en"
+      ],
+      "citations": [
+        {
+          "document_id": "scan-en",
+          "span": "green lantern"
+        }
+      ]
+    },
+    "search-scan-es": {
+      "document_ids": [
+        "scan-es"
+      ],
+      "citations": [
+        {
+          "document_id": "scan-es",
+          "span": "bicicleta roja"
+        }
+      ]
+    }
+  },
+  "answers": {
+    "answer-bicycle": {
+      "facts": [
+        "blue bicycle",
+        "Cedar Gate"
+      ],
+      "citations": [
+        {
+          "document_id": "bicycle",
+          "span": "The blue bicycle arrived at Cedar Gate at 09:15."
+        },
+        {
+          "document_id": "audio-bicycle",
+          "span": "The blue bicycle arrived at Cedar Gate"
+        }
+      ]
+    },
+    "answer-time": {
+      "facts": [
+        "09:15"
+      ],
+      "citations": [
+        {
+          "document_id": "bicycle",
+          "span": "The blue bicycle arrived at Cedar Gate at 09:15."
+        },
+        {
+          "document_id": "audio-bicycle",
+          "span": "The blue bicycle arrived at Cedar Gate"
+        }
+      ]
+    },
+    "answer-parcel": {
+      "facts": [
+        "locker seven"
+      ],
+      "citations": [
+        {
+          "document_id": "parcel",
+          "span": "The orange parcel was stored in locker seven."
+        },
+        {
+          "document_id": "audio-parcel",
+          "span": "The orange parcel was stored in locker seven.",
+          "alternative_spans": [
+            "The orange parcel was stored in Locker 7."
+          ]
+        }
+      ]
+    },
+    "answer-locker": {
+      "facts": [
+        "orange parcel"
+      ],
+      "citations": [
+        {
+          "document_id": "parcel",
+          "span": "The orange parcel was stored in locker seven."
+        },
+        {
+          "document_id": "audio-parcel",
+          "span": "The orange parcel was stored in locker seven.",
+          "alternative_spans": [
+            "The orange parcel was stored in Locker 7."
+          ]
+        }
+      ]
+    },
+    "answer-spoken": {
+      "facts": [
+        "blue bicycle",
+        "Cedar Gate"
+      ],
+      "citations": [
+        {
+          "document_id": "audio-bicycle",
+          "span": "The blue bicycle arrived at Cedar Gate"
+        }
+      ]
+    }
+  }
+}

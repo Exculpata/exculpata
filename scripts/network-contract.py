@@ -18,7 +18,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
-                   "socket", "http.client", "authlib.integrations", "service_endpoints.open_service_request")
+                   "socket", "http.client", "authlib.integrations", "service_endpoints.open_service_request",
+                   "huggingface_hub", "faster_whisper", "ctranslate2", "av")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
 

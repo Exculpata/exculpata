@@ -1,4 +1,5 @@
 """Bounded container flows cannot discard known fixture provenance."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -79,7 +80,9 @@ def test_actual_container_flows_close_shared_connection_before_rejection(source)
     raw = sqlite3.connect(':memory:')
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

@@ -548,7 +548,10 @@ def test_non_synthetic_pilot_matter_does_not_disable_postgres_model_startup(tmp_
         captured["matter_ids"] = set(pages_by_matter)
         captured["embedder"] = embedder
 
-    monkeypatch.setattr(review_bench, "connect_postgres_from_environment", lambda: FakeConnection())
+    def connect_synthetic():
+        return FakeConnection()
+
+    monkeypatch.setattr(review_bench, "connect_postgres_from_environment", connect_synthetic)
     monkeypatch.setattr(review_bench, "initialize_postgres_demo", fake_initialize)
     monkeypatch.setattr(review_bench, "delete_postgres_matter_documents", lambda *args, **kwargs: None)
     monkeypatch.setenv("CASE_REVIEW_ENABLE_MODELS", "1")

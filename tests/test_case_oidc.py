@@ -6,6 +6,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlsplit
 
+from contextlib import ExitStack
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -64,7 +66,7 @@ def post(client, matter, action, **values):
 
 
 @pytest.fixture
-def oidc_case(tmp_path):
+def oidc_case(tmp_path, request):
     clock = [datetime(2026, 10, 13, 12, tzinfo=timezone.utc)]
     settings = _settings(administrator_groups=frozenset({'synthetic-administrators'}))
     provider = FreshProvider(settings, clock)
@@ -74,13 +76,15 @@ def oidc_case(tmp_path):
     bench = app.state.workbench
     app.state.identity._clock = lambda: clock[0]
     bench.workspace._clock = lambda: clock[0]
-    with TestClient(app, base_url=settings.external_origin) as client:
-        signin(client)
-        owner = bench.workspace.upsert_principal(settings.provider_key, 'synthetic-other-owner', 'Synthetic Owner', 'owner')
-        matter = bench.create_matter('Synthetic SSO closure', '', owner.principal_id)
-        source = bench.source_store(matter)
-        document, _ = source.store_stream('synthetic.txt', 'text/plain', io.BytesIO(b'Synthetic original.'))
-        yield client, bench, matter, provider, clock, source, document
+    stack = ExitStack()
+    request.addfinalizer(stack.close)
+    client = stack.enter_context(TestClient(app, base_url=settings.external_origin))
+    signin(client)
+    owner = bench.workspace.upsert_principal(settings.provider_key, 'synthetic-other-owner', 'Synthetic Owner', 'owner')
+    matter = bench.create_matter('Synthetic SSO closure', '', owner.principal_id)
+    source = bench.source_store(matter)
+    document, _ = source.store_stream('synthetic.txt', 'text/plain', io.BytesIO(b'Synthetic original.'))
+    return client, bench, matter, provider, clock, source, document
 
 
 def begin(client, bench, matter, mode=MODE):

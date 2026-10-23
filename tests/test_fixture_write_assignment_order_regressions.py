@@ -1,4 +1,5 @@
 """Mixed cleanup controls and sequential setter targets match Python semantics."""
+from tests.fixture_probe import fixture_probe
 import io
 import sqlite3
 from types import SimpleNamespace
@@ -67,18 +68,20 @@ resource = io.StringIO()
 for handle in [independent, resource]:
     handle.close()
 '''
-    namespace = {}
+    independent = resource = None
     try:
-        exec(source, namespace)
-        assert namespace['resource'].closed
+        error, (independent, resource) = fixture_probe(source, '(independent, resource)')
+        if error is not None:
+            raise error
+        assert resource.closed
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
-            namespace['independent'].execute('SELECT 1')
+            independent.execute('SELECT 1')
         assert check_fixture_writes(source) == []
     finally:
-        if 'independent' in namespace:
-            namespace['independent'].close()
-        if 'resource' in namespace:
-            namespace['resource'].close()
+        if independent is not None:
+            independent.close()
+        if resource is not None:
+            resource.close()
 
 
 def test_rebound_setter_commits_actual_pending_transaction_before_inventory_rejects(tmp_path):
@@ -94,7 +97,9 @@ handle = sqlite3.connect(':memory:')
         # fixture-write: Deliberately retain pending synthetic data to demonstrate the sequential raw setter commit.
         raw.execute("INSERT INTO synthetic_fixture VALUES ('pending')")
         # Supply an independent receiver before rebinding it to the live handle.
-        exec('(handle, handle.isolation_level) = (bench.workspace.connection, None)', {'bench': bench, 'handle': independent})
+        error, _ = fixture_probe('(handle, handle.isolation_level) = (bench.workspace.connection, None)', bench=bench, handle=independent)
+        if error is not None:
+            raise error
         with sqlite3.connect(path) as observer:
             assert observer.execute('SELECT value FROM synthetic_fixture').fetchall() == [('pending',)]
         assert not raw.in_transaction

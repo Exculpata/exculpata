@@ -216,7 +216,8 @@ def test_home_leads_with_linked_briefing_and_native_fill_buttons(tmp_path, monke
         assert 'Your objective can change the order of these existing suggestions (up to five).' in page.text
         assert 'It does not create new questions.' in page.text
         assert 'Nothing is sent until you submit it.' in page.text
-        assert all('value' in item and item['value'].startswith('What do the records say about ') for item in parsed.questions)
+        for item in parsed.questions:
+            assert 'value' in item and item['value'].startswith('What do the records say about ')
         assert all(parsed.lines)
         for href in {href for line in parsed.lines for href in line}:
             assert urlsplit(href).path.startswith(f'/matters/{slug}')

@@ -110,7 +110,8 @@ def test_redirect_is_fatal_without_target_contact_or_receipt(cli, monkeypatch, t
         cli.main(args)
     assert not output.exists()
     assert handler.requests
-    assert all(url.startswith(ENDPOINT + "/") for url, _, _ in handler.requests)
+    for url, _, _ in handler.requests:
+        assert url.startswith(ENDPOINT + "/")
     assert sum(method == "POST" for _, _, method in handler.requests) == (stage == "generation")
 
 

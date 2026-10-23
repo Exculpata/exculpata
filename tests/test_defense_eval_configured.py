@@ -125,7 +125,10 @@ def test_unavailable_model_is_a_harness_error(monkeypatch, tmp_path):
         def generate(self, **kwargs):
             raise GenerationUnavailable("synthetic unavailable service")
 
-    monkeypatch.setattr(evaluation, "generator_from_environment", lambda: UnavailableClient({}))
+    def unavailable_generator():
+        return UnavailableClient({})
+
+    monkeypatch.setattr(evaluation, "generator_from_environment", unavailable_generator)
     assert evaluation.main(["--mode", "configured", "--output-dir", str(tmp_path)]) == 2
     card = json.loads((tmp_path / "scorecard.json").read_text())
     assert card["aggregates"]["errors"] == len(card["questions"])

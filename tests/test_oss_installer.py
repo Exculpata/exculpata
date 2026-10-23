@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.runtime_probes import run_auth_mode_probe
 
 
 ROOT = Path(__file__).parents[1]
@@ -2710,10 +2711,10 @@ def test_auth_probe_derives_proof_inside_container_and_only_emits_allowlisted_mo
     monkeypatch.setattr(builtins, "open", key_file)
     monkeypatch.setattr(installer.http.client, "HTTPConnection", Connection)
     if accepted:
-        exec(installer._AUTH_MODE_PROBE, {})
+        run_auth_mode_probe()
     else:
         with pytest.raises(SystemExit) as error:
-            exec(installer._AUTH_MODE_PROBE, {})
+            run_auth_mode_probe()
         assert error.value.code == 1
     output = capsys.readouterr()
     assert output.err == ""
