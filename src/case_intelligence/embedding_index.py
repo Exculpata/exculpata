@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Mapping
 
+from .legacy_names import name_value
+
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_EMBEDDING_REVISION = "47ea694b257b703fee9253d75c2b1f2985180498"
 WARNING = (
@@ -24,7 +26,7 @@ def embedding_index_path() -> Path | None:
     configured = os.getenv("CASE_INTELLIGENCE_EMBEDDING_INDEX_RECORD", "").strip()
     if configured:
         return Path(configured)
-    default = Path("/var/lib/recordbench/state/embedding-index.json")
+    default = Path(name_value("embedding_index_record"))
     if default.parent.is_dir():
         return default
     return None

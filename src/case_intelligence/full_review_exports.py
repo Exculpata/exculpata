@@ -8,7 +8,7 @@ from typing import Mapping, Sequence, TYPE_CHECKING
 
 from .answer_presentation import review_rejection_notice
 from .branding import PRODUCT_NAME
-from .legacy_names import LEGACY_PRODUCT, LEGACY_STEM
+from .legacy_names import LEGACY_PRODUCT, LEGACY_STEM, name_value
 from .store_records import (
     MatterRecord, ReviewCriterionRecord, ReviewCriterionVersionRecord,
     ReviewDecisionRecord, ReviewRunRecord, SourceCatalogRecord,
@@ -81,7 +81,7 @@ def export_full_review(
     if format_name == "json":
         body = json.dumps(
             {
-                "schema": f"{LEGACY_STEM}-source-check-v1",
+                "schema": name_value("format_source_check_v1"),
                 "product": f"{LEGACY_PRODUCT}",
                 "exported_at": created,
                 "model_notice": model_notice,

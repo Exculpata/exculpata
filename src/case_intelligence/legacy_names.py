@@ -44,6 +44,7 @@ NAME_CONTRACTS = MappingProxyType({
     "backup_tool": NameContract("recordbench_backup.py", "exculpata_backup.py", "generation"),
     "database": NameContract("recordbench", "recordbench", "retained"),
     "container_data": NameContract("/var/lib/recordbench", "/var/lib/recordbench", "retained"),
+    "embedding_index_record": NameContract("/var/lib/recordbench/state/embedding-index.json", "/var/lib/recordbench/state/embedding-index.json", "retained"),
     "container_secrets": NameContract("/run/recordbench-secrets", "/run/recordbench-secrets", "retained"),
     "container_accounts": NameContract("/var/lib/recordbench-accounts", "/var/lib/recordbench-accounts", "retained"),
     "container_auth": NameContract("/run/recordbench-auth", "/run/recordbench-auth", "retained"),

@@ -616,9 +616,9 @@ def _apply_external_generator(
         if not secret.strip() or len(secret) > 4096:
             raise RuntimeError("The generator API key is missing or too long. Enter it on one line.")
         _private_write(secret_path, secret if secret.endswith("\n") else secret + "\n")
-        api_key_file = f"/run/{LEGACY_STEM}-secrets/generator-api-key"
+        api_key_file = f"{CONTAINER_SECRETS}/generator-api-key"
     elif secret_path.is_file():
-        api_key_file = f"/run/{LEGACY_STEM}-secrets/generator-api-key"
+        api_key_file = f"{CONTAINER_SECRETS}/generator-api-key"
     values = _external_environment_values(endpoint, api_key_file=api_key_file)
     app_values.update(values)
     compose_values["EXCULPATA_GENERATOR_ALLOWED_HOSTS"] = endpoint.allowed_host
@@ -4104,10 +4104,10 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     url = app_env.get("CASE_INTELLIGENCE_GENERATOR_URL", "").strip()
     model = app_env.get("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
     console.note(f"answer server :: {server} {model} at {url}")
-    device = compose_env.get("RECORDBENCH_RETRIEVAL_DEVICE") or compose_env.get("EXCULPATA_RETRIEVAL_DEVICE") or "cpu"
+    device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
     console.note(f"embed and rerank :: in-process Granite and ModernBERT; device {device}")
-    embedding = compose_env.get("EXCULPATA_EMBEDDING_MODEL") or compose_env.get("RECORDBENCH_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
-    revision = compose_env.get("EXCULPATA_EMBEDDING_REVISION") or compose_env.get("RECORDBENCH_EMBEDDING_REVISION") or DEFAULT_EMBEDDING_REVISION
+    embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
+    revision = compose_env.get(name_value("environment", suffix="EMBEDDING_REVISION")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_REVISION")) or DEFAULT_EMBEDDING_REVISION
     index_warning = embedding_change_warning(
         load_embedding_index(root / "state" / ("embedding-index" + ".json")),
         model=embedding,
@@ -4119,8 +4119,8 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
         console.note("Dry run: the schema check was not sent")
         return
     hosts = (
-        compose_env.get("EXCULPATA_GENERATOR_ALLOWED_HOSTS")
-        or compose_env.get("RECORDBENCH_GENERATOR_ALLOWED_HOSTS")
+        compose_env.get(name_value("environment", suffix="GENERATOR_ALLOWED_HOSTS"))
+        or compose_env.get(name_value("environment", LEGACY_STEM, suffix="GENERATOR_ALLOWED_HOSTS"))
         or app_env.get("CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS")
         or "generator"
     )
