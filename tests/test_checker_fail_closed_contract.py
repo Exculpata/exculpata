@@ -5,6 +5,8 @@ CODING_STANDARDS.md. This is a regression contract, not a soundness proof.
 """
 
 import json
+import importlib.util
+from pathlib import Path
 import subprocess
 from textwrap import dedent
 
@@ -12,6 +14,15 @@ import pytest
 
 from tests.fixture_write_policy import check_fixture_writes
 from tests.test_publication_gate import publication
+
+
+def _pr_body(monkeypatch, unsupported):
+    path = Path(__file__).resolve().parents[1] / "scripts" / "check-pr-body.py"
+    spec = importlib.util.spec_from_file_location("pr_body_checker", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    head = "not-a-sha" if unsupported else "a" * 40
+    return module.check_body("Synthetic description", head, "main")
 
 
 def _fixture(monkeypatch, unsupported):
@@ -45,6 +56,7 @@ def _publication(monkeypatch, unsupported):
 
 
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
     pytest.param(_fixture, "fixture_write", id="fixture-python-exception-group"),
     pytest.param(_publication, "_scan_media", id="publication-non-object-metadata"),
 ])

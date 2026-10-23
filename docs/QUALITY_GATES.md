@@ -23,6 +23,24 @@ apply before upload, independently of review.
 
 ## Local validation
 
+Check a PR description locally with
+`python scripts/check-pr-body.py --head <full-head-sha> --base main body.md`.
+Omit the file (or use `-`) to read UTF-8 stdin. The checker prints one line per
+problem and exits 1 on findings or unreadable input, 0 on clean text. CLI usage
+errors exit 2. It is not wired into CI.
+
+This literal-text check treats standalone tokens of seven or more hex characters
+as SHA citations, including in links and code blocks. Full 40- or 64-character
+head SHAs and their abbreviations match case-insensitively. Label each historical
+citation `Earlier evidence: <sha>` (optional backticks around the SHA); the label
+is case-insensitive, stays on the same line and covers only the immediately
+following SHA. It also rejects em dashes and, when the base is `main` or
+`refs/heads/main`, the phrases `Stacked on #N` and `after rebase`, ignoring case
+and allowing whitespace between words. Unsupported head/base inputs fail
+explicitly through `check_body`; the shared bounded checker contract exercises
+an invalid-head probe. This does not verify test results, resolve Git history or
+judge whether prose accurately describes earlier evidence; review still does.
+
 Run `make bootstrap` to install dependencies and the external pre-push hook, then
 `make check-fast` before pushing. See [development setup](DEVELOPMENT.md) for
 Python 3.12, host packages and custom environment paths.
