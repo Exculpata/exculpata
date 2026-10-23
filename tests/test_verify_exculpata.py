@@ -1,6 +1,7 @@
 """Verification evidence and CLI contracts, without starting an application."""
 
 import builtins
+from contextlib import nullcontext
 import json
 from pathlib import Path
 import runpy
@@ -9,14 +10,13 @@ import sys
 from textwrap import dedent
 from types import SimpleNamespace
 
+import httpx
 import pytest
-
 
 @pytest.fixture
 def verifier():
     namespace = runpy.run_path(str(Path(__file__).parents[1] / "scripts/verify-exculpata.py"))
     return namespace["main"].__globals__
-
 
 def test_evidence_preserves_before_and_after_and_refuses_replacement(verifier, tmp_path):
     path = tmp_path / "evidence.json"
@@ -24,35 +24,30 @@ def test_evidence_preserves_before_and_after_and_refuses_replacement(verifier, t
     after = {"passed": True, "checks": [{"status": 200, "elapsed_ms": 1.25}]}
     verifier["write_evidence"](path, "before", before)
     verifier["write_evidence"](path, "after", after)
-    result = json.loads(path.read_text())
-    assert result == {"schema_version": 1, "synthetic_only": True,
+    assert json.loads(path.read_text()) == {"schema_version": 1, "synthetic_only": True,
                       "runs": {"before": before, "after": after}}
     original = path.read_bytes()
     with pytest.raises(ValueError, match="already recorded"):
         verifier["write_evidence"](path, "before", after)
     assert path.read_bytes() == original
 
-
 @pytest.mark.parametrize("content", ["broken JSON", "[]", '{"schema_version": 99}',
-    '{"schema_version":1,"synthetic_only":false,"runs":{}}'])
-def test_writer_preserves_unrecognized_files(verifier, tmp_path, content):
-    path = tmp_path / "existing.json"
-    # fixture-write: Synthetic malformed evidence must remain unchanged on rejection.
-    path.write_text(content)
-    with pytest.raises(ValueError):
-        verifier["write_evidence"](path, "before", {"passed": True})
-    assert path.read_text() == content
-
-
-def test_serialization_failure_does_not_damage_baseline(verifier, tmp_path):
+    '{"schema_version":1,"synthetic_only":false,"runs":{}}', None])
+def test_writer_preserves_files_on_failure(verifier, tmp_path, content):
     path = tmp_path / "evidence.json"
-    verifier["write_evidence"](path, "before", {"passed": True})
+    if content is None:
+        verifier["write_evidence"](path, "before", {"passed": True})
+    else:
+        # fixture-write: Synthetic malformed evidence must remain unchanged on rejection.
+        path.write_text(content)
     original = path.read_bytes()
     with pytest.raises(ValueError):
-        verifier["write_evidence"](path, "after", {"elapsed_ms": float("nan")})
+        verifier["write_evidence"](path, "after" if content is None else "before",
+                                   {"elapsed_ms": float("nan")} if content is None else {"passed": True})
     assert path.read_bytes() == original
+    if content is not None:
+        assert path.read_text() == content
     assert list(tmp_path.iterdir()) == [path]
-
 
 def test_arguments(verifier, tmp_path):
     path = tmp_path / "evidence.json"
@@ -62,82 +57,83 @@ def test_arguments(verifier, tmp_path):
     assert args.checkout == verifier["ROOT"]
     assert args.allow_same_revision is False
 
-
-@pytest.mark.parametrize("before_revision,allow_same,accepted", [
-    ("a" * 40, False, True),
-    ("b" * 40, False, False),
-    ("b" * 40, True, True),
-    (None, False, False),
-])
-def test_after_requires_distinct_checkout_revision(
-        verifier, tmp_path, monkeypatch, before_revision, allow_same, accepted):
+@pytest.fixture
+def selected_checkout(verifier, tmp_path, monkeypatch):
     checkout = tmp_path / "selected"
     checkout.mkdir()
-    path = tmp_path / "evidence.json"
-    if before_revision is not None:
-        verifier["write_evidence"](path, "before", {"revision": before_revision})
-    original = path.read_bytes() if path.exists() else None
-    commands = []
-
+    state = SimpleNamespace(checkout=checkout, path=tmp_path / "evidence.json",
+                            revision="b" * 40, dirty=" M synthetic\n", commands=[], calls=[])
     def git_output(command, *, cwd, text):
         assert cwd == checkout and text is True
-        commands.append(command)
-        return "b" * 40 + "\n" if command == ["git", "rev-parse", "HEAD"] else " M synthetic\n"
-
-    calls = []
+        state.commands.append(command)
+        return state.revision + "\n" if command == ["git", "rev-parse", "HEAD"] else state.dirty
     monkeypatch.setattr(verifier["subprocess"], "check_output", git_output)
-    monkeypatch.setitem(verifier, "run_verification", lambda args, report: calls.append(args.checkout))
-    arguments = ["--phase", "after", "--checkout", str(checkout), "--evidence", str(path)]
-    if allow_same:
-        arguments.append("--allow-same-revision")
-    assert verifier["main"](arguments) == (0 if accepted else 1)
-    assert calls == ([checkout] if accepted else [])
+    monkeypatch.setitem(verifier, "run_verification", lambda args, report: state.calls.append(args.checkout))
+    return state
+
+def run_main(verifier, path, phase="before", checkout=None, extra=()):
+    return verifier["main"](["--phase", phase, "--evidence", str(path),
+                             "--checkout", str(checkout or verifier["ROOT"]), *extra])
+
+@pytest.mark.parametrize("phase,before_revision,allow_same,accepted", [
+    ("before", None, False, True), ("after", "a" * 40, False, True),
+    ("after", "b" * 40, False, False), ("after", "b" * 40, True, True),
+    ("after", None, False, False)])
+def test_selected_revision_and_after_requires_distinct_revision(
+        verifier, selected_checkout, phase, before_revision, allow_same, accepted):
+    state = selected_checkout
+    if phase == "before":
+        state.revision, state.dirty = "a" * 40, ""
+    if before_revision is not None:
+        verifier["write_evidence"](state.path, "before", {"revision": before_revision})
+    original = state.path.read_bytes() if state.path.exists() else None
+    extra = ["--allow-same-revision"] if allow_same else []
+    assert run_main(verifier, state.path, phase, state.checkout, extra) == (0 if accepted else 1)
+    assert state.calls == ([state.checkout] if accepted else [])
     if accepted:
-        report = json.loads(path.read_text())["runs"]["after"]
-        assert report["revision"] == "b" * 40
-        assert report["working_tree_dirty"] is True
+        report = json.loads(state.path.read_text())["runs"][phase]
+        assert report["revision"] == state.revision
+        assert report["working_tree_dirty"] is (phase == "after")
         assert report["allow_same_revision"] is allow_same
-        assert commands == [["git", "rev-parse", "HEAD"], ["git", "status", "--porcelain"]]
+        assert state.commands == [["git", "rev-parse", "HEAD"], ["git", "status", "--porcelain"]]
     else:
-        assert (path.read_bytes() if path.exists() else None) == original
+        assert (state.path.read_bytes() if state.path.exists() else None) == original
 
-
-def test_before_records_selected_revision(verifier, tmp_path, monkeypatch):
-    checkout = tmp_path / "base"
-    checkout.mkdir()
-    path = tmp_path / "evidence.json"
-
-    def git_output(command, *, cwd, text):
-        assert cwd == checkout
-        return "a" * 40 + "\n" if command == ["git", "rev-parse", "HEAD"] else ""
-
-    monkeypatch.setattr(verifier["subprocess"], "check_output", git_output)
-    monkeypatch.setitem(verifier, "run_verification", lambda args, report: None)
-    assert verifier["main"](["--phase", "before", "--checkout", str(checkout),
-                             "--evidence", str(path)]) == 0
-    report = json.loads(path.read_text())["runs"]["before"]
-    assert report["revision"] == "a" * 40
-    assert report["working_tree_dirty"] is False
-
-
-def test_evidence_cannot_be_inside_selected_checkout(verifier, tmp_path, monkeypatch):
+@pytest.fixture
+def forbid_verification(verifier, monkeypatch):
     def forbidden(*args):
-        pytest.fail("Evidence location must be checked before starting the server")
+        pytest.fail("Rejection must happen before starting the server")
     monkeypatch.setitem(verifier, "run_verification", forbidden)
-    path = tmp_path / "evidence.json"
-    assert verifier["main"](["--phase", "before", "--checkout", str(tmp_path),
-                             "--evidence", str(path)]) == 1
-    assert not path.exists()
 
+@pytest.mark.parametrize("duplicate", [False, True])
+def test_preflight_rejection(verifier, tmp_path, forbid_verification, duplicate):
+    path = tmp_path / "evidence.json"
+    if duplicate:
+        verifier["write_evidence"](path, "before", {"passed": True})
+    assert run_main(verifier, path, checkout=None if duplicate else tmp_path) == 1
+    if not duplicate:
+        assert not path.exists()
+
+def test_evidence_inside_other_checkout_is_refused(verifier, selected_checkout, capsys):
+    state = selected_checkout
+    assert not state.checkout.is_relative_to(verifier["ROOT"])
+    path = state.checkout / "evidence.json"
+    assert run_main(verifier, path, checkout=state.checkout) == 1
+    assert "Evidence must be outside the checkout" in capsys.readouterr().err
+    assert not path.exists()
+    assert state.commands == state.calls == []
+
+def write_checkout(checkout, files):
+    for relative, content in files.items():
+        path = checkout / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # fixture-write: Synthetic checkout sources exercise import selection and incomplete-tree rejection.
+        path.write_text(content)
 
 @pytest.mark.parametrize("missing", ["scripts/demo.py", "src/case_intelligence/__init__.py"])
 def test_incomplete_checkout_cannot_fall_back_to_head_imports(verifier, tmp_path, monkeypatch, missing):
-    for relative in ("scripts/demo.py", "src/case_intelligence/__init__.py"):
-        if relative != missing:
-            path = tmp_path / relative
-            path.parent.mkdir(parents=True)
-            # fixture-write: A partial synthetic checkout must be rejected before imports can fall back.
-            path.write_text("")
+    write_checkout(tmp_path, {relative: "" for relative in
+        ("scripts/demo.py", "src/case_intelligence/__init__.py") if relative != missing})
     original_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
@@ -150,17 +146,10 @@ def test_incomplete_checkout_cannot_fall_back_to_head_imports(verifier, tmp_path
     with pytest.raises(ValueError, match="--checkout"):
         verifier["run_verification"](args, {})
 
-
 def test_selected_checkout_supplies_seed_corpus_and_app(verifier, tmp_path):
     checkout = tmp_path / "selected"
-    scripts = checkout / "scripts"
-    scripts.mkdir(parents=True)
-    package = checkout / "src" / "case_intelligence"
-    package.mkdir(parents=True)
-    # fixture-write: A synthetic package distinguishes selected source from the installed checkout.
-    (package / "__init__.py").write_text('SELECTED = True\n')
-    # fixture-write: A minimal demo exercises checkout imports without application startup or runtime storage.
-    (scripts / "demo.py").write_text(dedent('''\
+    write_checkout(checkout, {"src/case_intelligence/__init__.py": 'SELECTED = True\n',
+                             "scripts/demo.py": dedent('''\
         from contextlib import contextmanager
         from pathlib import Path
         from types import SimpleNamespace
@@ -170,12 +159,11 @@ def test_selected_checkout_supplies_seed_corpus_and_app(verifier, tmp_path):
         def seed_demo(path, *, timeout_seconds):
             assert SELECTED and timeout_seconds == 120.0
             yield SimpleNamespace(app="selected-app", client=SimpleNamespace(cookies={}))
-    '''))
+    ''')})
     harness = dedent('''\
         from contextlib import contextmanager
         import runpy
         import sys
-        import httpx
         ns = runpy.run_path(sys.argv[1])["main"].__globals__
         args = ns["parse_args"](["--phase", "before", "--checkout", sys.argv[2],
                                  "--evidence", sys.argv[3]])
@@ -197,21 +185,16 @@ def test_selected_checkout_supplies_seed_corpus_and_app(verifier, tmp_path):
         capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
 
-
 @pytest.mark.parametrize("arguments", [[], ["--phase", "before"],
     ["--phase", "unknown", "--evidence", "/tmp/synthetic.json"],
     *[["--phase", "after", "--evidence", "/tmp/synthetic.json", "--timeout", value]
       for value in ("0", "-1", "nan", "inf", "invalid")],
     ["--phase", "before", "--evidence", "/tmp/synthetic.json", "--host", "192.0.2.1"],
 ])
-def test_invalid_arguments_exit_without_running(verifier, monkeypatch, arguments):
-    def forbidden(*args):
-        pytest.fail("Argument rejection must not start the server")
-    monkeypatch.setitem(verifier, "run_verification", forbidden)
+def test_invalid_arguments_exit_without_running(verifier, forbid_verification, arguments):
     with pytest.raises(SystemExit) as exc:
         verifier["main"](arguments)
     assert exc.value.code == 2
-
 
 def test_main_records_partial_failure_without_a_server(verifier, tmp_path, monkeypatch):
     def failed_run(args, report):
@@ -219,26 +202,14 @@ def test_main_records_partial_failure_without_a_server(verifier, tmp_path, monke
         raise RuntimeError("Synthetic failure")
     monkeypatch.setitem(verifier, "run_verification", failed_run)
     path = tmp_path / "evidence.json"
-    assert verifier["main"](["--phase", "before", "--evidence", str(path)]) == 1
+    assert run_main(verifier, path) == 1
     run = json.loads(path.read_text())["runs"]["before"]
     assert run["passed"] is False and run["error_type"] == "RuntimeError"
     assert run["checks"][0]["status"] == 500
     assert run["total_ms"] >= 0
 
-
-def test_duplicate_phase_is_rejected_before_running(verifier, tmp_path, monkeypatch):
-    def forbidden(*args):
-        pytest.fail("Existing evidence must be checked before starting the server")
-    monkeypatch.setitem(verifier, "run_verification", forbidden)
-    path = tmp_path / "evidence.json"
-    verifier["write_evidence"](path, "before", {"passed": True})
-    assert verifier["main"](["--phase", "before", "--evidence", str(path)]) == 1
-
-
 @pytest.mark.parametrize("readable", [True, False])
 def test_document_check_requires_extracted_text_without_a_server(verifier, readable):
-    import httpx
-
     prefix = "/matters/m-synthetic"
     requested = []
 
@@ -259,12 +230,11 @@ def test_document_check_requires_extracted_text_without_a_server(verifier, reada
     report = {"checks": []}
     demo = SimpleNamespace(matter=SimpleNamespace(slug="m-synthetic"), home_path=prefix + "/home")
     with httpx.Client(base_url="http://127.0.0.1", transport=httpx.MockTransport(respond)) as client:
-        if readable:
+        with nullcontext() if readable else pytest.raises(RuntimeError, match="open_document"):
             verifier["drive_flows"](client, demo, report, 40)
+        if readable:
             assert all(row["passed"] for row in report["checks"])
         else:
-            with pytest.raises(RuntimeError, match="open_document"):
-                verifier["drive_flows"](client, demo, report, 40)
             assert report["checks"][-1]["passed"] is False
     assert requested == [prefix + suffix for suffix in
                          ("/home", "/processing-status", "/exact-search", "/sources/synthetic")]
