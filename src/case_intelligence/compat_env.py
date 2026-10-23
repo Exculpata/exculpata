@@ -39,11 +39,14 @@ def env(name: str, default: str | None = None, *, environ: Mapping[str, str] | N
 
     Warnings contain names only. Deprecation and conflicting values are each
     reported once per setting per process, including under concurrent reads.
+    Conflicting OIDC issuer and egress pin aliases are refused on every read.
     """
     suffix = _suffix(name)
     new, old = f"{CURRENT_ENV_PREFIX}{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
     source = os.environ if environ is None else environ
     new_value, old_value = source.get(new), source.get(old)
+    if suffix in {"OIDC_ISSUER", "OIDC_EGRESS_PINS"} and new_value and old_value and new_value != old_value:
+        raise RuntimeError(f"{new} and {old} differ")
     with _lock:
         if old_value and old not in _warned:
             _warned.add(old)
@@ -63,7 +66,7 @@ def required_env(name: str, *, environ: Mapping[str, str]) -> str:
 
 
 def header_conflicts(headers: Mapping[str, str], legacy: str) -> bool:
-    new = legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
+    new = str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
     return new in headers and legacy in headers and headers[new] != headers[legacy]
 
 
@@ -82,10 +85,10 @@ def header_family_allowed(headers: Mapping[str, str], family: str) -> bool:
 def header(headers: Mapping[str, str], legacy: str) -> str | None:
     """Accept either header; ambiguous proof never grants authority."""
     if legacy in headers:
-        _warn_once(legacy, legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1))
+        _warn_once(legacy, str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1))
     if header_conflicts(headers, legacy):
         return None
-    new = legacy.replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
+    new = str(legacy).replace(LEGACY_HEADER_PREFIX, CURRENT_HEADER_PREFIX, 1)
     return headers[new] if new in headers else headers.get(legacy)
 
 

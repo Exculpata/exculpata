@@ -49,7 +49,7 @@ def patch_metadata(data: bytes) -> bytes:
     for old, new in replacements.items():
         if text.count(old) != 1:
             raise RuntimeError("upstream metadata patch does not apply exactly")
-        text = text.replace(old, new)
+        text = str(text).replace(old, new)
     return text.encode("utf-8")
 
 

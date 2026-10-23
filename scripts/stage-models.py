@@ -338,7 +338,7 @@ def _stage_receipt(root: Path, catalog: Path, groups: frozenset[str], profile: s
 def _verify_stage(root: Path, catalog: Path, groups: frozenset[str], profile: str,
                   *, diarization_backend: str = "community-1") -> None:
     """Verify the last complete exact selection without network or filesystem writes."""
-    root = root.resolve(strict=True)
+    root = Path(root).resolve(strict=True)
     receipt = root / _STAGE_RECEIPT_NAME
     if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 32 * 1024 * 1024:
         raise RuntimeError("Model staging receipt is unavailable; resume staging")
