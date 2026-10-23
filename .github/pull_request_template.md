@@ -12,8 +12,8 @@ State "not applicable" when there is no agent-task issue.
 - Acceptance check: describe how you will verify the outcome.
 - Issue link: link the agent-task issue.
 
-The issue author's form entry is not the agent's kickoff.
-Reviewer verification: confirm the kickoff was recorded before coding and its goal and user-visible outcome match the issue. An absent or mismatched kickoff blocks readiness.
+The issue author's form entry is not the agent's kickoff. When the kickoff is in a task file, it must be in the branch's first commit. When the kickoff is in the PR body, its timing is taken on trust.
+Reviewer verification: check the timing rule and confirm its goal and user-visible outcome match the issue. An absent or mismatched kickoff blocks readiness.
 
 ## How was it tested?
 

@@ -16,10 +16,12 @@ task file or PR body with four parts: goal restated in your own words (including
 the user-visible outcome), expected files to touch, acceptance check, and issue link.
 Compare it with the issue's scope and acceptance criteria; code starts only after they match. Resolve any mismatch
 with the issue author before proceeding. Keep changes focused on that outcome.
-The issue author's form entry is not the agent's kickoff. If the section is in a
-task file, link that file in the PR. Before marking it ready, the reviewer checks
-that the kickoff was recorded before coding and its goal and user-visible outcome match the issue;
+The issue author's form entry is not the agent's kickoff. When the kickoff is in a task file, it must be in the branch's first commit.
+When the kickoff is in the PR body, its timing is taken on trust.
+Link the task file in the PR if used. Before marking it ready, the reviewer checks
+the timing rule and confirms its goal and user-visible outcome match the issue;
 an absent or mismatched kickoff blocks readiness.
+See [Agent working practice](https://github.com/Exculpata/exculpata/blob/main/AGENTS.md#agent-working-practice) for the related goal and pass/fail check practice.
 
 ## Keep public language neutral
 

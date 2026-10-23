@@ -132,6 +132,20 @@ def test_agent_kickoff_is_verified_separately_from_the_authors_form_entry() -> N
     assert 'human review verifies the actual evidence' in guide
 
 
+@pytest.mark.parametrize('path', ['AGENTS.md', '.github/pull_request_template.md'])
+def test_kickoff_guidance_states_matching_timing_rule(path: str) -> None:
+    text = ' '.join((ROOT / path).read_text(encoding='utf-8').split())
+    assert "When the kickoff is in a task file, it must be in the branch's first commit." in text
+    assert 'When the kickoff is in the PR body, its timing is taken on trust.' in text
+
+
+def test_kickoff_guidance_links_agent_working_practice() -> None:
+    guide = (ROOT / 'AGENTS.md').read_text(encoding='utf-8')
+    kickoff = guide.split('## Restate the goal before coding\n', 1)[1].split('\n## ', 1)[0]
+    assert ('[Agent working practice]('
+            'https://github.com/Exculpata/exculpata/blob/main/AGENTS.md#agent-working-practice)') in kickoff
+
+
 @pytest.mark.parametrize('path', [
     'AGENTS.md',
     '.github/ISSUE_TEMPLATE/agent_task.yml',
