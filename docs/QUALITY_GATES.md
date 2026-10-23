@@ -110,10 +110,12 @@ The parallel application suite prints test nodes and outcomes with unbuffered
 output, short tracebacks, failure/skip summaries and the 25 slowest phases. Worker
 crashes fail the run without automatic worker restart. Captured streams stay out
 of failure output and JUnit logs; fixtures and assertions must still be synthetic.
-Each test has 360 seconds. On expiry the worker dumps every thread traceback to
-the job log and exits; the disabled worker restart then fails the run. The limit
-is above the suite's longest in-test subprocess budget and below a merge-queue
-wait, so a silent hang shows its stacks instead of stalling the queue.
+Each test, including fixture setup and teardown, has 360 seconds. The
+`pytest-timeout` signal handler reports the active test as FAILED (or ERROR for
+fixtures), includes the blocking stack and lets pytest finish its report and run
+following tests. If Python cannot handle the signal, faulthandler dumps every
+thread and exits the worker at 420 seconds; disabled worker restart fails the run.
+Both limits exceed the suite's longest in-test subprocess budget (300 seconds).
 
 CI retains `application-results.xml` and bounded `application-workers/*.json`
 diagnostics for five days, with the run ID and attempt in the artifact name.

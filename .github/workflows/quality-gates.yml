@@ -188,6 +188,7 @@ jobs:
         # Captured streams stay private; only synthetic failure tracebacks are shown.
         run: >-
           .venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no
+          --timeout=360 --timeout-method=signal
           -ra --durations=25 -o junit_logging=no
           --junitxml="${{ runner.temp }}/application-results.xml"
           --worker-diagnostics-dir="${{ runner.temp }}/application-workers"

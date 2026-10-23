@@ -345,8 +345,11 @@ downstream is private.
 
 ## Parallel worker diagnostics
 
-The application job keeps six workers, the 360-second per-test faulthandler
-deadline and disabled worker restarts. It retains bounded JSON resource snapshots
+The application job keeps six workers, a 360-second per-test `pytest-timeout`
+signal deadline, a 420-second faulthandler fallback and disabled worker restarts.
+Signal timeouts produce named failures with stacks and preserve the JUnit report;
+the fallback exits workers that cannot handle the signal. The timeout includes
+setup and teardown. It retains bounded JSON resource snapshots
 beside its JUnit report. For a local parallel run, add
 `--worker-diagnostics-dir=/tmp/synthetic-worker-diagnostics` with a fresh directory.
 The diagnostics record the active test function (without parameter values), test
@@ -361,7 +364,7 @@ Peaks use only complete measurements and retain counts of partial/unavailable
 samples; gaps never become zero measurements. Cgroup counters cover the group and its ancestors,
 not an individual PID. A positive OOM delta is group evidence; SIGKILL alone does
 not establish OOM. Exit code 1 alone does not establish a timeout: correlate it
-with the existing `Timeout (0:06:00)!` thread dump in the job log.
+with the fallback `Timeout (0:07:00)!` thread dump in the job log.
 
 `python -m pytest -q tests/test_worker_diagnostics.py` includes bounded child
 suites for explicit exit, SIGTERM, a one-second faulthandler deadline, an ordinary
