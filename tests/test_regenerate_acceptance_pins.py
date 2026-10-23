@@ -1,4 +1,5 @@
 """Synthetic CLI coverage for acceptance pin regeneration."""
+import importlib.util
 import json
 import subprocess
 import sys
@@ -10,6 +11,19 @@ from benchmarks.review_acceptance.integrity import verify_pack_integrity
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/regenerate-acceptance-pins.py"
+
+
+def test_regeneration_script_has_no_network_inventory(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "network_contract", SCRIPT.with_name("network-contract.py")
+    )
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    # fixture-write: isolated copy of the local-only regeneration script for inventory.
+    (scripts / SCRIPT.name).write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    assert checker.source_inventory(tmp_path) == []
 
 
 def run_script(root, *arguments):

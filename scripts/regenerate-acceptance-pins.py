@@ -18,6 +18,7 @@ from benchmarks.review_acceptance.integrity import (  # noqa: E402
     canonical_sha256,
     file_sha256,
     referenced_fixture_files,
+    referenced_test_files,
     referenced_test_nodes,
     safe_repo_path,
     test_node_sha256,
@@ -33,7 +34,7 @@ def regenerate(root: Path, payload: dict) -> dict:
         raise PackIntegrityError("acceptance integrity algorithm must be sha256")
     updated = copy.deepcopy(payload)
     nodes = referenced_test_nodes(updated)
-    files = sorted({node.partition("::")[0] for node in nodes})
+    files = referenced_test_files(updated)
     fixtures = referenced_fixture_files(updated)
     updated["case_fingerprint"] = canonical_sha256(updated["cases"])
     pins = updated["integrity"]
