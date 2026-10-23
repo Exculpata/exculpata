@@ -26,11 +26,16 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=PHASES, required=True)
     parser.add_argument("--evidence", type=Path, required=True, help="JSON file outside the checkout")
+    parser.add_argument("--checkout", type=Path, default=ROOT,
+                        help="Tree to seed and serve from; default: this script's checkout")
+    parser.add_argument("--allow-same-revision", action="store_true",
+                        help="Allow the after revision to equal before; recorded in evidence")
     parser.add_argument("--timeout", type=float, default=120.0,
                         help="Seconds allowed for seeding and server startup (each); default: 120")
     args = parser.parse_args(argv)
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("--timeout must be finite and greater than zero")
+    args.checkout = args.checkout.resolve()
     return args
 
 
@@ -155,17 +160,16 @@ def drive_flows(client, demo, report, expected):
 
 def run_verification(args, report):
     # Keep evidence/argument helpers usable without importing or starting the app.
-    sys.path[:0] = [str(ROOT / "src"), str(ROOT / "scripts")]
+    if not all((args.checkout / path).is_file() for path in
+               ("scripts/demo.py", "src/case_intelligence/__init__.py")):
+        raise ValueError("--checkout must contain scripts/demo.py and src/case_intelligence")
+    sys.path[:0] = [str(args.checkout / "src"), str(args.checkout / "scripts")]
     import httpx
     from demo import CORPUS, seed_demo
 
     parent = Path(tempfile.gettempdir()).resolve()
-    if parent.is_relative_to(ROOT):
+    if any(parent.is_relative_to(tree) for tree in (ROOT, args.checkout)):
         raise ValueError("TMPDIR must be outside the checkout")
-    report["revision"] = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    report["working_tree_dirty"] = bool(subprocess.check_output(
-        ["git", "status", "--porcelain"], cwd=ROOT, text=True).strip())
     with tempfile.TemporaryDirectory(prefix="exculpata-verify-", dir=parent) as temporary:
         started = time.monotonic()
         with seed_demo(Path(temporary), timeout_seconds=args.timeout) as demo:
@@ -181,16 +185,28 @@ def run_verification(args, report):
 def main(argv=None):
     args = parse_args(argv)
     try:
-        if args.evidence.resolve().is_relative_to(ROOT):
+        if any(args.evidence.resolve().is_relative_to(tree) for tree in (ROOT, args.checkout)):
             raise ValueError("Evidence must be outside the checkout")
-        if args.phase in read_evidence(args.evidence)["runs"]:
+        runs = read_evidence(args.evidence)["runs"]
+        if args.phase in runs:
             raise ValueError(f"{args.phase} already recorded; choose a new evidence file")
+        revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=args.checkout, text=True).strip()
+        if args.phase == "after":
+            before_revision = runs.get("before", {}).get("revision")
+            if not isinstance(before_revision, str) or not before_revision:
+                raise ValueError("Record a before phase with a revision first")
+            if revision == before_revision and not args.allow_same_revision:
+                raise ValueError("After revision equals before; use --allow-same-revision for a smoke check")
+        dirty = bool(subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=args.checkout, text=True).strip())
         args.evidence.parent.mkdir(parents=True, exist_ok=True)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     report = {"started_at": datetime.now(timezone.utc).isoformat(),
-              "passed": False, "checks": []}
+              "revision": revision, "working_tree_dirty": dirty,
+              "allow_same_revision": args.allow_same_revision, "passed": False, "checks": []}
     started = time.monotonic()
     try:
         run_verification(args, report)

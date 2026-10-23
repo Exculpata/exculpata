@@ -1,8 +1,12 @@
 """Verification evidence and CLI contracts, without starting an application."""
 
+import builtins
 import json
 from pathlib import Path
 import runpy
+import subprocess
+import sys
+from textwrap import dedent
 from types import SimpleNamespace
 
 import pytest
@@ -55,6 +59,143 @@ def test_arguments(verifier, tmp_path):
     args = verifier["parse_args"](["--phase", "before", "--evidence", str(path)])
     assert args.phase == "before" and args.evidence == path
     assert args.timeout == 120.0
+    assert args.checkout == verifier["ROOT"]
+    assert args.allow_same_revision is False
+
+
+@pytest.mark.parametrize("before_revision,allow_same,accepted", [
+    ("a" * 40, False, True),
+    ("b" * 40, False, False),
+    ("b" * 40, True, True),
+    (None, False, False),
+])
+def test_after_requires_distinct_checkout_revision(
+        verifier, tmp_path, monkeypatch, before_revision, allow_same, accepted):
+    checkout = tmp_path / "selected"
+    checkout.mkdir()
+    path = tmp_path / "evidence.json"
+    if before_revision is not None:
+        verifier["write_evidence"](path, "before", {"revision": before_revision})
+    original = path.read_bytes() if path.exists() else None
+    commands = []
+
+    def git_output(command, *, cwd, text):
+        assert cwd == checkout and text is True
+        commands.append(command)
+        return "b" * 40 + "\n" if command == ["git", "rev-parse", "HEAD"] else " M synthetic\n"
+
+    calls = []
+    monkeypatch.setattr(verifier["subprocess"], "check_output", git_output)
+    monkeypatch.setitem(verifier, "run_verification", lambda args, report: calls.append(args.checkout))
+    arguments = ["--phase", "after", "--checkout", str(checkout), "--evidence", str(path)]
+    if allow_same:
+        arguments.append("--allow-same-revision")
+    assert verifier["main"](arguments) == (0 if accepted else 1)
+    assert calls == ([checkout] if accepted else [])
+    if accepted:
+        report = json.loads(path.read_text())["runs"]["after"]
+        assert report["revision"] == "b" * 40
+        assert report["working_tree_dirty"] is True
+        assert report["allow_same_revision"] is allow_same
+        assert commands == [["git", "rev-parse", "HEAD"], ["git", "status", "--porcelain"]]
+    else:
+        assert (path.read_bytes() if path.exists() else None) == original
+
+
+def test_before_records_selected_revision(verifier, tmp_path, monkeypatch):
+    checkout = tmp_path / "base"
+    checkout.mkdir()
+    path = tmp_path / "evidence.json"
+
+    def git_output(command, *, cwd, text):
+        assert cwd == checkout
+        return "a" * 40 + "\n" if command == ["git", "rev-parse", "HEAD"] else ""
+
+    monkeypatch.setattr(verifier["subprocess"], "check_output", git_output)
+    monkeypatch.setitem(verifier, "run_verification", lambda args, report: None)
+    assert verifier["main"](["--phase", "before", "--checkout", str(checkout),
+                             "--evidence", str(path)]) == 0
+    report = json.loads(path.read_text())["runs"]["before"]
+    assert report["revision"] == "a" * 40
+    assert report["working_tree_dirty"] is False
+
+
+def test_evidence_cannot_be_inside_selected_checkout(verifier, tmp_path, monkeypatch):
+    def forbidden(*args):
+        pytest.fail("Evidence location must be checked before starting the server")
+    monkeypatch.setitem(verifier, "run_verification", forbidden)
+    path = tmp_path / "evidence.json"
+    assert verifier["main"](["--phase", "before", "--checkout", str(tmp_path),
+                             "--evidence", str(path)]) == 1
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("missing", ["scripts/demo.py", "src/case_intelligence/__init__.py"])
+def test_incomplete_checkout_cannot_fall_back_to_head_imports(verifier, tmp_path, monkeypatch, missing):
+    for relative in ("scripts/demo.py", "src/case_intelligence/__init__.py"):
+        if relative != missing:
+            path = tmp_path / relative
+            path.parent.mkdir(parents=True)
+            # fixture-write: A partial synthetic checkout must be rejected before imports can fall back.
+            path.write_text("")
+    original_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "demo":
+            pytest.fail("Incomplete checkout must be rejected before importing the demo")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    args = SimpleNamespace(checkout=tmp_path, timeout=120)
+    with pytest.raises(ValueError, match="--checkout"):
+        verifier["run_verification"](args, {})
+
+
+def test_selected_checkout_supplies_seed_corpus_and_app(verifier, tmp_path):
+    checkout = tmp_path / "selected"
+    scripts = checkout / "scripts"
+    scripts.mkdir(parents=True)
+    package = checkout / "src" / "case_intelligence"
+    package.mkdir(parents=True)
+    # fixture-write: A synthetic package distinguishes selected source from the installed checkout.
+    (package / "__init__.py").write_text('SELECTED = True\n')
+    # fixture-write: A minimal demo exercises checkout imports without application startup or runtime storage.
+    (scripts / "demo.py").write_text(dedent('''\
+        from contextlib import contextmanager
+        from pathlib import Path
+        from types import SimpleNamespace
+        from case_intelligence import SELECTED
+        CORPUS = Path(__file__).parent
+        @contextmanager
+        def seed_demo(path, *, timeout_seconds):
+            assert SELECTED and timeout_seconds == 120.0
+            yield SimpleNamespace(app="selected-app", client=SimpleNamespace(cookies={}))
+    '''))
+    harness = dedent('''\
+        from contextlib import contextmanager
+        import runpy
+        import sys
+        import httpx
+        ns = runpy.run_path(sys.argv[1])["main"].__globals__
+        args = ns["parse_args"](["--phase", "before", "--checkout", sys.argv[2],
+                                 "--evidence", sys.argv[3]])
+        @contextmanager
+        def serve(app, timeout):
+            assert app == "selected-app"
+            yield "http://127.0.0.1"
+        def drive(client, demo, report, expected):
+            assert expected >= 1
+            report["selected_flow"] = True
+        ns["serve_loopback"] = serve
+        ns["drive_flows"] = drive
+        report = {}
+        ns["run_verification"](args, report)
+        assert report["selected_flow"] is True
+    ''')
+    result = subprocess.run([sys.executable, "-c", harness, str(verifier["ROOT"] /
+        "scripts/verify-exculpata.py"), str(checkout), str(tmp_path / "evidence.json")],
+        capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize("arguments", [[], ["--phase", "before"],
