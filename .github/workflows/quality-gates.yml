@@ -34,7 +34,7 @@ jobs:
 
   publication-scan:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Check out exact publication head separately
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,11 +48,24 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: "3.12"
+      - name: Restore main apt downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
+          restore-keys: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-
       - name: Install publication inspection dependencies
+        timeout-minutes: 6
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg
           python -m pip install --disable-pip-version-check 'pypdf>=6,<7'
+      - name: Save main apt downloads
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-publication-scan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Scan exact candidate tree and complete reachable history
         if: ${{ !github.event.deleted }}
         env:
@@ -122,23 +135,27 @@ jobs:
       - name: Record documentation-only acceptance
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: echo 'Documentation and scope contracts passed; the full application suite is not applicable. Publication and secret checks remain required.' >> "$GITHUB_STEP_SUMMARY"
-      # Only trusted main runs share apt archives; PRs install from fresh signed indexes.
-      # Cache downloads only: apt update/install always run, including on cache hits.
-      - name: Cache trusted apt downloads
-        if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.change-scope.outputs.docs_only != 'true' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # Main push/schedule runs are the only cache writers; PR and merge_group runs restore read-only.
+      # Apt update/install always run.
+      - name: Restore main apt downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ (!(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule'))) && needs.change-scope.outputs.docs_only != 'true' }}
         with:
           path: ${{ runner.temp }}/apt-archives
-          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-${{ hashFiles('.github/workflows/quality-gates.yml') }}
+          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
+          restore-keys: apt-application-${{ runner.os }}-${{ runner.arch }}-
       - name: Install document and media test dependencies
+        timeout-minutes: 8
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: |
-          mkdir -p "$RUNNER_TEMP/apt-archives/partial"
-          sudo apt-get update
-          sudo apt-get -o Dir::Cache::archives="$RUNNER_TEMP/apt-archives" \
-            -o APT::Keep-Downloaded-Packages=true install --yes --no-install-recommends \
-            ffmpeg imagemagick poppler-utils tesseract-ocr \
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg imagemagick poppler-utils tesseract-ocr \
             tesseract-ocr-eng tesseract-ocr-spa
+      - name: Save main apt downloads
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) && needs.change-scope.outputs.docs_only != 'true' }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-application-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Bootstrap contributor environment
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: make bootstrap SYSTEM_PYTHON=python
@@ -230,10 +247,64 @@ jobs:
       - name: Run existing PostgreSQL and pgvector acceptance
         # Learned-model acceptance remains a separate, explicitly excluded gate.
         run: |
-          python -m pytest -q tests/test_review_bench_v2_postgres.py \
+          python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
             --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
             --junitxml="$RUNNER_TEMP/postgres-results.xml"
           python scripts/check-postgres-test-report.py "$RUNNER_TEMP/postgres-results.xml"
+
+  defense-eval:
+    # Independent of change-scope: even documentation-only PRs get scorecards.
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        env:
+          POSTGRES_USER: exculpata
+          POSTGRES_DB: exculpata_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U exculpata -d exculpata_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      CASE_REVIEW_POSTGRES_TEST_DSN: postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test
+    steps:
+      - name: Check out candidate and complete base history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify integration checkout
+        env:
+          EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Write lexical stub and product retrieval scorecards plus main delta
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+        run: >-
+          python scripts/defense-eval-ci.py
+          --locked-environments
+          --base-sha "$EXPECTED_BASE_SHA"
+          --output-dir "$RUNNER_TEMP/defense-eval-artifacts"
+          --work-root "$RUNNER_TEMP"
+      - name: Retain scorecards, comparison and provenance even on failure
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: defense-eval-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/defense-eval-artifacts
+          if-no-files-found: error
+          retention-days: 5
 
   transcription:
     needs: change-scope
@@ -255,10 +326,23 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: services/transcription/pyproject.toml
+      - name: Restore main apt downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
+          restore-keys: apt-transcription-${{ runner.os }}-${{ runner.arch }}-
       - name: Install media test dependencies
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg
+      - name: Save main apt downloads
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-transcription-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Install transcription test environment
         run: python -m pip install --disable-pip-version-check -e './services/transcription[dev]'
       - name: Run bundled transcription suite
@@ -291,15 +375,28 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Restore main apt downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !(github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule')) }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
+          restore-keys: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-
       - name: Install encrypted restore drill dependencies
+        timeout-minutes: 8
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends restic
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" restic
           # Seed and reopen restored matter fields through the real application store.
           python -m pip install --disable-pip-version-check -e . 'pytest>=9.0.3,<10'
           image=pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
           docker pull "$image"
           docker tag "$image" pgvector/pgvector:pg17
+      - name: Save main apt downloads
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') }}
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-deployment-contract-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/quality-gates.yml', 'scripts/install-ci-browser-deps.py') }}
       - name: Run both encrypted restore naming generations without skips
         env:
           EXCULPATA_BACKUP_INTEGRATION: "1"
@@ -375,6 +472,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install browser and media runtimes and contributor dependencies
+        timeout-minutes: 10
         run: |
           python scripts/install-ci-browser-deps.py
           test -x /usr/bin/ffprobe

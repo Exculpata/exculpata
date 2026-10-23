@@ -1,0 +1,14 @@
+Account from Pim Quill
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-107
+Record date: 2034-06-04
+Person: Pim Quill
+Object: Lumen Yard
+Object: Copper Annex
+
+Pim Quill said the north walk was blocked and described taking the south walk to Copper
+Annex. Pim Quill recalled leaving a sealed amber spool on the loading bench before
+returning the hand cart. The account did not include a tag number.
+
+All names, locations, dates, and identifiers in this record were invented.

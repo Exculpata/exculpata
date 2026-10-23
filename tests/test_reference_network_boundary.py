@@ -17,9 +17,10 @@ ROOT = Path(__file__).parents[1]
 _OS_LOCAL = "os." + "local"
 _API_INTERNAL = "aPi." + "internal"
 _LOGGING_CORP = "logging." + "corp"
-# Lists (path, kind, digest, detail) allowances removed versus main because
-# main's scanner no longer emits them.
-PRUNED_ALLOWANCES = ()
+_OS_HOME = "os." + "home"
+_MY_FILES_DB = "my-files." + "db"
+_CDN_JS = "cdn." + "js"
+_CDN_HOME = "cdn." + "home"
 
 
 def test_reference_compose_network_boundary_and_explicit_exceptions():
@@ -147,6 +148,7 @@ def test_contract_flags_plain_module_and_file_shaped_literals(contract_tree, val
     *[(f"httpx.get({host!r})", host) for host in ("x.sh", "notes.md", "x.co")],
     *[(f"socket.create_connection(({host!r}, 443))", host)
       for host in ("x.sh", "notes.md", "x.co")],
+    # These cases check bare host constants without evaluating URL expressions.
     ("'http://' + 'x.sh'", "x.sh"),
     ("'http://' + ('x.sh' + suffix)", "x.sh"),
     ('f"http://{\'x.sh\'}"', "x.sh"),
@@ -163,14 +165,16 @@ def test_contract_preserves_host_literals_in_network_context(contract_tree, expr
         f"import httpx\nimport socket\nTARGET = {expression}\n")
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert f"src/synthetic_probe.py:3: unreviewed outbound host: {host.lower()}" in result.stderr
+    assert f"src/synthetic_probe.py:3: unreviewed outbound host: {host.lower()}" in result.stderr.splitlines()
 
 
 def test_contract_flags_module_shaped_literal_in_network_call(contract_tree):
     path = contract_tree / "src/synthetic_probe.py"
     # fixture-write: Seed a module-shaped literal as a synthetic network destination.
     path.write_text("import httpx\nhttpx.get('os.path.join')\n")
-    assert "src/synthetic_probe.py:2: unreviewed outbound host: os.path.join" in run_contract(contract_tree).stderr.splitlines()
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "src/synthetic_probe.py:2: unreviewed outbound host: os.path.join" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("host", ["example.sh", "example.md", "example.py", "example.zip"])
@@ -179,7 +183,7 @@ def test_contract_rejects_plain_file_suffix_tld_hosts(contract_tree, host):
     (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("host", ["os.run", "pathlib.link", "exampleApi.network"])
@@ -188,7 +192,7 @@ def test_contract_rejects_plain_identifier_tld_hosts(contract_tree, host):
     (contract_tree / "src/synthetic_probe.py").write_text(f"TARGET = {host!r}\n")
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host.lower()}" in result.stderr
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host.lower()}" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("source,host,line", [
@@ -196,21 +200,61 @@ def test_contract_rejects_plain_identifier_tld_hosts(contract_tree, host):
     ("HOST = 'example.zip'\nURL = f'https://{HOST}/status'\n", "example.zip", 1),
     ("SCHEME = 'https://'\nURL = '{}{}'.format(SCHEME, 'example.py')\n", "example.py", 2),
 ])
-def test_contract_rejects_tld_hosts_in_split_urls(contract_tree, source, host, line):
-    # fixture-write: Seed a synthetic URL with its scheme in a separate statement.
+def test_contract_rejects_bare_tld_constants_in_url_expressions(contract_tree, source, host, line):
+    # fixture-write: Seed bare host constants in unevaluated URL expressions.
     (contract_tree / "src/synthetic_probe.py").write_text(source)
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr
+    assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("source,host,line", [
-    ("import asyncio\nasync def main():\n    await asyncio.open_connection('" + _OS_LOCAL + "', 443)\n", _OS_LOCAL, 3),
-    ("import smtplib\nsmtplib.SMTP('email.relay', 25)\n", "email.relay", 2),
-    ("TARGET = '" + _API_INTERNAL + "'\n", _API_INTERNAL.lower(), 1),
-    ("import socket\nHOST = '" + _LOGGING_CORP + "'\nsocket.create_connection((HOST, 443))\n", _LOGGING_CORP, 2),
-    ("SCHEME = 'https://'\nurl = f'{SCHEME}" + _OS_LOCAL + "'\n", _OS_LOCAL, 2),
-], ids=["os-local", "email-relay", "camelcase-internal", "host-in-variable", "split-url"])
+    pytest.param(
+        "import asyncio\nasync def main():\n    await asyncio.open_connection('" + _OS_LOCAL + "', 443)\n",
+        _OS_LOCAL, 3, id="os-local",
+    ),
+    pytest.param("import smtplib\nsmtplib.SMTP('email.relay', 25)\n", "email.relay", 2, id="email-relay"),
+    pytest.param("TARGET = '" + _API_INTERNAL + "'\n", _API_INTERNAL.lower(), 1, id="camelcase-internal"),
+    pytest.param(
+        "import socket\nHOST = '" + _LOGGING_CORP + "'\nsocket.create_connection((HOST, 443))\n",
+        _LOGGING_CORP, 2, id="host-in-variable",
+    ),
+    pytest.param("SCHEME = 'https://'\nurl = f'{SCHEME}" + _OS_LOCAL + "'\n", _OS_LOCAL, 2, id="split-url"),
+    *[pytest.param(
+        "import asyncio\nasync def main():\n    await asyncio.open_connection('" + host + "', 443)\n",
+        host, 3, id="asyncio-" + tail,
+    ) for tail in ("lan", "svc", "onion") for host in ("os." + tail,)],
+    pytest.param("TARGET = '" + _OS_HOME + "'\n", _OS_HOME, 1, id="os-home"),
+    pytest.param("TARGET = '" + _MY_FILES_DB + "'\n", _MY_FILES_DB, 1, id="file-db"),
+    pytest.param(
+        "import socket\nHOST = '" + _CDN_JS + "'\nsocket.create_connection((HOST, 443))\n",
+        _CDN_JS, 2, id="js-host-in-variable",
+    ),
+    pytest.param(
+        "import redis\nredis.Redis(host='" + _OS_LOCAL + "')\n",
+        _OS_LOCAL, 2, id="redis-host-keyword",
+    ),
+    pytest.param(
+        "TARGET = 'https:' + '//' + '" + _OS_LOCAL + "'\n",
+        _OS_LOCAL, 1, id="split-scheme",
+    ),
+    pytest.param(
+        "from urllib.parse import urlunparse\nTARGET = urlunparse(('https', '" + _OS_LOCAL + "', '/', '', '', ''))\n",
+        _OS_LOCAL, 2, id="urlunparse",
+    ),
+    pytest.param(
+        "import yarl\nTARGET = yarl.URL.build(scheme='https', host='" + _OS_LOCAL + "')\n",
+        _OS_LOCAL, 2, id="yarl-url-build",
+    ),
+    pytest.param(
+        "import asyncio\nasync def main(host='" + _OS_LOCAL + "'):\n    await asyncio.open_connection(host, 443)\n",
+        _OS_LOCAL, 2, id="private-function-default",
+    ),
+    pytest.param(
+        "from .cdn import helper\nTARGET = '" + _CDN_HOME + "'\n",
+        _CDN_HOME, 2, id="relative-import-root",
+    ),
+])
 def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, line):
     # fixture-write: Seed synthetic private hosts and a URL with a separate scheme.
     (contract_tree / "src/synthetic_probe.py").write_text(source)
@@ -219,7 +263,7 @@ def test_contract_rejects_private_and_split_hosts(contract_tree, source, host, l
     assert f"src/synthetic_probe.py:{line}: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
-def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
+def test_contract_allowances_equal_findings():
     spec = importlib.util.spec_from_file_location("network_contract", ROOT / "scripts/network-contract.py")
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
@@ -230,8 +274,6 @@ def test_contract_allowances_equal_findings_and_pruning_is_dead_only():
     allowances = Counter((item["path"], item["kind"], item["digest"], item["detail"])
                          for item in policy["source"])
     assert findings == allowances
-    for key in PRUNED_ALLOWANCES:
-        assert key not in findings
 
 
 def test_network_contract_rejects_loosening(contract_tree):
@@ -268,7 +310,7 @@ def test_network_contract_rejects_bare_host_literal(contract_tree, host):
     (contract_tree / "src/synthetic_probe.py").write_text(f'TARGET = "{host}"\n')
     result = run_contract(contract_tree)
     assert result.returncode == 1
-    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr
+    assert f"src/synthetic_probe.py:1: unreviewed outbound host: {host}" in result.stderr.splitlines()
 
 
 @pytest.mark.parametrize("change", [

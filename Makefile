@@ -72,7 +72,7 @@ secret-check:
 test-postgres:
 	@test -n "$$CASE_REVIEW_POSTGRES_TEST_DSN" || { echo 'Set CASE_REVIEW_POSTGRES_TEST_DSN to a synthetic PostgreSQL 17 + pgvector database.' >&2; exit 1; }
 	@set -eu; report="$$(mktemp)"; trap 'rm -f "$$report"' EXIT; \
-	"$(PYTHON)" -m pytest -q tests/test_review_bench_v2_postgres.py \
+	"$(PYTHON)" -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
 		--deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
 		--junitxml="$$report"; \
 	"$(PYTHON)" scripts/check-postgres-test-report.py "$$report"
