@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 from .generator_config import generator_literal, validate_generator_url
+from .oidc_network_policy import Denied, ascii_hostname
 
 
 SERVERS = ("ollama", "llamacpp", "lmstudio")
@@ -89,6 +90,13 @@ def parse_generator_endpoint(
         )
     parsed = _parsed_url((url or "").strip(), EndpointRejected)
     try:
+        host = ascii_hostname(parsed.hostname or "").casefold()
+    except Denied:
+        raise EndpointRejected(
+            "The server host name is not a valid internationalized domain name. "
+            "Enter its ASCII (xn--) form."
+        ) from None
+    try:
         validate_generator_url((url or "").strip())
     except ValueError as exc:
         raise EndpointRejected(str(exc)) from exc
@@ -105,10 +113,12 @@ def parse_generator_endpoint(
         )
     if any(part == ".." for part in path.split("/")):
         raise EndpointRejected("The URL path cannot contain '..'. Enter the server origin.")
-    host = parsed.hostname.casefold()
     local = host_is_local(host)
     loopback = _container_loopback(host)
-    origin = f"{parsed.scheme}://{parsed.netloc}{path}".rstrip("/")
+    netloc = parsed.netloc
+    if not parsed.hostname.isascii():
+        netloc = host + (f":{parsed.port}" if parsed.port is not None else "")
+    origin = f"{parsed.scheme}://{netloc}{path}".rstrip("/")
     return GeneratorEndpoint(
         server=kind,
         backend=_BACKEND[kind],

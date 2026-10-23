@@ -51,7 +51,12 @@ def record_embedding_index(path: Path, *, model: str, revision: str, populated: 
     """Record an observed empty index; preserve known or unknown populated provenance."""
 
     current = load_embedding_index(path)
-    warning = embedding_change_warning(current, model=model, revision=revision) if populated else ""
+    promoting = (
+        current is not None and current.get("populated") is False
+        and model and revision
+        and current.get("model") == model and current.get("revision") == revision
+    )
+    warning = embedding_change_warning(current, model=model, revision=revision) if populated and not promoting else ""
     if warning:
         return warning
     document = {"model": model, "revision": revision, "populated": bool(populated)}
