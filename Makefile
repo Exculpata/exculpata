@@ -4,7 +4,7 @@ PUBLICATION_GUARD_ROOT ?= $(HOME)/.local/share/exculpata-publication-guard
 GITLEAKS ?= gitleaks
 .DEFAULT_GOAL := test
 
-.PHONY: bootstrap hooks check check-fast compile compose-check demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
+.PHONY: bootstrap hooks check check-fast compile compose-check network-contract demo publication-check publication-candidate-check secret-check deployment-check test test-fast test-transcription test-postgres
 
 bootstrap:
 	"$(SYSTEM_PYTHON)" scripts/bootstrap-dev.py
@@ -52,6 +52,9 @@ compile:
 compose-check:
 	./scripts/compose-check.sh
 
+network-contract:
+	"$(PYTHON)" scripts/network-contract.py
+
 publication-check:
 	"$(PYTHON)" scripts/publication-check.py
 
@@ -69,7 +72,7 @@ secret-check:
 test-postgres:
 	@test -n "$$CASE_REVIEW_POSTGRES_TEST_DSN" || { echo 'Set CASE_REVIEW_POSTGRES_TEST_DSN to a synthetic PostgreSQL 17 + pgvector database.' >&2; exit 1; }
 	@set -eu; report="$$(mktemp)"; trap 'rm -f "$$report"' EXIT; \
-	"$(PYTHON)" -m pytest -q tests/test_review_bench_v2_postgres.py \
+	"$(PYTHON)" -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
 		--deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
 		--junitxml="$$report"; \
 	"$(PYTHON)" scripts/check-postgres-test-report.py "$$report"
@@ -90,6 +93,6 @@ deployment-check: compose-check
 # Ignore inherited test selections. PostgreSQL runs separately with its checked report,
 # as in CI, rather than accidentally enabling database tests in every xdist worker.
 check-fast: export PYTEST_ADDOPTS :=
-check-fast: compile deployment-check publication-check publication-candidate-check secret-check test-fast test-transcription test-postgres
+check-fast: compile deployment-check network-contract publication-check publication-candidate-check secret-check test-fast test-transcription test-postgres
 
-check: compile compose-check publication-check test test-transcription
+check: compile compose-check network-contract publication-check test test-transcription

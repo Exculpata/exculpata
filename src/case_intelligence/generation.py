@@ -22,7 +22,7 @@ from .question_generation import (
     QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
 )
 from .review_quality import answer_advances_objective, classify_question
-from .service_endpoints import validate_service_endpoint
+from .service_endpoints import open_service_request, validate_service_endpoint
 
 MAX_QUESTION_CHARS = 2_000
 MAX_EVIDENCE_ITEMS = DEFAULT_REVIEW_BUDGET.synthesis_inputs
@@ -78,6 +78,10 @@ MEDIA_TRANSCRIPT_NOTICE = (
 
 class GenerationUnavailable(RuntimeError):
     """The configured local generator cannot currently answer."""
+
+
+class GenerationInvalidContent(GenerationUnavailable):
+    """The service returned text that is not a structured model answer."""
 
 
 class GenerationRejected(RuntimeError):
@@ -261,7 +265,7 @@ def _bounded_json_request(
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
         with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
     except (OSError, urllib.error.URLError, TimeoutError) as exc:
@@ -283,7 +287,7 @@ def _bounded_json_get(
 ) -> Mapping[str, object]:
     request = urllib.request.Request(url, headers={"Accept": "application/json", **dict(headers or {})})
     try:
-        open_request = opener.open if opener is not None else urllib.request.urlopen
+        open_request = opener.open if opener is not None else lambda request, **kwargs: open_service_request(request, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS", **kwargs)
         with open_request(request, timeout=timeout) as response:
             raw = response.read(MAX_RESPONSE_BYTES + 1)
         if len(raw) > MAX_RESPONSE_BYTES:
@@ -511,9 +515,9 @@ def _parse_model_content(content: object) -> Mapping[str, object]:
     try:
         payload = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise GenerationUnavailable("The answer service did not return structured content.") from exc
+        raise GenerationInvalidContent("The answer service did not return structured content.") from exc
     if not isinstance(payload, dict):
-        raise GenerationUnavailable("The answer service returned invalid structured content.")
+        raise GenerationInvalidContent("The answer service returned invalid structured content.")
     return payload
 
 

@@ -44,6 +44,8 @@ def apt(tmp_path, monkeypatch):
             result = 0
         elif command[:2] == ["sudo", "timeout"]:
             result = acquisition_results.pop(0) if acquisition_results else 0
+        elif command[:2] == ["sudo", "chown"]:
+            result = 0
         elif command[:3] == ["sudo", "apt-get", "install"]:
             result = install_results.pop(0) if install_results else 0
         else:
@@ -76,6 +78,8 @@ def test_primary_success_installs_only_after_bounded_acquisition(apt):
     assert install[:3] == ["sudo", "apt-get", "install"]
     assert "--no-download" in install and "timeout" not in install
     assert_full_packages(install)
+    assert not any("Dir::Cache::" in argument or "Keep-Downloaded" in argument
+                   for command in commands(apt) for argument in command)
     assert apt[0].read_text() == MIRROR_LIST
     assert not any("Dir::Etc::" in argument for command in commands(apt) for argument in command)
 
@@ -290,3 +294,62 @@ def test_cli_refuses_other_hosts_before_running_commands(apt, monkeypatch, syste
     with pytest.raises(RuntimeError):
         deps.main()
     assert not commands(apt)
+
+
+@pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("failure", [None, "acquisition", "install"])
+def test_custom_packages_and_archives_cover_every_phase(apt, fallback, failure):
+    archives = apt[0].parent / "apt archives"
+    packages = ("synthetic-package", "synthetic-media")
+    apt[3].extend([0, 124] if fallback else [])
+    if failure == "acquisition":
+        apt[3].extend([0, 124] if fallback else [0, 124, 0, 124])
+    elif failure == "install":
+        apt[4].append(100)
+    if failure:
+        with pytest.raises((RuntimeError, subprocess.CalledProcessError)):
+            deps.install_dependencies(*apt[:2], packages=packages, archives=archives)
+    else:
+        deps.install_dependencies(*apt[:2], packages=packages, archives=archives)
+    assert (archives / "partial").is_dir()
+    phases = []
+    for command in commands(apt):
+        if "apt-get" not in command:
+            continue
+        assert command.count(f"Dir::Cache::archives={archives}") == 1
+        assert command.count("APT::Keep-Downloaded-Packages=true") == 1
+        phase = "update" if "update" in command else "download" if "--download-only" in command else "install"
+        phases.append(phase)
+        if phase != "update":
+            assert command[-len(packages):] == list(packages)
+            assert not set(PACKAGE_LIST) & set(command)
+    assert phases[:2] == ["update", "download"]
+    if fallback or failure == "acquisition":
+        assert phases[2:4] == ["update", "download"]
+    chowns = [command for command in commands(apt) if command[:2] == ["sudo", "chown"]]
+    assert chowns == ([] if failure else [
+        ["sudo", "chown", "-R", f"{deps.os.getuid()}:{deps.os.getgid()}", str(archives)],
+    ])
+    if not failure:
+        assert phases[-1] == "install" and commands(apt)[-1] == chowns[0]
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_cli_preserves_defaults_and_accepts_packages_and_archives(apt, monkeypatch, custom):
+    monkeypatch.setattr(deps.sys, "platform", "linux")
+    monkeypatch.setattr(deps.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(deps.platform, "freedesktop_os_release", lambda: {"ID": "ubuntu", "VERSION_ID": "24.04"})
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    archives = apt[0].parent / "apt archives"
+    monkeypatch.setattr(deps.sys, "argv", ["install-ci-browser-deps.py"] + (
+        ["--archives", str(archives), "synthetic-package"] if custom else []))
+    assert deps.main() == 0
+    update, download, install = commands(apt)[:3]
+    if custom:
+        assert f"Dir::Cache::archives={archives}" in update
+        assert download[-1] == install[-1] == "synthetic-package"
+        assert commands(apt)[-1][:2] == ["sudo", "chown"]
+    else:
+        assert_full_packages(download)
+        assert_full_packages(install)
+        assert len(commands(apt)) == 3

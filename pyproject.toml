@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["PyYAML>=6,<7", "pytest>=9.0.3,<10", "pytest-xdist>=3.8,<4", "selenium>=4.29,<5"]
+dev = ["PyYAML>=6,<7", "markdown-it-py==4.2.0", "pytest>=9.0.3,<10", "pytest-xdist>=3.8,<4", "selenium>=4.29,<5"]
 postgres = ["psycopg[binary]>=3.2,<4"]
 models = ["sentence-transformers>=5,<7"]
 
@@ -49,6 +49,9 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 case_intelligence = [
+  "_idna/*.pyz",
+  "_idna/*.json",
+  "_idna/*.md",
   "demo_data/*.json",
   "demo_data/*.pdf",
   "demo_data/sources/*/*",

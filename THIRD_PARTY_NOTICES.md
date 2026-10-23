@@ -16,6 +16,18 @@ Font License 1.1. The license texts ship beside the font files
 URLs and do not call a font delivery network. See
 [dependency notes](docs/DEPENDENCIES.md#bundled-interface-fonts).
 
+## Offline issuer validation
+
+The source archive `src/case_intelligence/_idna/idna-3.20.pyz` bundles unchanged
+pure-Python files from idna 3.20 under the BSD-3-Clause license. The upstream
+license is retained beside and inside the archive; the manifest records the
+reviewed upstream wheel hash and individual source hashes. No compiled extension,
+model weights or CLI entry point is bundled. The loader checks the archive hash
+before importing it into a private package namespace. This lets the installer
+validate IDNA2008 offline before writing provider configuration, using the same
+policy as the application and relay without installing a host dependency.
+See the bundled README for the hash-locked reproduction command.
+
 ## Runtime foundations
 
 Exculpata builds on Python, FastAPI/Starlette, Uvicorn, PostgreSQL, pgvector,
