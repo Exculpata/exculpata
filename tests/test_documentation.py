@@ -143,6 +143,31 @@ def test_review_policy_is_central_and_hosted_review_is_optional() -> None:
         assert "code review is mandatory" not in text
 
 
+def test_agent_working_practice_sets_delivery_and_authority_boundaries() -> None:
+    guide = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Agent working practice\n" in guide
+    section = guide.split("## Agent working practice\n", 1)[1].split("\n## ", 1)[0]
+    assert len(section.splitlines()) < 40
+    text = " ".join(section.split())
+    for requirement in (
+        "goal and a pass/fail check before starting",
+        "failing test first where a cheap test exists",
+        "what else the change could break before pushing",
+        "real artifact before calling it done",
+        "about 500 changed lines or less",
+        "ordered small PRs",
+        "PR author owns the PR to green",
+        "review findings, CI flakes and stale PR body text without waiting",
+        "one push per round",
+        "After two review rounds, only security, privacy or evidence-integrity",
+        "other findings to follow-up issues",
+        "Merges, pushes to main and ruleset changes",
+        "maintainer's explicit yes",
+        "Never force-push or use `--no-verify`",
+    ):
+        assert requirement in text
+
+
 def test_contributor_entry_points_stay_short_and_public_safe() -> None:
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
     assert len(contributing.split()) <= 500
