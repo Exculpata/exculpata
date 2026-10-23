@@ -56,6 +56,21 @@ Chrome. Optional integration tests can skip when their prerequisites are absent.
 application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
+Tests whose bodies, fixtures or class methods reference TestClient get a lazy,
+bounded socketpair wakeup and AnyIO portal probe. Detection includes aliases,
+subclasses and local helpers referenced from the test or its fixtures.
+It also follows getfixturevalue requests and specific helpers called through
+local module objects, including dynamically loaded modules with statically
+resolvable paths. Helpers in modules whose local import closure is proven free
+of TestClient are leaves and do not consume the helper-depth budget. Other
+helper paths still trigger the probe when they exceed six steps. Unresolved
+dynamic module calls and fixture lookups conservatively trigger the probe.
+Unreadable test source, or fixture source from a module using TestClient,
+conservatively triggers the probe.
+If a primitive fails, route tests skip with the cause and a terminal summary.
+When CI is set to a non-empty value other than "0" or "false" (case-insensitive),
+the probe fails instead of skipping. Run local skips in an unrestricted shell.
+
 It is safe to rerun bootstrap with the same interpreter after dependency metadata
 changes. An existing incompatible or broken environment is left untouched:
 choose a new `--venv` directory. The script never deletes an environment or
