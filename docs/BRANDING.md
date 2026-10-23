@@ -300,10 +300,14 @@ change stored naming generations or relax installation, storage or publication
 checks. The source-form inventory makes the remaining limits visible to reviewers
 rather than treating unknown helpers as safe consumers.
 
-For an existing node, application environment selection is independent of its
-saved naming generation. A nonempty saved `EXCULPATA_APP_ENV_FILE` wins over its
-legacy alias. With neither set, `exculpata.env` wins when present; otherwise the
-legacy filename is selected. The two files are never merged. An explicit missing
+For an existing node, a nonempty saved `EXCULPATA_APP_ENV_FILE` wins over its
+legacy alias. With neither set, a legacy node retains its legacy file when
+present without reading `exculpata.env`. Otherwise, the current file wins when
+present, with the existing generation-based fallback. The two files are never merged.
+Selected application environment files cannot be symbolic links, including
+explicit selections. Rendering environment aliases rejects differing nonempty
+values rather than silently replacing either value. Reading OIDC issuer and
+egress pin aliases also rejects differing nonempty values. An explicit missing
 file remains selected so configuration validation fails instead of silently
 using another file. These lookups do not rewrite either file or installation
 metadata.

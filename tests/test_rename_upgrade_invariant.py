@@ -191,6 +191,8 @@ def test_cross_generation_restore_rejects_before_commands_or_writes(
 def test_both_environment_files_have_one_read_only_selection(
     tmp_path, monkeypatch, names, selection, expected,
 ):
+    if selection is None and names == LEGACY_STEM:
+        expected = "recordbench.env"
     monkeypatch.setattr(installer, "_legacy_account", lambda: False)
     root, _, paths = configured_node(tmp_path, names=names)
     for filename, value in (("recordbench.env", "legacy"), ("exculpata.env", "current")):

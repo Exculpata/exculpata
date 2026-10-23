@@ -39,11 +39,14 @@ def env(name: str, default: str | None = None, *, environ: Mapping[str, str] | N
 
     Warnings contain names only. Deprecation and conflicting values are each
     reported once per setting per process, including under concurrent reads.
+    Conflicting OIDC issuer and egress pin aliases are refused on every read.
     """
     suffix = _suffix(name)
     new, old = f"{CURRENT_ENV_PREFIX}{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
     source = os.environ if environ is None else environ
     new_value, old_value = source.get(new), source.get(old)
+    if suffix in {"OIDC_ISSUER", "OIDC_EGRESS_PINS"} and new_value and old_value and new_value != old_value:
+        raise RuntimeError(f"{new} and {old} differ")
     with _lock:
         if old_value and old not in _warned:
             _warned.add(old)

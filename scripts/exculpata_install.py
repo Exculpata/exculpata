@@ -166,9 +166,16 @@ def _selected_app_env(config: Path, saved: Mapping[str, str], *, names: str | No
     selected = _env(f"{LEGACY_ENV_PREFIX}APP_ENV_FILE", "", environ=saved)
     if not selected:
         current = name_value("app_env")
-        selected = current if (config / current).is_file() else name_value("app_env", names or LEGACY_STEM)
+        generation = names or _detected_names(config.parent)
+        retained = name_value("app_env", LEGACY_STEM)
+        if generation == LEGACY_STEM and ((config / retained).exists() or (config / retained).is_symlink()):
+            selected = retained
+        else:
+            selected = current if (config / current).is_file() else name_value("app_env", names or LEGACY_STEM)
     if selected in {".", ".."} or Path(selected).name != selected or "\\" in selected:
         raise RuntimeError("application environment selection must be a filename inside the config root")
+    if (config / selected).is_symlink():
+        raise RuntimeError("application environment file cannot be a symbolic link")
     return config / selected
 
 
@@ -196,6 +203,8 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
     if list(command[:2]) != ["docker", "compose"] or "--env-file" not in command:
         return dict(environment) if environment is not None else None
     saved = _dotenv(Path(command[command.index("--env-file") + 1]))
+    for suffix in ("OIDC_ISSUER", "OIDC_EGRESS_PINS"):
+        _env(suffix, environ=saved)
     result = dict(os.environ if environment is None else environment)
     for key in tuple(result):
         if key.startswith((f"{LEGACY_ENV_PREFIX}", CURRENT_ENV_PREFIX)) or key in {"COMPOSE_PROJECT_NAME", "COMPOSE_PROFILES"}:
@@ -919,6 +928,9 @@ def _env_text(values: Mapping[str, object], heading: str, *, aliases: bool = Fal
             if key.startswith((CURRENT_ENV_PREFIX, f"{LEGACY_ENV_PREFIX}")):
                 suffix = str(key).removeprefix(f"{LEGACY_ENV_PREFIX}").removeprefix(CURRENT_ENV_PREFIX)
                 preferred = values.get(name_value("environment", suffix=suffix))
+                retained = values.get(f"{LEGACY_ENV_PREFIX}{suffix}")
+                if preferred not in (None, "") and retained not in (None, "") and preferred != retained:
+                    raise RuntimeError("current and legacy environment aliases have conflicting values")
                 expanded[name_value("environment", suffix=suffix)] = values.get(f"{LEGACY_ENV_PREFIX}{suffix}", "") if preferred in (None, "") else preferred
             else:
                 expanded[key] = value

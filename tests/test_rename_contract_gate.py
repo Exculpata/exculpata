@@ -2088,6 +2088,79 @@ def test_opaque_construction_aliases_remain_blocked(source):
 
 
 @pytest.mark.parametrize("source", [
+    'ns = __import__("case_intelligence.legacy_names", fromlist=["LEGACY_STEM"])\nFORMAT = ns.LEGACY_STEM + "-unregistered-v99"',
+    'import importlib\nmod = importlib.import_module("case_intelligence.legacy_names")\nFORMAT = getattr(mod, "LEGACY_STEM") + "-unregistered-v99"',
+    'from importlib import import_module as load\nmod = load("case_intelligence.legacy_names")',
+    'import importlib as loader\nmod = loader.import_module(".legacy_names", "case_intelligence")',
+    'from builtins import __import__ as load\nmod = load("case_intelligence.legacy_names")',
+    'import importlib\nmod = importlib.import_module(module_name)',
+    'mod = __import__(module_name)',
+    'mod = __import__("legacy_names", globals(), locals(), ["LEGACY_STEM"], 1)',
+    'mod = __import__("json", level=relative_level)',
+    'import importlib\nmod = importlib.import_module(".legacy_names", package_name)',
+    'import case_intelligence.compat_env as mod\nVALUE = getattr(mod, attribute_name)',
+    'from . import legacy_names as names\nVALUE = getattr(names, "LEGACY_STEM")',
+], ids=['builtin_import', 'importlib_getattr', 'from_alias', 'relative_alias',
+        'builtin_alias', 'unknown_module', 'unknown_builtin_module',
+        'relative_builtin', 'unknown_level',
+        'unknown_package', 'unknown_attribute', 'relative_getattr'])
+def test_dynamic_module_lookup_requires_rename_helper(source):
+    found = checker.scan_python("src/case_intelligence/synthetic.py", source, NAME_CONTRACTS)
+    assert any("case_intelligence.legacy_names.name_value" in item.identifier
+               for item in found), found
+
+
+def test_resolved_unrelated_dynamic_module_lookup_stays_supported():
+    source = 'import importlib\nimport json as obj\nmod = importlib.import_module("json")\nVALUE = getattr(obj, "attr")'
+    assert checker.scan_python("synthetic.py", source, NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize("source", [
+    'import json\nVALUE = getattr(json, attribute_name)',
+    'def read(obj, name):\n return getattr(obj, name)',
+    'import ast\nVALUE = getattr(ast, attribute_name)',
+    'VALUE = getattr(str, attribute_name)',
+    'class Synthetic:\n pass\nVALUE = getattr(Synthetic, attribute_name)',
+    'import importlib\nPACKAGE = "case_intelligence"\nimportlib.import_module(PACKAGE)',
+    '__import__("case_intelligence")',
+    '__import__("case_intelligence.compat_env")',
+    'mod = __import__("case_intelligence.compat_env", fromlist=["env"])',
+], ids=['static_json', 'parameter', 'ast', 'str', 'class', 'discarded_importlib',
+        'discarded_builtin', 'discarded_builtin_submodule', 'builtin_submodule_fromlist'])
+def test_unrelated_lookup_and_discarded_package_import_stay_supported(source):
+    assert checker.scan_python("synthetic.py", source, NAME_CONTRACTS) == []
+
+
+@pytest.mark.parametrize("source", [
+    'import importlib\nmod = importlib.import_module("case_intelligence")',
+    'consume(__import__("case_intelligence"))',
+    '__import__("case_intelligence").legacy_names',
+    'import importlib\nimportlib.import_module("json", **options)',
+    '__import__("json", **options)',
+    'import importlib\nmod = importlib.import_module("json")\nVALUE = getattr(mod, attribute_name)',
+    'mod = __import__("json")\nVALUE = getattr(mod, attribute_name)',
+    'import importlib\nloader = importlib.import_module("importlib")\nloader.import_module("case_intelligence.legacy_names")',
+    'loader = __import__("importlib.util")\nloader.import_module("case_intelligence.legacy_names")',
+    'loader = __import__("importlib", fromlist=["import_module"])\nloader.import_module("case_intelligence.legacy_names")',
+    'import importlib\nloader = importlib.import_module("importlib")\nalias = loader\nalias.import_module(module_name)',
+], ids=['assigned_package', 'passed_package', 'package_attribute', 'importlib_kwargs',
+        'builtin_kwargs', 'dynamic_json', 'builtin_json', 'bound_importlib',
+        'builtin_root', 'builtin_fromlist', 'bound_alias'])
+def test_dynamic_import_results_preserve_lookup_boundary(source):
+    found = checker.scan_python("synthetic.py", source, NAME_CONTRACTS)
+    assert any("case_intelligence.legacy_names.name_value" in item.identifier
+               for item in found), found
+
+
+@pytest.mark.parametrize("fromlist", ["", ", fromlist=[]", ", fromlist=None"])
+def test_builtin_submodule_import_cannot_expose_package_root(fromlist):
+    source = f'mod = __import__("case_intelligence.compat_env"{fromlist})'
+    found = checker.scan_python("synthetic.py", source, NAME_CONTRACTS)
+    assert any("case_intelligence.legacy_names.name_value" in item.identifier
+               for item in found), found
+
+
+@pytest.mark.parametrize("source", [
     'def ordinary():\n return "synthetic"\nVALUE = ordinary()',
     'VALUE = (lambda: "synthetic")()',
     'VALUE = getattr(runtime, "ordinary_field")',

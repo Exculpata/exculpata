@@ -59,7 +59,7 @@ KNOWN_VALUES = {key: item for key, item in vars(naming).items()
 # Reviewed selector interface: environment keys select values; they are not
 # returned as data. The complete implementation is pinned so an edited helper
 # cannot silently inherit these input/output roles.
-SELECTOR_MODULE_SHA256 = "90e216265b2f17b2175b03ac6d4fa7cafeed2c2d2a2cf3b6fe1fde9e436cc8a1"
+SELECTOR_MODULE_SHA256 = "775b0be73b7ae4dfb32c052466494984d7851bde54636d338905ad8f33cced13"
 SELECTOR_CALLS = {"case_intelligence.compat_env.env", "case_intelligence.compat_env.required_env"}
 
 STRING_METHODS = {"format", "format_map", "join", "replace", "lower", "upper", "casefold",
@@ -358,7 +358,7 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         tree = tree if tree is not None else ast.parse(text.removeprefix("\ufeff"))
     except (SyntaxError, ValueError, RecursionError):
         return [Finding(f"{location}:1", f"unsupported Python parse; use {RENAME_COMPAT_HELPER}")]
-    env = {name: ContainerValue("callable", ("builtins." + name,)) for name in ("str", "repr", "ascii", "len", "bool", "int", "float", "dict", "list", "tuple", "set", "getattr", "exec", "eval")}
+    env = {name: ContainerValue("callable", ("builtins." + name,)) for name in ("str", "repr", "ascii", "len", "bool", "int", "float", "dict", "list", "tuple", "set", "getattr", "__import__", "exec", "eval")}
     unresolved_stems: set[str] = set()
     binding_events: list[tuple[str, str | ContainerValue | None]] = []
     found = []
@@ -367,6 +367,8 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
     function_declarations = []
     module_scope = None
     active_visitors = []
+    active_nodes = []
+    dynamic_imports = {"builtins.__import__", "importlib.import_module"}
     expansion_budget = 4096
     analysis_steps = MAX_ANALYSIS_STEPS
 
@@ -430,6 +432,39 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
             parent = qualified(node.value)
             return parent + "." + node.attr if parent else None
         return None
+
+    def dynamic_module(node: ast.Call) -> str | None:
+        reference = qualified(node.func)
+        if reference not in dynamic_imports:
+            return None
+        module_argument = node.args[0] if node.args else next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "name"), None)
+        module_name = value(module_argument) if module_argument is not None else None
+        level_argument = node.args[4] if len(node.args) > 4 else next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "level"), None)
+        if (not module_name or module_name.startswith(".")
+                or module_name == "case_intelligence.legacy_names"
+                or module_name.startswith("case_intelligence.legacy_names" + ".")
+                or any(keyword.arg is None for keyword in node.keywords)
+                or (reference == "builtins.__import__" and level_argument is not None
+                    and index_value(level_argument) != 0)):
+            return None
+        returned_name = module_name
+        if reference == "builtins.__import__":
+            fromlist_argument = node.args[3] if len(node.args) > 3 else next(
+                (keyword.value for keyword in node.keywords if keyword.arg == "fromlist"), None)
+            fromlist = frozen(fromlist_argument) if fromlist_argument is not None else ""
+            if isinstance(fromlist_argument, ast.Constant) and fromlist_argument.value is None:
+                fromlist = ""
+            if isinstance(fromlist, ContainerValue) and fromlist.kind in {"list", "tuple", "set"}:
+                has_fromlist = bool(fromlist.items)
+            elif isinstance(fromlist, str):
+                has_fromlist = bool(fromlist)
+            else:
+                return None
+            if not has_fromlist:
+                returned_name = module_name.split(".")[0]
+        return returned_name
 
     def selector_inputs(node):
         reference = qualified(node.func)
@@ -565,6 +600,10 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
         consume_analysis_step()
         if isinstance(node, FrozenDomainValue):
             return node.item
+        if isinstance(node, ast.Call):
+            imported = dynamic_module(node)
+            if imported is not None:
+                return ContainerValue("module", (imported, True))
         if isinstance(node, ast.Lambda):
             return ContainerValue("local_callable", ())
         if isinstance(node, (ast.IfExp, ast.BoolOp)):
@@ -1126,9 +1165,11 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         def visit(self, node):
             active_visitors.append(self)
+            active_nodes.append(node)
             try:
                 return super().visit(node)
             finally:
+                active_nodes.pop()
                 active_visitors.pop()
 
         def generic_visit(self, node):
@@ -1760,18 +1801,28 @@ def scan_python(location: str, text: str, contracts: Mapping[str, NameContract],
 
         def visit_Call(self, node: ast.Call) -> None:
             reference = qualified(node.func)
+            if reference in dynamic_imports:
+                imported = dynamic_module(node)
+                discarded = len(active_nodes) > 1 and isinstance(active_nodes[-2], ast.Expr)
+                if imported is None or (imported == "case_intelligence" and not discarded):
+                    restricted_boundary(node, "dynamic or unresolved module import")
             if reference in {"builtins.exec", "builtins.eval"}:
                 found.append(Finding(f"{location}:{node.lineno}",
                                      f"unsupported Python dynamic execution; use {RENAME_COMPAT_HELPER}"))
             if reference == "string.Template":
                 restricted_boundary(node, "string.Template construction")
-            if reference == "builtins.getattr" and node.args and (
-                qualified(node.args[0]) in {"case_intelligence.legacy_names", "case_intelligence.legacy_names.NAME_CONTRACTS"}
-                or contains_stem(node.args[0])
-                or (qualified(node.args[0]) == "builtins" and len(node.args) > 1
-                    and value(node.args[1]) in {"exec", "eval"})
-            ):
-                restricted_boundary(node, "dynamic legacy or execution lookup")
+            if reference == "builtins.getattr" and node.args:
+                namespace = qualified(node.args[0])
+                if (namespace in {"case_intelligence.legacy_names", "case_intelligence.legacy_names.NAME_CONTRACTS"}
+                        or contains_stem(node.args[0])
+                        or (namespace == "builtins" and len(node.args) > 1
+                            and value(node.args[1]) in {"exec", "eval"})):
+                    restricted_boundary(node, "dynamic legacy or execution lookup")
+                elif len(node.args) < 2 or value(node.args[1]) is None:
+                    bound = structure(node.args[0])
+                    if (namespace == "case_intelligence" or (namespace or "").startswith("case_intelligence.")
+                            or (bound is not None and bound.kind == "module" and len(bound.items) > 1)):
+                        restricted_boundary(node, "unresolved attribute lookup")
 
             callee = structure(node.func)
             if callee is None and not isinstance(node.func, (ast.Name, ast.Attribute, ast.Subscript)):
