@@ -175,7 +175,7 @@ def test_contributor_entry_points_stay_short_and_public_safe() -> None:
                    "draft PR", "synthetic data only", "Never include real case material"):
         assert marker in contributing
     template = (ROOT / ".github/pull_request_template.md").read_text()
-    assert len(template.splitlines()) <= 15
+    assert len(template.splitlines()) <= 23
     assert "synthetic data only" in template
     assert "Needs hosted review?" in template
     assert "QUALITY_GATES.md#review-policy" in template

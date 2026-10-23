@@ -11,14 +11,17 @@ For hand-written policy checks, follow the
 ## Restate the goal before coding
 
 Read the issue, current comments, assignees, claims and related PRs. Respect
-existing work and holds. In your first kickoff comment, restate the goal and
-user-visible outcome in your own words. Compare it with the issue's scope and
-acceptance criteria; code starts only after they match. Resolve any mismatch
+existing work and holds. Before coding, write a "Kickoff" section in your
+task file or PR body with four parts: goal restated in your own words (including
+the user-visible outcome), expected files to touch, acceptance check, and issue link.
+Compare it with the issue's scope and acceptance criteria; code starts only after they match. Resolve any mismatch
 with the issue author before proceeding. Keep changes focused on that outcome.
-The issue author's form entry is not the agent's kickoff. Link the agent's first
-kickoff comment in the PR. Before marking it ready, the reviewer checks the
-comment's author, timestamp before the first implementation commit, and scope
-against the issue; an absent or mismatched kickoff blocks readiness.
+The issue author's form entry is not the agent's kickoff. When the kickoff is in a task file, it must be in the branch's first commit.
+When the kickoff is in the PR body, its timing is taken on trust.
+Link the task file in the PR if used. Before marking it ready, the reviewer checks
+the timing rule and confirms its goal and user-visible outcome match the issue;
+an absent or mismatched kickoff blocks readiness.
+See [Agent working practice](https://github.com/Exculpata/exculpata/blob/main/AGENTS.md#agent-working-practice) for the related goal and pass/fail check practice.
 
 ## Keep public language neutral
 
@@ -71,7 +74,7 @@ Never force-push or use `--no-verify`.
 
 | Rule | Enforced by |
 | --- | --- |
-| Match the agent's kickoff goal and user-visible outcome to the issue before coding. | The issue form records the author's goal; the PR template requires the agent's kickoff permalink. Before readiness, a reviewer verifies its author, timing and scope. `tests/test_issue_templates.py` checks these prompts, not the later comment; human review verifies the actual evidence. |
+| Match the agent's kickoff goal and user-visible outcome to the issue before coding. | The issue form records the author's goal; the agent records a Kickoff section in its task file or PR body. The PR template prompts for the goal, expected files, acceptance check and issue link. Before readiness, a reviewer verifies timing and scope. `tests/test_issue_templates.py` checks these prompts; human review verifies the actual evidence. |
 | Keep public language neutral and exclude private organizational details. | The installed publication guard checks configured private terms; review checks terminology and public text outside Git because a generic scan cannot identify every private affiliation. `tests/test_issue_templates.py` guards the guidance and this enforcement row. |
 | Fix repeated mistakes at the highest effective level and explain lower-level choices. | Required fix-level field; PR review checks the choice because effectiveness depends on the failure. |
 | Supply a synthetic regression and name the failing commit. | Required regression field; the application CI suite runs tests; PR review verifies the historical failure evidence. |
