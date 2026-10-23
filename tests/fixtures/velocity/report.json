@@ -1,19 +1,90 @@
 {
   "pulls": [
-    {"number": 1, "created_at": "2026-10-05T00:00:00Z", "updated_at": "2026-10-06T00:00:00Z", "merged_at": "2026-10-06T00:00:00Z", "review_comments": 4},
-    {"number": 2, "created_at": "2026-10-05T00:00:00Z", "updated_at": "2026-10-08T00:00:00Z", "merged_at": "2026-10-08T00:00:00Z", "review_comments": 0}
+    {
+      "number": 1,
+      "created_at": "2026-10-05T00:00:00Z",
+      "updated_at": "2026-10-06T00:00:00Z",
+      "merged_at": "2026-10-06T00:00:00Z",
+      "review_comments": 4,
+      "commits": 2
+    },
+    {
+      "number": 2,
+      "created_at": "2026-10-05T00:00:00Z",
+      "updated_at": "2026-10-08T00:00:00Z",
+      "merged_at": "2026-10-08T00:00:00Z",
+      "review_comments": 0,
+      "commits": 1
+    }
   ],
   "events": {
     "1": [
-      {"__typename": "AddedToMergeQueueEvent", "createdAt": "2026-10-05T01:00:00Z"},
-      {"__typename": "RemovedFromMergeQueueEvent", "createdAt": "2026-10-05T02:00:00Z"},
-      {"__typename": "AddedToMergeQueueEvent", "createdAt": "2026-10-05T03:00:00Z"}
+      {
+        "__typename": "AddedToMergeQueueEvent",
+        "createdAt": "2026-10-05T01:00:00Z"
+      },
+      {
+        "__typename": "RemovedFromMergeQueueEvent",
+        "createdAt": "2026-10-05T02:00:00Z",
+        "reason": "failed_checks"
+      },
+      {
+        "__typename": "AddedToMergeQueueEvent",
+        "createdAt": "2026-10-05T03:00:00Z"
+      },
+      {
+        "__typename": "RemovedFromMergeQueueEvent",
+        "createdAt": "2026-10-06T00:00:00Z",
+        "reason": "merged"
+      }
     ],
     "2": []
   },
   "runs": [
-    {"id": 11, "workflow_id": 7, "head_sha": "synthetic-a", "pull_requests": [{"number": 1}], "created_at": "2026-10-05T00:00:00Z", "run_started_at": "2026-10-05T00:00:00Z", "updated_at": "2026-10-05T00:10:00Z", "status": "completed", "conclusion": "success"},
-    {"id": 12, "workflow_id": 7, "head_sha": "synthetic-b", "pull_requests": [{"number": 1}], "created_at": "2026-10-05T02:00:00Z", "run_started_at": "2026-10-05T02:00:00Z", "updated_at": "2026-10-05T02:20:00Z", "status": "completed", "conclusion": "success"},
-    {"id": 13, "workflow_id": 7, "head_sha": "synthetic-b", "pull_requests": [{"number": 1}], "created_at": "2026-10-05T02:25:00Z", "run_started_at": "2026-10-05T02:25:00Z", "updated_at": "2026-10-05T02:55:00Z", "status": "completed", "conclusion": "success"}
-  ]
+    {
+      "id": 11,
+      "workflow_id": 7,
+      "head_sha": "synthetic-a",
+      "pull_requests": [],
+      "created_at": "2026-10-05T00:00:00Z",
+      "run_started_at": "2026-10-05T00:00:00Z",
+      "updated_at": "2026-10-05T00:10:00Z",
+      "status": "completed",
+      "conclusion": "success",
+      "name": "Quality"
+    },
+    {
+      "id": 12,
+      "workflow_id": 7,
+      "head_sha": "synthetic-b",
+      "pull_requests": [],
+      "created_at": "2026-10-05T02:00:00Z",
+      "run_started_at": "2026-10-05T02:00:00Z",
+      "updated_at": "2026-10-05T02:20:00Z",
+      "status": "completed",
+      "conclusion": "success",
+      "name": "Quality"
+    },
+    {
+      "id": 13,
+      "workflow_id": 8,
+      "head_sha": "synthetic-b",
+      "pull_requests": [],
+      "created_at": "2026-10-05T02:25:00Z",
+      "run_started_at": "2026-10-05T02:25:00Z",
+      "updated_at": "2026-10-05T02:55:00Z",
+      "status": "completed",
+      "conclusion": "success",
+      "name": "Integration"
+    }
+  ],
+  "commits": {
+    "1": [
+      "synthetic-a",
+      "synthetic-b"
+    ],
+    "2": [
+      "synthetic-untested"
+    ]
+  }
 }

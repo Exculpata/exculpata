@@ -5,6 +5,8 @@ import argparse
 from datetime import datetime, timedelta, timezone
 import json
 import math
+import os
+import re
 import statistics
 import subprocess
 import sys
@@ -19,13 +21,17 @@ TIMELINE = '''query($number: Int!, $cursor: String) {
         [ADDED_TO_MERGE_QUEUE_EVENT, REMOVED_FROM_MERGE_QUEUE_EVENT]) {
         nodes { __typename
           ... on AddedToMergeQueueEvent { createdAt }
-          ... on RemovedFromMergeQueueEvent { createdAt }
+          ... on RemovedFromMergeQueueEvent { createdAt reason }
         }
         pageInfo { hasNextPage endCursor }
       }
     }
   }
 }'''
+
+
+class ActionsLimit(ValueError):
+    """An Actions date range needs splitting before it can be paginated."""
 
 
 def gh_json(endpoint, query=None, variables=None):
@@ -59,7 +65,7 @@ def pages(path, params=None, key=None):
     while True:
         payload = gh_json(f"{BASE}/{path}?{urlencode({**(params or {}), 'per_page': 100, 'page': page})}")
         if key and payload["total_count"] > 1000:
-            raise ValueError("Actions query exceeds GitHub's 1,000-run cap; report unavailable")
+            raise ActionsLimit("Actions query exceeds GitHub's 1,000-run cap; report unavailable")
         rows = payload[key] if key else payload
         if key and len(rows) < min(100, payload["total_count"] - (page - 1) * 100):
             raise ValueError("Actions page is incomplete; report unavailable")
@@ -67,6 +73,21 @@ def pages(path, params=None, key=None):
         if len(rows) < 100 or (key and page * 100 >= payload["total_count"]):
             break
         page += 1
+
+
+def workflow_runs(start, end):
+    """Split capped queries into disjoint, inclusive ranges at API second precision."""
+    start, end = start.replace(microsecond=0), end.replace(microsecond=0)
+    try:
+        return [run for batch in pages("actions/runs", {
+            "created": f"{start.isoformat()}..{end.isoformat()}",
+        }, "workflow_runs") for run in batch]
+    except ActionsLimit:
+        seconds = int((end - start).total_seconds())
+        if seconds <= 0:
+            raise ValueError(f"Actions exceeds the 1,000-run cap within one second at {start.isoformat()}") from None
+        middle = start + timedelta(seconds=seconds // 2)
+        return workflow_runs(start, middle) + workflow_runs(middle + timedelta(seconds=1), end)
 
 
 def queue_events(number):
@@ -85,24 +106,39 @@ def queue_events(number):
 
 
 def collect(since):
-    pulls, events = [], {}
+    pulls, events, commits = [], {}, {}
+    until = datetime.now(timezone.utc)
     for batch in pages("pulls", {"state": "all", "sort": "updated", "direction": "desc"}):
         for pr in batch:
             if timestamp(pr["updated_at"]) < since:
                 break
             detail = gh_json(f"{BASE}/pulls/{pr['number']}")
+            if detail["commits"] > 250:
+                raise ValueError(f"PR {pr['number']} exceeds the 250-commit REST limit; report unavailable")
             pulls.append(detail)
             events[str(pr["number"])] = queue_events(pr["number"])
+            commits[str(pr["number"])] = [commit["sha"]
+                                         for batch in pages(f"pulls/{pr['number']}/commits") for commit in batch]
+            if len(commits[str(pr["number"])]) != detail["commits"]:
+                raise ValueError(f"PR {pr['number']} commit history is incomplete; report unavailable")
         if any(timestamp(pr["updated_at"]) < since for pr in batch):
             break
     # Include retained pre-window CI history for the selected PRs' lifetimes.
     start = min([since] + [timestamp(pr["created_at"]) for pr in pulls])
-    runs = [run for batch in pages("actions/runs", {"created": f">={start.isoformat()}"}, "workflow_runs") for run in batch]
-    return {"pulls": pulls, "events": events, "runs": runs}
+    return {"pulls": pulls, "events": events, "commits": commits, "runs": workflow_runs(start, until)}
 
 
 def median(values):
     return statistics.median(values) if values else None
+
+
+def duration_metrics(values):
+    durations = sorted(values)
+    return {
+        "ci_runs": len(durations),
+        "ci_duration_minutes_median": median(durations),
+        "ci_duration_minutes_p90": durations[math.ceil(len(durations) * .9) - 1] if durations else None,
+    }
 
 
 def green_gap(runs, queued):
@@ -131,7 +167,8 @@ def summarize(data, since, until):
         drops = 0
         for pr in data["pulls"]:
             number = str(pr["number"])
-            runs = [r for r in data["runs"] if any(p["number"] == pr["number"] for p in r["pull_requests"])]
+            shas = set(data["commits"][number])
+            runs = [r for r in data["runs"] if r["head_sha"] in shas]
             if pr in merged:
                 tested[number] = len({r["head_sha"] for r in runs
                                       if r["status"] in {"in_progress", "completed"} and r.get("run_started_at")
@@ -142,15 +179,20 @@ def summarize(data, since, until):
                 if not start <= when < end:
                     continue
                 if event["__typename"] == "RemovedFromMergeQueueEvent":
-                    drops += 1
+                    if (event["reason"] or "").strip().lower() != "merged":
+                        drops += 1
                 elif event["__typename"] == "AddedToMergeQueueEvent":
                     gap = green_gap(runs, when)
                     if gap is not None:
                         gaps.append(gap)
-        durations = sorted((timestamp(r["updated_at"]) - timestamp(r["run_started_at"])).total_seconds() / 60
-                           for r in data["runs"] if r["status"] == "completed" and r.get("run_started_at")
-                           and start <= timestamp(r["created_at"]) < end
-                           and timestamp(r["run_started_at"]) <= timestamp(r["updated_at"]) <= until)
+        durations, workflows = [], {}
+        for run in data["runs"]:
+            if (run["status"] == "completed" and run.get("run_started_at")
+                    and start <= timestamp(run["created_at"]) < end
+                    and timestamp(run["run_started_at"]) <= timestamp(run["updated_at"]) <= until):
+                duration = (timestamp(run["updated_at"]) - timestamp(run["run_started_at"])).total_seconds() / 60
+                durations.append(duration)
+                workflows.setdefault(run["name"], []).append(duration)
         weeks.append({
             "week_start": monday.date().isoformat(),
             "merged_prs": len(merged),
@@ -159,15 +201,25 @@ def summarize(data, since, until):
             "review_comments_per_pr": comments,
             "green_to_queue_minutes_median": median(gaps),
             "green_to_queue_samples": len(gaps),
-            "ci_runs": len(durations),
-            "ci_duration_minutes_median": median(durations),
-            "ci_duration_minutes_p90": durations[math.ceil(len(durations) * .9) - 1] if durations else None,
+            **duration_metrics(durations),
+            "ci_duration_minutes_by_workflow": {name: duration_metrics(values) for name, values in sorted(workflows.items())},
             "merge_queue_drops": drops,
         })
         monday += timedelta(days=7)
     return {"repository": REPOSITORY, "since": since.isoformat(), "until": until.isoformat(),
             "measurement": "Retained Actions history; green and durations are proxies. See docs/VELOCITY_REPORT.md.",
             "weeks": weeks}
+
+
+def error_message(exc):
+    message = str(exc)
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+        token = os.environ.get(name)
+        if token:
+            message = message.replace(token, "[redacted]")
+    message = re.sub(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b", "[redacted]", message)
+    message = re.sub(r"(?i)\b(?:bearer|token)\s+\S+", "[redacted]", message)
+    return " ".join(message.split())
 
 
 def main(argv=None):
@@ -186,7 +238,7 @@ def main(argv=None):
     try:
         result = summarize(collect(since), since, until)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
-        print(f"Velocity report unavailable ({type(exc).__name__}); check gh access and API response completeness.", file=sys.stderr)
+        print(f"Velocity report unavailable ({type(exc).__name__}): {error_message(exc)}", file=sys.stderr)
         return 1
     if args.json:
         print(json.dumps(result, indent=2))
