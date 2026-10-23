@@ -10,6 +10,16 @@ WRITER = "github.ref == 'refs/heads/main' && (github.event_name == 'push' || git
 DOCS = " && needs.change-scope.outputs.docs_only != 'true'"
 
 
+def test_publication_dependency_install_timeout():
+    workflow = yaml.safe_load((ROOT / ".github/workflows/quality-gates.yml").read_text())
+    steps = workflow["jobs"]["publication-scan"]["steps"]
+    install = next(
+        step for step in steps
+        if step.get("name") == "Install publication inspection dependencies"
+    )
+    assert install["timeout-minutes"] == 8
+
+
 def test_workflow_apt_and_cache_contract():
     for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
         workflow = yaml.safe_load(path.read_text())
