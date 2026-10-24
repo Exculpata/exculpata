@@ -2055,7 +2055,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
                                             require_current=root.resolve() == ROOT.resolve()))
         shebang = text.removeprefix("\ufeff").partition("\n")[0]
         python_source = path.suffix == ".py" or (shebang.startswith("#!") and re.search(r"\bpython(?:[23](?:\.\d+)?)?\b", shebang))
-        if not path.suffix and not python_source:
+        if not path.suffix and not python_source and path.name != ".gitattributes":
             # Preserve semantic checks for valid extensionless Python, while
             # treating known non-Python formats as text rather than malformed Python.
             try:
