@@ -28,6 +28,13 @@ from .retrieval_limits import (
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_RERANKER_MODEL = "Alibaba-NLP/gte-reranker-modernbert-base"
+
+
+def _in_process_device() -> dict[str, str]:
+    """Pass an explicit CPU or GPU device. Unset keeps the library default and stays in-process."""
+
+    device = os.getenv("CASE_REVIEW_MODEL_DEVICE", "").strip()
+    return {"device": device} if device else {}
 _TOKEN = re.compile(r"[a-z0-9]+")
 _WORKBENCH_MATTER_ID = re.compile(r"^ci-matter-[0-9a-f]{32}$")
 _MEDIA_SUFFIXES = {".wav", ".mp3", ".m4a", ".ogg", ".opus", ".mp4", ".mov", ".webm"}
@@ -231,7 +238,10 @@ class LazySentenceTransformerEmbedding:
                 raise RuntimeError("model-backed meaning search is unavailable") from exc
             try:
                 self._model = SentenceTransformer(
-                    self._model_name, local_files_only=self._local_only, trust_remote_code=False
+                    self._model_name,
+                    local_files_only=self._local_only,
+                    trust_remote_code=False,
+                    **_in_process_device(),
                 )
             except Exception as exc:
                 raise RuntimeError("model-backed meaning search is unavailable") from exc
@@ -270,7 +280,10 @@ class LazySentenceTransformerReranker:
                 raise RuntimeError("model-backed ranking is unavailable") from exc
             try:
                 self._model = CrossEncoder(
-                    self._model_name, local_files_only=self._local_only, trust_remote_code=False
+                    self._model_name,
+                    local_files_only=self._local_only,
+                    trust_remote_code=False,
+                    **_in_process_device(),
                 )
             except Exception as exc:
                 raise RuntimeError("model-backed ranking is unavailable") from exc
@@ -796,7 +809,6 @@ def upsert_postgres_document(
         )
     if not connection.autocommit:
         connection.commit()
-
 
 def delete_postgres_document(connection, *, matter_id: str, document_id: str) -> None:
     """Delete one document and all derived rows under an explicit matter fence."""

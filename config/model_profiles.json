@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "fallback_profile": "cpu",
+  "profiles": [
+    {
+      "id": "cpu",
+      "label": "CPU only",
+      "accelerator": "cpu",
+      "min_ram_mib": 0,
+      "max_ram_mib": 14335,
+      "generator": "Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
+      "asr": "faster-whisper small or medium, int8, or skip transcription.",
+      "tradeoff": "Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "cpu-16",
+      "label": "CPU only, 16 GB RAM and up",
+      "accelerator": "cpu",
+      "min_ram_mib": 14336,
+      "generator": "Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
+      "asr": "faster-whisper small or medium, int8, or skip transcription.",
+      "tradeoff": "A 16 GB machine can hold a 4B quantized model beside the application. Answers are still slow. Firmware often reserves part of installed RAM, so 14 GiB of reported memory matches this tier. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "gpu-8",
+      "label": "8 GB GPU",
+      "accelerator": "gpu",
+      "min_vram_mib": 8192,
+      "max_vram_mib": 12287,
+      "generator": "Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata.",
+      "asr": "faster-whisper medium, int8.",
+      "tradeoff": "A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "gpu-12",
+      "label": "12 GB GPU",
+      "accelerator": "gpu",
+      "min_vram_mib": 12288,
+      "max_vram_mib": 16383,
+      "generator": "Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
+      "asr": "faster-whisper large-v3, int8_float16.",
+      "tradeoff": "A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "gpu-16",
+      "label": "16 GB GPU",
+      "accelerator": "gpu",
+      "min_vram_mib": 16384,
+      "max_vram_mib": 24575,
+      "generator": "Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
+      "asr": "faster-whisper large-v3, float16 when the card has room.",
+      "tradeoff": "16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "gpu-24",
+      "label": "24 GB GPU and up",
+      "accelerator": "gpu",
+      "min_vram_mib": 24576,
+      "generator": "Qwen3.5-9B through the bundled vLLM service. This is the current reference profile.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
+      "asr": "faster-whisper large-v3, float16.",
+      "tradeoff": "This matches the bundled generator. It is the reference deployment shape, not a published accuracy score."
+    },
+    {
+      "id": "apple-16",
+      "label": "Apple Silicon, 16 GB unified memory and up",
+      "accelerator": "apple",
+      "min_ram_mib": 14336,
+      "generator": "Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
+      "asr": "faster-whisper on CPU, int8. whisper.cpp is not part of this version.",
+      "tradeoff": "Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result."
+    }
+  ]
+}

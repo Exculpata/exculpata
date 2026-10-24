@@ -1,0 +1,13 @@
+{% if capabilities.schema_enforcement == 'refused' %}
+<div class="notice notice-neutral" role="status">Schema enforcement: refused. This server did not return the required JSON schema, so answering stays off.</div>
+{% elif capabilities.schema_enforcement == 'not enforced / validated locally' %}
+<div class="notice notice-neutral" role="status">Schema enforcement: not enforced / validated locally. Answers are checked against the schema and retried.</div>
+{% elif capabilities.schema_enforcement == 'not checked' and capabilities.schema_detail %}
+<div class="notice notice-neutral" role="status">Schema enforcement: not checked. {{ capabilities.schema_detail }}</div>
+{% endif %}
+{% if capabilities.embedding_index_warning %}
+<div class="notice notice-neutral" role="status">{{ capabilities.embedding_index_warning }}</div>
+{% endif %}
+{% if capabilities.model_qualification == 'unvalidated model' %}
+<div class="notice notice-neutral" role="status">Unvalidated model. No claim-evaluation result is recorded for the configured answer model.</div>
+{% endif %}

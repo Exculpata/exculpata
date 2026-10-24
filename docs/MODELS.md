@@ -70,6 +70,14 @@ Every model entry must retain model ID, exact immutable revision, license,
 source, hashes/manifest, evaluation evidence, and GPU/runtime envelope. Gated
 tokens are staging-only. Confidential runtime is offline and telemetry-free.
 
+Bring-your-own answer servers and hardware suggestions are described in
+[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints). The
+suggestion file is [`config/model_profiles.json`](../config/model_profiles.json).
+Embeddings and reranking remain the in-process Granite and ModernBERT models,
+including when `CASE_REVIEW_MODEL_DEVICE=cpu`. A model without a recorded
+claim-evaluation pass is labeled `unvalidated model`. The qualification seam is
+[`config/model_qualifications.json`](../config/model_qualifications.json).
+
 The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challenges,
 separates raw generation errors from deterministic verifier false acceptance and
 rejection, and retains pinned-profile and execution evidence. Injected probes do

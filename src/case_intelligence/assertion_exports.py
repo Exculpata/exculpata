@@ -10,8 +10,11 @@ def _text(value):
 
 def markdown_export(payload):
     lines = ['# Events and assertions', '',
-             'Reviewer-authored records with attributed original accounts. Human review is separate from source claims.', '',
-             _text(payload.get('ordering', '')), '']
+             'Reviewer-authored records with attributed original accounts. Human review is separate from source claims.', '']
+    notice = str(payload.get('model_notice') or '')
+    if notice:
+        lines.extend([_text(notice), ''])
+    lines.extend([_text(payload.get('ordering', '')), ''])
     records = payload.get('records', [payload])
     for entry in records:
         record = entry['record']
@@ -47,6 +50,15 @@ def markdown_export(payload):
                 for correction in prior.get(key, []):
                     lines.extend([_text(key.replace('_', ' ').title()) + ': ' + _text(json.dumps(correction, ensure_ascii=False)), ''])
     return '\n'.join(lines) + '\n'
+
+
+def qualified_payload(payload, model_notice=''):
+    notice = str(payload.get('model_notice') or model_notice or '')
+    if not notice or payload.get('model_notice') == notice:
+        return payload
+    qualified = dict(payload)
+    qualified['model_notice'] = notice
+    return qualified
 
 
 def _account(lines, account):

@@ -43,6 +43,15 @@ def test_install_and_update_build_proxy_without_changing_model_selection(auth, m
     assert set(installer._build_targets(auth, models)) == expected
 
 
+def _proxy_destinations(oidc=("", ""), generator=("", "")):
+    """Expected egress-proxy environment: one (URL, pins) pair per relay destination."""
+    pairs = {
+        ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): oidc,
+        ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): generator,
+    }
+    return {setting: value for settings, values in pairs.items() for setting, value in zip(settings, values)}
+
+
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
 @pytest.mark.parametrize("auth", ["oidc", "local", "kerberos"])
 def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
@@ -66,7 +75,7 @@ def test_egress_issuer_uses_selected_app_file_only(tmp_path, names, auth):
                             env=environment, capture_output=True, text=True, check=True)
     graph = json.loads(result.stdout)
     proxy = graph["services"]["egress-proxy"]
-    assert proxy["environment"] == {"OIDC_ISSUER": environment["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert proxy["environment"] == _proxy_destinations(oidc=(environment["OIDC_EGRESS_ISSUER"], ""))
     assert not any(key in proxy for key in ("volumes", "secrets", "ports"))
     assert graph["services"]["app"]["environment"]["CASE_INTELLIGENCE_OIDC_CA_FILE"] == "/run/example/ca.pem"
 
@@ -93,7 +102,7 @@ def test_egress_dotenv_matches_compose_literals(tmp_path, mode, issuer):
     app = services["app"]["environment"]
     assert app["CASE_INTELLIGENCE_AUTH_MODE"].strip().lower() == "oidc"
     assert app["CASE_INTELLIGENCE_OIDC_ISSUER"] == env["OIDC_EGRESS_ISSUER"] == "https://issuer.example.test/realm"
-    assert services["egress-proxy"]["environment"] == {"OIDC_ISSUER": env["OIDC_EGRESS_ISSUER"], "OIDC_ISSUER_PINS": ""}
+    assert services["egress-proxy"]["environment"] == _proxy_destinations(oidc=(env["OIDC_EGRESS_ISSUER"], ""))
     assert "SYNTHETIC_SECRET" not in env
     assert app["https_proxy"] == "http://egress-proxy:3128"
 
@@ -130,7 +139,8 @@ def test_egress_pins_are_selected_without_sharing_other_environment(tmp_path, au
                             capture_output=True, text=True, check=True)
     proxy = json.loads(result.stdout)["services"]["egress-proxy"]
     assert proxy["environment"]["OIDC_ISSUER_PINS"] == expected
-    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
+    assert set(proxy["environment"]) == set(_proxy_destinations())
+    assert proxy["environment"]["GENERATOR_EGRESS_URL"] == proxy["environment"]["GENERATOR_EGRESS_PINS"] == ""
 
 
 def test_fresh_defaults_and_generated_coordinates(tmp_path):
@@ -460,7 +470,7 @@ def test_resume_keeps_saved_hostname_when_server_name_is_omitted(tmp_path):
 @pytest.mark.parametrize("files,explicit,legacy_explicit,expected", [
     (["legacy"], None, None, "legacy"),
     (["current"], None, None, "current"),
-    (["legacy", "current"], None, None, "current"),
+    (["legacy", "current"], None, None, "legacy"),
     (["legacy", "current", "custom"], "custom", None, "custom"),
     (["legacy", "current", "custom"], "custom", "legacy", "custom"),
     (["legacy", "current"], None, "legacy", "legacy"),
@@ -494,6 +504,92 @@ def test_compose_selects_one_saved_application_file(tmp_path, files, explicit, l
     assert app["SYNTHETIC_SELECTED"] == expected
     for other in set(files) - {expected}:
         assert f"SYNTHETIC_{other.upper()}_ONLY" not in app
+
+
+@pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
+def test_default_app_env_keeps_detected_generation_and_egress(tmp_path, monkeypatch, names):
+    root = tmp_path / "node"
+    config = root / "config"
+    config.mkdir(parents=True)
+    (root / "installation.json").write_text(json.dumps({"names": names}))
+    saved = root / "compose.env"
+    saved.write_text(f"EXCULPATA_CONFIG_ROOT={config}\n")
+    issuer = "https://issuer.example.test/realm"
+    pins = json.dumps({"issuer": issuer, "addresses": ["8.8.8.8"]})
+    selected = config / f"{names}.env"
+    selected.write_text(f"CASE_INTELLIGENCE_AUTH_MODE=oidc\nCASE_INTELLIGENCE_OIDC_ISSUER='{issuer}'\nCASE_INTELLIGENCE_OIDC_EGRESS_PINS='{pins}'\n")
+    other = config / ("exculpata.env" if names == LEGACY_STEM else f"{LEGACY_STEM}.env")
+    other.write_text("CASE_INTELLIGENCE_AUTH_MODE=oidc\nCASE_INTELLIGENCE_OIDC_ISSUER=synthetic-other\nCASE_INTELLIGENCE_OIDC_EGRESS_PINS=synthetic-other-pins\n")
+    original_open = Path.open
+    def guarded_open(path, *args, **kwargs):
+        assert path != other, "unselected application environment was opened"
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", guarded_open)
+    assert installer._detected_names(root) == names
+    assert installer._app_env(root) == selected
+    env = installer._compose_environment(["docker", "compose", "--env-file", str(saved)], {})
+    assert env["EXCULPATA_APP_ENV_FILE"] == selected.name
+    assert env["OIDC_EGRESS_ISSUER"] == issuer
+    assert env["OIDC_EGRESS_PINS"] == pins
+
+
+@pytest.mark.parametrize("filename,explicit", [
+    ("exculpata.env", False), (f"{LEGACY_STEM}.env", False),
+    ("exculpata.env", True), (f"{LEGACY_STEM}.env", True), ("custom.env", True),
+])
+def test_selected_app_env_symlink_is_refused_before_open(tmp_path, monkeypatch, filename, explicit):
+    root = tmp_path / "node"
+    config = root / "config"
+    config.mkdir(parents=True)
+    target = tmp_path / "outside.env"
+    target.write_text("CASE_INTELLIGENCE_AUTH_MODE=oidc\nCASE_INTELLIGENCE_OIDC_ISSUER=synthetic-planted-issuer\nCASE_INTELLIGENCE_OIDC_EGRESS_PINS=synthetic-planted-pins\n")
+    selected = config / filename
+    selected.symlink_to(target)
+    saved = root / "compose.env"
+    saved.write_text(f"EXCULPATA_CONFIG_ROOT={config}\n" + (f"EXCULPATA_APP_ENV_FILE={filename}\n" if explicit else ""))
+    original_open = Path.open
+    def guarded_open(path, *args, **kwargs):
+        assert path not in {selected, target}, "symlink target was opened"
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", guarded_open)
+    with pytest.raises(RuntimeError, match="symbolic link"):
+        installer._app_env(root)
+    with pytest.raises(RuntimeError, match="symbolic link") as error:
+        installer._compose_environment(["docker", "compose", "--env-file", str(saved)], {})
+    assert "synthetic-planted" not in str(error.value)
+
+
+@pytest.mark.parametrize("suffix", ["OIDC_ISSUER", "OIDC_EGRESS_PINS"])
+@pytest.mark.parametrize("equal", [False, True])
+def test_environment_alias_merge_rejects_conflicting_values(suffix, equal):
+    current = f"{CURRENT_ENV_PREFIX}{suffix}"
+    legacy = f"{LEGACY_ENV_PREFIX}{suffix}"
+    values = {current: "synthetic-current", legacy: "synthetic-current" if equal else "synthetic-legacy"}
+    before = dict(values)
+    if equal:
+        text = installer._env_text(values, "Exculpata synthetic", aliases=True)
+        assert f'{current}="synthetic-current"' in text
+    else:
+        with pytest.raises(RuntimeError, match="conflict|differ") as error:
+            installer._env_text(values, "Exculpata synthetic", aliases=True)
+        assert "synthetic-current" not in str(error.value)
+        assert "synthetic-legacy" not in str(error.value)
+    assert values == before
+
+
+@pytest.mark.parametrize("suffix", ["OIDC_ISSUER", "OIDC_EGRESS_PINS"])
+def test_compose_environment_refuses_saved_oidc_alias_conflict(tmp_path, suffix):
+    root = tmp_path / "node"
+    config = root / "config"
+    config.mkdir(parents=True)
+    saved = root / "compose.env"
+    current, legacy = f"{CURRENT_ENV_PREFIX}{suffix}", f"{LEGACY_ENV_PREFIX}{suffix}"
+    saved.write_text(f"EXCULPATA_CONFIG_ROOT={config}\n{current}=synthetic-current\n{legacy}=synthetic-legacy\n")
+    with pytest.raises(RuntimeError, match="differ|conflict") as error:
+        installer._compose_environment(["docker", "compose", "--env-file", str(saved)], {})
+    assert current in str(error.value) and legacy in str(error.value)
+    assert "synthetic-current" not in str(error.value)
+    assert "synthetic-legacy" not in str(error.value)
 
 
 @pytest.mark.parametrize("names", [LEGACY_STEM, CURRENT_STEM])
@@ -569,7 +665,7 @@ def test_cli_with_both_app_files_uses_selection_without_renaming_node(tmp_path, 
     root, _, paths = configured_node(tmp_path, names=names)
     filenames = {"legacy": f"{LEGACY_STEM}.env", "current": f"{CURRENT_STEM}.env", "custom": "custom.env"}
     original = (paths["config"] / f"{names}.env").read_bytes()
-    selected = filenames[selection or "current"]
+    selected = filenames[selection] if selection else f"{names}.env"
     for filename in filenames.values():
         path = paths["config"] / filename
         path.write_bytes(original)
@@ -642,3 +738,18 @@ def test_cli_single_app_filename_cannot_override_saved_generation(tmp_path, monk
     assert calls
     assert installer._node_names(root) == names
     assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.parametrize('values,heading,aliases,expected', [
+    ({}, 'Exculpata synthetic', False, '# Exculpata synthetic\n# Generated by the Exculpata node provisioner.\n'),
+    ({'SYNTHETIC': 'one "quoted" value'}, 'Synthetic', False,
+     '# Synthetic\n# Generated by the Record' 'Bench node provisioner.\nSYNTHETIC="one \\"quoted\\" value"\n'),
+    ({'RECORDBENCH_SYNTHETIC': 'new', 'EXCULPATA_SYNTHETIC': 'new'}, 'Exculpata synthetic', True,
+     '# Exculpata synthetic\n# Generated by the Exculpata node provisioner.\nEXCULPATA_SYNTHETIC="new"\n'),
+    ({'RECORDBENCH_SYNTHETIC': 'old', 'EXCULPATA_SYNTHETIC': ''}, 'Exculpata synthetic', True,
+     '# Exculpata synthetic\n# Generated by the Exculpata node provisioner.\nEXCULPATA_SYNTHETIC="old"\n'),
+])
+def test_immutable_environment_rendering_preserves_exact_bytes(values, heading, aliases, expected):
+    original = dict(values)
+    assert installer._env_text(values, heading, aliases=aliases) == expected
+    assert values == original

@@ -138,8 +138,10 @@ def test_default_adapters_preserve_existing_helper_signatures(monkeypatch, clien
     def get(url, *, timeout, headers=None):
         return {"models": [{"name": MODEL}], "data": [{"id": MODEL}]}
 
+    review = {"decision": "include", "rationale": "Synthetic supported result", "evidence_ids": ["S1"]}
     def post(url, payload, *, timeout, headers=None):
-        content = json.dumps(RAW)
+        schema = payload.get("format") or payload["response_format"]["json_schema"]["schema"]
+        content = json.dumps(review if "decision" in schema["properties"] else RAW)
         return {"message": {"content": content}, "choices": [{"message": {"content": content}}]}
 
     monkeypatch.setattr(generation, "_bounded_json_get", get)
@@ -149,7 +151,7 @@ def test_default_adapters_preserve_existing_helper_signatures(monkeypatch, clien
     assert client.available
     assert client.generate(question="What happened?", evidence=evidence) == RAW
     assert client.classify_source(criterion="Synthetic criterion", include_guidance="",
-                                  exclude_guidance="", evidence=evidence) == RAW
+                                  exclude_guidance="", evidence=evidence) == review
 
 
 def test_recorded_dispatch_cannot_bypass_injected_transport(cli):

@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory() as temporary:
     alternate = bench.workspace.create_conversation(matter.matter_id, 'Synthetic alternate history', actor_id='development-taylor-morgan')
     bench.workspace.append_message(matter.matter_id, alternate.conversation_id, 'assistant', 'Historical synthetic alternate answer.')
     prefix = f'/matters/{matter.slug}'
-    paths = {kind:prefix+'/sources/'+bench.source_store(matter).action_token(doc)+'?browse=sort%3Dname&unit=1&start_ms=1000&conversation='+conversation.conversation_id for kind, doc in documents.items()}
+    paths = {kind:f'{prefix}/sources/{bench.source_store(matter).action_token(doc)}?browse=sort%3Dname&unit=1&start_ms=1000&conversation={conversation.conversation_id}' for kind, doc in documents.items()}
     @client.app.get('/synthetic-note-evidence/{item_id}')
     def note_evidence(item_id: str):
         item=bench.workspace.notebook_item(matter.matter_id,'development-taylor-morgan',item_id)
@@ -70,7 +70,7 @@ with tempfile.TemporaryDirectory() as temporary:
             total=len(bench.workspace.all_notebook_items(matter.matter_id,'development-taylor-morgan')))
     listener = socket.socket()
     listener.bind(('127.0.0.1',0))
-    print(json.dumps(dict(base='http://127.0.0.1:'+str(listener.getsockname()[1]),reader=paths['pdf'],media=paths['video'],audio=paths['transcript'],matter=prefix,conversation=conversation.conversation_id,alternate=alternate.conversation_id,video_id=video.document_id,video_version=video.version_id)),flush=True)
+    print(json.dumps(dict(base=f'http://127.0.0.1:{listener.getsockname()[1]}',reader=paths['pdf'],media=paths['video'],audio=paths['transcript'],matter=prefix,conversation=conversation.conversation_id,alternate=alternate.conversation_id,video_id=video.document_id,video_version=video.version_id)),flush=True)
     try:
         uvicorn.Server(uvicorn.Config(client.app,lifespan='off',log_level='warning')).run(sockets=[listener])
     finally:
@@ -93,7 +93,7 @@ const dirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: root
 async function refreshRegressions(browser, fixture) {
   const group = process.argv.find(value => value.startsWith('--refresh-group='))?.split('=')[1];
   const baseline=baselineJsRevision;
-  const oldScript = baseline ? execFileSync('git', ['show', baseline + ':src/case_intelligence/static/case-intelligence.js'], {cwd:root,encoding:'utf8'}) : null;
+  const oldScript = baseline ? execFileSync('git', ['show', `${baseline}:src/case_intelligence/static/case-intelligence.js`], {cwd:root,encoding:'utf8'}) : null;
   let sequence=0;
   const fresh = async () => {
     const ctx=await browser.newContext({viewport:{width:1440,height:1000}});
@@ -107,10 +107,10 @@ async function refreshRegressions(browser, fixture) {
     return {ctx,p};
   };
   const heldTerminal = async (p,state,outcome='html') => {
-    const statusUrl=fixture.matter+'/answer-jobs/synthetic-refresh-'+(++sequence);
+    const statusUrl=`${fixture.matter}/answer-jobs/synthetic-refresh-${++sequence}`;
     let arrived,release,finished;
     const arrival=new Promise(r=>arrived=r),hold=new Promise(r=>release=r),done=new Promise(r=>finished=r);
-    await p.route('**'+statusUrl,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state,status_url:statusUrl,can_cancel:false})}));
+    await p.route(`**${statusUrl}`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state,status_url:statusUrl,can_cancel:false})}));
     await p.route('**/assistant?**',async route=>{
       const response=outcome==='html'?await route.fetch():null;
       arrived();await hold;
@@ -136,7 +136,7 @@ async function refreshRegressions(browser, fixture) {
   const mountCancel = async (p,statusUrl,state='queued') => {
     await p.locator('[data-assistant-status]').evaluate((e,{statusUrl,state})=>{
       e.hidden=false;e.dataset.statusUrl=statusUrl;e.dataset.state=state;
-      const button=document.createElement('button');button.type='button';button.dataset.assistantCancel='';button.dataset.actionUrl=statusUrl+'/cancel';button.textContent='Cancel';e.append(button);
+      const button=document.createElement('button');button.type='button';button.dataset.assistantCancel='';button.dataset.actionUrl=`${statusUrl}/cancel`;button.textContent='Cancel';e.append(button);
     },{statusUrl,state});
   };
   if(!group || group==='cancel') {
@@ -145,10 +145,10 @@ async function refreshRegressions(browser, fixture) {
     for(const stage of ['fragment','post'])for(const failure of ['http','network'])for(const state of ['queued','running','cancelled']){
       if(stage==='post' && state==='cancelled')continue;
       const {ctx,p}=await fresh();let posts=0,polls=0,fragments=0;
-      const statusUrl=fixture.matter+'/answer-jobs/synthetic-cancel-'+(++sequence);
-      await p.route('**'+statusUrl,route=>{polls++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'cancelled',status_url:statusUrl,can_cancel:false})});});
+      const statusUrl=`${fixture.matter}/answer-jobs/synthetic-cancel-${++sequence}`;
+      await p.route(`**${statusUrl}`,route=>{polls++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'cancelled',status_url:statusUrl,can_cancel:false})});});
       await p.route('**/assistant?**',route=>{fragments++;return failRoute(route,failure);});
-      await p.route('**'+statusUrl+'/cancel',route=>{posts++;return stage==='post'?failRoute(route,failure):route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state,status_url:statusUrl,can_cancel:state!=='cancelled',cancel_url:statusUrl+'/cancel'})});});
+      await p.route(`**${statusUrl}/cancel`,route=>{posts++;return stage==='post'?failRoute(route,failure):route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state,status_url:statusUrl,can_cancel:state!=='cancelled',cancel_url:`${statusUrl}/cancel`})});});
       await mountCancel(p,statusUrl,state==='cancelled'?'running':state);
       const draft=`Retain draft after Cancel ${stage} ${failure} ${state}.`;
       await p.locator('#assistant-question').fill(draft);
@@ -165,10 +165,10 @@ async function refreshRegressions(browser, fixture) {
     for(const stage of ['post','fragment'])for(const change of ['scope','new-chat','submission']){
       const {ctx,p}=await fresh();let posts=0,arrived,release,finished;
       const arrival=new Promise(r=>arrived=r),hold=new Promise(r=>release=r),done=new Promise(r=>finished=r);
-      const statusUrl=fixture.matter+'/answer-jobs/synthetic-stale-cancel-'+(++sequence);
-      await p.route('**'+statusUrl,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'queued',status_url:statusUrl,can_cancel:true,cancel_url:statusUrl+'/cancel'})}));
+      const statusUrl=`${fixture.matter}/answer-jobs/synthetic-stale-cancel-${++sequence}`;
+      await p.route(`**${statusUrl}`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'queued',status_url:statusUrl,can_cancel:true,cancel_url:`${statusUrl}/cancel`})}));
       await p.route('**/assistant?**',async route=>{arrived();await hold;await failRoute(route,'http');finished();});
-      await p.route('**'+statusUrl+'/cancel',async route=>{posts++;if(stage==='post'){arrived();await hold;}await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'cancelled',status_url:statusUrl,can_cancel:false})});if(stage==='post')finished();});
+      await p.route(`**${statusUrl}/cancel`,async route=>{posts++;if(stage==='post'){arrived();await hold;}await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'cancelled',status_url:statusUrl,can_cancel:false})});if(stage==='post')finished();});
       await mountCancel(p,statusUrl);await p.locator('[data-assistant-cancel]').click();await arrival;
       let releaseAdmission,admissionDone;
       if(change==='scope'){
@@ -180,7 +180,7 @@ async function refreshRegressions(browser, fixture) {
       if(change==='submission'){
         let admitted,completed;const admission=new Promise(r=>admitted=r),held=new Promise(r=>releaseAdmission=r);admissionDone=new Promise(r=>completed=r);
         const action=await p.locator('[data-assistant-question-form]').getAttribute('action');
-        await p.route('**'+action,async route=>{admitted();await held;await route.abort('failed');completed();});
+        await p.route(`**${action}`,async route=>{admitted();await held;await route.abort('failed');completed();});
         await p.locator('[data-assistant-question-form] button[type=submit]').click();await admission;
       }
       await p.waitForTimeout(100);
@@ -197,8 +197,8 @@ async function refreshRegressions(browser, fixture) {
     for(const action of (group==='cancel'?['cancel']:group==='switch'?['picker','preference']:['cancel','picker','preference'])) {
       const {ctx,p}=await fresh();let polls=0,fragments=0,posts=0,releasePoll,releaseResumedPoll,firstArrived;
       const firstArrival=new Promise(r=>firstArrived=r),firstHold=new Promise(r=>releasePoll=r),resumedHold=new Promise(r=>releaseResumedPoll=r);
-      const statusUrl=fixture.matter+'/answer-jobs/synthetic-owner-'+(++sequence);
-      await p.route('**'+statusUrl,async route=>{
+      const statusUrl=`${fixture.matter}/answer-jobs/synthetic-owner-${++sequence}`;
+      await p.route(`**${statusUrl}`,async route=>{
         polls++;
         if(polls===1){firstArrived();await firstHold;}else await resumedHold;
         await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'cancelled',status_url:statusUrl,can_cancel:false})}).catch(()=>{});
@@ -210,7 +210,7 @@ async function refreshRegressions(browser, fixture) {
       });
       if(action==='preference'){
         const matterId=await p.locator('[data-assistant-dock]').getAttribute('data-matter-id');
-        await p.evaluate(({key,value})=>localStorage.setItem(key,value),{key:'recordbench:assistant:conversation:'+matterId,value:fixture.alternate});
+        await p.evaluate(({key,value})=>localStorage.setItem(key,value),{key:`recordbench:assistant:conversation:${matterId}`,value:fixture.alternate});
         await p.route('**/sources/**',async route=>{
           if(route.request().resourceType()!=='document')return route.continue();
           const response=await route.fetch();const html=(await response.text()).replace(/data-assistant-status data-status-url="[^"]*" data-state="[^"]*"/,`data-assistant-status data-status-url="${statusUrl}" data-state="queued"`);
@@ -221,7 +221,7 @@ async function refreshRegressions(browser, fixture) {
         await mountCancel(p,statusUrl);
         await p.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));await firstArrival;
         if(action==='cancel'){
-          await p.route('**'+statusUrl+'/cancel',route=>{posts++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'running',status_url:statusUrl,can_cancel:true,cancel_url:statusUrl+'/cancel'})});});
+          await p.route(`**${statusUrl}/cancel`,route=>{posts++;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'running',status_url:statusUrl,can_cancel:true,cancel_url:`${statusUrl}/cancel`})});});
           await p.locator('[data-assistant-cancel]').click();
         }else await p.locator('[data-assistant-conversation-picker]').selectOption(fixture.alternate);
       }
@@ -271,7 +271,7 @@ async function refreshRegressions(browser, fixture) {
         let arrived,finished;const arrival=new Promise(r=>arrived=r),hold=new Promise(r=>releaseAdmission=r);
         admissionDone=new Promise(resolve=>finished=resolve);
         const action=await p.locator('[data-assistant-question-form]').getAttribute('action');
-        await p.route('**'+action,async route=>{arrived();await hold;await route.abort('failed');finished();});
+        await p.route(`**${action}`,async route=>{arrived();await hold;await route.abort('failed');finished();});
         await p.locator('[data-assistant-question-form] button[type=submit]').click();await arrival;
       }
       const current=await p.locator('[data-assistant-dock]').elementHandle();
@@ -330,7 +330,7 @@ async function refreshRegressions(browser, fixture) {
 }
 
 (async () => {
-  const [data] = await Promise.race([once(server.stdout, 'data'), once(server,'exit').then(([code])=>{throw new Error('Synthetic server exited before ready: '+code);})]);
+  const [data] = await Promise.race([once(server.stdout, 'data'), once(server,'exit').then(([code])=>{throw new Error(`Synthetic server exited before ready: ${code}`);})]);
   const fixture = JSON.parse(data.toString().trim());
   browser = await chromium.launch({ executablePath: process.argv[2], headless: true, args: ['--no-sandbox'] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
@@ -366,11 +366,11 @@ async function refreshRegressions(browser, fixture) {
   await note.locator('[data-source-note-new]').click();
   await note.locator('textarea').fill('Synthetic second deliberate note with uncertain response.');
   const noteAction=await note.getAttribute('action');
-  await page.route('**'+noteAction,async route=>{await route.fetch();await route.abort('failed');});
+  await page.route(`**${noteAction}`,async route=>{await route.fetch();await route.abort('failed');});
   await note.locator('button[type=submit]').click();
   await note.locator('[role=status]').filter({hasText:/try|retry|failed/i}).waitFor();
   assert.equal(await note.locator('textarea').inputValue(),'Synthetic second deliberate note with uncertain response.');
-  await page.unroute('**'+noteAction);
+  await page.unroute(`**${noteAction}`);
   await note.locator('button[type=submit]').click();
   await note.locator('[role=status]').filter({hasText:/already/i}).waitFor();
   checks.push('Lost save response retains draft and retries the same note without duplicate creation.');
@@ -380,7 +380,7 @@ async function refreshRegressions(browser, fixture) {
   const navigationSubmission=await note.evaluate(e=>Object.fromEntries(new FormData(e)));
   let releaseNoteNavigation,arrivedNoteNavigation,savedNavigation;
   const noteNavigationHold=new Promise(r=>releaseNoteNavigation=r),noteNavigationArrived=new Promise(r=>arrivedNoteNavigation=r);
-  await page.route('**'+noteAction,async route=>{const response=await route.fetch();savedNavigation=await response.json();arrivedNoteNavigation();await noteNavigationHold;await route.fulfill({response}).catch(()=>{});});
+  await page.route(`**${noteAction}`,async route=>{const response=await route.fetch();savedNavigation=await response.json();arrivedNoteNavigation();await noteNavigationHold;await route.fulfill({response}).catch(()=>{});});
   await note.locator('button[type=submit]').click();await noteNavigationArrived;
   const storedNoteMetadata=await page.evaluate(()=>history.state.recordbenchSourceNote);
   assert.deepEqual(Object.keys(storedNoteMetadata).sort(),['action','request_key','source_version_id','source_basis','unit','start_ms'].sort());
@@ -393,7 +393,7 @@ async function refreshRegressions(browser, fixture) {
   const leaveDialog=new Promise(resolve=>page.once('dialog',async dialog=>{assert.equal(dialog.type(),'beforeunload');await dialog.accept();resolve();}));
   await page.getByRole('link',{name:'Notes',exact:true}).click({noWaitAfter:true});await leaveDialog;
   await page.waitForURL('**/notebook');releaseNoteNavigation();
-  await page.unroute('**'+noteAction);
+  await page.unroute(`**${noteAction}`);
   await page.goBack();await note.waitFor();
   observations.human_note_draft_after_confirmed_navigation=await note.locator('textarea').inputValue();
   observations.human_note_returned_request_key_matches=await note.locator('[name=request_key]').inputValue()===navigationSubmission.request_key;
@@ -401,13 +401,13 @@ async function refreshRegressions(browser, fixture) {
   observations.human_note_returned_busy=await note.getAttribute('aria-busy');
   // The original request receipt is retained by this test, not by a claim that
   // the UI restores abandoned drafts. Verify its retry boundary independently.
-  const navigationEvidence=await (await page.request.get(fixture.base+'/synthetic-note-evidence/'+savedNavigation.item_id)).json();
+  const navigationEvidence=await (await page.request.get(`${fixture.base}/synthetic-note-evidence/${savedNavigation.item_id}`)).json();
   assert.equal(navigationEvidence.body,navigationBody);
   const retryAfterNavigation=await page.request.post(fixture.base+noteAction,{form:navigationSubmission,headers:{Accept:'application/json'}});
   assert.equal(retryAfterNavigation.status(),200);
   const retriedNavigation=await retryAfterNavigation.json();
   assert.equal(retriedNavigation.created,false);assert.equal(retriedNavigation.item_id,savedNavigation.item_id);
-  const navigationEvidenceAfter=await (await page.request.get(fixture.base+'/synthetic-note-evidence/'+savedNavigation.item_id)).json();
+  const navigationEvidenceAfter=await (await page.request.get(`${fixture.base}/synthetic-note-evidence/${savedNavigation.item_id}`)).json();
   assert.equal(navigationEvidenceAfter.total,navigationEvidence.total);
   const returnedUiResponse=page.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/notes'));
   await note.locator('button[type=submit]').click();
@@ -417,7 +417,7 @@ async function refreshRegressions(browser, fixture) {
   observations.human_note_returned_ui_created=returnedUiSave.created;
   assert.equal(returnedUiSave.item_id,savedNavigation.item_id,'Restored human-note UI must retain its retry identity');
   assert.equal(returnedUiSave.created,false,'Returning after an uncertain save must not create a duplicate');
-  const afterReturnedUi=await (await page.request.get(fixture.base+'/synthetic-note-evidence/'+savedNavigation.item_id)).json();
+  const afterReturnedUi=await (await page.request.get(`${fixture.base}/synthetic-note-evidence/${savedNavigation.item_id}`)).json();
   assert.equal(afterReturnedUi.total,navigationEvidence.total);
   await note.locator('[data-source-note-new]').click();
   await note.locator('textarea').fill('Synthetic deliberate new note after returning to this source.');
@@ -425,7 +425,7 @@ async function refreshRegressions(browser, fixture) {
   await note.locator('button[type=submit]').click();
   const intentionalSave=await (await intentionalResponse).json();
   assert.equal(intentionalSave.created,true);assert.notEqual(intentionalSave.item_id,savedNavigation.item_id);
-  const afterIntentional=await (await page.request.get(fixture.base+'/synthetic-note-evidence/'+intentionalSave.item_id)).json();
+  const afterIntentional=await (await page.request.get(`${fixture.base}/synthetic-note-evidence/${intentionalSave.item_id}`)).json();
   assert.equal(afterIntentional.total,navigationEvidence.total+1);
   const missingDraft=await context.newPage();let missingDraftPosts=0;
   missingDraft.on('request',request=>{if(request.method()==='POST'&&request.url().endsWith('/notes'))missingDraftPosts+=1;});
@@ -490,7 +490,7 @@ async function refreshRegressions(browser, fixture) {
   let releaseAsk, arrivedAsk;
   const askHold=new Promise(r=>releaseAsk=r),askArrived=new Promise(r=>arrivedAsk=r);
   const askAction=await page.locator('[data-assistant-question-form]').getAttribute('action');
-  await page.route('**'+askAction,async route=>{const response=await route.fetch();arrivedAsk();await askHold;await route.fulfill({response}).catch(()=>{});});
+  await page.route(`**${askAction}`,async route=>{const response=await route.fetch();arrivedAsk();await askHold;await route.fulfill({response}).catch(()=>{});});
   await page.locator('[data-assistant-question-form] button[type=submit]').click();
   await askArrived;
   await page.locator('[data-assistant-new-chat]').click();
@@ -498,7 +498,7 @@ async function refreshRegressions(browser, fixture) {
   releaseAsk();await page.waitForTimeout(150);
   assert.equal(await page.locator('#assistant-question').inputValue(),'New draft after delayed accepted question.');
   assert.equal(await page.locator('[data-assistant-dock]').getAttribute('data-conversation-id'),'');
-  await page.unroute('**'+askAction);
+  await page.unroute(`**${askAction}`);
   checks.push('Delayed accepted question cannot overwrite a newer chat or draft.');
   let releasePoll, arrivedPoll, releaseCancel, arrivedCancel;
   const pollHold=new Promise(r=>releasePoll=r), pollArrived=new Promise(r=>arrivedPoll=r);
@@ -537,7 +537,7 @@ async function refreshRegressions(browser, fixture) {
   await mediaNote.locator('button[type=submit]').click();
   const savedMedia=await (await mediaNoteResponse).json();
   await mediaNote.locator('[role=status]').filter({hasText:/saved/i}).waitFor();
-  const mediaEvidence=await (await page.request.get(fixture.base+'/synthetic-note-evidence/'+savedMedia.item_id)).json();
+  const mediaEvidence=await (await page.request.get(`${fixture.base}/synthetic-note-evidence/${savedMedia.item_id}`)).json();
   assert.equal(mediaEvidence.origin,'manual');assert.equal(mediaEvidence.status,'needs_review');
   assert.equal(mediaEvidence.document_id,fixture.video_id);assert.equal(mediaEvidence.source_version_id,fixture.video_version);
   assert.ok(mediaEvidence.start_ms<=displayedTime&&displayedTime<mediaEvidence.end_ms);
@@ -561,13 +561,13 @@ async function refreshRegressions(browser, fixture) {
   // A retained terminal job URL is historical status, never a reason to poll
   // and replace a live composer after a scope change or bfcache restoration.
   let terminalPolls=0;
-  const terminalStatusUrl=fixture.matter+'/answer-jobs/synthetic-terminal-status';
-  await page.route('**'+terminalStatusUrl,route=>{terminalPolls+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'failed',message:'Synthetic historical terminal request.'})});});
+  const terminalStatusUrl=`${fixture.matter}/answer-jobs/synthetic-terminal-status`;
+  await page.route(`**${terminalStatusUrl}`,route=>{terminalPolls+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:'failed',message:'Synthetic historical terminal request.'})});});
   const terminalDock=await page.locator('[data-assistant-dock]').elementHandle();
   const savedStatus=await page.locator('[data-assistant-status]').evaluate(e=>({state:e.dataset.state,statusUrl:e.dataset.statusUrl}));
   for(const state of ['failed','cancelled','succeeded']){
     await page.locator('[data-assistant-status]').evaluate((e,value)=>{e.dataset.state=value.state;e.dataset.statusUrl=value.url;},{state,url:terminalStatusUrl});
-    const draft='Preserve draft beside historical '+state+' request.';
+    const draft=`Preserve draft beside historical ${state} request.`;
     await page.locator('#assistant-question').fill(draft);
     await page.locator('[data-review-ask-source] button').click();
     await page.locator('[data-review-ask-source] [role=status]').filter({hasText:'Source selected'}).waitFor();
@@ -581,7 +581,7 @@ async function refreshRegressions(browser, fixture) {
     assert.equal(await terminalDock.evaluate(e=>e===document.querySelector('[data-assistant-dock]')),true);
   }
   await page.locator('[data-assistant-status]').evaluate((e,value)=>{if(value.state===undefined)delete e.dataset.state;else e.dataset.state=value.state;if(value.statusUrl===undefined)delete e.dataset.statusUrl;else e.dataset.statusUrl=value.statusUrl;},savedStatus);
-  await page.unroute('**'+terminalStatusUrl);
+  await page.unroute(`**${terminalStatusUrl}`);
   checks.push('Failed, cancelled and completed historical job URLs never poll or replace drafts after source selection or persisted pageshow.');
   assert.match(await page.locator('#assistant-source-set option:checked').innerText(),/Synthetic blue training video/);
   await page.locator('[data-assistant-new-chat]').click();
@@ -591,7 +591,7 @@ async function refreshRegressions(browser, fixture) {
   await page.route('**/answer-jobs/*',async route=>{
     // Complete the real queued synthetic request through its ordinary cancel
     // endpoint, then return its terminal state to the waiting poll.
-    const cancelled=await page.request.post(route.request().url()+'/cancel',{headers:{Accept:'application/json'}});
+    const cancelled=await page.request.post(`${route.request().url()}/cancel`,{headers:{Accept:'application/json'}});
     assert.equal(cancelled.status(),200);
     await route.fulfill({status:200,contentType:'application/json',body:await cancelled.text()});
   });
@@ -613,7 +613,7 @@ async function refreshRegressions(browser, fixture) {
   checks.push('A delayed terminal fragment retains a newer draft and source scope in the same conversation; New chat All-sources scope stays consistent through admission and refresh.');
   let releaseOldTerminal,arrivedOldTerminal;
   const oldTerminalHold=new Promise(r=>releaseOldTerminal=r),oldTerminalArrived=new Promise(r=>arrivedOldTerminal=r);
-  await page.route('**/answer-jobs/*',async route=>{const cancelled=await page.request.post(route.request().url()+'/cancel',{headers:{Accept:'application/json'}});await route.fulfill({status:200,contentType:'application/json',body:await cancelled.text()});});
+  await page.route('**/answer-jobs/*',async route=>{const cancelled=await page.request.post(`${route.request().url()}/cancel`,{headers:{Accept:'application/json'}});await route.fulfill({status:200,contentType:'application/json',body:await cancelled.text()});});
   await page.route('**/assistant?**',async route=>{const response=await route.fetch();arrivedOldTerminal();await oldTerminalHold;await route.fulfill({response}).catch(()=>{});});
   await page.locator('#assistant-question').fill('Synthetic request A before superseding request B.');
   await page.locator('[data-assistant-question-form] button[type=submit]').click();await oldTerminalArrived;
@@ -621,7 +621,7 @@ async function refreshRegressions(browser, fixture) {
   let releaseNewAdmission,arrivedNewAdmission,newAdmissionPayload,newAdmissions=0;
   const newAdmissionHold=new Promise(r=>releaseNewAdmission=r),newAdmissionArrived=new Promise(r=>arrivedNewAdmission=r);
   const newerAction=await page.locator('[data-assistant-question-form]').getAttribute('action');
-  await page.route('**'+newerAction,async route=>{newAdmissions+=1;const response=await route.fetch();newAdmissionPayload=await response.json();arrivedNewAdmission();await newAdmissionHold;await route.fulfill({response}).catch(()=>{});});
+  await page.route(`**${newerAction}`,async route=>{newAdmissions+=1;const response=await route.fetch();newAdmissionPayload=await response.json();arrivedNewAdmission();await newAdmissionHold;await route.fulfill({response}).catch(()=>{});});
   await page.locator('#assistant-question').fill('Synthetic request B owns the current composer.');
   await page.locator('[data-assistant-question-form] button[type=submit]').click();await newAdmissionArrived;
   const newerDock=await page.locator('[data-assistant-dock]').elementHandle();
@@ -635,7 +635,7 @@ async function refreshRegressions(browser, fixture) {
   assert.equal(await page.locator('[data-assistant-status]').getAttribute('data-status-url'),newAdmissionPayload.status_url);
   assert.equal(await page.locator('[data-assistant-question-form]').getAttribute('aria-busy'),'true');
   assert.equal(newAdmissions,1);
-  await page.unroute('**'+newerAction);
+  await page.unroute(`**${newerAction}`);
   await page.locator('[data-assistant-cancel]').click();
   await page.waitForFunction(()=>!document.querySelector('[data-assistant-question-form]').hasAttribute('aria-busy'));
   checks.push('Submitting request B invalidates delayed terminal-A history; B retains busy status and polling ownership across persisted pageshow with one admission.');
@@ -643,7 +643,7 @@ async function refreshRegressions(browser, fixture) {
   let releaseScopedAsk, arrivedScopedAsk;
   const scopedHold=new Promise(r=>releaseScopedAsk=r),scopedArrived=new Promise(r=>arrivedScopedAsk=r);
   const scopedAction=await page.locator('[data-assistant-question-form]').getAttribute('action');
-  await page.route('**'+scopedAction,async route=>{const response=await route.fetch();arrivedScopedAsk();await scopedHold;await route.fulfill({response}).catch(()=>{});});
+  await page.route(`**${scopedAction}`,async route=>{const response=await route.fetch();arrivedScopedAsk();await scopedHold;await route.fulfill({response}).catch(()=>{});});
   await page.locator('#assistant-question').fill('Question submitted before source scope change.');
   await page.locator('[data-assistant-question-form] button[type=submit]').click();await scopedArrived;
   await page.locator('[data-review-ask-source] button').click();
@@ -652,7 +652,7 @@ async function refreshRegressions(browser, fixture) {
   releaseScopedAsk();await page.waitForTimeout(150);
   assert.equal(await page.locator('#assistant-question').inputValue(),'Draft after source selection during pending admission.');
   assert.match(await page.locator('#assistant-source-set option:checked').innerText(),/Synthetic blue training video/);
-  await page.unroute('**'+scopedAction);
+  await page.unroute(`**${scopedAction}`);
   checks.push('Selecting source during pending answer admission preserves the new scope and later draft.');
   checks.push('Synthetic video loads and continues playback while notes toggle; transcript remains mounted.');
   await page.locator('[data-review-queue-toggle]').focus();

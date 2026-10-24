@@ -27,8 +27,8 @@ def application_command(tmp_path):
     return argv
 
 
-def run_synthetic(tmp_path, source):
-    # fixture-write: Synthetic pytest source exercises failure and crash reports.
+def run_synthetic(tmp_path, source, *extra_args):
+    # fixture-write: isolated synthetic child suite for hosted-command diagnostics.
     (tmp_path / 'test_synthetic.py').write_text(source)
     # fixture-write: Substitute the shard manifest with one synthetic test file.
     (tmp_path / 'application-test-files.txt').write_text('test_synthetic.py\n')
@@ -42,7 +42,9 @@ def run_synthetic(tmp_path, source):
     # run independently of the outer suite's worker count to avoid oversubscription.
     env['PYTEST_XDIST_AUTO_NUM_WORKERS'] = '1'
     env['PYTHONPATH'] = str(ROOT)
-    command = application_command(tmp_path) + ['-p', 'xdist.plugin', '-p', 'tests.worker_diagnostics']
+    command = application_command(tmp_path) + ['-p', 'xdist.plugin', '-p', 'pytest_timeout',
+                                              '-p', 'tests.worker_diagnostics',
+                                              *extra_args]
     return subprocess.run(command, cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=30)
 
@@ -147,3 +149,33 @@ def test_after_clock():
     suite = ET.parse(tmp_path / 'application-results.xml').getroot().find('testsuite')
     assert suite.attrib['tests'] == '2'
     assert suite.attrib['errors'] == suite.attrib['failures'] == '0'
+
+
+def test_hanging_test_reports_named_failure_stack_and_continues(tmp_path):
+    command = application_command(tmp_path)
+    assert '--timeout=360' in command and '--timeout-method=signal' in command
+    result = run_synthetic(tmp_path, '''import threading
+import pytest
+
+pytestmark = pytest.mark.xdist_group("synthetic-timeout-sequence")
+
+@pytest.mark.timeout(1)
+def test_hanging_lock():
+    threading.Event().wait()
+
+def test_after_timeout():
+    pass
+''', '-o', 'faulthandler_timeout=3', '-o', 'faulthandler_exit_on_timeout=true')
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert re.search(r'FAILED .*test_synthetic.py::test_hanging_lock\b', result.stdout)
+    assert 'Timeout (>1.0s)' in result.stdout, result.stdout + result.stderr
+    assert 'threading.py' in result.stdout and 'in wait' in result.stdout
+    assert re.search(r'PASSED .*test_synthetic.py::test_after_timeout\b', result.stdout)
+    suite = ET.parse(tmp_path / 'application-results.xml').getroot().find('testsuite')
+    assert suite.attrib['tests'] == '2'
+    assert suite.attrib['failures'] == '1' and suite.attrib['errors'] == '0'
+    failure = suite.find("testcase[@name='test_hanging_lock@synthetic-timeout-sequence']/failure")
+    assert failure is not None and 'Timeout (>1.0s)' in failure.attrib['message']
+    exits = [json.loads(path.read_text()) for path in
+             (tmp_path / 'application-workers').glob('*-exit.json')]
+    assert len(exits) == 1 and not exits[0]['crashed']
