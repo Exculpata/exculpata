@@ -252,6 +252,8 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         application.get("CASE_INTELLIGENCE_OIDC_EGRESS_PINS", "")
         if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     ))
+    from case_intelligence.retrieval_endpoints import relay_environment
+    result = dict(result, **relay_environment(application))
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
@@ -4094,6 +4096,18 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     _print_hardware_suggestion(console)
     app_env = _dotenv(_app_env(root))
     compose_env = _dotenv(root / "compose.env")
+    if any(app_env.get(f"CASE_INTELLIGENCE_{role}_URL") for role in ("EMBEDDING", "RERANK")):
+        if dry_run:
+            console.note("Retrieval endpoints not checked (dry run).")
+        else:
+            command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.retrieval_endpoints"]
+            try:
+                result = _probe(command, timeout=65)
+                if result.returncode or len(result.stdout) > 4096:
+                    raise ValueError
+                console.note("retrieval endpoints :: " + json.dumps(json.loads(result.stdout)))
+            except (OSError, ValueError, subprocess.SubprocessError):
+                console.warn("Retrieval endpoints not checked; app namespace diagnostic unavailable.")
     backend = app_env.get("CASE_INTELLIGENCE_GENERATOR_BACKEND", "").strip()
     if not backend:
         console.note("answer server :: not configured")
@@ -4105,7 +4119,7 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
     model = app_env.get("CASE_INTELLIGENCE_GENERATOR_MODEL", "").strip()
     console.note(f"answer server :: {server} {model} at {url}")
     device = compose_env.get(name_value("environment", LEGACY_STEM, suffix="RETRIEVAL_DEVICE")) or compose_env.get(name_value("environment", suffix="RETRIEVAL_DEVICE")) or "cpu"
-    console.note(f"embed and rerank :: in-process Granite and ModernBERT; device {device}")
+    console.note(f"embed and rerank :: configured worker or endpoint; worker device {device}")
     embedding = compose_env.get(name_value("environment", suffix="EMBEDDING_MODEL")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_MODEL")) or DEFAULT_EMBEDDING_MODEL
     revision = compose_env.get(name_value("environment", suffix="EMBEDDING_REVISION")) or compose_env.get(name_value("environment", LEGACY_STEM, suffix="EMBEDDING_REVISION")) or DEFAULT_EMBEDDING_REVISION
     index_warning = embedding_change_warning(
@@ -4113,7 +4127,7 @@ def _doctor_generator(console: Console, root: Path, *, dry_run: bool) -> None:
         model=embedding,
         revision=revision,
     )
-    if index_warning:
+    if index_warning and not app_env.get("CASE_INTELLIGENCE_EMBEDDING_URL"):
         console.warn(index_warning)
     if dry_run:
         console.note("Dry run: the schema check was not sent")

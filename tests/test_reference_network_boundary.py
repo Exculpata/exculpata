@@ -440,6 +440,9 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
         ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): ("OIDC_EGRESS_ISSUER", "OIDC_EGRESS_PINS"),
         ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),
     }
+    destination_pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"):
+                              (role + "_EGRESS_URL", role + "_EGRESS_PINS")
+                              for role in ("EMBEDDING", "RERANK")})
     expected = {
         setting: "${" + source + ":-}"
         for settings, sources in destination_pairs.items()

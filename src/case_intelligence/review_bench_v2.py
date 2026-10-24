@@ -298,9 +298,10 @@ class RemoteEmbeddingAdapter:
     available = True
     batch_limit = MAX_EMBEDDING_TEXTS
 
-    def __init__(self, base_url: str, timeout: float = 120.0) -> None:
+    def __init__(self, base_url: str, timeout: float = 120.0, *, request=None) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self._request = request or _model_request
 
     def embed(self, texts: Sequence[str]) -> tuple[tuple[float, ...], ...]:
         # A single vector remains attached to the original evidence unit. Only
@@ -310,7 +311,7 @@ class RemoteEmbeddingAdapter:
         counts = [0] * len(texts)
         dimensions = None
         for batch, body in request_batches(text_fragments(texts), maximum=min(self.batch_limit, MAX_EMBEDDING_TEXTS)):
-            payload = _model_request(self.base_url, "embed", body, self.timeout)
+            payload = self._request(self.base_url, "embed", body, self.timeout)
             rows = _model_numbers(payload, "vectors", len(batch), vectors=True)
             for (ordinal, fragment), vector in zip(batch, rows):
                 if dimensions is None:
@@ -336,6 +337,16 @@ class RemoteEmbeddingAdapter:
 
 
 def _model_request(base_url: str, operation: str, body: bytes, timeout: float):
+    from .retrieval_endpoints import configured_endpoint, endpoint_batch, require_index_identity
+    if operation == "embed":
+        require_index_identity()
+    config = configured_endpoint("EMBEDDING" if operation == "embed" else "RERANK")
+    if config is not None:
+        return endpoint_batch(config, operation, json.loads(body))
+    return _local_model_request(base_url, operation, body, timeout)
+
+
+def _local_model_request(base_url, operation, body, timeout):
     request = urllib.request.Request(f"{base_url}/{operation}", data=body,
         headers={"Content-Type": "application/json"}, method="POST")
     try:
