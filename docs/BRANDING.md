@@ -350,6 +350,7 @@ while conflicting authentication headers fail closed.
 | container_data | `/var/lib/recordbench` | `/var/lib/recordbench` | retained |
 | container_secrets | `/run/recordbench-secrets` | `/run/recordbench-secrets` | retained |
 | database | `recordbench` | `recordbench` | retained |
+| embedding_index_record | `/var/lib/recordbench/state/embedding-index.json` | `/var/lib/recordbench/state/embedding-index.json` | retained |
 | environment | `RECORDBENCH_{suffix}` | `EXCULPATA_{suffix}` | alias |
 | exact_v1 | `recordbench-exact-v1` | `recordbench-exact-v1` | retained |
 | exact_v2 | `recordbench-exact-v2` | `recordbench-exact-v2` | retained |

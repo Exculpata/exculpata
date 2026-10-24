@@ -670,6 +670,8 @@ class ConfiguredAnswerer:
         except (GenerationRejected, getattr(generation, "GenerationInvalidContent", GenerationRejected)) as exc:
             return ModelAnswer(False, "", (), rejection=exc.__class__.__name__)
         except (GenerationUnavailable, ValueError, OSError) as exc:
+            if isinstance(exc, getattr(generation, "GenerationSchemaRejected", ())):
+                return ModelAnswer(False, "", (), rejection="GenerationRejected")
             return ModelAnswer(False, "", (), error=exc.__class__.__name__)
         citations: list[Citation] = []
         seen: set[tuple[str, str]] = set()

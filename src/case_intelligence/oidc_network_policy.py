@@ -96,6 +96,16 @@ def authority(value: str) -> tuple[str, int]:
     return host.lower(), port
 
 
+def ascii_hostname(host: str) -> str:
+    if host.isascii():
+        return host
+    try:
+        # Match HTTPX's IDNA2008 encoding, preserving sharp-s hostname identity.
+        return idna.encode(host.lower()).decode("ascii")
+    except idna.IDNAError:
+        raise Denied("invalid internationalized hostname") from None
+
+
 def issuer_authority(value: str) -> tuple[str, int] | None:
     value = normalized_issuer(value)
     if not value:
@@ -107,14 +117,10 @@ def issuer_authority(value: str) -> tuple[str, int] | None:
             or parsed.password is not None or parsed.query or parsed.fragment or '\\' in value
             or parsed.port == 0):
         raise Denied("invalid issuer")
-    host = parsed.hostname
-    if not host.isascii():
-        try:
-            # Match HTTPX's IDNA2008 encoding, not the stdlib's older mapping
-            # (which, for example, changes sharp-s into a different hostname).
-            host = idna.encode(host.lower()).decode("ascii")
-        except idna.IDNAError:
-            raise Denied("invalid issuer hostname") from None
+    try:
+        host = ascii_hostname(parsed.hostname)
+    except Denied:
+        raise Denied("invalid issuer hostname") from None
     return authority(f"{'[' + host + ']' if ':' in host else host}:{parsed.port or 443}")
 
 

@@ -610,6 +610,111 @@
           "reason": "Return the existing node backup entrypoint selected from its saved naming generation.",
           "validation": "tests/test_install_naming.py; tests/test_rename_upgrade_invariant.py; tests/test_oss_installer.py",
           "source_line_sha256": "7577cb4bdce2c1ca13a657e323596139805a87142a18d3d68fc2c5a1835ce144"
+        },
+        {
+          "line": 260,
+          "identifier": "unsupported legacy syntax (compound exception path with legacy bindings); use immutable contract-based construction",
+          "function": "_compose_environment",
+          "reason": "Validate the saved generator URL and pins before selecting relay settings; preserve the existing exception translation and refusal paths.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "1030d0556e0cdf235244af8c5b692a7f68340b354e592bfaab9d9ecb9d776535"
+        },
+        {
+          "line": 262,
+          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
+          "function": "_compose_environment",
+          "reason": "Assign the validated saved generator URL to the fixed relay setting without constructing an operational identifier.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "106d693d78c22af84f335e1d3b836a51724088e6795fca5fe9acf5020c85b0d3"
+        },
+        {
+          "line": 263,
+          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
+          "function": "_compose_environment",
+          "reason": "Assign the validated saved generator pins to the fixed relay setting without changing pin validation.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "e77aa3c08ccff8c077408411aae7d232e0dde191d78b379d0f780665fb3a7456"
+        },
+        {
+          "line": 267,
+          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
+          "function": "_compose_environment",
+          "reason": "Clear the relay URL for an absent or bundled generator after rejecting orphaned pins; preserve shell-authority removal.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "d34911d89b48f505c9c4a2cdcd8a006ff5bcb6cb8aaa9f74719bef269f4385aa"
+        },
+        {
+          "line": 268,
+          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
+          "function": "_compose_environment",
+          "reason": "Clear the relay pins for an absent or bundled generator without changing the selected application file.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "c6c48b0cc7408f601aebd86331097f10c47c9483bd6ecbb710c56e874321b2ae"
+        },
+        {
+          "line": 623,
+          "identifier": "unsupported legacy syntax (legacy-bearing mutator call); use immutable contract-based construction",
+          "function": "_apply_external_generator",
+          "reason": "Update the caller-owned application settings with the validated endpoint and registered container-secrets path; preserve the in-place configuration handoff.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "905db25d8b23f004bb33d4cd0adb4100da15b5f2f657d8ce5d689cffd1f80735"
+        },
+        {
+          "line": 3397,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Pass the existing application and Compose mappings to endpoint configuration; preserve their mutations, validation and private key write behavior.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "02c4b720fd74a17f527e36deee55ed633980627f1a00be6865458a4e0a4be9e3"
+        },
+        {
+          "line": 3399,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "_configure",
+          "reason": "Display the parsed external generator server, model and URL using the existing status text; this diagnostic does not construct an operational name.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "06381c5427721fbf4e6acdc5d9b1dc0b8e97ec95c195302d2c919db776d34665"
+        },
+        {
+          "line": 3412,
+          "identifier": "unsupported legacy syntax (explicit legacy arguments to local callable); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Write the existing installation receipt through the unchanged private-file helper with the same serialization and replacement policy.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "a14bd07aac9b5a7c51848ad4163d278f2dd777256531ad38544b3cbf3101f9d9"
+        },
+        {
+          "line": 3415,
+          "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
+          "function": "_configure",
+          "reason": "Serialize the existing installation fields and optional external endpoint metadata without changing naming-generation selection or receipt contents. The anchor covers the complete dict literal, including auth and external generator URL fields.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py; tests/test_byom_receipt_guard_regressions.py",
+          "source_line_sha256": "53356c46e27e7f77b08329a8c694ad6258010152f15d71574f8e283b37b3f85f",
+          "source_line_count": 46
+        },
+        {
+          "line": 4108,
+          "identifier": "unsupported legacy composition; use a contract key",
+          "function": "_doctor_generator",
+          "reason": "Display the selected retrieval device with the unchanged diagnostic text and legacy-first environment lookup precedence.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "dfecd995e3fee81b60857df4e46ae6bbefc7af20d4926148218c9ab69ae22d8c"
+        },
+        {
+          "line": 4111,
+          "identifier": "unsupported legacy syntax (unmodeled callable consumer with legacy data); use immutable contract-based construction",
+          "function": "_doctor_generator",
+          "reason": "Compare the saved embedding record against configured model and revision values without writing or inferring index provenance.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "0389406115e990b975f3ddc6c7aad72ea394781e64213720dfa9aefdb19d8b43"
+        },
+        {
+          "line": 4128,
+          "identifier": "unsupported legacy syntax (mutable attribute or container state); use immutable contract-based construction",
+          "function": "_doctor_generator",
+          "reason": "Temporarily set the selected generator allowlist for the existing schema probe; the existing finally path restores the prior environment value.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py",
+          "source_line_sha256": "d6e2de9c8c6a3a7de32ba13dac48158af4feb1bc8a26862bcd53e999d26d6a71"
         }
       ]
     },
@@ -1146,6 +1251,14 @@
           "reason": "Return the validated loose-file preflight result as a no-store JSON response, preserving the existing registered preflight format.",
           "validation": "tests/test_loose_file_preflight.py",
           "source_line_sha256": "5f07f8e8170077ef629a4b61d86bdcf6717048906a26d09d37c6694a779ed2ab"
+        },
+        {
+          "line": 1087,
+          "identifier": "unsupported legacy syntax (invocation of legacy-carrying unknown value); use immutable contract-based construction",
+          "function": "__init__",
+          "reason": "Emit the embedding provenance warning through the existing retained logger namespace without constructing a new logger name or changing index state.",
+          "validation": "tests/test_bring_your_own_model.py; tests/test_byom_p8_regressions.py; tests/test_byom_followup_regressions.py",
+          "source_line_sha256": "ff3cf3740f2dae16a17a3ac1d218089fd85a72d7d1ff7b17cadbc743dcec0167"
         }
       ]
     },
@@ -1344,14 +1457,6 @@
           "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
           "function": "export_research",
           "reason": "Return the existing research JSON export artifact with its registered format and sanitized filename.",
-          "validation": "tests/test_work_product_exports.py",
-          "source_line_sha256": "7082a031fa73539334e72da44ac0c40a4a8c50a4633f4c0a674da1bb3e89b29a"
-        },
-        {
-          "line": 1745,
-          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
-          "function": "export_full_review",
-          "reason": "Return the existing full-review JSON export artifact with its registered format and sanitized filename.",
           "validation": "tests/test_work_product_exports.py",
           "source_line_sha256": "7082a031fa73539334e72da44ac0c40a4a8c50a4633f4c0a674da1bb3e89b29a"
         }
@@ -4962,6 +5067,30 @@
           "reason": "Return the registered question-replay-result-v1 receipt with synthetic-only, replay-only and model-not-run limitations preserved.",
           "validation": "tests/test_question_recorded_output.py",
           "source_line_sha256": "b3903e7263db7b4d84efc9d9cb4abbccf557d4b9916003048f294227fa576421"
+        }
+      ]
+    },
+    "src/case_intelligence/embedding_index.py": {
+      "diagnostics": [
+        {
+          "line": 31,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "embedding_index_path",
+          "reason": "Return the existing optional Path beneath the registered retained container-data root only when its parent exists; the environment override remains first.",
+          "validation": "tests/test_bring_your_own_model.py; tests/test_byom_p8_regressions.py; tests/test_byom_followup_regressions.py",
+          "source_line_sha256": "2e7cd001198a15449d3e31fa3f84b53ec805a7510bc1e63594238a5b26c52150"
+        }
+      ]
+    },
+    "src/case_intelligence/full_review_exports.py": {
+      "diagnostics": [
+        {
+          "line": 134,
+          "identifier": "unsupported legacy syntax (legacy helper return); use case_intelligence.legacy_names.name_value",
+          "function": "export_full_review",
+          "reason": "Return the existing full-review JSON artifact with the registered retained schema, unchanged legacy fields, size check and sanitized filename.",
+          "validation": "tests/test_work_product_exports.py; tests/test_byom_review_regressions.py",
+          "source_line_sha256": "7082a031fa73539334e72da44ac0c40a4a8c50a4633f4c0a674da1bb3e89b29a"
         }
       ]
     }

@@ -455,7 +455,17 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
         assert isinstance(client._transport_for_url(httpx.URL("http://retrieval:8787"))._pool, __import__("httpcore").HTTPProxy)
         assert isinstance(client._transport_for_url(httpx.URL("https://generator:8000"))._pool, __import__("httpcore").HTTPProxy)
     proxy = compose["services"]["egress-proxy"]
-    assert set(proxy["environment"]) == {"OIDC_ISSUER", "OIDC_ISSUER_PINS"}
+    # Each relay destination is one exact authority plus its reviewed pins.
+    destination_pairs = {
+        ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): ("OIDC_EGRESS_ISSUER", "OIDC_EGRESS_PINS"),
+        ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),
+    }
+    expected = {
+        setting: "${" + source + ":-}"
+        for settings, sources in destination_pairs.items()
+        for setting, source in zip(settings, sources)
+    }
+    assert proxy["environment"] == expected
     assert not any(key in proxy for key in ("volumes", "secrets", "env_file", "ports"))
     assert compose["services"]["gateway"]["networks"] == ["front", "services"]
     overlay = yaml.safe_load((ROOT / "compose.kerberos.yaml").read_text())

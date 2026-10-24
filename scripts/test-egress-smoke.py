@@ -73,7 +73,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     project = 'issue319-smoke-' + uuid.uuid4().hex[:10]
     docker = ['docker','--context',args.docker_context]
-    results = {'project':project,'passed':False}
+    results = {'project':project,'passed':False,'generator':{}}
     with tempfile.TemporaryDirectory(prefix='egress-smoke-') as temporary:
         root = Path(temporary)
         fixture = root/'fixture'
@@ -85,7 +85,8 @@ def main():
         certificate=(x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
             .public_key(key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now-timedelta(minutes=1)).not_valid_after(now+timedelta(hours=1))
-            .add_extension(x509.SubjectAlternativeName([x509.DNSName('issuer.example.test')]),critical=False)
+            .add_extension(x509.SubjectAlternativeName([
+                x509.DNSName('issuer.example.test'), x509.DNSName('generator.example.test')]),critical=False)
             .add_extension(x509.BasicConstraints(ca=True,path_length=None),critical=True).sign(key,hashes.SHA256()))
         (fixture/'issuer.pem').write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
         private=fixture/'issuer-key.pem'
@@ -112,6 +113,7 @@ def main():
         data['services'].update({
             'issuer':{**limits,'networks':{'front':{'aliases':['issuer.example.test']}}},
             'foreign':{**limits,'networks':{'front':{'aliases':['foreign.example.test']}}},
+            'generator-endpoint':{**limits,'networks':{'front':{'aliases':['generator.example.test']}}},
             'canary':{**limits,'networks':{
                 'app-egress':{'aliases':['x.postgres','evil.generator','x.retrieval']},
                 'services':{'aliases':['postgres','clamav','transcription-api']},
@@ -138,12 +140,21 @@ def main():
                 raise RuntimeError('smoke command failed; see '+(filename or 'runtime diagnostics'))
             return completed.stdout
         def stream():
-            for name in ('issuer.pem','probe.py','dns_probe.py','dns_trap.py','dns_boundary_probe.py'):
+            for name in ('issuer.pem','probe.py','generator_probe.py','dns_probe.py','dns_trap.py','dns_boundary_probe.py'):
                 run([*compose,'exec','-T','app','python','-c',
                     "import os,sys; from pathlib import Path; p=Path('/tmp/issue319-fixture'); p.mkdir(exist_ok=True,mode=0o700); fd=os.open(p/sys.argv[1],os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o400); f=os.fdopen(fd,'w'); f.write(sys.stdin.read()); f.close()",name],input_value=(fixture/name).read_text())
         def address(name, network):
             identifier=run([*compose,'ps','-q',name]).strip()
             return run([*docker,'inspect','--format','{{(index .NetworkSettings.Networks "'+project+'_'+network+'").IPAddress}}',identifier]).strip()
+        def generator_probe(name, target, expect):
+            results['generator'][name] = False
+            probe=[*compose,'exec','-T','app','python','/tmp/issue319-fixture/generator_probe.py',
+                '--proxy','egress-proxy:3128','--target',target,'--expect',expect]
+            if expect == 'tunnel':
+                probe.extend(['--cafile','/tmp/issue319-fixture/issuer.pem',
+                    '--server-name','generator.example.test'])
+            run(probe,timeout=20,filename='generator-'+name+'.log')
+            results['generator'][name] = True
         try:
             results['engine_version'] = run([*docker,'version','--format','{{.Server.Version}}']).strip()[:80]
             results['compose_version'] = run([*docker,'compose','version','--short']).strip()[:80]
@@ -154,10 +165,14 @@ def main():
             run([*docker,'build','-t',project+'-endpoint',str(fixture)],filename='fixture-build.log')
             run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90'],filename='up.log')
             issuer_address,foreign_address=address('issuer','front'),address('foreign','front')
+            generator_address=address('generator-endpoint','front')
             recorder_address=address('canary','app-egress')
             issuer='https://issuer.example.test:8443/realm'
+            generator='https://generator.example.test:8443/v1/completions'
             data['services']['egress-proxy']['environment']={'OIDC_ISSUER':issuer,
-                'OIDC_ISSUER_PINS':json.dumps({'issuer':issuer,'addresses':[issuer_address]})}
+                'OIDC_ISSUER_PINS':json.dumps({'issuer':issuer,'addresses':[issuer_address]}),
+                'GENERATOR_EGRESS_URL':generator,
+                'GENERATOR_EGRESS_PINS':json.dumps({'issuer':generator,'addresses':[generator_address]})}
             save()
             run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='allow-proxy.log')
             ids=run([*compose,'ps','-q']).split()
@@ -195,6 +210,9 @@ print(json.dumps({'app_writable_package_control_rejected':True}))
             results.update(json.loads(run([*compose,'exec','-T','egress-proxy','python','-I','-',foreign_address,front_gateway],
                 input_value=(ROOT/'tests/network_smoke/front_control.py').read_text(),filename='foreign-tls-control.log')))
             results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py'],filename='probe.log')))
+            generator_probe('configured_tunnel','generator.example.test:8443','tunnel')
+            generator_probe('other_host_denied','foreign.example.test:8443','deny')
+            generator_probe('wrong_port_denied','generator.example.test:443','deny')
             for mode in ('controls','production'):
                 results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py',mode],filename='dns-'+mode+'.log')))
             # Deliberately forwarding equivalent app, same networks/image/hardening.
@@ -204,9 +222,16 @@ print(json.dumps({'app_writable_package_control_rejected':True}))
             data['services']['app']['dns']=original_dns;save()
             run([*compose,'up','-d','--no-deps','app'],filename='dns-restored-up.log');stream()
             results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py','production'],filename='dns-restored.log')))
+            assert generator_address != foreign_address
+            data['services']['egress-proxy']['environment']['GENERATOR_EGRESS_PINS']=json.dumps(
+                {'issuer':generator,'addresses':[foreign_address]})
+            save()
+            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='generator-pin-mismatch-up.log')
+            generator_probe('pin_mismatch_denied','generator.example.test:8443','deny')
             data['services']['egress-proxy']['environment']={'OIDC_ISSUER':'','OIDC_ISSUER_PINS':''};save()
             run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='deny-all-up.log')
             results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py','deny-all'],filename='deny-all.log')))
+            generator_probe('unconfigured_denied','generator.example.test:8443','deny')
             results.update(production_compose_derived=True,production_app_image_built=True,
                 production_proxy_environment_preserved=True,app_no_external_membership=True,
                 no_mounts_or_published_ports=True,owner_only_proxy_source_readable=True,passed=True)

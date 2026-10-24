@@ -56,6 +56,21 @@ Chrome. Optional integration tests can skip when their prerequisites are absent.
 application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
+Tests whose bodies, fixtures or class methods reference TestClient get a lazy,
+bounded socketpair wakeup and AnyIO portal probe. Detection includes aliases,
+subclasses and local helpers referenced from the test or its fixtures.
+It also follows getfixturevalue requests and specific helpers called through
+local module objects, including dynamically loaded modules with statically
+resolvable paths. Helpers in modules whose local import closure is proven free
+of TestClient are leaves and do not consume the helper-depth budget. Other
+helper paths still trigger the probe when they exceed six steps. Unresolved
+dynamic module calls and fixture lookups conservatively trigger the probe.
+Unreadable test source, or fixture source from a module using TestClient,
+conservatively triggers the probe.
+If a primitive fails, route tests skip with the cause and a terminal summary.
+When CI is set to a non-empty value other than "0" or "false" (case-insensitive),
+the probe fails instead of skipping. Run local skips in an unrestricted shell.
+
 It is safe to rerun bootstrap with the same interpreter after dependency metadata
 changes. An existing incompatible or broken environment is left untouched:
 choose a new `--venv` directory. The script never deletes an environment or
@@ -369,8 +384,11 @@ downstream is private.
 
 ## Parallel worker diagnostics
 
-The application job keeps six workers, the 360-second per-test faulthandler
-deadline and disabled worker restarts. It retains bounded JSON resource snapshots
+The application job keeps six workers, a 360-second per-test `pytest-timeout`
+signal deadline, a 420-second faulthandler fallback and disabled worker restarts.
+Signal timeouts produce named failures with stacks and preserve the JUnit report;
+the fallback exits workers that cannot handle the signal. The timeout includes
+setup and teardown. It retains bounded JSON resource snapshots
 beside its JUnit report. For a local parallel run, add
 `--worker-diagnostics-dir=/tmp/synthetic-worker-diagnostics` with a fresh directory.
 The diagnostics record the active test function (without parameter values), test
@@ -385,7 +403,7 @@ Peaks use only complete measurements and retain counts of partial/unavailable
 samples; gaps never become zero measurements. Cgroup counters cover the group and its ancestors,
 not an individual PID. A positive OOM delta is group evidence; SIGKILL alone does
 not establish OOM. Exit code 1 alone does not establish a timeout: correlate it
-with the existing `Timeout (0:06:00)!` thread dump in the job log.
+with the fallback `Timeout (0:07:00)!` thread dump in the job log.
 
 `python -m pytest -q tests/test_worker_diagnostics.py` includes bounded child
 suites for explicit exit, SIGTERM, a one-second faulthandler deadline, an ordinary

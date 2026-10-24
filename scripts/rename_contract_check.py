@@ -1929,6 +1929,7 @@ def source_form_contracts() -> dict:
             raise ValueError("invalid source-form contract identity")
         for item in record["diagnostics"]:
             if (not isinstance(item, dict) or type(item.get("line")) is not int or item["line"] < 1
+                    or type(item.get("source_line_count", 1)) is not int or item.get("source_line_count", 1) < 1
                     or any(not isinstance(item.get(field), str) or not item[field]
                            for field in ("identifier", "reason", "validation", "source_line_sha256"))
                     or not re.fullmatch(r"[a-f0-9]{64}", item["source_line_sha256"])
@@ -1948,22 +1949,31 @@ def source_form_identifier(identifier: str) -> str:
 
 def apply_source_forms(location: str, text: str, items: list[Finding], records: dict,
                        *, require_current: bool = False) -> list[Finding]:
+    """Match exact LF-normalized line spans starting at each flagged line."""
     record = records.get(location)
     if record is None:
         return items
     lines = text.replace("\r\n", "\n").split("\n")
     if lines[-1] == "":
         lines.pop()
-    allowed = Counter((source_form_identifier(item["identifier"]), item["source_line_sha256"])
+    allowed = Counter((source_form_identifier(item["identifier"]), item.get("source_line_count", 1), item["source_line_sha256"])
                       for item in record["diagnostics"])
+    line_counts = {}
+    for identifier, count, _ in allowed:
+        line_counts.setdefault(identifier, set()).add(count)
     remaining = []
     for item in items:
         path, separator, number = item.location.rpartition(":")
         line = int(number) if separator and number.isdecimal() else 0
-        digest = hashlib.sha256(lines[line - 1].encode()).hexdigest() if path == location and 1 <= line <= len(lines) else None
-        key = source_form_identifier(item.identifier), digest
-        if allowed[key]:
-            allowed[key] -= 1
+        identifier = source_form_identifier(item.identifier)
+        for count in sorted(line_counts.get(identifier, ())):
+            if path != location or not 1 <= line <= line + count - 1 <= len(lines):
+                continue
+            span = "\n".join(lines[line - 1:line + count - 1])
+            key = identifier, count, hashlib.sha256(span.encode()).hexdigest()
+            if allowed[key]:
+                allowed[key] -= 1
+                break
         else:
             remaining.append(item)
     if require_current and any(allowed.values()):

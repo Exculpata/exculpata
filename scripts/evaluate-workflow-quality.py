@@ -68,11 +68,10 @@ class DigestCheckedOllamaGenerator(OllamaGenerator):
             self.verify_identity()
             self.verified_request_boundaries += 1
 
-    def generate(self, **kwargs):
-        return self._checked_call(super().generate, **kwargs)
-
-    def classify_source(self, **kwargs):
-        return self._checked_call(super().classify_source, **kwargs)
+    def structured_request_boundary(self, operation):
+        # Local schema repairs are separate runtime requests and need separate
+        # identity observations just like grounding repairs.
+        return self._checked_call(operation)
 
 
 def main():

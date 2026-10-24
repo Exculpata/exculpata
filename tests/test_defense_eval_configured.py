@@ -120,6 +120,28 @@ def test_adapter_runtime_failures_remain_harness_errors(response, adapter, tmp_p
     assert card["questions"][0]["error"] == "GenerationUnavailable"
 
 
+@pytest.mark.parametrize("payload", [
+    {"answerable": False, "claims": [], "missing_information": "Synthetic missing field"},
+    {"answerable": "false", "claims": [], "limitation": None, "missing_information": ""},
+])
+def test_schema_invalid_objects_are_rejections_and_still_unavailable_to_product(payload, adapter, tmp_path):
+    client, opener = adapter
+    message = {"content": json.dumps(payload)}
+    opener.response = json.dumps(
+        {"choices": [{"message": message}]} if isinstance(client, generation.OpenAICompatibleGenerator)
+        else {"message": message}
+    ).encode()
+    with pytest.raises(generation.GenerationSchemaRejected) as caught:
+        client.generate(question="How many cases?", evidence=())
+    assert isinstance(caught.value, GenerationUnavailable)
+    assert evaluation.main(["--mode", "configured", "--output-dir", str(tmp_path)]) == 0
+    card = json.loads((tmp_path / "scorecard.json").read_text())
+    assert card["aggregates"]["errors"] == 0
+    assert card["aggregates"]["rejections"] == 1
+    assert card["aggregates"]["answer_correct"] == 0
+    assert card["questions"][0]["rejection"] == "GenerationRejected"
+
+
 def test_unavailable_model_is_a_harness_error(monkeypatch, tmp_path):
     class UnavailableClient(ScriptedClient):
         def generate(self, **kwargs):
