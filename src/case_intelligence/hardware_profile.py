@@ -17,6 +17,7 @@ _CATALOG = Path(__file__).resolve().parents[2] / "config" / "model_profiles.json
 _SCHEMA = Path(__file__).resolve().parents[2] / "config" / "model_profiles.schema.json"
 _GIB = 1024 ** 3
 _MIB = 1024 ** 2
+_APPLE_MODEL_MEMORY_FRACTION = 0.75
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,11 @@ class HardwareReading:
     gpu_vram_bytes: int | None
     apple_silicon: bool
     notes: tuple[str, ...]
+    gpu_vram_per_device: tuple[int, ...] = ()
+    gpu_vram_total_bytes: int | None = None
+    gpu_count: int = 0
+    apple_chip: str | None = None
+    model_usable_memory_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,9 @@ def validate_profiles(catalog: Mapping[str, object] | None = None, schema: Mappi
         raise ValueError("model profile identifiers must be unique")
     if document.get("fallback_profile") not in identifiers:
         raise ValueError("model profile fallback is missing")
+    aliases = document.get("profile_aliases", {})
+    if not isinstance(aliases, dict) or any(target not in identifiers for target in aliases.values()):
+        raise ValueError("model profile alias target is missing")
 
 
 def suggest_tier(reading: HardwareReading, catalog: Mapping[str, object] | None = None) -> TierSuggestion:
@@ -135,10 +144,16 @@ def detect_hardware(
     cores = _cpu_cores(cpu_count, notes)
     ram = _ram_bytes(meminfo, system, run, notes)
     apple = _apple_silicon(system, machine)
-    vendor, vram = _gpu(run, apple, notes)
+    apple_chip = _apple_chip(run, notes) if apple else None
+    vendor, devices = _gpu(run, apple, notes)
+    vram = max(devices, default=None)
     if vendor == "none" and not apple:
-        notes.append("No GPU tool reported VRAM.")
-    return HardwareReading(cores, ram, vendor, vram, apple, tuple(notes))
+        notes.append("No GPU tool reported VRAM; using the CPU suggestion.")
+    usable = int(ram * _APPLE_MODEL_MEMORY_FRACTION) if apple and ram is not None else None
+    return HardwareReading(
+        cores, ram, vendor, vram, apple, tuple(notes), tuple(devices), sum(devices) or None,
+        len(devices), apple_chip, usable,
+    )
 
 
 def _cpu_cores(cpu_count: int | None | object, notes: list[str]) -> int | None:
@@ -209,28 +224,45 @@ def _apple_silicon(system: str | None, machine: str | None) -> bool:
     return host == "Darwin" and arch.lower() in {"arm64", "aarch64"}
 
 
+def _apple_chip(
+    run: Callable[[list[str]], subprocess.CompletedProcess[str]] | None,
+    notes: list[str],
+) -> str | None:
+    """Read the Apple chip name from injected or local sysctl output."""
+    try:
+        completed = _run(["sysctl", "-n", "machdep.cpu.brand_string"], run)
+    except (OSError, subprocess.TimeoutExpired):
+        notes.append("Apple chip name was not available.")
+        return None
+    value = completed.stdout.strip()
+    if completed.returncode != 0 or not value:
+        notes.append("Apple chip name was not available.")
+        return None
+    return value
+
+
 def _gpu(
     run: Callable[[list[str]], subprocess.CompletedProcess[str]] | None,
     apple: bool,
     notes: list[str],
-) -> tuple[str, int | None]:
-    nvidia = _nvidia_vram(run, notes)
-    if nvidia is not None:
-        return "nvidia", nvidia
-    amd = _amd_vram(run, notes)
-    if amd is not None:
-        return "amd", amd
+) -> tuple[str, tuple[int, ...]]:
     if apple:
-        return "apple", None
-    return "none", None
+        return "apple", ()
+    nvidia = _nvidia_vram_devices(run, notes)
+    if nvidia:
+        return "nvidia", nvidia
+    amd = _amd_vram_devices(run, notes)
+    if amd:
+        return "amd", amd
+    return "none", ()
 
 
-def _nvidia_vram(
+def _nvidia_vram_devices(
     run: Callable[[list[str]], subprocess.CompletedProcess[str]] | None,
     notes: list[str],
-) -> int | None:
+) -> tuple[int, ...]:
     if run is None and shutil.which("nvidia-smi") is None:
-        return None
+        return ()
     try:
         completed = _run(
             ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
@@ -238,10 +270,10 @@ def _nvidia_vram(
         )
     except (OSError, subprocess.TimeoutExpired):
         notes.append("GPU memory was not available.")
-        return None
+        return ()
     if completed.returncode != 0:
         notes.append("GPU memory was not available.")
-        return None
+        return ()
     totals: list[int] = []
     for line in completed.stdout.splitlines():
         stripped = line.strip()
@@ -251,48 +283,53 @@ def _nvidia_vram(
             totals.append(int(float(stripped.split()[0])))
         except ValueError:
             notes.append("GPU memory figure was unreadable.")
-            return None
+            return ()
     if not totals:
         notes.append("GPU memory was not available.")
-        return None
-    return max(totals) * _MIB
+        return ()
+    return tuple(value * _MIB for value in totals)
 
 
-def _amd_vram(
+def _amd_vram_devices(
     run: Callable[[list[str]], subprocess.CompletedProcess[str]] | None,
     notes: list[str],
-) -> int | None:
-    if run is None and shutil.which("rocm-smi") is None:
-        return None
-    try:
-        completed = _run(["rocm-smi", "--showmeminfo", "vram"], run)
-    except (OSError, subprocess.TimeoutExpired):
-        notes.append("GPU memory was not available.")
-        return None
-    if completed.returncode != 0:
-        notes.append("GPU memory was not available.")
-        return None
-    value = _parse_amd_vram(completed.stdout)
-    if value is None:
-        notes.append("GPU memory report was not usable.")
-    return value
+) -> tuple[int, ...]:
+    for tool, command in (
+        ("rocm-smi", ["rocm-smi", "--showmeminfo", "vram"]),
+        ("amd-smi", ["amd-smi", "metric", "--mem-usage"]),
+    ):
+        if run is None and shutil.which(tool) is None:
+            continue
+        try:
+            completed = _run(command, run)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode != 0:
+            continue
+        values = _parse_amd_vram(completed.stdout)
+        if values:
+            return values
+    notes.append("AMD GPU memory was not available or was unreadable.")
+    return ()
 
 
-def _parse_amd_vram(text: str) -> int | None:
+def _parse_amd_vram(text: str) -> tuple[int, ...]:
     totals: list[int] = []
     for line in text.splitlines():
         folded = line.casefold()
         if "total" not in folded:
             continue
-        numbers = [int(item) for item in re.findall(r"\d+", line)]
+        numbers = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", line)]
         if not numbers:
             continue
-        value = max(numbers)
+        value = numbers[-1]
         if "mib" in folded or "(mb" in folded:
-            totals.append(value * _MIB)
+            totals.append(int(value * _MIB))
+        elif "gib" in folded or "(gb" in folded:
+            totals.append(int(value * _GIB))
         elif value >= 1_000_000_000:
-            totals.append(value)
-    return max(totals) if totals else None
+            totals.append(int(value))
+    return tuple(totals)
 
 
 def _run(
@@ -319,10 +356,16 @@ def _match(
     if _no_signal(reading):
         return fallback_id, True
     if reading.apple_silicon:
-        apple = _band(profiles, "apple", _mib(reading.ram_bytes), "min_ram_mib", "max_ram_mib")
+        apple_memory = reading.model_usable_memory_bytes
+        if apple_memory is None and reading.ram_bytes is not None:
+            apple_memory = int(reading.ram_bytes * _APPLE_MODEL_MEMORY_FRACTION)
+        apple = _band(profiles, "apple", _mib(apple_memory), "min_ram_mib", "max_ram_mib")
         if apple is not None:
             return apple, False
     if reading.gpu_vram_bytes is not None and reading.gpu_vendor in {"nvidia", "amd"}:
+        ultra = _ultra(profiles, reading)
+        if ultra is not None:
+            return ultra, False
         gpu = _band(profiles, "gpu", _mib(reading.gpu_vram_bytes), "min_vram_mib", "max_vram_mib")
         if gpu is not None:
             return gpu, False
@@ -330,6 +373,20 @@ def _match(
     if cpu is not None:
         return cpu, False
     return fallback_id, True
+
+
+def _ultra(profiles: list[dict[str, object]], reading: HardwareReading) -> str | None:
+    devices = reading.gpu_vram_per_device
+    for profile in profiles:
+        minimum_devices = profile.get("min_devices")
+        minimum_vram = profile.get("min_device_vram_mib")
+        if profile.get("accelerator") != "multi-gpu" or not isinstance(minimum_devices, int):
+            continue
+        if not isinstance(minimum_vram, int) or len(devices) < minimum_devices:
+            continue
+        if sum(value >= minimum_vram * _MIB for value in devices) >= minimum_devices:
+            return str(profile.get("id"))
+    return None
 
 
 def _band(
@@ -378,11 +435,16 @@ def _hardware_line(reading: HardwareReading) -> str:
     cores = f"{reading.cpu_cores} CPU cores" if reading.cpu_cores is not None else "CPU cores unavailable"
     if reading.apple_silicon:
         memory = _gib(reading.ram_bytes) if reading.ram_bytes is not None else "memory unavailable"
-        return f"hardware :: {cores}; Apple Silicon; {memory} unified memory"
+        chip = reading.apple_chip or "Apple Silicon"
+        usable = (
+            f"; {_gib(reading.model_usable_memory_bytes)} usable for models"
+            if reading.model_usable_memory_bytes is not None else ""
+        )
+        return f"hardware :: {cores}; {chip}; {memory} unified memory{usable}"
     ram = _gib(reading.ram_bytes) if reading.ram_bytes is not None else "RAM unavailable"
     if reading.gpu_vram_bytes is not None:
         vendor = "NVIDIA" if reading.gpu_vendor == "nvidia" else "AMD"
-        gpu = f"{vendor} {_gib(reading.gpu_vram_bytes)} VRAM"
+        gpu = f"{vendor} {reading.gpu_count or 1} device(s); {_gib(reading.gpu_vram_bytes)} largest VRAM"
     else:
         gpu = "no GPU"
     return f"hardware :: {cores}; {ram} RAM; {gpu}"

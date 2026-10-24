@@ -80,7 +80,7 @@ def _reading(**overrides) -> HardwareReading:
 def test_profile_catalog_matches_its_schema():
     validate_profiles()
     suggestion = suggest_tier(_reading())
-    assert suggestion.profile_id == "cpu"
+    assert suggestion.profile_id == "potato"
     assert suggestion.fallback is False
     assert "model download :: not started" in suggestion.lines()
     assert "measured quality" in suggestion.tradeoff
@@ -89,9 +89,9 @@ def test_profile_catalog_matches_its_schema():
 @pytest.mark.parametrize(
     ("reading", "profile_id"),
     [
-        (_reading(ram_bytes=14335 * MIB), "cpu"),
-        (_reading(ram_bytes=14336 * MIB), "cpu-16"),
-        (_reading(gpu_vendor="nvidia", gpu_vram_bytes=int(7.9 * 1024 ** 3)), "cpu"),
+        (_reading(ram_bytes=16383 * MIB), "potato"),
+        (_reading(ram_bytes=16384 * MIB), "cpu"),
+        (_reading(gpu_vendor="nvidia", gpu_vram_bytes=int(7.9 * 1024 ** 3)), "potato"),
         (_reading(gpu_vendor="nvidia", gpu_vram_bytes=8192 * MIB), "gpu-8"),
         (_reading(gpu_vendor="amd", gpu_vram_bytes=12287 * MIB), "gpu-8"),
         (_reading(gpu_vendor="nvidia", gpu_vram_bytes=12288 * MIB), "gpu-12"),
@@ -100,7 +100,7 @@ def test_profile_catalog_matches_its_schema():
         (_reading(gpu_vendor="nvidia", gpu_vram_bytes=24575 * MIB), "gpu-16"),
         (_reading(gpu_vendor="amd", gpu_vram_bytes=24576 * MIB), "gpu-24"),
         (_reading(apple_silicon=True, ram_bytes=16 * 1024 ** 3), "apple-16"),
-        (_reading(apple_silicon=True, ram_bytes=13 * 1024 ** 3), "cpu"),
+        (_reading(apple_silicon=True, ram_bytes=13 * 1024 ** 3), "potato"),
     ],
 )
 def test_tier_boundaries(reading, profile_id):
