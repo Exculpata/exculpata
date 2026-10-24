@@ -266,3 +266,35 @@ latency depends on the runner and is not a hardware capacity benchmark.
 The independent chronology (#280), production-summary (#282), inconsistency
 (#283) and review-candidate (#289) fixture adapters are follow-ups. This change
 does not import those branches or claim their workflows are evaluated here.
+
+## Per-tier synthetic measurements
+
+`python -m case_intelligence.tier_evals --output-dir artifacts/defense-eval`
+records CPU only (`potato`), one consumer GPU with approximately 16-24 GiB VRAM
+(`consumer`), and two L40S GPUs (`ultra`). It uses the same versioned suite,
+PostgreSQL hybrid path, learned score floors, deterministic grading and k=8.
+Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable synthetic database.
+
+The runner loads the pinned Granite and ModernBERT models offline using the
+retrieval worker's model factories. It never falls back to deterministic
+adapters. Settings quote `config/model_profiles.json` (`cpu`/`cpu-16` and
+`gpu-16`/`gpu-24`); that file has no two-L40S profile. Exact model revisions and
+licenses come from `config/models.json`. Proposed settings are distinguished
+from executed settings. Missing packages, staged weights or matching hardware
+produce `unmeasured` and a reason, with null scores rather than estimates.
+
+`--with-generator` additionally attempts the pinned Qwen generator offline in
+[vLLM offline inference](https://docs.vllm.ai/en/latest/api/vllm/entrypoints/llm/),
+using the product prompt and grounded-answer verifier. Executed settings are
+bfloat16 without quantization; the profiles suggest Ollama quantizations. Ultra shards the generator across the two GPUs; retrieval
+places the embedder and reranker on separate GPUs. A missing generator leaves
+retrieval `partial`, with answer accuracy unmeasured. A reference answerer is
+used only to collect retrieval accounting; its answer scores are discarded.
+
+The output directory receives `tier-scorecard.json`, `tier-scorecard.md` and
+per-tier retrieval accounting and configured harness cards. Cards retain counts
+and rates,
+actual model devices, hardware inventory, suite fingerprint, UTC start time,
+wall-clock seconds, command, exact Git commit and evaluator source digest.
+The source digest distinguishes an uncommitted evaluator from its base commit.
+These are synthetic measurements, without a release threshold or a GPU floor.

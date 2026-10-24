@@ -8487,3 +8487,21 @@ path = "scripts/defense-eval-ci.py"
 kind = "host"
 digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
 detail = "provenance.json"
+
+[[source]]
+path = "src/case_intelligence/tier_evals.py"
+kind = "host"
+digest = "e7bd2aaf27e32eb8fb6e6d085549908f2feac15e824894708af65d6de143ea43"
+detail = "tier-scorecard.json"
+
+[[source]]
+path = "src/case_intelligence/tier_evals.py"
+kind = "host"
+digest = "ae72e67f8020bf994a01d4e9b91f1bc2b454e78430f9ed32650566326b309dab"
+detail = "tier-scorecard.md"
+
+[[source]]
+path = "src/case_intelligence/tier_evals.py"
+kind = "host"
+digest = "ec50ebc39ac3c25797998c3b4fbf80d6f12726686d8c5f1034ef50b7a4a9cba1"
+detail = "retrieval.json"

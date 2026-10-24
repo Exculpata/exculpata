@@ -465,11 +465,12 @@ class PostgresHybridRetriever:
     The database id is a ci-matter hash, and those rows are removed on close.
     """
 
-    def __init__(self, suite: Suite, dsn: str | None = None) -> None:
+    def __init__(self, suite: Suite, dsn: str | None = None, *, adapters=None) -> None:
         configured = (dsn if dsn is not None else os.getenv(_POSTGRES_DSN_ENV, "")).strip()
         if not configured:
             raise DefenseEvalError("PostgreSQL retrieval needs CASE_REVIEW_POSTGRES_TEST_DSN")
         self.suite = suite
+        self._adapters = adapters
         self._dsn = configured
         self._database_ids = {
             matter_id: defense_matter_database_id(matter_id)
@@ -508,8 +509,8 @@ class PostgresHybridRetriever:
             ) from exc
         self._connection = connection
         self._delete = delete_postgres_matter
-        worker = _healthy_retrieval_worker()
-        embedder, reranker, floors = hybrid_adapters(worker)
+        embedder, reranker, floors = (self._adapters if self._adapters is not None
+                                     else hybrid_adapters(_healthy_retrieval_worker()))
         self.record = {
             "name": "postgres-hybrid",
             "index": "postgresql-fts-pgvector",
