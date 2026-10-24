@@ -118,8 +118,6 @@ def test_exception_cannot_license_deferred_lambda_write():
 
 
 @pytest.mark.parametrize("path", inventory_paths(ROOT), ids=str)
-def test_test_modules_and_scripts_observe_fixture_write_boundary(path):
-    # Keep every tracked source and the same checker, but give each source its
-    # own CI result and unchanged per-test timeout instead of one serial batch.
+def test_test_modules_observe_fixture_write_boundary(path):
     violations = check_inventory_source((ROOT / path).read_text(encoding="utf-8"), path.as_posix())
     assert not violations, "\n" + "\n".join(map(str, violations))

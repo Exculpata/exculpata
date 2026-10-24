@@ -242,11 +242,13 @@ Scalar conversion can discard handle ownership but must retain active database-p
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
 
-The inventory checks tracked Python files under test directories, root `scripts`
-and `benchmarks`, and `services/transcription/compatibility`. It does not execute
-or resolve arbitrary import graphs. Inspect imports and file-based loaders when
-adding support elsewhere, and include fixture support in the inventory before
-using it. Stage new sources before running it. Dynamic `exec`/`eval`
+The static inventory checks Python files under the root `tests/` directory,
+including unstaged sources, matching main's scope. It does not execute or resolve
+arbitrary import graphs. Corpus and application CI jobs make `benchmarks/corpus/`
+read-only with `bash scripts/corpus-write-guard.sh prepare` before tests and run
+`bash scripts/corpus-write-guard.sh check` afterward, even after failure. The Git
+diff and status checks reject tracked changes and untracked additions from any
+executed code path. Dynamic `exec`/`eval`
 (including resolved aliases) is rejected without interpreting its payload. The
 fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
 dynamic-execution finding is allowed, and every other boundary check still runs.
