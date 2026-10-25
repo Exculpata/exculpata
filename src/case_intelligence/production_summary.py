@@ -116,7 +116,7 @@ class BatesSeries:
         return 'not_computed' if self.reasons else 'computed'
 
 
-def _normalize_bates(start, end, *, numeric_bases=frozenset()):
+def _normalize_bates(start, end, *, numeric_bases=None):
     if any(unicodedata.category(char) in {'Cc', 'Cf', 'Mn'} for char in start + end):
         return UnresolvedBates('control, format or combining character', 'ALL')
     start, end = (unicodedata.normalize('NFKC', value).strip() for value in (start, end))
@@ -127,7 +127,10 @@ def _normalize_bates(start, end, *, numeric_bases=frozenset()):
     for value in (start, end):
         match = re.fullmatch(r'(.*?)([0-9]+)([A-Za-z]+|[._-][0-9]+)?', value)
         if match and match[3] and match[3][0] in '._-':
-            if match[1] not in numeric_bases or len(match[3]) - 1 >= len(match[2]):
+            bounds = numeric_bases.get(match[1]) if numeric_bases else None
+            if (bounds is None or len(match[2]) > 18
+                    or not bounds[0] <= int(match[2]) <= bounds[1]
+                    or (bounds[0] == bounds[1] and match[2] not in bounds[2])):
                 match = re.fullmatch(r'(.*?)([0-9]+)([A-Za-z]+)?', value)
         matches.append(match)
     first, last = matches
@@ -183,7 +186,9 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
             unordered[normalized].append(link)
         else:
             groups[parsed.prefix].append((parsed.lower, parsed.upper, parsed.width, link))
-    numeric_bases = frozenset(groups)
+    numeric_bases = {prefix: (min(item[0] for item in intervals), max(item[1] for item in intervals),
+                             {str(item[0]).zfill(item[2]) for item in intervals})
+                     for prefix, intervals in groups.items()}
     for parsed, start, end, link in parsed_ranges:
         base = _normalize_bates(start, end, numeric_bases=numeric_bases)
         if base == parsed:

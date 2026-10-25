@@ -355,7 +355,8 @@ def test_real_gap_remains_with_suffixed_labels_elsewhere(label):
     assert {link.document_id for link in gap.links} == {'b', 'c'}
 
 
-@pytest.mark.parametrize('suffix', ['A', '.001', '-001'])
+@pytest.mark.parametrize('suffix', ['A', '.001', '-001', '.0001', '-0001', '_0001',
+                                    '.00001', '-00001', '_00001'])
 def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
     from random import Random
     random = Random(20261025)
@@ -370,18 +371,19 @@ def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
                 sources.append(source(f'{prefix}-{number}', labels=[f'{prefix}{number:04d}{suffix}']))
                 if suffix != 'A':
                     subprefix = f'{prefix}{number:04d}{suffix[0]}'
+                    width = len(suffix) - 1
                     counters = {1, 20, *random.sample(range(2, 19), 6)}
                     expected[subprefix] = set(range(1, 21)) - counters
                     owners = {1: {f'{prefix}-{number}'}}
                     for counter in sorted(counters - {1}):
                         key = f'{subprefix}-{counter}'
-                        sources.append(source(key, labels=[f'{subprefix}{counter:03d}']))
+                        sources.append(source(key, labels=[f'{subprefix}{counter:0{width}d}']))
                         owners[counter] = {key}
                     duplicate = random.choice(sorted(counters))
                     duplicate_key = f'{subprefix}-duplicate'
-                    sources.append(source(duplicate_key, labels=[f'{subprefix}{duplicate:03d}']))
+                    sources.append(source(duplicate_key, labels=[f'{subprefix}{duplicate:0{width}d}']))
                     owners[duplicate].add(duplicate_key)
-                    expected_overlaps[f'Overlapping Bates labels: {subprefix}{duplicate:03d}'] = owners[duplicate]
+                    expected_overlaps[f'Overlapping Bates labels: {subprefix}{duplicate:0{width}d}'] = owners[duplicate]
                     expected_links[subprefix] = owners
             expected[prefix] = set(range(1, 21)) - covered
         sources.extend([source('u', labels=['CONFIDENTIAL']),
@@ -541,3 +543,40 @@ def test_numeric_suffix_series_export_keeps_separators_and_citations(tmp_path):
     rendered = MarkdownIt().render(markdown)
     for key in ('base', 'dot', 'dash', 'duplicate', 'year'):
         assert f'href="/matters/m/sources/token-{key}"' in rendered
+
+
+@pytest.mark.parametrize('separator,width', [('.', 4), ('-', 4), ('.', 5)])
+def test_wide_numeric_tail_does_not_print_unqualified_base_gap(separator, width, tmp_path):
+    prefix = 'ABC0002' + separator
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        with_ranges('b', [(f'{prefix}{1:0{width}d}', f'{prefix}{10:0{width}d}')]),
+        with_ranges('c', [(f'{prefix}{50:0{width}d}', f'{prefix}{60:0{width}d}')]),
+        source('d', labels=['ABC0003'])])
+    gaps = facts(summary, 'bates_gap')
+    expected = f'Missing Bates: {prefix}{11:0{width}d} to {prefix}{49:0{width}d}'
+    assert [gap.text for gap in gaps] == [expected]
+    assert gaps[0].count == 39
+    assert {link.document_id for link in gaps[0].links} == {'b', 'c'}
+    suffixes = facts(summary, 'bates_suffix')
+    assert len(suffixes) == 2 and all('(base coverage: ABC0002)' in f.text for f in suffixes)
+    assert {link.document_id for f in suffixes for link in f.links} == {'b', 'c'}
+    artifact = tmp_path / 'summary.md'
+    # fixture-write: Verify the synthetic wide-tail Markdown export and its source links.
+    artifact.write_text(summary.to_markdown(), encoding='utf-8')
+    markdown = artifact.read_text(encoding='utf-8')
+    assert '- Missing Bates: ABC0002\n' not in markdown
+    assert expected in markdown and 'suffixed labels cover their base numbers' in markdown
+    rendered = MarkdownIt().render(markdown)
+    for key in ('a', 'b', 'c', 'd'):
+        assert f'href="/matters/m/sources/token-{key}"' in rendered
+
+
+def test_long_numeric_tail_with_matching_plain_base_is_suffixed():
+    summary = build_summary('Synthetic', 'm', [source('base', labels=['ABC0002']),
+        source('suffix', labels=['ABC0002.00001', 'ABC0002.00003'])])
+    suffixes = facts(summary, 'bates_suffix')
+    assert len(suffixes) == 2
+    assert all('(base coverage: ABC0002)' in f.text for f in suffixes)
+    assert all({link.document_id for link in f.links} == {'suffix'} for f in suffixes)
+    assert [gap.text for gap in facts(summary, 'bates_gap')] == ['Missing Bates: ABC0002.00002']
+    assert not overlaps(summary) and not facts(summary, 'bates_unordered')

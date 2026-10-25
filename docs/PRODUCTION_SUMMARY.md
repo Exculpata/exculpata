@@ -31,9 +31,14 @@ marked not computed. Unresolved labels retain notices and exact duplicate checks
 Letter suffixes cover their base number for gap detection in an existing numeric
 series. Dot-, dash- and underscore-numeric labels form separate series keyed by
 the full base label plus separator, using the same gap and overlap calculations.
-They also cover their base number when a plain base series exists and the tail
-has fewer digits than the base number. Otherwise they remain ordinary labels in
-their own series, including year and volume prefixes such as EPA-HQ-2019-000091.
+They also cover their base number, regardless of tail width, when a plain series
+with the same prefix spans that number (from its lowest recorded start to its
+highest recorded end, including internal gaps). An isolated plain base must match
+the base spelling, so VOL0001 alone does not establish VOL001 as a base.
+Each such base is covered with a citation to the sub-series.
+Otherwise they remain ordinary labels in their own
+series, including year and volume prefixes such as EPA-HQ-2019-000091 and
+VOL001-0001 when no matching plain base series spans that number.
 Each label or same-base range recognized as suffixed retains its own cited fact.
 Base coverage does not make distinct suffixed labels overlap. Letter-suffix-only
 series and recognized suffixed ranges spanning different base numbers remain
