@@ -49,7 +49,7 @@ class TierSuggestion:
     def lines(self) -> tuple[str, ...]:
         hardware = _hardware_line(self.reading)
         notes = tuple(f"hardware note :: {note}" for note in self.reading.notes)
-        fallback = ("hardware detection :: using the CPU suggestion",) if self.fallback else ()
+        fallback = (f"hardware detection :: using the {self.profile_id} CPU suggestion",) if self.fallback else ()
         return (
             hardware,
             *notes,
@@ -100,17 +100,17 @@ def validate_profiles(catalog: Mapping[str, object] | None = None, schema: Mappi
 
 
 def suggest_tier(reading: HardwareReading, catalog: Mapping[str, object] | None = None) -> TierSuggestion:
-    """Pick one profile. A failed reading uses the CPU profile and says so."""
+    """Pick one profile. A failed reading uses the smallest CPU profile and says so."""
 
     document = dict(catalog or load_profiles())
     profiles = [item for item in document.get("profiles", []) if isinstance(item, dict)]
     by_id = {str(item.get("id")): item for item in profiles}
-    fallback_id = str(document.get("fallback_profile") or "cpu")
+    fallback_id = str(document.get("fallback_profile") or "potato")
     chosen, fallback = _match(reading, profiles, fallback_id)
     profile = by_id.get(chosen) or by_id.get(fallback_id) or {}
     if not profile:
         profile = {
-            "id": "cpu",
+            "id": "potato",
             "label": "CPU only",
             "generator": "Use a small model on a local server.",
             "embed_rerank": "Keep embeddings and reranking inside Exculpata on CPU.",
@@ -119,7 +119,7 @@ def suggest_tier(reading: HardwareReading, catalog: Mapping[str, object] | None 
         }
         fallback = True
     return TierSuggestion(
-        profile_id=str(profile.get("id") or "cpu"),
+        profile_id=str(profile.get("id") or "potato"),
         label=str(profile.get("label") or "CPU only"),
         generator=str(profile.get("generator") or ""),
         embed_rerank=str(profile.get("embed_rerank") or ""),
@@ -306,29 +306,34 @@ def _amd_vram_devices(
             continue
         if completed.returncode != 0:
             continue
-        values = _parse_amd_vram(completed.stdout)
+        values = _parse_amd_vram(completed.stdout, tool)
         if values:
             return values
     notes.append("AMD GPU memory was not available or was unreadable.")
     return ()
 
 
-def _parse_amd_vram(text: str) -> tuple[int, ...]:
+def _parse_amd_vram(text: str, tool: str) -> tuple[int, ...]:
     totals: list[int] = []
     for line in text.splitlines():
-        folded = line.casefold()
-        if "total" not in folded:
+        if tool == "rocm-smi":
+            device_row = re.fullmatch(
+                r"\s*(?:GPU\[\d+\]|card\d+|gpu\s+\d+)\s*(?:[:|]\s*)?(.*)", line, re.IGNORECASE,
+            )
+            if device_row is None:
+                continue
+            line = device_row.group(1)
+        match = re.fullmatch(
+            r"\s*(?:VRAM Total Memory|total vram|TOTAL_VRAM)\s*"
+            r"(?:\((B|MiB|MB|GiB|GB)\))?\s*:\s*(\d+(?:\.\d+)?)\s*(B|MiB|MB|GiB|GB)?\s*",
+            line, re.IGNORECASE,
+        )
+        if match is None:
             continue
-        numbers = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", line)]
-        if not numbers:
-            continue
-        value = numbers[-1]
-        if "mib" in folded or "(mb" in folded:
-            totals.append(int(value * _MIB))
-        elif "gib" in folded or "(gb" in folded:
-            totals.append(int(value * _GIB))
-        elif value >= 1_000_000_000:
-            totals.append(int(value))
+        unit = (match.group(1) or match.group(3) or "").casefold()
+        multiplier = {"b": 1, "mib": _MIB, "mb": _MIB, "gib": _GIB, "gb": _GIB}.get(unit)
+        if multiplier is not None and float(match.group(2)) > 0:
+            totals.append(int(float(match.group(2)) * multiplier))
     return tuple(totals)
 
 
