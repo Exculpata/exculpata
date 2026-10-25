@@ -1161,6 +1161,7 @@ def test_interactive_invalid_hostname_blocks_before_storage_and_release(tmp_path
         return "bad_name" if prompt == f"{CURRENT_PRODUCT} hostname" else default
 
     monkeypatch.setattr(installer, "_ask", ask)
+    monkeypatch.setattr(installer, "_choose", lambda prompt, choices, default, **kwargs: default)
     monkeypatch.setattr(installer, "_prepare_directories", lambda *a, **kw: pytest.fail("invalid interactive hostname reached storage creation"))
     monkeypatch.setattr(installer, "_stage_release", lambda *a, **kw: pytest.fail("invalid interactive hostname reached release staging"))
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local"])
@@ -1260,6 +1261,7 @@ def test_interactive_hostname_is_collected_once_and_used_by_configuration(tmp_pa
         return original_configure(console, args, *positional, **kwargs)
 
     monkeypatch.setattr(installer, "_ask", ask)
+    monkeypatch.setattr(installer, "_choose", lambda prompt, choices, default, **kwargs: default)
     monkeypatch.setattr(installer, "_configure", configure)
     monkeypatch.setattr(sys, "argv", ["install", "--root", str(node), "--models", "none", "--auth", "local", "--dry-run"])
     assert installer.main() == 0

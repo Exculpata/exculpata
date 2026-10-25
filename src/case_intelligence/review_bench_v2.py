@@ -28,6 +28,13 @@ from .retrieval_limits import (
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
 DEFAULT_RERANKER_MODEL = "Alibaba-NLP/gte-reranker-modernbert-base"
+
+
+def _in_process_device() -> dict[str, str]:
+    """Pass an explicit CPU or GPU device. Unset keeps the library default and stays in-process."""
+
+    device = os.getenv("CASE_REVIEW_MODEL_DEVICE", "").strip()
+    return {"device": device} if device else {}
 _TOKEN = re.compile(r"[a-z0-9]+")
 _WORKBENCH_MATTER_ID = re.compile(r"^ci-matter-[0-9a-f]{32}$")
 _MEDIA_SUFFIXES = {".wav", ".mp3", ".m4a", ".ogg", ".opus", ".mp4", ".mov", ".webm"}
@@ -231,7 +238,10 @@ class LazySentenceTransformerEmbedding:
                 raise RuntimeError("model-backed meaning search is unavailable") from exc
             try:
                 self._model = SentenceTransformer(
-                    self._model_name, local_files_only=self._local_only, trust_remote_code=False
+                    self._model_name,
+                    local_files_only=self._local_only,
+                    trust_remote_code=False,
+                    **_in_process_device(),
                 )
             except Exception as exc:
                 raise RuntimeError("model-backed meaning search is unavailable") from exc
@@ -270,7 +280,10 @@ class LazySentenceTransformerReranker:
                 raise RuntimeError("model-backed ranking is unavailable") from exc
             try:
                 self._model = CrossEncoder(
-                    self._model_name, local_files_only=self._local_only, trust_remote_code=False
+                    self._model_name,
+                    local_files_only=self._local_only,
+                    trust_remote_code=False,
+                    **_in_process_device(),
                 )
             except Exception as exc:
                 raise RuntimeError("model-backed ranking is unavailable") from exc
@@ -462,17 +475,25 @@ class PostgresHybridBackend:
             return ()
         scope_sql = " AND c.document_id = ANY(%s)" if self.document_ids is not None else ""
         sql = """
+            WITH search_query AS (
+                SELECT CASE WHEN %s OR parsed.query::text ~ '!'
+                            THEN parsed.query
+                            ELSE replace(parsed.query::text, ' & ', ' | ')::tsquery
+                       END AS query
+                  FROM (SELECT websearch_to_tsquery('english', %s) AS query) parsed
+            )
             SELECT c.matter_id,c.document_id,c.chunk_id,d.display_name,p.page_number,c.text,
-                   ts_rank_cd(c.search_vector, websearch_to_tsquery('english', %s)) AS score,
+                   ts_rank_cd(c.search_vector, q.query) AS score,
                    c.line_start,c.line_end,c.source_version_id,c.excerpt_digest
               FROM review_chunk c
+              CROSS JOIN search_query q
               JOIN review_document d ON (d.matter_id,d.document_id)=(c.matter_id,c.document_id)
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
-             WHERE c.matter_id=%s AND c.search_vector @@ websearch_to_tsquery('english', %s)
+             WHERE c.matter_id=%s AND c.search_vector @@ q.query
         """ + scope_sql + """
              ORDER BY score DESC,c.chunk_id LIMIT %s
         """
-        parameters: list[object] = [query, matter_id, query]
+        parameters: list[object] = ['"' in query, query, matter_id]
         if self.document_ids is not None:
             parameters.append(sorted(self.document_ids))
         parameters.append(limit)
@@ -796,7 +817,6 @@ def upsert_postgres_document(
         )
     if not connection.autocommit:
         connection.commit()
-
 
 def delete_postgres_document(connection, *, matter_id: str, document_id: str) -> None:
     """Delete one document and all derived rows under an explicit matter fence."""

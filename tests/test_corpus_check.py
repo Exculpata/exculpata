@@ -13,6 +13,16 @@ gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
 
+def copy_corpus(destination):
+    """Keep mutation fixtures writable when CI protects the reviewed originals."""
+    for source in gate.CORPUS.rglob('*'):
+        if source.is_file():
+            target = destination / source.relative_to(gate.CORPUS)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            # fixture-write: Copy synthetic corpus bytes without read-only modes.
+            shutil.copyfile(source, target)
+
+
 def test_error_rate_counts_deletion_insertion_and_substitution():
     assert gate.error_rate('abc', 'abc') == 0
     assert gate.error_rate('abc', 'ac') == pytest.approx(1/3)
@@ -238,11 +248,13 @@ def test_committed_fixture_inventory_and_pins():
 
 @pytest.mark.parametrize('mutation',['digest','truncated','oversized','duplicate','missing-gold','empty-facts','blank-facts','blank-span','empty-hits','unknown-hit','zero-k','nan','traversal'])
 def test_manifest_or_gold_corruption_is_rejected(tmp_path, mutation):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS,root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path=root/'manifest.json'; manifest=json.loads(path.read_text())
     gold=root/'expected.json'; expected=json.loads(gold.read_text())
     if mutation=='digest': manifest['documents'][0]['sha256']='0'*64
-    elif mutation=='truncated': (root/manifest['audio'][0]['path']).write_bytes(b'bad')
+    elif mutation=='truncated':
+        # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
+        (root/manifest['audio'][0]['path']).write_bytes(b'bad')
     elif mutation=='oversized': manifest['max_file_bytes']=10000001
     elif mutation=='duplicate': manifest['audio'][0]['id']=manifest['documents'][0]['id']
     elif mutation=='missing-gold': expected['search'].clear()
@@ -254,7 +266,10 @@ def test_manifest_or_gold_corruption_is_rejected(tmp_path, mutation):
     elif mutation=='zero-k': manifest['search'][0]['top_k']=0
     elif mutation=='nan': next(iter(expected['documents'].values()))['cer']=float('nan')
     else: manifest['documents'][0]['path']='../outside.pdf'
-    path.write_text(json.dumps(manifest)); gold.write_text(json.dumps(expected))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
+    path.write_text(json.dumps(manifest))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
+    gold.write_text(json.dumps(expected))
     with pytest.raises(ValueError): gate.load_corpus(root)
 
 
@@ -322,9 +337,10 @@ def test_reviewed_span_alternative_preserves_number_and_source_checks(excerpt, v
 
 @pytest.mark.parametrize('alternatives', [[' '], [None], 'locker 7'])
 def test_malformed_span_alternatives_are_rejected(tmp_path, alternatives):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'expected.json'; expected = json.loads(path.read_text())
     expected['answers']['answer-parcel']['citations'][1]['alternative_spans'] = alternatives
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(expected))
     with pytest.raises(ValueError): gate.load_corpus(root)
 
@@ -358,23 +374,27 @@ def test_full_gate_rejects_ocr_catalog_loss_even_with_accurate_recognition(missi
 
 @pytest.mark.parametrize('source', ['scan-en', 'scan-es'])
 def test_manifest_cannot_remove_scanned_source_discovery_coverage(tmp_path, source):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     gold = root/'expected.json'; expected = json.loads(gold.read_text())
     key = 'search-' + source
     expected['search'][key]['document_ids'] = ['bicycle']
     expected['search'][key]['citations'] = [
         {'document_id':'bicycle', 'span':expected['documents']['bicycle']['text']}]
-    path.write_text(json.dumps(manifest)); gold.write_text(json.dumps(expected))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
+    path.write_text(json.dumps(manifest))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
+    gold.write_text(json.dumps(expected))
     with pytest.raises(ValueError, match='Every OCR source'):
         gate.load_corpus(root)
 
 
 @pytest.mark.parametrize('full_only', [False, 1, 'true'])
 def test_scanned_search_requires_boolean_full_lane(tmp_path, full_only):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     next(case for case in manifest['search'] if case['id'] == 'search-scan-en')['full_only'] = full_only
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='full-only lane'):
         gate.load_corpus(root)
@@ -443,7 +463,7 @@ def test_audio_unit_layout_must_be_present_and_match_projected_text(mutation):
     'wrong-search-source', 'missing-locator', 'wide-tolerance', 'wrong-duration', 'empty-layouts',
     'layout-missing-time', 'layout-boolean-time', 'layout-out-of-bounds', 'layout-empty-text'])
 def test_reviewed_page_search_and_timing_metadata_is_required(tmp_path, mutation):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'expected.json'; expected = json.loads(path.read_text())
     audio = expected['audio']['audio-bicycle']
     search = expected['search']['search-gate']
@@ -460,6 +480,7 @@ def test_reviewed_page_search_and_timing_metadata_is_required(tmp_path, mutation
     elif mutation == 'layout-boolean-time': audio['layouts'][0][0]['start_ms'] = False
     elif mutation == 'layout-out-of-bounds': audio['layouts'][0][0]['end_ms'] = audio['locator']['end_ms'] + 1
     else: audio['layouts'][0][0]['text'] = ' '
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(expected))
     with pytest.raises(ValueError): gate.load_corpus(root)
 
@@ -514,12 +535,13 @@ def test_baseline_audio_layout_ends_at_pinned_source_signal_envelope(source, sig
 @pytest.mark.parametrize('field,value', [('model_id', 'synthetic/unreviewed'), ('license', 'unreviewed'),
     ('model_id', None), ('license', None), ('revision', 'a'*40), ('languages', ['eng']), ('sha256', {})])
 def test_ocr_identity_requires_complete_reviewed_record(tmp_path, field, value):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     if value is None:
         del manifest['models']['ocr'][field]
     else:
         manifest['models']['ocr'][field] = value
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='OCR'):
         gate.load_corpus(root)
@@ -674,7 +696,7 @@ def test_full_ocr_text_and_page_success_cannot_hide_nonready_source(state):
 @pytest.mark.parametrize('mutation', ['provider', 'model', 'missing-provider', 'missing-model',
     'missing-record', 'null-record', 'nonmapping-record', 'revision', 'null-revision', 'extra-field'])
 def test_fixed_adapter_manifest_contract_rejects_unexecuted_identity(tmp_path, adapter, mutation):
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     record = manifest['models'][adapter]
     if mutation == 'provider': record['provider'] = 'Synthetic unexecuted provider'
@@ -687,6 +709,7 @@ def test_fixed_adapter_manifest_contract_rejects_unexecuted_identity(tmp_path, a
     elif mutation == 'revision': record['revision'] = 'a'*40
     elif mutation == 'null-revision': record['revision'] = None
     else: record['unexecuted_setting'] = True
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match=adapter + '.*fixed adapter contract'):
         gate.load_corpus(root)
@@ -698,9 +721,10 @@ def test_fixed_adapter_manifest_contract_rejects_unexecuted_identity(tmp_path, a
 ])
 def test_fixed_adapter_receipt_cannot_attest_to_unexecuted_metadata(tmp_path, monkeypatch, capsys, adapter, field, value):
     monkeypatch.syspath_prepend(str(ROOT / "scripts"))
-    root = tmp_path/'corpus'; shutil.copytree(gate.CORPUS, root)
+    root = tmp_path/'corpus'; copy_corpus(root)
     path = root/'manifest.json'; manifest = json.loads(path.read_text())
     manifest['models'][adapter][field] = value
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     report = tmp_path/'receipt.json'
     assert gate.main(['--corpus', str(root), '--report', str(report)]) == 1
@@ -729,10 +753,11 @@ def test_fixed_adapter_receipt_preserves_actual_fast_contract(tmp_path, monkeypa
 def test_receipt_rejects_extra_top_level_model_records(tmp_path, monkeypatch, capsys, record):
     monkeypatch.syspath_prepend(str(ROOT / 'scripts'))
     root = tmp_path / 'corpus'
-    shutil.copytree(gate.CORPUS, root)
+    copy_corpus(root)
     path = root / 'manifest.json'
     manifest = json.loads(path.read_text())
     manifest['models']['unexecuted'] = record
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     report = tmp_path / 'receipt.json'
     assert gate.main(['--corpus', str(root), '--report', str(report)]) == 1
@@ -747,7 +772,7 @@ def test_receipt_rejects_extra_top_level_model_records(tmp_path, monkeypatch, ca
 ])
 def test_versioned_inventory_rejects_paired_manifest_and_gold_removal(tmp_path, group, identity):
     root = tmp_path / 'corpus'
-    shutil.copytree(gate.CORPUS, root)
+    copy_corpus(root)
     manifest = json.loads((root / 'manifest.json').read_text())
     expected = json.loads((root / 'expected.json').read_text())
     manifest[group] = [row for row in manifest[group] if row['id'] != identity]
@@ -763,7 +788,9 @@ def test_versioned_inventory_rejects_paired_manifest_and_gold_removal(tmp_path, 
         expected['search']['search-locker']['citations'].append({
             'document_id': source, 'span': expected['documents'][source]['text']})
         next(row for row in manifest['search'] if row['id'] == 'search-locker')['full_only'] = True
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     (root / 'manifest.json').write_text(json.dumps(manifest))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     (root / 'expected.json').write_text(json.dumps(expected))
     with pytest.raises(ValueError, match='exact reviewed v1 case inventory'):
         gate.load_corpus(root)
@@ -772,7 +799,7 @@ def test_versioned_inventory_rejects_paired_manifest_and_gold_removal(tmp_path, 
 @pytest.mark.parametrize('group', ['documents', 'audio', 'search', 'answers'])
 def test_versioned_inventory_rejects_paired_case_rename(tmp_path, group):
     root = tmp_path / 'corpus'
-    shutil.copytree(gate.CORPUS, root)
+    copy_corpus(root)
     manifest = json.loads((root / 'manifest.json').read_text())
     expected = json.loads((root / 'expected.json').read_text())
     old = manifest[group][0]['id']
@@ -788,7 +815,9 @@ def test_versioned_inventory_rejects_paired_case_rename(tmp_path, group):
                     citation['document_id'] = new
     if old in manifest['fast_transcripts']:
         manifest['fast_transcripts'][new] = manifest['fast_transcripts'].pop(old)
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     (root / 'manifest.json').write_text(json.dumps(manifest))
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     (root / 'expected.json').write_text(json.dumps(expected))
     with pytest.raises(ValueError, match='exact reviewed v1 case inventory'):
         gate.load_corpus(root)
@@ -812,10 +841,11 @@ def test_answer_kind_matches_rendered_generated_branch(kind):
 ])
 def test_asr_receipt_identity_rejects_unexecuted_settings(tmp_path, field, value):
     root = tmp_path / 'corpus'
-    shutil.copytree(gate.CORPUS, root)
+    copy_corpus(root)
     path = root / 'manifest.json'
     manifest = json.loads(path.read_text())
     manifest['models']['asr'][field] = value
+    # fixture-write: Deliberately mutate only the temporary synthetic corpus copy.
     path.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match='complete reviewed corpus ASR record'):
         gate.load_corpus(root)

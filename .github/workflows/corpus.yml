@@ -25,7 +25,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Classify full corpus changes conservatively
@@ -48,6 +48,8 @@ jobs:
               output.write('full_required='+str(full).lower()+'\n')
           PY
       - run: python -m pip install --disable-pip-version-check -e '.[dev]'
+      - name: Protect reviewed corpus inputs
+        run: bash scripts/corpus-write-guard.sh prepare
       - name: Fast product corpus and historical failure proofs
         env:
           CASE_INTELLIGENCE_TEST_MODE: '1'
@@ -56,7 +58,10 @@ jobs:
         run: |
           make corpus-check PYTHON=python
           python scripts/corpus-history-check.py
-          python -m pytest -q tests/test_corpus_check.py tests/test_corpus_product.py tests/test_corpus_history.py tests/test_corpus_scope.py tests/test_corpus_recognition.py tests/test_corpus_receipts.py
+          python -m pytest -q tests/test_corpus_check.py tests/test_corpus_product.py tests/test_corpus_history.py tests/test_corpus_scope.py tests/test_corpus_recognition.py tests/test_corpus_receipts.py tests/test_corpus_write_guard.py
+      - name: Verify reviewed corpus inputs are unchanged
+        if: ${{ always() }}
+        run: bash scripts/corpus-write-guard.sh check
 
   full:
     needs: fast
@@ -68,13 +73,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12'
       - name: Install independent CPU recognizer dependencies (not production service runtime)
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
+          python3 scripts/install-ci-browser-deps.py --archives "$RUNNER_TEMP/apt-archives" ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa
           python -m pip install --disable-pip-version-check -e . faster-whisper==1.2.1 ctranslate2==4.8.2 huggingface-hub==1.33.0 av==18.1.0
       - name: Stage and verify pinned OCR data
         run: |
@@ -91,6 +96,8 @@ jobs:
           PY
       - name: Stage pinned ASR snapshot for independent recognition
         run: python scripts/corpus_recognition.py --stage-models
+      - name: Protect reviewed corpus inputs
+        run: bash scripts/corpus-write-guard.sh prepare
       - name: Product OCR and independent faster-whisper corpus (production service not exercised)
         env:
           CASE_INTELLIGENCE_TEST_MODE: '1'
@@ -98,3 +105,6 @@ jobs:
           OMP_NUM_THREADS: '2'
           HF_HUB_OFFLINE: '1'
         run: make corpus-check-full PYTHON=python
+      - name: Verify reviewed corpus inputs are unchanged
+        if: ${{ always() }}
+        run: bash scripts/corpus-write-guard.sh check

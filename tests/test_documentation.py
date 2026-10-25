@@ -105,8 +105,12 @@ def test_pull_request_jobs_test_the_merge_and_scan_the_exact_head_separately() -
     assert "EXPECTED_PUBLICATION_SHA:" in publication_job
     assert "python scripts/check-publication-candidate.py" in publication_job
     assert "python -m pytest -q tests/test_documentation.py tests/test_quality_change_scope.py" in application_job
-    assert workflow.count("EXPECTED_INTEGRATION_SHA: ${{ github.sha }}") == 5
-    assert workflow.count('test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"') == 5
+    assert workflow.count("EXPECTED_INTEGRATION_SHA: ${{ github.sha }}") == 6
+    assert workflow.count('test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"') == 6
+    defense_eval_job = workflow.split("\n  defense-eval:\n", 1)[1].split("\n  transcription:\n", 1)[0]
+    assert exact_ref not in defense_eval_job
+    assert "EXPECTED_INTEGRATION_SHA: ${{ github.sha }}" in defense_eval_job
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"' in defense_eval_job
     assert "python scripts/check-publication-candidate.py" in workflow
     assert '--expected-head "$EXPECTED_PUBLICATION_SHA"' in workflow
     assert '--publication-ref "$PUBLICATION_REF"' in workflow
@@ -139,14 +143,40 @@ def test_review_policy_is_central_and_hosted_review_is_optional() -> None:
         assert "code review is mandatory" not in text
 
 
+def test_agent_working_practice_sets_delivery_and_authority_boundaries() -> None:
+    guide = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "## Agent working practice\n" in guide
+    section = guide.split("## Agent working practice\n", 1)[1].split("\n## ", 1)[0]
+    assert len(section.splitlines()) < 40
+    text = " ".join(section.split())
+    for requirement in (
+        "goal and a pass/fail check before starting",
+        "failing test first where a cheap test exists",
+        "what else the change could break before pushing",
+        "real artifact before calling it done",
+        "about 500 changed lines or less",
+        "ordered small PRs",
+        "PR author owns the PR to green",
+        "review findings, CI flakes and stale PR body text without waiting",
+        "one push per round",
+        "After two review rounds, only security, privacy or evidence-integrity",
+        "other findings to follow-up issues",
+        "Merges, pushes to main and ruleset changes",
+        "maintainer's explicit yes",
+        "Never force-push or use `--no-verify`",
+    ):
+        assert requirement in text
+
+
 def test_contributor_entry_points_stay_short_and_public_safe() -> None:
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
     assert len(contributing.split()) <= 500
     for marker in ("make bootstrap", "make check-fast", "good first issue",
-                   "draft PR", "synthetic data only", "Never include real case material"):
+                   "draft PR", "synthetic data only", "Never include real case material",
+                   "docs/VELOCITY_REPORT.md"):
         assert marker in contributing
     template = (ROOT / ".github/pull_request_template.md").read_text()
-    assert len(template.splitlines()) <= 15
+    assert len(template.splitlines()) <= 23
     assert "synthetic data only" in template
     assert "Needs hosted review?" in template
     assert "QUALITY_GATES.md#review-policy" in template
@@ -159,6 +189,19 @@ def test_contributor_entry_points_stay_short_and_public_safe() -> None:
 def test_workflows_do_not_request_codex_reviews_automatically() -> None:
     for path in (ROOT / ".github/workflows").glob("*.yml"):
         assert "@codex" not in path.read_text()
+
+
+def test_rename_contract_is_checked_on_documentation_only_changes() -> None:
+    """The lightweight CI path must not let docs whitelist their own typos."""
+    import subprocess
+    import sys
+
+    for script in ("rename_contract_check.py", "rename_contract_artifacts.py"):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / script)],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
 
 DOCUMENT = ROOT / "docs/IDEAL.md"

@@ -29,6 +29,27 @@ sanitizer before committing. Keep deployment overlays external and release tags
 immutable; corrections get new commits and releases. See [Contributing](CONTRIBUTING.md)
 and [development guidance](docs/DEVELOPMENT.md).
 
+## Restricted static analyzers
+
+The rename-compatibility and import-boundary analyzers enforce documented syntax
+contracts. Unmodeled syntax must produce a blocking diagnostic naming the
+supported helper or boundary API; never treat an unknown node as safe or keep
+adding per-construct inference to accommodate a caller. Rename callers use
+`case_intelligence.legacy_names.name_value` and the registered name contract.
+Migrate callers to supported forms while preserving behavior. Each analyzer needs
+a synthetic regression for a reported failure and a meta-test showing an unknown
+AST node fails closed, including when no known origin has been detected.
+
+Keep literal checks, ambiguity and resource-limit failures active. Any permitted
+source receipt must identify one reviewed diagnostic by its identifier and exact
+source-line SHA-256 anchor, include a semantic reason and validation, and fail on
+changed flagged lines or extra diagnostics while allowing line relocation;
+it is never a file exclusion or automatic acceptance of unknown syntax. After
+required validation, request one final review. Consolidate precision-only
+suggestions into one follow-up issue; correctness, security and required
+acceptance failures still block readiness. This rule does not waive publication
+guards or change either analyzer's task-specific acceptance requirements.
+
 ## Bounded fail-closed checker contract
 
 Hand-written checkers recognize specific input forms; they do not prove arbitrary
@@ -117,14 +138,15 @@ one `fixture_write(workspace, media=True)` scope. Keep worker waits, HTTP calls 
 projection outside that scope. The media scope serializes the public methods;
 it does not turn their individual commits into one atomic transaction.
 
-The fixture inventory checks tracked Python files under test directories,
-the root `scripts` and `benchmarks` directories, and
-`services/transcription/compatibility`. It scans these roots without executing
-imports. Review imports and file-based loaders when adding support elsewhere;
-include fixture support in the inventory before using it. Production modules
-retain their own write boundaries and are not fixture setup merely because a test
-imports them. A passing inventory is not proof about arbitrary Python reflection.
-Stage new fixture sources before running the inventory. Use explicit named
+The static fixture inventory checks Python files under the root `tests/`
+directory without executing imports, matching main's scope. Production modules
+retain their own write boundaries. A passing inventory is not proof about
+arbitrary Python reflection or imported code. The corpus and application CI jobs
+use `scripts/corpus-write-guard.sh prepare` to make `benchmarks/corpus/` read-only
+before tests, then `check` to reject tracked changes and untracked additions even
+after failed tests. This runtime boundary applies regardless of which code path
+attempts the write; it does not rely on static Python provenance analysis.
+Use explicit named
 handles and the supported syntax described in
 [development guidance](docs/DEVELOPMENT.md#synthetic-fixture-writes).
 Run `python -m pytest -q tests/test_fixture_write_policy.py tests/test_fixture_inventory.py tests/test_fixture_inventory_coverage.py tests/test_fixture_reflective_deny.py`.
@@ -152,6 +174,8 @@ Negative regression probes retain actual runtime effects and check rejection of
 the same source through `tests.fixture_probe` with fixed named inputs. Installer
 and workflow probes use fixed repository-source entry points in
 `tests.runtime_probes`, with no caller-provided executable source or namespace.
-The inventory pins these two reviewed harnesses and suppresses only their dynamic
+The sandbox detection regressions in `tests/test_sandbox_probe.py` also execute
+fixed synthetic helper sources defined by that module's tests and parameters.
+The inventory pins all three reviewed modules and suppresses only their dynamic
 execution finding; all other fixture rules still apply. Changes to a harness
 require review of its fixed inputs, retained runtime assertions and updated pin.

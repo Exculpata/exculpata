@@ -1,0 +1,15 @@
+Walk inspection
+Synthetic demonstration record. No real people, places, or events.
+Matter reference: lumen-yard
+ID: DEMO-LY-106
+Record date: 2034-06-03
+Person: Sable Morn
+Person: Joss Wicker
+Object: Lumen Yard
+Object: Copper Annex
+
+Sable Morn and Joss Wicker walked from Lumen Yard to Copper Annex on 2034-06-03. A canvas
+curtain blocked the covered north walk. Joss Wicker suggested the longer south walk. The
+route card still named the north walk when this inspection ended at 16:05.
+
+All names, locations, dates, and identifiers in this record were invented.

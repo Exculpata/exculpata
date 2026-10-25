@@ -19,6 +19,51 @@ proxy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(proxy)
 
 
+@pytest.mark.parametrize("case", [
+    "http", "url-interpolation", "pins-interpolation", "conflicting-pins",
+    "pins-without-url", "invalid-pin-address",
+])
+def test_generator_configuration_error_names_settings_without_values(case):
+    issuer = "https://idp.example.test"
+    url = "https://generator.example.test"
+    pins = ""
+    issuer_pins = ""
+    if case == "http":
+        url = "http://generator.example.test"
+    elif case == "url-interpolation":
+        url += "/${X}"
+    elif case == "pins-interpolation":
+        pins = "${X}"
+    elif case == "conflicting-pins":
+        url = issuer
+        issuer_pins = json.dumps({"issuer": issuer, "addresses": [str(ipaddress.IPv4Address(bytes((10, 1, 2, 3))))]})
+        pins = json.dumps({"issuer": issuer, "addresses": [str(ipaddress.IPv4Address(bytes((10, 1, 2, 4))))]})
+    elif case == "pins-without-url":
+        url, pins = "", "synthetic-pins-without-url"
+    elif case == "invalid-pin-address":
+        pins = json.dumps({"issuer": url, "addresses": ["synthetic-invalid-pin"]})
+    result = subprocess.run(
+        [sys.executable, str(PATH)],
+        env={"PYTHONPATH": str(PATH.parents[2] / "src"),
+             "OIDC_ISSUER": issuer, "OIDC_ISSUER_PINS": issuer_pins,
+             "GENERATOR_EGRESS_URL": url, "GENERATOR_EGRESS_PINS": pins},
+        capture_output=True, text=True, timeout=3,
+    )
+    assert result.returncode == 1
+    assert result.stderr.startswith(
+        "Egress proxy configuration invalid: GENERATOR_EGRESS_URL/GENERATOR_EGRESS_PINS: "
+    )
+    assert len(result.stderr.splitlines()) == 1
+    assert result.stdout == ""
+    for value in (issuer, url, pins, issuer_pins, "synthetic-invalid-pin", "${X}"):
+        if value:
+            assert value not in result.stderr
+    if case == "conflicting-pins":
+        assert "conflicting authority pins" in result.stderr
+        for encoded in (pins, issuer_pins):
+            assert json.loads(encoded)["addresses"][0] not in result.stderr
+
+
 @pytest.mark.parametrize("target", [
     "issuer.example.test.evil.test:443", "evil.test:443", "issuer.example.test:444",
     "issuer.example.test:0", "issuer.example.test:65536", "issuer.example.test.:443",

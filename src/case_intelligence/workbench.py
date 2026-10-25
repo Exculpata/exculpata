@@ -55,6 +55,7 @@ from starlette.background import BackgroundTask, BackgroundTasks
 from starlette.concurrency import run_in_threadpool
 
 from .compat_env import env, header, header_conflicts, kerberos_headers, response_headers
+from .header_policy import header_family_allowed
 from .static_assets import asset_url, static_cache_control
 from .source_cache import SourceCacheLock, source_cache_guard
 from .source_find import MAX_FIND_CHARS, find_in_source, highlight_find
@@ -1082,6 +1083,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             except Exception:
                 self.postgres_connection.rollback()
                 self.learned_retrieval = False
+        self.embedding_index_warning = self._embedding_index_warning()
+        if self.embedding_index_warning:
+            LOGGER.warning("%s", self.embedding_index_warning)
         self._rebuild_all_indexes()
         if self.background_ingestion:
             self.ingestion = IngestionCoordinator(
@@ -3049,6 +3053,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         from .assertion_service import AssertionService
         return AssertionService(self.workspace.assertion_repository(), self.entity_service(matter))
 
+    def witness_inconsistency_service(self, matter):
+        from .witness_inconsistency import WitnessInconsistencyService
+        assertions = self.assertion_service(matter)
+        return WitnessInconsistencyService(assertions.repository, assertions.entities)
+
     def entity_discovery(self, matter):
         from itertools import groupby
         from .entity_discovery import EntityDiscovery
@@ -3878,6 +3887,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             return tuple(
                 export_report(
                     matter, report, sections, format_name, exported_at=exported_at,
+                    model_notice=str(getattr(getattr(self.generator, "client", None), "model_notice", "") or ""),
                 )
                 for format_name in format_names
             )
@@ -4628,6 +4638,29 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         del payload["excerpt"]
         return payload
 
+    def _noted_answer_payload(
+        self,
+        answer: VerifiedAnswer,
+        evidence: Mapping[str, WorkbenchCitation],
+    ) -> dict[str, object]:
+        notice = ""
+        schema = ""
+        if answer.model_called:
+            client = getattr(self.generator, "client", None)
+            notice = str(getattr(client, "model_notice", "") or "")
+            mode = str(getattr(client, "schema_mode", "") or "")
+            schema = {
+                "verified": "verified",
+                "validate_and_retry": "not enforced / validated locally",
+                "refused": "refused",
+            }.get(mode, "")
+        payload = self._answer_payload(answer, evidence)
+        if notice:
+            payload["model_notice"] = notice
+        if schema:
+            payload["schema_enforcement"] = schema
+        return payload
+
     @staticmethod
     def _answer_payload(
         answer: VerifiedAnswer,
@@ -4718,7 +4751,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             answer = self.generator.answer(value, packet, history=history)
         except GenerationGroundingRejected:
             answer = self._verification_abstention()
-        payload = self._answer_payload(answer, evidence)
+        payload = self._noted_answer_payload(answer, evidence)
         with self.source_store(matter).mutation_guard():
             if any(
                 self._current_workflow_citation(matter, citation) is None
@@ -4945,7 +4978,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 raise AnswerJobFailure(
                     "Access to this matter was removed before the answer completed."
                 ) from exc
-            payload = self._answer_payload(answer, evidence)
+            payload = self._noted_answer_payload(answer, evidence)
             if selected_snapshot is not None:
                 payload['recorded_context_job'] = job.job_id
                 payload['recorded_context_attempt'] = job.attempts
@@ -5265,7 +5298,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         state = service.run(job.question, prepared, checkpoint, boundary,
                             prepared.get("hierarchical_synthesis"))
         answer = synthesis_answer(state, prepared["evidence"])
-        payload = self._answer_payload(answer, {f"S{number}": self._workflow_citation(source)
+        payload = self._noted_answer_payload(answer, {f"S{number}": self._workflow_citation(source)
             for number, source in enumerate(prepared["evidence"], 1)})
         boundary()
         return {**prepared, "hierarchical_synthesis": state,
@@ -5632,7 +5665,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                         research_step_question(job.question, query),
                         packet,
                     )
-                    payload = self._answer_payload(answer, evidence)
+                    payload = self._noted_answer_payload(answer, evidence)
                     pass_shape = modality_coverage(
                         job.question,
                         evidence,
@@ -5654,7 +5687,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                         "query": query,
                         "status": "needs_review",
                         "text": rejected_answer.text,
-                        "answer": self._answer_payload(rejected_answer, evidence),
+                        "answer": self._noted_answer_payload(rejected_answer, evidence),
                         "candidate_passages": len(found),
                         "candidate_sources": len({item.document_id for item in found}),
                     }
@@ -5823,7 +5856,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             for item in passes
             if item.get("status") != "supported"
         ]
-        final_answer_payload = self._answer_payload(final_answer, final_evidence)
+        final_answer_payload = self._noted_answer_payload(final_answer, final_evidence)
         evidence_shape = modality_coverage(
             job.question,
             final_evidence,
@@ -6175,12 +6208,51 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             {"kind": "error"},
         )
 
+    def _embedding_index_warning(self) -> str:
+        from .embedding_index import (
+            configured_embedding, embedding_change_warning, embedding_index_path,
+            load_embedding_index, note_populated_index,
+        )
+
+        populated = False
+        counted = False
+        if self.postgres_ready and self.postgres_connection is not None:
+            try:
+                with self.postgres_connection.cursor() as cursor:
+                    cursor.execute("SELECT 1 FROM review_chunk WHERE embedding IS NOT NULL LIMIT 1")
+                    populated = cursor.fetchone() is not None
+                counted = True
+            except Exception:
+                counted = False
+        if counted:
+            return note_populated_index(populated=populated)
+        path = embedding_index_path()
+        if path is None:
+            return ""
+        model, revision = configured_embedding()
+        return embedding_change_warning(load_embedding_index(path), model=model, revision=revision)
+
     def capabilities(self) -> dict[str, str]:
         storage = self.storage_capacity_projection(include_managed_usage=False)
         malware = scanner_status(self.malware_scanner)
+        client = getattr(self.generator, "client", None)
+        refresh = getattr(client, "refresh_schema_status", None)
+        if callable(refresh):
+            refresh()
+        schema_mode = str(getattr(client, "schema_mode", "unprobed") or "unprobed")
+        schema_label = {
+            "verified": "verified",
+            "validate_and_retry": "not enforced / validated locally",
+            "refused": "refused",
+            "unreachable": "not checked",
+        }.get(schema_mode, "not checked")
         return {
             "search": "word + meaning" if self.learned_retrieval else "word search only",
             "answering": "ready" if self.generator.available else "temporarily unavailable",
+            "schema_enforcement": schema_label,
+            "schema_detail": str(getattr(client, "schema_detail", "") or ""),
+            "model_qualification": str(getattr(client, "model_notice", "") or ""),
+            "embedding_index_warning": self._embedding_index_warning(),
             "source_review": "ready",
             "ingestion": "background queue" if self.background_ingestion else "request-bound",
             "ocr": os.getenv("CASE_INTELLIGENCE_OCR_MODE", "off") or "off",
@@ -6546,6 +6618,10 @@ def create_workbench_app(
 
     @app.middleware("http")
     async def identity_boundary(request: Request, call_next):
+        if identity.kerberos_settings is not None and not header_family_allowed(
+            request.headers, identity.kerberos_settings.header_family
+        ):
+            return Response(status_code=401, headers={"Cache-Control": "no-store"})
         if any(header_conflicts(request.headers, name) for name in (KERBEROS_USER_HEADER, KERBEROS_SECRET_HEADER)):
             return Response(status_code=401, headers={"Cache-Control": "no-store"})
         if request.url.path == "/internal/auth-mode":
@@ -11465,7 +11541,10 @@ def create_workbench_app(
                     getattr(request.state, "administrator_matter_override", None) == matter.matter_id
                 ),
             )
-            artifact = export_intake_receipt(receipt, format_name)
+            artifact = export_intake_receipt(
+                receipt, format_name,
+                model_notice=str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or ""),
+            )
         except KeyError as exc:
             raise HTTPException(404, "Selection receipt not found") from exc
         except (WorkspaceProblem, ExportProblem) as exc:
@@ -11579,13 +11658,14 @@ def create_workbench_app(
             ),
         )
         try:
-            result["matter_capacity"] = await run_in_threadpool(
+            capacity = await run_in_threadpool(
                 bench.upload_preflight_capacity_projection,
                 matter,
                 context.principal_id,
                 checkpoint_session_id=checkpoint_session_id,
                 checkpoint_collection_id=checkpoint_collection_id,
             )
+            result = dict(result, matter_capacity=capacity)
         except (OSError, RuntimeError):
             return JSONResponse(
                 {"message": "Matter upload capacity is temporarily unavailable."},
@@ -14024,7 +14104,8 @@ def create_workbench_app(
                              authorized_matter=authorized_matter, auth_context=auth_context,
                              require_csrf=require_csrf, templates=templates, base_context=base_context,
                              audit=audit, require_response_lease=require_matter_response_lease,
-                             transfer_response_lease=transfer_matter_response_lease)
+                             transfer_response_lease=transfer_matter_response_lease,
+                             model_notice=lambda: str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or ""))
     from .timeline_routes import install_timeline_routes
     install_timeline_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes
@@ -16140,7 +16221,10 @@ def create_workbench_app(
                 matter.matter_id, read_actor_id, administrator_override=administrator_override
             ), 1):
                 for format_name in ("markdown", "csv", "json"):
-                    receipt_artifact = export_intake_receipt(receipt, format_name)
+                    receipt_artifact = export_intake_receipt(
+                        receipt, format_name,
+                        model_notice=str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or ""),
+                    )
                     add_work_product(kind="intake_receipt", path=f"intake/{index:03d}-{receipt_artifact.filename}", artifact=receipt_artifact)
             repository = bench.workspace.entity_repository(export_read=True, administrator_override=administrator_override)
             with repository.transaction(matter.matter_id, read_actor_id):
@@ -16152,14 +16236,16 @@ def create_workbench_app(
                         artifact=ExportArtifact(body=json.dumps(record, indent=2).encode("utf-8"),
                             media_type="application/json", filename="entity.json"))
             repository = bench.workspace.assertion_repository(export_read=True, administrator_override=administrator_override)
+            from .assertion_exports import qualified_payload
+            model_notice = str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or "")
             with repository.transaction(matter.matter_id, read_actor_id):
                 for index, record in enumerate(repository.export_records(matter.matter_id), 1):
                     add_work_product(kind="assertion", path=f"assertions/{index:04d}-assertion.json",
-                        artifact=ExportArtifact(body=json.dumps(record, indent=2).encode("utf-8"),
+                        artifact=ExportArtifact(body=json.dumps(qualified_payload(record, model_notice), indent=2).encode("utf-8"),
                             media_type="application/json", filename="assertion.json"))
             from .matter_context_exports import add_context_exports
             add_context_exports(bench.workspace, matter.matter_id, read_actor_id,
-                                administrator_override, add_work_product)
+                                administrator_override, add_work_product, model_notice=model_notice)
             artifact = export_matter_bundle(
                 matter,
                 conversations,

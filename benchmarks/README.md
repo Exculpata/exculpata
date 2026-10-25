@@ -90,6 +90,20 @@ The runner invokes each category independently and emits a content-free JSON
 status report. It does not claim that a configured production model passed; the
 model-specific evaluation record described above remains a separate gate.
 
+After reviewing changes to pack cases, test helpers or fixture bytes, regenerate
+the derived pins rather than editing digests by hand:
+
+```bash
+.venv/bin/python scripts/regenerate-acceptance-pins.py
+.venv/bin/python scripts/regenerate-acceptance-pins.py --check
+```
+
+`--check` exits 1 for stale pins and writes nothing. Write mode updates only
+derived fingerprints and digest maps; it does not infer or change expected
+outcomes. Review the diff and run `tests/test_review_acceptance_pack.py` alongside
+the affected workflow tests. For a separate synthetic pack, use `--root PATH`
+and `--pack RELATIVE_PATH`; all referenced inputs must remain inside that root.
+
 September 8, 2026 test correction: the cross-modal regression now inspects the
 requested written-only question instead of assuming the last generator call
 cannot be a background transcript overview. The corresponding test-node, helper
@@ -138,3 +152,13 @@ digest and aggregate content fingerprint were refreshed; all acceptance nodes,
 case definitions, case fingerprint and fixture bytes retain their original pins.
 Earlier receipts remain distinguishable by content fingerprint, and undeclared
 test or fixture changes still fail the integrity checks.
+
+## Defense-workflow scorecard
+
+`benchmarks/defense-workflow/v2/suite.json` is the current versioned synthetic
+discovery set for grading answer correctness, citation support, abstention, and
+latency across Harbor Street and Lumen Yard. Version 1 stays loadable. Stub
+mode with the lexical retriever runs without a model or a database and is
+covered by `tests/test_defense_eval.py`. The PostgreSQL hybrid path is covered
+by `tests/test_defense_eval_postgres.py`. A perfect stub score is a harness
+check, not a model result. See [defense-workflow evaluation](../docs/EVAL.md).

@@ -100,6 +100,7 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
     def request(messages, *, think, tokens, stage, schema=QUESTION_SCHEMA):
         payload = {"model": client.model, "messages": messages}
         kwargs = {"opener": client._opener} if client._opener is not None else {}
+        kwargs["headers"] = client._headers
         if backend == "ollama":
             url = f"{client.endpoint}/api/chat"
             payload.update(stream=False, format=copy.deepcopy(schema), think=think, keep_alive="5m",
@@ -112,7 +113,6 @@ def generate_question_draft(client, backend: str, *, purpose: str, topic: str, e
                            response_format={"type": "json_schema", "json_schema": {
                                "name": "question_grounding" if stage.startswith("judge") else "drafted_questions",
                                "strict": True, "schema": copy.deepcopy(schema)}})
-            kwargs["headers"] = client._headers
         record = {"stage": stage, "thinking": think, "token_limit": tokens,
                   "context_tokens": profile.context_tokens, "timeout_seconds": timeout}
         calls.append(record)

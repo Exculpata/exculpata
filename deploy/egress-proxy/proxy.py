@@ -14,6 +14,7 @@ import threading
 import time
 from case_intelligence.oidc_network_policy import (
     Denied, authority, issuer_authority, issuer_pins, normalized_issuer, pinnable, public_ip,
+    validated_https_url,
 )
 
 
@@ -101,7 +102,7 @@ def read_connect(client, allowed):
         if method != "CONNECT" or version not in {"HTTP/1.0", "HTTP/1.1"}:
             raise Denied("method denied")
         destination = authority(target)
-        if allowed is None or destination != allowed:
+        if allowed is None or (destination not in allowed if isinstance(allowed, dict) else destination != allowed):
             raise Denied("destination denied")
         seen = set()
         for line in lines[1:-2]:
@@ -138,7 +139,8 @@ class Handler(socketserver.BaseRequestHandler):
         established = False
         try:
             destination = read_connect(client, self.server.allowed)
-            with dial(*destination, self.server.pins) as upstream:
+            pins = self.server.allowed[destination] if isinstance(self.server.allowed, dict) else self.server.pins
+            with dial(*destination, pins) as upstream:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 established = True
                 relay(client, upstream)
@@ -179,6 +181,47 @@ class Server(socketserver.ThreadingTCPServer):
             self.slots.release()
 
 
+# Operator-configured relay destinations: (exact HTTPS URL setting, reviewed pins setting).
+# The OIDC issuer is handled first with its existing rules.
+OPERATOR_DESTINATIONS = (("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),)
+
+
+class DestinationConfigurationError(Denied):
+    pass
+
+
+def configured_destinations(environment):
+    """Exact authorities mapped to their pins; conflicting pins on a shared authority fail closed."""
+    issuer = environment.get("OIDC_ISSUER", "")
+    allowed = issuer_authority(issuer)
+    pins = issuer_pins(environment.get("OIDC_ISSUER_PINS", ""), issuer)
+    destinations = {allowed: pins} if allowed is not None else {}
+    for url_setting, pins_setting in OPERATOR_DESTINATIONS:
+        url = environment.get(url_setting, "")
+        pin_value = environment.get(pins_setting, "")
+        reason = "destination interpolation denied"
+        try:
+            if "$" in url or "$" in pin_value:
+                raise Denied(reason)
+            if not url:
+                reason = "destination pins require a URL"
+                if pin_value:
+                    raise Denied(reason)
+                continue
+            reason = "invalid HTTPS URL"
+            validated_https_url(url)
+            destination = issuer_authority(url)
+            reason = "invalid destination pins"
+            destination_pins = issuer_pins(pin_value, url)
+            reason = "conflicting authority pins"
+            if destination in destinations and destinations[destination] != destination_pins:
+                raise Denied(reason)
+        except ValueError:
+            raise DestinationConfigurationError(f"{url_setting}/{pins_setting}: {reason}") from None
+        destinations[destination] = destination_pins
+    return destinations
+
+
 if __name__ == "__main__":
     try:
         if len(sys.argv) == 4 and sys.argv[1] == "--resolve":
@@ -187,10 +230,9 @@ if __name__ == "__main__":
                 raise Denied("invalid address set")
             print(json.dumps(answers))
             raise SystemExit(0)
-        issuer = os.environ.get("OIDC_ISSUER", "")
-        allowed = issuer_authority(issuer)
-        pins = issuer_pins(os.environ.get("OIDC_ISSUER_PINS", ""), issuer)
-        with Server(("0.0.0.0", 3128), allowed, pins) as server:
+        with Server(("0.0.0.0", 3128), configured_destinations(os.environ)) as server:
             server.serve_forever()
+    except DestinationConfigurationError as error:
+        raise SystemExit(f"Egress proxy configuration invalid: {error}") from None
     except (OSError, ValueError):
         raise SystemExit("Egress proxy configuration or listener unavailable") from None

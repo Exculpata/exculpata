@@ -24,7 +24,13 @@ def test_portable_question_thinking_is_explicitly_off_without_changing_other_cal
 
     def send(url, payload, **kwargs):
         calls.append((payload, kwargs))
-        message = {'content': json.dumps(FINAL)}
+        schema = payload.get('format') or payload['response_format']['json_schema']['schema']
+        content = FINAL
+        if 'answerable' in schema['properties']:
+            content = dict(answerable=False, claims=[], limitation=None, missing_information='Synthetic missing information')
+        elif 'decision' in schema['properties']:
+            content = dict(decision='not_identified', rationale='Synthetic no match', evidence_ids=[])
+        message = {'content': json.dumps(content)}
         return {'message': message} if backend == 'ollama' else {'choices': [{'message': message}]}
 
     monkeypatch.setattr(generation, '_bounded_json_request', send)

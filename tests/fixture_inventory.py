@@ -1,7 +1,6 @@
-"""Check tracked fixture support sources without executing their import graphs."""
+"""Check test fixture sources without executing their import graphs."""
 import hashlib
 from pathlib import Path
-import subprocess
 
 from tests.fixture_write_policy import Violation, check_fixture_writes
 
@@ -11,6 +10,7 @@ from tests.fixture_write_policy import Violation, check_fixture_writes
 REVIEWED_DYNAMIC_PROBES = {
     'tests/fixture_probe.py': '351e19742e54024b04505a3b856bcffc4ad055eb6b8aaa4618ea75ddf58fd1c7',
     'tests/runtime_probes.py': '06e728d3069cc241c23031d01d765882e0af8763aadf0d4c2e1effcb6be7376f',
+    'tests/test_sandbox_probe.py': 'ca541c5b78ed04a25a36a9869c16beb0218e1bbcd8d5ab508a05d0881a316d04',
 }
 DYNAMIC_RULE = 'dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()'
 
@@ -28,18 +28,10 @@ def check_inventory_source(source, filename):
 
 
 def inventory_paths(root):
-    """Tracked test, script, benchmark and compatibility support share the boundary.
-
-    Git's inventory avoids temporary editor/sync copies and does not infer Python
-    imports or execute code. Newly added sources in these roots join when staged.
-    """
-    names = subprocess.check_output(
-        ['git', 'ls-files', '-z', '--', '*.py'], cwd=root
-    ).decode().split('\0')
-    paths = [Path(name) for name in names if name]
-    return [path for path in paths if path.as_posix() != 'tests/fixture_write.py'
-            and ('tests' in path.parts[:-1] or path.parts[0] in {'scripts', 'benchmarks'}
-                 or path.parts[:3] == ('services', 'transcription', 'compatibility'))]
+    """Match main's tests/ scope, including sources that are not yet staged."""
+    root = Path(root)
+    return [path.relative_to(root) for path in sorted((root / 'tests').rglob('*.py'))
+            if path != root / 'tests/fixture_write.py']
 
 
 def check_repository_fixtures(root):

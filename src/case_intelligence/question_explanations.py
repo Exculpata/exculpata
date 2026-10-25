@@ -100,10 +100,10 @@ def replay_receipt(path, cases_path, *, explain=False):
             return QuestionDraftReceipt(replies[purpose, topic, passages].popleft(), profile={}, calls=[])
 
     result = evaluate(GroundedGenerationService(RecordedClient()), {'cases': selected}, explain=explain)
-    result.update(format=f"{LEGACY_STEM}-question-replay-result-v1", synthetic_only=True, replay_only=True,
+    passed = result.pop('passed')
+    return dict(result, format=f"{LEGACY_STEM}-question-replay-result-v1", synthetic_only=True, replay_only=True,
                   model_gate='not_run', model_judge_executed=False, execution=execution_metadata(),
                   source_set_fingerprint=fingerprint, recorded_output_sha256=hashlib.sha256(encoded).hexdigest(),
                   limitation='Offline deterministic replay only. No model inference or model judge ran; '
-                             'a fresh real-model evaluation is still required.')
-    result['deterministic_checks_passed'] = result.pop('passed')
-    return result
+                             'a fresh real-model evaluation is still required.',
+                  deterministic_checks_passed=passed)

@@ -56,6 +56,21 @@ Chrome. Optional integration tests can skip when their prerequisites are absent.
 application tests, and transcription tests. Bare `make` still runs application
 tests; it does not install anything.
 
+Tests whose bodies, fixtures or class methods reference TestClient get a lazy,
+bounded socketpair wakeup and AnyIO portal probe. Detection includes aliases,
+subclasses and local helpers referenced from the test or its fixtures.
+It also follows getfixturevalue requests and specific helpers called through
+local module objects, including dynamically loaded modules with statically
+resolvable paths. Helpers in modules whose local import closure is proven free
+of TestClient are leaves and do not consume the helper-depth budget. Other
+helper paths still trigger the probe when they exceed six steps. Unresolved
+dynamic module calls and fixture lookups conservatively trigger the probe.
+Unreadable test source, or fixture source from a module using TestClient,
+conservatively triggers the probe.
+If a primitive fails, route tests skip with the cause and a terminal summary.
+When CI is set to a non-empty value other than "0" or "false" (case-insensitive),
+the probe fails instead of skipping. Run local skips in an unrestricted shell.
+
 It is safe to rerun bootstrap with the same interpreter after dependency metadata
 changes. An existing incompatible or broken environment is left untouched:
 choose a new `--venv` directory. The script never deletes an environment or
@@ -227,11 +242,13 @@ Scalar conversion can discard handle ownership but must retain active database-p
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
 
-The inventory checks tracked Python files under test directories, root `scripts`
-and `benchmarks`, and `services/transcription/compatibility`. It does not execute
-or resolve arbitrary import graphs. Inspect imports and file-based loaders when
-adding support elsewhere, and include fixture support in the inventory before
-using it. Stage new sources before running it. Dynamic `exec`/`eval`
+The static inventory checks Python files under the root `tests/` directory,
+including unstaged sources, matching main's scope. It does not execute or resolve
+arbitrary import graphs. Corpus and application CI jobs make `benchmarks/corpus/`
+read-only with `bash scripts/corpus-write-guard.sh prepare` before tests and run
+`bash scripts/corpus-write-guard.sh check` afterward, even after failure. The Git
+diff and status checks reject tracked changes and untracked additions from any
+executed code path. Dynamic `exec`/`eval`
 (including resolved aliases) is rejected without interpreting its payload. The
 fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
 dynamic-execution finding is allowed, and every other boundary check still runs.
@@ -333,9 +350,12 @@ Keep membership, completion and support rechecks inside the existing snapshot;
 capture the store object, not an earlier readiness or authorization result.
 
 The frozen Review acceptance pack pins test nodes and their complete files,
-including helpers. Changes to those files require reviewed node/file digests
-and an updated aggregate content fingerprint, even when case selection and
-expected outcomes stay the same. Run `tests/test_review_acceptance_pack.py`
+including helpers. After reviewing changes to those files, regenerate pins with
+`.venv/bin/python scripts/regenerate-acceptance-pins.py`; never hand-edit pins.
+Use `--check` to detect stale pins without writing (exit 1 when stale).
+The script refreshes case, node, file, fixture and aggregate fingerprints while
+preserving case definitions and expected outcomes. Review the resulting diff.
+Run `tests/test_review_acceptance_pack.py`
 alongside the affected workflow tests when updating these fixtures.
 
 Lease tests use the queue's injected clock for ownership deadlines and retain
@@ -366,8 +386,11 @@ downstream is private.
 
 ## Parallel worker diagnostics
 
-The application job keeps six workers, the 360-second per-test faulthandler
-deadline and disabled worker restarts. It retains bounded JSON resource snapshots
+The application job keeps six workers, a 360-second per-test `pytest-timeout`
+signal deadline, a 420-second faulthandler fallback and disabled worker restarts.
+Signal timeouts produce named failures with stacks and preserve the JUnit report;
+the fallback exits workers that cannot handle the signal. The timeout includes
+setup and teardown. It retains bounded JSON resource snapshots
 beside its JUnit report. For a local parallel run, add
 `--worker-diagnostics-dir=/tmp/synthetic-worker-diagnostics` with a fresh directory.
 The diagnostics record the active test function (without parameter values), test
@@ -382,7 +405,7 @@ Peaks use only complete measurements and retain counts of partial/unavailable
 samples; gaps never become zero measurements. Cgroup counters cover the group and its ancestors,
 not an individual PID. A positive OOM delta is group evidence; SIGKILL alone does
 not establish OOM. Exit code 1 alone does not establish a timeout: correlate it
-with the existing `Timeout (0:06:00)!` thread dump in the job log.
+with the fallback `Timeout (0:07:00)!` thread dump in the job log.
 
 `python -m pytest -q tests/test_worker_diagnostics.py` includes bounded child
 suites for explicit exit, SIGTERM, a one-second faulthandler deadline, an ordinary
@@ -411,17 +434,18 @@ loopback applications and require no model downloads or deployment access.
 
 The `postgres-integration` Quality gates job starts a disposable, loopback-only
 PostgreSQL 17/pgvector service from an immutable image digest and installs the
-existing PostgreSQL test dependencies. It runs the seven existing database
-acceptance tests for migration/reopen, page citations, media projection,
-matter isolation, deletion and rebuild. The report check fails on missing,
-empty, incomplete, skipped or unsuccessful results. Additional database tests
-in the same module are included automatically.
+existing PostgreSQL test dependencies. It runs the database acceptance tests
+for migration/reopen, page citations, media projection, matter isolation,
+deletion and rebuild, plus the defense-workflow hybrid retrieval check. The
+report check fails on missing, empty, incomplete, skipped or unsuccessful
+results. Additional database tests in those modules are included when the job
+names the module.
 
 To reproduce against an isolated disposable database, set
 `CASE_REVIEW_POSTGRES_TEST_DSN`, install `.[dev,postgres]`, then run:
 
 ```console
-python -m pytest -q tests/test_review_bench_v2_postgres.py \
+python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
   --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
   --junitxml=/tmp/exculpata-postgres-results.xml
 python scripts/check-postgres-test-report.py /tmp/exculpata-postgres-results.xml

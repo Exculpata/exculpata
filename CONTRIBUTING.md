@@ -30,6 +30,11 @@ hook. Run `make check-fast` before pushing; see
 [local validation](docs/QUALITY_GATES.md#local-validation) for its PostgreSQL,
 Docker Compose and secret-scanner prerequisites. No GPU or model download is needed.
 
+Use the read-only [weekly velocity report](docs/VELOCITY_REPORT.md) to inspect
+PR timing, review activity, CI duration and merge queue drops.
+
+For paired synthetic HTTP evidence, use the [verify-exculpata skill](.agents/skills/verify-exculpata/SKILL.md).
+
 ## Protect private material
 
 Use synthetic data only. Never include real case material in code, fixtures,
