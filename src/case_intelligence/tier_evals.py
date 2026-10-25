@@ -22,7 +22,7 @@ from . import generation
 JSON_CARD = "tier-scorecard.json"
 MARKDOWN_CARD = "tier-scorecard.md"
 RETRIEVAL_CARD = "retrieval.json"
-TIERS = {"potato": ["cpu", "cpu-16"], "consumer": ["gpu-16", "gpu-24"], "ultra": []}
+TIERS = {"potato": ["potato", "cpu"], "consumer": ["gpu-16", "gpu-24"], "ultra": ["ultra"]}
 
 
 class Record(BaseModel):
@@ -90,6 +90,7 @@ def _models(tier):
 def new_scorecard(commit, command, hardware):
     suite = evaluation.load_suite()
     profiles = json.loads((evaluation.ROOT / "config/model_profiles.json").read_text())["profiles"]
+    settings = {p["id"]: {key: p[key] for key in ("generator", "embed_rerank")} for p in profiles}
     source = b"".join((evaluation.ROOT / path).read_bytes() for path in (
         "src/case_intelligence/tier_evals.py", "src/case_intelligence/defense_eval.py",
         "src/case_intelligence/retrieval_worker.py", "src/case_intelligence/generation.py",
@@ -100,9 +101,7 @@ def new_scorecard(commit, command, hardware):
                 suite_version=suite.suite_version, fingerprint=suite.fingerprint,
                 top_k=evaluation.DEFAULT_TOP_K, tiers=[dict(
                     tier=tier, profile_ids=ids,
-                    settings={p["id"]: {key: p[key] for key in ("generator", "embed_rerank")}
-                              for p in profiles if p["id"] in ids} or
-                             {"profile": "No two-L40S setting in config/model_profiles.json"},
+                    settings={id_: settings.get(id_, {"profile": "unavailable in this catalog"}) for id_ in ids},
                     models=_models(tier), status="unmeasured", retrieval=None, answer_accuracy=None,
                     execution=None, reason="not executed in this run", wall_seconds=0.0,
                 ) for tier, ids in TIERS.items()])
