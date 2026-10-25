@@ -89,8 +89,8 @@ def test_profile_catalog_matches_its_schema():
 @pytest.mark.parametrize(
     ("reading", "profile_id"),
     [
-        (_reading(ram_bytes=16383 * MIB), "potato"),
-        (_reading(ram_bytes=16384 * MIB), "cpu"),
+        (_reading(ram_bytes=14335 * MIB), "potato"),
+        (_reading(ram_bytes=14336 * MIB), "cpu"),
         (_reading(gpu_vendor="nvidia", gpu_vram_bytes=int(7.9 * 1024 ** 3)), "potato"),
         (_reading(gpu_vendor="nvidia", gpu_vram_bytes=8192 * MIB), "gpu-8"),
         (_reading(gpu_vendor="amd", gpu_vram_bytes=12287 * MIB), "gpu-8"),
