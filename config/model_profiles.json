@@ -5,10 +5,10 @@
   "profiles": [
     {
       "id": "potato",
-      "label": "CPU only, below 16 GB RAM",
+      "label": "CPU only, below 14 GiB reported RAM",
       "accelerator": "cpu",
       "min_ram_mib": 0,
-      "max_ram_mib": 16383,
+      "max_ram_mib": 14335,
       "generator": "Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
       "asr": "faster-whisper small or medium, int8, or skip transcription.",
@@ -16,13 +16,13 @@
     },
     {
       "id": "cpu",
-      "label": "CPU only, 16 GB RAM and up",
+      "label": "CPU only, at least 14 GiB reported RAM",
       "accelerator": "cpu",
-      "min_ram_mib": 16384,
+      "min_ram_mib": 14336,
       "generator": "Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
       "asr": "faster-whisper small or medium, int8, or skip transcription.",
-      "tradeoff": "A machine reporting at least 16 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result."
+      "tradeoff": "A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result."
     },
     {
       "id": "gpu-8",

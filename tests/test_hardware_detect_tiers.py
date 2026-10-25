@@ -116,7 +116,7 @@ def test_nvidia_per_device_total_and_tiers(devices_mib, tier):
 @pytest.mark.parametrize(
     ("sample", "tier"),
     [
-        (reading(ram_gib=15.999), "potato"),
+        (reading(ram_gib=13.999), "potato"),
         (reading(ram_gib=16), "cpu"),
         (reading(vendor="nvidia", devices=(7.999,)), "cpu"),
         (reading(vendor="nvidia", devices=(8,)), "gpu-8"),

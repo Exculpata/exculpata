@@ -81,7 +81,7 @@ from case_intelligence.generator_config import (
 )
 from generator_host_probe import open_host_generator_request
 from case_intelligence.hardware_profile import (
-    HardwareReading, TierSuggestion, detect_hardware, load_profiles, suggest_tier,
+    HardwareReading, TierSuggestion, detect_hardware, load_profiles, parse_vram_bytes, suggest_tier,
 )
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
@@ -1401,8 +1401,10 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
         if not row:
             continue
         if len(row) not in {4, 5}:
-            raise RuntimeError("nvidia-smi returned an unexpected GPU inventory")
+            continue
         try:
+            if parse_vram_bytes(row[2].strip(), 1024 ** 2) is None:
+                continue
             compute_capability = (
                 float(row[4].strip()) if len(row) == 5 else None
             )
@@ -1413,8 +1415,8 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 free_mib=int(row[3].strip()),
                 compute_capability=compute_capability,
             )
-        except ValueError as exc:
-            raise RuntimeError("nvidia-smi returned an invalid GPU inventory") from exc
+        except (ValueError, OverflowError):
+            continue
         if (
             not device.index
             or device.total_mib <= 0
@@ -1424,7 +1426,7 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 and device.compute_capability <= 0
             )
         ):
-            raise RuntimeError("nvidia-smi returned an invalid GPU inventory")
+            continue
         devices.append(device)
     if len({device.index for device in devices}) != len(devices):
         raise RuntimeError("nvidia-smi returned duplicate GPU indices")

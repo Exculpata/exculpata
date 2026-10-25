@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import re
@@ -279,15 +280,27 @@ def _nvidia_vram_devices(
         stripped = line.strip()
         if not stripped:
             continue
-        try:
-            totals.append(int(float(stripped.split()[0])))
-        except ValueError:
+        value = parse_vram_bytes(stripped.split()[0], _MIB)
+        if value is None:
             notes.append("GPU memory figure was unreadable.")
-            return ()
+            continue
+        totals.append(value)
     if not totals:
         notes.append("GPU memory was not available.")
         return ()
-    return tuple(value * _MIB for value in totals)
+    return tuple(totals)
+
+
+def parse_vram_bytes(value: str, multiplier: int) -> int | None:
+    """Convert a tool's memory figure; unusable devices have no capacity."""
+    try:
+        amount = float(value) * multiplier
+        if not math.isfinite(amount):
+            return None
+        result = int(amount)
+    except (ValueError, OverflowError):
+        return None
+    return result if result > 0 else None
 
 
 def _amd_vram_devices(
@@ -332,8 +345,10 @@ def _parse_amd_vram(text: str, tool: str) -> tuple[int, ...]:
             continue
         unit = (match.group(1) or match.group(3) or "").casefold()
         multiplier = {"b": 1, "mib": _MIB, "mb": _MIB, "gib": _GIB, "gb": _GIB}.get(unit)
-        if multiplier is not None and float(match.group(2)) > 0:
-            totals.append(int(float(match.group(2)) * multiplier))
+        if multiplier is not None:
+            value = parse_vram_bytes(match.group(2), multiplier)
+            if value is not None:
+                totals.append(value)
     return tuple(totals)
 
 

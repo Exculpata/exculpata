@@ -88,7 +88,8 @@ installation options. The selected ID is saved as `model_tier` in
 `installation.json` and retained when resuming an installation.
 If hardware detection fails, the recommended tier is `potato`, with an explicit
 CPU fallback message. The `ultra` tier requires at least two GPUs, each reporting
-at least 46068 MiB of VRAM; aggregate VRAM alone does not qualify.
+at least 46068 MiB of VRAM; aggregate VRAM alone does not qualify. For CPU-only
+hosts, `cpu` starts at 14336 MiB of reported RAM and `potato` ends at 14335 MiB.
 
 These tiers record hardware guidance. Installed capabilities still use
 `--models`; bundled model selection and GPU admission still use the existing
@@ -104,8 +105,8 @@ This table is checked against `config/model_profiles.json` by
 <!-- model-profile-table:start -->
 | Tier ID | Hardware | Generator | Embeddings and reranking | Speech recognition | Trade-off |
 | --- | --- | --- | --- | --- | --- |
-| `potato` | CPU only, below 16 GB RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
-| `cpu` | CPU only, 16 GB RAM and up | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A machine reporting at least 16 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
+| `potato` | CPU only, below 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
+| `cpu` | CPU only, at least 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
 | `gpu-8` | 8 GB GPU | Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result. |
 | `gpu-12` | 12 GB GPU | Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result. |
 | `gpu-16` | 16 GB GPU | Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | 16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result. |
