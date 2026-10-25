@@ -755,47 +755,56 @@ def initialize_postgres_demo(
 
 def _stage_matching_case_theory_citations(cursor, matter_id, document_id, units, source_version_id):
     """Keep matching citations on temporary rows until replacement rows exist."""
-    replacements = {}
-    for ordinal, unit in enumerate(units, 1):
-        digest = hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest()
-        replacements.setdefault(digest, []).append(f"chunk-{ordinal}")
-    cursor.execute(
-        "SELECT DISTINCT c.chunk_id,c.text FROM review_chunk c "
-        "JOIN review_case_theory_link l USING (matter_id,document_id,chunk_id) "
-        "WHERE c.matter_id=%s AND c.document_id=%s AND c.source_version_id=%s",
-        (matter_id, document_id, source_version_id),
-    )
-    matches = []
-    for chunk, text in cursor.fetchall():
-        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        if digest in replacements:
-            matches.append((chunk, chunk if chunk in replacements[digest] else replacements[digest][0]))
-    if not matches:
-        return None, []
+    chunk_ids = [f"chunk-{ordinal}" for ordinal in range(1, len(units) + 1)]
+    digests = [hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest() for unit in units]
     staging_page = f"citation-reindex-{uuid.uuid4().hex}"
     cursor.execute(
         "INSERT INTO review_page(matter_id,document_id,page_id,page_number,text,source_version_id) "
         "SELECT %s,%s,%s,GREATEST(COALESCE(MAX(page_number),0),%s)+1,'',%s "
         "FROM review_page WHERE matter_id=%s AND document_id=%s",
-        (matter_id, document_id, staging_page, max(int(unit.number) for unit in units),
+        (matter_id, document_id, staging_page, max((int(unit.number) for unit in units), default=0),
          source_version_id, matter_id, document_id),
     )
-    staged = []
-    for ordinal, (old_chunk, new_chunk) in enumerate(matches):
-        staging_chunk = f"{staging_page}-{ordinal}"
-        cursor.execute(
-            "INSERT INTO review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,source_version_id,excerpt_digest) "
-            "SELECT matter_id,document_id,%s,%s,%s,text,source_version_id,excerpt_digest "
-            "FROM review_chunk WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
-            (staging_page, staging_chunk, ordinal, matter_id, document_id, old_chunk),
+    cursor.execute(
+        """
+        WITH replacements AS (
+            SELECT * FROM unnest(%s::text[], %s::text[])
+                WITH ORDINALITY AS r(chunk_id, digest, ordinal)
+        ), matches AS (
+            SELECT c.*, replacement.chunk_id AS new_chunk
+            FROM review_chunk c
+            CROSS JOIN LATERAL (
+                SELECT r.chunk_id FROM replacements r
+                WHERE r.digest = encode(sha256(convert_to(c.text, 'UTF8')), 'hex')
+                ORDER BY (r.chunk_id = c.chunk_id) DESC, r.ordinal
+                LIMIT 1
+            ) replacement
+            WHERE c.matter_id=%s AND c.document_id=%s AND c.source_version_id=%s
+              AND EXISTS (
+                  SELECT 1 FROM review_case_theory_link l
+                  WHERE (l.matter_id,l.document_id,l.chunk_id) =
+                        (c.matter_id,c.document_id,c.chunk_id)
+              )
+        ), staged AS (
+            INSERT INTO
+                review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,
+                             source_version_id,excerpt_digest)
+            SELECT DISTINCT ON (new_chunk)
+                matter_id,document_id,%s,%s || new_chunk,ordinal,text,
+                source_version_id,excerpt_digest
+            FROM matches ORDER BY new_chunk,chunk_id
+            RETURNING chunk_id
         )
-        cursor.execute(
-            "UPDATE review_case_theory_link SET chunk_id=%s "
-            "WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
-            (staging_chunk, matter_id, document_id, old_chunk),
-        )
-        staged.append((staging_chunk, new_chunk))
-    return staging_page, staged
+        UPDATE review_case_theory_link l SET chunk_id = staged.chunk_id
+        FROM matches m JOIN staged ON staged.chunk_id = %s || m.new_chunk
+        WHERE (l.matter_id,l.document_id,l.chunk_id) =
+              (m.matter_id,m.document_id,m.chunk_id)
+        """,
+        (chunk_ids, digests, matter_id, document_id, source_version_id,
+         staging_page, staging_page, staging_page),
+    )
+    return staging_page, [(staging_page + chunk, chunk) for chunk in chunk_ids]
+
 
 
 def upsert_postgres_document(
