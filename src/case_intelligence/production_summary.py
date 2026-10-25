@@ -74,17 +74,28 @@ class ProductionSummary:
 
 
 def _bates_facts(ranges):
-    groups, facts = defaultdict(list), []
+    groups, unordered, facts = defaultdict(list), defaultdict(list), []
     for start, end, link in ranges:
         first, last = re.fullmatch(r'(.*?)([0-9]{1,18})', start), re.fullmatch(r'(.*?)([0-9]{1,18})', end)
         if (not first or not last or first[1] != last[1] or first[1][-1:].isdigit()
                 or int(first[2]) > int(last[2])):
             facts.append(SummaryFact('bates_unordered', f'Bates order unresolved: {start} to {end}', (link,)))
+            unordered[start, end].append(link)
             continue
         groups[first[1]].append((int(first[2]), int(last[2]), len(first[2]), link))
     for prefix, intervals in sorted(groups.items()):
-        previous = None
+        previous, active = None, {}
         for start, end, width, link in sorted(intervals, key=lambda item: (item[0], item[1], item[3].document_id)):
+            active = {key: (stop, prior) for key, (stop, prior) in active.items() if stop >= start}
+            for stop, prior in active.values():
+                if prior.document_id != link.document_id:
+                    if len(facts) >= 100_000:
+                        raise OverflowError('Production exceeds the complete Bates finding limit')
+                    label = prefix + str(start).zfill(width)
+                    if min(stop, end) != start:
+                        label += ' to ' + prefix + str(min(stop, end)).zfill(width)
+                    facts.append(SummaryFact('bates_overlap', 'Overlapping Bates labels: ' + label, (prior, link)))
+            active[link.document_id] = max(end, active.get(link.document_id, (end,))[0]), link
             if previous is not None and start > previous[0] + 1:
                 lower, upper = previous[0] + 1, start - 1
                 label = prefix + str(lower).zfill(previous[1])
@@ -94,6 +105,9 @@ def _bates_facts(ranges):
                                          (previous[2], link), upper - lower + 1))
             if previous is None or end > previous[0]:
                 previous = end, width, link
+    for (start, end), refs in sorted(unordered.items()):
+        if len({link.document_id for link in refs}) > 1:
+            facts.append(SummaryFact('bates_overlap', f'Duplicate Bates labels: {start} to {end}', tuple(refs)))
     return facts
 
 
@@ -119,7 +133,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
         documents[doc.document_id] = doc
         labels = [(loc.bates_start, loc.bates_end or loc.bates_start)
                   for loc in source.locators if loc.bates_start]
-        found_dates, found_refs, pages = [], [], set()
+        found_dates, found_refs, cited_bates, pages = [], [], [], set()
         reasons = []
         if doc.state != 'ready':
             reasons.append('Source state: ' + doc.state + ('; ' + doc.message if doc.message else ''))
@@ -141,7 +155,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
                     found_dates.append((value, ordinal, unit.location))
                 for line in unit.text.splitlines():
                     if match := re.fullmatch(r'\s*Bates:\s*(\S+)(?: to (\S+))?\s*', line):
-                        labels.append((match[1], match[2] or match[1]))
+                        cited_bates.append((match[1] + (' to ' + match[2] if match[2] else ''), ordinal, unit.location))
                     if match := re.fullmatch(r'\s*Reference:\s*(\S.*?)\s*', line):
                         found_refs.append((match[1], ordinal, unit.location))
         except UnitRecordLimit as exc:
@@ -167,6 +181,9 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
             dates[value].append(replace(link, href=link.href + '?' + urlencode({'unit': ordinal}), location=location))
         for value, ordinal, location in found_refs:
             references.append((value, replace(link, href=link.href + '?' + urlencode({'unit': ordinal}), location=location)))
+        for value, ordinal, location in cited_bates:
+            notices.append(SummaryFact('bates_reference', 'Cited Bates: ' + value,
+                (replace(link, href=link.href + '?' + urlencode({'unit': ordinal}), location=location),)))
         ranges.extend((start, end, link) for start, end in labels)
     facts = [SummaryFact('documents', f'Documents: {len(documents)}', tuple(links.values()), len(documents))]
     pdfs = [doc for doc in documents.values() if doc.media_type == 'application/pdf' and doc.page_count > 0]

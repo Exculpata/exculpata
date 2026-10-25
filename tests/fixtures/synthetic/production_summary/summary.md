@@ -26,8 +26,12 @@ Counts cover supplied documents; dates are mentioned ISO dates. Gaps describe re
 
 - PDF pages without extracted text: 1
   Sources: [a (version v-a); Bates SYN001](/matters/m-synthetic/sources/token-a)
+- Cited Bates: SYN001
+  Sources: [a (version v-a); Bates SYN001; Page 1](/matters/m-synthetic/sources/token-a?unit=1)
 - Extraction notice: OCR failed: 1
   Sources: [b (version v-b); Bates SYN004](/matters/m-synthetic/sources/token-b)
+- Cited Bates: SYN004
+  Sources: [b (version v-b); Bates SYN004; Page 1](/matters/m-synthetic/sources/token-b?unit=1)
 - Source state: failed; Unreadable file
   Sources: [c (version v-c); Bates unavailable](/matters/m-synthetic/sources/token-c)
 - PDF page count unavailable

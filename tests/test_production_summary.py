@@ -57,11 +57,14 @@ def test_bates_gaps(labels, expected):
 
 
 def test_ranges_overlap_without_false_gaps():
-    first = replace(source('a'), locators=(SourceLocator(bates_start='A001', bates_end='A005'),))
+    first = replace(source('a'), locators=(SourceLocator(bates_start='A001', bates_end='A005'), SourceLocator(bates_start='A003')))
     summary = build_summary('Synthetic', 'm', [first, source('b', labels=['A003']), source('c', labels=['A007'])])
     gap = facts(summary, 'bates_gap')[0]
     assert gap.text == 'Missing Bates: A006'
     assert {link.document_id for link in gap.links} == {'a', 'c'}
+    overlap, = facts(summary, 'bates_overlap')
+    assert {link.document_id for link in overlap.links} == {'a', 'b'}
+    assert not facts(build_summary('Synthetic', 'm', [first]), 'bates_overlap')
 
 
 def test_failed_unreadable_and_ocr_failures_remain_visible():
@@ -121,7 +124,8 @@ def test_real_ingestion_and_markdown_artifact_preserve_original(tmp_path):
         # fixture-write: Export the synthetic summary to verify the actual Markdown artifact.
         output.write_text(summary.to_markdown(), encoding='utf-8')
         assert '2034-04-16 to 2034-04-16' in output.read_text()
-        assert 'absent.txt' in output.read_text() and 'Bates SYN001' in output.read_text()
+        assert 'absent.txt' in output.read_text() and 'Cited Bates: SYN001' in output.read_text()
+        assert not facts(summary, 'documents')[0].links[0].bates
         assert store.get_by_action_token(store.action_token(doc)).document_id == doc.document_id
         assert store.source_path(doc.document_id, verify_digest=True).read_bytes() == original
     finally:
@@ -155,3 +159,43 @@ def test_existing_entity_service_records_are_consumed(tmp_path):
         assert facts(summary, 'person')[0].links[0].excerpt == reference['excerpt']
     finally:
         workspace.close()
+
+
+def test_cover_letter_bates_references_do_not_label_or_close_gaps():
+    summary = build_summary('Synthetic', 'm', [source('letter', 'Bates: ABC0001 to ABC0500'),
+        source('a', labels=['ABC0001']), source('b', labels=['ABC0003'])])
+    gap, = facts(summary, 'bates_gap')
+    assert gap.text == 'Missing Bates: ABC0002'
+    assert {link.document_id for link in gap.links} == {'a', 'b'}
+    cited, = facts(summary, 'bates_reference')
+    assert cited.text == 'Cited Bates: ABC0001 to ABC0500'
+    assert cited.links[0].href.endswith('/token-letter?unit=1')
+    assert all(not link.bates for fact in summary.facts for link in fact.links if link.document_id == 'letter')
+    assert not facts(summary, 'bates_overlap')
+
+
+@pytest.mark.parametrize('start,end', [('ABC0001', 'ABC0001'), ('ABC0001', 'ABC0005'),
+                                        ('ABC0002', 'ABC0005'), ('APPENDIX', 'APPENDIX')])
+def test_duplicate_and_overlapping_labels_cite_both_documents(start, end):
+    first = replace(source('a'), locators=(SourceLocator(bates_start=start, bates_end=end if end != start else None),))
+    second = replace(source('b'), locators=(SourceLocator(bates_start='ABC0001', bates_end='ABC0003'),))
+    if start == end:
+        second = source('b', labels=[start])
+    summary = build_summary('Synthetic', 'm', [first, second])
+    overlap, = facts(summary, 'bates_overlap')
+    assert {link.document_id for link in overlap.links} == {'a', 'b'}
+    assert start in overlap.text
+    assert not facts(summary, 'bates_gap')
+
+
+@pytest.mark.parametrize('dismissed', ['entity', 'mention'])
+def test_dismissed_entities_and_mentions_stay_absent(dismissed):
+    entity = dict(entity_type='person', display_name='Dismissed Example',
+                  status='dismissed' if dismissed == 'entity' else 'suggested')
+    mention = dict(document_id='a', source_version_id='v-a', available=True,
+                   review_status='dismissed' if dismissed == 'mention' else 'suggested',
+                   support_token='dismissed-support', location='Page 1', excerpt='Dismissed Example arrived.')
+    summary = build_summary('Synthetic', 'm', [source()], entities=[(entity, [mention, dict(mention, available=False)])])
+    assert not facts(summary, 'person') and not facts(summary, 'entity_unavailable')
+    assert 'Dismissed Example' not in summary.to_markdown()
+    assert 'dismissed-support' not in summary.to_markdown()
