@@ -6,6 +6,7 @@ name, or documentation gates. Tests retain independent historical expectations.
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import copy
 import hashlib
@@ -1947,6 +1948,49 @@ def source_form_identifier(identifier: str) -> str:
     return identifier
 
 
+def regenerate_source_form(selector: str) -> None:
+    """Refresh one reviewed mapping-unpacking anchor without changing its scope."""
+    parts = selector.split(":", 2)
+    if len(parts) != 3:
+        raise ValueError("use PATH:FUNCTION:IDENTIFIER for one reviewed Python receipt")
+    location, function, identifier = parts
+    if identifier != "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction":
+        raise ValueError("regeneration supports reviewed Python mapping-unpacking receipts only")
+    records = source_form_contracts()
+    matches = [item for item in records.get(location, {}).get("diagnostics", [])
+               if item.get("function") == function and item["identifier"] == identifier]
+    if len(matches) != 1 or Path(location).suffix != ".py":
+        raise ValueError("target must identify exactly one existing Python receipt")
+    path = (ROOT / location).resolve()
+    if not path.is_relative_to(ROOT.resolve()):
+        raise ValueError("receipt source must be inside the repository")
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    functions = [node for node in ast.walk(tree)
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function]
+    if len(functions) != 1:
+        raise ValueError("target must identify exactly one current function")
+    owner = functions[0]
+    findings = set(scan_python(location, source, NAME_CONTRACTS))
+    lines = [int(item.location.rpartition(":")[2]) for item in findings
+             if item.identifier == identifier
+             and owner.lineno <= int(item.location.rpartition(":")[2]) <= owner.end_lineno]
+    if len(lines) != 1:
+        raise ValueError("target must identify exactly one current diagnostic in the function")
+    receipt = matches[0]
+    line = lines[0]
+    count = receipt.get("source_line_count", 1)
+    if not any(isinstance(node, ast.Dict) and node.lineno == line
+               and node.end_lineno == line + count - 1 for node in ast.walk(owner)):
+        raise ValueError("source span changed; review required, regeneration cannot widen a receipt")
+    span = "\n".join(source.split("\n")[line - 1:line + count - 1])
+    receipt["line"] = line
+    receipt["source_line_sha256"] = hashlib.sha256(span.encode()).hexdigest()
+    document = json.loads(SOURCE_FORM_CONTRACT_PATH.read_text())
+    document["files"] = records
+    SOURCE_FORM_CONTRACT_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+
 def apply_source_forms(location: str, text: str, items: list[Finding], records: dict,
                        *, require_current: bool = False) -> list[Finding]:
     """Match exact LF-normalized line spans starting at each flagged line."""
@@ -2092,6 +2136,17 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--regen-source-form", metavar="PATH:FUNCTION:IDENTIFIER",
+                        help="refresh one reviewed Python mapping-unpacking anchor after source review")
+    args = parser.parse_args()
+    if args.regen_source_form is not None:
+        try:
+            regenerate_source_form(args.regen_source_form)
+        except (OSError, ValueError, SyntaxError) as error:
+            parser.error(str(error))
+        print("Source-form receipt anchor regenerated; reason, validation and span length unchanged.")
+        return 0
     found = findings()
     if found:
         print("RENAME CONTRACT GATE: BLOCKED", file=sys.stderr)

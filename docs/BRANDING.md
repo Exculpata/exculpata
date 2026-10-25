@@ -234,7 +234,15 @@ preserving all other whitespace. Matching ignores the reviewed line number and
 JavaScript position text while retaining the JavaScript expression SHA-256.
 Receipts match as a multiset, so each covers at most one finding. These are proposed for explicit
 review with this gate; they do not establish a general permission for similar code.
-Source hashes prove identity, not semantic safety. Operational key and path
+Source hashes prove identity, not semantic safety. After reviewing a changed
+Python mapping-unpacking source form, refresh exactly one existing receipt with
+`.venv/bin/python scripts/rename_contract_check.py --regen-source-form 'PATH:FUNCTION:IDENTIFIER'`.
+Use the exact diagnostic identifier from the receipt. Regeneration recomputes
+only its reviewed line and LF-normalized span digest; it preserves the reason,
+validation and span length, and refuses missing or ambiguous targets and changed
+span lengths. Run the receipt's validation suites and the rename gate afterward.
+The fast installer receipt drift test prints its complete regeneration command.
+Operational key and path
 receipts identify the input origin, fixed namespace or path boundary, and intended
 consumer. Their focused executable checks cover matter/checkpoint isolation,
 previous-key migration, receipt identity rejection, route encoding, fixed artifact

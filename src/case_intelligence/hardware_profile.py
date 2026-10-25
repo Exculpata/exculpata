@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import platform
@@ -276,15 +277,20 @@ def _nvidia_vram_devices(
         notes.append("GPU memory was not available.")
         return ()
     totals: list[int] = []
+    skipped = 0
     for line in completed.stdout.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
         value = parse_vram_bytes(stripped.split()[0], _MIB)
         if value is None:
-            notes.append("GPU memory figure was unreadable.")
+            skipped += 1
             continue
         totals.append(value)
+    if skipped:
+        message = f"nvidia-smi skipped {skipped} malformed row(s)."
+        notes.append(message)
+        logging.getLogger(__name__).warning(message)
     if not totals:
         notes.append("GPU memory was not available.")
         return ()
