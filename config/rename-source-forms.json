@@ -684,13 +684,13 @@
           "source_line_sha256": "a14bd07aac9b5a7c51848ad4163d278f2dd777256531ad38544b3cbf3101f9d9"
         },
         {
-          "line": 3415,
+          "line": 3447,
           "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
           "function": "_configure",
-          "reason": "Serialize the existing installation fields and optional external endpoint metadata without changing naming-generation selection or receipt contents. The anchor covers the complete dict literal, including auth and external generator URL fields.",
-          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py; tests/test_byom_receipt_guard_regressions.py",
-          "source_line_sha256": "53356c46e27e7f77b08329a8c694ad6258010152f15d71574f8e283b37b3f85f",
-          "source_line_count": 46
+          "reason": "Serialize the existing installation fields, optional selected hardware tier and optional external endpoint metadata without changing naming-generation selection. The anchor covers the complete dict literal, including auth and external generator URL fields.",
+          "validation": "tests/test_oss_installer.py; tests/test_install_naming.py; tests/test_byom_egress_rework.py; tests/test_byom_review_regressions.py; tests/test_byom_deployment_regressions.py; tests/test_byom_receipt_guard_regressions.py; tests/test_installer_profile_prompt.py",
+          "source_line_sha256": "6a0cccdb7ea53f2be7677c3d445cbef276b4a9e67df4cfc3677810dd3006c958",
+          "source_line_count": 47
         },
         {
           "line": 4108,

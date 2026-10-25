@@ -80,7 +80,9 @@ from case_intelligence.generator_config import (
     bundled_generator, generator_literal, generator_pins, validate_generator_url,
 )
 from generator_host_probe import open_host_generator_request
-from case_intelligence.hardware_profile import detect_hardware, suggest_tier
+from case_intelligence.hardware_profile import (
+    HardwareReading, TierSuggestion, detect_hardware, load_profiles, suggest_tier,
+)
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
 STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
@@ -430,6 +432,10 @@ def _parser() -> argparse.ArgumentParser:
         default="auto",
         help="choose a pinned generator tier or let preflight select by topology",
     )
+    parser.add_argument(
+        "--model-tier", choices=tuple(p["id"] for p in load_profiles()["profiles"]),
+        help="record a hardware model tier; defaults to the detected recommendation",
+    )
     parser.add_argument("--generator-gpu-utilization", type=float)
     parser.add_argument("--transcription-min-free-vram-mib", type=int)
     parser.add_argument("--server-name")
@@ -489,20 +495,44 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _hardware_suggestion() -> object:
+def _hardware_suggestion() -> TierSuggestion:
     try:
         return suggest_tier(detect_hardware())
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return suggest_tier(detect_hardware(cpu_count=None, meminfo=None, system="Linux", machine="x86_64"))
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired):
+        return suggest_tier(HardwareReading(None, None, "none", None, False, ()))
 
 
-def _print_hardware_suggestion(console: Console) -> None:
+def _print_hardware_suggestion(console: Console) -> TierSuggestion:
     suggestion = _hardware_suggestion()
     for line in suggestion.lines():
         if suggestion.fallback and line.startswith("hardware detection"):
             console.warn(line)
         else:
             console.note(line)
+    return suggestion
+
+
+def _select_model_tier(console: Console, args: argparse.Namespace) -> str:
+    suggestion = _print_hardware_suggestion(console)
+    profiles = {p["id"]: p for p in load_profiles()["profiles"]}
+    chosen = args.model_tier
+    while chosen is None:
+        value = _ask(
+            f"Hardware model tier ({'/'.join(profiles)})", suggestion.profile_id,
+            non_interactive=args.non_interactive,
+        ).strip().casefold()
+        if value in profiles:
+            chosen = value
+        else:
+            console.warn(f"Choose one of: {', '.join(profiles)}")
+    if chosen not in profiles:
+        raise RuntimeError("model tier is invalid; use a tier from config/model_profiles.json")
+    args.model_tier = chosen
+    console.note(f"chosen tier :: {chosen}; {profiles[chosen]['label']}")
+    if chosen != suggestion.profile_id:
+        console.note(f"tradeoff :: {profiles[chosen]['tradeoff']}")
+    console.note("Tier choice is guidance. Choose installed capabilities and any answer server separately.")
+    return chosen
 
 
 def _external_from_args(args: argparse.Namespace) -> GeneratorEndpoint | None:
@@ -3049,6 +3079,7 @@ def _answered_choices(args: argparse.Namespace) -> str:
         ("--storage-root", getattr(args, "storage_root", None)),
         ("--auth", getattr(args, "auth", None)),
         ("--models", getattr(args, "models", None)),
+        ("--model-tier", getattr(args, "model_tier", None)),
         ("--admin-username", getattr(args, "admin_username", None)),
         ("--admin-display-name", getattr(args, "admin_display_name", None)),
         ("--server-name", getattr(args, "server_name", None)),
@@ -3150,7 +3181,8 @@ def _configure(
     gpu_devices: tuple[GpuDevice, ...],
 ) -> tuple[str, str, str, str | None, str | None]:
     console.phase(4, "IDENTITY + FRONT DOOR", "Sealing sessions, service credentials, and HTTPS coordinates")
-    _print_hardware_suggestion(console)
+    if args.model_tier is None and not args.resume:
+        args.model_tier = _print_hardware_suggestion(console).profile_id
     names = _select_names(args, root)
     product = "Exculpata" if names == "exculpata" else f"{LEGACY_PRODUCT}"
     auth = args.auth
@@ -3430,6 +3462,7 @@ def _configure(
                     "initial_administrator_display_name": admin_display if auth == "local" else None,
                     "tls_source": "operator" if args.tls_cert is not None else "loopback-smoke",
                     "models": models,
+                    **({"model_tier": args.model_tier} if args.model_tier is not None else {}),
                     "transcription_languages": list(transcription_languages),
                     "transcription_diarization": bool(args.enable_diarization),
                     "diarization_backend": args.diarization_backend,
@@ -4305,6 +4338,12 @@ def _saved_node_arguments(args: argparse.Namespace, root: Path) -> tuple[dict[st
     args.storage_root = _existing_storage_path(Path(storage))
     args.resume = True
     args.auth, args.models = auth, models
+    tier = installation.get("model_tier")
+    if tier is not None and (not isinstance(tier, str) or tier not in {
+        p["id"] for p in load_profiles()["profiles"]
+    }):
+        raise RuntimeError("installed model tier is invalid")
+    args.model_tier = tier
     external = installation.get("external_generator")
     if external is not None:
         if not isinstance(external, dict):
@@ -5078,7 +5117,6 @@ def main() -> int:
             return 0
         choose_models = args.models is None
         if choose_models:
-            _print_hardware_suggestion(console)
             args.models = _choose(
                 "Capability profile",
                 ("none", "review", "transcription", "all"),
@@ -5105,6 +5143,7 @@ def main() -> int:
         # Reject an invalid hostname before asking unrelated identity questions.
         _valid_host(args.server_name)
         _collect_identity_choices(args)
+        _select_model_tier(console, args)
         args.root = args.root.expanduser()
         # Resolve storage, TLS and the complete hardware plan before creating
         # state. Dry-run discovery uses the same read-only prerequisite checks.
