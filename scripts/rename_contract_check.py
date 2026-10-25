@@ -1949,7 +1949,7 @@ def source_form_identifier(identifier: str) -> str:
 
 
 def regenerate_source_form(selector: str) -> None:
-    """Refresh one reviewed mapping-unpacking anchor without changing its scope."""
+    """Relocate one reviewed mapping-unpacking anchor with identical content."""
     parts = selector.split(":", 2)
     if len(parts) != 3:
         raise ValueError("use PATH:FUNCTION:IDENTIFIER for one reviewed Python receipt")
@@ -1982,10 +1982,12 @@ def regenerate_source_form(selector: str) -> None:
     count = receipt.get("source_line_count", 1)
     if not any(isinstance(node, ast.Dict) and node.lineno == line
                and node.end_lineno == line + count - 1 for node in ast.walk(owner)):
-        raise ValueError("source span changed; review required, regeneration cannot widen a receipt")
+        raise ValueError("receipt content changed (source span changed); needs a reviewed receipt update, "
+                         "regeneration cannot resize a receipt")
     span = "\n".join(source.split("\n")[line - 1:line + count - 1])
+    if hashlib.sha256(span.encode()).hexdigest() != receipt["source_line_sha256"]:
+        raise ValueError("receipt content changed; needs a reviewed receipt update, not regeneration")
     receipt["line"] = line
-    receipt["source_line_sha256"] = hashlib.sha256(span.encode()).hexdigest()
     document = json.loads(SOURCE_FORM_CONTRACT_PATH.read_text())
     document["files"] = records
     SOURCE_FORM_CONTRACT_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
@@ -2138,7 +2140,7 @@ def findings(root: Path = ROOT, contracts: Mapping[str, NameContract] = NAME_CON
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--regen-source-form", metavar="PATH:FUNCTION:IDENTIFIER",
-                        help="refresh one reviewed Python mapping-unpacking anchor after source review")
+                        help="relocate one reviewed Python mapping-unpacking anchor with unchanged content")
     args = parser.parse_args()
     if args.regen_source_form is not None:
         try:

@@ -2,6 +2,7 @@
 import ast
 import hashlib
 import json
+import sys
 
 import pytest
 
@@ -25,18 +26,19 @@ def test_installation_source_form_receipt_is_current():
     start = receipt["line"] - 1
     span = "\n".join(lines[start:start + receipt["source_line_count"]])
     assert hashlib.sha256(span.encode()).hexdigest() == receipt["source_line_sha256"], (
-        "Installation source-form receipt drifted. Review the source, then run: "
-        + REGEN_INSTALLATION_RECEIPT
+        "Installation source-form receipt drifted. Content changes need a reviewed receipt update. "
+        "Only if lines moved and normalized content is unchanged, run: " + REGEN_INSTALLATION_RECEIPT
     )
 
 
-def test_regenerate_source_form_changes_only_target_anchor(tmp_path, monkeypatch):
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_regenerate_source_form_changes_only_target_anchor(tmp_path, monkeypatch, newline):
     source = ('from case_intelligence.legacy_names import LEGACY_STEM\n'
               'def configure():\n    payload = {**{"names": LEGACY_STEM}}\n')
     receipt = {
         "line": 1, "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
         "function": "configure", "reason": "Synthetic reviewed mapping.", "validation": "synthetic suite",
-        "source_line_sha256": "a" * 64,
+        "source_line_sha256": hashlib.sha256(source.splitlines()[2].encode()).hexdigest(),
     }
     original = {"version": 2, "files": {
         "synthetic.py": {"diagnostics": [receipt]},
@@ -44,7 +46,7 @@ def test_regenerate_source_form_changes_only_target_anchor(tmp_path, monkeypatch
     }}
     manifest = tmp_path / "forms.json"
     # fixture-write: Synthetic source and receipt for targeted regeneration.
-    (tmp_path / "synthetic.py").write_text(source)
+    (tmp_path / "synthetic.py").write_bytes(source.replace("\n", newline).encode())
     # fixture-write: Seed a stale synthetic receipt without real configuration.
     manifest.write_text(json.dumps(original, indent=2) + "\n")
     monkeypatch.setattr(checker, "ROOT", tmp_path)
@@ -55,11 +57,48 @@ def test_regenerate_source_form_changes_only_target_anchor(tmp_path, monkeypatch
     expected = json.loads(json.dumps(original))
     expected_receipt = expected["files"]["synthetic.py"]["diagnostics"][0]
     expected_receipt["line"] = 3
-    expected_receipt["source_line_sha256"] = hashlib.sha256(source.splitlines()[2].encode()).hexdigest()
     assert actual == expected
     once = manifest.read_bytes()
     checker.regenerate_source_form(selector)
     assert manifest.read_bytes() == once
+
+
+def test_regen_source_form_refuses_content_change(tmp_path, monkeypatch, capsys):
+    location = "scripts/exculpata_install.py"
+    source = (ROOT / location).read_text()
+    records = checker.source_form_contracts()
+    receipt = next(item for item in records[location]["diagnostics"]
+                   if item["function"] == "_configure" and "(mapping unpacking)" in item["identifier"])
+    assert '"auth": auth,' in source
+    edited = source.replace('"auth": auth,', '"auth": "local",')
+    path = tmp_path / location
+    path.parent.mkdir()
+    # fixture-write: Synthetic installer copy changes only a reviewed mapping value.
+    path.write_text(edited)
+    compat = tmp_path / "src/case_intelligence/compat_env.py"
+    compat.parent.mkdir(parents=True)
+    # fixture-write: Retain the public selector implementation inspected by the real checker.
+    compat.write_bytes((ROOT / "src/case_intelligence/compat_env.py").read_bytes())
+    manifest = tmp_path / "forms.json"
+    # fixture-write: Copy public source receipts to test byte-identical refusal.
+    manifest.write_bytes(checker.SOURCE_FORM_CONTRACT_PATH.read_bytes())
+    before = manifest.read_bytes()
+    monkeypatch.setattr(checker, "ROOT", tmp_path)
+    monkeypatch.setattr(checker, "SOURCE_FORM_CONTRACT_PATH", manifest)
+    monkeypatch.setattr(sys, "argv", ["rename_contract_check.py", "--regen-source-form",
+                                      f'{location}:_configure:{receipt["identifier"]}'])
+    with pytest.raises(SystemExit) as refused:
+        checker.main()
+    assert refused.value.code != 0
+    message = capsys.readouterr().err
+    assert "content changed" in message
+    assert "needs a reviewed receipt update" in message
+    assert manifest.read_bytes() == before
+    findings = list(set(checker.scan_python(location, edited, NAME_CONTRACTS)))
+    remaining = checker.apply_source_forms(location, edited, findings,
+                                          checker.source_form_contracts(), require_current=True)
+    assert any(item.identifier == receipt["identifier"] for item in remaining)
+    assert any("stale source-form contract" in item.identifier for item in remaining)
 
 
 @pytest.mark.parametrize("change", ["missing", "duplicate-record", "duplicate-finding", "wider-span"])
