@@ -7,7 +7,7 @@
   "required": ["schema_version", "fallback_profile", "profiles"],
   "properties": {
     "schema_version": {"const": 1},
-    "fallback_profile": {"type": "string", "minLength": 1},
+    "fallback_profile": {"const": "potato"},
     "profile_aliases": {
       "type": "object",
       "additionalProperties": {"type": "string", "minLength": 1}

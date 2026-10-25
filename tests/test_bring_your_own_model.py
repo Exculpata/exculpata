@@ -109,11 +109,11 @@ def test_tier_boundaries(reading, profile_id):
     assert suggestion.fallback is False
 
 
-def test_detection_failure_uses_the_cpu_profile_without_crashing():
+def test_detection_failure_uses_the_potato_profile_without_crashing():
     blank = HardwareReading(None, None, "none", None, False, ("CPU core count was not available.",))
     suggestion = suggest_tier(blank)
-    assert suggestion.profile_id == "cpu" and suggestion.fallback is True
-    assert "hardware detection :: using the CPU suggestion" in suggestion.lines()
+    assert suggestion.profile_id == "potato" and suggestion.fallback is True
+    assert "hardware detection :: using the potato CPU suggestion" in suggestion.lines()
 
     def missing(command):
         raise FileNotFoundError(command[0])
@@ -128,7 +128,7 @@ def test_detection_failure_uses_the_cpu_profile_without_crashing():
     assert reading.gpu_vram_bytes is None
     assert any("GPU" in note or "nvidia-smi" in note or "RAM" in note for note in reading.notes)
     failed = suggest_tier(reading)
-    assert failed.profile_id == "cpu" and failed.fallback is True
+    assert failed.profile_id == "potato" and failed.fallback is True
 
 
 def test_gpu_memory_parsers_accept_nvidia_and_amd_output():

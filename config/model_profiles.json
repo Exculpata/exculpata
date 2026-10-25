@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "fallback_profile": "cpu",
+  "fallback_profile": "potato",
   "profile_aliases": {"cpu-16": "cpu"},
   "profiles": [
     {
@@ -93,7 +93,7 @@
       "label": "Two or more 48 GB GPUs",
       "accelerator": "multi-gpu",
       "min_devices": 2,
-      "min_device_vram_mib": 49152,
+      "min_device_vram_mib": 46068,
       "generator": "Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
       "asr": "faster-whisper large-v3, float16.",

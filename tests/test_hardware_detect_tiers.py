@@ -89,11 +89,14 @@ def test_amd_smi_is_used_when_rocm_smi_is_not_present():
 
 
 @pytest.mark.parametrize(
-    ("devices", "tier"),
-    [((8,), "gpu-8"), ((16,), "gpu-16"), ((24,), "gpu-24"), ((24, 24), "gpu-24"), ((48, 48), "ultra")],
+    ("devices_mib", "tier"),
+    [
+        ((8192,), "gpu-8"), ((16384,), "gpu-16"), ((24576,), "gpu-24"),
+        ((24576, 24576), "gpu-24"), ((46068,), "gpu-24"), ((46067, 49140), "gpu-24"),
+    ],
 )
-def test_nvidia_per_device_total_and_tiers(devices, tier):
-    output = "\n".join(str(value * 1024) for value in devices)
+def test_nvidia_per_device_total_and_tiers(devices_mib, tier):
+    output = "\n".join(str(value) for value in devices_mib)
 
     def run(command):
         if command[0] == "nvidia-smi":
@@ -103,10 +106,10 @@ def test_nvidia_per_device_total_and_tiers(devices, tier):
     detected = detect_hardware(
         run=run, system="Linux", machine="x86_64", cpu_count=16, meminfo="MemTotal: 67108864 kB",
     )
-    assert detected.gpu_count == len(devices)
-    assert detected.gpu_vram_per_device == tuple(value * GIB for value in devices)
-    assert detected.gpu_vram_total_bytes == sum(devices) * GIB
-    assert detected.gpu_vram_bytes == max(devices) * GIB
+    assert detected.gpu_count == len(devices_mib)
+    assert detected.gpu_vram_per_device == tuple(value * MIB for value in devices_mib)
+    assert detected.gpu_vram_total_bytes == sum(devices_mib) * MIB
+    assert detected.gpu_vram_bytes == max(devices_mib) * MIB
     assert suggest_tier(detected).profile_id == tier
 
 
@@ -120,8 +123,6 @@ def test_nvidia_per_device_total_and_tiers(devices, tier):
         (reading(vendor="nvidia", devices=(12,)), "gpu-12"),
         (reading(vendor="nvidia", devices=(16,)), "gpu-16"),
         (reading(vendor="nvidia", devices=(24,)), "gpu-24"),
-        (reading(vendor="nvidia", devices=(47.999, 48)), "gpu-24"),
-        (reading(vendor="nvidia", devices=(48, 48)), "ultra"),
     ],
 )
 def test_tier_boundaries(sample, tier):
@@ -160,3 +161,85 @@ def test_profile_schema_and_local_tradeoff_contract():
     for profile in profiles:
         assert profile["tradeoff"].endswith("This is a suggestion, not a measured quality result.")
         assert "http://" not in profile["generator"] and "https://" not in profile["generator"]
+
+
+@pytest.mark.parametrize("reported_mib", [46068, 49140], ids=["L40S", "A6000-RTX6000Ada"])
+def test_ultra_accepts_reported_48gb_cards(reported_mib):
+    def run(command):
+        assert command[0] == "nvidia-smi"
+        return completed(command, f"{reported_mib}\n{reported_mib}\n")
+
+    detected = detect_hardware(
+        run=run, system="Linux", machine="x86_64", cpu_count=16, meminfo="MemTotal: 67108864 kB",
+    )
+    assert detected.gpu_vram_per_device == (reported_mib * MIB,) * 2
+    assert suggest_tier(detected).profile_id == "ultra"
+
+
+@pytest.mark.parametrize("failure", ["missing", "error", "empty", "unparseable"])
+@pytest.mark.parametrize("cores", [None, 8], ids=["no-cores", "cores-only"])
+def test_no_usable_signal_falls_back_to_potato(failure, cores):
+    def run(command):
+        if failure == "missing":
+            raise FileNotFoundError(command[0])
+        if failure == "error":
+            return completed(command, returncode=1)
+        return completed(command, "" if failure == "empty" else "not a memory report")
+
+    detected = detect_hardware(
+        run=run, system="Linux", machine="x86_64", cpu_count=cores, meminfo=None,
+    )
+    suggestion = suggest_tier(detected)
+    assert suggestion.profile_id == "potato"
+    assert suggestion.fallback is True
+    assert "hardware detection :: using the potato CPU suggestion" in suggestion.lines()
+
+
+@pytest.fixture
+def rocm_two_48gb_devices():
+    return """GPU[0] : VRAM Total Memory (B): 51539607552
+GPU[0] : VRAM Total Used Memory (B): 1073741824
+GPU[1] : VRAM Total Memory (B): 51539607552
+GPU[1] : VRAM Total Used Memory (B): 2147483648
+VRAM Total Memory (B): 103079215104
+"""
+
+
+def test_rocm_counts_only_device_total_rows(rocm_two_48gb_devices):
+    def run(command):
+        if command[0] == "rocm-smi":
+            return completed(command, rocm_two_48gb_devices)
+        raise FileNotFoundError(command[0])
+
+    detected = detect_hardware(
+        run=run, system="Linux", machine="x86_64", cpu_count=16, meminfo="MemTotal: 67108864 kB",
+    )
+    assert detected.gpu_count == 2
+    assert detected.gpu_vram_per_device == (51539607552, 51539607552)
+    assert detected.gpu_vram_total_bytes == 103079215104
+    assert suggest_tier(detected).profile_id == "ultra"
+
+
+def test_amd_smi_accepts_total_vram_mb():
+    def run(command):
+        if command[0] != "amd-smi":
+            raise FileNotFoundError(command[0])
+        return completed(command, "GPU: 0\n  VRAM_USAGE:\n    TOTAL_VRAM: 49140 MB\n    USED_VRAM: 1024 MB\n")
+
+    detected = detect_hardware(
+        run=run, system="Linux", machine="x86_64", cpu_count=8, meminfo="MemTotal: 33554432 kB",
+    )
+    assert detected.gpu_vendor == "amd"
+    assert detected.gpu_count == 1
+    assert detected.gpu_vram_per_device == (49140 * MIB,)
+    assert suggest_tier(detected).profile_id == "gpu-24"
+
+
+def test_profile_schema_requires_potato_fallback():
+    from jsonschema import ValidationError
+    from case_intelligence.hardware_profile import load_profiles
+
+    catalog = load_profiles()
+    catalog["fallback_profile"] = "cpu"
+    with pytest.raises(ValidationError):
+        validate_profiles(catalog)
