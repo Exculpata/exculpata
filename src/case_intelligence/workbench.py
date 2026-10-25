@@ -3057,6 +3057,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         from .assertion_service import AssertionService
         return AssertionService(self.workspace.assertion_repository(), self.entity_service(matter))
 
+    def witness_inconsistency_service(self, matter):
+        from .witness_inconsistency import WitnessInconsistencyService
+        assertions = self.assertion_service(matter)
+        return WitnessInconsistencyService(assertions.repository, assertions.entities)
+
     def entity_discovery(self, matter):
         from itertools import groupby
         from .entity_discovery import EntityDiscovery

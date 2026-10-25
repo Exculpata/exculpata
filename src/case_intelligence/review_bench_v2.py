@@ -486,17 +486,25 @@ class PostgresHybridBackend:
             return ()
         scope_sql = " AND c.document_id = ANY(%s)" if self.document_ids is not None else ""
         sql = """
+            WITH search_query AS (
+                SELECT CASE WHEN %s OR parsed.query::text ~ '!'
+                            THEN parsed.query
+                            ELSE replace(parsed.query::text, ' & ', ' | ')::tsquery
+                       END AS query
+                  FROM (SELECT websearch_to_tsquery('english', %s) AS query) parsed
+            )
             SELECT c.matter_id,c.document_id,c.chunk_id,d.display_name,p.page_number,c.text,
-                   ts_rank_cd(c.search_vector, websearch_to_tsquery('english', %s)) AS score,
+                   ts_rank_cd(c.search_vector, q.query) AS score,
                    c.line_start,c.line_end,c.source_version_id,c.excerpt_digest
               FROM review_chunk c
+              CROSS JOIN search_query q
               JOIN review_document d ON (d.matter_id,d.document_id)=(c.matter_id,c.document_id)
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
-             WHERE c.matter_id=%s AND c.search_vector @@ websearch_to_tsquery('english', %s)
+             WHERE c.matter_id=%s AND c.search_vector @@ q.query
         """ + scope_sql + """
              ORDER BY score DESC,c.chunk_id LIMIT %s
         """
-        parameters: list[object] = [query, matter_id, query]
+        parameters: list[object] = ['"' in query, query, matter_id]
         if self.document_ids is not None:
             parameters.append(sorted(self.document_ids))
         parameters.append(limit)

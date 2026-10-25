@@ -3,6 +3,16 @@
 This deliberately small, local data-flow check is not a Python/SQL interpreter.
 It follows ordinary assignment aliases, SQL literals/concatenation/f-strings and
 SQLite imports, and direct local helper arguments with known SQLite provenance.
+Known reflective builtin namespaces are rejected at exposure, before aliases or
+opaque containers can hide dynamic execution. Explicit safe builtin attributes
+remain supported. Scope dictionaries and the module registry retain their known
+builtin entry through deterministic key lookups, shallow copies and pure dictionary
+unions. Namespace-bearing mutations and value enumeration are rejected rather
+than interpreting aliased mutable state. Unresolved keys into exact mappings with
+namespace-bearing entries are rejected without reconstructing iterated keys.
+Computed imports and arbitrary reflection
+are not interpreted. Supported pure dictionary operations retain dictionary type
+separately from exact literal entries; unknown keys never become an empty mapping.
 Keep fixture setup explicit so that this check and reviewers can
 recognize its write boundary. A deliberate raw concurrency, migration or restore
 operation may carry ``# fixture-write: <specific reason>`` on its own statement.
@@ -42,6 +52,45 @@ _CONNECTION_PARAMETERS = {"connection", "conn", "db", "database"}
 _MEDIA_SEED = {"queue_media_job", "import_media_transcript", "finish_media_job"}
 _DICT_VALUE_METHODS = {"values", "items", "get", "pop", "popitem", "setdefault", "copy",
                        "__getitem__", "__or__", "__ror__", "__ior__"}
+_BUILTIN_NAMESPACE_KEYS = {"<python-scope>": "__builtins__", "sys.modules": "builtins"}
+_KNOWN_BUILTIN_CLASSES = {"type", "object", "dict", "list", "tuple", "set", "frozenset"}
+# Fixed Python 3.12 builtin identities; never infer identity from foreign names.
+_BUILTIN_CALLABLE_NAMES = frozenset({
+    'ArithmeticError', 'AssertionError', 'AttributeError', 'BaseException', 'BaseExceptionGroup', 'BlockingIOError',
+    'BrokenPipeError', 'BufferError', 'BytesWarning', 'ChildProcessError', 'ConnectionAbortedError', 'ConnectionError',
+    'ConnectionRefusedError', 'ConnectionResetError', 'DeprecationWarning', 'EOFError', 'EncodingWarning', 'EnvironmentError',
+    'Exception', 'ExceptionGroup', 'FileExistsError', 'FileNotFoundError', 'FloatingPointError', 'FutureWarning',
+    'GeneratorExit', 'IOError', 'ImportError', 'ImportWarning', 'IndentationError', 'IndexError',
+    'InterruptedError', 'IsADirectoryError', 'KeyError', 'KeyboardInterrupt', 'LookupError', 'MemoryError',
+    'ModuleNotFoundError', 'NameError', 'NotADirectoryError', 'NotImplementedError', 'OSError', 'OverflowError',
+    'PendingDeprecationWarning', 'PermissionError', 'ProcessLookupError', 'RecursionError', 'ReferenceError', 'ResourceWarning',
+    'RuntimeError', 'RuntimeWarning', 'StopAsyncIteration', 'StopIteration', 'SyntaxError', 'SyntaxWarning',
+    'SystemError', 'SystemExit', 'TabError', 'TimeoutError', 'TypeError', 'UnboundLocalError',
+    'UnicodeDecodeError', 'UnicodeEncodeError', 'UnicodeError', 'UnicodeTranslateError', 'UnicodeWarning', 'UserWarning',
+    'ValueError', 'Warning', 'ZeroDivisionError', '__build_class__', '__import__', 'abs',
+    'aiter', 'all', 'anext', 'any', 'ascii', 'bin',
+    'bool', 'breakpoint', 'bytearray', 'bytes', 'callable', 'chr',
+    'classmethod', 'compile', 'complex', 'copyright', 'credits', 'delattr',
+    'dict', 'dir', 'divmod', 'enumerate', 'eval', 'exec',
+    'exit', 'filter', 'float', 'format', 'frozenset', 'getattr',
+    'globals', 'hasattr', 'hash', 'help', 'hex', 'id',
+    'input', 'int', 'isinstance', 'issubclass', 'iter', 'len',
+    'license', 'list', 'locals', 'map', 'max', 'memoryview',
+    'min', 'next', 'object', 'oct', 'open', 'ord',
+    'pow', 'print', 'property', 'quit', 'range', 'repr',
+    'reversed', 'round', 'set', 'setattr', 'slice', 'sorted',
+    'staticmethod', 'str', 'sum', 'super', 'tuple', 'type',
+    'vars', 'zip',
+})
+_NAMESPACE_PROVIDERS = {
+    "globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars",
+    "__import__", "builtins.__import__", "importlib.import_module",
+    "getattr", "builtins.getattr", "builtins.__getattribute__",
+}
+_NAMESPACE_LOOKUPS = {"get", "__getitem__", "pop", "setdefault"}
+_NAMESPACE_MUTATIONS = {"update", "__ior__", "__setitem__", "setdefault", "__init__"}
+_NAMESPACE_ENUMERATIONS = {"values", "items", "popitem"}
+_NAMESPACE_SEQUENCE_STORES = {"append", "extend", "insert", "add", "update", "__iadd__"}
 
 
 # Reviewed Python AST shapes; unknown nodes or fields fail closed before data flow.
@@ -170,6 +219,7 @@ class _Value:
     symbol: str = ""
     text: str = ""
     complete_text: bool = False
+    nonstring_constant: bool = False
     connection: str | None = None
     live_workspace: bool = False
     workspace: bool = False
@@ -178,6 +228,8 @@ class _Value:
     fixture_handle: bool = False
     elements: tuple[_Value, ...] | None = None
     mapping: tuple[tuple[str, _Value], ...] | None = None
+    dictionary_instance: bool = False
+    dictionary_keys: _Value | None = None
     methods: frozenset[str] = frozenset()
     receiver: _Value | None = None
     sqlite_cursor: bool = False
@@ -192,12 +244,22 @@ class _Value:
     dictionary_accessor: bool = False
     dictionary_fromkeys: bool = False
     dictionary_method: str = ""
+    callable_targets: frozenset[str] = frozenset()
+    # Provenance only: never resolve constructors, descriptors, or class members.
+    # Delayed results carrying either marker require the supported fixture helper.
+    local_class: bool = False
+    local_instance: bool = False
+    class_operations: frozenset[str] = frozenset()
+    builtin_classes: frozenset[str] = frozenset()
+    builtin_callable: bool = False
 
 
 class _Check(ast.NodeVisitor):
     def __init__(self, source: str, filename: str, tree: ast.AST):
         self.filename = filename
         self.aliases: dict[str, _Value] = {}
+        self.capture_references: dict[ast.AST, tuple[ast.AST, ...]] = {}
+        self.yield_results: dict[ast.AST, bool] = {}
         self.class_outer_aliases: dict[str, _Value] | None = None
         self.class_outer_names: set[str] = set()
         self.eager_variable_annotations = True
@@ -206,6 +268,7 @@ class _Check(ast.NodeVisitor):
         self.media_protected: set[str] = set()
         self.local_functions: dict[str, tuple] = {}
         self.active_calls: set[str] = set()
+        self.active_namespace_results: set[str] = set()
         # Evaluated calls and literal containers capture values before later rebindings.
         self.evaluated_values: dict[ast.AST, _Value] = {}
         self.return_values: list[_Value] = []
@@ -249,25 +312,57 @@ class _Check(ast.NodeVisitor):
                 self.exempt.add(max(candidates, key=lambda node: (node.lineno, node.col_offset)))
 
     def value(self, node: ast.AST | None) -> _Value:
+        origin = self.value(node.value) if isinstance(node, ast.Attribute) else self.value(node.func) if isinstance(node, ast.Call) else None
+        result = self.expression_value(node, origin)
+        symbol = result.symbol.removeprefix("builtins.").removeprefix("<reflective-builtins>.")
+        if result.imported_function and symbol in {"copy.copy", "copy.deepcopy"}:
+            result = replace(result, class_operations=result.class_operations | {"copy"})
+        if result.imported_function and result.symbol.startswith("builtins.") and symbol in _KNOWN_BUILTIN_CLASSES:
+            result = replace(result, builtin_classes=frozenset({symbol}))
+        if (result.imported_function and result.symbol.startswith("builtins.")
+                and symbol in _BUILTIN_CALLABLE_NAMES):
+            result = replace(result, builtin_callable=True)
+        if (isinstance(node, ast.Attribute) and origin is not None
+                and (origin.imported_module and origin.symbol == "builtins" or origin.symbol == "<reflective-builtins>")
+                and node.attr in _BUILTIN_CALLABLE_NAMES):
+            result = replace(result, builtin_callable=True)
+        if isinstance(node, ast.Attribute) and origin is not None:
+            # Only native operations already recognized by this checker acquire
+            # identity here. Foreign methods and local class members stay opaque.
+            native_dictionary = ("dict" in origin.builtin_classes or self.is_dictionary(origin))
+            if (native_dictionary and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS | {"fromkeys"}
+                    or "type" in origin.builtin_classes and node.attr == "__call__"
+                    or "object" in origin.builtin_classes and node.attr == "__new__"):
+                result = replace(result, builtin_callable=True)
+        if origin is not None and (origin.local_class or origin.local_instance):
+            # Overlay provenance without discarding SQL/path ownership metadata.
+            return replace(result, local_instance=True)
+        return result
+
+    def expression_value(self, node: ast.AST | None, origin: _Value | None) -> _Value:
         if node is None:
             return _Value()
         if node in self.evaluated_values:
             return self.evaluated_values[node]
         if isinstance(node, ast.Name):
-            return self.aliases.get(node.id, _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None))
+            if node.id in self.aliases:
+                return self.aliases[node.id]
+            return _Value(symbol=node.id, scalar_converter=True if node.id == "str" else None,
+                          builtin_classes=frozenset({node.id}) if node.id in _KNOWN_BUILTIN_CLASSES else frozenset(),
+                          builtin_callable=node.id in _BUILTIN_CALLABLE_NAMES)
         if isinstance(node, ast.Lambda):
             return _Value(symbol=f"lambda@{node.lineno}:{node.col_offset}")
         if isinstance(node, ast.Constant):
             return _Value(symbol=repr(node.value), text=node.value if isinstance(node.value, str) else "",
                           active_path=isinstance(node.value, str) and "workbench.sqlite" in node.value,
-                          complete_text=isinstance(node.value, str))
+                          complete_text=isinstance(node.value, str), nonstring_constant=not isinstance(node.value, str))
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             elements = []
             inputs = []
             opaque = False
             for item in node.elts:
                 if isinstance(item, ast.Starred):
-                    value = self.value(item.value)
+                    value = self.iteration_value(self.value(item.value))
                     inputs.append(value)
                     expanded = value.elements
                     if expanded is None:
@@ -289,7 +384,7 @@ class _Check(ast.NodeVisitor):
                 value = self.value(item)
                 inputs.append(value)
                 if key is None:
-                    expanded = value.mapping
+                    expanded = self.namespace_mapping(value)
                     if expanded is None:
                         opaque = True
                     else:
@@ -302,23 +397,36 @@ class _Check(ast.NodeVisitor):
                     else:
                         mapping[name.text] = value
             if opaque:
-                return _Value(unresolved_shared_container=any(
-                    self.known_ownership(value, shared_only=True) for value in inputs),
-                    unresolved_active_path=any(self.has_active_path(value) for value in inputs))
+                return self.opaque_dictionary_value(inputs)
             return _Value(mapping=tuple(mapping.items()))
         if isinstance(node, ast.Attribute):
-            base = self.value(node.value)
+            base = origin
             symbol = base.symbol + "." + node.attr
+            if node.attr == "__call__" and base.class_operations:
+                return replace(base, symbol=symbol)
+            if ("type" in base.builtin_classes and node.attr == "__call__"
+                    or "object" in base.builtin_classes and node.attr == "__new__"):
+                return _Value(symbol=symbol, class_operations=frozenset({"construct"}))
+            if (base.imported_module and base.symbol == "builtins" or base.symbol == "<reflective-builtins>") and node.attr in _KNOWN_BUILTIN_CLASSES:
+                return _Value(symbol=symbol, builtin_classes=frozenset({node.attr}))
+            if base.imported_module and base.symbol == "copy" and node.attr in {"copy", "deepcopy"}:
+                return _Value(symbol=symbol, class_operations=frozenset({"copy"}))
+            if node.attr in {"__globals__", "f_globals", "f_locals"}:
+                return _Value(symbol="<python-scope>")
+            if node.attr == "f_builtins":
+                return _Value(symbol="<reflective-builtins>")
+            if base.symbol in _BUILTIN_NAMESPACE_KEYS and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
+                return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if node.attr in {"append", "extend", "insert", "add", "__setitem__", "__iadd__"}:
                 return _Value(symbol=symbol, receiver=base)
-            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | {"update"}:
+            if base.symbol in {"dict", "builtins.dict"} and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, dictionary_accessor=True, dictionary_method=node.attr)
-            if node.attr == "fromkeys" and (base.symbol in {"dict", "builtins.dict"} or base.mapping is not None):
+            if node.attr == "fromkeys" and ("dict" in base.builtin_classes or self.is_dictionary(base)):
                 return _Value(symbol=symbol, dictionary_fromkeys=True)
             accessor = self.container_accessor_value(base, node.attr)
             if accessor is not None:
                 return replace(accessor, symbol=symbol, receiver=base, dictionary_method=node.attr)
-            if base.mapping is not None and node.attr in _DICT_VALUE_METHODS | {"update"}:
+            if self.is_dictionary(base) and node.attr in _DICT_VALUE_METHODS | _NAMESPACE_MUTATIONS:
                 return _Value(symbol=symbol, receiver=base, dictionary_method=node.attr)
             if base.imported_module and symbol in {"builtins.str", "os.fspath", "pathlib.Path", "pathlib.PurePath"}:
                 return _Value(symbol=symbol, scalar_converter=True)
@@ -343,8 +451,10 @@ class _Check(ast.NodeVisitor):
                           receiver=base if not active_path and (base.workspace or base.live_workspace or (base.symbol and base.symbol in self.protected)) else None)
         if isinstance(node, ast.JoinedStr):
             parts = [self.value(part.value if isinstance(part, ast.FormattedValue) else part) for part in node.values]
-            return _Value(text="".join(part.text or "?" for part in parts), active_path=any(part.active_path for part in parts),
-                          complete_text=all(part.complete_text for part in parts))
+            return _Value(text="".join(part.text if part.complete_text else "?" for part in parts), active_path=any(part.active_path for part in parts),
+                          complete_text=all(part.complete_text for part in parts)
+                          and all(not isinstance(part, ast.FormattedValue)
+                                  or part.conversion == -1 and part.format_spec is None for part in node.values))
         if isinstance(node, ast.BinOp):
             left, right = self.value(node.left), self.value(node.right)
             return self.binary_value(left, right, node.op)
@@ -357,7 +467,38 @@ class _Check(ast.NodeVisitor):
         if isinstance(node, ast.Call):
             if node in self.evaluated_values:
                 return self.evaluated_values[node]
-            function = self.value(node.func)
+            function = origin
+            if not function.unannotated_parameter:
+                if (function.symbol in {"globals", "locals", "vars", "builtins.globals", "builtins.locals", "builtins.vars"}
+                        and not node.args and not node.keywords):
+                    return _Value(symbol="<python-scope>")
+                if function.symbol in {"__import__", "builtins.__import__", "importlib.import_module"}:
+                    argument = node.args[0] if node.args else next(
+                        (kw.value for kw in node.keywords if kw.arg == "name"), None)
+                    name = self.value(argument)
+                    if name.complete_text and name.text == "builtins":
+                        return _Value(symbol="<reflective-builtins>")
+                if function.symbol in {"vars", "builtins.vars"} and node.args:
+                    if self.value(node.args[0]).symbol == "builtins":
+                        return _Value(symbol="<reflective-builtins>")
+                if function.symbol == "builtins.__getattribute__" and node.args:
+                    name = self.value(node.args[0])
+                    return _Value(symbol="builtins." + name.text if name.complete_text
+                                  else "<reflective-builtins>")
+            if function.receiver is not None and (self.contains_namespace(function.receiver) or self.is_dictionary(function.receiver)):
+                if function.dictionary_method == "copy" and not node.args:
+                    return function.receiver
+                if function.dictionary_method in _NAMESPACE_LOOKUPS and node.args:
+                    default = (self.value(node.args[1]) if len(node.args) > 1 else
+                               _Value(symbol="None", nonstring_constant=True) if function.dictionary_method == "get" else None)
+                    return self.mapping_lookup(function.receiver, self.value(node.args[0]), default) or _Value()
+            if (function.dictionary_accessor and function.dictionary_method in _NAMESPACE_LOOKUPS
+                    or function.symbol == "operator.getitem") and len(node.args) >= 2:
+                default = (self.value(node.args[2]) if len(node.args) > 2 else
+                           _Value(symbol="None", nonstring_constant=True) if function.dictionary_method == "get" else None)
+                resolved = self.mapping_lookup(self.value(node.args[0]), self.value(node.args[1]), default)
+                if resolved is not None:
+                    return resolved
             if function.symbol in {"dict", "builtins.dict"}:
                 return self.dictionary_value([self.value(arg) for arg in node.args],
                                              [(kw.arg, self.value(kw.value)) for kw in node.keywords])
@@ -380,6 +521,8 @@ class _Check(ast.NodeVisitor):
                 if name.complete_text:
                     return self.value(ast.Attribute(value=node.args[0], attr=name.text, ctx=ast.Load()))
                 receiver = self.value(node.args[0])
+                if receiver.symbol == "builtins":
+                    return _Value(symbol="<reflective-builtins>")
                 if receiver.symbol in {"dict", "builtins.dict"}:
                     return _Value(dictionary_accessor=True)
                 if receiver.connection is not None:
@@ -453,7 +596,7 @@ class _Check(ast.NodeVisitor):
             stars = [i for i, item in enumerate(target.elts) if isinstance(item, ast.Starred)]
             if values is None or (not stars and len(values) != len(target.elts)) or (stars and len(values) < len(target.elts) - 1):
                 for item in target.elts:
-                    self.bind(item, _Value())
+                    self.bind(item, self.class_carrier_value(value))
             elif stars:
                 index = stars[0]
                 end = len(values) - (len(target.elts) - index - 1)
@@ -479,6 +622,8 @@ class _Check(ast.NodeVisitor):
             self.visit(target.value)
             receiver = self.value(target.value)
             self.visit(target.slice)
+            if self.contains_namespace(value):
+                self.flag(target, "dynamic execution namespace stores are unsupported; use pure dictionary expressions", structural=True)
             marker = self.payload_value([value])
             if self.unresolved_ownership(marker):
                 self.flag(target, "shared or active-path container stores are unsupported; use explicit named handles", structural=True)
@@ -489,24 +634,44 @@ class _Check(ast.NodeVisitor):
         self.visit(node.value)
         value = self.value(node.value)
         self.visit(node.slice)
-        if isinstance(node.slice, ast.Constant):
-            index = node.slice.value
-            if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
-                self.evaluated_values[node] = value.elements[index]
-            elif value.mapping is not None and isinstance(index, str):
-                self.evaluated_values[node] = dict(value.mapping).get(index, _Value())
+        index = node.slice.value if isinstance(node.slice, ast.Constant) else None
+        if value.elements is not None and isinstance(index, int) and -len(value.elements) <= index < len(value.elements):
+            resolved = value.elements[index]
+        elif value.mapping is not None and isinstance(index, str):
+            resolved = dict(value.mapping).get(index, _Value())
+        else:
+            resolved = self.mapping_lookup(value, self.value(node.slice))
+        if resolved is None and value.elements is None and value.mapping is None and (
+                value.builtin_classes or value.class_operations or value.builtin_callable or value.local_class or value.local_instance):
+            resolved = self.payload_value([value])
+        if resolved is not None and isinstance(node.ctx, ast.Load):
+            self.evaluated_values[node] = resolved
+            self.reject_dynamic_builtin(node, resolved)
         if (self.unresolved_ownership(value) or
                 ((value.elements is not None or value.mapping is not None)
                  and self.known_ownership(value, shared_only=True))):
             self.flag(node, "subscripting a known shared fixture value is unsupported; use explicit named handles", structural=True)
 
+    def reject_dynamic_builtin(self, node: ast.AST, value: _Value | None = None) -> None:
+        value = self.value(node) if value is None else value
+        if (value.symbol in {"exec", "eval", "builtins.exec", "builtins.eval",
+                             "__builtins__", "builtins.__dict__", "<reflective-builtins>"}
+                and not value.unannotated_parameter):
+            self.flag(node, "dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()", structural=True)
+
     def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Load):
+            self.reject_dynamic_builtin(node)
         if isinstance(node.ctx, ast.Load) and self.unresolved_ownership(self.value(node)):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         self.visit(node.value)
+        if isinstance(node.ctx, ast.Load):
+            self.reject_dynamic_builtin(node)
         base = self.value(node.value)
+        if node.attr == "__call__" and self.is_builtin_callable(base):
+            self.flag(node, "builtin __call__ access is unsupported; use named calls with fixture_write()", structural=True)
         if base.elements is not None and self.known_ownership(base, shared_only=True):
             self.flag(node, "shared tuple attribute extraction is unsupported; unpack named handles and use fixture_write()", structural=True)
         if self.unresolved_ownership(self.value(node)):
@@ -519,6 +684,8 @@ class _Check(ast.NodeVisitor):
             operand = item.value if isinstance(item, ast.Starred) else item
             self.visit(operand)
             value = self.value(operand)
+            if isinstance(item, ast.Starred):
+                value = self.iteration_value(value)
             inputs.append(value)
             if isinstance(item, ast.Starred):
                 opaque |= value.elements is None
@@ -527,6 +694,7 @@ class _Check(ast.NodeVisitor):
                 elements.append(value)
         self.evaluated_values[node] = (self.payload_value(inputs)
             if opaque else _Value(elements=tuple(elements)))
+        self.reject_dynamic_builtin(node)
         if opaque and self.unresolved_ownership(self.evaluated_values[node]):
             self.flag(node, "opaque fixture tuple expansion is unsupported; use fixed tuples and fixture_write()", structural=True)
 
@@ -537,6 +705,9 @@ class _Check(ast.NodeVisitor):
                              for value in (left, right))
         if shared or container_path:
             return _Value(unresolved_shared_container=shared, unresolved_active_path=container_path)
+        if isinstance(operator, ast.BitOr) and (any(self.contains_namespace(value) for value in (left, right))
+                                               or all(self.is_dictionary(value) for value in (left, right))):
+            return self.dictionary_value([left, right], [])
         return _Value(symbol=left.symbol + "/" + right.symbol,
                       text=left.text + right.text, active_path=left.active_path or right.active_path,
                       complete_text=isinstance(operator, ast.Add) and left.complete_text and right.complete_text)
@@ -547,6 +718,7 @@ class _Check(ast.NodeVisitor):
         self.visit(node.right)
         result = self.binary_value(left, self.value(node.right), node.op)
         self.evaluated_values[node] = result
+        self.reject_dynamic_builtin(node, result)
         if self.unresolved_ownership(result):
             self.flag(node, "fixture container binary operations are unsupported; use literal tuples and fixture_write()", structural=True)
 
@@ -563,9 +735,10 @@ class _Check(ast.NodeVisitor):
         self.visit_Tuple(node)
         self.reject_mutable_carrier(node, self.value(node))
         marker = self.payload_value([self.evaluated_values[node]])
-        if self.unresolved_ownership(marker):
+        if self.unresolved_ownership(marker) or self.contains_namespace(marker):
             # Set iteration has no positional correspondence to source order.
             self.evaluated_values[node] = marker
+        self.reject_dynamic_builtin(node)
 
     def visit_Dict(self, node: ast.Dict) -> None:
         # Capture each input when Python evaluates it. A later key or value
@@ -583,13 +756,15 @@ class _Check(ast.NodeVisitor):
             value = self.value(item)
             inputs.append(value)
             if key is None:
-                opaque |= value.mapping is None
-                mapping.update(value.mapping or ())
+                expanded = self.namespace_mapping(value)
+                opaque |= expanded is None
+                mapping.update(expanded or ())
             elif name.complete_text:
                 mapping[name.text] = value
         shared = any(self.known_ownership(value, shared_only=True) for value in inputs)
-        self.evaluated_values[node] = (self.payload_value(inputs) if opaque
+        self.evaluated_values[node] = (self.opaque_dictionary_value(inputs) if opaque
                                   else _Value(mapping=tuple(mapping.items())))
+        self.reject_dynamic_builtin(node)
         self.reject_mutable_carrier(node, self.evaluated_values[node])
         if opaque and self.has_active_path(self.evaluated_values[node]):
             self.flag(node, "opaque dictionary paths are unsupported; use named paths with fixture_write()", structural=True)
@@ -616,32 +791,216 @@ class _Check(ast.NodeVisitor):
         return None
 
     def payload_value(self, values: list[_Value]) -> _Value:
-        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
+        # Opaque aggregates lose element layout, never protected provenance.
+        return _Value(symbol="<reflective-builtins>" if any(self.contains_namespace(value) for value in values) else "",
+                      callable_targets=frozenset().union(*(self.local_callable_targets(value) for value in values)),
+                      local_class=any(self.has_local_class(value) for value in values),
+                      local_instance=any(self.has_local_class(value, instances=True) for value in values),
+                      class_operations=frozenset().union(*(self.local_class_operations(value) for value in values)),
+                      builtin_classes=frozenset().union(*(self.known_builtin_classes(value) for value in values)),
+                      builtin_callable=any(self.is_builtin_callable(value) for value in values),
+                      unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in values),
                       unresolved_active_path=any(self.has_active_path(value) for value in values))
 
+    def iteration_value(self, value: _Value) -> _Value:
+        # Scope/module registries and exact string-key mappings yield keys,
+        # not their namespace-bearing values. Keep cardinality unknown and
+        # preserve the existing conservative SQL/path provenance checks.
+        if value.dictionary_keys is not None:
+            return value.dictionary_keys
+        if value.symbol in _BUILTIN_NAMESPACE_KEYS or value.mapping is not None:
+            return replace(self.payload_value([value]), symbol="", callable_targets=frozenset(),
+                           local_class=False, local_instance=False, class_operations=frozenset(), builtin_classes=frozenset(), builtin_callable=False)
+        return value
+
+    def class_carrier_value(self, value: _Value) -> _Value:
+        return _Value(local_class=self.has_local_class(value),
+                      local_instance=self.has_local_class(value, instances=True),
+                      class_operations=self.local_class_operations(value),
+                      builtin_classes=self.known_builtin_classes(value),
+                      builtin_callable=self.is_builtin_callable(value))
+
+    def iteration_item(self, value: _Value) -> _Value:
+        projected = self.iteration_value(value)
+        if projected.elements is None:
+            return self.class_carrier_value(projected)
+        return self.merge_aliases(*({"item": item} for item in projected.elements))["item"] if projected.elements else _Value()
+
+    def mapping_lookup(self, receiver: _Value, key: _Value, default: _Value | None = None) -> _Value | None:
+        if receiver.elements is not None and (self.known_builtin_classes(receiver)
+                or self.local_class_operations(receiver) or self.has_local_class(receiver)
+                or self.has_local_class(receiver, instances=True) or self.is_builtin_callable(receiver)):
+            return self.payload_value([receiver])
+        if receiver.dictionary_keys is not None and receiver.mapping is None:
+            values = replace(receiver, dictionary_keys=None, dictionary_instance=False)
+            return self.payload_value([values, *([] if default is None else [default])])
+        if (not key.complete_text and not key.nonstring_constant
+                and receiver.mapping is not None and _Check.contains_namespace(receiver)):
+            return _Value(symbol="<reflective-builtins>")
+        if key.complete_text and _BUILTIN_NAMESPACE_KEYS.get(receiver.symbol) == key.text:
+            return _Value(symbol="<reflective-builtins>")
+        if key.complete_text and receiver.mapping is not None:
+            return dict(receiver.mapping).get(key.text, default)
+        if key.nonstring_constant and receiver.mapping is not None:
+            return default
+        if receiver.mapping is not None:
+            return self.payload_value([*(item for _, item in receiver.mapping), *([] if default is None else [default])])
+        if receiver.dictionary_instance and (receiver.builtin_classes or receiver.class_operations
+                                            or receiver.local_class or receiver.local_instance or receiver.builtin_callable):
+            return self.payload_value([receiver, *([] if default is None else [default])])
+        return None
+
+    @staticmethod
+    def local_callable_targets(value: _Value) -> frozenset[str]:
+        targets = value.callable_targets
+        if value.symbol.startswith(("function@", "lambda@")):
+            targets |= {value.symbol}
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return targets.union(*(_Check.local_callable_targets(child) for child in children))
+
+    @staticmethod
+    def has_local_class(value: _Value, *, instances=False) -> bool:
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return (value.local_instance if instances else value.local_class) or any(
+            _Check.has_local_class(child, instances=instances) for child in children)
+
+    @staticmethod
+    def local_class_operations(value: _Value) -> frozenset[str]:
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return value.class_operations.union(*(_Check.local_class_operations(child) for child in children))
+
+    @staticmethod
+    def known_builtin_classes(value: _Value) -> frozenset[str]:
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return value.builtin_classes.union(*(_Check.known_builtin_classes(child) for child in children))
+
+    @staticmethod
+    def is_builtin_callable(value: _Value) -> bool:
+        children = [*([value.dictionary_keys] if value.dictionary_keys is not None else []),
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ())]
+        return value.builtin_callable or any(_Check.is_builtin_callable(child) for child in children)
+
+    @staticmethod
+    def literal_fromkeys_keys(node: ast.AST) -> bool:
+        def literal_key(item):
+            if isinstance(item, ast.Constant):
+                return isinstance(item.value, (str, bytes, int, float, complex, bool, type(None)))
+            if isinstance(item, ast.UnaryOp) and isinstance(item.op, (ast.UAdd, ast.USub)):
+                return isinstance(item.operand, ast.Constant) and isinstance(item.operand.value, (int, float, complex))
+            return isinstance(item, ast.Tuple) and all(literal_key(child) for child in item.elts)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return True
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            return all(literal_key(item) for item in node.elts)
+        return isinstance(node, ast.Dict) and all(key is not None and literal_key(key) for key in node.keys)
+
+    def copied_argument(self, actual_values, opaque_values, keyword_values):
+        if opaque_values:
+            return self.payload_value([*actual_values, *opaque_values, *(value for _, value in keyword_values)])
+        if actual_values:
+            return actual_values[0]
+        candidates = []
+        for name, value in keyword_values:
+            if name == "x":
+                candidates.append(value)
+            elif name is None:
+                candidates.append(dict(value.mapping).get("x", _Value()) if value.mapping is not None else value)
+        return self.merge_aliases(*({"x": value} for value in candidates))["x"] if candidates else _Value()
+
+    def first_positional_argument(self, arguments):
+        candidates = []
+        ambiguous = False
+        for argument in arguments:
+            if isinstance(argument, ast.Starred):
+                value = self.iteration_value(self.value(argument.value))
+                if value.elements is None:
+                    candidates.append(value)
+                    ambiguous = True
+                    continue
+                if not value.elements:
+                    continue
+                candidates.append(value.elements[0])
+            else:
+                candidates.append(self.value(argument))
+            break
+        return (self.merge_aliases(*({"first": value} for value in candidates))["first"] if candidates else _Value(), ambiguous)
+
+    @staticmethod
+    def is_dictionary(value: _Value) -> bool:
+        return value.dictionary_instance or value.mapping is not None or value.symbol in _BUILTIN_NAMESPACE_KEYS
+
+    @staticmethod
+    def contains_namespace(value: _Value) -> bool:
+        return (value.symbol in _BUILTIN_NAMESPACE_KEYS or value.symbol == "<reflective-builtins>"
+                or not value.unannotated_parameter and value.symbol in _NAMESPACE_PROVIDERS | {"builtins"}
+                or any(_Check.contains_namespace(item) for item in (
+                    *([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ()),
+                )))
+
+    @staticmethod
+    def namespace_mapping(value: _Value) -> tuple[tuple[str, _Value], ...] | None:
+        key = _BUILTIN_NAMESPACE_KEYS.get(value.symbol)
+        return ((key, _Value(symbol="<reflective-builtins>")),) if key else value.mapping
+
+    def opaque_dictionary_value(self, values: list[_Value]) -> _Value:
+        # Dictionary type is known even when keys are not; mapping=None must
+        # remain distinct from the exact empty mapping used by literal {}.
+        return replace(self.payload_value(values), dictionary_instance=True)
+
     def dictionary_value(self, arguments: list[_Value], keywords: list[tuple[str | None, _Value]]) -> _Value:
+        if len(arguments) == 1 and not keywords and arguments[0].symbol in _BUILTIN_NAMESPACE_KEYS:
+            return arguments[0]
         mapping = {}
         opaque = False
         inputs = [*arguments, *(value for _, value in keywords)]
         for value in arguments:
-            if value.mapping is None:
+            expanded = self.namespace_mapping(value)
+            if expanded is None:
                 opaque = True
             else:
-                mapping.update(value.mapping)
+                mapping.update(expanded)
         for key, value in keywords:
+            expanded = self.namespace_mapping(value)
             if key is not None:
                 mapping[key] = value
-            elif value.mapping is not None:
-                mapping.update(value.mapping)
+            elif expanded is not None:
+                mapping.update(expanded)
             else:
                 opaque = True
-        return self.payload_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
+        if opaque and arguments and all(value.dictionary_keys is not None or value.mapping is not None for value in arguments) and all(key is not None for key, _ in keywords):
+            values = [replace(value, dictionary_keys=None) for value in arguments]
+            values.extend(value for _, value in keywords)
+            return replace(self.opaque_dictionary_value(values),
+                           dictionary_keys=self.payload_value([self.iteration_value(value) for value in arguments]))
+        return self.opaque_dictionary_value(inputs) if opaque else _Value(mapping=tuple(mapping.items()))
 
     def fromkeys_value(self, keys: _Value, default: _Value) -> _Value:
         # A known mapping has literal string keys, independent of its values.
         # Other supported key inputs retain their already-evaluated ownership.
         inputs = [default] if keys.mapping is not None else [keys, default]
-        return _Value(unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
+        names = ([key for key, _ in keys.mapping] if keys.mapping is not None else
+                 [item.text for item in keys.elements] if keys.elements is not None
+                 and all(item.complete_text for item in keys.elements) else None)
+        return _Value(dictionary_instance=True,
+                      mapping=tuple({key: default for key in names}.items()) if names is not None else None,
+                      dictionary_keys=self.payload_value([self.iteration_value(keys)]),
+                      callable_targets=self.local_callable_targets(default),
+                      local_class=self.has_local_class(default),
+                      local_instance=self.has_local_class(default, instances=True),
+                      class_operations=self.local_class_operations(default),
+                      builtin_classes=self.known_builtin_classes(default),
+                      builtin_callable=self.is_builtin_callable(default),
+                      unresolved_shared_container=any(self.known_ownership(value, shared_only=True) for value in inputs),
                       unresolved_active_path=any(self.has_active_path(value) for value in inputs))
 
     def declare_functions(self, body: list[ast.stmt]) -> None:
@@ -664,7 +1023,8 @@ class _Check(ast.NodeVisitor):
         # every observed binding in its lexical scope, including an intermediate
         # live connection later replaced by an independent one. Defaults remain
         # the values captured separately when the definition was encountered.
-        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+        late = {name: values[0] if values and all(value is values[0] or value == values[0] for value in values) else
+                self.merge_aliases(*({name: value} for value in values))[name]
                 for name, values in self.late_bindings.items()}
         while self.deferred:
             jobs, self.deferred = self.deferred, []
@@ -681,10 +1041,21 @@ class _Check(ast.NodeVisitor):
 
     @staticmethod
     def merge_aliases(*states: dict[str, _Value]) -> dict[str, _Value]:
+        if states and all(state is states[0] or state == states[0] for state in states[1:]):
+            return states[0].copy()
         result = {}
         for name in set().union(*(state.keys() for state in states)):
-            values = [state.get(name, _Value(symbol=name, scalar_converter=True if name == "str" else None)) for state in states]
-            if all(value == values[0] for value in values):
+            first = states[0].get(name)
+            if first is not None and all(state.get(name) is first for state in states[1:]):
+                result[name] = first
+                continue
+            values = []
+            for state in states:
+                if name in state:
+                    values.append(state[name])
+                else:
+                    values.append(_Value(symbol=name, scalar_converter=True if name == "str" else None))
+            if all(value is values[0] or value == values[0] for value in values):
                 result[name] = values[0]
             elif all(value.elements is not None for value in values) and len({len(value.elements) for value in values}) == 1:
                 result[name] = _Value(elements=tuple(
@@ -699,18 +1070,34 @@ class _Check(ast.NodeVisitor):
                 result[name] = _Value(symbol=f"sqlite@merged:{name}", connection=f"sqlite@merged:{name}",
                                       sqlite_cursor=all(value.sqlite_cursor for value in values))
             else:
+                split_keys = (any(value.dictionary_keys is not None for value in values)
+                              and all(value.dictionary_keys is not None or value.mapping is not None for value in values))
+                marker_values = [replace(value, dictionary_keys=None) for value in values] if split_keys else values
+                keys = (_Check.merge_aliases(*[{"keys": value.dictionary_keys or _Value()} for value in values])["keys"]
+                        if split_keys else None)
                 receivers = [value.receiver for value in values if value.receiver is not None]
                 same_owner = all(value.connection == values[0].connection for value in values)
                 connections = [str(value.connection) for value in values if value.connection is not None]
                 merged_connection = (f"unknown@merged:{name}" if any(
                     not owner.startswith("sqlite@") for owner in connections) else
                     f"sqlite@merged:{name}" if connections else None)
-                result[name] = _Value(symbol=values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
+                result[name] = _Value(symbol=values[0].symbol if values[0].symbol and all(value.symbol == values[0].symbol for value in values) else
+                                      "<reflective-builtins>" if any(_Check.contains_namespace(value) for value in values) else
+                                      values[0].symbol if all(value.symbol == values[0].symbol for value in values) else name,
+                                      nonstring_constant=all(value.nonstring_constant for value in values),
+                                      callable_targets=frozenset().union(*(_Check.local_callable_targets(value) for value in marker_values)),
+                                      local_class=any(_Check.has_local_class(value) for value in marker_values),
+                                      local_instance=any(_Check.has_local_class(value, instances=True) for value in marker_values),
+                                      class_operations=frozenset().union(*(_Check.local_class_operations(value) for value in marker_values)),
+                                      builtin_classes=frozenset().union(*(_Check.known_builtin_classes(value) for value in marker_values)),
+                                      builtin_callable=any(_Check.is_builtin_callable(value) for value in marker_values),
                                       active_path=any(value.active_path for value in values),
                                       scalar_converter=True if all(value.scalar_converter is True for value in values) else
                                       False if any(value.scalar_converter is not None for value in values) else None,
                                       dictionary_accessor=any(value.dictionary_accessor for value in values),
                                       dictionary_fromkeys=any(value.dictionary_fromkeys for value in values),
+                                      dictionary_instance=all(_Check.is_dictionary(value) for value in values),
+                                      dictionary_keys=keys,
                                       dictionary_method=values[0].dictionary_method if all(value.dictionary_method == values[0].dictionary_method for value in values) else "",
                                       connection=values[0].connection if same_owner else merged_connection,
                                       fixture_handle=same_owner and all(value.fixture_handle for value in values),
@@ -822,8 +1209,7 @@ class _Check(ast.NodeVisitor):
     def visit_loop(self, node, target=None):
         before = self.aliases.copy()
         if target is not None:
-            elements = self.value(node.iter).elements
-            value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
+            value = self.iteration_item(self.value(node.iter))
             self.bind(target, value)
         for statement in node.body:
             self.visit(statement)
@@ -923,6 +1309,8 @@ class _Check(ast.NodeVisitor):
         self.visit(node.target)
         left = self.value(node.target)
         self.visit(node.value)
+        if any(self.contains_namespace(value) for value in (left, self.value(node.value))):
+            self.flag(node, "dynamic execution namespace mutation is unsupported; use pure dictionary expressions", structural=True)
         result = self.binary_value(left, self.value(node.value), node.op)
         if self.unresolved_ownership(result):
             self.flag(node, "augmented fixture container operations are unsupported; use named handles and fixture_write()", structural=True)
@@ -1038,6 +1426,7 @@ class _Check(ast.NodeVisitor):
         # bound method retains ownership at its immediate invocation.
         self.visit(node.func)
         function = self.value(node.func)
+        self.reject_dynamic_builtin(node.func, function)
         if self.unresolved_ownership(function):
             self.flag(node, "shared container accessors are unsupported; use explicit named handles", structural=True)
             self.evaluated_values[node] = function
@@ -1052,6 +1441,7 @@ class _Check(ast.NodeVisitor):
             self.visit(operand)
             value = self.value(operand)
             if isinstance(argument, ast.Starred):
+                value = self.iteration_value(value)
                 if value.elements is None:
                     opaque_values.append(value)
                 else:
@@ -1065,6 +1455,21 @@ class _Check(ast.NodeVisitor):
         if any(self.unresolved_ownership(value) for value in [*actual_values, *opaque_values, *(v for _, v in keyword_values)]):
             self.flag(node, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
         operands = [*actual_values, *opaque_values, *(v for _, v in keyword_values)]
+        if not function.unannotated_parameter and function.symbol in {"getattr", "builtins.getattr"}:
+            if any(isinstance(argument, ast.Starred) for argument in node.args) or any(keyword.arg is None for keyword in node.keywords):
+                self.flag(node, "starred getattr arguments are unsupported; use explicit arguments with fixture_write()", structural=True)
+            if (len(actual_values) >= 2 and actual_values[1].complete_text
+                    and actual_values[1].text == "__call__" and self.is_builtin_callable(actual_values[0])):
+                self.flag(node, "builtin __call__ access is unsupported; use named calls with fixture_write()", structural=True)
+        if function.dictionary_fromkeys and (not node.args or not self.literal_fromkeys_keys(node.args[0])):
+            self.flag(node, "fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()", structural=True)
+        if (not function.unannotated_parameter
+                and function.symbol.removeprefix("builtins.") in {"enumerate", "reversed", "zip"}):
+            iterable_inputs = actual_values if function.symbol.removeprefix("builtins.") == "zip" else actual_values[:1]
+            projected = [self.iteration_value(value) for value in [*iterable_inputs, *opaque_values]]
+            if any(self.known_builtin_classes(value) or self.local_class_operations(value)
+                   or self.has_local_class(value) or self.has_local_class(value, instances=True) for value in projected):
+                self.flag(node, "iterator adapter transport of local class or constructor values is unsupported; use synchronous fixed-parameter helpers with fixture_write()", structural=True)
         shared_tuples = [v for v in operands if v.elements is not None and self.known_ownership(v, shared_only=True)]
         thread_arguments = (function.symbol == "threading.Thread"
                             and not any(v.elements is not None and self.known_ownership(v, shared_only=True)
@@ -1074,6 +1479,8 @@ class _Check(ast.NodeVisitor):
         if shared_tuples and function.symbol not in self.local_functions and not thread_arguments:
             self.flag(node, "opaque shared tuple consumers are unsupported; use fixed helper parameters and fixture_write()", structural=True)
         method_name = function.symbol.rsplit(".", 1)[-1]
+        if method_name in _NAMESPACE_SEQUENCE_STORES and any(self.contains_namespace(value) for value in operands):
+            self.flag(node, "dynamic execution namespace stores are unsupported; use pure container expressions", structural=True)
         if (function.receiver is not None or function.dictionary_accessor) and method_name in {"append", "extend", "insert", "add", "update", "setdefault", "__setitem__", "__ior__", "__iadd__"}:
             if any(self.known_ownership(v, shared_only=True) or self.has_active_path(v) for v in operands):
                 self.flag(node, "shared or active-path container mutation is unsupported; use named handles and fixture_write()", structural=True)
@@ -1090,6 +1497,37 @@ class _Check(ast.NodeVisitor):
         dictionary_method = function.dictionary_method or (method if owner in {"dict", "builtins.dict"} else "*")
         dictionary_receiver = explicit_receiver if function.dictionary_accessor else function.receiver
         dictionary_arguments = actual_values[1:] if function.dictionary_accessor else actual_values
+        namespace_inputs = [*dictionary_arguments, *opaque_values, *(value for _, value in keyword_values)]
+        if dictionary_receiver is not None:
+            namespace_inputs.append(dictionary_receiver)
+        if ((function.dictionary_accessor or function.dictionary_method or method_name == "__setitem__") and any(
+                self.contains_namespace(value) for value in namespace_inputs)
+                or dictionary_method in {"copy", "__or__", "__ror__"} and dictionary_receiver is not None
+                and self.is_dictionary(dictionary_receiver)):
+            if dictionary_method in _NAMESPACE_MUTATIONS or method_name == "__setitem__":
+                self.flag(node, "dynamic execution namespace mutation is unsupported; use pure dictionary expressions", structural=True)
+            elif dictionary_method in _NAMESPACE_ENUMERATIONS:
+                self.flag(node, "dynamic execution namespace enumeration is unsupported; use explicit literal key lookups", structural=True)
+            elif dictionary_method in {"get", "pop"} and any(self.contains_namespace(value) for value in dictionary_arguments[1:]):
+                self.flag(node, "dynamic execution namespace defaults are unsupported; use explicit named values", structural=True)
+            elif dictionary_method == "copy" and dictionary_receiver is not None and not dictionary_arguments:
+                self.evaluated_values[node] = dictionary_receiver
+            elif dictionary_method in {"__or__", "__ror__"}:
+                if dictionary_receiver is not None and len(dictionary_arguments) == 1 and not opaque_values and not keyword_values:
+                    pair = [dictionary_receiver, dictionary_arguments[0]]
+                    if dictionary_method == "__ror__":
+                        pair.reverse()
+                    self.evaluated_values[node] = self.dictionary_value(pair, [])
+                else:
+                    self.evaluated_values[node] = self.opaque_dictionary_value(namespace_inputs)
+        if dictionary_receiver is not None and dictionary_method in _NAMESPACE_ENUMERATIONS:
+            carried = (replace(dictionary_receiver, dictionary_keys=None)
+                       if dictionary_method == "values" else dictionary_receiver)
+            marker = self.class_carrier_value(carried)
+            if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations or marker.builtin_callable:
+                self.evaluated_values[node] = replace(self.value(node), local_class=marker.local_class,
+                    local_instance=marker.local_instance, builtin_classes=marker.builtin_classes,
+                    class_operations=marker.class_operations, builtin_callable=marker.builtin_callable)
         if function.dictionary_accessor or function.dictionary_method:
             accessor = self.container_accessor_value(dictionary_receiver, dictionary_method) if dictionary_receiver is not None else None
             defaults = dictionary_arguments[1:] if dictionary_method in {"get", "pop", "setdefault", "*"} else []
@@ -1103,6 +1541,8 @@ class _Check(ast.NodeVisitor):
                 self.evaluated_values[node] = marker
                 self.flag(node, "container accessors with shared handles or active workspace paths are unsupported", structural=True)
         if function.dictionary_fromkeys and explicit_receiver is not None:
+            if any(self.contains_namespace(value) for value in actual_values[1:]):
+                self.flag(node, "dynamic execution namespace defaults are unsupported; use explicit named values", structural=True)
             result = self.fromkeys_value(explicit_receiver, actual_values[1] if len(actual_values) > 1 else _Value())
             self.evaluated_values[node] = result
             if self.unresolved_ownership(result):
@@ -1243,13 +1683,52 @@ class _Check(ast.NodeVisitor):
             elif receiver.symbol not in self.media_protected:
                 self.flag(node, "manual media fixture seed requires fixture_write(workspace, media=True)")
         result = self.check_local_call(node, function)
+        copied = self.copied_argument(actual_values, opaque_values, keyword_values) if "copy" in function.class_operations else _Value()
+        constructed, ambiguous = self.first_positional_argument(node.args) if "construct" in function.class_operations else (_Value(), False)
+        construction_inputs = [*(actual_values if ambiguous else actual_values[1:]), *opaque_values]
+        containers = []
+        if "dict" in constructed.builtin_classes:
+            containers.append(self.dictionary_value(construction_inputs, keyword_values))
+        if constructed.builtin_classes & {"list", "tuple", "set", "frozenset"}:
+            containers.append(self.payload_value([self.iteration_value(value) for value in construction_inputs]))
         if result is not None:
             self.evaluated_values[node] = result
+        elif self.has_local_class(copied) or self.has_local_class(copied, instances=True) or self.local_class_operations(copied) or self.known_builtin_classes(copied) or self.is_builtin_callable(copied):
+            # Known copies retain exact bounded shape; foreign builders do not.
+            self.evaluated_values[node] = copied
+        elif self.has_local_class(constructed):
+            self.evaluated_values[node] = replace(self.value(node), local_instance=True)
+        elif containers:
+            self.evaluated_values[node] = self.merge_aliases(*({"result": value} for value in containers))["result"]
+        elif node.args and not function.unannotated_parameter:
+            aggregate = function.symbol.removeprefix("builtins.")
+            if aggregate in {"iter", "list", "tuple", "set", "frozenset", "next", "getattr"}:
+                carried = [self.value(argument) for argument in node.args]
+                if aggregate in {"iter", "list", "tuple", "set", "frozenset"}:
+                    carried = [self.iteration_value(carried[0])]
+                marker = self.payload_value(carried)
+                if aggregate == "getattr":
+                    marker = replace(marker, builtin_classes=frozenset(), class_operations=frozenset(), builtin_callable=False)
+                    if len(actual_values) >= 3:
+                        existing, default = self.value(node), actual_values[2]
+                        self.evaluated_values[node] = replace(existing,
+                            builtin_classes=existing.builtin_classes | self.known_builtin_classes(default),
+                            class_operations=existing.class_operations | self.local_class_operations(default),
+                            builtin_callable=existing.builtin_callable or self.is_builtin_callable(default),
+                            local_class=existing.local_class or self.has_local_class(default),
+                            local_instance=existing.local_instance or self.has_local_class(default, instances=True),
+                            callable_targets=existing.callable_targets | self.local_callable_targets(default))
+                if marker.local_class or marker.local_instance or marker.builtin_classes or marker.class_operations or marker.builtin_callable:
+                    existing = self.value(node)
+                    self.evaluated_values[node] = replace(existing, local_instance=existing.local_instance or marker.local_class or marker.local_instance,
+                                                         builtin_classes=existing.builtin_classes | marker.builtin_classes,
+                                                         class_operations=existing.class_operations | marker.class_operations,
+                                                         builtin_callable=existing.builtin_callable or marker.builtin_callable)
+        self.reject_dynamic_builtin(node)
 
     def check_local_call(self, call, function):
-        # Specialize direct local helpers only when a known workspace, SQLite
-        # handle or bound method is supplied. Generic resource.close remains ordinary
-        # cleanup, while aliases and helper chains retain shared ownership.
+        # Specialize direct local helpers with known fixture or namespace
+        # provenance using the existing fixed-parameter body analysis.
         if function.symbol not in self.local_functions:
             return
         kind, node, defaults, annotations, lexical, history, local_names = self.local_functions[function.symbol]
@@ -1258,11 +1737,11 @@ class _Check(ast.NodeVisitor):
         unresolved_actual = []
         for index, argument in enumerate(call.args):
             if isinstance(argument, ast.Starred):
-                elements = self.value(argument.value).elements
+                elements = self.iteration_value(self.value(argument.value)).elements
                 if elements is None:
                     # Dynamic iterable cardinality is outside this bounded
                     # literal/alias expansion; do not guess later positions.
-                    unresolved_actual = [self.value(item.value if isinstance(item, ast.Starred) else item)
+                    unresolved_actual = [self.iteration_value(self.value(item.value)) if isinstance(item, ast.Starred) else self.value(item)
                                          for item in call.args[index:]]
                     break
                 actual.extend(elements)
@@ -1285,7 +1764,8 @@ class _Check(ast.NodeVisitor):
                     if node.args.kwarg is not None:
                         variadic_values.extend(value for name, value in mapping if name not in fixed_names)
         bindings = {**defaults, **supplied}
-        late = {name: self.merge_aliases(*({name: value} for value in values))[name]
+        late = {name: values[0] if values and all(value is values[0] or value == values[0] for value in values) else
+                self.merge_aliases(*({name: value} for value in values))[name]
                 for name, values in history.items() if name not in local_names}
         environment = {**lexical, **late}
         captures = self.captured_values(node, environment)
@@ -1293,9 +1773,24 @@ class _Check(ast.NodeVisitor):
         # Fixed workspace parameters and ordinary keyword options keep the
         # existing direct-helper analysis, even if the signature is variadic.
         values = [*bindings.values(), *captures, *variadic_values]
-        known = any(self.known_ownership(value) or self.has_active_path(value) for value in values)
+        # Bare lexical providers are ordinary body references, not transported
+        # namespace state. Containers/defaults/actual arguments retain carriers.
+        namespace_captures = [value for value in captures
+                              if value.symbol not in _NAMESPACE_PROVIDERS | {"builtins"}]
+        namespace = any(self.contains_namespace(value) for value in
+                        [*bindings.values(), *namespace_captures, *variadic_values])
+        known = any(self.contains_namespace(value) or self.known_ownership(value)
+                    or self.has_active_path(value) or self.has_local_class(value)
+                    or self.has_local_class(value, instances=True) or self.local_class_operations(value)
+                    or self.known_builtin_classes(value) for value in values)
+        known = known or any(self.is_builtin_callable(value) for value in [*bindings.values(), *variadic_values])
         if not known and (call.args or call.keywords):
             return
+        if namespace and (any(self.contains_namespace(value) for value in variadic_values)
+                          or isinstance(node, ast.AsyncFunctionDef) or self.has_yield(node)
+                          or function.symbol in self.active_calls):
+            self.flag(call, "dynamic execution namespace transport requires a nonrecursive synchronous helper with fixed parameters", structural=True)
+            return self.payload_value(values)
         shared = any(self.known_ownership(value, shared_only=True) for value in values)
         if any(self.known_ownership(value, shared_only=True) for value in variadic_values):
             self.flag(call, "variadic helpers with shared fixture ownership are unsupported; use explicit named parameters", structural=True)
@@ -1338,7 +1833,9 @@ class _Check(ast.NodeVisitor):
             *(value.elements or ()), *(item for _, item in value.mapping or ()),
         ))
 
-    def captured_values(self, node, environment):
+    def captured_references(self, node):
+        if node in self.capture_references:
+            return self.capture_references[node]
         # Only referenced lexical values count, not every ambient workspace.
         # Collect this function's local binders before looking at references;
         # Python shadows a closure/global for the whole function, not just after
@@ -1376,9 +1873,6 @@ class _Check(ast.NodeVisitor):
             else:
                 pending.extend(ast.iter_child_nodes(item))
         local -= declared
-        previous = self.aliases
-        self.aliases = environment
-
         def collect(item, shadowed):
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
                 return
@@ -1397,30 +1891,86 @@ class _Check(ast.NodeVisitor):
                 while isinstance(root, ast.Attribute):
                     root = root.value
                 if isinstance(root, ast.Name) and root.id not in shadowed:
-                    references.append(self.value(item))
+                    references.append(item)
             for child in ast.iter_child_nodes(item):
                 collect(child, shadowed)
 
         for item in node.body if isinstance(node.body, list) else [node.body]:
             collect(item, local)
-        self.aliases = previous
-        return references
+        self.capture_references[node] = tuple(references)
+        return self.capture_references[node]
 
-    @staticmethod
-    def has_yield(node) -> bool:
+    def captured_values(self, node, environment):
+        references = self.captured_references(node)
+        previous = self.aliases
+        self.aliases = environment
+        values = [self.value(item) for item in references]
+        self.aliases = previous
+        return values
+
+    def has_yield(self, node) -> bool:
+        if node in self.yield_results:
+            return self.yield_results[node]
         pending = list(node.body) if isinstance(node.body, list) else [node.body]
         while pending:
             item = pending.pop()
             if isinstance(item, (ast.Yield, ast.YieldFrom)):
+                self.yield_results[node] = True
                 return True
             if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
                 pending.extend(ast.iter_child_nodes(item))
+        self.yield_results[node] = False
         return False
 
     def visit_Return(self, node: ast.Return) -> None:
         if node.value is not None:
             self.visit(node.value)
-        self.return_values.append(self.value(node.value))
+        value = self.value(node.value)
+        self.return_values.append(value)
+        enclosing = self.parents.get(node)
+        while enclosing is not None and not isinstance(enclosing, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            enclosing = self.parents.get(enclosing)
+        if enclosing is not None and (isinstance(enclosing, ast.AsyncFunctionDef) or self.has_yield(enclosing)):
+            self.reject_delayed_namespace_result(node, value)
+
+    def reject_delayed_namespace_result(self, node, value):
+        if self.delayed_result_contains_namespace(node, value):
+            self.flag(node, "dynamic execution namespace results from async/generator helpers are unsupported; use synchronous fixed-parameter helpers", structural=True)
+
+    def delayed_result_contains_namespace(self, node, value):
+        if self.has_local_class(value) or self.has_local_class(value, instances=True):
+            self.flag(node, "delayed local class values are unsupported; use fixture_write() with synchronous fixed-parameter helpers", structural=True)
+            return False
+        if self.contains_namespace(value):
+            return True
+        children = [*([value.receiver] if value.receiver is not None else []),
+                    *(value.elements or ()), *(item for _, item in value.mapping or ()),
+                    *[_Value(symbol=target) for target in value.callable_targets if target != value.symbol]]
+        if any(self.delayed_result_contains_namespace(node, child) for child in children):
+            return True
+        if value.symbol not in self.local_functions:
+            return False
+        if value.symbol in self.active_namespace_results or value.symbol in self.active_calls:
+            return True
+        # Inspect the existing local-body result with its lexical/default values;
+        # this constructs no runtime callable and interprets no additional syntax.
+        call = ast.copy_location(ast.Call(func=ast.Name(id="_delayed_result", ctx=ast.Load()),
+                                         args=[], keywords=[]), node)
+        self.active_namespace_results.add(value.symbol)
+        try:
+            result = self.check_local_call(call, value)
+            return result is not None and self.delayed_result_contains_namespace(node, result)
+        finally:
+            self.active_namespace_results.remove(value.symbol)
+
+    def visit_Yield(self, node: ast.Yield) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+        self.reject_delayed_namespace_result(node, self.value(node.value))
+
+    def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
+        self.visit(node.value)
+        self.reject_delayed_namespace_result(node, self.iteration_value(self.value(node.value)))
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         # Closures retain aliases, but can run after the defining lock is gone.
@@ -1512,7 +2062,7 @@ class _Check(ast.NodeVisitor):
         self.class_outer_names = outer_names
         self.aliases, self.class_outer_aliases = aliases, class_outer
         self.eager_variable_annotations = eager_annotations
-        self.aliases[node.name] = _Value(symbol=f"class@{node.lineno}:{node.name}")
+        self.aliases[node.name] = _Value(symbol=f"class@{node.lineno}:{node.name}", local_class=True)
         self.outer_write_names = outer_write_names
 
     def visit_Lambda(self, node: ast.Lambda) -> None:
@@ -1548,6 +2098,8 @@ class _Check(ast.NodeVisitor):
                 self.aliases[argument.arg] = _Value(symbol=argument.arg, connection=argument.arg)
         self.visit(node.body)
         result = self.value(node.body)
+        if self.has_local_class(result) or self.has_local_class(result, instances=True):
+            self.reject_delayed_namespace_result(node.body, result)
         self.flush_deferred()
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus
@@ -1560,7 +2112,12 @@ class _Check(ast.NodeVisitor):
 
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         self.visit(node.generators[0].iter)
-        self.defer("generator", node, self.value(node.generators[0].iter))
+        iterable = self.value(node.generators[0].iter)
+        inputs = [self.iteration_value(iterable), self.value(node.elt),
+                  *(self.iteration_value(self.value(generator.iter)) for generator in node.generators[1:])]
+        if any(self.known_builtin_classes(value) or self.local_class_operations(value) or self.is_builtin_callable(value) for value in inputs):
+            self.visit_comprehension_scope(node, deferred=True, analyzed=True, first_iterable=iterable)
+        self.defer("generator", node, iterable)
 
     def visit_ListComp(self, node: ast.ListComp) -> None:
         self.visit_comprehension_scope(node, deferred=False)
@@ -1592,10 +2149,11 @@ class _Check(ast.NodeVisitor):
             if index:
                 self.visit(generator.iter)
             iterable = self.value(generator.iter) if index else first_iterable
+            if iterable is not None:
+                iterable = self.iteration_value(iterable)
             if iterable is not None and self.unresolved_ownership(iterable):
                 self.flag(generator.iter, "heterogeneous shared fixture containers are unsupported; use explicit named handles", structural=True)
-            elements = iterable.elements if iterable is not None else None
-            value = self.merge_aliases(*({"item": element} for element in elements))["item"] if elements else _Value()
+            value = self.iteration_item(iterable) if iterable is not None else _Value()
             self.comprehension_locals.update(item.id for item in ast.walk(generator.target) if isinstance(item, ast.Name))
             self.bind(generator.target, value)
             for condition in generator.ifs:
@@ -1605,8 +2163,9 @@ class _Check(ast.NodeVisitor):
             key = self.value(node.key)
             self.visit(node.value)
             shared = any(self.known_ownership(value, shared_only=True) for value in (key, self.value(node.value)))
-            result = self.payload_value([key, self.value(node.value)])
+            result = self.opaque_dictionary_value([key, self.value(node.value)])
             self.evaluated_values[node] = result
+            self.reject_dynamic_builtin(node, result)
             if shared:
                 self.flag(node, "shared dictionary comprehension results are unsupported; use explicit named handles", structural=True)
             if result.unresolved_active_path:
@@ -1616,11 +2175,16 @@ class _Check(ast.NodeVisitor):
             element = self.value(node.elt)
             if deferred and (self.known_ownership(element, shared_only=True) or self.has_active_path(element)):
                 self.flag(node, "generator transport of fixture values is unsupported; use fixed named inputs and fixture_write()", structural=True)
+            result = self.payload_value([element])
+            self.evaluated_values[node] = result
+            self.reject_dynamic_builtin(node, result)
+            if deferred:
+                self.reject_delayed_namespace_result(node, result)
             if not deferred:
                 self.reject_mutable_carrier(node, element)
                 self.evaluated_values[node] = (_Value(receiver=element)
                     if element.fixture_handle and element.connection in self.protected
-                    else self.payload_value([element]))
+                    else result)
         assignments = self.eager_walrus or {}
         self.aliases, self.protected, self.class_outer_aliases = aliases, protected, class_outer
         self.held_locks, self.eager_walrus = held_locks, eager_walrus

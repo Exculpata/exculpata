@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 from pathlib import Path
 from string import Formatter
 
@@ -1244,21 +1245,60 @@ def test_final_review_js_regex_comment_ambiguity_does_not_hide_escapes(tmp_path)
     assert checker.findings(tmp_path)
 
 
-@pytest.mark.parametrize('source, expected', [
-    ('value = LEGACY_STEM\nfor _ in range(2):\n value += ".env"\nFORMAT = value', 'record' + 'bench.env.env'),
-    ('value = LEGACY_STEM\nfor _ in [1, 2]:\n value = value + ".env"\nFORMAT = value', 'record' + 'bench.env.env'),
-    ('value = LEGACY_STEM\ni = 0\nwhile i < 2:\n value += ".env"\n i += 1\nFORMAT = value', 'record' + 'bench.env.env'),
-    ('stem = LEGACY_STEM\nFalse and (stem := "synthetic")\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
-    ('stem = LEGACY_STEM\nTrue or (stem := "synthetic")\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
-    ('stem = LEGACY_STEM\n(stem := "synthetic") if False else None\nFORMAT = f"{stem}-unregistered-v99"', 'record' + 'bench-unregistered-v99'),
+def _repeat_augmented_assignment():
+    value = LEGACY_STEM
+    for _ in range(2):
+        value += ".env"
+    return value
+
+
+def _repeat_assignment():
+    value = LEGACY_STEM
+    for _ in [1, 2]:
+        value = value + ".env"
+    return value
+
+
+def _repeat_while_assignment():
+    value = LEGACY_STEM
+    i = 0
+    while i < 2:
+        value += ".env"
+        i += 1
+    return value
+
+
+def _short_circuit_and():
+    stem = LEGACY_STEM
+    False and (stem := "synthetic")
+    return f"{stem}-unregistered-v99"
+
+
+def _short_circuit_or():
+    stem = LEGACY_STEM
+    True or (stem := "synthetic")
+    return f"{stem}-unregistered-v99"
+
+
+def _conditional_assignment():
+    stem = LEGACY_STEM
+    (stem := "synthetic") if False else None
+    return f"{stem}-unregistered-v99"
+
+
+@pytest.mark.parametrize('probe, expected', [
+    (_repeat_augmented_assignment, 'record' + 'bench.env.env'),
+    (_repeat_assignment, 'record' + 'bench.env.env'),
+    (_repeat_while_assignment, 'record' + 'bench.env.env'),
+    (_short_circuit_and, 'record' + 'bench-unregistered-v99'),
+    (_short_circuit_or, 'record' + 'bench-unregistered-v99'),
+    (_conditional_assignment, 'record' + 'bench-unregistered-v99'),
 ])
-def test_independent_review_repeated_and_conditional_writes(tmp_path, source, expected):
-    source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + source + '\n'
-    # These fixed, bounded synthetic programs independently verify runtime output.
-    namespace = {}
-    exec(compile(source, 'synthetic.py', 'exec'), namespace)
-    assert namespace['FORMAT'] == expected
+def test_independent_review_repeated_and_conditional_writes(tmp_path, probe, expected):
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + inspect.getsource(probe)
+    assert probe() == expected
     assert checker.scan_component('synthetic.py', expected, NAME_CONTRACTS)
+    # fixture-write: Inspect the exact static synthetic probe executed above.
     (tmp_path / 'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
 
@@ -1339,12 +1379,20 @@ def test_javascript_malformed_comment_does_not_disable_escape_inspection(tmp_pat
     assert checker.findings(tmp_path)
 
 
+def _loop_accumulator_alias():
+    settings = {"stem": LEGACY_STEM}
+    for _ in range(2):
+        previous = settings
+        settings = dict(settings, stem=previous["stem"] + ".env")
+    return settings["stem"]
+
+
 def test_loop_accumulator_alias_does_not_hide_prior_iteration(tmp_path):
-    source = 'from case_intelligence.legacy_names import LEGACY_STEM\nsettings = {"stem": LEGACY_STEM}\nfor _ in range(2):\n previous = settings\n settings = dict(settings, stem=previous["stem"] + ".env")\n'
-    namespace = {}
-    exec(compile(source, 'synthetic.py', 'exec'), namespace)
-    assert namespace['settings']['stem'] == 'record' + 'bench.env.env'
-    assert checker.scan_component('synthetic.py', namespace['settings']['stem'], NAME_CONTRACTS)
+    source = 'from case_intelligence.legacy_names import LEGACY_STEM\n' + inspect.getsource(_loop_accumulator_alias)
+    actual = _loop_accumulator_alias()
+    assert actual == 'record' + 'bench.env.env'
+    assert checker.scan_component('synthetic.py', actual, NAME_CONTRACTS)
+    # fixture-write: Inspect the exact static synthetic accumulator executed above.
     (tmp_path / 'synthetic.py').write_text(source)
     assert checker.findings(tmp_path)
 
@@ -2037,8 +2085,10 @@ def test_valid_python_in_extensionless_source_still_gets_semantic_checks(tmp_pat
     assert any(item.identifier == LEGACY_STEM + '-unregistered-v99' for item in checker.findings(tmp_path))
 
 
-def test_python_shebang_remains_binding_for_known_other_filename(tmp_path):
-    (tmp_path / 'Dockerfile').write_text('#!/usr/bin/env python3\ndef broken(:\n pass')
+@pytest.mark.parametrize('relative', ['Dockerfile', '.gitattributes'])
+def test_python_shebang_remains_binding_for_known_other_filename(tmp_path, relative):
+    # fixture-write: Verify Python shebangs override synthetic configuration filenames.
+    (tmp_path / relative).write_text('#!/usr/bin/env python3\ndef broken(:\n pass')
     assert any('unsupported Python parse' in item.identifier for item in checker.findings(tmp_path))
 
 
@@ -2168,3 +2218,20 @@ def test_builtin_submodule_import_cannot_expose_package_root(fromlist):
 ])
 def test_ordinary_runtime_and_direct_contract_calls_keep_supported_boundary(source):
     assert checker.scan_python("synthetic.py", source, NAME_CONTRACTS) == []
+
+
+def test_non_python_attributes_do_not_hide_python_violations(tmp_path):
+    # fixture-write: Create synthetic Git attributes beside Python policy probes.
+    (tmp_path / '.gitattributes').write_text('*.wav binary\n*.pdf binary\n')
+    assert checker.findings(tmp_path) == []
+    source = tmp_path / 'synthetic.py'
+    # fixture-write: Exercise a constructed unregistered Python operational identifier.
+    source.write_text('VALUE = "record" + "bench-unregistered-v99"\n')
+    assert any(item.location.startswith('synthetic.py:')
+               and item.identifier == LEGACY_STEM + '-unregistered-v99'
+               for item in checker.findings(tmp_path))
+    # fixture-write: Exercise malformed Python alongside valid non-Python configuration.
+    source.write_text('def broken(:\n pass\n')
+    assert any(item.location.startswith('synthetic.py:')
+               and 'unsupported Python parse' in item.identifier
+               for item in checker.findings(tmp_path))

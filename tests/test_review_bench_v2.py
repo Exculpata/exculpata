@@ -340,9 +340,12 @@ def test_remote_embedding_adapter_batches_large_documents_at_worker_limit(monkey
 
 
 def test_remote_embedding_rejects_wrong_batch_size(monkeypatch):
+    def open_wrong_batch(*args, **kwargs):
+        return _WorkerResponse(b'{"vectors": [[1.0]]}')
+
     monkeypatch.setattr(
         "case_intelligence.review_bench_v2.open_service_request",
-        lambda *_args, **_kwargs: _WorkerResponse(b'{"vectors": [[1.0]]}'),
+        open_wrong_batch,
     )
     with pytest.raises(RuntimeError, match="invalid embedding batch"):
         RemoteEmbeddingAdapter("http://127.0.0.1:8767").embed(["a", "b"])

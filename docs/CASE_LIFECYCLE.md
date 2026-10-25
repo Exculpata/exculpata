@@ -94,6 +94,10 @@ media, full extracted text, retained playback renditions, source/version
 provenance, conversations, notebooks, reports and their histories, research and
 review ledgers, context selections, intake, entities, assertions, transcript and
 speaker revisions, clip definitions, and failed/cancelled/incomplete outcomes.
+Witness inconsistency review decisions retain candidate identifiers, reviewed or
+dismissed state, matter-local actor attribution and update times. Their cited
+accounts remain in assertion records; candidate wording is computed on demand
+and is not stored as a separate result.
 Raw authored text and stale historical citations are retained. Missing current
 originals, unresolved staging/quarantine, unknown schema fields, unsupported
 payload shapes, corrupt bytes or capacity limits block certification; they do
