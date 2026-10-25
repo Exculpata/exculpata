@@ -22,12 +22,16 @@ def application_command(tmp_path):
     command = command.replace('${{ runner.temp }}', str(tmp_path))
     argv = shlex.split(command)
     argv[0] = sys.executable
+    argv[argv.index('-n') + 1] = '1'
+    argv += ['--basetemp', str(tmp_path / 'pt'), '-o', 'tmp_path_retention_policy=failed']
     return argv
 
 
 def run_synthetic(tmp_path, source, *extra_args):
     # fixture-write: isolated synthetic child suite for hosted-command diagnostics.
     (tmp_path / 'test_synthetic.py').write_text(source)
+    # fixture-write: Substitute the shard manifest with one synthetic test file.
+    (tmp_path / 'application-test-files.txt').write_text('test_synthetic.py\n')
     env = dict(os.environ)
     # Do not inherit a caller's selection, tracing or plugin configuration.
     env.pop('PYTEST_ADDOPTS', None)

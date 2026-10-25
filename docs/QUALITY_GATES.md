@@ -111,6 +111,16 @@ pushes conservatively run the full suites. No label or commit message bypasses
 classification. The workflow always publishes its checks rather than using path
 filters that could leave a required result missing.
 
+The application suite runs in two parallel `application-shards` matrix jobs.
+`scripts/application-test-shard.py` sorts the application test files and assigns
+alternating files to each shard; new files are included automatically. Each shard
+keeps the existing worker limits and diagnostics, with a separate artifact name.
+The existing `application` required check aggregates both shards and classification;
+failed, cancelled or skipped dependencies cannot produce a successful aggregate.
+Documentation-only changes run the lightweight contracts in both shards.
+This split is a prototype: keep it only if hosted wall-clock measurements show a
+real saving against the last five main runs, including setup and aggregate overhead.
+
 The application suite and publication scan run concurrently. Classification
 failure blocks `application`; `deployment-contract` requires successful
 classification and publication scanning, including on documentation-only changes.
@@ -147,7 +157,7 @@ thread and exits the worker at 420 seconds; disabled worker restart fails the ru
 Both limits exceed the suite's longest in-test subprocess budget (300 seconds).
 
 CI retains `application-results.xml` and bounded `application-workers/*.json`
-diagnostics for five days, with the run ID and attempt in the artifact name.
+diagnostics for five days, with the shard, run ID and attempt in the artifact name.
 The JSON records worker exits/signals, current test phases, sampled process
 metrics, runner limits and cgroup-v2 OOM deltas. Missing or partial measurements
 are explicit; SIGKILL alone does not establish OOM. See
