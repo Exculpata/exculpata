@@ -1459,13 +1459,13 @@ detail = "network import"
 [[source]]
 path = "src/case_intelligence/review_bench_v2.py"
 kind = "client"
-digest = "6049f9b3d47b1b9b80d19fd9e2a06fdbe9b883e7b97235d43a2c9e60be895973"
+digest = "a693edea9ce55a45778281f9cf6c3f53460ab2e4b078cfb5dd0ee52fd32e32c4"
 detail = "urllib.request.Request"
 
 [[source]]
 path = "src/case_intelligence/review_bench_v2.py"
 kind = "client"
-digest = "278c0b8915c9066cfec713ef4627d17554ea77adf03f7ca69cf89091d476a783"
+digest = "28cd552b7409cfa308a937339fd761b153c2521295d22e017971ef09a61aef25"
 detail = "service_endpoints.open_service_request"
 
 [[source]]
@@ -8625,3 +8625,33 @@ path = "scripts/defense-eval-ci.py"
 kind = "host"
 digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
 detail = "provenance.json"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "9794fd4bffade444285152a875edb21c04c7b5f8c39ec6041fb0d542a7e51d36"
+detail = "http.client.HTTPException"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "7c6496d1bbbebdbe01fdd03484df56d1b7dae34c9dad03c620d334c9f5b470da"
+detail = "http.client.HTTPException"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "2d18dc8b84c0db925835d1bd3128d9f198e3f82bcff49c2d4cd557316cbedde4"
+detail = "urllib.request.Request"

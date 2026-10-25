@@ -33,7 +33,8 @@ class KnowledgeServicesMixin:
             read_authority = lambda matter_id, actor_id: self._authorize_automatic_discovery(
                 matter_id, actor_id, create=False)
         return EntityRepository(connection=self.connection, lock=self._lock,
-                                authorize=authority, now=self._now, read_authorize=read_authority)
+                                authorize=authority, now=self._now, read_authorize=read_authority,
+                                audit=self._append_audit_event_locked)
 
     def assertion_repository(self, *, export_read=False, administrator_override=False):
         from ..assertion_repository import AssertionRepository

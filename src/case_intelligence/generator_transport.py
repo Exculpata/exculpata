@@ -17,25 +17,25 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def open_generator_request(request, *, timeout, opener=None):
+def open_generator_request(request, *, timeout, opener=None, environment_prefix="CASE_INTELLIGENCE_GENERATOR"):
     try:
         validate_generator_url(request.full_url)
         if urlsplit(request.full_url).scheme != "https":
             raise ValueError("External answer servers require HTTPS")
-        validate_service_endpoint(request.full_url, environment_name="CASE_INTELLIGENCE_GENERATOR_ALLOWED_HOSTS",
+        validate_service_endpoint(request.full_url, environment_name=f"{environment_prefix}_ALLOWED_HOSTS",
                                   label="generator endpoint", schemes=frozenset({"https"}))
-        configured = os.environ.get("CASE_INTELLIGENCE_GENERATOR_URL", request.full_url)
-        pins = generator_pins(os.environ.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", ""), configured)
+        configured = os.environ.get(f"{environment_prefix}_URL", request.full_url)
+        pins = generator_pins(os.environ.get(f"{environment_prefix}_EGRESS_PINS", ""), configured)
         if issuer_authority(configured) != issuer_authority(request.full_url):
             raise ValueError("Generator request authority differs from configuration")
-        confirmed = os.environ.get("CASE_INTELLIGENCE_GENERATOR_REMOTE_CONFIRMED") == "1"
+        confirmed = os.environ.get(f"{environment_prefix}_REMOTE_CONFIRMED") == "1"
         if pins:
             reason = _destination_reason(pins, remote_confirmed=confirmed)
             if reason:
                 raise ValueError(reason)
         elif not confirmed:
             raise ValueError("External answer servers require remote consent or reviewed private address pins")
-        proxy = urlsplit(os.environ.get("CASE_INTELLIGENCE_GENERATOR_PROXY", ""))
+        proxy = urlsplit(os.environ.get(f"{environment_prefix}_PROXY", ""))
         if (proxy.scheme != "http" or not proxy.hostname or not proxy.port or proxy.path not in {"", "/"}
                 or proxy.username is not None or proxy.password is not None or proxy.query or proxy.fragment):
             raise ValueError("Configure CASE_INTELLIGENCE_GENERATOR_PROXY for the CONNECT relay")

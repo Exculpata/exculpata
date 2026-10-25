@@ -1484,6 +1484,9 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             elif key == "role":
                 if value not in {"owner", "member", "administrator"}:
                     raise ValueError("invalid audit role")
+            elif key in {"old_state", "new_state"}:
+                if value not in {"unreviewed", "reviewed", "dismissed"}:
+                    raise ValueError("invalid audit review state")
             elif key == "state":
                 if value not in _AUDIT_DETAIL_STATES:
                     raise ValueError("invalid audit state")
