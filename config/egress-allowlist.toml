@@ -8491,6 +8491,24 @@ detail = "provenance.json"
 [[source]]
 path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
+digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
+detail = "network import"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "9794fd4bffade444285152a875edb21c04c7b5f8c39ec6041fb0d542a7e51d36"
+detail = "http.client.HTTPException"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
+digest = "7c6496d1bbbebdbe01fdd03484df56d1b7dae34c9dad03c620d334c9f5b470da"
+detail = "http.client.HTTPException"
+
+[[source]]
+path = "src/case_intelligence/retrieval_endpoints.py"
+kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
 detail = "network import"
 

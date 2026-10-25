@@ -1,6 +1,7 @@
 """Explicit operator retrieval endpoints, with bounded, content-free failures."""
 from dataclasses import dataclass, replace
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -101,12 +102,11 @@ def request_json(config, path, body=None):
         exc.close()
         raise RuntimeError("Endpoint authentication failed; check the credential." if code in {401, 403}
                            else "Endpoint refused the request; check API compatibility.") from None
-    except (OSError, ValueError):
+    except (http.client.HTTPException, OSError, ValueError):
         raise RuntimeError("Endpoint unreachable or invalid response; check configuration and relay.") from None
 
 
 def endpoint_batch(config, operation, body):
-    from .review_bench_v2 import _model_numbers
     embedding = operation == "embed"
     payload = {"model": config.model, "input" if embedding else "documents": body["texts"]}
     if not embedding:
@@ -121,11 +121,15 @@ def endpoint_batch(config, operation, body):
         values = [row["embedding" if embedding else "relevance_score"]
                   for row in sorted(rows, key=lambda row: row["index"])]
         key = "vectors" if embedding else "scores"
-        checked = _model_numbers({key: values}, key, len(rows), vectors=embedding)
-        if embedding and any(len(vector) != 768 for vector in checked):
+        if embedding and any(not isinstance(vector, list) or not vector for vector in values):
+            raise ValueError
+        numbers = [value for vector in values for value in vector] if embedding else values
+        if any(type(value) not in (int, float) or not math.isfinite(value) for value in numbers):
+            raise ValueError
+        if embedding and any(len(vector) != 768 for vector in values):
             raise RuntimeError(REBUILD)
         return {key: values}
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         raise RuntimeError("Invalid retrieval response; check API compatibility.") from None
 
 
@@ -143,6 +147,8 @@ def doctor(role):
         endpoint_batch(config, "embed" if role == "EMBEDDING" else "rerank",
                        {"texts": ["Synthetic diagnostic text"], "query": "Synthetic query"})
         return "ok"
+    except http.client.HTTPException:
+        return "Endpoint unreachable or invalid response; check configuration and relay."
     except (ValueError, KeyError, TypeError, AttributeError):
         return "Invalid retrieval configuration or model list; check settings and API compatibility."
     except RuntimeError as exc:

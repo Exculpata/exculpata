@@ -1,4 +1,5 @@
 """Synthetic endpoint HTTP contracts; TLS substitution is confined to this fixture."""
+import http.client
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,13 +32,19 @@ def endpoint(monkeypatch, tmp_path):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             state["body"] = body
-            rows = ([{"index": i, "embedding": [0.1] * state["dimension"]}
+            rows = ([{"index": i, "embedding": [state.get("component", 0.1)] * state["dimension"]}
                      for i in range(len(body["input"]))] if "input" in body else
-                    [{"index": i, "relevance_score": 0.75} for i in range(len(body["documents"]))])
+                    [{"index": i, "relevance_score": state.get("component", 0.75)}
+                     for i in range(len(body["documents"]))])
             self.reply({"data" if "input" in body else "results": rows})
 
         def reply(self, value):
-            assert self.headers["Authorization"] == "Bearer synthetic-secret"
+            assert self.headers["Authorization"] == "Bearer " + state.get("key", "synthetic-secret")
+            if state.get("malformed_status"):
+                # fixture-write: synthetic malformed HTTP status echoing synthetic request values
+                self.wfile.write(b"HTTP/1.1 synthetic-chunk-TEXT synthetic-key\r\n")
+                self.close_connection = True
+                return
             data = json.dumps(value if state["status"] == 200 else {"detail": "synthetic-secret"}).encode()
             self.send_response(state["status"])
             self.send_header("Content-Length", str(len(data)))
@@ -63,6 +70,47 @@ def endpoint(monkeypatch, tmp_path):
     server.shutdown()
     server.server_close()
     thread.join()
+
+
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+def test_malformed_status_line_stays_content_free(endpoint, monkeypatch, role):
+    endpoint.update(malformed_status=True, key="synthetic-key")
+    monkeypatch.setenv(f"CASE_INTELLIGENCE_{role}_API_KEY", "synthetic-key")
+    config = endpoints.configured_endpoint(role)
+    with pytest.raises(RuntimeError) as failure:
+        endpoints.endpoint_batch(config, "embed" if role == "EMBEDDING" else "rerank",
+                                 {"texts": ["synthetic-chunk-TEXT"], "query": "Synthetic query"})
+    error = failure.value
+    expected = "Endpoint unreachable or invalid response; check configuration and relay."
+    assert str(error) == expected
+    assert error.args == (expected,)
+    assert error.__cause__ is None
+    assert error.__suppress_context__ is True
+    diagnostic = endpoints.doctor(role)
+    assert isinstance(diagnostic, str)
+    for value in ("synthetic-chunk-TEXT", "synthetic-key"):
+        assert value not in str(error) + repr(error) + diagnostic
+    assert endpoint["body"]["input" if role == "EMBEDDING" else "documents"] == ["synthetic-chunk-TEXT"]
+    assert endpoint["requests"] == ["models.example.test:443"] * 2
+
+    def escaped_http_error(*args, **kwargs):
+        raise http.client.BadStatusLine("HTTP/1.1 synthetic-chunk-TEXT synthetic-key")
+
+    monkeypatch.setattr(endpoints, "request_json", escaped_http_error)
+    assert endpoints.doctor(role) == expected
+
+
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+@pytest.mark.parametrize("component", [True, "0.5"], ids=["boolean", "numeric-string"])
+def test_boolean_embedding_is_rejected(endpoint, role, component):
+    endpoint["component"] = component
+    with pytest.raises(RuntimeError) as failure:
+        endpoints.endpoint_batch(endpoints.configured_endpoint(role),
+                                 "embed" if role == "EMBEDDING" else "rerank",
+                                 {"texts": ["Synthetic chunk"], "query": "Synthetic query"})
+    assert str(failure.value) == "Invalid retrieval response; check API compatibility."
+    assert failure.value.__cause__ is None
+    assert failure.value.__suppress_context__ is True
 
 
 @pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
