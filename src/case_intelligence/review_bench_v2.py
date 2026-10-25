@@ -339,7 +339,7 @@ class RemoteEmbeddingAdapter:
 def _model_request(base_url: str, operation: str, body: bytes, timeout: float):
     from .retrieval_endpoints import configured_endpoint, endpoint_batch, require_index_identity
     if operation == "embed":
-        require_index_identity()
+        require_index_identity(require_record=True)
     config = configured_endpoint("EMBEDDING" if operation == "embed" else "RERANK")
     if config is not None:
         return endpoint_batch(config, operation, json.loads(body))

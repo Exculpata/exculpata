@@ -253,7 +253,13 @@ def _compose_environment(command: Sequence[str], environment: Mapping[str, str] 
         if application.get("CASE_INTELLIGENCE_AUTH_MODE", "").strip().lower() == "oidc" else ""
     ))
     from case_intelligence.retrieval_endpoints import relay_environment
-    result = dict(result, **relay_environment(application))
+    try:
+        retrieval = relay_environment(application)
+    except ValueError as exc:
+        if _compose_action(command) not in {"ps", "logs", "stop", "down"}:
+            raise RuntimeError(f"Invalid saved retrieval egress configuration: {exc}") from None
+        retrieval = relay_environment({})
+    result = dict(result, **retrieval)
     generator = application.get("CASE_INTELLIGENCE_GENERATOR_URL", "")
     pins = application.get("CASE_INTELLIGENCE_GENERATOR_EGRESS_PINS", "")
     try:
@@ -691,13 +697,17 @@ def _collect_identity_choices(args: argparse.Namespace) -> None:
             args.kerberos_keytab = Path(_ask("Path to the exported HTTP service keytab", "", non_interactive=False))
 
 
-def _compose_output_action(command: Sequence[str]) -> str | None:
+def _compose_action(command: Sequence[str]) -> str | None:
     if list(command[:2]) != ["docker", "compose"]:
         return None
     index = 2
     while index < len(command) and command[index] in {"--env-file", "-f", "--profile"}:
         index += 2
-    action = command[index] if index < len(command) else None
+    return command[index] if index < len(command) else None
+
+
+def _compose_output_action(command: Sequence[str]) -> str | None:
+    action = _compose_action(command)
     # Credential consumers, model license plans, and diagnostic query output
     # retain their existing stream/capture contract and never enter build logs.
     return action if action in {"build", "up", "stop", "start"} else None

@@ -46,7 +46,7 @@ def configured_endpoint(role, environment=None):
             raise ValueError
         generator_pins(environment.get(prefix + "EGRESS_PINS", ""), url)
     except ValueError:
-        raise ValueError("Invalid retrieval endpoint configuration; check HTTPS origin, model, pins and timeout.") from None
+        raise ValueError(f"Invalid CASE_INTELLIGENCE_{role}_ configuration; check URL (HTTPS origin), MODEL, EGRESS_PINS and TIMEOUT.") from None
     return Endpoint(role, url, model, timeout)
 
 
@@ -55,7 +55,7 @@ def relay_environment(environment):
     for role in ("EMBEDDING", "RERANK"):
         endpoint = configured_endpoint(role, environment)
         result[role + "_EGRESS_URL"] = endpoint.url if endpoint else ""
-        result[role + "_EGRESS_PINS"] = environment.get(f"CASE_INTELLIGENCE_{role}_EGRESS_PINS", "")
+        result[role + "_EGRESS_PINS"] = environment.get(f"CASE_INTELLIGENCE_{role}_EGRESS_PINS", "") if endpoint else ""
     return result
 
 
@@ -64,14 +64,18 @@ def retrieval_ready(worker_url, local_ready):
     return any(configured) or bool(worker_url and local_ready(worker_url))
 
 
-def require_index_identity():
+def require_index_identity(*, require_record=False):
     from .embedding_index import configured_embedding, embedding_index_path, load_embedding_index
     path = embedding_index_path()
     record = load_embedding_index(path) if path else None
     model, revision = configured_embedding()
-    if (record is None and (path is not None or configured_endpoint("EMBEDDING") is not None) or record is not None and
-            (type(record.get("populated")) is not bool or
-             record.get("model") != model or record.get("revision") != revision)):
+    if record is None:
+        if (configured_endpoint("EMBEDDING") is not None
+                or path is not None and (require_record or path.exists())):
+            raise RuntimeError(REBUILD)
+        return
+    if (type(record.get("populated")) is not bool
+            or record.get("model") != model or record.get("revision") != revision):
         raise RuntimeError(REBUILD)
 
 

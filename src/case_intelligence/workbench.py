@@ -1059,10 +1059,14 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         self.reranker, worker_ready = reranker, False
         if self.embedding is None or self.reranker is None:
             worker_url = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
-            from .retrieval_endpoints import retrieval_ready
-            worker_ready = retrieval_ready(worker_url, self._retrieval_worker_ready)
-            if worker_ready:
+            from .retrieval_endpoints import configured_endpoint
+            local_ready = bool(worker_url and self._retrieval_worker_ready(worker_url))
+            embedding_ready = configured_endpoint("EMBEDDING") is not None or local_ready
+            rerank_ready = configured_endpoint("RERANK") is not None or local_ready
+            worker_ready = embedding_ready or rerank_ready
+            if self.embedding is None and embedding_ready:
                 self.embedding = RemoteEmbeddingAdapter(worker_url)
+            if self.reranker is None and rerank_ready:
                 self.reranker = RemoteRerankerAdapter(worker_url)
         if self.embedding is None:
             self.embedding = DeterministicEmbeddingAdapter()
@@ -4362,7 +4366,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             return
         if self.learned_retrieval:
             from .retrieval_endpoints import require_index_identity
-            require_index_identity()
+            require_index_identity(require_record=not isinstance(self.embedding, DeterministicEmbeddingAdapter))
         with self._postgres_lock:
             upsert_postgres_document(
                 self.postgres_connection,

@@ -285,6 +285,12 @@ Cohere/Jina-style `/v1/rerank` server (`model`, `query`, `documents`; response
 `results` with `index` and `relevance_score`). Both must list their model at
 `GET /v1/models`. URLs are HTTPS origins, without `/v1`.
 
+Roles are selected independently. With only a rerank endpoint and no ready local
+worker, retrieval and indexing use deterministic embeddings. A fresh local-only
+installation needs no endpoint index rebuild. Configuring an embedding endpoint
+without an index record gives the rebuild guidance below. Model-backed callers
+still require valid provenance at a configured index-record location.
+
 For each prefix (`CASE_INTELLIGENCE_EMBEDDING` or `CASE_INTELLIGENCE_RERANK`),
 set `_ALLOWED_HOSTS` to the exact host, `_REMOTE_CONFIRMED=1` for a public
 server, or `_EGRESS_PINS` to reviewed private pins as for the answer server.
@@ -295,6 +301,12 @@ The reference Compose file supplies `_PROXY`; direct deployments must supply
 an explicit CONNECT relay. There is no automatic remote fallback. Explicit
 remote configuration sends extracted text and/or queries and candidate passages
 to that operator-selected server; review its retention policy before enabling it.
+
+Invalid saved retrieval settings leave Compose `ps`, `logs`, `stop` and `down`
+available with retrieval relay slots cleared. Commands that need egress settings
+report the affected `CASE_INTELLIGENCE_EMBEDDING_` or `CASE_INTELLIGENCE_RERANK_`
+configuration for correction before running. Unvalidated URLs and pins never
+reach the relay.
 
 Run `python -m case_intelligence.retrieval_endpoints` inside the app namespace
 for content-free diagnostics. The existing index requires 768 dimensions.

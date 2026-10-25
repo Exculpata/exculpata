@@ -192,7 +192,7 @@ def test_rerank_runtime_and_local_switch(endpoint, monkeypatch):
     from case_intelligence.embedding_index import embedding_index_path
     embedding_index_path().unlink()  # fixture-write: simulate lost index provenance
     with pytest.raises(RuntimeError, match="rebuilt"):
-        endpoints.require_index_identity()
+        endpoints.require_index_identity(require_record=True)
 
 
 @pytest.mark.parametrize("identity", ["matching", "changed", "missing"])
