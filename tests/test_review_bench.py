@@ -249,7 +249,7 @@ def test_grounded_answer_contains_only_retrieved_synthetic_records(tmp_path):
         assert "north entrance" in answer.text
         assert "south entrance" not in answer.text
         assert answer.text == " ".join(
-            dict.fromkeys(item.excerpt.strip() for item in answer.citations)
+            {item.excerpt.strip(): None for item in answer.citations}
         )
         assert all(asdict(item)["href"].startswith("/matters/alpha") for item in answer.citations)
     finally:

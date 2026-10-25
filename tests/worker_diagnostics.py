@@ -67,7 +67,7 @@ def process_tree(pid, proc=Path('/proc')):
     """Report incomplete metrics as null, retaining explicitly partial observations."""
     pending, scheduled, seen = [pid], {pid}, set()
     observed = dict(rss_bytes=0, threads=0, fds=0, processes=0)
-    complete = dict.fromkeys(observed, True)
+    complete = {key: True for key in observed}
     tree_complete, truncated = True, False
     while pending:
         current = pending.pop()

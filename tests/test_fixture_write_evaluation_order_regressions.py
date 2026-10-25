@@ -1,4 +1,5 @@
 """Evaluation order and explicit unsupported outer-scope/container mutations."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -93,7 +94,9 @@ def test_reported_indirections_close_a_real_shared_connection_before_rejection(a
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     source = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n" + action
     try:
-        exec(action, {'bench': bench, 'independent': independent, 'condition': True, 'resources': []})
+        error, _ = fixture_probe(action, bench=bench, independent=independent, condition=True, resources=[], global_handle=True)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)
@@ -110,12 +113,13 @@ def test_argument_walrus_executes_through_original_shared_connection_before_reje
     try:
         for connection in [raw, independent]:
             connection.execute('CREATE TABLE synthetic_fixture(value TEXT)')
-        namespace = {'connection': raw, 'independent': independent}
-        exec(action, namespace)
+        error, rebound_connection = fixture_probe(action, 'connection', connection=raw, independent=independent)
+        if error is not None:
+            raise error
         assert raw.in_transaction
         assert raw.execute('SELECT value FROM synthetic_fixture').fetchall() == [('pending',)]
         assert independent.execute('SELECT value FROM synthetic_fixture').fetchall() == []
-        assert namespace['connection'] is independent
+        assert rebound_connection is independent
         assert check_fixture_writes(source)
     finally:
         raw.close()

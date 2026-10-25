@@ -38,9 +38,12 @@ def make_capture(profile="portable", offline="not_exercised"):
         "license": pinned["license"],
     }
     client = SyntheticClient()
+    def check_identity():
+        return {"method": "api_model_id_snapshots",
+                "model": client.model, "artifact_sha256": None}
+
     return evaluation.capture(client, profile=profile, runtime=runtime, repetitions=1,
-        identity_check=lambda: {"method": "api_model_id_snapshots",
-                                "model": client.model, "artifact_sha256": None})
+        identity_check=check_identity)
 
 
 def completed_grades(receipt):

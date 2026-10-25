@@ -39,6 +39,13 @@ def _links(response):
     return _LinkParser(response.text).links
 
 
+def _first_link(response, expected_label):
+    for href, label in _links(response):
+        if label == expected_label:
+            return href
+    raise StopIteration
+
+
 def _graph_url(slug, entity_id, page=1):
     return f'/matters/{slug}/connections?' + urlencode(dict(
         entity_id=entity_id, page=page, return_to=f'/matters/{slug}/entities'))
@@ -197,16 +204,16 @@ def test_graph_identity_roundtrips_keep_a_bounded_return_context(connections):
     for _ in range(15):
         identity_page = client.get(identity_url)
         assert identity_page.status_code == 200
-        graph_url = next(href for href, label in _links(identity_page) if label == 'Explore connections')
+        graph_url = _first_link(identity_page, 'Explore connections')
         query = parse_qs(urlparse(graph_url).query)
         assert query['entity_id'] == [context['entity_id']]
         assert query['return_to'] == [canonical_identity]
         graph_urls.append(graph_url)
         graph = client.get(graph_url)
         assert graph.status_code == 200
-        identity_url = next(href for href, label in _links(graph) if label == 'Open identity')
+        identity_url = _first_link(graph, 'Open identity')
     assert len(set(graph_urls)) == 1
-    original_url = next(href for href, label in _links(graph) if label == 'Open original passage')
+    original_url = _first_link(graph, 'Open original passage')
     original = client.get(original_url)
     assert original.status_code == 200
     graph_context = parse_qs(urlparse(original_url).query)['entity_return_to'][0]

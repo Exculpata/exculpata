@@ -219,7 +219,10 @@ def test_hierarchy_evaluator_requires_all_24_retained_records(tmp_path, monkeypa
     output = tmp_path / "synthetic-incomplete-evaluation.json"
     monkeypatch.setattr(sys, "argv", [str(path), "--model", "synthetic-model",
         "--expected-digest", "synthetic-digest", "--output", str(output)])
-    monkeypatch.setattr(module, "OllamaGenerator", lambda *args, **kwargs: EndpointsOnly())
+    def controlled_generator(*args, **kwargs):
+        return EndpointsOnly()
+
+    monkeypatch.setattr(module, "OllamaGenerator", controlled_generator)
     monkeypatch.setattr(module, "_bounded_json_get", lambda url, **kwargs:
         {"models": [{"name": "synthetic-model", "digest": "synthetic-digest"}]}
         if url.endswith("/api/tags") else {"version": "synthetic-runtime"})

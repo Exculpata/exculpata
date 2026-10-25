@@ -1,4 +1,5 @@
 """Opaque dictionary keys must retain known shared ownership."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -39,7 +40,9 @@ for handle in holder:
     handle.close()
 '''
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

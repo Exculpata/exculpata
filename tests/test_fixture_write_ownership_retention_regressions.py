@@ -1,4 +1,5 @@
 """Ownership survives supported captures and remains local to exact exceptions."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -77,7 +78,9 @@ def test_real_shared_closure_precedes_inventory_rejection(source):
     independent = sqlite3.connect(':memory:')
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     try:
-        exec(source, {'bench': bench, 'independent': independent, 'condition': True})
+        error, _ = fixture_probe(source, bench=bench, independent=independent, condition=True)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(PREFIX + source)

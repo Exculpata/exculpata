@@ -99,7 +99,10 @@ def test_stalled_first_address_leaves_budget_for_healthy_fallback(monkeypatch):
                 clock[0] += self.timeout
                 raise TimeoutError()
         def close(self): closed.append(self)
-    monkeypatch.setattr(relay.socket, "socket", lambda *args: Connection())
+    def open_connection(family, socktype, proto):
+        return Connection()
+
+    monkeypatch.setattr(relay.socket, "socket", open_connection)
     result = relay.dial("issuer.example.test", 443)
     assert connected == [(ip, 443) for ip in addresses]
     assert len(closed) == 1 and result not in closed

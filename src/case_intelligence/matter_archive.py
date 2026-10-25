@@ -549,6 +549,7 @@ Record families cover matter purpose and context, source roles and collections,
 intake receipts and outcomes, conversations and messages, notebooks and support,
 reports/sections/citations, human assertions/entities and their complete retained
 histories, research jobs/checkpoints, full-review decisions and text-range ledgers,
+retained witness inconsistency review decisions and their cited assertion accounts,
 failed/cancelled jobs and events, media transcripts with machine text and every
 retained text/speaker revision, exact media clip recipes, closure/retention history
 and a scoped audit chronology. Empty retained tables have empty files and zero
