@@ -1,4 +1,5 @@
 """Dictionary ownership boundaries preserve evaluation order and scalar controls."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -70,7 +71,9 @@ def test_dictionary_paths_close_real_shared_connection_before_rejection(source):
     independent = sqlite3.connect(':memory:')
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     try:
-        exec(source, {'bench': bench, 'independent': independent})
+        error, _ = fixture_probe(source, bench=bench, independent=independent)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"

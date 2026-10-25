@@ -786,7 +786,7 @@ def _compose_build_targets(command: Sequence[str]) -> tuple[str, ...]:
             continue
         if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", token):
             targets.append(token)
-    return tuple(dict.fromkeys(targets))
+    return tuple({target: None for target in targets})
 
 
 def _progress_counts(activity: DockerActivity) -> tuple[object, ...]:
@@ -1750,7 +1750,7 @@ def _resolve_gpu_plans(
         )
     failures: list[str] = []
     for profile in profiles:
-        for layout in dict.fromkeys(layouts):
+        for layout in {layout: None for layout in layouts}:
             try:
                 gpu_plan = _gpu_plan(
                     models,

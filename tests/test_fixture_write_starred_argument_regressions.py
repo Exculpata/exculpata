@@ -1,4 +1,5 @@
 """Starred operands retain unresolved known shared ownership before calls."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -49,7 +50,9 @@ def test_starred_boolean_helper_closes_real_shared_connection_before_rejection()
 dispose(*(resources or [bench.workspace.connection]))
 '''
     try:
-        exec(source, {'bench': bench, 'resources': []})
+        error, _ = fixture_probe(source, bench=bench, resources=[])
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

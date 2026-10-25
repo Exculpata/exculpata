@@ -96,7 +96,10 @@ class Workspace:
 def bench_for(*documents):
     bench = object.__new__(CaseIntelligenceWorkbench)
     bench.workspace = Workspace()
-    bench.source_store = lambda matter: store
+    def source_store(matter):
+        return store
+
+    bench.source_store = source_store
     bench.notebook_reference_from_support = lambda *args: pytest.fail("Per-reference matter scan")
     bench.available_notebook_support_tokens = lambda *args: pytest.fail("Per-note source scan")
     store = Store(documents)

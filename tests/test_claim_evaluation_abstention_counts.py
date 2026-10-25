@@ -31,9 +31,12 @@ def capture_outputs(monkeypatch):
                 return output(self.calls, evidence)
 
         client = SyntheticClient("http://127.0.0.1:11435", "synthetic-test-only")
+        def check_identity():
+            return {"method": "api_model_id_snapshots",
+                "model": client.model, "artifact_sha256": None}
+
         return evaluation.capture(client, profile="portable", runtime=runtime, repetitions=1,
-            identity_check=lambda: {"method": "api_model_id_snapshots",
-                "model": client.model, "artifact_sha256": None})
+            identity_check=check_identity)
 
     return run
 

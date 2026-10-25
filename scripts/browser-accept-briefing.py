@@ -106,14 +106,17 @@ def seed_waiting(bench, release, entered):
 
 def work_counts(bench, matter):
     with bench.workspace._lock:
-        queries = (
-            "SELECT COUNT(*) FROM workbench_message m JOIN workbench_conversation c "
-            "ON c.conversation_id=m.conversation_id WHERE c.matter_id=? AND m.role='user'",
-            "SELECT COUNT(*) FROM workbench_answer_job WHERE matter_id=?",
-            "SELECT COUNT(*) FROM workbench_research_job WHERE matter_id=?",
+        connection = bench.workspace.connection
+        return (
+            connection.execute(
+                "SELECT COUNT(*) FROM workbench_message m JOIN workbench_conversation c "
+                "ON c.conversation_id=m.conversation_id WHERE c.matter_id=? AND m.role='user'",
+                (matter.matter_id,)).fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM workbench_answer_job WHERE matter_id=?",
+                               (matter.matter_id,)).fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM workbench_research_job WHERE matter_id=?",
+                               (matter.matter_id,)).fetchone()[0],
         )
-        return tuple(bench.workspace.connection.execute(query, (matter.matter_id,)).fetchone()[0]
-                     for query in queries)
 
 
 def main(argv=None):

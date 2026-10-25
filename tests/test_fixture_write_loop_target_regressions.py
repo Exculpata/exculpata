@@ -1,4 +1,5 @@
 """Literal iteration and assignment leaves retain known SQLite ownership."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from threading import Event, RLock, Thread
 from types import SimpleNamespace
@@ -86,7 +87,9 @@ def test_literal_cleanup_helper_closes_actual_shared_connection_before_inventory
 dispose([bench.workspace.connection])
 '''
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)
@@ -120,7 +123,9 @@ def test_unpacking_descriptor_commits_actual_worker_transaction_without_lock(tmp
     try:
         assert ready.wait(5)
         assert not errors
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with sqlite3.connect(path) as independent:
             assert independent.execute('SELECT value FROM synthetic_fixture').fetchall() == [('worker pending',)]
         resume.set()

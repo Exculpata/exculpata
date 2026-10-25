@@ -1,4 +1,5 @@
 """Final-review ownership losses reject without extending container evaluation."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -56,7 +57,9 @@ def test_same_source_really_closes_shared_connection_before_rejection(source):
     raw = sqlite3.connect(':memory:')
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)
@@ -75,7 +78,9 @@ def test_same_source_really_mutates_active_database_before_rejection(tmp_path, m
         raw.execute('CREATE TABLE synthetic(value TEXT)')  # fixture-write: Initialize the isolated negative-probe database before executing the rejected source.
         raw.execute("INSERT INTO synthetic VALUES ('retained')")  # fixture-write: Seed the isolated negative-probe database before executing the rejected source.
         raw.commit()  # fixture-write: Publish the isolated negative-probe seed so its second connection can delete it.
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         assert raw.execute('SELECT count(*) FROM synthetic').fetchone() == (0,)
         assert check_fixture_writes(source)
     finally:

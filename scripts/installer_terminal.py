@@ -110,7 +110,7 @@ class DockerActivity:
     """Summarize BuildKit and Compose lines without inventing a total or a percentage."""
 
     def __init__(self, targets: Sequence[str] = ()) -> None:
-        self.targets = tuple(dict.fromkeys(targets))
+        self.targets = tuple({target: None for target in targets})
         self.built: list[str] = []
         self.service: str | None = None
         self.step_current: int | None = None

@@ -108,13 +108,13 @@ def test_installation_dict_edits_invalidate_receipt(original, replacement):
     receipt = next(item for item in records[location]["diagnostics"]
                    if item["function"] == "_configure" and "(mapping unpacking)" in item["identifier"])
     target = checker.Finding(f'{location}:{receipt["line"]}', receipt["identifier"])
-    findings = list(dict.fromkeys(checker.scan_python(location, source, NAME_CONTRACTS)))
+    findings = list({finding: None for finding in checker.scan_python(location, source, NAME_CONTRACTS)})
     assert target in findings
     assert checker.apply_source_forms(location, source, findings, records, require_current=True) == []
 
     assert source.count(original) == 1
     edited = source.replace(original, replacement)
-    findings = list(dict.fromkeys(checker.scan_python(location, edited, NAME_CONTRACTS)))
+    findings = list({finding: None for finding in checker.scan_python(location, edited, NAME_CONTRACTS)})
     remaining = checker.apply_source_forms(location, edited, findings, records, require_current=True)
     assert target in remaining
     assert any("stale source-form contract" in item.identifier for item in remaining)

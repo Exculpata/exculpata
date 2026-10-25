@@ -38,15 +38,15 @@ class Clock:
 
 
 @pytest.fixture
-def setup(tmp_path):
+def setup(tmp_path, request):
     clock = Clock()
     store = WorkspaceStore(tmp_path / 'synthetic.sqlite', clock=clock)
+    request.addfinalizer(store.close)
     for name, ident in [('owner', OWNER), ('member', MEMBER), ('admin', ADMIN)]:
         store.upsert_principal('test', name, 'Generated ' + name, name, preferred_principal_id=ident)
     matter = store.create_matter(NAME, 'Generated fixture', OWNER)
     store.add_member(matter.matter_id, MEMBER, OWNER)
-    yield store, matter, clock
-    store.close()
+    return store, matter, clock
 
 
 def session(store, actor=OWNER, *, administrator=False):

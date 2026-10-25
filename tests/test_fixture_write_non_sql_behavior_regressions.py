@@ -38,7 +38,9 @@ def test_factory_deletion_changes_raw_state_and_requires_inventory(sqlite_pair, 
                  else f'del bench.workspace.connection.{attribute}')
     original = getattr(bench.workspace.connection, attribute)
     try:
-        exec(operation, {'bench': bench, 'sqlite3': sqlite3})
+        error, _ = fixture_probe(operation, bench=bench, sqlite3=sqlite3)
+        if error is not None:
+            raise error
         assert getattr(bench.workspace.connection, attribute) is None
         # Do not run SQLite queries with a deleted text factory: some builds crash.
     finally:
@@ -56,7 +58,9 @@ def test_deserialize_replaces_actual_shared_database_without_sql(sqlite_pair, op
     bench, source = sqlite_pair
     payload = source.serialize()
     assert bench.workspace.connection.execute('SELECT value FROM synthetic_fixture').fetchone()[0] == 'original'
-    exec(operation, {'bench': bench, 'sqlite3': sqlite3, 'payload': payload})
+    error, _ = fixture_probe(operation, bench=bench, sqlite3=sqlite3, payload=payload)
+    if error is not None:
+        raise error
     assert bench.workspace.connection.execute('SELECT value FROM synthetic_fixture').fetchone()[0] == 'replacement'
     assert check_fixture_writes('import sqlite3\n' + operation)
 
@@ -68,7 +72,9 @@ def test_deserialize_replaces_actual_shared_database_without_sql(sqlite_pair, op
 def test_writable_blob_changes_actual_shared_bytes_without_sql(sqlite_pair, opening):
     bench, _ = sqlite_pair
     operation = f"with {opening} as blob:\n    blob.write(b'new!')"
-    exec(operation, {'bench': bench, 'sqlite3': sqlite3})
+    error, _ = fixture_probe(operation, bench=bench, sqlite3=sqlite3)
+    if error is not None:
+        raise error
     assert bench.workspace.connection.execute('SELECT value FROM synthetic_blob').fetchone()[0] == b'new!'
     assert check_fixture_writes('import sqlite3\n' + operation)
 
@@ -79,7 +85,9 @@ def test_writable_blob_changes_actual_shared_bytes_without_sql(sqlite_pair, open
 ])
 def test_backup_overwrites_actual_shared_destination_without_sql(sqlite_pair, operation):
     bench, source = sqlite_pair
-    exec(operation, {'bench': bench, 'source': source, 'sqlite3': sqlite3})
+    error, _ = fixture_probe(operation, bench=bench, backup_source=source, sqlite3=sqlite3)
+    if error is not None:
+        raise error
     assert bench.workspace.connection.execute('SELECT value FROM synthetic_fixture').fetchone()[0] == 'replacement'
     assert check_fixture_writes('import sqlite3\n' + operation)
 
@@ -92,7 +100,9 @@ def test_setlimit_changes_actual_connection_configuration_and_requires_ownership
     bench, _ = sqlite_pair
     old = bench.workspace.connection.getlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH)
     assert old > 4096
-    exec(operation, {'bench': bench, 'sqlite3': sqlite3})
+    error, _ = fixture_probe(operation, bench=bench, sqlite3=sqlite3)
+    if error is not None:
+        raise error
     assert bench.workspace.connection.getlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH) == 4096
     assert check_fixture_writes('import sqlite3\n' + operation)
 

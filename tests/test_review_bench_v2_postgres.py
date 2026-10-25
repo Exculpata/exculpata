@@ -84,6 +84,63 @@ def test_live_postgres_generic_txt_document_upsert_is_matter_scoped():
         assert backend.lexical("matter-alpha", "amber notebook cabinet", 10) == ()
 
 
+@pytest.fixture
+def lexical_backend():
+    import psycopg
+
+    matter_id = f"ci-matter-{uuid.uuid4().hex}"
+    with psycopg.connect(os.environ["CASE_REVIEW_POSTGRES_TEST_DSN"]) as connection:
+        try:
+            for document_id, text in (
+                ("most-terms", "The red bicycles arrived at the north entrance."),
+                ("one-term", "The bicycle was stored beside the empty cabinet."),
+                ("separated-phrase", "The red cabinet held a bicycle."),
+                ("excluded", "The red bicycle was damaged at the north entrance."),
+                ("irrelevant", "An amber notebook remained inside the locker."),
+            ):
+                upsert_postgres_document(
+                    connection, matter_id=matter_id, matter_name="Synthetic lexical ranking",
+                    document_id=document_id, display_name=f"{document_id}.txt",
+                    media_type="text/plain", units=(PilotUnit(1, text, 1, 1),),
+                )
+            yield PostgresHybridBackend(connection), matter_id
+        finally:
+            delete_postgres_matter(connection, matter_id=matter_id)
+
+
+def test_live_postgres_lexical_matches_partial_question_and_ranks_more_terms_first(lexical_backend):
+    backend, matter_id = lexical_backend
+    query = "Where did the red bicycle arrive near the north entrance yesterday?"
+    rows = backend.lexical(matter_id, query, 10)
+    by_document = {row.document_id: row for row in rows}
+    assert {"most-terms", "one-term"} <= by_document.keys()
+    assert "irrelevant" not in by_document
+    assert by_document["most-terms"].score > by_document["one-term"].score
+    ordered = [row.document_id for row in rows]
+    assert ordered.index("most-terms") < ordered.index("one-term")
+    assert backend.lexical(matter_id, query, 1) == rows[:1]
+    assert backend.lexical(f"{matter_id}-other", query, 10) == ()
+    scoped = PostgresHybridBackend(backend.connection, document_ids=frozenset({"one-term"}))
+    assert [row.document_id for row in scoped.lexical(matter_id, query, 10)] == ["one-term"]
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    (
+        ('"red bicycle"', {"most-terms", "excluded"}),
+        ('"red bicycle" north', {"most-terms", "excluded"}),
+        ("red bicycle -damaged", {"most-terms", "separated-phrase"}),
+        ("bicycle -north -cabinet", set()),
+        ("the and or", set()),
+        ("' ; : & | ( )", set()),
+        ("", set()),
+    ),
+)
+def test_live_postgres_lexical_preserves_websearch_and_empty_queries(lexical_backend, query, expected):
+    backend, matter_id = lexical_backend
+    assert {row.document_id for row in backend.lexical(matter_id, query, 10)} == expected
+
+
 def test_live_postgres_media_types_and_zero_timestamp_projection():
     import psycopg
 
