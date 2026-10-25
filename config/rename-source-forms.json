@@ -684,7 +684,7 @@
           "source_line_sha256": "a14bd07aac9b5a7c51848ad4163d278f2dd777256531ad38544b3cbf3101f9d9"
         },
         {
-          "line": 3457,
+          "line": 3454,
           "identifier": "unsupported legacy syntax (mapping unpacking); use immutable contract-based construction",
           "function": "_configure",
           "reason": "Serialize the existing installation fields, optional selected hardware tier and optional external endpoint metadata without changing naming-generation selection. The anchor covers the complete dict literal, including auth and external generator URL fields.",

@@ -121,14 +121,15 @@ def test_installer_rejects_unusable_device_memory(installer, monkeypatch, tool, 
 def test_installer_inventory_rejects_unusable_device_memory(installer, bad, mixed):
     invalid = f"1, Synthetic Unusable, {bad}, 0, 8.0\n"
     value = f"0, Synthetic Small, 8192, 8000, 8.0\n{invalid}2, Synthetic Large, 24576, 24000, 8.0\n" if mixed else invalid
-    devices = installer._parse_gpu_inventory(value)
-    assert tuple(device.index for device in devices) == (("0", "2") if mixed else ())
-    assert tuple(device.total_mib for device in devices) == ((8192, 24576) if mixed else ())
+    with pytest.raises(RuntimeError, match="nvidia-smi returned an unreadable GPU inventory row"):
+        installer._parse_gpu_inventory(value)
 
 
 @pytest.mark.parametrize("bad_row", ["[N/A]\n", "1, Synthetic Unreadable, 24576, [N/A], 8.0\n"])
-def test_installer_inventory_skips_only_unreadable_row(installer, bad_row):
-    devices = installer._parse_gpu_inventory(bad_row + "2, Synthetic Valid, 24576, 0, 8.0\n")
+def test_installer_inventory_rejects_unreadable_row(installer, bad_row):
+    with pytest.raises(RuntimeError, match="nvidia-smi returned an unreadable GPU inventory row"):
+        installer._parse_gpu_inventory(bad_row + "2, Synthetic Valid, 24576, 0, 8.0\n")
+    devices = installer._parse_gpu_inventory("2, Synthetic Valid, 24576, 0, 8.0\n")
     assert tuple(device.index for device in devices) == ("2",)
     assert devices[0].free_mib == 0
 
@@ -153,10 +154,14 @@ def test_nvidia_probe_exposes_content_free_skip_count(caplog, bad_count):
     "synthetic-private-row", "1, Synthetic, inf, 0, 8.0",
     "1, Synthetic, 8192, [N/A], 8.0", ", Synthetic, 8192, 0, 8.0",
 ])
-def test_installer_inventory_logs_content_free_skip_count(installer, caplog, bad_count, bad_row):
-    devices = installer._parse_gpu_inventory("\n".join(
+def test_installer_inventory_fails_with_content_free_diagnostic(installer, caplog, bad_count, bad_row):
+    value = "\n".join(
         ["0, Synthetic Valid, 8192, 0, 8.0", ""] + [bad_row] * bad_count
-    ))
-    assert tuple(device.index for device in devices) == ("0",)
-    expected = [f"nvidia-smi skipped {bad_count} malformed row(s)."] if bad_count else []
-    assert [record.getMessage() for record in caplog.records] == expected
+    )
+    if bad_count:
+        with pytest.raises(RuntimeError, match="^nvidia-smi returned an unreadable GPU inventory row$"):
+            installer._parse_gpu_inventory(value)
+    else:
+        devices = installer._parse_gpu_inventory(value)
+        assert tuple(device.index for device in devices) == ("0",)
+    assert caplog.records == []

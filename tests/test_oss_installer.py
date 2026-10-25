@@ -771,6 +771,23 @@ def test_preflight_selected_gpu_profile_checks_real_plan(tmp_path, ready_host, m
     assert installer._collect_preflight("none", args).ready
 
 
+def test_gpu_inventory_with_unreadable_row_fails_preflight(tmp_path, ready_host, monkeypatch):
+    def probe(command):
+        output = ('0, Synthetic GPU, 24576, 24000, 8.0\nsynthetic-unreadable-row'
+                  if command[0] == "nvidia-smi" else
+                  '{"nvidia": {}}' if "{{json .Runtimes}}" in command else "1.0")
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr(installer, "_probe", probe)
+    result = installer._collect_preflight("review", preflight_args(tmp_path, "--models", "review"))
+    check = checks_by_name(result)["gpu"]
+    assert check.state == "fail"
+    assert check.blocking
+    assert not result.ready
+    assert "nvidia-smi returned an unreadable GPU inventory row" in check.observed
+    assert "synthetic-unreadable-row" not in check.observed
+
+
 def test_preflight_json_is_single_document_and_returns_failure(tmp_path, ready_host, monkeypatch, capsys):
     monkeypatch.setattr(installer.os, "geteuid", lambda: 0)
     monkeypatch.setattr(sys, "argv", ["install", "preflight", "--root", str(tmp_path / "new"), "--json"])
