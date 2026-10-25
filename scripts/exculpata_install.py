@@ -12,6 +12,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import logging
 import os
 import platform
 import pwd
@@ -1397,13 +1398,16 @@ def _required_gpu_count(models: str) -> int:
 
 def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
     devices: list[GpuDevice] = []
+    skipped = 0
     for row in csv.reader(value.splitlines()):
         if not row:
             continue
         if len(row) not in {4, 5}:
+            skipped += 1
             continue
         try:
             if parse_vram_bytes(row[2].strip(), 1024 ** 2) is None:
+                skipped += 1
                 continue
             compute_capability = (
                 float(row[4].strip()) if len(row) == 5 else None
@@ -1416,6 +1420,7 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 compute_capability=compute_capability,
             )
         except (ValueError, OverflowError):
+            skipped += 1
             continue
         if (
             not device.index
@@ -1426,8 +1431,11 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 and device.compute_capability <= 0
             )
         ):
+            skipped += 1
             continue
         devices.append(device)
+    if skipped:
+        logging.getLogger(__name__).warning("nvidia-smi skipped %d malformed row(s).", skipped)
     if len({device.index for device in devices}) != len(devices):
         raise RuntimeError("nvidia-smi returned duplicate GPU indices")
     return tuple(devices)

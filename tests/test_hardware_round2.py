@@ -131,3 +131,32 @@ def test_installer_inventory_skips_only_unreadable_row(installer, bad_row):
     devices = installer._parse_gpu_inventory(bad_row + "2, Synthetic Valid, 24576, 0, 8.0\n")
     assert tuple(device.index for device in devices) == ("2",)
     assert devices[0].free_mib == 0
+
+
+@pytest.mark.parametrize("bad_count", [0, 1, 2])
+def test_nvidia_probe_exposes_content_free_skip_count(caplog, bad_count):
+    detected = synthetic_detection("nvidia-smi", ["8192"] + ["synthetic-private-row"] * bad_count + ["24576"])
+    assert detected.gpu_count == 2
+    message = f"nvidia-smi skipped {bad_count} malformed row(s)."
+    if bad_count:
+        assert message in detected.notes
+        assert [record.getMessage() for record in caplog.records] == [message]
+        assert f"hardware note :: {message}" in hardware.suggest_tier(detected).lines()
+    else:
+        assert caplog.records == []
+        assert not any("skipped" in note for note in detected.notes)
+    assert "synthetic-private-row" not in str(detected.notes) + caplog.text
+
+
+@pytest.mark.parametrize("bad_count", [0, 1, 2])
+@pytest.mark.parametrize("bad_row", [
+    "synthetic-private-row", "1, Synthetic, inf, 0, 8.0",
+    "1, Synthetic, 8192, [N/A], 8.0", ", Synthetic, 8192, 0, 8.0",
+])
+def test_installer_inventory_logs_content_free_skip_count(installer, caplog, bad_count, bad_row):
+    devices = installer._parse_gpu_inventory("\n".join(
+        ["0, Synthetic Valid, 8192, 0, 8.0", ""] + [bad_row] * bad_count
+    ))
+    assert tuple(device.index for device in devices) == ("0",)
+    expected = [f"nvidia-smi skipped {bad_count} malformed row(s)."] if bad_count else []
+    assert [record.getMessage() for record in caplog.records] == expected
