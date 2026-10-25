@@ -277,13 +277,71 @@ def test_reindex_unchanged_document_keeps_citations(theory_store, shift):
                 "protective_order": "limited-to-case-team"}
     for snapshot in (service.current(matter), service.version(matter, original["version"])):
         assert snapshot["claims"][0]["links"] == [expected]
-        assert snapshot["claims"][0]["status"] == "supported"
+        assert snapshot["claims"][0]["status"] == ("needs review" if shift else "supported")
     assert service.current(other) == foreign
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM review_case_theory_link_audit WHERE matter_id=%s", (matter,))
         assert cursor.fetchone() == (0,)
         cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
         assert cursor.fetchone() == (len(units),)
+
+
+@pytest.mark.parametrize("scenario", [
+    "corrected-answer", "duplicate-prefix", "new-duplicate", "unchanged-duplicates",
+])
+def test_reindex_duplicate_citations_require_unambiguous_text(theory_store, scenario):
+    from datetime import datetime, timezone
+
+    connection, service, matter, other = theory_store
+    old_texts = ["S1: Did you see him?", "S2: Yes.", "S1: Was it dark?", "S2: Yes."]
+    cited = [4] if scenario == "corrected-answer" else [2, 4]
+    new_texts = ["Synthetic introduction.", *old_texts]
+    if scenario == "corrected-answer":
+        new_texts = [*old_texts[:3], "S2: No, it was light out."]
+    elif scenario == "new-duplicate":
+        old_texts = old_texts[:2]
+        cited = [2]
+        new_texts = ["Synthetic introduction.", "S1: Did you see him?", "S2: Yes.", "S2: Yes."]
+    elif scenario == "unchanged-duplicates":
+        new_texts = old_texts
+
+    def index(texts):
+        upsert_postgres_document(
+            connection, matter_id=matter, matter_name="Synthetic", document_id="source-1",
+            display_name="Synthetic.txt", media_type="text/plain",
+            units=[PilotUnit(i, text, i, i) for i, text in enumerate(texts, 1)],
+        )
+
+    index(old_texts)
+    original = service.create_version(matter, [{
+        "text": "Synthetic cited answer.", "status": "supported",
+        "links": [{**source_link(), "chunk_id": f"chunk-{number}"} for number in cited],
+    }])
+    foreign = service.create_version(other, [{
+        "text": "Other synthetic claim.", "status": "supported", "links": [source_link()],
+    }])
+    started = datetime.now(timezone.utc)
+    index(new_texts)
+    current = service.current(matter)
+    if scenario == "unchanged-duplicates":
+        assert current == original
+    else:
+        claim = current["claims"][0]
+        assert claim["links"] == []
+        assert claim["status"] == "needs review"
+        assert claim["claim_id"] == original["claims"][0]["claim_id"]
+        removed = claim["removed_citations"]
+        assert [(row["link_ordinal"], row["document_id"], row["chunk_id"], row["reason"])
+                for row in removed] == [
+            (ordinal, "source-1", f"chunk-{number}", "passage_deleted")
+            for ordinal, number in enumerate(cited, 1)
+        ]
+        assert all(started <= datetime.fromisoformat(row["removed_at"]) <= datetime.now(timezone.utc)
+                   for row in removed)
+    assert service.current(other) == foreign
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
+        assert cursor.fetchone() == (len(new_texts),)
 
 
 @pytest.mark.parametrize("removal", ["passage", "unlink", "reindex"])
@@ -313,7 +371,9 @@ def test_last_citation_loss_needs_review_with_removed_ids(theory_store, removal)
             else:
                 # fixture-write: explicitly unlink one synthetic citation while another remains.
                 cursor.execute("DELETE FROM review_case_theory_link WHERE matter_id=%s AND ordinal=1", (matter,))
-    assert service.current(matter)["claims"][0]["status"] == "supported"
+    assert service.current(matter)["claims"][0]["status"] == (
+        "needs review" if removal == "reindex" else "supported"
+    )
     with connection.cursor() as cursor:
         # fixture-write: remove the synthetic assertion owner to cascade the last citation.
         cursor.execute("DELETE FROM review_case_theory_assertion_owner WHERE matter_id=%s", (matter,))

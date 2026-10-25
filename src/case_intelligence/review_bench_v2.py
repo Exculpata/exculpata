@@ -768,23 +768,36 @@ def _stage_matching_case_theory_citations(cursor, matter_id, document_id, units,
     cursor.execute(
         """
         WITH replacements AS (
-            SELECT * FROM unnest(%s::text[], %s::text[])
+            SELECT *, count(*) OVER (PARTITION BY digest) AS digest_count
+            FROM unnest(%s::text[], %s::text[])
                 WITH ORDINALITY AS r(chunk_id, digest, ordinal)
+        ), old_chunks AS (
+            SELECT c.*, encode(sha256(convert_to(c.text, 'UTF8')), 'hex') AS digest,
+                   count(*) OVER (PARTITION BY sha256(convert_to(c.text, 'UTF8'))) AS digest_count
+            FROM review_chunk c WHERE c.matter_id=%s AND c.document_id=%s
         ), matches AS (
             SELECT c.*, replacement.chunk_id AS new_chunk
-            FROM review_chunk c
-            CROSS JOIN LATERAL (
-                SELECT r.chunk_id FROM replacements r
-                WHERE r.digest = encode(sha256(convert_to(c.text, 'UTF8')), 'hex')
-                ORDER BY (r.chunk_id = c.chunk_id) DESC, r.ordinal
-                LIMIT 1
-            ) replacement
-            WHERE c.matter_id=%s AND c.document_id=%s AND c.source_version_id=%s
+            FROM old_chunks c JOIN replacements replacement
+              ON replacement.digest = c.digest
+             AND (replacement.chunk_id = c.chunk_id
+                  OR (c.digest_count = 1 AND replacement.digest_count = 1))
+            WHERE c.source_version_id=%s
               AND EXISTS (
                   SELECT 1 FROM review_case_theory_link l
                   WHERE (l.matter_id,l.document_id,l.chunk_id) =
                         (c.matter_id,c.document_id,c.chunk_id)
               )
+        ), needs_review AS (
+            UPDATE review_case_theory_claim claim SET status='needs review'
+            WHERE EXISTS (
+                SELECT 1 FROM review_case_theory_link l
+                LEFT JOIN matches m ON (m.matter_id,m.document_id,m.chunk_id) =
+                                       (l.matter_id,l.document_id,l.chunk_id)
+                WHERE l.matter_id=%s AND l.document_id=%s
+                  AND (claim.matter_id,claim.claim_id) = (l.matter_id,l.claim_id)
+                  AND m.new_chunk IS DISTINCT FROM l.chunk_id
+            )
+            RETURNING claim_id
         ), staged AS (
             INSERT INTO
                 review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,
@@ -801,7 +814,7 @@ def _stage_matching_case_theory_citations(cursor, matter_id, document_id, units,
               (m.matter_id,m.document_id,m.chunk_id)
         """,
         (chunk_ids, digests, matter_id, document_id, source_version_id,
-         staging_page, staging_page, staging_page),
+         matter_id, document_id, staging_page, staging_page, staging_page),
     )
     return staging_page, [(staging_page + chunk, chunk) for chunk in chunk_ids]
 
