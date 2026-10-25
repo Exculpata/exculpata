@@ -82,25 +82,52 @@ def source_inventory(root):
         document = yaml.compose(path.read_text())
         def fields(node):
             return {key.value: value for key, value in node.value}
-        for job in fields(fields(document)['jobs']).values():
+        for job_name, job in fields(fields(document)['jobs']).items():
             steps = fields(job).get('steps')
-            for step in steps.value if steps else []:
-                run = fields(step).get('run')
-                if run is not None:
-                    offset = run.start_mark.line + (run.style == '|')
-                    found.extend(workflow_inventory(relative, run.value, offset))
+            for number, step in enumerate(steps.value if steps else [], 1):
+                values = fields(step)
+                name = values.get('name', values.get('id'))
+                context = f'job {job_name}, step {number}' + (f' ({name.value})' if name else '')
+                try:
+                    uses = values.get('uses')
+                    if uses and uses.value.lower().split('@', 1)[0] == 'actions/github-script':
+                        raise SyntaxError('unsupported actions/github-script; use workflow_inventory() '
+                                          'supported Python forms or a repository script',
+                                          (relative, uses.start_mark.line + 1, 1, uses.value))
+                    run = values.get('run')
+                    if run is not None:
+                        offset = run.start_mark.line + (run.style == '|')
+                        found.extend(workflow_inventory(relative, run.value, offset))
+                except SyntaxError as exc:
+                    exc.msg = f'{exc.msg}; {context}'
+                    raise
     return found
 
 
 def workflow_inventory(relative, source, line_offset):
-    """Inspect simple Python heredocs and quoted, single-argument -c commands."""
+    """Inspect bounded inline Python; reject unmodeled interpreter launches.
+
+    File and module commands are recognized separately from inline payloads.
+    Repository Python files are already included by source_inventory().
+    """
     found = []
     lines = source.splitlines()
     index = 0
+
+    def unsupported(command):
+        raise SyntaxError('unsupported Python launch; use workflow_inventory() supported '
+                          'python - heredocs, python -c, or repository script/module commands',
+                          (relative, line_offset + index + 1, 1, command))
+
     while index < len(lines):
         command = lines[index].strip()
+        while command.endswith('\\') and index + 1 < len(lines):
+            index += 1
+            command = command[:-1] + lines[index].strip()
         heredoc = re.fullmatch(r"python3?\s+-\s*[^<]*<<\s*(['\"]?)(\w+)\1", command)
         if heredoc:
+            if any(token in command.split('<<', 1)[0] for token in '|;&<>()`'):
+                unsupported(command)
             start = index + 1
             index = start
             while index < len(lines) and lines[index].strip() != heredoc[2]:
@@ -113,12 +140,38 @@ def workflow_inventory(relative, source, line_offset):
             try:
                 arguments = shlex.split(command)
             except ValueError as exc:
-                raise SyntaxError(str(exc), (relative, line_offset + index + 1, 1, command)) from exc
+                unsupported(command)
             if len(arguments) != 3:
-                raise SyntaxError('unsupported Python command', (relative, line_offset + index + 1, 1, command))
+                unsupported(command)
             found.extend(python_inventory(relative, arguments[2], line_offset + index))
-        elif re.match(r'python3?\s+-(?:\s|$)', command):
-            raise SyntaxError('unsupported Python heredoc', (relative, line_offset + index + 1, 1, command))
+        else:
+            try:
+                lexer = shlex.shlex(command, posix=True, punctuation_chars='|&;<>()')
+                lexer.whitespace_split = True
+                arguments = list(lexer)
+            except ValueError:
+                if re.search(r'\bpython(?:3(?:\.\d+)?)?\b', command):
+                    unsupported(command)
+                index += 1
+                continue
+            launches = [i for i, argument in enumerate(arguments)
+                        if re.fullmatch(r'(?:[^\s]*/)?python(?:3(?:\.\d+)?)?', argument)]
+            if launches:
+                position = launches[0]
+                prefix, payload = arguments[:position], arguments[position + 1:]
+                if prefix[:1] == ['env']:
+                    prefix = prefix[1:]
+                if (not all(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*=[^\n]*', item) for item in prefix)
+                        or any(re.fullmatch(r'[|&;<>()]+', item) for item in arguments)
+                        or any(token in command for token in ('`', '$('))):
+                    unsupported(command)
+                while payload and payload[0] in ('-u', '-B', '-I', '-E', '-s', '-S'):
+                    payload = payload[1:]
+                module = (len(payload) >= 2 and payload[0] == '-m'
+                          and re.fullmatch(r'[A-Za-z_]\w*(?:\.\w+)*', payload[1]))
+                script = payload and not payload[0].startswith('-') and payload[0].endswith('.py')
+                if not (module or script):
+                    unsupported(command)
         index += 1
     return found
 
@@ -353,7 +406,7 @@ def main():
     try:
         errors = check(args.root.resolve())
     except SyntaxError as exc:
-        print(f"{exc.filename}:{exc.lineno}: invalid Python source", file=sys.stderr)
+        print(f"{exc.filename}:{exc.lineno}: invalid Python source: {exc.msg}", file=sys.stderr)
         return 1
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
         print(f"network-contract: invalid or unreadable policy/source: {type(exc).__name__}", file=sys.stderr)

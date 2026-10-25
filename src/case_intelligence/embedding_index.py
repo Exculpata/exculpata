@@ -70,6 +70,10 @@ def record_embedding_index(path: Path, *, model: str, revision: str, populated: 
 
 
 def configured_embedding() -> tuple[str, str]:
+    from .retrieval_endpoints import configured_endpoint
+    endpoint = configured_endpoint("EMBEDDING")
+    if endpoint is not None:
+        return endpoint.model, endpoint.identity
     model = os.getenv("CASE_REVIEW_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).strip() or DEFAULT_EMBEDDING_MODEL
     revision = os.getenv("CASE_REVIEW_EMBEDDING_REVISION", DEFAULT_EMBEDDING_REVISION).strip() or DEFAULT_EMBEDDING_REVISION
     return model, revision

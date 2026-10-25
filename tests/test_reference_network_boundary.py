@@ -184,6 +184,55 @@ def test_contract_rejects_invalid_workflow_python(contract_tree):
     assert f'{path.relative_to(contract_tree)}:6: invalid Python source' in result.stderr
 
 
+def unsupported_workflow_launch(contract_tree, step):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    workflow = {'jobs': {'synthetic-job': {'steps': [{'name': 'Synthetic launch', **step}]}}}
+    # fixture-write: Seed a synthetic workflow for the actual CLI scanner.
+    path.write_text(yaml.safe_dump(workflow, sort_keys=False))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert '.github/workflows/synthetic.yml:' in result.stderr
+    assert 'job synthetic-job, step 1 (Synthetic launch)' in result.stderr
+    assert 'unsupported' in result.stderr
+    assert 'workflow_inventory' in result.stderr
+
+
+def test_contract_fails_closed_on_python_heredoc(contract_tree):
+    unsupported_workflow_launch(contract_tree, {'run': "python <<'PY'\nprint('synthetic')\nPY\n"})
+
+
+def test_contract_fails_closed_on_venv_python(contract_tree):
+    unsupported_workflow_launch(contract_tree, {'run': ".venv/bin/python -c \"print('synthetic')\""})
+
+
+@pytest.mark.parametrize('minor', ['0', '12', '999'])
+def test_contract_fails_closed_on_versioned_python(contract_tree, minor):
+    unsupported_workflow_launch(contract_tree, {'run': f"python3.{minor} -c \"print('synthetic')\""})
+
+
+@pytest.mark.parametrize('prefix', ['FOO=1', 'env FOO=1'])
+def test_contract_fails_closed_on_env_python(contract_tree, prefix):
+    unsupported_workflow_launch(contract_tree, {'run': f"{prefix} python -c \"print('synthetic')\""})
+
+
+def test_contract_fails_closed_on_piped_python(contract_tree):
+    unsupported_workflow_launch(contract_tree, {'run': "printf 'print(1)' | python"})
+
+
+def test_contract_fails_closed_on_github_script(contract_tree):
+    unsupported_workflow_launch(contract_tree, {'uses': 'actions/github-script@synthetic',
+                                               'with': {'script': "console.log('synthetic')"}})
+
+
+def test_contract_accepts_parseable_workflow_python(contract_tree):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    workflow = {'jobs': {'synthetic-job': {'steps': [{'run': "python -c \"print('synthetic')\""}]}}}
+    # fixture-write: Seed a supported inline Python control without network calls.
+    path.write_text(yaml.safe_dump(workflow))
+    result = run_contract(contract_tree)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize("value", [
     "os.path.join", "json.dumps", "recordbench.env",
     "synthetic-figure.png", "synthetic-report.json", "pathlib.path", "builtins.str",
@@ -551,6 +600,9 @@ def test_proxy_configuration_and_internal_clients(monkeypatch):
         ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): ("OIDC_EGRESS_ISSUER", "OIDC_EGRESS_PINS"),
         ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),
     }
+    destination_pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"):
+                              (role + "_EGRESS_URL", role + "_EGRESS_PINS")
+                              for role in ("EMBEDDING", "RERANK")})
     expected = {
         setting: "${" + source + ":-}"
         for settings, sources in destination_pairs.items()

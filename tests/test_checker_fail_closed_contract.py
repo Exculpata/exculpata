@@ -34,6 +34,18 @@ def _pr_body_allowance(monkeypatch, unsupported):
     return _pr_body_module().check_body("Head: b123456", "a" * 40, "main", (allowed,))
 
 
+def _workflow_python(monkeypatch, unsupported):
+    path = Path(__file__).resolve().parents[1] / "scripts" / "network-contract.py"
+    spec = importlib.util.spec_from_file_location("network_contract_checker", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    command = 'python3.999' if unsupported else 'python'
+    try:
+        return module.workflow_inventory('synthetic.yml', f'{command} -c "print(1)"', 0)
+    except SyntaxError as error:
+        return [str(error)]
+
+
 def _fixture(monkeypatch, unsupported):
     handler = "except*" if unsupported else "except"
     source = dedent(f"""\
@@ -83,6 +95,7 @@ def _gateway_logging(monkeypatch, unsupported):
     pytest.param(_gateway_logging, "assert_gateway_logging", id="gateway-unreviewed-include"),
     pytest.param(_fixture, "fixture_write", id="fixture-python-exception-group"),
     pytest.param(_publication, "_scan_media", id="publication-non-object-metadata"),
+    pytest.param(_workflow_python, "workflow_inventory", id="workflow-unmodeled-python-launch"),
 ])
 def test_unmodeled_input_is_rejected_with_supported_helper(check, helper, monkeypatch):
     assert check(monkeypatch, False) == [], "supported control must remain accepted"

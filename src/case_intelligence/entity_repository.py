@@ -24,13 +24,14 @@ class EntityEditConflict(WorkspaceProblem):
 
 
 class EntityRepository:
-    def __init__(self, *, connection, lock, authorize, now, read_authorize=None):
+    def __init__(self, *, connection, lock, authorize, now, audit, read_authorize=None):
         self.connection = connection
         self.lock = lock
         self.authorize = authorize
         # Authorization for reading(); it must execute only SELECT statements.
         self.read_authorize = read_authorize or authorize
         self.now = now
+        self.audit = audit
 
     @contextmanager
     def transaction(self, matter_id, actor_id):

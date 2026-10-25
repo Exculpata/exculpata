@@ -15,8 +15,8 @@ Accuracy and resource requirements depend on the selected models and inputs.
 | Component | Existing integration | Current limit |
 |---|---|---|
 | Answer generation | `CASE_INTELLIGENCE_GENERATOR_BACKEND` selects `ollama` or `openai`; `CASE_INTELLIGENCE_GENERATOR_URL` and `CASE_INTELLIGENCE_GENERATOR_MODEL` select an operator endpoint and model. `CASE_INTELLIGENCE_GENERATOR_SERVER` selects `ollama`, `llamacpp`, `lmstudio`, or `vllm` | The endpoint and model must satisfy the adapter contract in [existing answer endpoints](#existing-answer-endpoints). The installer wires bundled vLLM for `--models review` and `--models all`. `--external-generator` with `--models none` or `--models transcription` points at an operator server. A compatible-looking API is not automatically qualified. |
-| Embeddings | `CASE_REVIEW_EMBEDDING_MODEL` and `CASE_REVIEW_EMBEDDING_REVISION` configure the SentenceTransformer worker | Local files are required; remote model code is disabled. Embedding dimensions, index compatibility and reindexing must be checked before changing a populated deployment. |
-| Reranking | `CASE_REVIEW_RERANKER_MODEL` and `CASE_REVIEW_RERANKER_REVISION` configure the CrossEncoder worker | Local files are required; remote model code is disabled. Ranking/output behavior still needs evaluation. |
+| Embeddings | Local SentenceTransformer worker or [optional embedding endpoint](#optional-embedding-and-rerank-endpoints) | The index requires 768 dimensions and a matching recorded model identity. |
+| Reranking | Local CrossEncoder worker or [optional rerank endpoint](#optional-embedding-and-rerank-endpoints) | Ranking quality still needs evaluation for the selected model. |
 | Speech recognition | WhisperX/faster-whisper profiles use approved CTranslate2 snapshots | Version 2 inventories select exact compatible model identities for the existing profiles; [offline import](ASR_MODEL_IMPORT.md) copies prepared inventories to a new cache. Raw-model preparation and installer integration remain operator work. |
 | Word alignment | Manifest-approved English/Spanish Torchaudio checkpoints | Language-to-checkpoint bindings are currently fixed. Another language/checkpoint requires adapter and inventory support. |
 | Speaker diarization | Nemotron or Community-1 adapter selected during installation | These are separate implementations with their own artifact/runtime contracts. An unrelated diarization model cannot be substituted by changing a filename. |
@@ -142,7 +142,7 @@ reports it, and Apple Silicon when the host is Darwin arm64. The suggestion
 comes from [`config/model_profiles.json`](../config/model_profiles.json). A
 missing tool selects the CPU profile and says so. Nothing is downloaded.
 
-Embeddings and reranking stay in-process. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
+By default, embeddings and reranking use the built-in retrieval worker. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
 Granite and the ModernBERT reranker on CPU. When an index already contains
 vectors and the embedding model or revision changes, `doctor` and startup say
 that existing indexes must be rebuilt. Exculpata does not rebuild them
@@ -273,3 +273,50 @@ grading after the normal validator rejects it. That capture performs one attempt
 and does not hide repair drafts. Ordinary generation validates and bounds repair
 attempts, and the workflow evaluator checks model identity around each actual
 request, including schema repairs.
+
+## Optional embedding and rerank endpoints
+
+The built-in retrieval worker remains the default. In the selected app env file,
+set `CASE_INTELLIGENCE_EMBEDDING_URL=https://models.example.test` and
+`CASE_INTELLIGENCE_EMBEDDING_MODEL=synthetic-embedding` to opt into an
+OpenAI-compatible `/v1/embeddings` server. Independently configure
+`CASE_INTELLIGENCE_RERANK_URL` and `CASE_INTELLIGENCE_RERANK_MODEL` for a
+Cohere/Jina-style `/v1/rerank` server (`model`, `query`, `documents`; response
+`results` with `index` and `relevance_score`). Both must list their model at
+`GET /v1/models`. URLs are HTTPS origins, without `/v1`.
+
+Roles are selected independently. With only a rerank endpoint and no ready local
+worker, retrieval and indexing use deterministic embeddings. A fresh local-only
+installation needs no endpoint index rebuild. Configuring an embedding endpoint
+without an index record gives the rebuild guidance below. Model-backed callers
+still require valid provenance at a configured index-record location.
+
+For each prefix (`CASE_INTELLIGENCE_EMBEDDING` or `CASE_INTELLIGENCE_RERANK`),
+set `_ALLOWED_HOSTS` to the exact host, `_REMOTE_CONFIRMED=1` for a public
+server, or `_EGRESS_PINS` to reviewed private pins as for the answer server.
+Optional `_API_KEY` takes precedence over `_API_KEY_FILE`; use the existing
+read-only secrets mount for files. Keys stay in request headers, never index
+records or diagnostics. `_TIMEOUT` defaults to 120 seconds (maximum 300).
+The reference Compose file supplies `_PROXY`; direct deployments must supply
+an explicit CONNECT relay. There is no automatic remote fallback. Explicit
+remote configuration sends extracted text and/or queries and candidate passages
+to that operator-selected server; review its retention policy before enabling it.
+
+Invalid saved retrieval settings leave Compose `ps`, `logs`, `stop` and `down`
+available with retrieval relay slots cleared. Commands that need egress settings
+report the affected `CASE_INTELLIGENCE_EMBEDDING_` or `CASE_INTELLIGENCE_RERANK_`
+configuration for correction before running. Unvalidated URLs and pins never
+reach the relay.
+
+Run `python -m case_intelligence.retrieval_endpoints` inside the app namespace
+for content-free diagnostics. The existing index requires 768 dimensions.
+A changed model or endpoint, or unknown index identity, blocks embedding calls.
+Keep a backup, stop the app and all other index writers, and run
+`python -m case_intelligence.retrieval_rebuild --confirm-stopped` with the same
+environment, PostgreSQL access and index-record mount, then restart the app.
+The command replaces derived vectors transactionally, preserving source and
+citation identities; it does not alter the index dimension. It records the
+configured endpoint/model identity, not an attestation of remote model weights.
+Changing the weights behind the same model name requires an explicit rebuild.
+The old identity is invalidated before committing replacement vectors. If the
+final identity write fails, keep writers stopped and rerun the rebuild.

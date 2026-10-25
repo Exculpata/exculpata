@@ -184,3 +184,15 @@ records actual results and limitations. The
 The [historical post-18 receipt](EXIT_ALPHA_CRUISE.md#historical-post-18-receipt-superseded-snapshot)
 records this feature's final-head gates and passed independent post-merge checks.
 The dated synthetic receipt retains its preparation-time observations.
+
+## Witness review leads
+
+The witness inconsistency service compares current cited accounts on the same event.
+`find()` returns active leads; `list_dismissed()` returns dismissed leads with the
+same paired citations. Each tuple-compatible result has at most 500 candidates
+and an exact `not_shown` count. These leads remain possible inconsistencies for review.
+`mark_reviewed()` can reverse a dismissal; `reopen()` returns a decision to unreviewed.
+Stored decisions remain reversible if their sources become unavailable, but unavailable
+citations are never returned as current leads. Each state change and its matter-scoped
+audit entry commit together. Existing archive policy retains audit chronology,
+excluding audit details and target IDs. This service is not yet wired to a browser route.

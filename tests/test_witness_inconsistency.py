@@ -145,6 +145,33 @@ def test_place_stops_before_later_preposition():
                         'at the gate beside the south wall') == 'place'
 
 
+@pytest.mark.parametrize(('left', 'right'), [
+    ('at the end of the pier', 'at the boat ramp'),
+    ('at the night market', 'at the bus depot'),
+])
+def test_real_place_starting_with_temporal_word(left, right):
+    assert _differences(left, right) == 'place'
+    assert _differences(right, left) == 'place'
+
+
+@pytest.mark.parametrize('phrase', ['at the end', 'at night'])
+@pytest.mark.parametrize('suffix', ['', '.', ',', ';'])
+def test_bare_end_and_night_idioms_are_not_places(phrase, suffix):
+    assert _differences(phrase.upper() + suffix, 'at the gate') == ''
+
+
+def test_one_sided_place_superset_is_not_a_difference():
+    shorter = 'at the gate'
+    longer = 'at the gate beside the north wall'
+    assert _differences(shorter, longer) == ''
+    assert _differences(longer, shorter) == ''
+
+
+def test_time_with_meridiem_against_bare_hour_is_not_a_difference():
+    assert _differences('5 pm', '7') == ''
+    assert _differences('7', '5 pm') == ''
+
+
 @pytest.mark.parametrize(('left', 'right', 'expected'), [
     ('9:00 am', '9:00 pm', 'time'),
     ('9:00am', '9:00pm', 'time'),
@@ -194,7 +221,7 @@ def test_candidate_identity_includes_passage_content_and_difference(changed):
         assert create('matter-a', left, right, 'same witness', difference).candidate_id != original.candidate_id
 
 
-@pytest.mark.parametrize('invalid', ['made-up', 'stale-source', 'dismissed', 'other-matter', 'consistent'])
+@pytest.mark.parametrize('invalid', ['made-up', 'stale-source', 'other-matter', 'consistent'])
 def test_review_rejects_noncurrent_candidate_without_writes(tmp_path, invalid):
     store, matter, assertions, refs = setup_case(tmp_path)
     try:
@@ -205,8 +232,6 @@ def test_review_rejects_noncurrent_candidate_without_writes(tmp_path, invalid):
             candidate_id = 'witness-inconsistency-' + '0' * 64
         elif invalid == 'stale-source':
             refs.pop(candidate.first.support_token)
-        elif invalid == 'dismissed':
-            finder.dismiss(matter_id, ACTOR, candidate_id)
         elif invalid == 'other-matter':
             matter_id = store.create_matter('Other synthetic matter', '', ACTOR).matter_id
         else:
@@ -290,3 +315,19 @@ def test_thousand_account_scan_allows_writer_reservation(tmp_path, monkeypatch):
         assert not active
     finally:
         store.close()
+
+
+@pytest.mark.parametrize(('left', 'right', 'expected'), [
+    ('at 9:00 p.m.', 'at 21:00', ''),
+    ('at 9:00 p.m.', 'at 9:00 a.m.', 'time'),
+    ('at 9 pm', 'at 9 am', 'time'),
+    ('at 21:00', 'at 9:00 pm', ''),
+    ('at noon', 'at midnight', 'time'),
+    ('arrived at midnight.', 'arrived at the gate.', ''),
+    ('left at once.', 'left at the gate.', ''),
+    ('seen at the end.', 'seen at the door.', ''),
+    ('arrived at night.', 'arrived at the gate.', ''),
+])
+def test_residual_time_and_place_forms(left, right, expected):
+    for suffix in (' beside the north gate.', ' by the gate.'):
+        assert _differences(left + suffix, right + suffix) == expected
