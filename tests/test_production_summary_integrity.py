@@ -360,7 +360,7 @@ def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
     from random import Random
     random = Random(20261025)
     for scenario in range(100):
-        sources, expected = [], {}
+        sources, expected, expected_overlaps, expected_links = [], {}, {}, {}
         for prefix in ('ABC', 'XYZ', 'QQ'):
             covered = {1, 20}
             sources.extend([source(prefix + '-first', labels=[prefix + '0001']),
@@ -368,6 +368,21 @@ def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
             for number in random.sample(range(2, 20), 6):
                 covered.add(number)
                 sources.append(source(f'{prefix}-{number}', labels=[f'{prefix}{number:04d}{suffix}']))
+                if suffix != 'A':
+                    subprefix = f'{prefix}{number:04d}{suffix[0]}'
+                    counters = {1, 20, *random.sample(range(2, 19), 6)}
+                    expected[subprefix] = set(range(1, 21)) - counters
+                    owners = {1: {f'{prefix}-{number}'}}
+                    for counter in sorted(counters - {1}):
+                        key = f'{subprefix}-{counter}'
+                        sources.append(source(key, labels=[f'{subprefix}{counter:03d}']))
+                        owners[counter] = {key}
+                    duplicate = random.choice(sorted(counters))
+                    duplicate_key = f'{subprefix}-duplicate'
+                    sources.append(source(duplicate_key, labels=[f'{subprefix}{duplicate:03d}']))
+                    owners[duplicate].add(duplicate_key)
+                    expected_overlaps[f'Overlapping Bates labels: {subprefix}{duplicate:03d}'] = owners[duplicate]
+                    expected_links[subprefix] = owners
             expected[prefix] = set(range(1, 21)) - covered
         sources.extend([source('u', labels=['CONFIDENTIAL']),
                         with_ranges('blocked', [('RR0001', 'SS0002')]), partial_pdf(pages=2)])
@@ -375,11 +390,22 @@ def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
         actual = {prefix: set() for prefix in expected}
         for gap in facts(summary, 'bates_gap'):
             start, _, end = gap.text.removeprefix('Missing Bates: ').partition(' to ')
-            prefix = start[:3] if start.startswith(('ABC', 'XYZ')) else start[:2]
+            prefix = max((value for value in expected if start.startswith(value)), key=len)
             lower, upper = int(start[len(prefix):]), int((end or start)[len(prefix):])
             actual[prefix].update(range(lower, upper + 1))
             assert gap.count == upper - lower + 1
+            if prefix in expected_links:
+                owners = expected_links[prefix]
+                assert gap.links[0].document_id in owners[lower - 1]
+                assert gap.links[1].document_id in owners[upper + 1]
         assert actual == expected, (scenario, suffix, actual, expected)
+        assert {fact.text: {link.document_id for link in fact.links}
+                for fact in overlaps(summary)} == expected_overlaps
+        for prefix in expected:
+            assert any(fact.text == f'Bates series {prefix}: computed' or
+                       fact.text.startswith(f'Bates series {prefix}: computed (')
+                       for fact in facts(summary, 'bates_series'))
+    print(f'ORACLE {suffix}: 100 productions, 0 mismatches (gaps, counts, overlaps, citations, series)')
 
 
 @pytest.mark.parametrize('suffix,other', [('A', 'B'), ('.001', '.002'), ('-001', '-002')])
@@ -441,4 +467,77 @@ def test_round_five_markdown_artifact_preserves_gaps_and_source_links(tmp_path):
     assert 'differ only' in markdown and 'Overlapping Bates labels: ABC0001' in markdown
     rendered = MarkdownIt().render(markdown)
     for key in ('a', 'b', 'c', 'd', 'lookalike'):
+        assert f'href="/matters/m/sources/token-{key}"' in rendered
+
+
+@pytest.mark.parametrize('separator', ['.', '-', '_'])
+@pytest.mark.parametrize('ranges', [False, True], ids=['labels', 'ranges'])
+def test_numeric_suffix_run_reports_internal_gap(separator, ranges):
+    prefix = 'ABC0002' + separator
+    pairs = [('001', '010'), ('050', '060')] if ranges else [('001', '001'), ('002', '002'), ('004', '004')]
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        *[with_ranges(str(i), [(prefix + start, prefix + end)]) for i, (start, end) in enumerate(pairs)],
+        source('z', labels=['ABC0003'])])
+    gap, = facts(summary, 'bates_gap')
+    expected = prefix + '011 to ' + prefix + '049' if ranges else prefix + '003'
+    assert gap.text == 'Missing Bates: ' + expected
+    assert gap.count == (39 if ranges else 1)
+    assert {link.document_id for link in gap.links} == ({'0', '1'} if ranges else {'1', '2'})
+    assert any(f.text == f'Bates series {prefix}: computed' for f in facts(summary, 'bates_series'))
+    assert len(facts(summary, 'bates_suffix')) == len(pairs)
+
+
+@pytest.mark.parametrize('separator', ['.', '-', '_'])
+@pytest.mark.parametrize('duplicate', [False, True], ids=['partial-overlap', 'duplicate-label'])
+def test_numeric_suffix_run_reports_overlap_with_both_sources(separator, duplicate):
+    prefix = 'ABC0002' + separator
+    pairs = [('005', '005'), ('005', '005')] if duplicate else [('001', '010'), ('005', '020')]
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        *[with_ranges(str(i), [(prefix + start, prefix + end)]) for i, (start, end) in enumerate(pairs)],
+        source('z', labels=['ABC0003'])])
+    overlap, = overlaps(summary)
+    assert overlap.text == 'Overlapping Bates labels: ' + prefix + '005' + ('' if duplicate else ' to ' + prefix + '010')
+    assert overlap.count == 2
+    assert {link.document_id for link in overlap.links} == {'0', '1'}
+    assert not facts(summary, 'bates_gap')
+    assert any(f.text == f'Bates series {prefix}: computed' for f in facts(summary, 'bates_series'))
+
+
+@pytest.mark.parametrize('prefix,width,plain', [
+    ('ABC0002.', 3, None), ('ABC0002-', 3, None),
+    ('ABC0002.', 4, 'ABC0001'), ('ABC0002-', 5, 'ABC0001'),
+    ('EPA-HQ-2019-', 6, None), ('EPA-HQ-2019-', 6, 'EPA-HQ-2018'),
+    ('DEF2019_', 6, None), ('VOL001-', 4, 'VOL0001'),
+])
+def test_numeric_tail_without_plain_base_or_shorter_width_stays_ordinary(prefix, width, plain):
+    summary = build_summary('Synthetic', 'm', [
+        with_ranges('a', [(prefix + '1'.zfill(width), prefix + '90'.zfill(width))]),
+        with_ranges('b', [(prefix + '200'.zfill(width), prefix + '250'.zfill(width))]),
+        *([source('base', labels=[plain])] if plain else []),
+    ])
+    gap, = facts(summary, 'bates_gap')
+    assert gap.text == f'Missing Bates: {prefix}{91:0{width}d} to {prefix}{199:0{width}d}'
+    assert gap.count == 109 and {link.document_id for link in gap.links} == {'a', 'b'}
+    assert any(f.text == f'Bates series {prefix}: computed' for f in facts(summary, 'bates_series'))
+    assert not facts(summary, 'bates_suffix') and not facts(summary, 'bates_unordered')
+
+
+def test_numeric_suffix_series_export_keeps_separators_and_citations(tmp_path):
+    summary = build_summary('Synthetic', 'm', [source('base', labels=['ABC0001', 'ABC0003']),
+        source('dot', labels=['ABC0002.001', 'ABC0002.003']),
+        source('dash', labels=['ABC0002-002', 'ABC0002-004']),
+        source('duplicate', labels=['ABC0002.001']),
+        source('year', labels=['EPA-HQ-2019-000090', 'EPA-HQ-2019-000092'])])
+    artifact = tmp_path / 'summary.md'
+    # fixture-write: Export synthetic numeric suffix runs and inspect their Markdown artifact.
+    artifact.write_text(summary.to_markdown(), encoding='utf-8')
+    markdown = artifact.read_text(encoding='utf-8')
+    assert '- Missing Bates: ABC0002\n' not in markdown
+    for prefix, gap in [('ABC0002.', '002'), ('ABC0002-', '003'), ('EPA-HQ-2019-', '000091')]:
+        assert f'Bates series {prefix}: computed' in markdown
+        assert f'Missing Bates: {prefix}{gap}' in markdown
+    assert 'Overlapping Bates labels: ABC0002.001' in markdown
+    assert len(facts(summary, 'bates_gap')) == 3
+    rendered = MarkdownIt().render(markdown)
+    for key in ('base', 'dot', 'dash', 'duplicate', 'year'):
         assert f'href="/matters/m/sources/token-{key}"' in rendered

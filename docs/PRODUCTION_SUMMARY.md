@@ -28,11 +28,16 @@ both series. Labels without a recognizable numeric base block no numeric series.
 Control, format or combining characters and non-Latin or mixed-script prefixes
 cannot be scoped safely: an ALL status names their cause and every series is
 marked not computed. Unresolved labels retain notices and exact duplicate checks.
-Letter suffixes and dot-, dash- or underscore-numeric suffixes cover their base
-number for gap detection in an existing numeric series. Each suffixed label or
-same-base suffixed range retains its own cited fact. Base coverage does not make
-distinct suffixed labels overlap. Suffix-only series and suffixed ranges spanning
-different base numbers remain explicitly unresolved and not computed.
+Letter suffixes cover their base number for gap detection in an existing numeric
+series. Dot-, dash- and underscore-numeric labels form separate series keyed by
+the full base label plus separator, using the same gap and overlap calculations.
+They also cover their base number when a plain base series exists and the tail
+has fewer digits than the base number. Otherwise they remain ordinary labels in
+their own series, including year and volume prefixes such as EPA-HQ-2019-000091.
+Each label or same-base range recognized as suffixed retains its own cited fact.
+Base coverage does not make distinct suffixed labels overlap. Letter-suffix-only
+series and recognized suffixed ranges spanning different base numbers remain
+explicitly unresolved and not computed.
 Series differing only by case, punctuation, whitespace, Latin small capitals or
 dotless i receive a notice but remain separate. Gap labels use the widest
 zero-padded numeric portion in their series.
