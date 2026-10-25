@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import pytest
+from tests.runtime_probes import browser_workflow_condition
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -307,20 +308,7 @@ def test_browser_pr_cli_requires_coverage_when_comparison_unavailable(history, t
 @pytest.mark.parametrize("docs", ["true", "false", ""])
 @pytest.mark.parametrize("browser", ["true", "false", ""])
 def test_browser_workflow_event_and_scope_decisions(event, result, docs, browser):
-    workflow = (ROOT / ".github/workflows/quality-gates.yml").read_text()
-    block = workflow.split("\n  synthetic-browser:\n", 1)[1]
-    condition = block.split("${{", 1)[1].split("}}", 1)[0]
-    for name, value in {
-        "github.event_name": event, "needs.change-scope.result": result,
-        "needs.change-scope.outputs.docs_only": docs,
-        "needs.change-scope.outputs.browser_changed": browser,
-    }.items():
-        condition = condition.replace(name, repr(value))
-    condition = " ".join(condition.replace("&&", " and ").replace("||", " or ").split())
-    actual = eval(condition, {"__builtins__": {}}, {
-        "always": lambda: True, "fromJSON": json.loads,
-        "contains": lambda values, value: value in values,
-    })
+    actual = browser_workflow_condition(event, result, docs, browser)
     expected = (
         event in {"merge_group", "schedule", "workflow_dispatch"}
         and (result != "success" or docs != "true")

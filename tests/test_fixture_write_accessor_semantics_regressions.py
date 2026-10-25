@@ -1,4 +1,5 @@
 """Finite dictionary-method semantics preserve snapshots and non-owning controls."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -24,7 +25,17 @@ def test_key_only_and_none_returning_mapping_methods_remain_nonowning(source):
     violations = check_fixture_writes(PREFIX + source)
     assert any(v.line == 1 and 'mutable shared fixture containers' in v.rule for v in violations)
     independent = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
-    assert check_fixture_writes(independent + PREFIX.replace('bench.workspace.connection', 'independent') + source) == []
+    independent_source = independent + PREFIX.replace('bench.workspace.connection', 'independent') + source
+    if 'fromkeys' in source:
+        # Key-only results remain non-owning, but reflective construction from a
+        # nonliteral argument now has its own structural syntax prohibition.
+        violations = check_fixture_writes(independent_source)
+        assert len(violations) == 1
+        assert violations[0].structural
+        assert violations[0].rule == 'fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()'
+        assert check_fixture_writes(independent_source.replace('fromkeys(holder)', 'fromkeys(["shared"])')) == []
+    else:
+        assert check_fixture_writes(independent_source) == []
 
 
 @pytest.mark.parametrize('source', [
@@ -84,7 +95,9 @@ def test_real_shared_closure_precedes_inventory_rejection(source):
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     source = PREFIX + source
     try:
-        exec(source, {'bench': bench, 'independent': independent, 'condition': True})
+        error, _ = fixture_probe(source, bench=bench, independent=independent, condition=True)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

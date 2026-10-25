@@ -32,7 +32,8 @@ def local_file(reference, parent=SITE):
 def test_page_resources_are_local_and_passive():
     for tag, attrs in Page().elements:
         assert tag not in {"script", "iframe", "object", "embed", "form", "base"}
-        assert not any(key.startswith("on") for key in attrs)
+        for key in attrs:
+            assert not key.startswith("on")
         assert "style" not in attrs and "srcset" not in attrs
         if "src" in attrs:
             local_file(attrs["src"])
@@ -117,7 +118,9 @@ def test_launch_video_is_self_hosted_without_autoplay():
         ("./assets/exculpata-launch-9x16.mp4", "./assets/exculpata-launch-9x16-poster.jpg", 1080, 1920),
     ]
     assert len(videos) == len(expected)
-    for attrs, (src, poster, width, height) in zip(videos, expected):
+    for index in range(len(videos)):
+        attrs = videos[index]
+        src, poster, width, height = expected[index]
         assert attrs["src"] == src and attrs["poster"] == poster
         assert attrs["preload"] == "metadata"
         assert "controls" in attrs and "playsinline" in attrs and "autoplay" not in attrs
@@ -134,9 +137,13 @@ def test_launch_video_is_self_hosted_without_autoplay():
 
 
 def test_static_policy_blocks_scripts_and_connections():
-    policy = next(attrs["content"] for tag, attrs in Page().elements
-                  if tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy")
-    directives = dict(part.strip().split(" ", 1) for part in policy.split(";") if part.strip())
+    for tag, attrs in Page().elements:
+        if tag == "meta" and attrs.get("http-equiv") == "Content-Security-Policy":
+            policy = attrs["content"]
+            break
+    else:
+        raise StopIteration
+    directives = dict([part.strip().split(" ", 1) for part in policy.split(";") if part.strip()])
     assert directives == {
         "default-src": "'none'", "style-src": "'self'", "img-src": "'self'",
         "font-src": "'self'", "media-src": "'self'", "base-uri": "'none'",

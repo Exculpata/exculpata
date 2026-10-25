@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import hashlib
 import json
@@ -134,6 +134,13 @@ def intake_folder(client: TestClient, slug: str) -> str:
     return receipt["receipt_url"]
 
 
+def discovery_has_pending_work(discovery) -> bool:
+    for key in ("sources_pending", "unsealed_sources", "sources_attention", "budget_reached"):
+        if discovery[key]:
+            return True
+    return False
+
+
 def wait_for_processing(demo: Demo, expected: int, timeout_seconds: float) -> None:
     """Wait beyond extraction: durable indexing jobs and suggestions must finish."""
     bench = demo.app.state.workbench
@@ -147,55 +154,78 @@ def wait_for_processing(demo: Demo, expected: int, timeout_seconds: float) -> No
                 and not any(bench.workspace.active_matter_work_counts(demo.matter.matter_id).values())
                 and discovery and discovery["sources_ready"] == readiness.searchable_count
                 and discovery["sources_complete"] == discovery["sources_ready"]
-                and not any(discovery[key] for key in (
-                    "sources_pending", "unsealed_sources", "sources_attention", "budget_reached"))):
+                and not discovery_has_pending_work(discovery)):
             return
         time.sleep(0.05)
     raise TimeoutError("Harbor Street processing did not finish before the demo deadline.")
 
 
-@contextmanager
-def seed_demo(data_dir: Path, *, timeout_seconds: float = 120.0) -> Iterator[Demo]:
+class _DemoContext:
+    def __init__(self, data_dir: Path, timeout_seconds: float):
+        self.data_dir = data_dir
+        self.timeout_seconds = timeout_seconds
+        self._stack = None
+
+    def __enter__(self) -> Demo:
+        if self._stack is not None:
+            raise RuntimeError("A demo context may only be entered once.")
+        with ExitStack() as stack:
+            self._stack = stack
+            demo = _prepare_demo(self.data_dir, self.timeout_seconds, stack)
+            self._stack = stack.pop_all()
+            return demo
+        raise RuntimeError("Demo setup did not yield a ready demo.")
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return self._stack.__exit__(exc_type, exc_value, traceback)
+
+
+def seed_demo(data_dir: Path, *, timeout_seconds: float = 120.0) -> _DemoContext:
     """Seed a fresh external directory; close the app and restore settings on exit.
 
     The caller owns the directory. The CLI supplies a TemporaryDirectory so no
     case data, indexes, sessions or other runtime state enter the checkout.
+    Validation and resource acquisition occur when the context is entered.
     """
+    return _DemoContext(data_dir, timeout_seconds)
+
+
+def _prepare_demo(data_dir: Path, timeout_seconds: float, stack: ExitStack) -> Demo:
     data_dir = Path(data_dir)
     if data_dir.is_symlink() or data_dir.resolve().is_relative_to(ROOT):
         raise ValueError("Demo data must be outside the checkout in a fresh temporary directory.")
     if data_dir.exists() and (not data_dir.is_dir() or any(data_dir.iterdir())):
         raise ValueError("Demo data requires a fresh or empty directory; existing files were preserved.")
-    with demo_environment():
-        app = create_workbench_app(data_dir.resolve(), auth_mode="preview", secure_cookie=False,
-            generator=UnavailableGenerator(), learned_retrieval=False,
-            background_ingestion=True, ingestion_workers=1, answer_workers=1,
-            storage_policy=StoragePolicy(reserve_bytes=0), malware_scan_mode="disabled")
-        # In-process HTTP uses the real session, CSRF, intake and processing
-        # routes. No test authentication or direct source/index writes are used.
-        with TestClient(app, base_url="http://127.0.0.1", follow_redirects=False) as client:
-            require_response(client.get("/auth/login"), 200)
-            require_response(client.post("/auth/login", data={
-                "identity_subject": PREVIEW_SUBJECT,
-                "login_challenge": client.cookies.get(LOGIN_CHALLENGE_COOKIE),
-                "next": "/matters/new",
-            }), 303)
-            page = require_response(client.get("/matters/new"), 200)
-            csrf = re.search(r'data-csrf-token="([0-9a-f]{64})"', page.text)
-            if csrf is None:
-                raise RuntimeError("Demo sign-in did not supply an intake CSRF token.")
-            client.headers["X-CSRF-Token"] = csrf.group(1)
-            response = require_response(client.post("/matters", data={
-                "name": "Harbor Street", "descriptor": "Entirely invented records for an offline demonstration",
-            }), 303)
-            location = response.headers["location"]
-            if not re.fullmatch(r"/matters/m-[0-9a-f]{12}/setup", location):
-                raise RuntimeError("The Harbor Street demo matter could not be created.")
-            matter = app.state.workbench.matter(location.split("/")[2], ACTOR_ID)
-            receipt_url = intake_folder(client, matter.slug)
-            demo = Demo(app, client, matter, ACTOR_ID, receipt_url)
-            wait_for_processing(demo, sum(path.is_file() for path in CORPUS.rglob("*")), timeout_seconds)
-            yield demo
+    stack.enter_context(demo_environment())
+    app = create_workbench_app(data_dir.resolve(), auth_mode="preview", secure_cookie=False,
+        generator=UnavailableGenerator(), learned_retrieval=False,
+        background_ingestion=True, ingestion_workers=1, answer_workers=1,
+        storage_policy=StoragePolicy(reserve_bytes=0), malware_scan_mode="disabled")
+    # In-process HTTP uses the real session, CSRF, intake and processing
+    # routes. No test authentication or direct source/index writes are used.
+    client = stack.enter_context(TestClient(app, base_url="http://127.0.0.1", follow_redirects=False))
+    require_response(client.get("/auth/login"), 200)
+    require_response(client.post("/auth/login", data={
+        "identity_subject": PREVIEW_SUBJECT,
+        "login_challenge": client.cookies.get(LOGIN_CHALLENGE_COOKIE),
+        "next": "/matters/new",
+    }), 303)
+    page = require_response(client.get("/matters/new"), 200)
+    csrf = re.search(r'data-csrf-token="([0-9a-f]{64})"', page.text)
+    if csrf is None:
+        raise RuntimeError("Demo sign-in did not supply an intake CSRF token.")
+    client.headers["X-CSRF-Token"] = csrf.group(1)
+    response = require_response(client.post("/matters", data={
+        "name": "Harbor Street", "descriptor": "Entirely invented records for an offline demonstration",
+    }), 303)
+    location = response.headers["location"]
+    if not re.fullmatch(r"/matters/m-[0-9a-f]{12}/setup", location):
+        raise RuntimeError("The Harbor Street demo matter could not be created.")
+    matter = app.state.workbench.matter(location.split("/")[2], ACTOR_ID)
+    receipt_url = intake_folder(client, matter.slug)
+    demo = Demo(app, client, matter, ACTOR_ID, receipt_url)
+    wait_for_processing(demo, sum(path.is_file() for path in CORPUS.rglob("*")), timeout_seconds)
+    return demo
 
 
 def main() -> int:

@@ -45,8 +45,9 @@ def load_evaluator(product: Path, evaluator: Path):
 
 def imported_product(product: Path, evaluator: Path) -> dict[str, str]:
     imports = {}
-    for name, module in tuple(sys.modules.items()):
+    for name in tuple(sys.modules):
         if name == PACKAGE or name.startswith(PACKAGE + "."):
+            module = sys.modules[name]
             path = Path(module.__file__).resolve()
             if name == EVAL_MODULE:
                 if path != evaluator:
@@ -66,10 +67,12 @@ def disposable_database():
     dsn = os.environ["CASE_REVIEW_POSTGRES_TEST_DSN"]
     name = "defense_eval_" + uuid.uuid4().hex
     with psycopg.connect(dsn, autocommit=True, connect_timeout=5) as connection:
+        # fixture-write: Create an isolated PostgreSQL database outside a transaction; no shared SQLite workspace.
         connection.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
         try:
             yield name, make_conninfo(dsn, dbname=name)
         finally:
+            # fixture-write: Drop the isolated PostgreSQL database using its required autocommit connection.
             connection.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
 
 

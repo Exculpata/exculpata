@@ -51,7 +51,7 @@ print(m.matter_id); s.close()
         return artifacts[0]['artifact'].body
     expected = export(store)
     restored_path = root / 'clean.sqlite'
-    with sqlite3.connect(restored_path) as target:
+    with store._lock, sqlite3.connect(restored_path) as target:
         store.connection.backup(target)
     matter = store.get_matter_by_id(matter_id)
     store.close()

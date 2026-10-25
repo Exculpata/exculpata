@@ -1,4 +1,5 @@
 """SQLite prepare-time mutations and explicit argument-expansion regressions."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from threading import RLock
 from types import SimpleNamespace
@@ -98,7 +99,9 @@ def test_text_factory_changes_require_owning_boundary_and_change_query_behavior(
     try:
         assert raw.execute("SELECT 'synthetic'").fetchone()[0] == 'synthetic'
         source = 'import sqlite3\n' + mutation
-        exec(source, {'workspace': workspace})
+        error, _ = fixture_probe(source, workspace=workspace)
+        if error is not None:
+            raise error
         assert raw.execute("SELECT 'synthetic'").fetchone()[0] == b'synthetic'
         assert check_fixture_writes(source)
     finally:

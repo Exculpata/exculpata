@@ -114,7 +114,7 @@ filters that could leave a required result missing.
 The application suite runs in two parallel `application-shards` matrix jobs.
 `scripts/application-test-shard.py` sorts the application test files and assigns
 alternating files to each shard; new files are included automatically. Each shard
-keeps the existing worker limits and diagnostics, with a separate artifact name.
+runs one worker and keeps the existing diagnostics, with a separate artifact name.
 The existing `application` required check aggregates both shards and classification;
 failed, cancelled or skipped dependencies cannot produce a successful aggregate.
 Documentation-only changes run the lightweight contracts in both shards.
@@ -165,3 +165,28 @@ are explicit; SIGKILL alone does not establish OOM. See
 Hard cancellation can prevent report creation or upload;
 use the streamed log for incomplete runs. Missing XML is not evidence of success.
 No workspace, database, media or environment dump is uploaded by this step.
+
+## Known-good discovery corpus
+
+For claims about the corpus's exercised application paths, **proof required** means `make corpus-check` passes on
+that PR head and the PR links its `Synthetic discovery corpus` CI run. State
+whether the evidence is the fast application-contract subset or the full
+product-OCR and independent faster-whisper run; a fast pass does not establish
+OCR/ASR accuracy. Full runs nightly, on workflow dispatch, and on every PR except
+the documented documentation-only exemption. A missing or failed full run remains
+an open corpus recognition-quality gap.
+
+Neither lane executes the production transcription service, its worker, WhisperX
+audio loading/decoding, VAD, alignment, diarization, or service segment conversion.
+Requiring this corpus on service changes is a conservative trigger, not evidence
+that those service paths passed. Receipt `coverage` fields and CLI output state
+this boundary. Production-service claims require the separate transcription CI
+checks and applicable runtime qualification evidence; a passing corpus cannot
+substitute for them or for GPU/model acceptance.
+
+The [corpus guide](../benchmarks/corpus/README.md) records file-size/publication
+requirements, pinned models, expected outputs, tolerances, historical regression
+proofs, and the explicit `--update-expected --proposal` review workflow. Ordinary
+runs cannot rewrite expectations. Fixture and expected-output changes need a
+reviewed diff and a passing new run. This gate supplements all existing security,
+publication, application, PostgreSQL, transcription, deployment and review gates.

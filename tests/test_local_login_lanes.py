@@ -237,16 +237,14 @@ def _settings():
 
 
 @pytest.fixture
-def lane_identity(tmp_path):
+def lane_identity(tmp_path, request):
     settings, accounts = _settings()
     store = WorkspaceStore(tmp_path / "runtime/workbench.sqlite")
+    request.addfinalizer(store.close)
     clock = Clock()
     identity = IdentityService(store, tmp_path / "runtime", auth_mode="local", secure_cookie=True,
                                local_settings=settings, clock=clock)
-    try:
-        yield identity, clock, accounts
-    finally:
-        store.close()
+    return identity, clock, accounts
 
 
 @pytest.fixture

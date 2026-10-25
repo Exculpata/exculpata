@@ -495,7 +495,10 @@ def test_application_batches_requested_ordinals_in_one_document_pass(tmp_path, m
                     self.reads += 1
                     yield PilotUnit(number, f'Synthetic unit {number}')
         document = Document()
-        monkeypatch.setattr(bench.source_store(matter), 'get', lambda identifier: document)
+        def get_document(identifier):
+            return document
+
+        monkeypatch.setattr(bench.source_store(matter), 'get', get_document)
         monkeypatch.setattr(bench, '_candidate', lambda matter, document, unit, ordinal: SimpleNamespace(
             document_id='synthetic-document', source_version_id='synthetic-version', source_name='Synthetic source',
             citation=f'Unit {ordinal}', chunk_id=f'chunk-{ordinal}', excerpt_digest='a'*64, text=unit.text))

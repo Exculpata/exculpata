@@ -6,6 +6,10 @@ from textwrap import dedent
 import pytest
 
 from tests.fixture_write_policy import check_fixture_writes
+from tests.fixture_inventory import check_inventory_source, inventory_paths
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("source", [
@@ -113,12 +117,7 @@ def test_exception_cannot_license_deferred_lambda_write():
     assert check_fixture_writes(source)
 
 
-def test_test_modules_observe_fixture_write_boundary():
-    root = Path(__file__).parent
-    violations = []
-    for path in sorted(root.rglob("*.py")):
-        # The implementation is the sole owner of the underlying raw boundary.
-        if path == root / "fixture_write.py":
-            continue
-        violations.extend(check_fixture_writes(path.read_text(encoding="utf-8"), str(path.relative_to(root.parent))))
+@pytest.mark.parametrize("path", inventory_paths(ROOT), ids=str)
+def test_test_modules_observe_fixture_write_boundary(path):
+    violations = check_inventory_source((ROOT / path).read_text(encoding="utf-8"), path.as_posix())
     assert not violations, "\n" + "\n".join(map(str, violations))

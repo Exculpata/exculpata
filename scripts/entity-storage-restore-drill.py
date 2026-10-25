@@ -57,7 +57,7 @@ s=WorkspaceStore(Path(sys.argv[1])); a=s.upsert_principal('test','synthetic-enti
     service(store).update(matter_id, actor, entity['entity_id'], expected_revision=1, display_name='Alex Example', status='confirmed')
     expected = service(store).detail(matter_id, actor, entity['entity_id'])
     backup = root / 'upgraded-backup.sqlite'
-    with sqlite3.connect(backup) as target:
+    with store._lock, sqlite3.connect(backup) as target:
         store.connection.backup(target)
     store.close()
     restored_path = root / 'clean-restore' / 'workspace.sqlite'

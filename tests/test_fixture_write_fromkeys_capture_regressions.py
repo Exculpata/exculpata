@@ -1,4 +1,5 @@
 """fromkeys must retain evaluated key ownership as well as its default."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -33,9 +34,17 @@ def test_literal_mapping_keys_independent_keys_and_exact_construction_exception(
     prefix = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n"
     if 'bench.workspace.connection' in source:
         assert any('unsupported' in v.rule for v in check_fixture_writes(prefix + source))
-        assert check_fixture_writes(prefix + source.replace('bench.workspace.connection', 'independent')) == []
-    else:
-        assert check_fixture_writes(prefix + source) == []
+    independent_source = prefix + source.replace('bench.workspace.connection', 'independent')
+    violations = check_fixture_writes(independent_source)
+    assert len(violations) == 1
+    assert violations[0].structural
+    assert violations[0].rule == 'fromkeys keys must be literal; use an explicit synchronous helper with fixture_write()'
+    # Preserve independent ownership controls with explicit construction. The
+    # literal dictionary retains the same connection key and close operation.
+    explicit = independent_source.replace('dict.fromkeys([independent])', '{independent: None}')
+    key = 'db' if "{'db':" in source else 'shared'
+    explicit = explicit.replace('dict.fromkeys(holder)', 'dict.fromkeys([' + repr(key) + '])')
+    assert check_fixture_writes(explicit) == []
 
 
 def test_fromkeys_iteration_closes_real_shared_connection_before_rejection():
@@ -43,7 +52,9 @@ def test_fromkeys_iteration_closes_real_shared_connection_before_rejection():
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     source = 'holder = dict.fromkeys([bench.workspace.connection])\nfor handle in holder:\n    handle.close()'
     try:
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

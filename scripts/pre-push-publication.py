@@ -121,7 +121,7 @@ def main() -> int:
         # The first scan covers the complete fetched history. Each remaining
         # outgoing tip also needs its own tree scan, including the naming gate
         # whose historical occurrences intentionally remain allowed.
-        for index, oid in enumerate(dict.fromkeys(oid for oid, _ref in outgoing)):
+        for index, oid in enumerate({oid: None for oid, _ref in outgoing}):
             if index:
                 git(temporary, "checkout", "--quiet", "--detach", oid)
             result = subprocess.run(

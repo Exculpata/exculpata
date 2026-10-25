@@ -45,7 +45,7 @@ jobs:
         env:
           EXPECTED_PUBLICATION_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_PUBLICATION_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: "3.12"
       - name: Restore main apt downloads
@@ -135,13 +135,15 @@ jobs:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
             pyproject.toml
             services/transcription/pyproject.toml
+      - name: Protect reviewed corpus inputs
+        run: bash scripts/corpus-write-guard.sh prepare
       - name: Install lightweight documentation test dependencies
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
@@ -195,9 +197,7 @@ jobs:
           # Reserve 0 starts only with the explicit test switch.
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: "0"
           CASE_INTELLIGENCE_TEST_MODE: "1"
-          # A bounded pool overlaps SQLite/filesystem waits on the same hosted
-          # runner; xdist's documented auto-worker override retains -n auto.
-          PYTEST_XDIST_AUTO_NUM_WORKERS: "6"
+          PYTEST_XDIST_AUTO_NUM_WORKERS: "1"
           # xdist already occupies the runner CPUs. Bound each worker's native
           # OCR/numerical thread pools instead of multiplying runnable threads.
           OMP_THREAD_LIMIT: "1"
@@ -212,6 +212,9 @@ jobs:
           --junitxml="${{ runner.temp }}/application-results.xml"
           --worker-diagnostics-dir="${{ runner.temp }}/application-workers"
           @"${{ runner.temp }}/application-test-files.txt"
+      - name: Verify reviewed corpus inputs are unchanged
+        if: ${{ always() }}
+        run: bash scripts/corpus-write-guard.sh check
       - name: Retain application test report
         if: ${{ always() && needs.change-scope.outputs.docs_only != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -259,7 +262,7 @@ jobs:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -306,7 +309,7 @@ jobs:
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Write lexical stub and product retrieval scorecards plus main delta
@@ -342,7 +345,7 @@ jobs:
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip
@@ -393,7 +396,7 @@ jobs:
       - name: Verify real gateway strips forged authentication headers
         run: PYTHONPATH=src python3 -m unittest tests.test_gateway_nginx -v
       - name: Select Python 3.12 for restore acceptance
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Restore main apt downloads
@@ -488,7 +491,7 @@ jobs:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
       - name: Select Python 3.12
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
           cache: pip

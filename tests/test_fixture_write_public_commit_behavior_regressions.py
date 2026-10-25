@@ -1,4 +1,5 @@
 """Actual public-API and explicit-context transaction termination evidence."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from threading import Event, RLock, Thread
 from types import SimpleNamespace
@@ -24,7 +25,9 @@ def test_workspace_audit_method_commits_fixture_before_exception_and_requires_re
         with fixture_write(store) as connection:
             connection.execute('CREATE TABLE synthetic_fixture(value TEXT)')
         with pytest.raises(ValueError, match='synthetic body failure'):
-            exec(source, {'bench': bench, 'fixture_write': fixture_write})
+            error, _ = fixture_probe(source, bench=bench, fixture_write=fixture_write)
+            if error is not None:
+                raise error
         # The real public API commits both its audit and the prior fixture SQL.
         # Keep this behavior evidence explicit: the inventory must reject source.
         with sqlite3.connect(path) as independent:
@@ -66,7 +69,9 @@ def test_explicit_connection_exit_ends_actual_worker_transaction_without_lock(tm
     try:
         assert ready.wait(5)
         assert not errors
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         with sqlite3.connect(path) as independent:
             rows = independent.execute('SELECT value FROM synthetic_fixture').fetchall()
         assert rows == ([] if rollback else [('worker pending',)])
