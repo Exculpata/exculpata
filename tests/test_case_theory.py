@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import uuid
 
 import pytest
@@ -14,6 +15,11 @@ pytestmark = pytest.mark.skipif(
     not os.getenv("CASE_REVIEW_POSTGRES_TEST_DSN"),
     reason="set CASE_REVIEW_POSTGRES_TEST_DSN for the isolated development database",
 )
+
+
+def postgres_client_command(binary, *arguments):
+    prefix = shlex.split(os.getenv("CASE_REVIEW_POSTGRES_CLIENT_PREFIX", ""))
+    return [*prefix, binary, *arguments]
 
 
 @pytest.fixture
@@ -316,15 +322,22 @@ def test_link_lifecycle_upgrade_and_clean_restore(isolated_theory_dsn):
         assert repository.read(matter)["claims"][0]["links"] == [
             source_link(), {"kind": "assertion", "assertion_id": "legacy-assertion"},
         ]
-        backup = subprocess.run(
-            ["pg_dump", "--dbname", isolated_theory_dsn, "--no-owner", "--no-privileges"],
-            capture_output=True, check=True,
-        ).stdout
+        dump = subprocess.run(
+            postgres_client_command("pg_dump", "--dbname", isolated_theory_dsn,
+                                    "--no-owner", "--no-privileges"),
+            capture_output=True, check=False,
+        )
+        assert dump.returncode == 0, f"pg_dump failed: {dump.stderr.decode(errors='replace')}"
+        backup = dump.stdout
         # fixture-write: remove the isolated synthetic schema to prove restoration into a clean target.
         connection.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public")
         # fixture-write: restore only this test's synthetic dump, including constraints and triggers.
-        subprocess.run(["psql", "--dbname", isolated_theory_dsn, "-X", "-v", "ON_ERROR_STOP=1"],
-                       input=backup, capture_output=True, check=True)
+        restore = subprocess.run(
+            postgres_client_command("psql", "--dbname", isolated_theory_dsn,
+                                    "-X", "-v", "ON_ERROR_STOP=1"),
+            input=backup, capture_output=True, check=False,
+        )
+        assert restore.returncode == 0, f"psql restore failed: {restore.stderr.decode(errors='replace')}"
         assert repository.read(matter)["claims"][0]["links"][1]["assertion_id"] == "legacy-assertion"
         delete_postgres_document(connection, matter_id=matter, document_id="source-1")
         assert_link_audit(connection, matter, claim, "source-1", "passage_deleted")
