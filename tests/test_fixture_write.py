@@ -10,6 +10,7 @@ import pytest
 from case_intelligence.report_compilation_jobs import ReportCompilationJobs
 from case_intelligence.workspace_store import WorkspaceStore
 from tests.fixture_write import fixture_write
+from tests.fixture_probe import fixture_probe
 from tests import test_matter_media_workflow as media
 
 
@@ -52,7 +53,7 @@ def test_live_media_fixture_does_not_commit_concurrent_report_claim(tmp_path, mo
                          and item.value.startswith('UPDATE workbench_media_summary')
                          for statement in node.body if isinstance(statement, ast.Expr)
                          for item in ast.walk(statement)))
-    code = compile(ast.Module(body=[block], type_ignores=[]), '<live-media-fixture>', 'exec')
+    code = ast.unparse(block)
     workspace = WorkspaceStore(tmp_path / 'synthetic.sqlite')
     lock = workspace._lock
     connection = workspace.connection
@@ -109,8 +110,11 @@ def test_live_media_fixture_does_not_commit_concurrent_report_claim(tmp_path, mo
     try:
         worker.start()
         assert began.wait(5), 'real report claim did not begin'
-        exec(code, {**vars(media), 'bench': SimpleNamespace(workspace=workspace),
-                    'failed': SimpleNamespace(transcript_id='synthetic-no-transcript')})
+        error, _ = fixture_probe(code, bench=SimpleNamespace(workspace=workspace),
+            fixture_write=fixture_write, failed=SimpleNamespace(transcript_id='synthetic-no-transcript'),
+            media_summary_attempts=media.MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS)
+        if error is not None:
+            raise error
     finally:
         release.set()
         worker.join(5)

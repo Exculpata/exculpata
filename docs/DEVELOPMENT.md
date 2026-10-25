@@ -119,6 +119,8 @@ repository extraction. A new feature should strengthen those boundaries while
 preserving atomic authorization, source validation, and saving. Update linked
 capability claims when behavior changes; keep historical receipts dated.
 
+### Synthetic fixture writes
+
 Tests that start background workers must respect their job ownership and the
 workspace transaction lock. Prefer public workflow transitions over direct SQL
 to establish retry states. If a fixture manually claims and completes a job,
@@ -239,6 +241,27 @@ Ordinary scalar data and proven independent-resource containers remain supported
 Scalar conversion can discard handle ownership but must retain active database-path
 provenance. Known active-path container stores and opaque path extraction remain
 rejected; exact-operation exceptions cannot hide a later workspace database open.
+
+The static inventory checks Python files under the root `tests/` directory,
+including unstaged sources, matching main's scope. It does not execute or resolve
+arbitrary import graphs. Corpus and application CI jobs make `benchmarks/corpus/`
+read-only with `bash scripts/corpus-write-guard.sh prepare` before tests and run
+`bash scripts/corpus-write-guard.sh check` afterward, even after failure. The Git
+diff and status checks reject tracked changes and untracked additions from any
+executed code path. Dynamic `exec`/`eval`
+(including resolved aliases) is rejected without interpreting its payload. The
+fixed-input runtime harnesses are pinned in `tests.fixture_inventory`; only their
+dynamic-execution finding is allowed, and every other boundary check still runs.
+See the [fixture standard](../CODING_STANDARDS.md#synthetic-fixture-writes).
+
+Builtin `__call__` access, starred positional calls to builtin `getattr`, and
+builtin dictionary `fromkeys` with non-literal or callable keys are unsupported.
+Use direct calls, explicit arguments, literal keys, or synchronous loops, with
+`fixture_write()` around raw shared workspace writes. Run the fixture-specific
+denial contract with `python -m pytest -q tests/test_fixture_reflective_deny.py`.
+Shared checker harnesses reuse that module; they do not own a second fixture
+deny list. Optional precision improvements in
+[#333](https://github.com/Exculpata/exculpata/issues/333) must preserve these gates.
 
 Structural rejection cannot be suppressed with `# fixture-write:` comments.
 Exact-statement exceptions remain available for deliberate raw SQLite operations

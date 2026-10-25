@@ -1,4 +1,5 @@
 """Class declarations, direct Boolean results and precise outer-write diagnostics."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -64,7 +65,9 @@ def test_reported_class_and_boolean_paths_actually_close_shared_connection(actio
     bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     source = "import sqlite3\nindependent = sqlite3.connect(':memory:')\n" + action
     try:
-        exec(action, {'bench': bench, 'independent': independent, 'resources': []})
+        error, _ = fixture_probe(action, bench=bench, independent=independent, resources=[], global_handle=True)
+        if error is not None:
+            raise error
         with pytest.raises(sqlite3.ProgrammingError, match='closed'):
             raw.execute('SELECT 1')
         assert check_fixture_writes(source)

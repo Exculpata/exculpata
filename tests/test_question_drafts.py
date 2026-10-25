@@ -6,6 +6,8 @@ import io
 import re
 from urllib.parse import parse_qs, urlsplit
 
+from contextlib import ExitStack
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -107,11 +109,13 @@ def app_client(tmp_path, monkeypatch, generator, auth_mode='test'):
 
 
 @pytest.fixture
-def drafting(tmp_path, monkeypatch):
+def drafting(tmp_path, monkeypatch, request):
     generator = ScriptedDrafts(GOOD + BAD)
-    with app_client(tmp_path, monkeypatch, generator) as client:
-        client.get('/')
-        yield client, generator, seed(client.app.state.workbench)
+    stack = ExitStack()
+    request.addfinalizer(stack.close)
+    client = stack.enter_context(app_client(tmp_path, monkeypatch, generator))
+    client.get('/')
+    return client, generator, seed(client.app.state.workbench)
 
 
 def notes(bench, matter):

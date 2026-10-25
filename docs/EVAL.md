@@ -162,10 +162,14 @@ GPU-free pair, on the real PostgreSQL index. The postgres-integration job runs
 under a `ci-matter-` id derived from the synthetic matter label and deleted
 when the run finishes.
 
-The product full-text query ANDs the question's words. A long question often
-matches no single passage, so the dense lane and the reranker decide the top
-set. The number of missed reference passages is an observed measurement, not a
-fixed test expectation or a failed harness.
+For plain questions, the product full-text query ORs PostgreSQL's parsed,
+stemmed terms and ranks matches with `ts_rank_cd`. Passages can match some
+question terms without containing every term. Queries containing double quotes
+or parsed negation retain the existing `websearch_to_tsquery` behavior, including
+phrase matching and AND between unquoted terms. The dense lane, fusion, reranker
+and subsequent reorders still contribute to the final top set. The number of
+missed reference passages is an observed measurement, not a fixed test
+expectation or a failed harness.
 
 ```console
 python -m case_intelligence.defense_eval --mode stub --retriever postgres \

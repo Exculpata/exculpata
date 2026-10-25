@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -36,7 +37,15 @@ def test_workflow_runs_stub_cards_on_every_pr_and_retains_failures():
     assert checkout["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
     assert checkout["with"] == {"fetch-depth": 0, "persist-credentials": False}
     setup = next(step for step in steps if step.get("uses", "").startswith("actions/setup-python@"))
-    assert setup["uses"] == "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+    setup_python_pins = {
+        match.group(1)
+        for path in (ROOT / ".github/workflows").glob("*.y*ml")
+        for match in re.finditer(
+            r"^\s*(?:-\s*)?uses:\s*(actions/setup-python@[0-9a-f]{40})\s*(?:#.*)?$",
+            path.read_text(), re.MULTILINE,
+        )
+    }
+    assert setup_python_pins == {setup["uses"]}
     commands = "\n".join(step.get("run", "") for step in steps)
     assert "git rev-parse HEAD" in commands
     assert any(step.get("env", {}).get("EXPECTED_INTEGRATION_SHA") == "${{ github.sha }}" for step in steps)

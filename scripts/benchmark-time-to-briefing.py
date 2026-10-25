@@ -67,7 +67,7 @@ def pdf_bytes(lines: list[str]) -> bytes:
 def generate_corpus(directory: Path, count: int, seed: int, density: str) -> dict:
     rng = random.Random(seed)
     digest = hashlib.sha256()
-    counts = dict.fromkeys(TYPES, 0)
+    counts = {extension: 0 for extension in TYPES}
     total = 0
     for index in range(count):
         extension = tuple(TYPES)[index % len(TYPES)]

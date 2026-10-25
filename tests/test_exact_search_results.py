@@ -264,7 +264,10 @@ def test_file_backed_slow_read_expires_before_json_decode(tmp_path, monkeypatch)
             data = self.stream.read(count)
             now[0] += 6
             return data
-    monkeypatch.setattr(pilot_uploads.os, 'fdopen', lambda *args, **kwargs: SlowStream(original(*args, **kwargs)))
+    def open_slow_stream(*args, **kwargs):
+        return SlowStream(original(*args, **kwargs))
+
+    monkeypatch.setattr(pilot_uploads.os, 'fdopen', open_slow_stream)
     monkeypatch.setattr(json.JSONDecoder, 'raw_decode', lambda *args: pytest.fail('decoded after slow read exceeded deadline'))
     with pytest.raises(ExactSearchUnavailable, match='No exact total or partial results'):
         scan([source])

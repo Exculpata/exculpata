@@ -104,10 +104,13 @@ class SyntheticLedger:
 
 
 @pytest.fixture
-def ledger():
+def ledger(request):
     value = SyntheticLedger()
-    yield value
-    value.connection.close()  # fixture-write: Close this test-owned in-memory ledger after its fixture finishes; it has no workspace workers.
+    def close_ledger():
+        value.connection.close()  # fixture-write: Close this test-owned in-memory ledger after its fixture finishes; it has no workspace workers.
+
+    request.addfinalizer(close_ledger)
+    return value
 
 
 class Echo:
