@@ -397,16 +397,16 @@ def test_started_child_oserror_is_never_retried(synthetic_docker, monkeypatch, c
 
 def test_log_read_failure_keeps_original_child_exit(synthetic_docker, monkeypatch, capsys):
     _, command = synthetic_docker
+    from types import SimpleNamespace
+
     original = installer._build_log
     @contextmanager
     def unreadable(*args):
         with original(*args) as (path, stream):
-            class Unreadable:
-                def fileno(self):
-                    return stream.fileno()
-                def seek(self, *args):
-                    raise OSError(errno.EIO, "synthetic read failure")
-            yield path, Unreadable()
+            def fail_read(*args):
+                raise OSError(errno.EIO, "synthetic read failure")
+
+            yield path, SimpleNamespace(fileno=stream.fileno, seek=fail_read)
     monkeypatch.setattr(installer, "_build_log", unreadable)
     with pytest.raises(subprocess.CalledProcessError) as error:
         installer._run(installer.Console(color=False, quiet=True), command)

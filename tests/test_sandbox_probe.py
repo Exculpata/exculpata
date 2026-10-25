@@ -55,7 +55,10 @@ def test_wakeup_send_permission_message(monkeypatch):
         def sendall(self, data):
             raise PermissionError(1, 'Operation not permitted')
 
-    monkeypatch.setattr(probe.socket, 'socketpair', lambda: (Socket(), Socket()))
+    def socketpair():
+        return Socket(), Socket()
+
+    monkeypatch.setattr(probe.socket, 'socketpair', socketpair)
     assert probe.probe_testclient() == (
         'TestClient route tests cannot run in this sandbox: socketpair send/receive: '
         'PermissionError: [Errno 1] Operation not permitted. '
@@ -400,6 +403,17 @@ def synthetic_module(tmp_path, monkeypatch):
 def test_helper_source_detection(synthetic_module, tmp_path, source, expected):
     module = synthetic_module(source)
     assert hooks._function_uses_testclient(module.entry, tmp_path) is expected
+
+
+def test_nested_helper_keeps_its_defining_module_bindings(synthetic_module, tmp_path):
+    module = synthetic_module('''
+        from fastapi.testclient import TestClient as Client
+        def entry():
+            def helper():
+                return Client
+            return helper()
+    ''')
+    assert hooks._function_uses_testclient(module.entry, tmp_path) is True
 
 
 @pytest.mark.parametrize('method', [

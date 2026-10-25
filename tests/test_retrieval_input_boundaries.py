@@ -80,7 +80,12 @@ def test_accepted_long_text_indexes_and_reranks_without_changing_evidence(tmp_pa
             document_id=document.document_id, display_name=document.display_name,
             media_type=document.media_type, units=original, ensure_schema=False,
             source_version_id=document.version_id, embedder=RemoteEmbeddingAdapter("http://testserver"))
-        chunk = next(params for sql, params in connection.calls if "INSERT INTO review_chunk" in sql)
+        for sql, params in connection.calls:
+            if "INSERT INTO review_chunk" in sql:
+                chunk = params
+                break
+        else:
+            raise StopIteration
         assert chunk[3] == "chunk-1"
         assert chunk[5] == text
         assert chunk[7:11] == (1, 1, document.version_id, hashlib.sha256(text.encode()).hexdigest())
