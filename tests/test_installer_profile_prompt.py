@@ -78,15 +78,20 @@ def test_invalid_flag_is_rejected_before_writes(tmp_path):
 
 @pytest.mark.parametrize("failure", [OSError("synthetic"), ValueError("synthetic"),
                                     RuntimeError("synthetic"), subprocess.TimeoutExpired("synthetic", 1)])
-def test_detection_failure_uses_cpu_without_retrying_detector(monkeypatch, capsys, failure):
+def test_detection_failure_uses_potato_without_retrying_detector(monkeypatch, capsys, failure):
+    calls = []
+
     def fail():
+        calls.append(True)
         raise failure
 
     monkeypatch.setattr(installer, "detect_hardware", fail)
     scripted_input(monkeypatch, [""])
     args = installer._parser().parse_args(["install"])
-    assert installer._select_model_tier(installer.Console(color=False), args) == "cpu"
-    assert "hardware detection :: using the CPU suggestion" in capsys.readouterr().out
+    assert installer._select_model_tier(installer.Console(color=False), args) == "potato"
+    assert args.model_tier == "potato"
+    assert "hardware detection :: using the potato CPU suggestion" in capsys.readouterr().out
+    assert len(calls) == 1
 
 
 def test_main_selects_tier_before_preflight(monkeypatch, tmp_path, detected_gpu):

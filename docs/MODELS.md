@@ -86,6 +86,9 @@ Press Enter to accept it, choose another tier ID, or pass
 `./install install --non-interactive --model-tier gpu-12` with your other
 installation options. The selected ID is saved as `model_tier` in
 `installation.json` and retained when resuming an installation.
+If hardware detection fails, the recommended tier is `potato`, with an explicit
+CPU fallback message. The `ultra` tier requires at least two GPUs, each reporting
+at least 46068 MiB of VRAM; aggregate VRAM alone does not qualify.
 
 These tiers record hardware guidance. Installed capabilities still use
 `--models`; bundled model selection and GPU admission still use the existing
