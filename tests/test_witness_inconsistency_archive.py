@@ -57,9 +57,11 @@ def test_close_archive_preserves_witness_results_and_purge_is_matter_scoped(arch
     workspace = bench.workspace
     finder, candidates = seed_candidates(workspace, matter, store, OWNER)
     other = workspace.create_matter('Generated other matter', '', OTHER)
-    foreign_id = 'witness-inconsistency-' + 'f' * 64
-    finder.mark_reviewed(other.matter_id, OTHER, foreign_id)
+    _, foreign_candidates = seed_candidates(workspace, other, store, OTHER)
+    foreign_id = foreign_candidates[0].candidate_id
     table = 'workbench_witness_inconsistency_review'
+    foreign_rows = [dict(row) for row in workspace.connection.execute(
+        f'SELECT * FROM {table} WHERE matter_id=? ORDER BY candidate_id', (other.matter_id,))]
     retained = [dict(row) for row in workspace.connection.execute(
         f'SELECT * FROM {table} WHERE matter_id=? ORDER BY candidate_id', (matter.matter_id,))]
 
@@ -92,8 +94,8 @@ def test_close_archive_preserves_witness_results_and_purge_is_matter_scoped(arch
             session_id=bench.archive_test_session_id)
         _, lifecycle = claim_synthetic_exit(workspace, matter, OWNER)
         workspace.complete_matter_purge(matter.matter_id, lifecycle.purge_id)
-        remaining = [dict(row) for row in workspace.connection.execute(f'SELECT * FROM {table}')]
-        assert [(row['matter_id'], row['candidate_id']) for row in remaining] == [(other.matter_id, foreign_id)]
+        remaining = [dict(row) for row in workspace.connection.execute(f'SELECT * FROM {table} ORDER BY candidate_id')]
+        assert remaining == foreign_rows
         assert records(artifact, table)[0]['candidate_id'] == retained[0]['candidate_id']
     finally:
         cleanup_archive(artifact)

@@ -35,6 +35,11 @@ class AssertionRepository:
         with self.entities.transaction(matter_id, actor_id):
             yield self
 
+    @contextmanager
+    def reading(self, matter_id, actor_id):
+        with self.entities.reading(matter_id, actor_id):
+            yield self
+
     def get(self, matter_id, assertion_id):
         row = self.connection.execute('SELECT * FROM workbench_assertion WHERE matter_id=? AND assertion_id=?',
                                       (matter_id, assertion_id)).fetchone()
