@@ -93,6 +93,7 @@ class ParsedBates:
     lower: int
     upper: int
     width: int
+    suffixed: bool
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,7 @@ class UnresolvedBates:
 class BatesSeries:
     prefix: str
     intervals: tuple[tuple[int, int, int, SummaryLink], ...]
+    coverage: tuple[tuple[int, int, int, SummaryLink], ...]
     reasons: tuple[str, ...]
     links: tuple[SummaryLink, ...]
     start_only: tuple[SummaryLink, ...]
@@ -121,7 +123,8 @@ def _normalize_bates(start, end):
     if any(char.isalpha() and not unicodedata.name(char, '').startswith('LATIN ')
            for char in start + end):
         return UnresolvedBates('non-Latin or mixed-script prefix', 'ALL')
-    first, last = (re.fullmatch(r'(.*?)([0-9]+)', value) for value in (start, end))
+    first, last = (re.fullmatch(r'(.*?)([0-9]+)([A-Za-z]+|[._-][0-9]+)?', value)
+                   for value in (start, end))
     blocks = frozenset(match[1] for match in (first, last) if match)
     if not first or not last:
         return UnresolvedBates('nonnumeric label', blocks)
@@ -131,16 +134,31 @@ def _normalize_bates(start, end):
         return UnresolvedBates('numeric suffix or prefix cannot be ordered', blocks)
     if int(first[2]) > int(last[2]):
         return UnresolvedBates('reversed range', blocks)
+    suffixed = bool(first[3] or last[3])
+    if suffixed and int(first[2]) != int(last[2]):
+        return UnresolvedBates('suffixed range spans base numbers', blocks)
     width = max(len(match[2]) if match[2].startswith('0') else 1 for match in (first, last))
-    return ParsedBates(first[1], int(first[2]), int(last[2]), width)
+    return ParsedBates(first[1], int(first[2]), int(last[2]), width, suffixed)
 
 
 def _unique_links(links):
     return tuple({link.document_id: link for link in links}.values())
 
 
+def _related_prefix(prefix):
+    folded = []
+    for char in prefix:
+        name = unicodedata.name(char, '')
+        letter = name.removeprefix('LATIN LETTER SMALL CAPITAL ')
+        if len(letter) == 1 and 'A' <= letter <= 'Z':
+            char = letter
+        folded.append('i' if char == '\u0131' else char)
+    return ''.join(char for char in ''.join(folded).casefold() if char.isalnum())
+
+
 def _bates_facts(ranges, *, unlabeled=(), start_only=()):
     groups, unresolved, unordered, facts = defaultdict(list), [], defaultdict(list), []
+    suffixed, base_coverage = [], defaultdict(list)
 
     def emit(kind, text, links, count=None):
         if len(facts) >= _BATES_FACT_LIMIT:
@@ -149,12 +167,24 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
 
     for start, end, link in ranges:
         parsed = _normalize_bates(start, end)
-        if isinstance(parsed, UnresolvedBates):
-            unresolved.append((parsed, start, end, link))
+        if isinstance(parsed, UnresolvedBates) or parsed.suffixed:
+            if isinstance(parsed, ParsedBates):
+                suffixed.append((parsed, start, end, link))
+            else:
+                unresolved.append((parsed, start, end, link))
             normalized = tuple(unicodedata.normalize('NFKC', value).strip() for value in (start, end))
             unordered[normalized].append(link)
         else:
             groups[parsed.prefix].append((parsed.lower, parsed.upper, parsed.width, link))
+    for parsed, start, end, link in suffixed:
+        if parsed.prefix not in groups:
+            unresolved.append((UnresolvedBates('suffixed labels without numeric series',
+                               frozenset({parsed.prefix})), start, end, link))
+            continue
+        base_coverage[parsed.prefix].append((parsed.lower, parsed.upper, parsed.width, link))
+        label = start if start == end else start + ' to ' + end
+        base = parsed.prefix + str(parsed.lower).zfill(parsed.width)
+        emit('bates_suffix', f'Suffixed Bates labels: {label} (base coverage: {base})', (link,))
     blocked, global_causes = defaultdict(list), []
     for parsed, _, _, link in unresolved:
         if parsed.blocks == 'ALL':
@@ -169,23 +199,28 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
     series = []
     for prefix in sorted(groups.keys() | blocked.keys()):
         intervals = tuple(groups[prefix])
+        coverage = intervals + tuple(base_coverage[prefix])
         causes = global_causes + blocked[prefix]
-        local_refs = _unique_links([item[3] for item in intervals] + [link for _, link in blocked[prefix]])
+        local_refs = _unique_links([item[3] for item in coverage] + [link for _, link in blocked[prefix]])
         refs = _unique_links(local_refs + tuple(link for _, link in global_causes))
         starts = tuple(link for link in local_refs if link.document_id in start_only)
-        item = BatesSeries(prefix, intervals, tuple(sorted({reason for reason, _ in causes})), refs, starts)
+        item = BatesSeries(prefix, intervals, coverage,
+                           tuple(sorted({reason for reason, _ in causes})), refs, starts)
         series.append(item)
         details = list(item.reasons)
+        if base_coverage[prefix]:
+            details.append('suffixed labels cover their base numbers')
         if starts:
             details.append(f'{len(starts)} documents have a start label only')
         text = f'Bates series {prefix}: ' + item.state.replace('_', ' ')
         emit('bates_series', text + (' (' + '; '.join(details) + ')' if details else ''), refs)
     similar = defaultdict(list)
     for item in series:
-        similar[''.join(char for char in item.prefix.casefold() if char.isalnum())].append(item)
+        similar[_related_prefix(item.prefix)].append(item)
     for items in similar.values():
         for first, last in combinations(items, 2):
-            emit('bates_series', f'Series {first.prefix} and {last.prefix} differ only by case or punctuation',
+            emit('bates_series', f'Series {first.prefix} and {last.prefix} differ only by case or punctuation'
+                 ' or Latin lookalike letters',
                  _unique_links(first.links + last.links))
     if unlabeled:
         emit('bates_coverage', f'Documents without a Bates locator: {len(unlabeled)}', unlabeled, len(unlabeled))
@@ -193,17 +228,17 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
         emit('bates_coverage', f'Documents with a start label only: {len(start_only)}',
              start_only.values(), len(start_only))
     for item in series:
-        if item.state != 'computed':
-            continue
         prefix, intervals = item.prefix, item.intervals
-        width = max(item[2] for item in intervals)
+        width = max((interval[2] for interval in item.coverage), default=1)
         by_range, shared = defaultdict(dict), defaultdict(dict)
         for start, end, _, link in intervals:
             by_range[start, end][link.document_id] = link
-        previous, active = None, []
+        active = []
         for (start, end), refs in sorted(by_range.items()):
             if len(refs) > 1:
                 shared[start, end].update(refs)
+            if item.state != 'computed':
+                continue
             active = [(stop, prior) for stop, prior in active if stop >= start]
             for stop, prior in active:
                 combined = prior | refs
@@ -212,6 +247,12 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
                 if len(facts) + len(shared) > _BATES_FACT_LIMIT:
                     raise OverflowError('Production exceeds the complete Bates finding limit')
             active.append((end, refs))
+        coverage = defaultdict(dict)
+        if item.state == 'computed':
+            for start, end, _, link in item.coverage:
+                coverage[start, end][link.document_id] = link
+        previous = None
+        for (start, end), refs in sorted(coverage.items()):
             link = next((ref for ref in refs.values() if ref.document_id in start_only), next(iter(refs.values())))
             if previous is not None and start > previous[0] + 1:
                 lower, upper = previous[0] + 1, start - 1

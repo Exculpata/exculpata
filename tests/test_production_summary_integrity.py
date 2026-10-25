@@ -306,3 +306,139 @@ def test_unlabeled_documents_change_coverage_only(state):
     coverage, = facts(after, 'bates_coverage')
     assert coverage.text == 'Documents without a Bates locator: 1'
     assert {link.document_id for link in coverage.links} == {'u'}
+
+
+@pytest.mark.parametrize('label', ['ABC0002A', 'ABC0002.001', 'ABC0002-001'])
+def test_suffixed_label_does_not_yield_unqualified_gap_at_its_base(label):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        source('b', labels=[label]), source('c', labels=['ABC0003'])])
+    assert '- Missing Bates: ABC0002\n' not in summary.to_markdown()
+    assert not facts(summary, 'bates_gap')
+    suffix, = facts(summary, 'bates_suffix')
+    assert label in suffix.text and 'ABC0002' in suffix.text
+    assert {link.document_id for link in suffix.links} == {'b'}
+    assert 'Bates series ABC: computed' in summary.to_markdown()
+
+
+@pytest.mark.parametrize('blocker', [
+    with_ranges('x', [('ABC0005', 'XYZ0002')]),
+    source('x', labels=['\u0410\u0412\u04210002']),
+], ids=['cross-prefix', 'global'])
+def test_blocked_series_retains_exact_duplicate_overlap(blocker):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        source('b', labels=['ABC0001']), blocker])
+    overlap, = overlaps(summary)
+    assert 'ABC0001' in overlap.text
+    assert {link.document_id for link in overlap.links} == {'a', 'b'}
+    assert 'Bates series ABC: not computed' in summary.to_markdown()
+    assert not facts(summary, 'bates_gap')
+
+
+@pytest.mark.parametrize('prefix,lookalike', [('ABC', '\u1d00\u0299\u1d04'), ('ibc', '\u0131bc')])
+def test_small_caps_and_dotless_i_series_are_related_but_separate(prefix, lookalike):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=[prefix + '0001']),
+        source('b', labels=[lookalike + '0002']), source('c', labels=[prefix + '0003'])])
+    related, = [f for f in facts(summary, 'bates_series') if 'differ only' in f.text]
+    assert prefix in related.text and lookalike in related.text
+    assert {link.document_id for link in related.links} == {'a', 'b', 'c'}
+    for value in (prefix, lookalike):
+        assert f'Bates series {value}: computed' in summary.to_markdown()
+    assert [f.text for f in facts(summary, 'bates_gap')] == ['Missing Bates: ' + prefix + '0002']
+
+
+@pytest.mark.parametrize('label', ['ABC0002A', 'ABC0002.001', 'ABC0002-001'])
+def test_real_gap_remains_with_suffixed_labels_elsewhere(label):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        source('b', labels=[label]), source('c', labels=['ABC0005'])])
+    gap, = facts(summary, 'bates_gap')
+    assert gap.text == 'Missing Bates: ABC0003 to ABC0004' and gap.count == 2
+    assert {link.document_id for link in gap.links} == {'b', 'c'}
+
+
+@pytest.mark.parametrize('suffix', ['A', '.001', '-001'])
+def test_multi_prefix_gap_oracle_with_suffixed_labels(suffix):
+    from random import Random
+    random = Random(20261025)
+    for scenario in range(100):
+        sources, expected = [], {}
+        for prefix in ('ABC', 'XYZ', 'QQ'):
+            covered = {1, 20}
+            sources.extend([source(prefix + '-first', labels=[prefix + '0001']),
+                            source(prefix + '-last', labels=[prefix + '0020'])])
+            for number in random.sample(range(2, 20), 6):
+                covered.add(number)
+                sources.append(source(f'{prefix}-{number}', labels=[f'{prefix}{number:04d}{suffix}']))
+            expected[prefix] = set(range(1, 21)) - covered
+        sources.extend([source('u', labels=['CONFIDENTIAL']),
+                        with_ranges('blocked', [('RR0001', 'SS0002')]), partial_pdf(pages=2)])
+        summary = build_summary('Synthetic', 'm', sources)
+        actual = {prefix: set() for prefix in expected}
+        for gap in facts(summary, 'bates_gap'):
+            start, _, end = gap.text.removeprefix('Missing Bates: ').partition(' to ')
+            prefix = start[:3] if start.startswith(('ABC', 'XYZ')) else start[:2]
+            lower, upper = int(start[len(prefix):]), int((end or start)[len(prefix):])
+            actual[prefix].update(range(lower, upper + 1))
+            assert gap.count == upper - lower + 1
+        assert actual == expected, (scenario, suffix, actual, expected)
+
+
+@pytest.mark.parametrize('suffix,other', [('A', 'B'), ('.001', '.002'), ('-001', '-002')])
+def test_suffixed_coverage_keeps_exact_duplicates_without_inventing_base_overlap(suffix, other):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        source('b', labels=['ABC0002' + suffix]), source('c', labels=['ABC0002' + other]),
+        source('d', labels=['ABC0002' + suffix]), source('base', labels=['ABC0002']),
+        source('last', labels=['ABC0005'])])
+    overlap, = overlaps(summary)
+    assert 'ABC0002' + suffix in overlap.text
+    assert {link.document_id for link in overlap.links} == {'b', 'd'}
+    assert len(facts(summary, 'bates_suffix')) == 3
+    assert [f.text for f in facts(summary, 'bates_gap')] == ['Missing Bates: ABC0003 to ABC0004']
+
+
+@pytest.mark.parametrize('start,end', [('ABC0002A', 'ABC0002C'),
+    ('ABC0002.001', 'ABC0002.003'), ('ABC0002-001', 'ABC0002-003')])
+def test_same_base_suffixed_range_retains_cited_coverage(start, end):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        with_ranges('b', [(start, end)]), source('c', labels=['ABC0005'])])
+    gap, = facts(summary, 'bates_gap')
+    assert gap.text == 'Missing Bates: ABC0003 to ABC0004'
+    assert {link.document_id for link in gap.links} == {'b', 'c'}
+    suffix, = facts(summary, 'bates_suffix')
+    assert start in suffix.text and end in suffix.text
+    assert {link.document_id for link in suffix.links} == {'b'}
+
+
+def test_suffixed_range_across_bases_is_explicitly_not_computed():
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        with_ranges('b', [('ABC0002A', 'ABC0004C')]), source('c', labels=['ABC0005'])])
+    assert not facts(summary, 'bates_gap')
+    status, = facts(summary, 'bates_series')
+    assert 'ABC: not computed' in status.text and 'suffixed' in status.text
+    assert 'b' in {link.document_id for link in status.links}
+
+
+def test_suffixed_fact_uses_finding_limit(monkeypatch):
+    sources = [source('a', labels=['ABC0001', 'ABC0002A'])]
+    summary = build_summary('Synthetic', 'm', sources)
+    assert facts(summary, 'bates_suffix')
+    limit = len([f for f in summary.facts if f.kind.startswith('bates_')]) - 1
+    monkeypatch.setattr('case_intelligence.production_summary._BATES_FACT_LIMIT', limit)
+    with pytest.raises(OverflowError, match='Bates finding limit'):
+        build_summary('Synthetic', 'm', sources)
+
+
+def test_round_five_markdown_artifact_preserves_gaps_and_source_links(tmp_path):
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['ABC0001']),
+        source('b', labels=['ABC0002A']), source('c', labels=['ABC0005']),
+        source('d', labels=['ABC0001']), source('lookalike', labels=['\u1d00\u0299\u1d040002'])])
+    artifact = tmp_path / 'summary.md'
+    # fixture-write: Persist a synthetic production summary to verify the exported artifact.
+    artifact.write_text(summary.to_markdown(), encoding='utf-8')
+    markdown = artifact.read_text(encoding='utf-8')
+    assert 'Missing Bates: ABC0003 to ABC0004' in markdown
+    assert 'Missing Bates: ABC0002' not in markdown
+    assert 'Suffixed Bates labels: ABC0002A (base coverage: ABC0002)' in markdown
+    assert 'differ only' in markdown and 'Overlapping Bates labels: ABC0001' in markdown
+    rendered = MarkdownIt().render(markdown)
+    for key in ('a', 'b', 'c', 'd', 'lookalike'):
+        assert f'href="/matters/m/sources/token-{key}"' in rendered

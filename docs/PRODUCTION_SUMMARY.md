@@ -19,16 +19,23 @@ locators from document metadata or production load data define Bates labels.
 Explicit `Bates: LABEL` or `Bates: START to END` text lines are cited references;
 they never label the citing document or close gaps. Duplicate or overlapping
 labels across documents in computed series are flagged with those documents
-cited, once per shared range. Numeric suffixes are compared after NFKC normalization and surrounding
+cited, once per shared range. Blocked series still report exact duplicate labels.
+Numeric portions are compared after NFKC normalization and surrounding
 whitespace removal; prefix case remains significant. Each prefix has a cited
 `bates_series` status: computed or not computed, with reasons. Reversed ranges
 and prefixes ending in a digit block only their series; cross-prefix ranges block
-both series. Nonnumeric labels without trailing digits block no numeric series.
+both series. Labels without a recognizable numeric base block no numeric series.
 Control, format or combining characters and non-Latin or mixed-script prefixes
 cannot be scoped safely: an ALL status names their cause and every series is
 marked not computed. Unresolved labels retain notices and exact duplicate checks.
-Series differing only by case, punctuation or whitespace receive a notice but
-remain separate. Gap labels use the widest zero-padded suffix in their series.
+Letter suffixes and dot-, dash- or underscore-numeric suffixes cover their base
+number for gap detection in an existing numeric series. Each suffixed label or
+same-base suffixed range retains its own cited fact. Base coverage does not make
+distinct suffixed labels overlap. Suffix-only series and suffixed ranges spanning
+different base numbers remain explicitly unresolved and not computed.
+Series differing only by case, punctuation, whitespace, Latin small capitals or
+dotless i receive a notice but remain separate. Gap labels use the widest
+zero-padded numeric portion in their series.
 Page-only locators do not consume the Bates limit. Every emitted Bates fact,
 including gaps, counts toward the finding limit.
 
