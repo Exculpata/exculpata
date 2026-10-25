@@ -105,7 +105,17 @@ class CaseTheoryRepository:
                         if protective_order != "none":
                             link["protective_order"] = protective_order
                     links.append(link)
-                claims.append({"claim_id": str(claim_id), "text": text, "status": status, "links": links})
+                cursor.execute(
+                    "SELECT link_ordinal,assertion_id,document_id,chunk_id,reason,removed_at "
+                    "FROM review_case_theory_link_audit WHERE matter_id=%s AND claim_id=%s "
+                    "ORDER BY removed_at,link_ordinal",
+                    (matter_id, claim_id),
+                )
+                removed = [dict(link_ordinal=ordinal, assertion_id=assertion, document_id=document,
+                                chunk_id=chunk, reason=reason, removed_at=timestamp.isoformat())
+                           for ordinal, assertion, document, chunk, reason, timestamp in cursor.fetchall()]
+                claims.append({"claim_id": str(claim_id), "text": text, "status": status,
+                               "links": links, "removed_citations": removed})
             return {"version": header[0], "created_by": header[1], "created_at": header[2].isoformat(), "claims": claims}
 
     def export(self, matter_id):

@@ -1,5 +1,10 @@
 BEGIN;
 
+ALTER TABLE review_case_theory_claim
+  DROP CONSTRAINT review_case_theory_claim_status_check,
+  ADD CONSTRAINT review_case_theory_claim_status_check
+    CHECK (status IN ('supported', 'contested', 'unsupported', 'needs review'));
+
 ALTER TABLE review_case_theory_link
   DROP CONSTRAINT review_case_theory_link_matter_id_document_id_chunk_id_fkey,
   ADD CONSTRAINT review_case_theory_link_passage_fkey
@@ -28,6 +33,7 @@ CREATE TABLE review_case_theory_link_audit (
   assertion_id text,
   document_id text,
   chunk_id text,
+  removed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   reason text NOT NULL CHECK (reason IN (
     'matter_deleted', 'claim_deleted', 'passage_deleted', 'assertion_deleted', 'explicit_unlink'
   ))
@@ -61,6 +67,12 @@ BEGIN
     (matter_id, claim_id, link_ordinal, assertion_id, document_id, chunk_id, reason)
     VALUES (OLD.matter_id, OLD.claim_id, OLD.ordinal, OLD.assertion_id,
             OLD.document_id, OLD.chunk_id, removal_reason);
+  UPDATE review_case_theory_claim SET status='needs review'
+    WHERE matter_id=OLD.matter_id AND claim_id=OLD.claim_id
+      AND NOT EXISTS (
+        SELECT 1 FROM review_case_theory_link
+        WHERE matter_id=OLD.matter_id AND claim_id=OLD.claim_id
+      );
   RETURN OLD;
 END;
 $$;

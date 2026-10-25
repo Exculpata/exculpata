@@ -12,6 +12,7 @@ import re
 import json
 import subprocess
 import sys
+import uuid
 from .service_endpoints import open_service_request
 import urllib.request
 import urllib.error
@@ -752,6 +753,51 @@ def initialize_postgres_demo(
         connection.commit()
 
 
+def _stage_matching_case_theory_citations(cursor, matter_id, document_id, units, source_version_id):
+    """Keep matching citations on temporary rows until replacement rows exist."""
+    replacements = {}
+    for ordinal, unit in enumerate(units, 1):
+        digest = hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest()
+        replacements.setdefault(digest, []).append(f"chunk-{ordinal}")
+    cursor.execute(
+        "SELECT DISTINCT c.chunk_id,c.text FROM review_chunk c "
+        "JOIN review_case_theory_link l USING (matter_id,document_id,chunk_id) "
+        "WHERE c.matter_id=%s AND c.document_id=%s AND c.source_version_id=%s",
+        (matter_id, document_id, source_version_id),
+    )
+    matches = []
+    for chunk, text in cursor.fetchall():
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        if digest in replacements:
+            matches.append((chunk, chunk if chunk in replacements[digest] else replacements[digest][0]))
+    if not matches:
+        return None, []
+    staging_page = f"citation-reindex-{uuid.uuid4().hex}"
+    cursor.execute(
+        "INSERT INTO review_page(matter_id,document_id,page_id,page_number,text,source_version_id) "
+        "SELECT %s,%s,%s,GREATEST(COALESCE(MAX(page_number),0),%s)+1,'',%s "
+        "FROM review_page WHERE matter_id=%s AND document_id=%s",
+        (matter_id, document_id, staging_page, max(int(unit.number) for unit in units),
+         source_version_id, matter_id, document_id),
+    )
+    staged = []
+    for ordinal, (old_chunk, new_chunk) in enumerate(matches):
+        staging_chunk = f"{staging_page}-{ordinal}"
+        cursor.execute(
+            "INSERT INTO review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,source_version_id,excerpt_digest) "
+            "SELECT matter_id,document_id,%s,%s,%s,text,source_version_id,excerpt_digest "
+            "FROM review_chunk WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
+            (staging_page, staging_chunk, ordinal, matter_id, document_id, old_chunk),
+        )
+        cursor.execute(
+            "UPDATE review_case_theory_link SET chunk_id=%s "
+            "WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
+            (staging_chunk, matter_id, document_id, old_chunk),
+        )
+        staged.append((staging_chunk, new_chunk))
+    return staging_page, staged
+
+
 def upsert_postgres_document(
     connection, *, matter_id: str, matter_name: str, document_id: str,
     display_name: str, media_type: str, units: Sequence[object],
@@ -787,9 +833,12 @@ def upsert_postgres_document(
             "DO UPDATE SET status='ready'",
             (matter_id, document_id, source_version_id, content_digest, byte_size, media_type, storage_key),
         )
+        staging_page, staged_citations = _stage_matching_case_theory_citations(
+            cursor, matter_id, document_id, units, source_version_id,
+        )
         cursor.execute(
-            "DELETE FROM review_page WHERE matter_id=%s AND document_id=%s",
-            (matter_id, document_id),
+            "DELETE FROM review_page WHERE matter_id=%s AND document_id=%s AND page_id IS DISTINCT FROM %s",
+            (matter_id, document_id, staging_page),
         )
         for ordinal, (unit, vector_values) in enumerate(zip(units, vectors)):
             page_id = f"unit-{ordinal + 1}"
@@ -808,6 +857,16 @@ def upsert_postgres_document(
                  getattr(unit, "line_start", None), getattr(unit, "line_end", None), source_version_id,
                  getattr(unit, "excerpt_digest", hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest())),
             )
+        for staging_chunk, new_chunk in staged_citations:
+            cursor.execute(
+                "UPDATE review_case_theory_link SET chunk_id=%s "
+                "WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
+                (new_chunk, matter_id, document_id, staging_chunk),
+            )
+        cursor.execute(
+            "DELETE FROM review_page WHERE matter_id=%s AND document_id=%s AND page_id=%s",
+            (matter_id, document_id, staging_page),
+        )
         cursor.execute(
             "INSERT INTO review_processing_state(matter_id,document_id,stage,state,completed_units,total_units,source_version_id) "
             "VALUES (%s,%s,'native extraction','ready',%s,%s,%s) ON CONFLICT (matter_id,document_id,stage) "

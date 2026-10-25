@@ -172,6 +172,10 @@ def assert_link_audit(connection, matter, claim, document, reason):
             (matter,),
         )
         rows = [row[0] for row in cursor.fetchall()]
+    from datetime import datetime
+
+    assert len(rows) == 1
+    assert datetime.fromisoformat(rows[0].pop("removed_at")).tzinfo is not None
     assert rows == [{
         "matter_id": matter, "claim_id": claim, "document_id": document,
         "chunk_id": "chunk-1", "link_ordinal": 1, "assertion_id": None, "reason": reason,
@@ -234,14 +238,97 @@ def test_cited_passage_maintenance_keeps_postgres_ready(
         assert bench.postgres_ready
         with bench.postgres_connection.cursor() as cursor:
             cursor.execute("SELECT count(*) FROM review_case_theory_link WHERE matter_id=%s", (matter,))
-            assert cursor.fetchone() == (0,)
+            assert cursor.fetchone() == ((1,) if operation == "reindex" else (0,))
             cursor.execute("SELECT count(*) FROM review_chunk WHERE matter_id=%s AND document_id=%s",
                            (matter, document.document_id))
             assert cursor.fetchone() == ((1,) if operation in {"reindex", "rebuild"} else (0,))
-        assert_link_audit(bench.postgres_connection, matter, claim, document.document_id,
-                          "matter_deleted" if operation == "startup" else "passage_deleted")
+        if operation == "reindex":
+            assert service.current(matter) == snapshot
+            with bench.postgres_connection.cursor() as cursor:
+                cursor.execute("SELECT count(*) FROM review_case_theory_link_audit WHERE matter_id=%s", (matter,))
+                assert cursor.fetchone() == (0,)
+        else:
+            assert_link_audit(bench.postgres_connection, matter, claim, document.document_id,
+                              "matter_deleted" if operation == "startup" else "passage_deleted")
+            if operation != "startup":
+                current = service.current(matter)["claims"][0]
+                assert current["status"] == "needs review"
+                assert current["removed_citations"][0]["chunk_id"] == "chunk-1"
     finally:
         bench.close()
+
+
+@pytest.mark.parametrize("shift", [False, True])
+def test_reindex_unchanged_document_keeps_citations(theory_store, shift):
+    connection, service, matter, other = theory_store
+    claims = [{"text": "Synthetic claim text.", "status": "supported", "links": [source_link()]}]
+    original = service.create_version(matter, claims)
+    service.create_version(matter, claims)
+    foreign = service.create_version(other, claims)
+    units = [PilotUnit(1, "The amber item was logged.", 1, 1)]
+    if shift:
+        units = [PilotUnit(1, "Synthetic added introduction.", 1, 1),
+                 PilotUnit(2, "The amber item was logged.", 2, 2)]
+    upsert_postgres_document(
+        connection, matter_id=matter, matter_name="Synthetic", document_id="source-1",
+        display_name="Synthetic.txt", media_type="text/plain", units=units,
+    )
+    expected = {**source_link(), "chunk_id": "chunk-2" if shift else "chunk-1",
+                "protective_order": "limited-to-case-team"}
+    for snapshot in (service.current(matter), service.version(matter, original["version"])):
+        assert snapshot["claims"][0]["links"] == [expected]
+        assert snapshot["claims"][0]["status"] == "supported"
+    assert service.current(other) == foreign
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM review_case_theory_link_audit WHERE matter_id=%s", (matter,))
+        assert cursor.fetchone() == (0,)
+        cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
+        assert cursor.fetchone() == (len(units),)
+
+
+@pytest.mark.parametrize("removal", ["passage", "unlink", "reindex"])
+def test_last_citation_loss_needs_review_with_removed_ids(theory_store, removal):
+    from datetime import datetime
+
+    connection, service, matter, other = theory_store
+    source = source_link()
+    assertion = {"kind": "assertion", "assertion_id": "assertion-a"}
+    snapshot = service.create_version(matter, [{
+        "text": "Synthetic claim text.", "status": "supported", "links": [source, assertion],
+    }])
+    foreign = service.create_version(other, [{
+        "text": "Other synthetic claim.", "status": "supported", "links": [source],
+    }])
+    if removal == "reindex":
+        upsert_postgres_document(
+            connection, matter_id=matter, matter_name="Synthetic", document_id="source-1",
+            display_name="Synthetic.txt", media_type="text/plain",
+            units=(PilotUnit(1, "The synthetic content changed.", 1, 1),),
+        )
+    else:
+        with connection.cursor() as cursor:
+            if removal == "passage":
+                # fixture-write: delete only the synthetic cited passage through its cascade.
+                cursor.execute("DELETE FROM review_chunk WHERE matter_id=%s", (matter,))
+            else:
+                # fixture-write: explicitly unlink one synthetic citation while another remains.
+                cursor.execute("DELETE FROM review_case_theory_link WHERE matter_id=%s AND ordinal=1", (matter,))
+    assert service.current(matter)["claims"][0]["status"] == "supported"
+    with connection.cursor() as cursor:
+        # fixture-write: remove the synthetic assertion owner to cascade the last citation.
+        cursor.execute("DELETE FROM review_case_theory_assertion_owner WHERE matter_id=%s", (matter,))
+    claim = service.current(matter)["claims"][0]
+    assert claim["status"] == "needs review"
+    assert claim["links"] == []
+    assert claim["claim_id"] == snapshot["claims"][0]["claim_id"]
+    removed = claim["removed_citations"]
+    assert [(row["link_ordinal"], row["document_id"], row["chunk_id"], row["assertion_id"])
+            for row in removed] == [(1, "source-1", "chunk-1", None), (2, None, None, "assertion-a")]
+    assert [row["reason"] for row in removed] == [
+        "explicit_unlink" if removal == "unlink" else "passage_deleted", "assertion_deleted",
+    ]
+    assert all(datetime.fromisoformat(row["removed_at"]).tzinfo is not None for row in removed)
+    assert service.current(other) == foreign
 
 
 def test_explicit_unlink_audits_only_ids_and_reason(theory_store):
@@ -307,10 +394,22 @@ def test_link_lifecycle_upgrade_and_clean_restore(isolated_theory_dsn):
             units=(PilotUnit(1, "The amber item was logged.", 1, 1),), ensure_schema=False,
         )
         repository = CaseTheoryRepository(connection)
-        snapshot = repository.create(matter, [{
-            "text": "Synthetic claim text.", "status": "supported", "links": [source_link()],
-        }], "case-team")
-        claim = snapshot["claims"][0]["claim_id"]
+        claim = str(uuid.uuid4())
+        # fixture-write: seed a cited claim using the stopped version 6 schema before upgrading.
+        connection.execute(
+            "INSERT INTO review_case_theory_version(matter_id,version,created_by) VALUES (%s,1,'case-team')",
+            (matter,),
+        )
+        # fixture-write: seed the version 6 claim without invoking a current-schema read.
+        connection.execute(
+            "INSERT INTO review_case_theory_claim VALUES (%s,1,1,%s,'Synthetic claim text.','supported')",
+            (matter, claim),
+        )
+        # fixture-write: preserve a legacy source citation through the schema upgrade.
+        connection.execute(
+            "INSERT INTO review_case_theory_link VALUES (%s,%s,1,'source_passage',NULL,'source-1','chunk-1')",
+            (matter, claim),
+        )
         # fixture-write: preserve a legacy assertion citation through the schema upgrade.
         connection.execute(
             "INSERT INTO review_case_theory_link VALUES (%s,%s,2,'assertion','legacy-assertion',NULL,NULL)",
