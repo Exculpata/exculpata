@@ -226,7 +226,10 @@ def test_configured_mode_stops_without_a_generator(monkeypatch, tmp_path):
     class Unavailable:
         available = False
 
-    monkeypatch.setattr("case_intelligence.defense_eval.generator_from_environment", lambda: Unavailable())
+    def unavailable_generator():
+        return Unavailable()
+
+    monkeypatch.setattr("case_intelligence.defense_eval.generator_from_environment", unavailable_generator)
     code = main(["--mode", "configured", "--output-dir", str(tmp_path), "--profile", "portable"])
     assert code == 2
     assert not (tmp_path / "scorecard.json").exists()
@@ -362,19 +365,21 @@ def test_learned_retrieval_floors_follow_worker_health(monkeypatch):
         def read(self, *args):
             return self.payload
 
+    def healthy_response(request, *, timeout, environment_name):
+        return Response(b'{"status":"ok","embedding_loaded":true,"reranker_loaded":true}')
+
+    def unloaded_response(request, *, timeout, environment_name):
+        return Response(b'{"status":"ok","embedding_loaded":false,"reranker_loaded":true}')
+
     monkeypatch.setenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "http://127.0.0.1:9")
     monkeypatch.setattr(
         "case_intelligence.defense_eval.open_service_request",
-        lambda *args, **kwargs: Response(
-            b'{"status":"ok","embedding_loaded":true,"reranker_loaded":true}'
-        ),
+        healthy_response,
     )
     assert _healthy_retrieval_worker() == "http://127.0.0.1:9"
     monkeypatch.setattr(
         "case_intelligence.defense_eval.open_service_request",
-        lambda *args, **kwargs: Response(
-            b'{"status":"ok","embedding_loaded":false,"reranker_loaded":true}'
-        ),
+        unloaded_response,
     )
     assert _healthy_retrieval_worker() is None
 

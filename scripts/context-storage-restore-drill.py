@@ -84,7 +84,7 @@ s=WorkspaceStore(Path(sys.argv[1])); actor='synthetic-context-reviewer'; s.upser
         repo.prepare(claimed,dict(format='synthetic-storage-preparation',request={'messages':[]}))
         expected_answer = repo.receipt(matter_id,answer_job.job_id)
     upgraded = root/'upgraded-backup.sqlite'
-    with sqlite3.connect(upgraded) as target:
+    with store._lock, sqlite3.connect(upgraded) as target:
         store.connection.backup(target)
     store.close()
     restored_path = root/'clean-restore'/'workspace.sqlite'

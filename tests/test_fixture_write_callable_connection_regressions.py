@@ -1,4 +1,5 @@
 """SQLite statement preparation can change state; shared callable handles reject."""
+from tests.fixture_probe import fixture_probe
 import sqlite3
 from types import SimpleNamespace
 
@@ -52,7 +53,9 @@ def test_callable_connection_actually_changes_pragma_before_inventory_rejects(op
         raw.execute('PRAGMA foreign_keys=ON')
         assert raw.execute('PRAGMA foreign_keys').fetchone() == (1,)
         source = 'import sqlite3\n' + operation
-        exec(source, {'bench': bench})
+        error, _ = fixture_probe(source, bench=bench)
+        if error is not None:
+            raise error
         assert raw.execute('PRAGMA foreign_keys').fetchone() == (0,)
         assert check_fixture_writes(source)
     finally:

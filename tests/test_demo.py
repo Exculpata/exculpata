@@ -258,3 +258,114 @@ def test_seed_timeout_closes_workers_and_restores_environment(demo_script, tmp_p
 def test_demo_corpus_passes_publication_sanitizer():
     publication = load_script(f"{LEGACY_STEM}_demo_publication_check", "publication-check.py")
     assert publication.scan_tree(ROOT / "demo_data", ()) == []
+
+
+@pytest.mark.parametrize('failure_stage', [None, 'app', 'client-enter', 'login', 'intake', 'wait', 'body'])
+def test_demo_context_defers_setup_and_unwinds_resources(demo_script, tmp_path, monkeypatch, failure_stage):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    import httpx
+
+    before = os.environ.copy()
+    events = []
+    failure = RuntimeError('Synthetic demo lifecycle failure')
+    matter = SimpleNamespace(slug='m-0123456789ab', matter_id='synthetic-matter')
+    bench = Mock()
+    bench.matter.return_value = matter
+    app = SimpleNamespace(state=SimpleNamespace(workbench=bench))
+    client = Mock()
+    client.cookies = {demo_script.LOGIN_CHALLENGE_COOKIE:'synthetic-challenge'}
+    client.headers = {}
+    client_context = MagicMock()
+
+    def create_app(*args, **kwargs):
+        events.append('app')
+        assert os.environ['HF_HUB_OFFLINE'] == '1'
+        assert kwargs['background_ingestion'] is True
+        if failure_stage == 'app': raise failure
+        return app
+
+    def create_client(actual_app, **kwargs):
+        assert actual_app is app
+        assert kwargs == {'base_url':'http://127.0.0.1', 'follow_redirects':False}
+        return client_context
+
+    def enter_client(*args):
+        events.append('client-enter')
+        if failure_stage == 'client-enter': raise failure
+        return client
+
+    def exit_client(*args):
+        exc_type, exc_value, traceback = args[-3:]
+        events.append('client-exit')
+        assert os.environ['HF_HUB_OFFLINE'] == '1'
+        assert exc_value is (None if failure_stage is None else failure)
+        return False
+
+    def get(path):
+        events.append('get:' + path)
+        if failure_stage == 'login': raise failure
+        return httpx.Response(200, text='data-csrf-token="' + 'a'*64 + '"',
+                              request=httpx.Request('GET', 'http://127.0.0.1' + path))
+
+    def post(path, *, data):
+        events.append('post:' + path)
+        if path == '/auth/login':
+            assert data['login_challenge'] == 'synthetic-challenge'
+        else:
+            assert path == '/matters' and client.headers['X-CSRF-Token'] == 'a'*64
+        return httpx.Response(303, headers={'location':'/matters/' + matter.slug + '/setup'},
+                              request=httpx.Request('POST', 'http://127.0.0.1' + path))
+
+    def intake(actual_client, slug):
+        events.append('intake')
+        assert actual_client is client and slug == matter.slug
+        if failure_stage == 'intake': raise failure
+        return '/synthetic-receipt'
+
+    def wait(demo, expected, timeout):
+        events.append('wait')
+        assert type(demo) is demo_script.Demo and demo.client is client and demo.app is app
+        assert demo.matter is matter and demo.receipt_url == '/synthetic-receipt'
+        assert expected == sum(path.is_file() for path in demo_script.CORPUS.rglob('*'))
+        assert timeout == 7.5
+        if failure_stage == 'wait': raise failure
+
+    client_context.__enter__.side_effect = enter_client
+    client_context.__exit__.side_effect = exit_client
+    client.get.side_effect = get
+    client.post.side_effect = post
+    monkeypatch.setattr(demo_script, 'create_workbench_app', create_app)
+    monkeypatch.setattr(demo_script, 'TestClient', create_client)
+    monkeypatch.setattr(demo_script, 'intake_folder', intake)
+    monkeypatch.setattr(demo_script, 'wait_for_processing', wait)
+    context = demo_script.seed_demo(tmp_path / 'mock-demo', timeout_seconds=7.5)
+    assert events == [] and os.environ == before
+    try:
+        with context as demo:
+            assert type(demo) is demo_script.Demo
+            assert demo.home_path == '/matters/' + matter.slug + '/home'
+            assert events == ['app', 'client-enter', 'get:/auth/login', 'post:/auth/login',
+                              'get:/matters/new', 'post:/matters', 'intake', 'wait']
+            events.append('body')
+            if failure_stage == 'body': raise failure
+    except RuntimeError as exc:
+        assert failure_stage is not None and exc is failure
+    else:
+        assert failure_stage is None
+    assert os.environ == before
+    if failure_stage in {'app', 'client-enter'}:
+        client_context.__exit__.assert_not_called()
+    else:
+        assert events[-1] == 'client-exit'
+        client_context.__exit__.assert_called_once()
+
+
+def test_demo_context_defers_invalid_destination_error_until_entry(demo_script):
+    before = os.environ.copy()
+    context = demo_script.seed_demo(ROOT)
+    assert os.environ == before
+    with pytest.raises(ValueError, match='outside the checkout'):
+        with context:
+            pytest.fail('An invalid directory reached the demo body')
+    assert os.environ == before

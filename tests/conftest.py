@@ -120,7 +120,7 @@ def _tree_uses_testclient(tree):
 def _import_paths(name, directory, rootdir, snapshot=None):
     is_file = Path.is_file if snapshot is None else snapshot.is_file
     parts = name.split('.')
-    roots = dict.fromkeys((directory, rootdir, _repository_root, *map(Path, sys.path)))
+    roots = {path: None for path in (directory, rootdir, _repository_root, *map(Path, sys.path))}
     for root in roots:
         base = root.joinpath(*parts)
         candidates = (base.with_suffix('.py'), base / '__init__.py')
@@ -301,14 +301,14 @@ def _callable_source(function):
         tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
     except (OSError, TypeError, ValueError, SyntaxError, UnicodeError):
         return None
+    module = inspect.getmodule(function)
+    namespace = dict(vars(module)) if module is not None else {}
     if inspect.isclass(function):
-        module = inspect.getmodule(function)
-        namespace = dict(vars(module)) if module is not None else {}
         namespace.update(vars(function))
     else:
-        namespace = dict(getattr(function, '__globals__', {}))
         if inspect.isfunction(function) or inspect.ismethod(function):
-            namespace.update(inspect.getclosurevars(function).nonlocals)
+            closure = inspect.getclosurevars(function)
+            namespace = {**namespace, **closure.globals, **closure.nonlocals}
             for name in function.__code__.co_varnames + function.__code__.co_cellvars:
                 namespace.pop(name, None)
     branches = tuple(node for node in ast.walk(tree)

@@ -177,7 +177,7 @@ class SyntheticNode:
 
 
 @pytest.fixture
-def node_factory(tmp_path, monkeypatch):
+def node_factory(tmp_path, monkeypatch, request):
     nodes = []
 
     def create(**kwargs):
@@ -185,9 +185,12 @@ def node_factory(tmp_path, monkeypatch):
         nodes.append(node)
         return node
 
-    yield create
-    for node in nodes:
-        node.close()
+    def close_nodes():
+        for node in nodes:
+            node.close()
+
+    request.addfinalizer(close_nodes)
+    return create
 
 
 def test_browser_accounts_are_in_snapshot_and_clean_restore(node_factory, monkeypatch):
