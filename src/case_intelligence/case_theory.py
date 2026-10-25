@@ -24,7 +24,7 @@ class CaseTheoryRepository:
             )
             return cursor.fetchone() is not None
 
-    def create(self, matter_id, claims, actor_id):
+    def create(self, matter_id, claims, actor_id, *, assertion_matter=None):
         try:
             with self.connection.cursor() as cursor:
                 cursor.execute(
@@ -48,6 +48,15 @@ class CaseTheoryRepository:
                         (matter_id, version, claim_ordinal, claim_id, claim["text"].strip(), claim["status"]),
                     )
                     for link_ordinal, link in enumerate(claim["links"], 1):
+                        if link["kind"] == "assertion" and assertion_matter is not None:
+                            owner = assertion_matter(link["assertion_id"])
+                            if owner != matter_id:
+                                raise CaseTheoryError("A claim cannot cite an assertion from another matter.")
+                            cursor.execute(
+                                "INSERT INTO review_case_theory_assertion_owner(assertion_id,matter_id) "
+                                "VALUES (%s,%s) ON CONFLICT (assertion_id) DO NOTHING",
+                                (link["assertion_id"], owner),
+                            )
                         cursor.execute(
                             "INSERT INTO review_case_theory_link VALUES (%s,%s,%s,%s,%s,%s,%s)",
                             (matter_id, claim_id, link_ordinal, link["kind"], link.get("assertion_id"),
@@ -138,7 +147,7 @@ class CaseTheoryService:
                         raise CaseTheoryError("A claim cannot cite a source passage from another matter or an unavailable passage.")
                 else:
                     raise CaseTheoryError("Claim citations must identify an assertion or source passage.")
-        return self.repository.create(matter_id, claims, actor_id)
+        return self.repository.create(matter_id, claims, actor_id, assertion_matter=self.assertion_matter)
 
     def current(self, matter_id):
         self._authorized(matter_id)
