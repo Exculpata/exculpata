@@ -249,6 +249,7 @@ jobs:
         # Learned-model acceptance remains a separate, explicitly excluded gate.
         run: |
           python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
+            tests/test_case_theory.py \
             --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
             --junitxml="$RUNNER_TEMP/postgres-results.xml"
           python scripts/check-postgres-test-report.py "$RUNNER_TEMP/postgres-results.xml"

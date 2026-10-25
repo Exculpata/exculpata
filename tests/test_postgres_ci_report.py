@@ -16,6 +16,7 @@ spec.loader.exec_module(report)
 
 def write_report(tmp_path, count=7, outcome=""):
     path = tmp_path / "results.xml"
+    # fixture-write: create a synthetic CI report for the report checker.
     path.write_text("<testsuites><testsuite>" + "".join(
         f'<testcase name="synthetic_{i}">{outcome if i == 0 else ""}</testcase>'
         for i in range(count)
@@ -44,7 +45,22 @@ def test_rejects_empty_or_incomplete_suite(tmp_path, count):
 def test_cli_fails_for_missing_or_malformed_report(tmp_path, content):
     path = tmp_path / "results.xml"
     if content is not None:
+        # fixture-write: create a deliberately malformed synthetic CI report.
         path.write_text(content)
     result = subprocess.run([sys.executable, str(SCRIPT), str(path)], capture_output=True, text=True)
     assert result.returncode == 1
     assert "acceptance blocked" in result.stderr
+
+
+@pytest.mark.parametrize("entrypoint", ["Makefile", ".github/workflows/quality-gates.yml"])
+def test_postgres_acceptance_includes_case_theory(entrypoint):
+    content = (SCRIPT.parent.parent / entrypoint).read_text()
+    if entrypoint == "Makefile":
+        acceptance = content.split("\ntest-postgres:\n", 1)[1].split("\ndeployment-check:", 1)[0]
+    else:
+        import yaml
+
+        steps = yaml.safe_load(content)["jobs"]["postgres-integration"]["steps"]
+        acceptance = next(step["run"] for step in steps if "-m pytest" in step.get("run", ""))
+    command = acceptance.replace("\\\n", " ").split("-m pytest", 1)[1].splitlines()[0]
+    assert "tests/test_case_theory.py" in command.split()
