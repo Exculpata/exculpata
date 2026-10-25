@@ -8685,3 +8685,201 @@ path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
 digest = "2d18dc8b84c0db925835d1bd3128d9f198e3f82bcff49c2d4cd557316cbedde4"
 detail = "urllib.request.Request"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "5d80c6bfdddb78dcf8750aebad3a3981fc2e6b281b6fc780b3203edde71aa6ae"
+detail = "python -m pip install --disable-pip-version-check -e '.[dev]'"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "ac281dae31adf574d6fbf5c1223c4d4c35c2f1abd69e42132a04e733dccda2c4"
+detail = "python scripts/corpus-history-check.py"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "2bf805dccfcee05ce79da6b57e92a5d0e32cf4ce389b92335dbf52cc28eb9feb"
+detail = "python -m pytest -q tests/test_corpus_check.py tests/test_corpus_product.py tests/test_corpus_history.py tests/test_corpus_scope.py tests/test_corpus_recognition.py tests/test_corpus_receipts.py tests/test_corpus_write_guard.py"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "1a218f494a1fa3ba77aeb97c62c94946cc580694a81231cadc028ec347cefe29"
+detail = "python3 scripts/install-ci-browser-deps.py --archives \"$RUNNER_TEMP/apt-archives\" ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "20fe8c0e08f1395644fd5eb0a90cfaf0f779ba909385cd6ab2ffb13c23810f16"
+detail = "python -m pip install --disable-pip-version-check -e . faster-whisper==1.2.1 ctranslate2==4.8.2 huggingface-hub==1.33.0 av==18.1.0"
+
+[[source]]
+path = ".github/workflows/corpus.yml"
+kind = "workflow-launch"
+digest = "749fb195a0e15bbdd078b080d578648dbc9b195c9e89d1e903ce34b9ed36c676"
+detail = "python scripts/corpus_recognition.py --stage-models"
+
+[[source]]
+path = ".github/workflows/network-smoke.yml"
+kind = "workflow-launch"
+digest = "2e2df873fc1a52fa630178a5fa99ba57b95de6c2ffd2756669ae4cdcc1e263e3"
+detail = "python -m pip install --require-hashes -r requirements/network-smoke.lock"
+
+[[source]]
+path = ".github/workflows/network-smoke.yml"
+kind = "workflow-launch"
+digest = "77d5c8b0ea83fdbe1092ade2754353a5f2abe8487c7d6dcac647f57b6a947f11"
+detail = "python -m pytest -q tests/test_relay_build_context_live.py tests/test_egress_proxy_live.py -o faulthandler_timeout=1200"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "1be82db283ef458a50169e18940300ed979c0641450329d1e4c74d900f5e15db"
+detail = "python3 scripts/classify-quality-change.py"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "921d5e3f31227101ed630786da263d254daaa1c374d39add0156ce9dcfca2e6e"
+detail = "python3 scripts/install-ci-browser-deps.py --archives \"$RUNNER_TEMP/apt-archives\" ffmpeg"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "e8343c12cf00edc9d3bbe6ac3676fd67381c2896f5770463d2ceec795507a773"
+detail = "python -m pip install --disable-pip-version-check 'pypdf>=6,<7'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "4dcdd92166fc9abd2b91ddbb346e8a6441f91986d69c28b867cad9a8678a9867"
+detail = "python scripts/check-publication-candidate.py --expected-head \"$EXPECTED_PUBLICATION_SHA\" --publication-ref \"$PUBLICATION_REF\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "b10258f5837c1cc1cb7042e4ec899ffe816fb7200b74c3527a84bac41927011c"
+detail = "python3 tests/test_gitleaks_exception.py"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "dbbf91bd6ad0093542dc50bf9ad4a6a0776205a3d571d5218318a5d5a9acf633"
+detail = "python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "15ad5cdab79bc1efbd742714f079a9702899de849cf7922f1498fd4e7b3ea157"
+detail = "python -m pytest -q tests/test_documentation.py tests/test_quality_change_scope.py"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "2e2344358478a9b71faeb4a0dec8df89c34b54f165a0412fbb3d7309da2c2436"
+detail = "python3 scripts/install-ci-browser-deps.py --archives \"$RUNNER_TEMP/apt-archives\" ffmpeg imagemagick poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "fc659c786aa927b8d839f1e7c25676aa35094ecbd37731e8cae103fbe8e9efc3"
+detail = ".venv/bin/python -m compileall -q src scripts tests"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "4b9a6188606e4e805abe6dfa64757e29182d4ca35d0d715c204c327805681e3a"
+detail = ".venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no --timeout=360 --timeout-method=signal -ra --durations=25 -o junit_logging=no --junitxml=\"${{ runner.temp }}/application-results.xml\" --worker-diagnostics-dir=\"${{ runner.temp }}/application-workers\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "c0a2dbbb78a52ba861a60d07c3498293c1beefb36098a0c7e90c84bd4cfd5c0f"
+detail = "python -m pip install --disable-pip-version-check -e '.[dev,postgres]'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "39a90796c9c6fd190fce7fe4f14458c1da56e194b3e3aeb1be8bc00490f83367"
+detail = "python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention --junitxml=\"$RUNNER_TEMP/postgres-results.xml\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "316ef1a89a47617e3ab372fb2ca8c1431b6fa25025030e8ab586861acb455769"
+detail = "python scripts/check-postgres-test-report.py \"$RUNNER_TEMP/postgres-results.xml\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "a0d56e051e74b9601787a03bb7cec8b43fabe8e356c1d84e2e8b30b49d56468a"
+detail = "python scripts/defense-eval-ci.py --locked-environments --base-sha \"$EXPECTED_BASE_SHA\" --output-dir \"$RUNNER_TEMP/defense-eval-artifacts\" --work-root \"$RUNNER_TEMP\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "921d5e3f31227101ed630786da263d254daaa1c374d39add0156ce9dcfca2e6e"
+detail = "python3 scripts/install-ci-browser-deps.py --archives \"$RUNNER_TEMP/apt-archives\" ffmpeg"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "5a722c7e63ad31a4e2f39969f475e9f6842e0d0755b7ae1486ce83eb031f0938"
+detail = "python -m pip install --disable-pip-version-check -e './services/transcription[dev]'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "80f093aa4066510496f7808386932f405f0309512697ebd923cbd32050977ccb"
+detail = "python -m pytest -q -o addopts=''"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "0373138dee112291ad38ff429f9c56344d0584c4dd399b54f2945203d2bafe64"
+detail = "PYTHONPATH=src python3 -m unittest tests.test_gateway_nginx -v"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "14d580f4cb74400b638f6e63aa99cb05847cafab176be6215ab1232ebc6a4110"
+detail = "python3 scripts/install-ci-browser-deps.py --archives \"$RUNNER_TEMP/apt-archives\" restic"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "3c756d9aaeb7d89c78dddd2425c808b60a6985b7098e29d06d9cf50d78e3e6d1"
+detail = "python -m pip install --disable-pip-version-check -e . 'pytest>=9.0.3,<10'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "e61464fe8fec25adce60a94ac8c08ba671ccfef0d6a21995579140ff212a002e"
+detail = "python -m pytest -q -o addopts='' tests/test_backup_consistency.py::test_encrypted_split_snapshot_and_postgres_restore --junitxml=\"$RUNNER_TEMP/restore-results.xml\""
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "097a45ed23676b7a32f68af0a10ff36f9d8db4309245669118ae12e15e11f334"
+detail = "python scripts/install-ci-browser-deps.py"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "5d80c6bfdddb78dcf8750aebad3a3981fc2e6b281b6fc780b3203edde71aa6ae"
+detail = "python -m pip install --disable-pip-version-check -e '.[dev]'"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "201cdab00079cf71c9fe64343001b585b5d99a85016ee9da1ff79680d79efdf5"
+detail = "python -m pytest -q tests/test_browser_acceptance_runner.py"
+
+[[source]]
+path = ".github/workflows/quality-gates.yml"
+kind = "workflow-launch"
+digest = "39c03e7e2a1022244c427ad40297a27b8f56039ba052c55afa30f16d86ea7786"
+detail = "python scripts/run-browser-acceptance.py --output \"$RUNNER_TEMP/exculpata-browser-artifacts\""

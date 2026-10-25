@@ -355,15 +355,23 @@ those roots is exempted. Pinned third-party
 internals remain dependency review material; the offline IDNA source archive has
 its own hash/license manifest and is inspected by the publication archive gate.
 
-Workflow run blocks support bare `python`/`python3` quoted single-argument
-`-c` commands and `python -` heredocs. Other inline launches, including
-virtualenv paths, minor-version executables, environment prefixes and piped
-stdin, fail closed with workflow, job and step diagnostics. File and module
-commands recognize interpreter paths, environment assignments and bounded
-interpreter flags; repository Python files still receive the source inventory.
-`actions/github-script` is unsupported and blocks the scan. Use
-`workflow_inventory()` supported forms or move inline code into an inventoried
-repository script. These syntax checks do not analyze arbitrary shell behavior.
+Workflow run steps accept only effective shells `bash`, `sh` and `pwsh`, chosen
+from the step, job defaults, workflow defaults, then `bash`. Python shells and
+custom shell templates block. Run blocks support bare `python`/`python3` quoted
+single-argument `-c` commands and `python -` heredocs. Other inline launches,
+including virtualenv paths, minor-version executables, environment prefixes and
+piped stdin, fail closed with workflow, job and step diagnostics. Variable command
+tokens, unparsed interpreter names (such as `python2`, `pypy3`, `py` and
+`python.exe`), nested shell command strings and `eval` also block.
+File and module launches recognize interpreter paths, environment assignments and
+bounded flags, but require an exact command allowance tied to the workflow,
+including arguments. Repository Python files still receive the source inventory.
+Container (`docker://`) and local (`./`) actions require exact workflow/action-step
+allowances, including inputs. `actions/github-script` always blocks. Malformed
+YAML and unsupported workflow field types block with file/line diagnostics;
+scanned mappings reject ambiguous keys and YAML merge keys. Use `workflow_inventory()`
+supported forms and review new allowances. This bounded scan is not an arbitrary
+shell interpreter or a proof about other commands' behavior.
 
 The AST inventory follows ordinary imports, aliases, client construction and
 sync/async with-bindings. It includes inert XML/provenance URLs and DNS-shaped

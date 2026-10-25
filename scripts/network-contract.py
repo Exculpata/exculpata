@@ -24,6 +24,7 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
                    "huggingface_hub", "faster_whisper", "ctranslate2", "av")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
+PYTHON_COMMAND = re.compile(r'(?:[^\s]*/)?python(?:3(?:\.\d+)?)?')
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -79,36 +80,101 @@ def source_inventory(root):
         relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             raise ValueError(f"{relative}:1: symlinked workflow")
-        document = yaml.compose(path.read_text())
-        def fields(node):
-            return {key.value: value for key, value in node.value}
-        for job_name, job in fields(fields(document)['jobs']).items():
-            steps = fields(job).get('steps')
-            for number, step in enumerate(steps.value if steps else [], 1):
-                values = fields(step)
-                name = values.get('name', values.get('id'))
-                context = f'job {job_name}, step {number}' + (f' ({name.value})' if name else '')
-                try:
-                    uses = values.get('uses')
-                    if uses and uses.value.lower().split('@', 1)[0] == 'actions/github-script':
+        found.extend(workflow_file_inventory(relative, path.read_text()))
+    return found
+
+
+def workflow_file_inventory(relative, source):
+    """Validate workflow structure before inspecting execution boundaries."""
+    context = 'workflow'
+
+    def invalid(node, reason):
+        line = node.start_mark.line + 1 if node is not None else 1
+        raise SyntaxError(f'invalid workflow: {reason}; {context}', (relative, line, 1, ''))
+
+    def fields(node):
+        if not isinstance(node, yaml.MappingNode):
+            invalid(node, 'expected a mapping')
+        result = {}
+        for key, value in node.value:
+            if not isinstance(key, yaml.ScalarNode) or key.tag != 'tag:yaml.org,2002:str':
+                # YAML 1.1 resolves the valid workflow key "on" as a boolean.
+                if not isinstance(key, yaml.ScalarNode) or key.value != 'on':
+                    invalid(key, 'unsupported mapping key; use workflow_inventory() explicit keys')
+            if key.value in result:
+                invalid(key, 'duplicate mapping key')
+            result[key.value] = value
+        return result
+
+    def string(node):
+        if not isinstance(node, yaml.ScalarNode) or node.tag != 'tag:yaml.org,2002:str':
+            invalid(node, 'expected a string')
+        return node.value
+
+    def default_shell(values, fallback):
+        if 'defaults' not in values:
+            return fallback
+        defaults = fields(values['defaults'])
+        run = fields(defaults['run']) if 'run' in defaults else {}
+        return string(run['shell']) if 'shell' in run else fallback
+
+    try:
+        document = yaml.compose(source)
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, 'problem_mark', None)
+        raise SyntaxError('invalid workflow: malformed YAML',
+                          (relative, mark.line + 1 if mark else 1, 1, '')) from None
+    workflow = fields(document)
+    shell = default_shell(workflow, 'bash')
+    jobs = fields(workflow.get('jobs'))
+    if not jobs:
+        invalid(document, 'jobs must not be empty')
+    found = []
+    for job_name, job in jobs.items():
+        context = f'job {job_name}'
+        values = fields(job)
+        job_shell = default_shell(values, shell)
+        steps = values.get('steps')
+        if not isinstance(steps, yaml.SequenceNode) or not steps.value:
+            invalid(steps, 'steps must be a nonempty sequence')
+        for number, step in enumerate(steps.value, 1):
+            context = f'job {job_name}, step {number}'
+            values = fields(step)
+            name = values.get('name', values.get('id'))
+            if name is not None:
+                context += f' ({string(name)})'
+            if ('run' in values) == ('uses' in values):
+                invalid(step, 'expected exactly one of run or uses')
+            try:
+                if 'uses' in values:
+                    uses = string(values['uses'])
+                    if uses.lower().split('@', 1)[0] == 'actions/github-script':
                         raise SyntaxError('unsupported actions/github-script; use workflow_inventory() '
                                           'supported Python forms or a repository script',
-                                          (relative, uses.start_mark.line + 1, 1, uses.value))
-                    run = values.get('run')
-                    if run is not None:
-                        offset = run.start_mark.line + (run.style == '|')
-                        found.extend(workflow_inventory(relative, run.value, offset))
-                except SyntaxError as exc:
+                                          (relative, step.start_mark.line + 1, 1, uses))
+                    if uses.startswith(('docker://', './')):
+                        found.append((relative, step.start_mark.line + 1, 'workflow-action',
+                                      fingerprint(yaml.serialize(step)), uses))
+                else:
+                    run = values['run']
+                    command = string(run)
+                    effective_shell = string(values['shell']) if 'shell' in values else job_shell
+                    if effective_shell not in {'bash', 'sh', 'pwsh'}:
+                        raise SyntaxError('unsupported shell; use workflow_inventory() with bash, sh or pwsh',
+                                          (relative, run.start_mark.line + 1, 1, effective_shell))
+                    offset = run.start_mark.line + (run.style == '|')
+                    found.extend(workflow_inventory(relative, command, offset))
+            except SyntaxError as exc:
+                if not exc.msg.startswith('invalid workflow:'):
                     exc.msg = f'{exc.msg}; {context}'
-                    raise
+                raise
     return found
 
 
 def workflow_inventory(relative, source, line_offset):
     """Inspect bounded inline Python; reject unmodeled interpreter launches.
 
-    File and module commands are recognized separately from inline payloads.
-    Repository Python files are already included by source_inventory().
+    File and module commands require exact workflow-launch allowances in check().
     """
     found = []
     lines = source.splitlines()
@@ -150,12 +216,36 @@ def workflow_inventory(relative, source, line_offset):
                 lexer.whitespace_split = True
                 arguments = list(lexer)
             except ValueError:
-                if re.search(r'\bpython(?:3(?:\.\d+)?)?\b', command):
+                unsupported(command)
+            command_position = True
+            for argument in arguments:
+                if re.fullmatch(r'[|&;()]+', argument):
+                    command_position = True
+                    continue
+                if command_position and (argument.rsplit('/', 1)[-1] in {
+                        'env', 'if', 'then', 'elif', 'else', 'do', '!', 'command', 'exec',
+                        'nohup', 'sudo', 'uv', 'run', 'timeout', 'xargs'} or
+                        re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*=[^\n]*', argument)):
+                    continue
+                if command_position and ('$' in argument or '`' in argument or
+                                         argument.startswith('-') or argument.isdecimal() or
+                                         re.match(r'[A-Za-z]:', argument) or '\\' in argument):
                     unsupported(command)
-                index += 1
-                continue
+                executable = argument.rsplit('/', 1)[-1].lower()
+                if command_position and re.search(r'python|pypy|pyw|py\.exe$', executable) and not PYTHON_COMMAND.fullmatch(argument):
+                    unsupported(command)
+                if (executable == 'eval' or
+                        re.fullmatch(r'(?:python|pypy|jython|ipython|micropython|graalpy)[\w.-]*|pyw?(?:[\d.]+)?(?:\.exe)?|'
+                                     r'(?:node|perl|ruby|php|lua|rscript|deno|bun)(?:[\d.]+|\.exe)?', executable)
+                        and not PYTHON_COMMAND.fullmatch(argument)):
+                    unsupported(command)
+                if executable in {'bash', 'sh', 'dash', 'zsh', 'ksh', 'pwsh', 'powershell'} and any(
+                        re.fullmatch(r'-[a-z]*c[a-z]*', item) or item.lower() in {'--command', '-command', '-encodedcommand'}
+                        for item in arguments):
+                    unsupported(command)
+                command_position = False
             launches = [i for i, argument in enumerate(arguments)
-                        if re.fullmatch(r'(?:[^\s]*/)?python(?:3(?:\.\d+)?)?', argument)]
+                        if PYTHON_COMMAND.fullmatch(argument)]
             if launches:
                 position = launches[0]
                 prefix, payload = arguments[:position], arguments[position + 1:]
@@ -172,6 +262,8 @@ def workflow_inventory(relative, source, line_offset):
                 script = payload and not payload[0].startswith('-') and payload[0].endswith('.py')
                 if not (module or script):
                     unsupported(command)
+                found.append((relative, line_offset + index + 1, 'workflow-launch',
+                              fingerprint(command), command))
         index += 1
     return found
 
@@ -406,7 +498,9 @@ def main():
     try:
         errors = check(args.root.resolve())
     except SyntaxError as exc:
-        print(f"{exc.filename}:{exc.lineno}: invalid Python source: {exc.msg}", file=sys.stderr)
+        reason = (exc.msg if exc.msg.startswith(('invalid workflow:', 'unsupported'))
+                  else f'invalid Python source: {exc.msg}')
+        print(f"{exc.filename}:{exc.lineno}: {reason}", file=sys.stderr)
         return 1
     except (OSError, ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
         print(f"network-contract: invalid or unreadable policy/source: {type(exc).__name__}", file=sys.stderr)
