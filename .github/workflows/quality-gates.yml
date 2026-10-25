@@ -126,6 +126,8 @@ jobs:
           cache-dependency-path: |
             pyproject.toml
             services/transcription/pyproject.toml
+      - name: Protect reviewed corpus inputs
+        run: bash scripts/corpus-write-guard.sh prepare
       - name: Install lightweight documentation test dependencies
         if: ${{ needs.change-scope.outputs.docs_only == 'true' }}
         run: python -m pip install --disable-pip-version-check 'pytest>=9.0.3,<10'
@@ -192,6 +194,9 @@ jobs:
           -ra --durations=25 -o junit_logging=no
           --junitxml="${{ runner.temp }}/application-results.xml"
           --worker-diagnostics-dir="${{ runner.temp }}/application-workers"
+      - name: Verify reviewed corpus inputs are unchanged
+        if: ${{ always() }}
+        run: bash scripts/corpus-write-guard.sh check
       - name: Retain application test report
         if: ${{ always() && needs.change-scope.outputs.docs_only != 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

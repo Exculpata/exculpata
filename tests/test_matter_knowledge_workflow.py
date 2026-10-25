@@ -209,7 +209,7 @@ def test_administrator_knowledge_links_respect_membership(protected_assertion, t
         assert any(text == label for _, text in links) == team_member
     assert any('support=' in href for href, _ in links)
     assert any('entity_page=2' in href for href, _ in links)
-    for href in dict.fromkeys(href for href, _ in links):
+    for href in {href: None for href, _ in links}:
         opened = client.get(href, headers=_headers(ADMIN))
         assert opened.status_code == 200, href
     if not team_member:

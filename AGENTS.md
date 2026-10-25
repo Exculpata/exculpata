@@ -1,7 +1,8 @@
 # Exculpata contributor judgment rules
 
 Follow [coding standards](CODING_STANDARDS.md) for development, synthetic data,
-publication safeguards and validation. The [review policy](docs/QUALITY_GATES.md#review-policy)
+publication safeguards and validation, including the
+[synthetic fixture boundary](CODING_STANDARDS.md#synthetic-fixture-writes). The [review policy](docs/QUALITY_GATES.md#review-policy)
 remains the merge gate. Keep work aligned with the [product north star](docs/PRODUCT_NORTH_STAR.md).
 Use the [ideal architecture contract](docs/IDEAL.md) to review supported paths,
 evidence integrity and the rules that still require human judgment.
