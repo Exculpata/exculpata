@@ -407,3 +407,19 @@ This implements the repository enforcement work tracked by
 [#319](https://github.com/Exculpata/exculpata/issues/319). The separate architecture
 contract in #305 should link here after coordination; its draft branch is not
 modified by this change.
+
+## Operator retrieval destinations
+
+The relay also accepts `EMBEDDING_EGRESS_URL` / `EMBEDDING_EGRESS_PINS` and
+`RERANK_EGRESS_URL` / `RERANK_EGRESS_PINS`. Installer Compose invocations derive
+these from the selected app file's corresponding `CASE_INTELLIGENCE_` settings;
+operator-managed Compose must supply them explicitly. Empty slots deny access.
+Recreate app and relay together after changes. Only destination URLs and pins
+reach the relay, never API keys or app secret mounts.
+
+Embedding and rerank requests reuse the generator CONNECT transport and relay
+policy: exact host/port, full DNS-answer validation, numeric dialing, reviewed
+private pins, the same unconditional deny set, end-to-end TLS and no redirects.
+Ambient `NO_PROXY` cannot bypass this path. Loopback is denied; LAN endpoints
+need HTTPS, trusted certificates and reviewed RFC1918/ULA pins. Relay setup,
+time and byte limits still apply. See [retrieval configuration](MODEL_CONFIGURATION.md#optional-embedding-and-rerank-endpoints).

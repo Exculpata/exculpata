@@ -49,6 +49,8 @@ def _proxy_destinations(oidc=("", ""), generator=("", "")):
         ("OIDC_ISSUER", "OIDC_ISSUER_PINS"): oidc,
         ("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"): generator,
     }
+    pairs.update({(role + "_EGRESS_URL", role + "_EGRESS_PINS"): ("", "")
+                  for role in ("EMBEDDING", "RERANK")})
     return {setting: value for settings, values in pairs.items() for setting, value in zip(settings, values)}
 
 

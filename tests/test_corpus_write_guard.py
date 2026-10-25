@@ -79,7 +79,7 @@ def test_changed_corpus_fails(corpus_repository, mutation):
 @pytest.mark.parametrize("workflow,job,test_command", [
     ("corpus.yml", "fast", "python -m pytest"),
     ("corpus.yml", "full", "make corpus-check-full"),
-    ("quality-gates.yml", "application", "-m pytest -n auto"),
+    ("quality-gates.yml", "application-shards", "-m pytest -n auto"),
 ])
 def test_workflows_bracket_tests_with_the_shared_guard(workflow, job, test_command):
     data = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())

@@ -95,7 +95,7 @@ def test_pull_request_jobs_test_the_merge_and_scan_the_exact_head_separately() -
     exact_ref = "ref: ${{ github.event.pull_request.head.sha || github.sha }}"
     assert workflow.count(exact_ref) == 1
     publication_job = workflow.split("\n  publication-scan:\n", 1)[1].split("\n  secret-scan:\n", 1)[0]
-    application_job = workflow.split("\n  application:\n", 1)[1].split("\n  postgres-integration:\n", 1)[0]
+    application_job = workflow.split("\n  application-shards:\n", 1)[1].split("\n  postgres-integration:\n", 1)[0]
     assert exact_ref in publication_job
     assert exact_ref not in application_job
     assert "needs: [change-scope]\n" in application_job
