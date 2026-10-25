@@ -135,6 +135,69 @@ def test_hardware_matching(tier, gpus, expected):
     assert tiers.hardware_matches(tier, {"cpu": "synthetic CPU", "gpus": gpus}) is expected
 
 
+@pytest.mark.parametrize("names", [
+    ("synthetic GeForce", "synthetic GeForce"),
+    ("synthetic L40S", "synthetic GeForce"),
+    ("synthetic GeForce", "synthetic L40S"),
+], ids=["neither-l40s", "first-l40s-only", "second-l40s-only"])
+def test_ultra_requires_l40s_pair(names):
+    hardware = {"cpu": "synthetic CPU", "gpus": [
+        dict(name=name, vram_mib=46080) for name in names]}
+    assert tiers.hardware_matches("ultra", hardware) is False
+
+
+@pytest.mark.parametrize("vram_mib,expected", [
+    (15 * 1024 - 1, False), (15 * 1024, True),
+    (25 * 1024, True), (25 * 1024 + 1, False),
+], ids=["below-minimum", "minimum", "maximum", "above-maximum"])
+def test_consumer_vram_range(vram_mib, expected):
+    hardware = {"cpu": "synthetic CPU", "gpus": [
+        dict(name="synthetic GeForce", vram_mib=vram_mib)]}
+    assert tiers.hardware_matches("consumer", hardware) is expected
+
+
+@pytest.mark.parametrize("tier_index", [1, 2], ids=["consumer", "ultra"])
+@pytest.mark.parametrize("with_generator", [False, True], ids=["retrieval-only", "with-generator"])
+def test_evaluate_tier_rejects_hardware_mismatch(tmp_path, monkeypatch, tier_index, with_generator):
+    result = card()
+    row = result["tiers"][tier_index]
+    calls = []
+
+    def unexpected_worker_start(row):
+        calls.append(row["tier"])
+        raise AssertionError("mismatched hardware must not start models")
+
+    monkeypatch.setattr(tiers, "_worker_models", unexpected_worker_start)
+    tiers.evaluate_tier(row, result["hardware"], tmp_path, with_generator)
+    assert calls == []
+    assert row["reason"] == "no matching GPU hardware available in this run"
+    assert row["status"] == "unmeasured"
+    assert row["retrieval"] is row["answer_accuracy"] is row["execution"] is None
+    assert row["wall_seconds"] == 0.0
+    assert list(tmp_path.iterdir()) == []
+    tiers.validate_scorecard(result)
+
+
+@pytest.mark.parametrize("tier_index,damage", [
+    pytest.param(index, damage, id=f"{tier}-{damage}")
+    for index, tier in enumerate(("potato", "consumer", "ultra"))
+    for damage in ("missing", "extra", "reordered")
+    if damage != "reordered" or tier != "ultra"
+])
+def test_validator_rejects_profile_id_damage(tier_index, damage):
+    result = deepcopy(card())
+    tiers.validate_scorecard(result)
+    ids = result["tiers"][tier_index]["profile_ids"]
+    if damage == "missing":
+        ids.pop()
+    elif damage == "extra":
+        ids.append("synthetic-extra-profile")
+    else:
+        ids.reverse()
+    with pytest.raises(ValueError, match="^tier settings and pinned model provenance are required$"):
+        tiers.validate_scorecard(result)
+
+
 def test_output_roundtrip_and_unknown_schema(tmp_path):
     import json
     result = card()
