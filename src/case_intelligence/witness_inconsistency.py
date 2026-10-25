@@ -17,7 +17,7 @@ _TIME = re.compile(
 _QUANTITY = re.compile(r"\b\d+(?:\.\d+)?\b")
 _PLACE = re.compile(
     r"\b(?:beside|inside|outside|near|at)\s+"
-    r"(?!\d|(?:the\s+)?(?:time|noon|midnight|least|once|end|night)\b)(?:the\s+)?"
+    r"(?!\d|(?:the\s+)?(?:time|noon|midnight|least|once)\b)(?:the\s+)?"
     r"([a-z][a-z -]{2,40}?)(?=[.,;]|\s+(?:beside|inside|outside|near|at|on|in|by|"
     r"before|after|under|over|from|to|with)\b|$)", re.I)
 
@@ -72,12 +72,16 @@ def _time_minutes(text):
 
 
 def _differences(first, second):
-    """Return only explicit, bounded surface differences; make no truth finding."""
+    """Return only explicit, bounded surface differences; make no truth finding.
+
+    A one-sided place superset is intentionally ignored: extra location detail
+    alone need not contradict the shared place.
+    """
     left_times, right_times = _time_minutes(first), _time_minutes(second)
     if left_times and right_times and left_times != right_times:
         return "time"
-    left_places = {_normalized(value) for value in _PLACE.findall(first)}
-    right_places = {_normalized(value) for value in _PLACE.findall(second)}
+    left_places = {_normalized(value) for value in _PLACE.findall(first)} - {"end", "night"}
+    right_places = {_normalized(value) for value in _PLACE.findall(second)} - {"end", "night"}
     if left_places - right_places and right_places - left_places:
         return "place"
     # Times are a kind of number and have already received the more useful label.

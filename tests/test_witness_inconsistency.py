@@ -145,6 +145,33 @@ def test_place_stops_before_later_preposition():
                         'at the gate beside the south wall') == 'place'
 
 
+@pytest.mark.parametrize(('left', 'right'), [
+    ('at the end of the pier', 'at the boat ramp'),
+    ('at the night market', 'at the bus depot'),
+])
+def test_real_place_starting_with_temporal_word(left, right):
+    assert _differences(left, right) == 'place'
+    assert _differences(right, left) == 'place'
+
+
+@pytest.mark.parametrize('phrase', ['at the end', 'at night'])
+@pytest.mark.parametrize('suffix', ['', '.', ',', ';'])
+def test_bare_end_and_night_idioms_are_not_places(phrase, suffix):
+    assert _differences(phrase.upper() + suffix, 'at the gate') == ''
+
+
+def test_one_sided_place_superset_is_not_a_difference():
+    shorter = 'at the gate'
+    longer = 'at the gate beside the north wall'
+    assert _differences(shorter, longer) == ''
+    assert _differences(longer, shorter) == ''
+
+
+def test_time_with_meridiem_against_bare_hour_is_not_a_difference():
+    assert _differences('5 pm', '7') == ''
+    assert _differences('7', '5 pm') == ''
+
+
 @pytest.mark.parametrize(('left', 'right', 'expected'), [
     ('9:00 am', '9:00 pm', 'time'),
     ('9:00am', '9:00pm', 'time'),

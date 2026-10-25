@@ -81,6 +81,22 @@ def test_state_changes_are_audited_and_invalid_ids_write_nothing(review_case):
             assert (review_rows(store), audit_rows(store)) == before
 
 
+@pytest.mark.parametrize(('method', 'state'), [('dismiss', 'dismissed'), ('mark_reviewed', 'reviewed')])
+def test_repeating_unchanged_action_returns_without_writes(review_case, monkeypatch, method, state):
+    store, matter, finder, _ = review_case
+    candidate = finder.find(matter, ACTOR)[0]
+    action = getattr(finder, method)
+    action(matter, ACTOR, candidate.candidate_id)
+    before = review_rows(store), audit_rows(store)
+    assert len(before[0]) == len(before[1]) == 1
+    assert json.loads(before[1][0]['details_json']) == dict(old_state='unreviewed', new_state=state)
+    def unexpected_write():
+        pytest.fail('An unchanged review action must return before preparing another write')
+    monkeypatch.setattr(finder.repository, 'now', unexpected_write)
+    assert action(matter, ACTOR, candidate.candidate_id) is None
+    assert (review_rows(store), audit_rows(store)) == before
+
+
 def test_audit_failure_rolls_back_review(review_case, monkeypatch):
     store, matter, finder, _ = review_case
     candidate = finder.find(matter, ACTOR)[0]
