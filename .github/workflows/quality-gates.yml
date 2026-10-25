@@ -197,7 +197,7 @@ jobs:
           # Reserve 0 starts only with the explicit test switch.
           CASE_INTELLIGENCE_STORAGE_RESERVE_GIB: "0"
           CASE_INTELLIGENCE_TEST_MODE: "1"
-          PYTEST_XDIST_AUTO_NUM_WORKERS: "1"
+          PYTEST_XDIST_AUTO_NUM_WORKERS: "6"
           # xdist already occupies the runner CPUs. Bound each worker's native
           # OCR/numerical thread pools instead of multiplying runnable threads.
           OMP_THREAD_LIMIT: "1"

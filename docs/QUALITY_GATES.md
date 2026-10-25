@@ -114,7 +114,7 @@ filters that could leave a required result missing.
 The application suite runs in two parallel `application-shards` matrix jobs.
 `scripts/application-test-shard.py` sorts the application test files and assigns
 alternating files to each shard; new files are included automatically. Each shard
-runs one worker and keeps the existing diagnostics, with a separate artifact name.
+keeps the existing worker limits and diagnostics, with a separate artifact name.
 The existing `application` required check aggregates both shards and classification;
 failed, cancelled or skipped dependencies cannot produce a successful aggregate.
 Documentation-only changes run the lightweight contracts in both shards.

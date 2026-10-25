@@ -83,7 +83,7 @@ def test_matrix_runs_selected_files_and_retains_separate_reports():
     assert '> "$RUNNER_TEMP/application-test-files.txt"' in selection["run"]
     run = steps["Run application suite"]
     assert run["if"] == selection["if"]
-    assert run["env"]["PYTEST_XDIST_AUTO_NUM_WORKERS"] == "1"
+    assert run["env"]["PYTEST_XDIST_AUTO_NUM_WORKERS"] == "6"
     assert '@"${{ runner.temp }}/application-test-files.txt"' in run["run"]
     artifact = steps["Retain application test report"]
     assert "always()" in artifact["if"]
