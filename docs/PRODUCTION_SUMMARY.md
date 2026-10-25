@@ -18,13 +18,29 @@ in extracted text, not document creation dates. Only supplied version-matched
 locators from document metadata or production load data define Bates labels.
 Explicit `Bates: LABEL` or `Bates: START to END` text lines are cited references;
 they never label the citing document or close gaps. Duplicate or overlapping
-labels across documents are flagged with those documents cited. Numeric suffixes are
-compared within each exact prefix; nonnumeric and cross-prefix ranges are reported
-as unordered. Gaps are internal intervals only, not a conclusion about completeness.
+labels across documents are flagged with those documents cited, once per shared
+range. Numeric suffixes are compared after NFKC normalization and surrounding
+whitespace removal; prefix case remains significant. Control/format characters
+and mixed-script prefixes are refused for ordering. Nonnumeric, reversed and
+cross-prefix ranges are also reported as unordered. Any unordered locator
+suppresses clean Bates-gap claims. Gap labels use the widest zero-padded suffix in
+their normalized series. Page-only locators do not consume the Bates limit.
+Gaps are internal intervals only, not a conclusion about completeness.
 Explicit `Reference: filename` lines match selected filenames or relative paths
 case-insensitively; other reference language needs human review. Missing entity
 support and text/OCR coverage notices remain visible. These checks cannot establish
 absence from unextracted text. Limits refuse oversized inputs instead of truncating.
+
+An interrupted or malformed derived-unit stream makes that document's facts
+incomplete. Its dates, references and labels are excluded from summary coverage,
+and it contributes neither recorded page totals nor an undated-document count.
+Remaining aggregate figures are marked incomplete and Bates gaps are suppressed;
+no closed page gap is emitted for the unreadable document. Source inventory and
+the incomplete-read notice still link to it. Date recognition excludes explicit
+Bates/reference lines and date tokens embedded in paths or hyphenated identifiers.
+Markdown treats source text as literal text, including strike markers, heading
+markers and bare web URLs; source links remain navigable. Control/format
+characters are displayed as Unicode code points instead of invisible formatting.
 
 UI integration, selection receipts for files without document identities, reading
 PDF page-label metadata, and PDF export remain follow-up integration work.

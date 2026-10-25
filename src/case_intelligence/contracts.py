@@ -303,8 +303,15 @@ class SourceLocator(StrictModel):
                 raise ValueError(f"{label} end must exceed start")
         if self.bates_end is not None and self.bates_start is None:
             raise ValueError("Bates end requires start")
-        if self.bates_end is not None and self.bates_start is not None and self.bates_end <= self.bates_start:
-            raise ValueError("Bates end must exceed start")
+        if self.bates_end is not None and self.bates_start is not None:
+            first = re.fullmatch(r'(.*?)([0-9]+)', self.bates_start)
+            last = re.fullmatch(r'(.*?)([0-9]+)', self.bates_end)
+            invalid_order = self.bates_end <= self.bates_start
+            if first and last and first[1] == last[1]:
+                start_digits, end_digits = first[2].lstrip('0'), last[2].lstrip('0')
+                invalid_order = (len(end_digits), end_digits) <= (len(start_digits), start_digits)
+            if invalid_order:
+                raise ValueError("Bates end must exceed start")
         if self.segment_id is not None and self.representation_id is None:
             raise ValueError("segment requires representation")
         if self.image_region is not None:

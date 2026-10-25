@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 import html
 import re
+import unicodedata
 from urllib.parse import quote, urlencode
 
 from .contracts import SourceLocator
@@ -38,7 +39,11 @@ class SummaryFact:
 
 
 def _md(value):
-    return re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(' '.join(value.split()), quote=False))
+    value = ''.join(f'[U+{ord(char):04X}]' if unicodedata.category(char) in {'Cc', 'Cf'} else char
+                    for char in value)
+    escaped = re.sub(r'([\\`*_\[\]~#])', r'\\\1', html.escape(' '.join(value.split()), quote=False))
+    return re.sub(r'(?i)\b(?:https?|ftp):(?=//)|\bwww\.',
+                  lambda match: match[0][:-1] + '\\' + match[0][-1], escaped)
 
 
 @dataclass(frozen=True)
@@ -73,38 +78,55 @@ class ProductionSummary:
         return '\n'.join(lines) + '\n'
 
 
-def _bates_facts(ranges):
+def _bates_facts(ranges, *, complete=True):
     groups, unordered, facts = defaultdict(list), defaultdict(list), []
     for start, end, link in ranges:
+        unsafe = any(unicodedata.category(char) in {'Cc', 'Cf'} for char in start + end)
+        start, end = (unicodedata.normalize('NFKC', value).strip() for value in (start, end))
         first, last = re.fullmatch(r'(.*?)([0-9]{1,18})', start), re.fullmatch(r'(.*?)([0-9]{1,18})', end)
-        if (not first or not last or first[1] != last[1] or first[1][-1:].isdigit()
+        mixed = any(len({unicodedata.name(char, '').split(' ')[0] for char in match[1] if char.isalpha()}) > 1
+                    for match in (first, last) if match)
+        if (unsafe or mixed or not first or not last or first[1] != last[1] or first[1][-1:].isdigit()
                 or int(first[2]) > int(last[2])):
-            facts.append(SummaryFact('bates_unordered', f'Bates order unresolved: {start} to {end}', (link,)))
+            reason = ' (control or format character)' if unsafe else ' (mixed-script prefix)' if mixed else ''
+            facts.append(SummaryFact('bates_unordered', f'Bates order unresolved{reason}: {start} to {end}', (link,)))
             unordered[start, end].append(link)
             continue
-        groups[first[1]].append((int(first[2]), int(last[2]), len(first[2]), link))
+        padding = max(len(digits) if digits.startswith('0') else 1 for digits in (first[2], last[2]))
+        groups[first[1]].append((int(first[2]), int(last[2]), padding, link))
     for prefix, intervals in sorted(groups.items()):
-        previous, active = None, {}
-        for start, end, width, link in sorted(intervals, key=lambda item: (item[0], item[1], item[3].document_id)):
-            active = {key: (stop, prior) for key, (stop, prior) in active.items() if stop >= start}
-            for stop, prior in active.values():
-                if prior.document_id != link.document_id:
-                    if len(facts) >= 100_000:
-                        raise OverflowError('Production exceeds the complete Bates finding limit')
-                    label = prefix + str(start).zfill(width)
-                    if min(stop, end) != start:
-                        label += ' to ' + prefix + str(min(stop, end)).zfill(width)
-                    facts.append(SummaryFact('bates_overlap', 'Overlapping Bates labels: ' + label, (prior, link)))
-            active[link.document_id] = max(end, active.get(link.document_id, (end,))[0]), link
-            if previous is not None and start > previous[0] + 1:
+        width = max(item[2] for item in intervals)
+        by_range, shared = defaultdict(dict), defaultdict(dict)
+        for start, end, _, link in intervals:
+            by_range[start, end][link.document_id] = link
+        previous, active = None, []
+        for (start, end), refs in sorted(by_range.items()):
+            if len(refs) > 1:
+                shared[start, end].update(refs)
+            active = [(stop, prior) for stop, prior in active if stop >= start]
+            for stop, prior in active:
+                combined = prior | refs
+                if len(combined) > 1:
+                    shared[start, min(stop, end)].update(combined)
+                if len(facts) + len(shared) > 100_000:
+                    raise OverflowError('Production exceeds the complete Bates finding limit')
+            active.append((end, refs))
+            link = next(iter(refs.values()))
+            if complete and not unordered and previous is not None and start > previous[0] + 1:
                 lower, upper = previous[0] + 1, start - 1
-                label = prefix + str(lower).zfill(previous[1])
+                label = prefix + str(lower).zfill(width)
                 if lower != upper:
-                    label += ' to ' + prefix + str(upper).zfill(previous[1])
+                    label += ' to ' + prefix + str(upper).zfill(width)
                 facts.append(SummaryFact('bates_gap', 'Missing Bates: ' + label,
-                                         (previous[2], link), upper - lower + 1))
+                                         (previous[1], link), upper - lower + 1))
             if previous is None or end > previous[0]:
-                previous = end, width, link
+                previous = end, link
+        for (start, end), refs in sorted(shared.items()):
+            label = prefix + str(start).zfill(width)
+            if end != start:
+                label += ' to ' + prefix + str(end).zfill(width)
+            facts.append(SummaryFact('bates_overlap', 'Overlapping Bates labels: ' + label,
+                                     tuple(refs.values()), len(refs)))
     for (start, end), refs in sorted(unordered.items()):
         if len({link.document_id for link in refs}) > 1:
             facts.append(SummaryFact('bates_overlap', f'Duplicate Bates labels: {start} to {end}', tuple(refs)))
@@ -121,18 +143,20 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
     """
     base = '/matters/' + quote(matter_slug, safe='')
     documents, links, dates, references, ranges, notices = {}, {}, defaultdict(list), [], [], []
-    units_seen = chars_seen = 0
+    incomplete = set()
+    units_seen = chars_seen = labels_seen = 0
     for source in sources:
         doc = source.document
         if doc.document_id in documents:
             raise ValueError('Duplicate document identity in production')
         if len(documents) >= 10_000:
             raise OverflowError('Production exceeds the complete document read limit')
-        if len(ranges) + len(source.locators) > 100_000:
-            raise OverflowError('Production exceeds the complete Bates metadata read limit')
         documents[doc.document_id] = doc
         labels = [(loc.bates_start, loc.bates_end or loc.bates_start)
                   for loc in source.locators if loc.bates_start]
+        labels_seen += len(labels)
+        if labels_seen > 100_000:
+            raise OverflowError('Production exceeds the complete Bates metadata read limit')
         found_dates, found_refs, cited_bates, pages = [], [], [], set()
         reasons = []
         if doc.state != 'ready':
@@ -147,22 +171,26 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
                     raise OverflowError('Production exceeds the complete extracted text read limit')
                 if unit.text.strip():
                     pages.add(unit.number)
-                for value in sorted(set(re.findall(r'(?<!\w)[0-9]{4}-[0-9]{2}-[0-9]{2}(?!\w)', unit.text))):
-                    try:
-                        date.fromisoformat(value)
-                    except ValueError:
-                        continue
-                    found_dates.append((value, ordinal, unit.location))
                 for line in unit.text.splitlines():
                     if match := re.fullmatch(r'\s*Bates:\s*(\S+)(?: to (\S+))?\s*', line):
                         cited_bates.append((match[1] + (' to ' + match[2] if match[2] else ''), ordinal, unit.location))
+                        continue
                     if match := re.fullmatch(r'\s*Reference:\s*(\S.*?)\s*', line):
                         found_refs.append((match[1], ordinal, unit.location))
+                        continue
+                    for value in sorted(set(re.findall(r'(?<![\w/\\-])[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\w/\\-])', line))):
+                        try:
+                            date.fromisoformat(value)
+                        except ValueError:
+                            continue
+                        found_dates.append((value, ordinal, unit.location))
         except UnitRecordLimit as exc:
             raise OverflowError('Production exceeds the derived record read limit') from exc
         except (OSError, ValueError, TypeError, RuntimeError):
-            reasons.append('Derived text unavailable')
-        if doc.state == 'ready' and not pages:
+            incomplete.add(doc.document_id)
+            found_dates, found_refs, cited_bates, labels = [], [], [], []
+            reasons.append('Derived text unavailable; facts incomplete; page and Bates coverage unresolved')
+        if doc.state == 'ready' and not pages and doc.document_id not in incomplete:
             reasons.append('No extracted text available')
         labels = sorted(set(labels))
         link = SummaryLink(doc.document_id, doc.version_id,
@@ -173,7 +201,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
         if doc.media_type == 'application/pdf':
             if doc.page_count <= 0:
                 notices.append(SummaryFact('page_coverage', 'PDF page count unavailable', (link,)))
-            elif doc.state == 'ready':
+            elif doc.state == 'ready' and doc.document_id not in incomplete:
                 missing = doc.page_count - len({page for page in pages if 1 <= page <= doc.page_count})
                 if missing:
                     notices.append(SummaryFact('readability', f'PDF pages without extracted text: {missing}', (link,), missing))
@@ -186,20 +214,22 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
                 (replace(link, href=link.href + '?' + urlencode({'unit': ordinal}), location=location),)))
         ranges.extend((start, end, link) for start, end in labels)
     facts = [SummaryFact('documents', f'Documents: {len(documents)}', tuple(links.values()), len(documents))]
-    pdfs = [doc for doc in documents.values() if doc.media_type == 'application/pdf' and doc.page_count > 0]
+    qualifier = ' (incomplete; excludes unavailable derived text)' if incomplete else ''
+    pdfs = [doc for doc in documents.values() if doc.media_type == 'application/pdf' and doc.page_count > 0
+            and doc.document_id not in incomplete]
     count = sum(doc.page_count for doc in pdfs)
-    facts.append(SummaryFact('pages', f'Recorded PDF pages: {count}', tuple(links[d.document_id] for d in pdfs), count))
+    facts.append(SummaryFact('pages', f'Recorded PDF pages{qualifier}: {count}', tuple(links[d.document_id] for d in pdfs), count))
     types = defaultdict(list)
     for doc in documents.values():
         types[doc.media_type].append(links[doc.document_id])
     facts.extend(SummaryFact('type', f'{kind} documents: {len(refs)}', tuple(refs), len(refs)) for kind, refs in sorted(types.items()))
     if dates:
         first, last = min(dates), max(dates)
-        facts.append(SummaryFact('date_range', f'Mentioned ISO date range: {first} to {last}',
+        facts.append(SummaryFact('date_range', f'Mentioned ISO date range{qualifier}: {first} to {last}',
                                 tuple(link for day in sorted(dates) for link in dates[day])))
     dated = {link.document_id for refs in dates.values() for link in refs}
-    undated = tuple(link for key, link in links.items() if key not in dated)
-    facts.append(SummaryFact('undated', f'Documents without a valid mentioned ISO date: {len(undated)}', undated, len(undated)))
+    undated = tuple(link for key, link in links.items() if key not in dated and key not in incomplete)
+    facts.append(SummaryFact('undated', f'Documents without a valid mentioned ISO date{qualifier}: {len(undated)}', undated, len(undated)))
     facts.extend(notices)
     names = {name.casefold() for doc in documents.values()
              for path in (doc.display_name, doc.relative_path)
@@ -207,7 +237,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
     for value, link in references:
         if value.casefold() not in names:
             facts.append(SummaryFact('absent_reference', 'Referenced file absent from this production: ' + value, (link,)))
-    facts.extend(_bates_facts(ranges))
+    facts.extend(_bates_facts(ranges, complete=not incomplete))
     mention_count = 0
     for entity_index, (entity, mentions) in enumerate(entities, 1):
         if entity_index > 10_000:
