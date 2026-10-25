@@ -4360,8 +4360,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     def _index_document(self, matter: MatterRecord, document: PilotDocument) -> None:
         if not self.postgres_ready or self.postgres_connection is None:
             return
-        from .retrieval_endpoints import require_index_identity
-        require_index_identity()
+        if self.learned_retrieval:
+            from .retrieval_endpoints import require_index_identity
+            require_index_identity()
         with self._postgres_lock:
             upsert_postgres_document(
                 self.postgres_connection,
@@ -4371,7 +4372,11 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 display_name=document.display_name,
                 media_type=document.media_type,
                 units=document.parsed_units(),
-                embedder=self.embedding,
+                embedder=(
+                    self.embedding
+                    if self.learned_retrieval
+                    else DeterministicEmbeddingAdapter()
+                ),
                 source_version_id=document.version_id,
                 content_digest=document.digest,
                 byte_size=document.size,

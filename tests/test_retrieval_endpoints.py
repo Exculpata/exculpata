@@ -193,3 +193,51 @@ def test_rerank_runtime_and_local_switch(endpoint, monkeypatch):
     embedding_index_path().unlink()  # fixture-write: simulate lost index provenance
     with pytest.raises(RuntimeError, match="rebuilt"):
         endpoints.require_index_identity()
+
+
+@pytest.mark.parametrize("identity", ["matching", "changed", "missing"])
+def test_disabled_learned_retrieval_never_calls_endpoint(endpoint, monkeypatch, identity):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from case_intelligence.embedding_index import embedding_index_path
+    from case_intelligence.pilot_uploads import PilotDocument
+    from case_intelligence.review_bench_v2 import DeterministicEmbeddingAdapter, RemoteRerankerAdapter
+    from case_intelligence.workbench import CaseIntelligenceWorkbench
+
+    if identity == "changed":
+        monkeypatch.setenv("CASE_INTELLIGENCE_EMBEDDING_MODEL", "changed")
+    elif identity == "missing":
+        embedding_index_path().unlink()  # fixture-write: synthetic missing index identity
+    bench = object.__new__(CaseIntelligenceWorkbench)
+    bench.learned_retrieval = False
+    bench.postgres_ready = True
+    bench.postgres_connection = MagicMock(autocommit=False)
+    bench._postgres_lock = threading.RLock()
+    bench.embedding = RemoteEmbeddingAdapter("http://retrieval:8767")
+    bench.reranker = RemoteRerankerAdapter("http://retrieval:8767")
+    matter = SimpleNamespace(matter_id="synthetic-matter", display_name="Synthetic matter")
+    text = "Synthetic blue bicycle evidence."
+    document = PilotDocument("synthetic-document", "Synthetic.txt", "synthetic.txt", "text/plain",
+        len(text), "ready", "", [{"number": 1, "text": text}], version_id="synthetic-v1")
+    candidate = bench._candidate(matter, document, document.parsed_units()[0], 1)
+    monkeypatch.setattr(bench, "_candidates", lambda *_args: (candidate,))
+
+    try:
+        stages = []
+        results = bench._retriever(matter).search(matter.matter_id, "blue bicycle", stage_callback=stages.append)
+        assert stages == ["retrieving", "reranking"]
+        assert results and results[0].document_id == document.document_id
+        bench._index_document(matter, document)
+        cursor = bench.postgres_connection.cursor.return_value.__enter__.return_value
+        chunks = [call.args[1] for call in cursor.execute.call_args_list
+                  if call.args[0].startswith("INSERT INTO review_chunk(")]
+        assert len(chunks) == 1 and chunks[0][5] == text
+        assert json.loads(chunks[0][6]) == pytest.approx(DeterministicEmbeddingAdapter().embed([text])[0])
+        bench.postgres_connection.commit.assert_called_once()
+        if identity != "matching":
+            bench.learned_retrieval = True
+            with pytest.raises(RuntimeError, match="rebuilt"):
+                bench._index_document(matter, document)
+            bench.postgres_connection.commit.assert_called_once()
+    finally:
+        assert endpoint["requests"] == [], "Disabled learned retrieval contacted the endpoint"
