@@ -3,6 +3,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import date
+from itertools import combinations
+from typing import Literal
 import html
 import re
 import unicodedata
@@ -39,7 +41,7 @@ class SummaryFact:
 
 
 def _md(value):
-    value = ''.join(f'[U+{ord(char):04X}]' if unicodedata.category(char) in {'Cc', 'Cf'} else char
+    value = ''.join(f'[U+{ord(char):04X}]' if unicodedata.category(char) in {'Cc', 'Cf', 'Mn'} else char
                     for char in value)
     escaped = re.sub(r'([\\`*_\[\]~#])', r'\\\1', html.escape(' '.join(value.split()), quote=False))
     return re.sub(r'(?i)\b(?:https?|ftp):(?=//)|\bwww\.',
@@ -54,13 +56,17 @@ class ProductionSummary:
     def to_markdown(self) -> str:
         lines = ['# Production summary: ' + _md(self.name), '',
                  'Counts cover supplied documents; dates are mentioned ISO dates. '
-                 'Gaps describe recorded coverage, not proof of completeness.']
+                 'Gaps are intervals between recorded Bates labels in computed series. '
+                 'Review series status and coverage notices. '
+                 'An empty gap list does not establish completeness.']
         overview = {'documents', 'pages', 'type', 'date_range', 'undated'}
         people = {'person', 'organization'}
         for title, kinds in (('Overview', overview), ('People and organizations', people),
                              ('Gaps and coverage', {f.kind for f in self.facts} - overview - people)):
             lines += ['', '## ' + title, '']
             selected = [fact for fact in self.facts if fact.kind in kinds]
+            if title == 'Gaps and coverage':
+                selected.sort(key=lambda fact: fact.kind != 'bates_series')
             for fact in selected:
                 links = []
                 for link in fact.links:
@@ -78,23 +84,118 @@ class ProductionSummary:
         return '\n'.join(lines) + '\n'
 
 
-def _bates_facts(ranges, *, complete=True):
-    groups, unordered, facts = defaultdict(list), defaultdict(list), []
+_BATES_FACT_LIMIT = 100_000
+
+
+@dataclass(frozen=True)
+class ParsedBates:
+    prefix: str
+    lower: int
+    upper: int
+    width: int
+
+
+@dataclass(frozen=True)
+class UnresolvedBates:
+    reason: str
+    blocks: frozenset[str] | Literal['ALL']
+
+
+@dataclass(frozen=True)
+class BatesSeries:
+    prefix: str
+    intervals: tuple[tuple[int, int, int, SummaryLink], ...]
+    reasons: tuple[str, ...]
+    links: tuple[SummaryLink, ...]
+    start_only: tuple[SummaryLink, ...]
+
+    @property
+    def state(self) -> Literal['computed', 'not_computed']:
+        return 'not_computed' if self.reasons else 'computed'
+
+
+def _normalize_bates(start, end):
+    if any(unicodedata.category(char) in {'Cc', 'Cf', 'Mn'} for char in start + end):
+        return UnresolvedBates('control, format or combining character', 'ALL')
+    start, end = (unicodedata.normalize('NFKC', value).strip() for value in (start, end))
+    if any(char.isalpha() and not unicodedata.name(char, '').startswith('LATIN ')
+           for char in start + end):
+        return UnresolvedBates('non-Latin or mixed-script prefix', 'ALL')
+    first, last = (re.fullmatch(r'(.*?)([0-9]+)', value) for value in (start, end))
+    blocks = frozenset(match[1] for match in (first, last) if match)
+    if not first or not last:
+        return UnresolvedBates('nonnumeric label', blocks)
+    if first[1] != last[1]:
+        return UnresolvedBates('cross-prefix range', blocks)
+    if first[1][-1:].isdigit() or any(len(match[2]) > 18 for match in (first, last)):
+        return UnresolvedBates('numeric suffix or prefix cannot be ordered', blocks)
+    if int(first[2]) > int(last[2]):
+        return UnresolvedBates('reversed range', blocks)
+    width = max(len(match[2]) if match[2].startswith('0') else 1 for match in (first, last))
+    return ParsedBates(first[1], int(first[2]), int(last[2]), width)
+
+
+def _unique_links(links):
+    return tuple({link.document_id: link for link in links}.values())
+
+
+def _bates_facts(ranges, *, unlabeled=(), start_only=()):
+    groups, unresolved, unordered, facts = defaultdict(list), [], defaultdict(list), []
+
+    def emit(kind, text, links, count=None):
+        if len(facts) >= _BATES_FACT_LIMIT:
+            raise OverflowError('Production exceeds the complete Bates finding limit')
+        facts.append(SummaryFact(kind, text, tuple(links), count))
+
     for start, end, link in ranges:
-        unsafe = any(unicodedata.category(char) in {'Cc', 'Cf'} for char in start + end)
-        start, end = (unicodedata.normalize('NFKC', value).strip() for value in (start, end))
-        first, last = re.fullmatch(r'(.*?)([0-9]{1,18})', start), re.fullmatch(r'(.*?)([0-9]{1,18})', end)
-        mixed = any(len({unicodedata.name(char, '').split(' ')[0] for char in match[1] if char.isalpha()}) > 1
-                    for match in (first, last) if match)
-        if (unsafe or mixed or not first or not last or first[1] != last[1] or first[1][-1:].isdigit()
-                or int(first[2]) > int(last[2])):
-            reason = ' (control or format character)' if unsafe else ' (mixed-script prefix)' if mixed else ''
-            facts.append(SummaryFact('bates_unordered', f'Bates order unresolved{reason}: {start} to {end}', (link,)))
-            unordered[start, end].append(link)
+        parsed = _normalize_bates(start, end)
+        if isinstance(parsed, UnresolvedBates):
+            unresolved.append((parsed, start, end, link))
+            normalized = tuple(unicodedata.normalize('NFKC', value).strip() for value in (start, end))
+            unordered[normalized].append(link)
+        else:
+            groups[parsed.prefix].append((parsed.lower, parsed.upper, parsed.width, link))
+    blocked, global_causes = defaultdict(list), []
+    for parsed, _, _, link in unresolved:
+        if parsed.blocks == 'ALL':
+            global_causes.append((parsed.reason, link))
+        else:
+            for prefix in parsed.blocks:
+                blocked[prefix].append((parsed.reason, link))
+    if global_causes:
+        reasons = '; '.join(sorted({reason for reason, _ in global_causes}))
+        emit('bates_series', f'Bates series ALL: not computed ({reasons})',
+             _unique_links(link for _, link in global_causes))
+    series = []
+    for prefix in sorted(groups.keys() | blocked.keys()):
+        intervals = tuple(groups[prefix])
+        causes = global_causes + blocked[prefix]
+        local_refs = _unique_links([item[3] for item in intervals] + [link for _, link in blocked[prefix]])
+        refs = _unique_links(local_refs + tuple(link for _, link in global_causes))
+        starts = tuple(link for link in local_refs if link.document_id in start_only)
+        item = BatesSeries(prefix, intervals, tuple(sorted({reason for reason, _ in causes})), refs, starts)
+        series.append(item)
+        details = list(item.reasons)
+        if starts:
+            details.append(f'{len(starts)} documents have a start label only')
+        text = f'Bates series {prefix}: ' + item.state.replace('_', ' ')
+        emit('bates_series', text + (' (' + '; '.join(details) + ')' if details else ''), refs)
+    similar = defaultdict(list)
+    for item in series:
+        similar[''.join(char for char in item.prefix.casefold() if char.isalnum())].append(item)
+    for items in similar.values():
+        for first, last in combinations(items, 2):
+            emit('bates_series', f'Series {first.prefix} and {last.prefix} differ only by case or punctuation',
+                 _unique_links(first.links + last.links))
+    if unlabeled:
+        emit('bates_coverage', f'Documents without a Bates locator: {len(unlabeled)}', unlabeled, len(unlabeled))
+    if start_only:
+        emit('bates_coverage', f'Documents with a start label only: {len(start_only)}',
+             start_only.values(), len(start_only))
+    for item in series:
+        if item.state != 'computed':
             continue
-        padding = max(len(digits) if digits.startswith('0') else 1 for digits in (first[2], last[2]))
-        groups[first[1]].append((int(first[2]), int(last[2]), padding, link))
-    for prefix, intervals in sorted(groups.items()):
+        prefix, intervals = item.prefix, item.intervals
         width = max(item[2] for item in intervals)
         by_range, shared = defaultdict(dict), defaultdict(dict)
         for start, end, _, link in intervals:
@@ -108,28 +209,31 @@ def _bates_facts(ranges, *, complete=True):
                 combined = prior | refs
                 if len(combined) > 1:
                     shared[start, min(stop, end)].update(combined)
-                if len(facts) + len(shared) > 100_000:
+                if len(facts) + len(shared) > _BATES_FACT_LIMIT:
                     raise OverflowError('Production exceeds the complete Bates finding limit')
             active.append((end, refs))
-            link = next(iter(refs.values()))
-            if complete and not unordered and previous is not None and start > previous[0] + 1:
+            link = next((ref for ref in refs.values() if ref.document_id in start_only), next(iter(refs.values())))
+            if previous is not None and start > previous[0] + 1:
                 lower, upper = previous[0] + 1, start - 1
                 label = prefix + str(lower).zfill(width)
                 if lower != upper:
                     label += ' to ' + prefix + str(upper).zfill(width)
-                facts.append(SummaryFact('bates_gap', 'Missing Bates: ' + label,
-                                         (previous[1], link), upper - lower + 1))
-            if previous is None or end > previous[0]:
+                if any(ref.document_id in start_only for ref in (previous[1], link)):
+                    label += ' (covered documents may hold unrecorded labels)'
+                emit('bates_gap', 'Missing Bates: ' + label, (previous[1], link), upper - lower + 1)
+            if (previous is None or end > previous[0]
+                    or (end == previous[0] and link.document_id in start_only)):
                 previous = end, link
         for (start, end), refs in sorted(shared.items()):
             label = prefix + str(start).zfill(width)
             if end != start:
                 label += ' to ' + prefix + str(end).zfill(width)
-            facts.append(SummaryFact('bates_overlap', 'Overlapping Bates labels: ' + label,
-                                     tuple(refs.values()), len(refs)))
+            emit('bates_overlap', 'Overlapping Bates labels: ' + label, refs.values(), len(refs))
+    for parsed, start, end, link in unresolved:
+        emit('bates_unordered', f'Bates order unresolved ({parsed.reason}): {start} to {end}', (link,))
     for (start, end), refs in sorted(unordered.items()):
         if len({link.document_id for link in refs}) > 1:
-            facts.append(SummaryFact('bates_overlap', f'Duplicate Bates labels: {start} to {end}', tuple(refs)))
+            emit('bates_overlap', f'Duplicate Bates labels: {start} to {end}', refs)
     return facts
 
 
@@ -143,7 +247,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
     """
     base = '/matters/' + quote(matter_slug, safe='')
     documents, links, dates, references, ranges, notices = {}, {}, defaultdict(list), [], [], []
-    incomplete = set()
+    incomplete, unlabeled, start_only = set(), [], {}
     units_seen = chars_seen = labels_seen = 0
     for source in sources:
         doc = source.document
@@ -188,8 +292,8 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
             raise OverflowError('Production exceeds the derived record read limit') from exc
         except (OSError, ValueError, TypeError, RuntimeError):
             incomplete.add(doc.document_id)
-            found_dates, found_refs, cited_bates, labels = [], [], [], []
-            reasons.append('Derived text unavailable; facts incomplete; page and Bates coverage unresolved')
+            found_dates, found_refs, cited_bates = [], [], []
+            reasons.append('Derived text unavailable; facts incomplete; page coverage unresolved')
         if doc.state == 'ready' and not pages and doc.document_id not in incomplete:
             reasons.append('No extracted text available')
         labels = sorted(set(labels))
@@ -197,6 +301,10 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
                            tuple(start if start == end else start + ' to ' + end for start, end in labels),
                            base + '/sources/' + quote(source.action_token, safe=''))
         links[doc.document_id] = link
+        if not labels:
+            unlabeled.append(link)
+        if doc.page_count > 1 and any(loc.bates_start and not loc.bates_end for loc in source.locators):
+            start_only[doc.document_id] = link
         notices.extend(SummaryFact('readability', reason, (link,)) for reason in reasons)
         if doc.media_type == 'application/pdf':
             if doc.page_count <= 0:
@@ -237,7 +345,7 @@ def build_summary(name: str, matter_slug: str, sources: Iterable[ProductionSourc
     for value, link in references:
         if value.casefold() not in names:
             facts.append(SummaryFact('absent_reference', 'Referenced file absent from this production: ' + value, (link,)))
-    facts.extend(_bates_facts(ranges, complete=not incomplete))
+    facts.extend(_bates_facts(ranges, unlabeled=unlabeled, start_only=start_only))
     mention_count = 0
     for entity_index, (entity, mentions) in enumerate(entities, 1):
         if entity_index > 10_000:

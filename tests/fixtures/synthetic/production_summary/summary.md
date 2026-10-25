@@ -1,6 +1,6 @@
 # Production summary: Synthetic production
 
-Counts cover supplied documents; dates are mentioned ISO dates. Gaps describe recorded coverage, not proof of completeness.
+Counts cover supplied documents; dates are mentioned ISO dates. Gaps are intervals between recorded Bates labels in computed series. Review series status and coverage notices. An empty gap list does not establish completeness.
 
 ## Overview
 
@@ -24,6 +24,8 @@ Counts cover supplied documents; dates are mentioned ISO dates. Gaps describe re
 
 ## Gaps and coverage
 
+- Bates series SYN: computed (1 documents have a start label only)
+  Sources: [a (version v-a); Bates SYN001](/matters/m-synthetic/sources/token-a); [b (version v-b); Bates SYN004](/matters/m-synthetic/sources/token-b)
 - PDF pages without extracted text: 1
   Sources: [a (version v-a); Bates SYN001](/matters/m-synthetic/sources/token-a)
 - Cited Bates: SYN001
@@ -38,5 +40,9 @@ Counts cover supplied documents; dates are mentioned ISO dates. Gaps describe re
   Sources: [c (version v-c); Bates unavailable](/matters/m-synthetic/sources/token-c)
 - Referenced file absent from this production: missing.pdf
   Sources: [a (version v-a); Bates SYN001; Page 1](/matters/m-synthetic/sources/token-a?unit=1)
-- Missing Bates: SYN002 to SYN003
+- Documents without a Bates locator: 1
+  Sources: [c (version v-c); Bates unavailable](/matters/m-synthetic/sources/token-c)
+- Documents with a start label only: 1
+  Sources: [a (version v-a); Bates SYN001](/matters/m-synthetic/sources/token-a)
+- Missing Bates: SYN002 to SYN003 (covered documents may hold unrecorded labels)
   Sources: [a (version v-a); Bates SYN001](/matters/m-synthetic/sources/token-a); [b (version v-b); Bates SYN004](/matters/m-synthetic/sources/token-b)
