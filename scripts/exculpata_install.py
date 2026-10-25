@@ -80,7 +80,7 @@ from case_intelligence.generator_config import (
     bundled_generator, generator_literal, generator_pins, validate_generator_url,
 )
 from generator_host_probe import open_host_generator_request
-from case_intelligence.hardware_profile import detect_hardware, suggest_tier
+from case_intelligence.hardware_profile import detect_hardware, parse_vram_bytes, suggest_tier
 sys.path.pop(0)
 VERSION = "0.1.0-beta.1"
 STORAGE_MARKERS = (name_value("storage_marker", LEGACY_STEM), name_value("storage_marker", CURRENT_STEM))
@@ -91,6 +91,10 @@ CONTAINER_ACCOUNTS = name_value("container_accounts")
 
 class NamingError(RuntimeError):
     """An existing node cannot change naming generations implicitly or explicitly."""
+
+
+class GpuInventoryError(RuntimeError):
+    """The reported GPU inventory cannot safely support an installation plan."""
 
 
 def _legacy_account() -> bool:
@@ -1383,8 +1387,10 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
         if not row:
             continue
         if len(row) not in {4, 5}:
-            raise RuntimeError("nvidia-smi returned an unexpected GPU inventory")
+            raise GpuInventoryError("nvidia-smi returned an unreadable GPU inventory row")
         try:
+            if parse_vram_bytes(row[2].strip(), 1024 ** 2) is None:
+                raise GpuInventoryError("nvidia-smi returned an unreadable GPU inventory row")
             compute_capability = (
                 float(row[4].strip()) if len(row) == 5 else None
             )
@@ -1395,8 +1401,8 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 free_mib=int(row[3].strip()),
                 compute_capability=compute_capability,
             )
-        except ValueError as exc:
-            raise RuntimeError("nvidia-smi returned an invalid GPU inventory") from exc
+        except (ValueError, OverflowError) as error:
+            raise GpuInventoryError("nvidia-smi returned an unreadable GPU inventory row") from error
         if (
             not device.index
             or device.total_mib <= 0
@@ -1406,7 +1412,7 @@ def _parse_gpu_inventory(value: str) -> tuple[GpuDevice, ...]:
                 and device.compute_capability <= 0
             )
         ):
-            raise RuntimeError("nvidia-smi returned an invalid GPU inventory")
+            raise GpuInventoryError("nvidia-smi returned an unreadable GPU inventory row")
         devices.append(device)
     if len({device.index for device in devices}) != len(devices):
         raise RuntimeError("nvidia-smi returned duplicate GPU indices")
@@ -2834,8 +2840,9 @@ def _collect_preflight(models: str, args: argparse.Namespace | None = None, *,
                 "Saved GPU plan fits physical capacity; actual free-memory admission is deferred until this node stops"
                 if defer_gpu_free_check else "Selected GPU and model plan fits current reported hardware",
                 "Run the selected local AI tasks", "")
-        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
-            add("gpu", False, "Selected GPU/model plan unavailable, incompatible, or short of free memory",
+        except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired) as error:
+            add("gpu", False, str(error) if isinstance(error, GpuInventoryError) else
+                "Selected GPU/model plan unavailable, incompatible, or short of free memory",
                 "Generate cited answers" if models == "review" else "Transcribe recordings" if models == "transcription" else "Generate cited answers and transcribe recordings",
                 "Install the NVIDIA driver and Container Toolkit; provide compute capability 7.5 or newer and sufficient free VRAM for the selected model/GPU options. Saved bfloat16 precision requires 8.0 or newer on every generator GPU. Stop competing GPU work or choose a smaller model. Use --models none for CPU evaluation.")
         # Check the engine configuration without pulling an image or launching a

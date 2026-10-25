@@ -1,10 +1,11 @@
 {
   "schema_version": 1,
-  "fallback_profile": "cpu",
+  "fallback_profile": "potato",
+  "profile_aliases": {"cpu-16": "cpu"},
   "profiles": [
     {
-      "id": "cpu",
-      "label": "CPU only",
+      "id": "potato",
+      "label": "CPU only, below 14 GiB reported RAM",
       "accelerator": "cpu",
       "min_ram_mib": 0,
       "max_ram_mib": 14335,
@@ -14,14 +15,14 @@
       "tradeoff": "Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result."
     },
     {
-      "id": "cpu-16",
-      "label": "CPU only, 16 GB RAM and up",
+      "id": "cpu",
+      "label": "CPU only, at least 14 GiB reported RAM",
       "accelerator": "cpu",
       "min_ram_mib": 14336,
       "generator": "Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
       "asr": "faster-whisper small or medium, int8, or skip transcription.",
-      "tradeoff": "A 16 GB machine can hold a 4B quantized model beside the application. Answers are still slow. Firmware often reserves part of installed RAM, so 14 GiB of reported memory matches this tier. This is a suggestion, not a measured quality result."
+      "tradeoff": "A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result."
     },
     {
       "id": "gpu-8",
@@ -64,17 +65,39 @@
       "generator": "Qwen3.5-9B through the bundled vLLM service. This is the current reference profile.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
       "asr": "faster-whisper large-v3, float16.",
-      "tradeoff": "This matches the bundled generator. It is the reference deployment shape, not a published accuracy score."
+      "tradeoff": "This matches the bundled generator and is the reference deployment shape. This is a suggestion, not a measured quality result."
     },
     {
       "id": "apple-16",
       "label": "Apple Silicon, 16 GB unified memory and up",
       "accelerator": "apple",
-      "min_ram_mib": 14336,
+      "min_ram_mib": 12288,
+      "max_ram_mib": 24575,
       "generator": "Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version.",
       "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
       "asr": "faster-whisper on CPU, int8. whisper.cpp is not part of this version.",
       "tradeoff": "Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "apple-32",
+      "label": "Apple Silicon, 32 GB unified memory and up",
+      "accelerator": "apple",
+      "min_ram_mib": 24576,
+      "generator": "Qwen3.5-9B through Ollama on Metal. MLX is not part of this version.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on CPU, inside Exculpata.",
+      "asr": "faster-whisper on CPU, int8. whisper.cpp is not part of this version.",
+      "tradeoff": "The model budget reserves 25 percent of unified memory for the operating system and application work. This is a suggestion, not a measured quality result."
+    },
+    {
+      "id": "ultra",
+      "label": "Two or more 48 GB GPUs",
+      "accelerator": "multi-gpu",
+      "min_devices": 2,
+      "min_device_vram_mib": 46068,
+      "generator": "Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available.",
+      "embed_rerank": "Granite embedding and the ModernBERT reranker on GPU, inside Exculpata.",
+      "asr": "faster-whisper large-v3, float16.",
+      "tradeoff": "Multiple data-center GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. This is a suggestion, not a measured quality result."
     }
   ]
 }

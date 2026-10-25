@@ -7,7 +7,11 @@
   "required": ["schema_version", "fallback_profile", "profiles"],
   "properties": {
     "schema_version": {"const": 1},
-    "fallback_profile": {"type": "string", "minLength": 1},
+    "fallback_profile": {"const": "potato"},
+    "profile_aliases": {
+      "type": "object",
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
     "profiles": {
       "type": "array",
       "minItems": 1,
@@ -21,14 +25,32 @@
       "required": [
         "id", "label", "accelerator", "generator", "embed_rerank", "asr", "tradeoff"
       ],
+      "allOf": [
+        {
+          "if": {"properties": {"id": {"const": "cpu"}}},
+          "then": {
+            "required": ["min_ram_mib"],
+            "properties": {"min_ram_mib": {"const": 14336}}
+          }
+        },
+        {
+          "if": {"properties": {"id": {"const": "potato"}}},
+          "then": {
+            "required": ["max_ram_mib"],
+            "properties": {"max_ram_mib": {"const": 14335}}
+          }
+        }
+      ],
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "label": {"type": "string", "minLength": 1},
-        "accelerator": {"enum": ["cpu", "gpu", "apple"]},
+        "accelerator": {"enum": ["cpu", "gpu", "apple", "multi-gpu"]},
         "min_ram_mib": {"type": ["integer", "null"], "minimum": 0},
         "max_ram_mib": {"type": ["integer", "null"], "minimum": 0},
         "min_vram_mib": {"type": ["integer", "null"], "minimum": 0},
         "max_vram_mib": {"type": ["integer", "null"], "minimum": 0},
+        "min_devices": {"type": ["integer", "null"], "minimum": 2},
+        "min_device_vram_mib": {"type": ["integer", "null"], "minimum": 0},
         "generator": {"type": "string", "minLength": 1},
         "embed_rerank": {"type": "string", "minLength": 1},
         "asr": {"type": "string", "minLength": 1},
