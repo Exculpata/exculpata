@@ -7,6 +7,7 @@ import re
 import pytest
 
 from case_intelligence import tier_evals as tiers
+from tests.runtime_probes import tier_validator_without_guard
 
 
 def card(status="unmeasured"):
@@ -64,19 +65,25 @@ def test_guard_mutation_is_killed(monkeypatch, name, status, path, value, messag
     tree = ast.parse(inspect.getsource(tiers.validate_scorecard))
     messages = {node.exc.args[0].value for node in ast.walk(tree) if isinstance(node, ast.Raise)}
     assert messages == {guard[4] for guard in GUARDS}
-    guards = [node for node in ast.walk(tree) if isinstance(node, ast.If)
-              and any(isinstance(child, ast.Raise) and isinstance(child.exc, ast.Call)
-                      and child.exc.args and isinstance(child.exc.args[0], ast.Constant)
-                      and child.exc.args[0].value == message for child in node.body)]
-    assert len(guards) == 1
-    guards[0].test = ast.Constant(False)
-    namespace = vars(tiers).copy()
-    exec(compile(ast.fix_missing_locations(tree), "<synthetic guard mutation>", "exec"), namespace)
-    disabled = namespace["validate_scorecard"]
+    disabled = tier_validator_without_guard(message)
     disabled(result)  # Acceptance proves no other guard rejects this fixture.
     monkeypatch.setattr(tiers, "validate_scorecard", disabled)
     with pytest.raises(pytest.fail.Exception, match="DID NOT RAISE"):
         test_validator_guard(name, status, path, value, message)
+
+
+def test_mutation_probe_rejects_unknown_guard():
+    with pytest.raises(ValueError, match="exactly one tier validator guard"):
+        tier_validator_without_guard("synthetic unknown guard")
+
+
+def test_mutation_probe_rejects_changed_source(monkeypatch):
+    def changed_validator(card):
+        raise AssertionError("unreviewed validator must not execute")
+
+    monkeypatch.setattr(tiers, "validate_scorecard", changed_validator)
+    with pytest.raises(RuntimeError, match="Tier validator source changed"):
+        tier_validator_without_guard(GUARDS[0][4])
 
 
 def test_schema_and_profile_settings():
