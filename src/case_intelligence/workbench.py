@@ -1056,13 +1056,17 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             self.postgres_connection = self._connect_postgres(configured_postgres_dsn)
             self._owns_postgres = self.postgres_connection is not None
         self.embedding = embedding
-        self.reranker = reranker
-        worker_ready = False
+        self.reranker, worker_ready = reranker, False
         if self.embedding is None or self.reranker is None:
             worker_url = os.getenv("CASE_INTELLIGENCE_RETRIEVAL_WORKER_URL", "").strip()
-            worker_ready = self._retrieval_worker_ready(worker_url) if worker_url else False
-            if worker_ready:
+            from .retrieval_endpoints import configured_endpoint
+            local_ready = bool(worker_url and self._retrieval_worker_ready(worker_url))
+            embedding_ready = configured_endpoint("EMBEDDING") is not None or local_ready
+            rerank_ready = configured_endpoint("RERANK") is not None or local_ready
+            worker_ready = embedding_ready or rerank_ready
+            if self.embedding is None and embedding_ready:
                 self.embedding = RemoteEmbeddingAdapter(worker_url)
+            if self.reranker is None and rerank_ready:
                 self.reranker = RemoteRerankerAdapter(worker_url)
         if self.embedding is None:
             self.embedding = DeterministicEmbeddingAdapter()
@@ -4365,6 +4369,9 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     def _index_document(self, matter: MatterRecord, document: PilotDocument) -> None:
         if not self.postgres_ready or self.postgres_connection is None:
             return
+        if self.learned_retrieval:
+            from .retrieval_endpoints import require_index_identity
+            require_index_identity(require_record=not isinstance(self.embedding, DeterministicEmbeddingAdapter))
         with self._postgres_lock:
             upsert_postgres_document(
                 self.postgres_connection,

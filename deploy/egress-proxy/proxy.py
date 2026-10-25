@@ -183,7 +183,8 @@ class Server(socketserver.ThreadingTCPServer):
 
 # Operator-configured relay destinations: (exact HTTPS URL setting, reviewed pins setting).
 # The OIDC issuer is handled first with its existing rules.
-OPERATOR_DESTINATIONS = (("GENERATOR_EGRESS_URL", "GENERATOR_EGRESS_PINS"),)
+OPERATOR_DESTINATIONS = tuple((role + "_EGRESS_URL", role + "_EGRESS_PINS")
+                              for role in ("GENERATOR", "EMBEDDING", "RERANK"))
 
 
 class DestinationConfigurationError(Denied):
