@@ -580,3 +580,96 @@ def test_long_numeric_tail_with_matching_plain_base_is_suffixed():
     assert all({link.document_id for link in f.links} == {'suffix'} for f in suffixes)
     assert [gap.text for gap in facts(summary, 'bates_gap')] == ['Missing Bates: ABC0002.00002']
     assert not overlaps(summary) and not facts(summary, 'bates_unordered')
+
+
+@pytest.mark.parametrize('plain,family,extra,expected', [
+    (('ABC0001', 'ABC0003'), ('ABC0005.001', 'ABC0005.010'), [],
+     [('ABC0004', 'ABC0005.', {'p', 'f'}, 1)]),
+    (('ABC0003', 'ABC0005'), ('ABC0001.001', 'ABC0001.010'), [],
+     [('ABC0002', 'ABC0001.', {'p', 'f'}, 1)]),
+    (('ABC0001', 'ABC0003'), ('ABC0005-01', 'ABC0005-02'), [],
+     [('ABC0004', 'ABC0005-', {'p', 'f'}, 1)]),
+    (('ABC0001', 'ABC0098'), ('ABC0100.0001', 'ABC0100.0040'), [],
+     [('ABC0099', 'ABC0100.', {'p', 'f'}, 1)]),
+    (('ABC0001', 'ABC0003'), ('ABC0005.001', 'ABC0005.001'),
+     [source('g', labels=['ABC0008.001'])],
+     [('ABC0004', 'ABC0005.', {'p', 'f'}, 1),
+      ('ABC0006 to ABC0007', 'ABC0005. and ABC0008.', {'f', 'g'}, 2)]),
+], ids=['after-dot', 'before-dot', 'after-dash', 'wide-tail', 'two-families'])
+def test_family_outside_plain_span_reports_conditional_edge_gap(plain, family, extra, expected):
+    summary = build_summary('Synthetic', 'm', [with_ranges('p', [plain]), with_ranges('f', [family]), *extra])
+    assert not facts(summary, 'bates_gap')
+    assert [(fact.text, {link.document_id for link in fact.links}, fact.count)
+            for fact in facts(summary, 'bates_gap_conditional')] == [
+        (f'Possible missing Bates: {label} (if sub-series {families} '
+         f'{"extend" if " and " in families else "extends"} series ABC)', docs, count)
+        for label, families, docs, count in expected]
+
+
+def test_year_prefix_past_plain_series_is_conditional_not_missing():
+    summary = build_summary('Synthetic', 'm', [with_ranges('p', [('EPA-HQ-0001', 'EPA-HQ-0100')]),
+        with_ranges('f', [('EPA-HQ-2019-01', 'EPA-HQ-2019-50')])])
+    gap, = facts(summary, 'bates_gap_conditional')
+    assert gap.text == ('Possible missing Bates: EPA-HQ-0101 to EPA-HQ-2018 '
+                        '(if sub-series EPA-HQ-2019- extends series EPA-HQ-)')
+    assert gap.count == 1918 and {link.document_id for link in gap.links} == {'p', 'f'}
+    assert not facts(summary, 'bates_gap')
+
+
+def test_families_without_plain_series_report_conditional_gap():
+    summary = build_summary('Synthetic', 'm', [source('a', labels=['VOL001-0001', 'VOL001-0002']),
+        source('b', labels=['VOL003-0001'])])
+    gap, = facts(summary, 'bates_gap_conditional')
+    assert gap.text == ('Possible missing Bates: VOL002 '
+                        '(if sub-series VOL001- and VOL003- extend series VOL)')
+    assert gap.count == 1 and {link.document_id for link in gap.links} == {'a', 'b'}
+    assert not facts(summary, 'bates_gap')
+
+
+@pytest.mark.parametrize('width', [5, 1], ids=['padded5', 'unpadded'])
+def test_suffix_base_coverage_uses_series_spelling(width):
+    summary = build_summary('Synthetic', 'm', [
+        source('p', labels=[f'ABC{number:0{width}d}' for number in (1, 2, 4, 5)]),
+        source('f', labels=['ABC0003.001'])])
+    suffix, = facts(summary, 'bates_suffix')
+    assert suffix.text == f'Suffixed Bates labels: ABC0003.001 (base coverage: ABC{3:0{width}d})'
+    assert {link.document_id for link in suffix.links} == {'f'}
+    assert not facts(summary, 'bates_gap')
+
+
+def test_conditional_edge_gap_export_cites_sources(tmp_path):
+    summary = build_summary('Synthetic', 'm', [with_ranges('p', [('ABC0001', 'ABC0003')]),
+        with_ranges('f', [('ABC0005.001', 'ABC0005.010')])])
+    artifact = tmp_path / 'summary.md'
+    # fixture-write: Persist the synthetic conditional-gap export and verify its citations.
+    artifact.write_text(summary.to_markdown(), encoding='utf-8')
+    markdown = artifact.read_text(encoding='utf-8')
+    assert ('- Possible missing Bates: ABC0004 '
+            '(if sub-series ABC0005. extends series ABC)') in markdown
+    assert '- Missing Bates: ABC0004' not in markdown
+    rendered = MarkdownIt().render(markdown)
+    for key in ('p', 'f'):
+        assert f'href="/matters/m/sources/token-{key}"' in rendered
+
+
+@pytest.mark.parametrize('kind', ['bates_gap_conditional'])
+def test_conditional_bates_fact_uses_finding_limit(monkeypatch, kind):
+    sources = [with_ranges('p', [('ABC0001', 'ABC0003')]),
+               with_ranges('f', [('ABC0005.001', 'ABC0005.010')])]
+    summary = build_summary('Synthetic', 'm', sources)
+    assert facts(summary, kind)
+    limit = len([fact for fact in summary.facts if fact.kind.startswith('bates_')]) - 1
+    monkeypatch.setattr('case_intelligence.production_summary._BATES_FACT_LIMIT', limit)
+    with pytest.raises(OverflowError, match='Bates finding limit'):
+        build_summary('Synthetic', 'm', sources)
+
+
+@pytest.mark.parametrize('family,blockers', [
+    ('ABC0004.001', []),
+    ('ABC0005.001', [with_ranges('x', [('ABC0009', 'ABC0007')])]),
+    ('ABC0005.001', [source('x', labels=['ABC\u200b0002'])]),
+], ids=['adjacent', 'blocked', 'global'])
+def test_adjacent_blocked_or_global_family_emits_no_conditional(family, blockers):
+    summary = build_summary('Synthetic', 'm', [with_ranges('p', [('ABC0001', 'ABC0003')]),
+        source('f', labels=[family]), *blockers])
+    assert not facts(summary, 'bates_gap_conditional')

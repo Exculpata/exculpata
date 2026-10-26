@@ -150,6 +150,14 @@ def _normalize_bates(start, end, *, numeric_bases=None):
     return ParsedBates(first[1], int(first[2]), int(last[2]), width, suffixed)
 
 
+def _numeric_tail(value: str) -> tuple[str, int, int, str] | None:
+    match = re.fullmatch(r'(.*?)([0-9]{1,18})([._-])[0-9]+', unicodedata.normalize('NFKC', value).strip())
+    if match:
+        width = len(match[2]) if match[2].startswith('0') else 1
+        return match[1], int(match[2]), width, match[1] + match[2] + match[3]
+    return None
+
+
 def _unique_links(links):
     return tuple({link.document_id: link for link in links}.values())
 
@@ -168,6 +176,7 @@ def _related_prefix(prefix):
 def _bates_facts(ranges, *, unlabeled=(), start_only=()):
     groups, unresolved, unordered, facts = defaultdict(list), [], defaultdict(list), []
     suffixed, base_coverage, parsed_ranges = [], defaultdict(list), []
+    edges = defaultdict(list)
 
     def emit(kind, text, links, count=None):
         if len(facts) >= _BATES_FACT_LIMIT:
@@ -189,9 +198,16 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
     numeric_bases = {prefix: (min(item[0] for item in intervals), max(item[1] for item in intervals),
                              {str(item[0]).zfill(item[2]) for item in intervals})
                      for prefix, intervals in groups.items()}
+    widths = {prefix: max(item[2] for item in intervals) for prefix, intervals in groups.items()}
     for parsed, start, end, link in parsed_ranges:
         base = _normalize_bates(start, end, numeric_bases=numeric_bases)
         if base == parsed:
+            tail = _numeric_tail(start)
+            if isinstance(parsed, ParsedBates) and tail and tail == _numeric_tail(end):
+                prefix, number, width, family = tail
+                bounds = numeric_bases.get(prefix)
+                if family == parsed.prefix and (bounds is None or not bounds[0] <= number <= bounds[1]):
+                    edges[prefix].append((number, number, width, link, family))
             continue
         if isinstance(base, ParsedBates):
             if isinstance(parsed, UnresolvedBates):
@@ -207,7 +223,7 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
             continue
         base_coverage[parsed.prefix].append((parsed.lower, parsed.upper, parsed.width, link))
         label = start if start == end else start + ' to ' + end
-        base = parsed.prefix + str(parsed.lower).zfill(parsed.width)
+        base = parsed.prefix + str(parsed.lower).zfill(widths[parsed.prefix])
         emit('bates_suffix', f'Suffixed Bates labels: {label} (base coverage: {base})', (link,))
     blocked, global_causes = defaultdict(list), []
     for parsed, _, _, link in unresolved:
@@ -251,9 +267,37 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
     if start_only:
         emit('bates_coverage', f'Documents with a start label only: {len(start_only)}',
              start_only.values(), len(start_only))
+
+    def emit_gaps(prefix: str, items, width: int, span: tuple[int, int] | None) -> None:
+        coverage = defaultdict(dict)
+        for start, end, _, link, *family in items:
+            coverage[start, end][link.document_id] = link, next(iter(family), '')
+        previous = None
+        for (start, end), refs in sorted(coverage.items()):
+            link, family = next((ref for ref in refs.values() if ref[0].document_id in start_only),
+                                next(iter(refs.values())))
+            if previous is not None and start > previous[0] + 1:
+                lower, upper = previous[0] + 1, start - 1
+                label = prefix + str(lower).zfill(width)
+                if lower != upper:
+                    label += ' to ' + prefix + str(upper).zfill(width)
+                kind, text = 'bates_gap', 'Missing Bates: ' + label
+                if span is None or not span[0] <= lower <= upper <= span[1]:
+                    families = [value for value in (previous[2], family) if value]
+                    verb = 'extend' if len(families) == 2 else 'extends'
+                    kind = 'bates_gap_conditional'
+                    text = (f'Possible missing Bates: {label} '
+                            f'(if sub-series {" and ".join(families)} {verb} series {prefix})')
+                if any(ref.document_id in start_only for ref in (previous[1], link)):
+                    text += ' (covered documents may hold unrecorded labels)'
+                emit(kind, text, (previous[1], link), upper - lower + 1)
+            if (previous is None or end > previous[0]
+                    or (end == previous[0] and link.document_id in start_only)):
+                previous = end, link, family
+
     for item in series:
         prefix, intervals = item.prefix, item.intervals
-        width = max((interval[2] for interval in item.coverage), default=1)
+        width = max((interval[2] for interval in intervals), default=1)
         by_range, shared = defaultdict(dict), defaultdict(dict)
         for start, end, _, link in intervals:
             by_range[start, end][link.document_id] = link
@@ -271,29 +315,17 @@ def _bates_facts(ranges, *, unlabeled=(), start_only=()):
                 if len(facts) + len(shared) > _BATES_FACT_LIMIT:
                     raise OverflowError('Production exceeds the complete Bates finding limit')
             active.append((end, refs))
-        coverage = defaultdict(dict)
         if item.state == 'computed':
-            for start, end, _, link in item.coverage:
-                coverage[start, end][link.document_id] = link
-        previous = None
-        for (start, end), refs in sorted(coverage.items()):
-            link = next((ref for ref in refs.values() if ref.document_id in start_only), next(iter(refs.values())))
-            if previous is not None and start > previous[0] + 1:
-                lower, upper = previous[0] + 1, start - 1
-                label = prefix + str(lower).zfill(width)
-                if lower != upper:
-                    label += ' to ' + prefix + str(upper).zfill(width)
-                if any(ref.document_id in start_only for ref in (previous[1], link)):
-                    label += ' (covered documents may hold unrecorded labels)'
-                emit('bates_gap', 'Missing Bates: ' + label, (previous[1], link), upper - lower + 1)
-            if (previous is None or end > previous[0]
-                    or (end == previous[0] and link.document_id in start_only)):
-                previous = end, link
+            emit_gaps(prefix, item.coverage + tuple(edges[prefix]), width,
+                      (min(run[0] for run in item.coverage), max(run[1] for run in item.coverage)))
         for (start, end), refs in sorted(shared.items()):
             label = prefix + str(start).zfill(width)
             if end != start:
                 label += ' to ' + prefix + str(end).zfill(width)
             emit('bates_overlap', 'Overlapping Bates labels: ' + label, refs.values(), len(refs))
+    for prefix in sorted(edges.keys() - groups.keys() - blocked.keys()):
+        if not global_causes:
+            emit_gaps(prefix, edges[prefix], max(run[2] for run in edges[prefix]), None)
     for parsed, start, end, link in unresolved:
         emit('bates_unordered', f'Bates order unresolved ({parsed.reason}): {start} to {end}', (link,))
     for (start, end), refs in sorted(unordered.items()):

@@ -28,24 +28,26 @@ both series. Labels without a recognizable numeric base block no numeric series.
 Control, format or combining characters and non-Latin or mixed-script prefixes
 cannot be scoped safely: an ALL status names their cause and every series is
 marked not computed. Unresolved labels retain notices and exact duplicate checks.
-Letter suffixes cover their base number for gap detection in an existing numeric
-series. Dot-, dash- and underscore-numeric labels form separate series keyed by
-the full base label plus separator, using the same gap and overlap calculations.
-They also cover their base number, regardless of tail width, when a plain series
-with the same prefix spans that number (from its lowest recorded start to its
-highest recorded end, including internal gaps). An isolated plain base must match
-the base spelling, so VOL0001 alone does not establish VOL001 as a base.
-Each such base is covered with a citation to the sub-series.
-Otherwise they remain ordinary labels in their own
-series, including year and volume prefixes such as EPA-HQ-2019-000091 and
-VOL001-0001 when no matching plain base series spans that number.
-Each label or same-base range recognized as suffixed retains its own cited fact.
+A dot-, dash- or underscore-numeric label such as ABC0005.001 has two readings:
+a page suffix of base ABC0005 in series ABC, or a label in its own series ABC0005.
+(including year and volume prefixes). Gaps and overlaps inside the own series
+are always computed when ordering is resolved. In series ABC, a number is reported
+as `Missing Bates` only when it is unrecorded under both readings. A number
+unrecorded under only one reading gets a cited fact naming the sub-series:
+
+- A base inside the plain series' recorded span gets
+  `Suffixed Bates labels: … (base coverage: …)`.
+- Numbers between the plain series (or another sub-series) and a sub-series base
+  outside that span get `Possible missing Bates: … (if sub-series … extends series …)`.
+
+Bases are compared by integer value and shown in the plain series' spelling.
+Letter suffixes have only one reading, so they always cover their base.
 Base coverage does not make distinct suffixed labels overlap. Letter-suffix-only
 series and recognized suffixed ranges spanning different base numbers remain
 explicitly unresolved and not computed.
 Series differing only by case, punctuation, whitespace, Latin small capitals or
-dotless i receive a notice but remain separate. Gap labels use the widest
-zero-padded numeric portion in their series.
+dotless i receive a notice but remain separate. Gap and base labels use the plain
+series' widest spelling; without a plain series, conditional gaps use the widest base spelling.
 Page-only locators do not consume the Bates limit. Every emitted Bates fact,
 including gaps, counts toward the finding limit.
 
