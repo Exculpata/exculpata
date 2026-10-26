@@ -77,7 +77,18 @@ def _gateway_logging(monkeypatch, unsupported):
     return []
 
 
+def _law_gate(monkeypatch, unsupported):
+    from tests.test_law_gate import load_gate
+
+    try:
+        load_gate().sha("unknown" if unsupported else "a" * 40)
+    except ValueError as error:
+        return [str(error)]
+    return []
+
+
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_law_gate, "run", id="law-gate-invalid-sha"),
     pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
     pytest.param(_pr_body_allowance, "check_body", id="pr-body-invalid-allowance"),
     pytest.param(_gateway_logging, "assert_gateway_logging", id="gateway-unreviewed-include"),
