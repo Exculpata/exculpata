@@ -268,3 +268,34 @@ def test_G7_mixed_production_keeps_missing_and_possible_side_by_side():
     possible_run(facts, 5, 6, "b", "c", "e")
     possible_run(facts, 8, 8, "b", "c", "f")
     assert not any("gaps outside" in f.text for f in facts)
+
+def test_U31_nonplain_range_extends_from_largest_reach_by_count():
+    facts = compute_bates_gaps([doc("a", "ABC0010"), doc("b", "ABC-12", "ABC-13", count=5),
+                                doc("c", "ABC0020")])
+    assert missing(facts) == {(18, 19)}
+    possible_run(facts, 11, 17, "a", "b", "c")
+
+def test_U32_narrow_range_shape_reaches_interior():
+    facts = compute_bates_gaps([doc("a", "ABC0000"), doc("b", "ABC 0001-0003", count=1),
+                                doc("c", "ABC0005")])
+    assert missing(facts) == {(4, 4)}
+    possible_run(facts, 1, 3, "a", "b", "c")
+
+@pytest.mark.parametrize("label", ["ABC 001-0003", "ABC 0003-0001"])
+def test_U33_unequal_width_or_reversed_label_keeps_wide_reach(label):
+    facts = compute_bates_gaps([doc("a", "ABC0000"), doc("b", label), doc("c", "ABC0005")])
+    assert missing(facts) == {(2, 2), (4, 4)}
+    possible_run(facts, 1, 1, "a", "b", "c")
+    possible_run(facts, 3, 3, "a", "b", "c")
+
+def test_U34_prefixed_two_run_label_keeps_wide_reach():
+    facts = compute_bates_gaps([doc("a", "ABC2000"), doc("b", "X-ABC0002.001"),
+                                doc("c", "ABC2002")])
+    assert not missing(facts)
+    possible_run(facts, 2001, 2001, "a", "b", "c")
+
+def test_U35_narrow_range_requires_series_digit_width():
+    facts = compute_bates_gaps([doc("a", "ABC0511"), doc("b", "ABC05-12"),
+                                doc("c", "ABC0513")])
+    assert not missing(facts)
+    possible_run(facts, 512, 512, "a", "b", "c")
