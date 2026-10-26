@@ -147,14 +147,18 @@ def test_G4_gap_facts_count_toward_limit():
     with pytest.raises(OverflowError):
         compute_bates_gaps(doc(str(i), f"ABC{i * 2:06d}") for i in range(100002))
 
-@pytest.mark.parametrize("label,upper", [
-    (label, 2) for label in ["ABC--0002", "ABC-_0002", "ABC - 0002", "ABC. 0002",
+@pytest.mark.parametrize("label,upper,expected_missing", [
+    (label, 2, None) for label in ["ABC--0002", "ABC-_0002", "ABC - 0002", "ABC. 0002",
                            "ABC (0002)", "ABC‥0002", "-ABC0002", "[ABC0002]",
                            "AB-C0002", "ABC-X0002"]
-] + [(label, 8) for label in ["ABC0,005", "ABC0.005", "ABC00-02"]])
-def test_U17_marked_payloads(label, upper):
+] + [("ABC0,005", 8, {(2, 4), (6, 8)}), ("ABC0.005", 8, {(2, 4), (6, 8)}),
+     ("ABC00-02", 8, {(3, 8)})])
+def test_U17_marked_payloads(label, upper, expected_missing):
     facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", label), doc("c", f"ABC{upper + 1:04d}")])
-    protected(facts, "b", 2, upper)
+    if expected_missing is None:
+        protected(facts, "b", 2, upper)
+    else:
+        assert missing(facts, "ABC") == expected_missing
     assert cited(facts, "b", "possible")
 
 @pytest.mark.parametrize("start,end", [("ABC0002", "ABC--0009")])
