@@ -14,6 +14,11 @@ import unicodedata
 import wave
 from pathlib import Path
 
+try:
+    from corpus_recognition import ASR_WEIGHTS_FILE
+except ModuleNotFoundError:
+    from scripts.corpus_recognition import ASR_WEIGHTS_FILE
+
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / 'benchmarks/corpus/v1'
 TRANSCRIPT_QUALIFIER = 'The machine transcript appears to say that '
@@ -34,6 +39,7 @@ REVIEWED_ASR = {
     'license': 'MIT',
     'runtime': 'faster-whisper==1.2.1',
     'compute_type': 'int8',
+    'sha256': {ASR_WEIGHTS_FILE: '69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1'},
 }
 REVIEWED_OCR = {
     'model_id': 'tesseract-ocr/tessdata_fast',
