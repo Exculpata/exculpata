@@ -355,14 +355,35 @@ those roots is exempted. Pinned third-party
 internals remain dependency review material; the offline IDNA source archive has
 its own hash/license manifest and is inspected by the publication archive gate.
 
-Workflow run steps accept only effective shells `bash`, `sh` and `pwsh`, chosen
-from the step, job defaults, workflow defaults, then `bash`. Python shells and
-custom shell templates block. Run blocks support bare `python`/`python3` quoted
-single-argument `-c` commands and `python -` heredocs. Other inline launches,
-including virtualenv paths, minor-version executables, environment prefixes and
-piped stdin, fail closed with workflow, job and step diagnostics. Variable command
-tokens, unparsed interpreter names (such as `python2`, `pypy3`, `py` and
-`python.exe`), nested shell command strings and `eval` also block.
+Workflow run steps use an allowed grammar. Anything outside it blocks with
+workflow, job and step diagnostics. Only effective shells `bash` and `sh` are
+accepted, chosen from the step, job defaults, workflow defaults, then `bash`.
+PowerShell, Python shells and custom shell templates block.
+
+Every command word must be a plain literal in the scanner's known-safe command
+set, or a fully parsed Python launch. Quoted or escaped command names, globs,
+brace expansion, variable expansion and command substitution in command position
+block. Unknown commands, including `alias`, `shopt` and evaluation wrappers,
+block. Ordinary arguments accept literal words, quoted strings and quoted simple
+variables or dotted Actions values. The only command substitution admitted in an
+argument is the exact `$(git rev-parse HEAD)` check used by current workflows.
+The grammar permits comments, simple assignments, known commands joined by
+`;`, `&&`, `||` or pipes, output redirects, and bounded `if ! ...; then` / `fi`
+blocks. These operators cannot introduce a shell or interpreter. The two exact
+corpus guard commands, `bash scripts/corpus-write-guard.sh prepare` and
+`bash scripts/corpus-write-guard.sh check`, are standalone grammar entries;
+other shell invocations and any pipe or redirect into them block.
+Line continuations require a final backslash after whitespace and complete words
+with closed quotes; trailing whitespace after the backslash is unsupported.
+
+Inline Python accepts bare `python`/`python3` with a quoted single `-c` argument
+without shell expansion, or `python -` heredocs. Heredoc delimiters are simple
+names, optionally single- or double-quoted. A terminator must match the complete
+line exactly; `<<-` removes only leading tabs from the terminator and body.
+Unterminated bodies, unmodeled delimiter syntax and expansion in unquoted bodies
+block. The complete body must parse as Python and receives the source inventory.
+Other inline launches, including virtualenv paths, minor-version executables,
+environment prefixes and piped or redirected stdin, block.
 File and module launches recognize interpreter paths, environment assignments and
 bounded flags, but require an exact command allowance tied to the workflow,
 including arguments. Repository Python files still receive the source inventory.

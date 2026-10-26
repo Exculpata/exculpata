@@ -12,7 +12,6 @@ from pathlib import Path
 import re
 import sys
 import shlex
-import textwrap
 import tomllib
 
 import yaml
@@ -24,7 +23,20 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
                    "huggingface_hub", "faster_whisper", "ctranslate2", "av")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
-PYTHON_COMMAND = re.compile(r'(?:[^\s]*/)?python(?:3(?:\.\d+)?)?')
+PYTHON_COMMAND = r'(?:[A-Za-z0-9_./-]*/)?python(?:3(?:\.\d+)?)?'
+VARIABLE = r'\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\}|\{\{[ \t]*[A-Za-z_][\w.]*[ \t]*\}\})'
+DOUBLE_QUOTED = rf'"(?:[^"$`\\\n]|{VARIABLE}|\$\(git rev-parse HEAD\)|\\["\\])*"'
+WORD = rf"(?:[A-Za-z0-9_./:=,@%+!?*\[\]{{}}~-]|'[^'\n]*'|{DOUBLE_QUOTED})+"
+ASSIGNMENT = rf'[A-Za-z_]\w*={WORD}'
+SAFE_COMMANDS = {'echo', 'test', 'exit', 'curl', 'sha256sum', 'tar', '/tmp/gitleaks',
+                 'make', 'docker', './scripts/compose-check.sh'}
+SAFE_SIMPLE = (rf"(?:{'|'.join(re.escape(name) for name in sorted(SAFE_COMMANDS))})(?:[ \t]+{WORD})*"
+               rf'(?:[ \t]*(?:[12]?>|>>)[ \t]*{WORD})?(?:[ \t]+2>&1)?')
+SAFE_LIST = re.compile(rf'{SAFE_SIMPLE}(?:[ \t]*(?:&&|\|\||[;|])[ \t]*{SAFE_SIMPLE})*;?')
+SHELL_SCRIPTS = {f'bash scripts/corpus-write-guard.sh {mode}' for mode in ('prepare', 'check')}
+INLINE = re.compile(r'''python3?[ \t]+-c[ \t]+('[^'\n]*'|"(?:[^"$`\\\n]|\\["\\])*")''')
+HEREDOC = re.compile(rf'''python3?[ \t]+-(?:[ \t]+{WORD})*[ \t]*<<(-?)[ \t]*(['"]?)(\w+)\2''')
+LAUNCH = re.compile(rf'(?:env[ \t]+)?(?:{ASSIGNMENT}[ \t]+)*({PYTHON_COMMAND})[ \t]+({WORD}(?:[ \t]+{WORD})*)')
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -78,9 +90,13 @@ def source_inventory(root):
     for path in sorted(set(root.glob('.github/workflows/*.yml')) |
                        set(root.glob('.github/workflows/*.yaml'))):
         relative = path.relative_to(root).as_posix()
-        if path.is_symlink():
-            raise ValueError(f"{relative}:1: symlinked workflow")
-        found.extend(workflow_file_inventory(relative, path.read_text()))
+        try:
+            if path.is_symlink():
+                raise OSError('symlinked workflow')
+            source = path.read_text()
+        except (OSError, UnicodeError):
+            raise SyntaxError('invalid workflow: unreadable or symlinked source', (relative, 1, 1, '')) from None
+        found.extend(workflow_file_inventory(relative, source))
     return found
 
 
@@ -120,7 +136,7 @@ def workflow_file_inventory(relative, source):
 
     try:
         document = yaml.compose(source)
-    except yaml.YAMLError as exc:
+    except (yaml.YAMLError, RecursionError) as exc:
         mark = getattr(exc, 'problem_mark', None)
         raise SyntaxError('invalid workflow: malformed YAML',
                           (relative, mark.line + 1 if mark else 1, 1, '')) from None
@@ -159,8 +175,8 @@ def workflow_file_inventory(relative, source):
                     run = values['run']
                     command = string(run)
                     effective_shell = string(values['shell']) if 'shell' in values else job_shell
-                    if effective_shell not in {'bash', 'sh', 'pwsh'}:
-                        raise SyntaxError('unsupported shell; use workflow_inventory() with bash, sh or pwsh',
+                    if effective_shell not in {'bash', 'sh'}:
+                        raise SyntaxError('unsupported shell; use workflow_inventory() with bash or sh',
                                           (relative, run.start_mark.line + 1, 1, effective_shell))
                     offset = run.start_mark.line + (run.style == '|')
                     found.extend(workflow_inventory(relative, command, offset))
@@ -168,103 +184,69 @@ def workflow_file_inventory(relative, source):
                 if not exc.msg.startswith('invalid workflow:'):
                     exc.msg = f'{exc.msg}; {context}'
                 raise
+            except (ValueError, TypeError, RecursionError):
+                invalid(step, 'unparseable run/action source; use workflow_inventory() supported forms')
     return found
 
 
 def workflow_inventory(relative, source, line_offset):
-    """Inspect bounded inline Python; reject unmodeled interpreter launches.
-
-    File and module commands require exact workflow-launch allowances in check().
-    """
-    found = []
-    lines = source.splitlines()
-    index = 0
+    """Recognize only the allowed shell grammar and fully parsed Python launches."""
+    found, lines, index, depth = [], source.split('\n'), 0, 0
 
     def unsupported(command):
-        raise SyntaxError('unsupported Python launch; use workflow_inventory() supported '
-                          'python - heredocs, python -c, or repository script/module commands',
-                          (relative, line_offset + index + 1, 1, command))
+        raise SyntaxError('unsupported run syntax; use workflow_inventory() known literal commands '
+                          'or supported Python launches', (relative, line_offset + index + 1, 1, command))
 
     while index < len(lines):
-        command = lines[index].strip()
-        while command.endswith('\\') and index + 1 < len(lines):
+        command = lines[index].strip(' \t')
+        if not command or command.startswith('#'):
             index += 1
-            command = command[:-1] + lines[index].strip()
-        heredoc = re.fullmatch(r"python3?\s+-\s*[^<]*<<\s*(['\"]?)(\w+)\1", command)
-        if heredoc:
-            if any(token in command.split('<<', 1)[0] for token in '|;&<>()`'):
+            continue
+        while lines[index].endswith('\\') and index + 1 < len(lines):
+            if not re.fullmatch(rf'{WORD}(?:[ \t]+{WORD})*[ \t]+\\', command):
                 unsupported(command)
+            index += 1
+            command = command[:-1] + lines[index].strip(' \t')
+        if command == 'fi' and depth:
+            depth -= 1
+        elif conditional := re.fullmatch(r'if ! (.*); then', command):
+            if not SAFE_LIST.fullmatch(conditional[1]):
+                unsupported(command)
+            depth += 1
+        elif (command in SHELL_SCRIPTS or SAFE_LIST.fullmatch(command) or
+              re.fullmatch(ASSIGNMENT, command)):
+            pass
+        elif INLINE.fullmatch(command):
+            found.extend(python_inventory(relative, shlex.split(command)[2], line_offset + index))
+        elif heredoc := HEREDOC.fullmatch(command):
             start = index + 1
-            index = start
-            while index < len(lines) and lines[index].strip() != heredoc[2]:
+            index, body = start, []
+            while index < len(lines):
+                line = lines[index].lstrip('\t') if heredoc[1] else lines[index]
+                if line == heredoc[3]:
+                    break
+                body.append(line)
                 index += 1
-            if index == len(lines):
-                raise SyntaxError('unterminated Python heredoc', (relative, line_offset + start, 1, command))
-            found.extend(python_inventory(relative, textwrap.dedent('\n'.join(lines[start:index])),
-                                          line_offset + start))
-        elif re.match(r'python3?\s+-c\b', command):
-            try:
-                arguments = shlex.split(command)
-            except ValueError as exc:
+            body_text = '\n'.join(body)
+            if index == len(lines) or (not heredoc[2] and any(c in body_text for c in '$`\\')):
                 unsupported(command)
-            if len(arguments) != 3:
+            found.extend(python_inventory(relative, body_text, line_offset + start))
+        elif launch := LAUNCH.fullmatch(command):
+            payload = shlex.split(launch[2])
+            while payload and payload[0] in ('-u', '-B', '-I', '-E', '-s', '-S'):
+                payload = payload[1:]
+            module = (len(payload) >= 2 and payload[0] == '-m'
+                      and re.fullmatch(r'[A-Za-z_]\w*(?:\.\w+)*', payload[1]))
+            script = (payload and not payload[0].startswith('-')
+                      and re.fullmatch(r'[A-Za-z0-9_./-]+\.py', payload[0]))
+            if not (module or script):
                 unsupported(command)
-            found.extend(python_inventory(relative, arguments[2], line_offset + index))
+            found.append((relative, line_offset + index + 1, 'workflow-launch', fingerprint(command), command))
         else:
-            try:
-                lexer = shlex.shlex(command, posix=True, punctuation_chars='|&;<>()')
-                lexer.whitespace_split = True
-                arguments = list(lexer)
-            except ValueError:
-                unsupported(command)
-            command_position = True
-            for argument in arguments:
-                if re.fullmatch(r'[|&;()]+', argument):
-                    command_position = True
-                    continue
-                if command_position and (argument.rsplit('/', 1)[-1] in {
-                        'env', 'if', 'then', 'elif', 'else', 'do', '!', 'command', 'exec',
-                        'nohup', 'sudo', 'uv', 'run', 'timeout', 'xargs'} or
-                        re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*=[^\n]*', argument)):
-                    continue
-                if command_position and ('$' in argument or '`' in argument or
-                                         argument.startswith('-') or argument.isdecimal() or
-                                         re.match(r'[A-Za-z]:', argument) or '\\' in argument):
-                    unsupported(command)
-                executable = argument.rsplit('/', 1)[-1].lower()
-                if command_position and re.search(r'python|pypy|pyw|py\.exe$', executable) and not PYTHON_COMMAND.fullmatch(argument):
-                    unsupported(command)
-                if (executable == 'eval' or
-                        re.fullmatch(r'(?:python|pypy|jython|ipython|micropython|graalpy)[\w.-]*|pyw?(?:[\d.]+)?(?:\.exe)?|'
-                                     r'(?:node|perl|ruby|php|lua|rscript|deno|bun)(?:[\d.]+|\.exe)?', executable)
-                        and not PYTHON_COMMAND.fullmatch(argument)):
-                    unsupported(command)
-                if executable in {'bash', 'sh', 'dash', 'zsh', 'ksh', 'pwsh', 'powershell'} and any(
-                        re.fullmatch(r'-[a-z]*c[a-z]*', item) or item.lower() in {'--command', '-command', '-encodedcommand'}
-                        for item in arguments):
-                    unsupported(command)
-                command_position = False
-            launches = [i for i, argument in enumerate(arguments)
-                        if PYTHON_COMMAND.fullmatch(argument)]
-            if launches:
-                position = launches[0]
-                prefix, payload = arguments[:position], arguments[position + 1:]
-                if prefix[:1] == ['env']:
-                    prefix = prefix[1:]
-                if (not all(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*=[^\n]*', item) for item in prefix)
-                        or any(re.fullmatch(r'[|&;<>()]+', item) for item in arguments)
-                        or any(token in command for token in ('`', '$('))):
-                    unsupported(command)
-                while payload and payload[0] in ('-u', '-B', '-I', '-E', '-s', '-S'):
-                    payload = payload[1:]
-                module = (len(payload) >= 2 and payload[0] == '-m'
-                          and re.fullmatch(r'[A-Za-z_]\w*(?:\.\w+)*', payload[1]))
-                script = payload and not payload[0].startswith('-') and payload[0].endswith('.py')
-                if not (module or script):
-                    unsupported(command)
-                found.append((relative, line_offset + index + 1, 'workflow-launch',
-                              fingerprint(command), command))
+            unsupported(command)
         index += 1
+    if depth:
+        unsupported('unterminated if block')
     return found
 
 

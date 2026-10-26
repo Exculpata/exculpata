@@ -324,15 +324,131 @@ def test_contract_every_current_workflow_passes(contract_tree):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize('delimiter', ["'EOF'", '"EOF"', 'EOF'])
+@pytest.mark.parametrize('prefix', ['EOF = 0\nEOF \n', 'if True:\n  EOF = 0\n  EOF\n'])
+def test_contract_heredoc_near_terminator_cannot_hide_python(contract_tree, delimiter, prefix):
+    command = f'python3 - <<{delimiter}\n{prefix}import socket\nEOF\n'
+    path = contract_tree / '.github/workflows/synthetic.yml'
+    # fixture-write: Preserve spaces in a synthetic literal workflow heredoc.
+    path.write_text('jobs:\n  probe:\n    steps:\n      - run: |\n' +
+                    ''.join('          ' + line + '\n' for line in command.split('\n')))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert 'synthetic.yml:' in result.stderr and 'unreviewed outbound client' in result.stderr
+    assert 'Traceback' not in result.stderr
+
+
+@pytest.mark.parametrize('command', [
+    '/usr/bin/pyth?n3', '/usr/bin/pytho[n]3', '/usr/bin/py*3',
+    'shopt -s expand_aliases\nalias snake=python3\nsnake',
+    'alias snake=python3\nsnake', 'enable -n echo\nsnake', 'hash -p /usr/bin/python3 snake\nsnake',
+])
+def test_contract_blocks_glob_and_alias_command_words(contract_tree, command):
+    unsupported_workflow_launch(contract_tree, {'run': f'{command} -c "import socket"'})
+
+
+@pytest.mark.parametrize('command', [
+    'echo \'python3 -c "import socket"\' | bash',
+    'printf \'python3 -c "import socket"\' > /tmp/synthetic.sh\nbash /tmp/synthetic.sh',
+    'iex \'python -c "import socket"\'',
+    'Invoke-Expression \'python -c "import socket"\'',
+    'Invoke-Command \'python -c "import socket"\'',
+    '& iex \'python -c "import socket"\'',
+])
+def test_contract_blocks_stdin_script_and_powershell_evaluation(contract_tree, command):
+    shell = 'bash' if command.startswith(('echo ', 'printf ')) else 'pwsh'
+    unsupported_workflow_launch(contract_tree, {'shell': shell, 'run': command})
+
+
+@pytest.mark.parametrize('level', ['step', 'job', 'workflow'])
+def test_contract_blocks_powershell_effective_shell(contract_tree, level):
+    step = {'run': 'echo synthetic'}
+    job = {'steps': [step]}
+    workflow = {'jobs': {'probe': job}}
+    if level == 'step':
+        step['shell'] = 'pwsh'
+    else:
+        (job if level == 'job' else workflow)['defaults'] = {'run': {'shell': 'pwsh'}}
+    # fixture-write: Seed unsupported PowerShell at each effective-shell level.
+    (contract_tree / '.github/workflows/synthetic.yml').write_text(yaml.safe_dump(workflow))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1, result.stdout
+    assert 'synthetic.yml:' in result.stderr and 'unsupported shell' in result.stderr
+
+
+@pytest.mark.parametrize('command', [
+    'snake -c "import socket"', '{python,python3} -c "import socket"',
+    '"python" -c "import socket"', 'p\\ython -c "import socket"',
+    'echo "$(python -c \'import socket\')"', 'echo `python -c "import socket"`',
+    'python -c "print(1)" < /tmp/synthetic.py',
+    'echo synthetic | python scripts/synthetic.py',
+    'echo synthetic | bash scripts/corpus-write-guard.sh check',
+    'bash scripts/corpus-write-guard.sh check < /tmp/synthetic.sh',
+    'bash scripts/corpus-write-guard.sh unknown',
+    'bash /tmp/synthetic.sh', 'bash < /tmp/synthetic.sh',
+    '# synthetic comment \\\nsnake -c "import socket"',
+    '& echo synthetic', 'iex "synthetic"', 'Invoke-Expression "synthetic"',
+    'python - <<EOF\nprint("$(python -c \'import socket\')")\nEOF',
+    "python - <<'EOF'\nprint(1)\nEOF ",
+    "python - <<-'EOF'\n\tprint(1)\n  EOF",
+])
+def test_contract_rejects_syntax_outside_allowed_grammar(contract_tree, command):
+    unsupported_workflow_launch(contract_tree, {'run': command})
+
+
+@pytest.mark.parametrize('command', [
+    'echo \\ \n/usr/bin/pyth?n3 -c "import socket"',
+    'echo \\\t\n/usr/bin/pyth?n3 -c "import socket"',
+    'echo "\\\\\n"; /usr/bin/pyth?n3 -c \'import socket\' # "',
+    'echo\v', 'echo\r',
+], ids=['space', 'tab', 'unfinished-quote', 'vertical-tab-word', 'carriage-return-word'])
+def test_contract_backslash_space_and_other_word_boundaries_fail_closed(contract_tree, command):
+    unsupported_workflow_launch(contract_tree, {'run': command})
+
+
+@pytest.mark.parametrize('operator', ['<<', '<<-'])
+@pytest.mark.parametrize('delimiter', ["'EOF'", '"EOF"', 'EOF'])
+def test_contract_accepts_exact_heredoc_terminator(contract_tree, operator, delimiter):
+    tabs = '\t' if operator == '<<-' else ''
+    command = f'python - {operator}{delimiter}\n{tabs}print(1)\n{tabs}EOF\necho synthetic'
+    # fixture-write: Seed a quoted or unquoted exact terminator with optional tab stripping.
+    (contract_tree / '.github/workflows/synthetic.yml').write_text(yaml.safe_dump(
+        {'jobs': {'probe': {'steps': [{'run': command}]}}}))
+    result = run_contract(contract_tree)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('source', [
+    b'\xff', b'jobs: ' + b'[' * 1200 + b']' * 1200,
+    b'jobs: {probe: {steps: [{run: "python -c \'\\0\'"}]}}',
+    b'jobs: {probe: {steps: [{run: "python -c \'\\uD800\'"}]}}',
+], ids=['invalid-utf8', 'excessive-nesting', 'null-python', 'surrogate-python'])
+def test_contract_reports_unreadable_or_recursive_workflow(contract_tree, source):
+    # fixture-write: Seed synthetic invalid encoding or excessive YAML nesting.
+    (contract_tree / '.github/workflows/synthetic.yml').write_bytes(source)
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert 'synthetic.yml:' in result.stderr and 'invalid workflow' in result.stderr
+    assert 'Traceback' not in result.stderr
+
+
+def test_contract_scanner_stays_under_500_lines():
+    assert len((ROOT / 'scripts/network-contract.py').read_text().splitlines()) < 500
+
+
 @pytest.mark.parametrize('shell', ['bash', 'sh', 'pwsh'])
 def test_contract_effective_shell_override_precedence(contract_tree, shell):
     step = {'shell': shell, 'run': 'echo synthetic'}
     workflow = {'defaults': {'run': {'shell': 'python'}}, 'jobs': {
         'probe': {'defaults': {'run': {'shell': shell}},
                   'steps': [step, {'run': 'echo synthetic'}]}}}
-    # fixture-write: Seed supported step and job overrides of an unsupported workflow default.
+    # fixture-write: Seed step and job overrides and require rejection of PowerShell.
     (contract_tree / '.github/workflows/synthetic.yml').write_text(yaml.safe_dump(workflow))
-    assert run_contract(contract_tree).returncode == 0
+    result = run_contract(contract_tree)
+    if shell == 'pwsh':
+        assert result.returncode == 1 and 'unsupported shell' in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.parametrize('uses', ['docker://python:3.12', './.github/actions/synthetic'])
