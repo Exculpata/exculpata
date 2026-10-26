@@ -1,6 +1,7 @@
 """Synthetic installer tier choices and documentation/catalog agreement."""
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
@@ -22,6 +23,7 @@ def detected_gpu(monkeypatch):
 
 
 def scripted_input(monkeypatch, answers):
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     prompts = []
     responses = iter(answers)
 
@@ -34,7 +36,8 @@ def scripted_input(monkeypatch, answers):
 
 
 @pytest.mark.parametrize("answers, expected", [
-    ([""], "gpu-12"), (["cpu"], "cpu"), (["unknown", "gpu-8"], "gpu-8"),
+    ([""], "gpu-12"), (["cpu"], "cpu"), ([" CPU "], "cpu"),
+    (["unknown", "gpu-8"], "gpu-8"),
 ])
 def test_prompt_accepts_default_override_and_retries(monkeypatch, capsys, detected_gpu, answers, expected):
     args = installer._parser().parse_args(["install"])
@@ -66,6 +69,56 @@ def test_explicit_interactive_flag_skips_tier_prompt(monkeypatch, detected_gpu):
     args = installer._parser().parse_args(["install", "--model-tier", "potato"])
     scripted_input(monkeypatch, [])
     assert installer._select_model_tier(installer.Console(color=False), args) == "potato"
+
+
+@pytest.mark.parametrize("tier", ["CPU", " CPU "])
+def test_model_tier_flag_normalizes_case_and_whitespace(monkeypatch, detected_gpu, tier):
+    args = installer._parser().parse_args(["install", "--model-tier", tier])
+    scripted_input(monkeypatch, [])
+    assert installer._select_model_tier(installer.Console(color=False), args) == "cpu"
+    assert args.model_tier == "cpu"
+
+
+@pytest.mark.parametrize("stdin_flag, is_tty", [
+    ("--password-stdin", False), ("--hf-token-stdin", False), (None, False),
+    ("--password-stdin", True), ("--hf-token-stdin", True),
+    ("--external-generator-api-key-stdin", False), ("--external-generator-api-key-stdin", True),
+])
+def test_main_preserves_stdin_for_password_reader(
+    monkeypatch, tmp_path, capsys, detected_gpu, stdin_flag, is_tty,
+):
+    secret = "synthetic-pass-0000"
+    stream = io.StringIO(secret + "\n")
+    monkeypatch.setattr(stream, "isatty", lambda: is_tty)
+    monkeypatch.setattr(sys, "stdin", stream)
+    root = tmp_path / "node"
+    monkeypatch.setattr(sys, "argv", [
+        "install", "install", "--root", str(root),
+        "--storage-root", str(tmp_path / "matters"),
+        "--bind-address", "127.0.0.1", "--server-name", "node.example.test",
+        "--auth", "local", "--admin-username", "synthetic.admin",
+        "--admin-display-name", "Synthetic Administrator", "--models", "none",
+    ] + ([stdin_flag] if stdin_flag else []))
+    seen = []
+
+    def password_reader(args):
+        seen.append((args.model_tier, sys.stdin.readline().rstrip("\r\n")))
+        return seen[-1][1]
+
+    def stop_before_writes(*args, **kwargs):
+        raise RuntimeError("synthetic stop after password input")
+
+    monkeypatch.setattr(installer, "_preflight", lambda *a, **kw: ())
+    monkeypatch.setattr(installer, "_password", password_reader)
+    monkeypatch.setattr(installer, "_prepare_directories", stop_before_writes)
+    assert installer.main() == 1
+    assert seen == [("gpu-12", secret)]
+    output = capsys.readouterr().out
+    assert "synthetic stop after password input" in output
+    assert "Hardware model tier (" not in output
+    assert "EOFError" not in output
+    assert secret not in output
+    assert not root.exists()
 
 
 def test_invalid_flag_is_rejected_before_writes(tmp_path):

@@ -445,7 +445,7 @@ def _parser() -> argparse.ArgumentParser:
         help="choose a pinned generator tier or let preflight select by topology",
     )
     parser.add_argument(
-        "--model-tier", choices=tuple(p["id"] for p in load_profiles()["profiles"]),
+        "--model-tier", type=lambda value: value.strip().casefold(), choices=tuple(p["id"] for p in load_profiles()["profiles"]),
         help="record a hardware model tier; defaults to the detected recommendation",
     )
     parser.add_argument("--generator-gpu-utilization", type=float)
@@ -531,7 +531,7 @@ def _select_model_tier(console: Console, args: argparse.Namespace) -> str:
     while chosen is None:
         value = _ask(
             f"Hardware model tier ({'/'.join(profiles)})", suggestion.profile_id,
-            non_interactive=args.non_interactive,
+            non_interactive=args.non_interactive or args.password_stdin or args.hf_token_stdin or args.external_generator_api_key_stdin or not sys.stdin.isatty(),
         ).strip().casefold()
         if value in profiles:
             chosen = value
