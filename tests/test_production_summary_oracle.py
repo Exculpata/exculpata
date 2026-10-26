@@ -5,21 +5,22 @@ from case_intelligence import pilot_uploads
 from case_intelligence.bates_gaps import compute_bates_gaps
 from case_intelligence.timeline_exports import md_inline
 from tests.test_bates_gaps_oracle import generate
+from tests.test_workflow_quality_handoff import pdf_bytes
 from tests.test_production_summary import production_client, production, response, expected, fact_payload, link
 
 
 @pytest.mark.parametrize('seed', range(500))
 def test_T3_generated_production(production_client, monkeypatch, seed):
     generated, truth, _owners, aliases, coordinates, _clean = generate(seed)
-    counts = {d.document_id + '.txt': d.page_count or 0 for d in generated}
+    counts = {d.document_id + '.pdf': d.page_count or 0 for d in generated}
     original = pilot_uploads.PilotStore._extract
     def extracted(store, document, *args, **kwargs):
         original(store, document, *args, **kwargs)
         if document.relative_path in counts:
             document.page_count = counts[document.relative_path]
     monkeypatch.setattr(pilot_uploads.PilotStore, '_extract', extracted)
-    files = [(d.document_id + '.txt', b'Synthetic generated document.', 'text/plain') for d in generated]
-    rows = [(d.document_id + '.txt', start, end or '') for d in generated if d.labels_complete
+    files = [(d.document_id + '.pdf', pdf_bytes(['Synthetic generated document.']), 'application/pdf') for d in generated]
+    rows = [(d.document_id + '.pdf', start, end or '') for d in generated if d.labels_complete
             for start, end in d.labels]
     p = production(production_client, files, rows)
     markdown = response(p, 'markdown')

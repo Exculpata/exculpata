@@ -8,6 +8,7 @@ from itertools import count
 import json
 from pathlib import Path
 from types import SimpleNamespace
+import unicodedata
 from uuid import UUID
 
 import pytest
@@ -79,9 +80,12 @@ def link(p, doc):
 
 
 def expected(p):
+    real = lambda r: any('0' <= c <= '9' for c in unicodedata.normalize('NFKC', r['begin_bates']))
     return tuple(BatesDocument(d.document_id, d.version_id,
-        tuple((r['begin_bates'], r['end_bates'] or None) for r in p.rows if r['path'] == d.relative_path),
-        d.page_count, d.state == 'ready' and any(r['path'] == d.relative_path for r in p.rows))
+        tuple((r['begin_bates'], r['end_bates'] or None) for r in p.rows if r['path'] == d.relative_path and real(r)),
+        d.page_count if d.media_type == 'application/pdf' else None,
+        d.state == 'ready' and any(r['path'] == d.relative_path for r in p.rows)
+        and all(real(r) for r in p.rows if r['path'] == d.relative_path))
         for d in p.docs if d.document_id != p.load.document_id)
 
 
@@ -141,6 +145,23 @@ def test_T4_no_load_or_absent_path(production_client, selected):
         row = next(line for line in result.text.splitlines() if 'Load file row 6 names no document' in line)
         assert 'in this production' in row and link(p, p.load) in row
         assert 'Possible missing Bates ABC0004' in result.text
+
+
+@pytest.mark.parametrize('begin', ['', ' ', 'N/A', 'SLIPSHEET'])
+def test_T4b_placeholder(production_client, begin):
+    test_T4c_failed_document(production_client, begin)
+    p = acceptance(production_client)
+    assert summary.map_documents([p.docs[3]], p.rows, p.load.document_id)[0].page_count is None
+
+
+def test_T4c_failed_document(production_client, begin='ABC0005'):
+    files = [(name, b'%PDF-1.4\nmalformed synthetic file' if name == 'b.pdf' and begin == 'ABC0005'
+              else pdf_bytes(['Synthetic page.']), 'application/pdf') for name in ('a.pdf', 'b.pdf', 'c.pdf')]
+    p = production(production_client, files, [('a.pdf', 'ABC0001', ''), ('b.pdf', begin, ''), ('c.pdf', 'ABC0003', '')])
+    assert p.docs[1].state == ('failed' if begin == 'ABC0005' else 'ready')
+    result = response(p, 'markdown')
+    assert result.status_code == 200 and 'Possible missing Bates ABC0002' in result.text
+    assert '- Missing Bates' not in result.text and (begin == 'ABC0005' or 'Bates labels not read' not in result.text)
 
 
 def test_T5_invisible_label(production_client):
