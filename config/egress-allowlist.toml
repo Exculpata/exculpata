@@ -8655,3 +8655,33 @@ path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
 digest = "2d18dc8b84c0db925835d1bd3128d9f198e3f82bcff49c2d4cd557316cbedde4"
 detail = "urllib.request.Request"
+
+[[source]]
+path = "scripts/law-gate.py"
+kind = "client"
+digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
+detail = "network import"
+
+[[source]]
+path = "scripts/law-gate.py"
+kind = "client"
+digest = "b1abbb785ade8c98f05e7aac611a3b2f4175024a7393ecf1067e3e28d280272f"
+detail = "urllib.request.Request"
+
+[[source]]
+path = "scripts/law-gate.py"
+kind = "client"
+digest = "cd073d1c80f2fc56ad79a3deed1f8b7100d62d6b23da37f65bcba4c8742ecf86"
+detail = "urllib.request.urlopen"
+
+[[source]]
+path = "scripts/law-gate.py"
+kind = "host"
+digest = "bc93d1acbea31b622a7f7f78639e38d73cf1d99f701bbf1eee2d4c532ce833ba"
+detail = "api.github.com"
+
+[[source]]
+path = "scripts/law-gate.py"
+kind = "host"
+digest = "09a8b930c8b79e7c313e5e741e1d59c39ae91bc1f10cdefa68b47bf77519be57"
+detail = "github.com"

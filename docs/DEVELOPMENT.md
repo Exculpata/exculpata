@@ -457,3 +457,14 @@ or external model worker are used. Learned-model acceptance is explicitly
 excluded and remains separate. This job exercises the existing hybrid backend;
 it does not add a PostgreSQL exact-search adapter or complete the shared-corpus
 PostgreSQL acceptance required by slices 00/08.
+
+## Law gate
+
+`law-gate` checks size (500 counted lines), main as base, specification proof and
+`review-fail-2`. Proof is an unedited approver issue comment at the exact PR head:
+`law: spec-approved specs/name.md @ <40-character SHA>`; size exceptions use
+`law: size-exception @ <SHA>` and rewrites use `law: spec-rewritten specs/name.md @ <SHA>`.
+Mechanical changes allow existing Markdown (at most 40 lines) and lock files;
+acceptance pins require specification proof. Dependency-only Dependabot changes
+also qualify. Trusted main code evaluates PRs; queue runs use the base SHA.
+Full failures, top size contributors and binary names appear in the status-linked run.
