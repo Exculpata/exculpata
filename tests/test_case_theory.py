@@ -273,15 +273,14 @@ def test_reindex_unchanged_document_keeps_citations(theory_store, shift):
         connection, matter_id=matter, matter_name="Synthetic", document_id="source-1",
         display_name="Synthetic.txt", media_type="text/plain", units=units,
     )
-    expected = {**source_link(), "chunk_id": "chunk-2" if shift else "chunk-1",
-                "protective_order": "limited-to-case-team"}
+    expected = {**source_link(), "protective_order": "limited-to-case-team"}
     for snapshot in (service.current(matter), service.version(matter, original["version"])):
-        assert snapshot["claims"][0]["links"] == [expected]
+        assert snapshot["claims"][0]["links"] == ([] if shift else [expected])
         assert snapshot["claims"][0]["status"] == ("needs review" if shift else "supported")
     assert service.current(other) == foreign
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM review_case_theory_link_audit WHERE matter_id=%s", (matter,))
-        assert cursor.fetchone() == (0,)
+        assert cursor.fetchone() == (2 if shift else 0,)
         cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
         assert cursor.fetchone() == (len(units),)
 
@@ -342,6 +341,54 @@ def test_reindex_duplicate_citations_require_unambiguous_text(theory_store, scen
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
         assert cursor.fetchone() == (len(new_texts),)
+
+
+@pytest.mark.parametrize("old_labels,cited,new_labels", [
+    pytest.param(["Q1", "Y", "Q2", "Y"], [2, 4], ["Q0", "Y", "Q1", "Y", "Q2", "Y"], id="A1"),
+    pytest.param(["Q1", "Y", "Q2", "Y"], [4], ["Q0", "Y", "Q1", "Y", "Q2", "Y"], id="A1b"),
+    pytest.param(["Q0", "Y", "Q1", "Y", "Q2", "Y"], [2, 4], ["Q1", "Y", "Q2", "Y"], id="A1c"),
+    pytest.param(["Q1", "Y", "Q2", "Y", "Q3", "Y"], [2, 4], ["Q2", "Y", "Q3", "Y"], id="A2d"),
+    pytest.param(["K", "Y", "K", "Y"], [2], ["K", "Y", "K", "Y", "K", "Y"], id="identical-pairs"),
+    pytest.param(["Y"] * 4, [3], ["Y"] * 5, id="long-run"),
+    pytest.param(["Q1", "Y", "Q2", "Y"], [2], ["Q0", "Y", "Q1", "Y"], id="same-count-new-transcript"),
+    pytest.param(["Q1", "Y", "Q2", "Y"], [4], ["Q1", "N", "Q2", "Y"], id="other-unit-corrected"),
+])
+def test_reindex_changed_document_drops_every_citation(theory_store, old_labels, cited, new_labels):
+    connection, service, matter, other = theory_store
+    texts = {"Y": "S2: Yes.", "N": "S2: No.", "K": "S1: Okay?",
+             **{f"Q{n}": f"S1: Question {n}?" for n in range(4)}}
+
+    def index(labels):
+        upsert_postgres_document(
+            connection, matter_id=matter, matter_name="Synthetic", document_id="source-1",
+            display_name="Synthetic.txt", media_type="text/plain",
+            units=[PilotUnit(i, texts[label], i, i) for i, label in enumerate(labels, 1)],
+        )
+
+    index(old_labels)
+    original = service.create_version(matter, [{
+        "text": "Synthetic cited answers.", "status": "supported",
+        "links": [{**source_link(), "chunk_id": f"chunk-{number}"} for number in cited],
+    }])
+    foreign = service.create_version(other, [{
+        "text": "Other synthetic claim.", "status": "supported", "links": [source_link()],
+    }])
+    index(new_labels)
+    claim = service.current(matter)["claims"][0]
+    assert claim["links"] == []
+    assert claim["status"] == "needs review"
+    assert claim["claim_id"] == original["claims"][0]["claim_id"]
+    assert [(row["link_ordinal"], row["document_id"], row["chunk_id"], row["reason"])
+            for row in claim["removed_citations"]] == [
+        (ordinal, "source-1", f"chunk-{number}", "passage_deleted")
+        for ordinal, number in enumerate(cited, 1)
+    ]
+    assert service.current(other) == foreign
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM review_case_theory_link_audit WHERE matter_id=%s", (matter,))
+        assert cursor.fetchone() == (len(cited),)
+        cursor.execute("SELECT count(*) FROM review_page WHERE matter_id=%s", (matter,))
+        assert cursor.fetchone() == (len(new_labels),)
 
 
 @pytest.mark.parametrize("removal", ["passage", "unlink", "reindex"])

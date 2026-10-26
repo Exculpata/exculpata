@@ -753,70 +753,74 @@ def initialize_postgres_demo(
         connection.commit()
 
 
-def _stage_matching_case_theory_citations(cursor, matter_id, document_id, units, source_version_id):
-    """Keep matching citations on temporary rows until replacement rows exist."""
-    chunk_ids = [f"chunk-{ordinal}" for ordinal in range(1, len(units) + 1)]
+def _stage_unchanged_case_theory_citations(cursor, matter_id, document_id, units, source_version_id):
+    """Keep citations only when the complete ordered passage list is unchanged."""
     digests = [hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest() for unit in units]
     staging_page = f"citation-reindex-{uuid.uuid4().hex}"
     cursor.execute(
-        "INSERT INTO review_page(matter_id,document_id,page_id,page_number,text,source_version_id) "
-        "SELECT %s,%s,%s,GREATEST(COALESCE(MAX(page_number),0),%s)+1,'',%s "
-        "FROM review_page WHERE matter_id=%s AND document_id=%s",
-        (matter_id, document_id, staging_page, max((int(unit.number) for unit in units), default=0),
+        """
+        WITH replacements AS (
+            SELECT 'chunk-' || position AS chunk_id, position - 1 AS ordinal, digest
+            FROM unnest(%s::text[]) WITH ORDINALITY AS r(digest, position)
+        ), old_chunks AS (
+            SELECT chunk_id, ordinal, source_version_id,
+                   encode(sha256(convert_to(text, 'UTF8')), 'hex') AS digest
+            FROM review_chunk WHERE matter_id=%s AND document_id=%s
+        ), changed AS (
+            SELECT 1 FROM old_chunks c FULL JOIN replacements r
+              ON (c.chunk_id,c.ordinal) = (r.chunk_id,r.ordinal)
+            WHERE c.chunk_id IS NULL OR r.chunk_id IS NULL
+               OR c.source_version_id IS DISTINCT FROM %s
+               OR c.digest IS DISTINCT FROM r.digest
+        )
+        INSERT INTO review_page(matter_id,document_id,page_id,page_number,text,source_version_id)
+        SELECT %s,%s,%s,GREATEST(COALESCE(MAX(page_number),0),%s)+1,'',%s
+        FROM review_page WHERE matter_id=%s AND document_id=%s
+        HAVING NOT EXISTS (SELECT 1 FROM changed)
+        """,
+        (digests, matter_id, document_id, source_version_id,
+         matter_id, document_id, staging_page, max((int(unit.number) for unit in units), default=0),
          source_version_id, matter_id, document_id),
     )
     cursor.execute(
         """
-        WITH replacements AS (
-            SELECT *, count(*) OVER (PARTITION BY digest) AS digest_count
-            FROM unnest(%s::text[], %s::text[])
-                WITH ORDINALITY AS r(chunk_id, digest, ordinal)
-        ), old_chunks AS (
-            SELECT c.*, encode(sha256(convert_to(c.text, 'UTF8')), 'hex') AS digest,
-                   count(*) OVER (PARTITION BY sha256(convert_to(c.text, 'UTF8'))) AS digest_count
-            FROM review_chunk c WHERE c.matter_id=%s AND c.document_id=%s
-        ), matches AS (
-            SELECT c.*, replacement.chunk_id AS new_chunk
-            FROM old_chunks c JOIN replacements replacement
-              ON replacement.digest = c.digest
-             AND (replacement.chunk_id = c.chunk_id
-                  OR (c.digest_count = 1 AND replacement.digest_count = 1))
-            WHERE c.source_version_id=%s
-              AND EXISTS (
-                  SELECT 1 FROM review_case_theory_link l
-                  WHERE (l.matter_id,l.document_id,l.chunk_id) =
-                        (c.matter_id,c.document_id,c.chunk_id)
-              )
+        WITH linked_chunks AS (
+            SELECT c.* FROM review_chunk c
+            WHERE c.matter_id=%s AND c.document_id=%s AND EXISTS (
+                SELECT 1 FROM review_page p
+                WHERE (p.matter_id,p.document_id,p.page_id) = (c.matter_id,c.document_id,%s)
+            ) AND EXISTS (
+                SELECT 1 FROM review_case_theory_link l
+                WHERE (l.matter_id,l.document_id,l.chunk_id) =
+                      (c.matter_id,c.document_id,c.chunk_id)
+            )
         ), needs_review AS (
             UPDATE review_case_theory_claim claim SET status='needs review'
-            WHERE EXISTS (
+            WHERE claim.matter_id=%s AND NOT EXISTS (
+                SELECT 1 FROM review_page p
+                WHERE (p.matter_id,p.document_id,p.page_id) = (claim.matter_id,%s,%s)
+            ) AND EXISTS (
                 SELECT 1 FROM review_case_theory_link l
-                LEFT JOIN matches m ON (m.matter_id,m.document_id,m.chunk_id) =
-                                       (l.matter_id,l.document_id,l.chunk_id)
-                WHERE l.matter_id=%s AND l.document_id=%s
-                  AND (claim.matter_id,claim.claim_id) = (l.matter_id,l.claim_id)
-                  AND m.new_chunk IS DISTINCT FROM l.chunk_id
+                WHERE l.matter_id=claim.matter_id AND l.claim_id=claim.claim_id AND l.document_id=%s
             )
-            RETURNING claim_id
         ), staged AS (
             INSERT INTO
                 review_chunk(matter_id,document_id,page_id,chunk_id,ordinal,text,
                              source_version_id,excerpt_digest)
-            SELECT DISTINCT ON (new_chunk)
-                matter_id,document_id,%s,%s || new_chunk,ordinal,text,
-                source_version_id,excerpt_digest
-            FROM matches ORDER BY new_chunk,chunk_id
+            SELECT matter_id,document_id,%s,%s || chunk_id,ordinal,text,
+                   source_version_id,excerpt_digest
+            FROM linked_chunks
             RETURNING chunk_id
         )
         UPDATE review_case_theory_link l SET chunk_id = staged.chunk_id
-        FROM matches m JOIN staged ON staged.chunk_id = %s || m.new_chunk
+        FROM linked_chunks c JOIN staged ON staged.chunk_id = %s || c.chunk_id
         WHERE (l.matter_id,l.document_id,l.chunk_id) =
-              (m.matter_id,m.document_id,m.chunk_id)
+              (c.matter_id,c.document_id,c.chunk_id)
         """,
-        (chunk_ids, digests, matter_id, document_id, source_version_id,
-         matter_id, document_id, staging_page, staging_page, staging_page),
+        (matter_id, document_id, staging_page, matter_id, document_id, staging_page,
+         document_id, staging_page, staging_page, staging_page),
     )
-    return staging_page, [(staging_page + chunk, chunk) for chunk in chunk_ids]
+    return staging_page
 
 
 
@@ -855,7 +859,7 @@ def upsert_postgres_document(
             "DO UPDATE SET status='ready'",
             (matter_id, document_id, source_version_id, content_digest, byte_size, media_type, storage_key),
         )
-        staging_page, staged_citations = _stage_matching_case_theory_citations(
+        staging_page = _stage_unchanged_case_theory_citations(
             cursor, matter_id, document_id, units, source_version_id,
         )
         cursor.execute(
@@ -879,12 +883,13 @@ def upsert_postgres_document(
                  getattr(unit, "line_start", None), getattr(unit, "line_end", None), source_version_id,
                  getattr(unit, "excerpt_digest", hashlib.sha256(str(unit.text).encode("utf-8")).hexdigest())),
             )
-        for staging_chunk, new_chunk in staged_citations:
-            cursor.execute(
-                "UPDATE review_case_theory_link SET chunk_id=%s "
-                "WHERE matter_id=%s AND document_id=%s AND chunk_id=%s",
-                (new_chunk, matter_id, document_id, staging_chunk),
-            )
+        cursor.execute(
+            "UPDATE review_case_theory_link l SET chunk_id=c.chunk_id FROM review_chunk c "
+            "WHERE c.matter_id=%s AND c.document_id=%s AND c.page_id<>%s "
+            "AND (l.matter_id,l.document_id,l.chunk_id) = "
+            "(c.matter_id,c.document_id,%s || c.chunk_id)",
+            (matter_id, document_id, staging_page, staging_page),
+        )
         cursor.execute(
             "DELETE FROM review_page WHERE matter_id=%s AND document_id=%s AND page_id=%s",
             (matter_id, document_id, staging_page),
