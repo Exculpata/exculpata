@@ -1,6 +1,6 @@
 {% if matter_navigation_available|default(true) %}
 {% set review_sections = ('sources', 'full_review') %}
-{% set case_file_sections = ('work_product', 'notes', 'analysis', 'reports', 'entities', 'chronology', 'timeline_draft') %}
+{% set case_file_sections = ('work_product', 'notes', 'analysis', 'reports', 'entities', 'chronology', 'timeline_draft', 'production_summary') %}
 <div class="matter-bar">
 <nav class="matter-section-tabs" aria-label="Matter workspace sections">
   <a class="{% if active == 'home' %}selected{% endif %}" href="/matters/{{ matter.slug }}/home" data-section-description="Case overview and where you left off"{% if active == 'home' %} aria-current="page"{% endif %}>

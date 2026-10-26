@@ -14113,6 +14113,8 @@ def create_workbench_app(
                              audit=audit, require_response_lease=require_matter_response_lease,
                              transfer_response_lease=transfer_matter_response_lease,
                              model_notice=lambda: str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or ""))
+    from .production_summary_routes import install_production_summary_routes
+    install_production_summary_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .timeline_routes import install_timeline_routes
     install_timeline_routes(app, bench=bench, authorized_matter=authorized_matter, auth_context=auth_context, require_csrf=require_csrf, templates=templates, base_context=base_context, audit=audit, require_response_lease=require_matter_response_lease, transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes

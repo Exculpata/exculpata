@@ -1,0 +1,16 @@
+{% extends 'workbench_base.html' %}
+{% block title %}Production summary · {{ matter.display_name }} · {{ product_name }}{% endblock %}
+{% block content %}
+<main id="main-content" tabindex="-1" class="notebook-main">
+<h1>Production summary: {{ visible(summary.name) }}</h1>
+{% with active='production_summary' %}{% include 'workbench_matter_tabs.html' %}{% endwith %}
+<p>{{ summary.notice }}</p>
+<form method="get"><label>Bates load file <select name="load_file"><option value="">No load file selected</option>{% for choice in summary.choices %}<option value="{{ choice.token }}"{% if choice.token == load_file %} selected{% endif %}>{{ visible(choice.name) }}</option>{% endfor %}</select></label><button class="button" type="submit">Show summary</button></form>
+<p>Export: {% for format in ('markdown', 'json') %}<a href="/matters/{{ matter.slug }}/production-summary/export?format={{ format }}&amp;load_file={{ load_file|urlencode }}">{{ format|upper }}</a> {% endfor %}</p>
+{% for title, items in sections %}
+<section><h2>{{ title }}</h2>{% if title == 'Bates gaps' %}<p>Missing: {{ summary.counts.missing }}<br>Possible: {{ summary.counts.possible }}</p>{% endif %}<ul>
+{% for item in items %}<li>{{ visible(item.text) }} {% for c in item.citations %}<a href="{{ c.url }}">{{ visible(c.name) }} (version {{ c.version_id }})</a>{% if not loop.last %}; {% endif %}{% endfor %}</li>
+{% endfor %}</ul></section>
+{% endfor %}
+</main>
+{% endblock %}
