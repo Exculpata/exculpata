@@ -113,12 +113,15 @@ def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
                           for label in (start, end or start)]
                 count = d.page_count
                 known = count is not None and count > 0
+                narrow = re.fullmatch(re.escape(prefix) + r" ?([0-9]+)-([0-9]+)",
+                                      unicodedata.normalize("NFKC", start))
                 if any(v is None for v in values):
                     reaches[prefix].append((-1, None, cite))
-                elif end is not None:
-                    numbers = values[0] | values[1]
+                elif end is not None or (narrow and len(narrow[1]) == len(narrow[2]) ==
+                                        max(max(s[2:4]) for s in members[prefix]) and int(narrow[1]) <= int(narrow[2])):
+                    numbers = values[0] | values[1] if end is not None else {int(narrow[1]), int(narrow[2])}
                     lower = min(numbers)
-                    upper = max(max(numbers), lower + count - 1) if known else None
+                    upper = max(numbers) + count - 1 if known else None
                     reaches[prefix].append((lower, upper, cite))
                 else:
                     reaches[prefix].extend((n, n + count - 1 if known else None, cite) for n in values[0])

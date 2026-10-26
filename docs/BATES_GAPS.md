@@ -12,9 +12,13 @@ possible numeric readings. Each value n covers n through n + page_count - 1;
 an unknown page count, including 0 or less, extends to the series maximum.
 For a range with a non-plain end, combine both ends' reach (a plain end contributes
 its own number and remains a member). Cover the interval from the minimum through
-the larger of the maximum and minimum + page_count - 1, or the series maximum
+maximum + page_count - 1, or the series maximum
 when the count is unknown. The tradeoff is that leading zeros include 0 in the
 reach, making range intervals wide: safe, but less precise.
+A begin-only NFKC label exactly matching prefix, optional space, digits, hyphen,
+digits reaches start through end + page_count - 1 only when both runs match the
+series' plain-label digit width and start <= end; unknown counts stay open.
+All other multi-run labels keep the substring reach above.
 
 Within each gap, covered runs are Possible with "label may name series" and cite
 the bracket documents plus only the documents whose reach covers that run.
