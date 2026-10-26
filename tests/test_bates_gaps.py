@@ -36,7 +36,7 @@ def test_U2_small_caps_and_dotless_i():
     for label in ["abc0002.001", "ᴀʙᴄ0002.001", "ɑBC0002.001", "ａｂｃ0002.001", "ıBC0002.001"]:
         facts = middle(label)
         protected(facts, "b")
-        assert cited(facts, "b", "possible" if label.startswith("abc") else "not_computed")
+        assert cited(facts, "b", "possible" if label.startswith(("abc", "ａｂｃ")) else "not_computed")
 
 
 def test_U3_unordered_label_does_not_silently_hide():
@@ -127,7 +127,15 @@ def test_U16_missing_text_uses_bracket_width():
         "Possible missing Bates NB00004 to NB20011 (")
 
 
-@pytest.mark.parametrize("label", ["ABC000２", "ABC000٢", "ABC–0002", "ABC‑0002",
+@pytest.mark.parametrize("end_label", [False, True])
+def test_9b_fullwidth_digit_relates(end_label):
+    facts = middle("ABC0002", "ABC000２") if end_label else middle("ABC000２")
+    protected(facts, "b")
+    assert not any(f.series == "ALL" for f in facts)
+    assert cited(facts, "b", "computed" if end_label else "possible")
+
+
+@pytest.mark.parametrize("label", ["ABC000٢", "ABC–0002", "ABC‑0002", "ABC\u09030002",
                                     "ABC0002\u200b", "ABC0002\u0903", "ABC0002\u0301", "ABC0002\t"])
 @pytest.mark.parametrize("end_label", [False, True])
 def test_9b_any_unreadable_character(label, end_label):

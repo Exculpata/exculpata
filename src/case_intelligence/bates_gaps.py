@@ -40,7 +40,9 @@ def _related(label):
 
 
 def _unreadable(label):
-    return not label.isascii() or not label.isprintable()
+    invisible = any(c != " " and (unicodedata.category(c) in {"Cc", "Cf", "Mn", "Me"} or
+                                  unicodedata.category(c).startswith("Z")) for c in label)
+    return invisible or not unicodedata.normalize("NFKC", label).isascii()
 
 
 def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
