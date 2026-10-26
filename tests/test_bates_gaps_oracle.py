@@ -9,10 +9,16 @@ import string
 import pytest
 
 from case_intelligence.bates_gaps import BatesDocument, compute_bates_gaps
+from tests.bates_gaps_378a import compute_bates_gaps as compute_378a
 
 def marked(label, prefix, rng):
     marks = "".join(rng.choices(string.punctuation + " ‥－．＿", k=rng.randint(1, 3)))
-    style = rng.randrange(10)
+    style = rng.randrange(12)
+    if style == 10:
+        return rng.choice(["X-", "SET "]) + label
+    if style == 11:
+        position = rng.randrange(len(prefix) + 1, len(label))
+        return label[:position] + marks + label[position:]
     if style == 0:
         return label[len(prefix):]
     if style == 1:
@@ -121,7 +127,7 @@ def generate(seed):
     return docs, truth, owners, aliases, coordinates, mode in (0, 9)
 
 @pytest.mark.parametrize("seed", range(3000))
-def test_oracle_generated_truth(seed):
+def test_oracle_A_generated_truth(seed):
     docs, truth, owners, aliases, coordinates, clean = generate(seed)
     facts = compute_bates_gaps(docs)
     context = (seed, [(d.labels, d.page_count, d.labels_complete) for d in docs])
@@ -146,3 +152,25 @@ def test_oracle_generated_truth(seed):
         actual = {n for f in missing for n in range(f.lower, f.upper + 1)}
         assert actual == next(iter(truth.values()))[1], context  # C
         assert all(f.kind in {"missing", "computed"} for f in facts), context
+
+@pytest.mark.parametrize("seed", range(3000))
+def test_oracle_B_possible_pages_never_increase(seed):
+    docs, *_ = generate(seed)
+    baseline = [f for f in compute_378a(docs) if f.kind == "possible"]
+    for fact in compute_bates_gaps(docs):
+        if fact.kind == "possible":
+            assert any(old.series == fact.series and old.lower <= fact.lower and
+                       fact.upper <= old.upper for old in baseline), (seed, fact, baseline)
+
+def test_oracle_B_at_least_one_namer_seed_improves_precision():
+    for seed in range(3000):
+        docs, *_ = generate(seed)
+        baseline = [f for f in compute_378a(docs)
+                    if f.kind == "possible" and "label may name series" in f.reason]
+        for fact in compute_bates_gaps(docs):
+            if fact.kind == "missing" and any(
+                old.series == fact.series and max(old.lower, fact.lower) <= min(old.upper, fact.upper)
+                for old in baseline
+            ):
+                return
+    pytest.fail("No seed with a namer reports a Missing page that 378a made Possible")
