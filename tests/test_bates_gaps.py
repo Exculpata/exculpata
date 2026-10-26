@@ -1,4 +1,4 @@
-"""Synthetic regressions U1-U13 and precision guards G1-G4 for 378a."""
+"""Synthetic Bates regressions and precision guards G1-G4 for 378a."""
 import pytest
 
 from case_intelligence.bates_gaps import BatesDocument, compute_bates_gaps
@@ -36,7 +36,7 @@ def test_U2_small_caps_and_dotless_i():
     for label in ["abc0002.001", "ᴀʙᴄ0002.001", "ɑBC0002.001", "ａｂｃ0002.001", "ıBC0002.001"]:
         facts = middle(label)
         protected(facts, "b")
-        assert cited(facts, "b", "possible" if label.startswith(("abc", "ａ")) else "not_computed")
+        assert cited(facts, "b", "possible" if label.startswith("abc") else "not_computed")
 
 
 def test_U3_unordered_label_does_not_silently_hide():
@@ -104,6 +104,48 @@ def test_U13_families_without_plain_series():
         facts = compute_bates_gaps([doc(str(i), label) for i, label in enumerate(labels)])
         assert not any(f.kind == "missing" for f in facts)
         assert all(cited(facts, str(i), "not_computed") for i in range(len(labels)))
+
+
+def test_U14_separator_between_prefix_and_digits():
+    for sep in ["-", "_", ".", ":", "/", " ", ",", "\u2013"]:
+        facts = middle("ABC" + sep + "0002")
+        protected(facts, "b")
+        assert cited(facts, "b", "possible" if sep.isascii() else "not_computed")
+
+
+def test_U15_range_with_one_unread_end():
+    for start, end in [("ABC0002", "ABC-0009"), ("ABC-0002", "ABC0009"), ("ABC0002", "ABC 0009")]:
+        facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", start, end), doc("c", "ABC0010")])
+        protected(facts, "b", 2, 9)
+        assert cited(facts, "b", "possible")
+
+
+def test_U16_missing_text_uses_bracket_width():
+    facts = compute_bates_gaps([doc("a", "NB0001"), doc("b", "NB0003"), doc("c", "NB20012")])
+    assert "Missing Bates NB0002" in {f.text for f in facts}
+    assert next(f.text for f in facts if f.kind == "possible").startswith(
+        "Possible missing Bates NB00004 to NB20011 (")
+
+
+@pytest.mark.parametrize("label", ["ABC000２", "ABC000٢", "ABC–0002", "ABC‑0002",
+                                    "ABC0002\u200b", "ABC0002\u0903", "ABC0002\u0301", "ABC0002\t"])
+@pytest.mark.parametrize("end_label", [False, True])
+def test_9b_any_unreadable_character(label, end_label):
+    unsafe = doc("b", "ABC0002", label) if end_label else doc("b", label)
+    facts = compute_bates_gaps([doc("a", "ABC0001"), unsafe, doc("c", "ABC0003"),
+                                doc("d", "QQ0001"), doc("e", "QQ0003")])
+    assert len(facts) == 1
+    fact = facts[0]
+    assert (fact.kind, fact.series, fact.lower, fact.upper) == ("not_computed", "ALL", None, None)
+    assert fact.text == "Bates series ALL: not computed (unreadable character in a label)"
+    assert fact.cited_ids == (("b", "b-v1"),)
+
+
+def test_double_separator_does_not_relate():
+    for sep in ["--", "__", "  ", "-_"]:
+        facts = middle("ABC" + sep + "0002")
+        assert missing(facts) == {(2, 2)}
+        assert any(f.reason == "no plain series" for f in cited(facts, "b", "not_computed"))
 
 
 def test_G1_unrelated_labels():

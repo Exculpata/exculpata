@@ -12,7 +12,10 @@ read documents also receive notices for gaps beyond the observed span.
 
 - `missing`: `Missing Bates ABC0002` between plain ABC0001 and ABC0003.
 - `possible`: `Possible missing Bates ABC0002 (related label or page count touches gap)` when ABC0002.001 also appears.
-- `not_computed`: `Bates series ALL: not computed (unreadable character in a label)` for invisible or non-ASCII letters. Fullwidth ASCII folds relate instead.
+- `not_computed`: `Bates series ALL: not computed (unreadable character in a label)` for any invisible or non-ASCII character, including fullwidth digits and letters.
+
+Related labels may have one ASCII separator between the folded prefix and digits;
+double separators do not relate. Equal-width brackets set the gap label padding.
 
 The `computed` status records each examined plain series. All facts are cited.
 Reversed or mixed-prefix ranges disable the affected series. Unread suffixes,

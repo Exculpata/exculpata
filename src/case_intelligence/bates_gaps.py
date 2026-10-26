@@ -34,17 +34,13 @@ def _plain(label):
 
 def _related(label):
     folded = unicodedata.normalize("NFKC", label).casefold().strip()
-    skeleton = re.sub(r"[\W_]+", "|", folded)
-    match = re.match(r"([a-z]+)(\d+)", skeleton)
+    skeleton = re.sub(r"[\W_]", "|", folded)
+    match = re.match(r"([a-z]+)\|?(\d+)", skeleton)
     return (match[1], int(match[2])) if match else None
 
 
 def _unreadable(label):
-    normalized = unicodedata.normalize("NFKC", label)
-    return any(c != " " and (unicodedata.category(c) in {"Cc", "Cf", "Mn", "Me"}
-               or unicodedata.category(c).startswith("Z") or c == "\u2800")
-               for c in label + normalized) or any(
-                   ord(c) > 127 and unicodedata.category(c).startswith("L") for c in normalized)
+    return not label.isascii() or not label.isprintable()
 
 
 def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
@@ -115,8 +111,8 @@ def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
         first, last = spans[0][0], max(s[1] for s in spans)
         width = max(max(s[2:4]) for s in spans)
 
-        def label(n):
-            return prefix + str(n).zfill(width)
+        def label(n, padding=width):
+            return prefix + str(n).zfill(padding)
 
         touches = [(lo, last if hi is None else hi, c) for lo, hi, c, uncertain in related[prefix] if uncertain]
         outside = [c for lo, hi, c, _ in related[prefix] if lo < first or (hi is not None and hi > last)]
@@ -136,7 +132,9 @@ def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
                 if incomplete:
                     reasons.append("unlabeled or incomplete document")
                 ids = right_ids | left_ids | causes | incomplete
-                text = label(right + 1) + (f" to {label(lo - 1)}" if lo > right + 2 else "")
+                widths = left_widths | right_widths
+                gap_width = next(iter(widths)) if len(widths) == 1 else width
+                text = label(right + 1, gap_width) + (f" to {label(lo - 1, gap_width)}" if lo > right + 2 else "")
                 reason = "; ".join(reasons)
                 emit("possible" if reasons else "missing", prefix, right + 1, lo - 1,
                      ("Possible missing Bates " if reasons else "Missing Bates ") + text +
