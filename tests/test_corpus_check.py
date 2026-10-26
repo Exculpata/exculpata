@@ -838,6 +838,7 @@ def test_answer_kind_matches_rendered_generated_branch(kind):
 
 @pytest.mark.parametrize('field,value', [
     ('unexecuted_setting', True), ('runtime', 'synthetic-runtime==1'), ('compute_type', 'float32'),
+    ('sha256', {'model.bin': '0' * 64}),
 ])
 def test_asr_receipt_identity_rejects_unexecuted_settings(tmp_path, field, value):
     root = tmp_path / 'corpus'

@@ -1,5 +1,6 @@
 """Recognition receipts must describe the settings actually executed."""
 import copy
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -30,10 +31,18 @@ def test_recognition_rejects_manifest_execution_mismatch(monkeypatch, tmp_path, 
         corpus_recognition.recognize(tmp_path, manifest)
 
 
-def test_recognition_executes_manifest_runtime_and_compute_type(monkeypatch, tmp_path):
+@pytest.fixture
+def recognition_runtime(monkeypatch, tmp_path):
     manifest = json.loads(MANIFEST.read_text())
     manifest['models']['ocr']['sha256'] = {}
-    pin = copy.deepcopy(manifest['models']['asr'])
+    pin = manifest['models']['asr']
+    weights = b'synthetic-weights-not-a-model'
+    pin['sha256'] = {'model.bin': hashlib.sha256(weights).hexdigest()}
+    model_path = tmp_path / pin['revision']
+    # fixture-write: Create a temporary synthetic snapshot directory.
+    model_path.mkdir()
+    # fixture-write: Seed synthetic weights, never a real model.
+    (model_path / 'model.bin').write_bytes(weights)
     versions, snapshots, model_calls, transcription_calls = [], [], [], []
 
     def version(name):
@@ -55,6 +64,42 @@ def test_recognition_executes_manifest_runtime_and_compute_type(monkeypatch, tmp
     monkeypatch.setitem(sys.modules, 'faster_whisper', SimpleNamespace(WhisperModel=Model))
     monkeypatch.setattr(corpus_recognition.importlib.metadata, 'version', version)
     monkeypatch.setattr(corpus_recognition, 'snapshot', snapshot)
+    return manifest, versions, snapshots, model_calls, transcription_calls
+
+
+@pytest.mark.parametrize('defect', ['weights', 'missing-pin', 'revision'])
+def test_recognition_rejects_unpinned_weights(recognition_runtime, tmp_path, defect):
+    manifest, _, snapshots, model_calls, _ = recognition_runtime
+    pin = manifest['models']['asr']
+    message = 'ASR model.bin does not match the pinned corpus digest'
+    if defect == 'weights':
+        pin['sha256'] = {'model.bin': '69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1'}
+    elif defect == 'missing-pin':
+        pin.pop('sha256')
+    else:
+        # fixture-write: Give the synthetic snapshot a mutable revision name.
+        (tmp_path / pin['revision']).rename(tmp_path / 'main')
+        pin['revision'] = 'main'
+        message = 'ASR revision must be an immutable commit'
+    with pytest.raises(ValueError, match=message):
+        corpus_recognition.recognize(tmp_path, manifest)
+    assert not model_calls
+    if defect == 'revision':
+        assert not snapshots
+
+
+def test_recognition_rejects_missing_weights_file(recognition_runtime, tmp_path):
+    manifest, _, _, model_calls, _ = recognition_runtime
+    # fixture-write: Remove only the temporary synthetic weights.
+    (tmp_path / manifest['models']['asr']['revision'] / 'model.bin').unlink()
+    with pytest.raises(ValueError, match='ASR model.bin is missing from the pinned snapshot'):
+        corpus_recognition.recognize(tmp_path, manifest)
+    assert not model_calls
+
+
+def test_recognition_executes_manifest_runtime_and_compute_type(recognition_runtime, tmp_path):
+    manifest, versions, snapshots, model_calls, transcription_calls = recognition_runtime
+    pin = copy.deepcopy(manifest['models']['asr'])
     observations, transcripts = corpus_recognition.recognize(tmp_path, manifest)
     assert versions == ['faster-whisper', 'ctranslate2', 'av']
     assert snapshots == [(pin, True)]
