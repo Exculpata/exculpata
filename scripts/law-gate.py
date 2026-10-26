@@ -105,7 +105,7 @@ def run(event):
             commits = git("rev-list", "--first-parent", "--reverse", f"{base}..{target}").splitlines()
             if not commits:
                 raise ValueError("unsupported empty merge group: use run with queued commits")
-            candidates = [(commit, re.search(r"\(#([1-9][0-9]*)\)", git("show", "-s", "--format=%s", commit).strip())) for commit in commits]
+            candidates = [(commit, re.search(r"\(#([1-9][0-9]*)\)$", git("show", "-s", "--format=%s", commit).strip())) for commit in commits]
         else:
             number = int(event.get("number") or event["issue"]["number"])
             git("fetch", "--no-tags", "origin", f"pull/{number}/head")

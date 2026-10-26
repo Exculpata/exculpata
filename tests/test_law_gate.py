@@ -192,19 +192,19 @@ def test_case8_reruns(repo):
     assert repo.statuses[-1][0] == pr["head"]["sha"] and repo.statuses[-1][1]["state"] == "failure"
 
 
-@pytest.mark.parametrize("variant", ["pass", "strike", "subject", "404", "stale"])
+@pytest.mark.parametrize("variant", ["pass", "strike", "subject", "404", "stale", "trailing"])
 def test_case9_merge_group(repo, variant, capsys):
     repo.write("src/a.py", "first\n")
     first = repo.snapshot("first (#1)")
     repo.pr()
     repo.write("src/a.py", "second\n")
-    head = repo.snapshot("missing number" if variant == "subject" else "second (#2)")
-    repo.pr(number=2, labels=["review-fail-2"] if variant == "strike" else [])
+    head = repo.snapshot({"subject": "missing number", "trailing": "Follow up to (#1) (#2)"}.get(variant, "second (#2)"))
+    repo.pr(number=2, labels=["review-fail-2"] if variant in {"strike", "trailing"} else [])
     if variant == "404": repo.responses["pulls/2"] = urllib.error.HTTPError("synthetic", 404, "missing", {}, None)
     if variant == "stale": repo.responses["issues/2/comments?per_page=100&page=1"] = [comment(first)]
     assert repo.gate.run({"merge_group": {"base_sha": repo.base, "head_sha": head}}) == (0 if variant == "pass" else 1)
     assert repo.statuses[-1][0] == head
-    if variant == "strike": assert "#2" in capsys.readouterr().out
+    if variant in {"strike", "trailing"}: assert "#2" in capsys.readouterr().out
 
 
 def test_case10_trusted_code_and_workflow(repo):
