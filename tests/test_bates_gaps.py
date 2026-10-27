@@ -299,3 +299,20 @@ def test_U35_narrow_range_requires_series_digit_width():
                                 doc("c", "ABC0513")])
     assert not missing(facts)
     possible_run(facts, 512, 512, "a", "b", "c")
+
+def test_U36_24_digits_still_compute_reach():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC-" + "0" * 23 + "5"),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("missing", 2, 4), ("possible", 5, 5), ("missing", 6, 9)}
+    possible_run(facts, 5, 5, "a", "b", "c")
+
+def test_U37_narrow_range_uses_maximum_mixed_plain_width():
+    facts = compute_bates_gaps([doc("a", "ABC001"), doc("b", "ABC 0003-0005"),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 3, 5), ("possible", 6, 9)}
+    for lower, upper, identities, reason in [
+        (2, 2, ("a", "c"), "bracketing digit widths differ"),
+        (3, 5, ("a", "b", "c"), "label may name series; bracketing digit widths differ"),
+        (6, 9, ("a", "c"), "bracketing digit widths differ"),
+    ]:
+        possible_run(facts, lower, upper, *identities, reason=reason)
