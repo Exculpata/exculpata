@@ -66,6 +66,16 @@ def test_postgres_acceptance_includes_case_theory(entrypoint):
     assert "tests/test_case_theory_schema.py" in command.split()
 
 
+@pytest.mark.parametrize("dsn", ["", "synthetic-dsn"])
+def test_case_theory_schema_requires_postgres_dsn(monkeypatch, dsn):
+    import runpy
+
+    monkeypatch.setenv("CASE_REVIEW_POSTGRES_TEST_DSN", dsn)
+    module = runpy.run_path(str(SCRIPT.parent.parent / "tests/test_case_theory_schema.py"))
+    assert module["pytestmark"].name == "skipif"
+    assert module["pytestmark"].args == (not bool(dsn),)
+
+
 @pytest.mark.parametrize("binary", ["pg_dump", "psql", "pg_restore"])
 @pytest.mark.parametrize("prefix", [None, "", 'synthetic-client -i "synthetic container"'])
 def test_postgres_client_command_prefix(monkeypatch, binary, prefix):
