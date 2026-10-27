@@ -36,7 +36,7 @@ def test_cited_passage_delete_never_raises(isolated_theory_dsn, tmp_path, monkey
         bench.pilot.process(document.document_id)
         bench.index_pilot_document(document.document_id)
         assert document.state == "ready"
-        matter = "ci-matter-synthetic" if operation == "startup" else "matter-pilot"
+        matter = "ci-matter-00000000000000000000000000000001" if operation == "startup" else "matter-pilot"
         connection = bench.postgres_connection
         if operation == "startup":
             upsert_postgres_document(connection, matter_id=matter, matter_name="Synthetic", document_id=document.document_id, display_name="Synthetic.txt", media_type="text/plain", units=document.parsed_units())
