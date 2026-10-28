@@ -157,8 +157,6 @@ def test_hanging_test_reports_named_failure_stack_and_continues(tmp_path):
     result = run_synthetic(tmp_path, '''import threading
 import pytest
 
-pytestmark = pytest.mark.xdist_group("synthetic-timeout-sequence")
-
 @pytest.mark.timeout(1)
 def test_hanging_lock():
     threading.Event().wait()
@@ -174,7 +172,7 @@ def test_after_timeout():
     suite = ET.parse(tmp_path / 'application-results.xml').getroot().find('testsuite')
     assert suite.attrib['tests'] == '2'
     assert suite.attrib['failures'] == '1' and suite.attrib['errors'] == '0'
-    failure = suite.find("testcase[@name='test_hanging_lock@synthetic-timeout-sequence']/failure")
+    failure = suite.find("testcase[@name='test_hanging_lock']/failure")
     assert failure is not None and 'Timeout (>1.0s)' in failure.attrib['message']
     exits = [json.loads(path.read_text()) for path in
              (tmp_path / 'application-workers').glob('*-exit.json')]
