@@ -119,26 +119,31 @@ def test_T7_nonmember(tmp_path, monkeypatch):
                     if event.action == 'production_summary.export']
 
 
-@pytest.mark.parametrize('endpoint', ENDPOINTS)
-def test_T7_membership_revoked_mid_request(production_client, monkeypatch, endpoint):
+@pytest.mark.parametrize('endpoint,expected_calls', list(zip(ENDPOINTS, (3, 2, 2))))
+def test_T7_membership_revoked_mid_request(production_client, monkeypatch, endpoint, expected_calls):
     p = acceptance(production_client)
     workspace = p.client.app.state.workbench.workspace
     membership = workspace.membership
     calls = 0
+    revoke_at = None
     def revoked(matter_id, actor):
         nonlocal calls
         calls += 1
-        if calls >= 2:
+        if calls == revoke_at:
             raise KeyError('Synthetic membership revoked')
         return membership(matter_id, actor)
     monkeypatch.setattr(workspace, 'membership', revoked)
+    assert request_summary(p, endpoint).status_code == 200
+    assert calls == expected_calls
+    revoke_at = calls
+    prior_export_events = export_events(p)
+    calls = 0
     response = request_summary(p, endpoint)
     assert response.status_code == 404
     assert 'content-disposition' not in response.headers
     assert 'Possible missing Bates' not in response.text
-    assert exports(p) == []
-    assert export_events(p) == []
-    assert calls >= 2
+    assert export_events(p) == prior_export_events
+    assert calls == expected_calls
 
 
 @pytest.fixture
