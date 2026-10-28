@@ -142,6 +142,8 @@
   [["POST"], "/matters/{slug}/timeline/draft/refresh"],
   [["GET"], "/matters/{slug}/timeline/draft/export"],
   [["POST"], "/matters/{slug}/timeline/draft/{entry_id}/promote"],
+  [["GET"], "/matters/{slug}/production-summary"],
+  [["GET"], "/matters/{slug}/production-summary/export"],
   [["GET"], "/matters/{slug}/connections"],
   [["GET"], "/matters/{slug}/purpose"],
   [["PUT"], "/matters/{slug}/purpose"],
