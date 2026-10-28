@@ -98,6 +98,22 @@ def test_t4_refusal_precedes_serialization_and_omits_payload(caplog, sender):
     assert opener.calls == []
 
 
+@pytest.mark.parametrize("role", ["Tool", "TOOL"])
+@pytest.mark.parametrize("sender", ["bounded", "schema"])
+@pytest.mark.parametrize("path", CHAT_PATHS)
+def test_mixed_case_tool_roles_refused_before_serialization(monkeypatch, role, sender, path):
+    opener = RecordingOpener()
+
+    def unexpected_serialization(*args, **kwargs):
+        pytest.fail("Tool message must be refused before serialization")
+
+    monkeypatch.setattr(json, "dumps", unexpected_serialization)
+    url = "http://127.0.0.1:8790" + path
+    send = (lambda body: generation._bounded_json_request(url, body, timeout=1, opener=opener)
+            if sender == "bounded" else generator_schema._urllib_transport(1, open_request=opener.open)(url, body, {}))
+    assert_refused(send, {"messages": [{"role": role}]}, opener)
+
+
 @pytest.mark.parametrize("builder", ["answer", "schema-vllm", "schema-ollama", "question"])
 def test_t5_existing_builders_send_valid_requests(builder):
     answer = {"answerable": False, "claims": [], "limitation": None,
