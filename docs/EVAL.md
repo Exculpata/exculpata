@@ -270,3 +270,12 @@ latency depends on the runner and is not a hardware capacity benchmark.
 The independent chronology (#280), production-summary (#282), inconsistency
 (#283) and review-candidate (#289) fixture adapters are follow-ups. This change
 does not import those branches or claim their workflows are evaluated here.
+
+## Tier scorecard schema
+
+`case_intelligence.tier_evals` defines and validates synthetic tier scorecards.
+Rows use catalog order: potato (`potato`, `cpu`), consumer (`gpu-16`, `gpu-24`),
+and ultra (`ultra`). Provenance, model pins, hardware, coverage and execution
+metadata are required before accepting measurement fields. New cards are
+unmeasured with null scores and a reason. This schema increment does not run
+models or write scorecard artifacts; synthetic validation is not quality evidence.
