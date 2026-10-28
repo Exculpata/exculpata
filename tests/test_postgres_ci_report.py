@@ -53,7 +53,7 @@ def test_cli_fails_for_missing_or_malformed_report(tmp_path, content):
 
 
 @pytest.mark.parametrize("entrypoint", ["Makefile", ".github/workflows/quality-gates.yml"])
-@pytest.mark.parametrize("module", ["schema", "reindex"])
+@pytest.mark.parametrize("module", ["_schema", "_reindex", ""])
 def test_postgres_acceptance_includes_case_theory(entrypoint, module):
     content = (SCRIPT.parent.parent / entrypoint).read_text()
     if entrypoint == "Makefile":
@@ -64,7 +64,7 @@ def test_postgres_acceptance_includes_case_theory(entrypoint, module):
         steps = yaml.safe_load(content)["jobs"]["postgres-integration"]["steps"]
         acceptance = next(step["run"] for step in steps if "-m pytest" in step.get("run", ""))
     command = acceptance.replace("\\\n", " ").split("-m pytest", 1)[1].splitlines()[0]
-    assert f"tests/test_case_theory_{module}.py" in command.split()
+    assert f"tests/test_case_theory{module}.py" in command.split()
 
 
 def test_reindex_database_cases_have_a_required_postgres_lane():
