@@ -4,15 +4,25 @@ Digit-ending prefixes always have a digit count unlike the base series width.
 """
 from itertools import cycle
 import random
+import re
 import string
+import unicodedata
 
 import pytest
 
 from case_intelligence.bates_gaps import BatesDocument, compute_bates_gaps
+from tests.bates_gaps_378a import compute_bates_gaps as compute_378a
 
 def marked(label, prefix, rng):
     marks = "".join(rng.choices(string.punctuation + " ‥－．＿", k=rng.randint(1, 3)))
-    style = rng.randrange(10)
+    style = rng.randrange(13)
+    if style == 12:
+        return prefix + "-" + label[len(prefix):].zfill(rng.randint(25, 30))
+    if style == 10:
+        return rng.choice(["X-", "SET "]) + label
+    if style == 11:
+        position = rng.randrange(len(prefix) + 1, len(label))
+        return label[:position] + marks + label[position:]
     if style == 0:
         return label[len(prefix):]
     if style == 1:
@@ -99,12 +109,12 @@ def generate(seed):
         elif shape == 12:
             label = rng.choice([" ", "\t", "\n", "\u2003", "\u202f"]) + label + " "
         elif shape >= 16:
-            if len(run) > 2 and rng.random() < .35:
-                end, count = prefix + str(run[1]).zfill(width), len(run)
-            else:
-                side = rng.randrange(3)
-                label = marked(label, prefix, rng) if end is None or side != 1 else label
-                end = marked(end, prefix, rng) if end and side != 0 else end
+            if len(run) > 1 and rng.random() < .5:
+                end = rng.choice([None, prefix + str(run[1]).zfill(width)])
+                count = len(run)
+            side = rng.randrange(3)
+            label = marked(label, prefix, rng) if end is None or side != 1 else label
+            end = marked(end, prefix, rng) if end and side != 0 else end
         if mode == 14:
             label += "." + str(1).zfill(width + 1)
         add([] if shape == 11 and rng.random() < .5 else [(label, end)], prefix, count, complete)
@@ -121,7 +131,7 @@ def generate(seed):
     return docs, truth, owners, aliases, coordinates, mode in (0, 9)
 
 @pytest.mark.parametrize("seed", range(3000))
-def test_oracle_generated_truth(seed):
+def test_oracle_A_generated_truth(seed):
     docs, truth, owners, aliases, coordinates, clean = generate(seed)
     facts = compute_bates_gaps(docs)
     context = (seed, [(d.labels, d.page_count, d.labels_complete) for d in docs])
@@ -146,3 +156,90 @@ def test_oracle_generated_truth(seed):
         actual = {n for f in missing for n in range(f.lower, f.upper + 1)}
         assert actual == next(iter(truth.values()))[1], context  # C
         assert all(f.kind in {"missing", "computed"} for f in facts), context
+
+def namer_reach_in_gap(docs, gap):
+    """Bounded spec oracle for B only; A continues to use pre-rendered truth."""
+    pages = set(range(gap.lower, gap.upper + 1))
+    plain_pattern = re.compile(r"([A-Za-z]+)([0-9]{1,18})")
+    widths = [len(match[2]) for d in docs for pair in d.labels for label in pair
+              if label and (match := plain_pattern.fullmatch(label)) and match[1] == gap.series]
+    width = max(widths)
+    reached = set()
+    for document in docs:
+        for start, end in document.labels:
+            labels = [start] if end is None else [start, end]
+            folded = [unicodedata.normalize("NFKC", label) for label in labels]
+            plain = [plain_pattern.fullmatch(label) for label in labels]
+            letters = ["".join(c for c in label.casefold() if "a" <= c <= "z") for label in folded]
+            digits = ["".join(c for c in label if "0" <= c <= "9") for label in folded]
+            if not any(not (p and p[1] == gap.series) and
+                       (gap.series.casefold() in text or (not text and number))
+                       for p, text, number in zip(plain, letters, digits)):
+                continue
+            if any(not number or len(number) > 24 for number in digits):
+                return pages, True
+            values = []
+            for number, p in zip(digits, plain):
+                values.append({int(p[2])} if end is not None and p else
+                              {int(number[offset:offset + length])
+                               for length in range(1, min(18, len(number)) + 1)
+                               for offset in range(len(number) - length + 1)})
+            narrow = re.fullmatch(re.escape(gap.series) + r" ?([0-9]+)-([0-9]+)", folded[0])
+            if end is None and narrow and len(narrow[1]) == len(narrow[2]) == width and int(narrow[1]) <= int(narrow[2]):
+                intervals = [(int(narrow[1]), int(narrow[2]))]
+            elif end is not None:
+                numbers = set.union(*values)
+                intervals = [(min(numbers), max(numbers))]
+            else:
+                intervals = [(n, n) for n in values[0]]
+            count = document.page_count
+            for lower, upper in intervals:
+                upper = upper + count - 1 if count is not None and count > 0 else gap.upper
+                reached.update(n for n in pages if lower <= n <= upper)
+    return reached, False
+
+@pytest.mark.parametrize("seed", range(3000))
+def test_oracle_B_possible_pages_never_increase(seed):
+    docs, *_ = generate(seed)
+    baseline = [f for f in compute_378a(docs) if f.kind == "possible"]
+    facts = compute_bates_gaps(docs)
+    for fact in facts:
+        if fact.kind == "possible":
+            assert any(old.series == fact.series and old.lower <= fact.lower and
+                       fact.upper <= old.upper for old in baseline), (seed, fact, baseline)
+    for gap in baseline:
+        if gap.reason != "label may name series":
+            continue
+        allowed, whole_series = namer_reach_in_gap(docs, gap)
+        possible = {n for fact in facts if fact.kind == "possible" and fact.series == gap.series
+                    for n in range(max(gap.lower, fact.lower), min(gap.upper, fact.upper) + 1)}
+        assert possible <= allowed, (seed, gap, possible - allowed)
+        if whole_series:
+            assert possible == allowed, (seed, gap, allowed - possible)
+
+def test_oracle_B_at_least_one_namer_seed_improves_precision():
+    for seed in range(3000):
+        docs, *_ = generate(seed)
+        baseline = [f for f in compute_378a(docs)
+                    if f.kind == "possible" and "label may name series" in f.reason]
+        for fact in compute_bates_gaps(docs):
+            if fact.kind == "missing" and any(
+                old.series == fact.series and max(old.lower, fact.lower) <= min(old.upper, fact.upper)
+                for old in baseline
+            ):
+                return
+    pytest.fail("No seed with a namer reports a Missing page that 378a made Possible")
+
+def test_oracle_B_at_least_one_gap_has_missing_and_possible_runs():
+    for seed in range(3000):
+        docs, *_ = generate(seed)
+        facts = compute_bates_gaps(docs)
+        for gap in compute_378a(docs):
+            if gap.kind != "possible" or gap.reason != "label may name series":
+                continue
+            kinds = {fact.kind for fact in facts if fact.series == gap.series and
+                     fact.kind in {"missing", "possible"} and
+                     max(gap.lower, fact.lower) <= min(gap.upper, fact.upper)}
+            if kinds == {"missing", "possible"}:
+                return
+    pytest.fail("No seed has both Missing and Possible runs in one namer-only gap")

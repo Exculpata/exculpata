@@ -1,4 +1,4 @@
-"""Synthetic Bates regressions and precision guards G1-G5 for 378a."""
+"""Synthetic Bates regressions and precision guards for 378a and 378b."""
 import pytest
 
 from case_intelligence.bates_gaps import BatesDocument, compute_bates_gaps
@@ -106,7 +106,7 @@ def test_U16_missing_text_uses_bracket_width():
         "Possible missing Bates NB00004 to NB20011 (")
 
 @pytest.mark.parametrize("end_label", [False, True])
-def test_U16_fullwidth_digit_relates(end_label):
+def test_U21_fullwidth_digit_relates(end_label):
     facts = middle("ABC0002", "ABC000２") if end_label else middle("ABC000２")
     protected(facts, "b")
     assert not any(f.series == "ALL" for f in facts)
@@ -115,7 +115,7 @@ def test_U16_fullwidth_digit_relates(end_label):
 @pytest.mark.parametrize("label", ["ABC000٢", "ABC–0002", "ABC‑0002", "ABC\u09030002",
                                     "ABC0002\u200b", "ABC0002\u0903", "ABC0002\u0301", "ABC0002\t"])
 @pytest.mark.parametrize("end_label", [False, True])
-def test_U16_any_unreadable_character(label, end_label):
+def test_U22_any_unreadable_character(label, end_label):
     unsafe = doc("b", "ABC0002", label) if end_label else doc("b", label)
     facts = compute_bates_gaps([doc("a", "ABC0001"), unsafe, doc("c", "ABC0003"),
                                 doc("d", "QQ0001"), doc("e", "QQ0003")])
@@ -147,14 +147,18 @@ def test_G4_gap_facts_count_toward_limit():
     with pytest.raises(OverflowError):
         compute_bates_gaps(doc(str(i), f"ABC{i * 2:06d}") for i in range(100002))
 
-@pytest.mark.parametrize("label,upper", [
-    (label, 2) for label in ["ABC--0002", "ABC-_0002", "ABC - 0002", "ABC. 0002",
+@pytest.mark.parametrize("label,upper,expected_missing", [
+    (label, 2, None) for label in ["ABC--0002", "ABC-_0002", "ABC - 0002", "ABC. 0002",
                            "ABC (0002)", "ABC‥0002", "-ABC0002", "[ABC0002]",
                            "AB-C0002", "ABC-X0002"]
-] + [(label, 8) for label in ["ABC0,005", "ABC0.005", "ABC00-02"]])
-def test_U17_marked_payloads(label, upper):
+] + [("ABC0,005", 8, {(2, 4), (6, 8)}), ("ABC0.005", 8, {(2, 4), (6, 8)}),
+     ("ABC00-02", 8, {(3, 8)})])
+def test_U17_marked_payloads(label, upper, expected_missing):
     facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", label), doc("c", f"ABC{upper + 1:04d}")])
-    protected(facts, "b", 2, upper)
+    if expected_missing is None:
+        protected(facts, "b", 2, upper)
+    else:
+        assert missing(facts, "ABC") == expected_missing
     assert cited(facts, "b", "possible")
 
 @pytest.mark.parametrize("start,end", [("ABC0002", "ABC--0009")])
@@ -180,3 +184,135 @@ def test_G5_unrelated_marks(labels):
     facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003")] +
                                [doc(str(i), label) for i, label in enumerate(labels)])
     assert missing(facts) == {(2, 2)}
+
+def gap_runs(facts):
+    return {(f.kind, f.lower, f.upper) for f in facts
+            if f.series == "ABC" and f.kind in {"missing", "possible"}}
+
+def possible_run(facts, lower, upper, *identities, reason="label may name series"):
+    runs = [f for f in facts if (f.kind, f.series, f.lower, f.upper) ==
+            ("possible", "ABC", lower, upper)]
+    assert len(runs) == 1
+    assert runs[0].reason == reason
+    assert runs[0].cited_ids == tuple(sorted((i, i + "-v1") for i in identities))
+
+def test_U23_zero_page_count_touches_like_unknown():
+    facts = compute_bates_gaps([doc("a", "ABC0001", count=0), doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("possible", 2, 9)}
+    possible_run(facts, 2, 9, "a", "c", reason="page count touches gap")
+
+def test_U24_reach_splits_gap_and_cites_outside_notice():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0010"), doc("d", "ABC 0,007")])
+    assert gap_runs(facts) == {("missing", 2, 2), ("missing", 4, 6),
+                               ("possible", 7, 7), ("missing", 8, 9)}
+    possible_run(facts, 7, 7, "b", "c", "d")
+    outside = [f for f in facts if "gaps outside ABC0001 to ABC0010 not computed" in f.text]
+    assert len(outside) == 1
+    assert (outside[0].kind, outside[0].series, outside[0].lower, outside[0].upper) == (
+        "not_computed", "ABC", None, None)
+    assert outside[0].cited_ids == (("d", "d-v1"),)
+
+@pytest.mark.parametrize("label", ["X-ABC0002", "SET ABC 0002"])
+def test_U25_letters_before_prefix(label):
+    facts = middle(label)
+    assert gap_runs(facts) == {("possible", 2, 2)}
+    possible_run(facts, 2, 2, "a", "b", "c")
+
+def test_U26_reach_extends_by_page_count():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC-5", count=3),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("missing", 2, 4), ("possible", 5, 7), ("missing", 8, 9)}
+    possible_run(facts, 5, 7, "a", "b", "c")
+
+def test_U27_unknown_count_extends_reach_to_series_max():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC-5", count=None),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("missing", 2, 4), ("possible", 5, 9)}
+    possible_run(facts, 5, 9, "a", "b", "c")
+
+def test_U28_nonplain_range_end_reaches_interval():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC 0004", "ABC0006"),
+                                doc("c", "ABC0007"), doc("d", "ABC0009")])
+    assert gap_runs(facts) == {("possible", 2, 5), ("missing", 8, 8)}
+    possible_run(facts, 2, 5, "a", "b")
+
+def test_U29_long_digits_fall_back_to_whole_series():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC-" + "9" * 25),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("possible", 2, 9)}
+    possible_run(facts, 2, 9, "a", "b", "c")
+
+def test_U30_nonplain_label_gets_not_read_notice():
+    notices = [f for f in middle("X-ABC0002") if f.text == "Bates labels not read: X-ABC0002"]
+    assert len(notices) == 1
+    assert (notices[0].kind, notices[0].lower, notices[0].upper) == ("not_computed", None, None)
+    assert notices[0].cited_ids == (("b", "b-v1"),)
+
+@pytest.mark.parametrize("label", ["ABC-TWO", "ABC SET", "ABC Ⅱ"])
+def test_G6_digitless_label_may_name_series(label):
+    facts = middle(label)
+    assert gap_runs(facts) == {("possible", 2, 2)}
+    possible_run(facts, 2, 2, "a", "b", "c")
+    notices = [f for f in facts if f.text == f"Bates labels not read: {label}"]
+    assert len(notices) == 1
+    assert (notices[0].kind, notices[0].lower, notices[0].upper) == ("not_computed", None, None)
+    assert notices[0].cited_ids == (("b", "b-v1"),)
+
+def test_G7_mixed_production_keeps_missing_and_possible_side_by_side():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0004"),
+                                doc("c", "ABC0010"), doc("d", "ABC0014"),
+                                doc("e", "ABC-5", count=2), doc("f", "X-ABC8")])
+    assert gap_runs(facts) == {("missing", 2, 3), ("possible", 5, 6), ("missing", 7, 7),
+                               ("possible", 8, 8), ("missing", 9, 9), ("missing", 11, 13)}
+    possible_run(facts, 5, 6, "b", "c", "e")
+    possible_run(facts, 8, 8, "b", "c", "f")
+    assert not any("gaps outside" in f.text for f in facts)
+
+def test_U31_nonplain_range_extends_from_largest_reach_by_count():
+    facts = compute_bates_gaps([doc("a", "ABC0010"), doc("b", "ABC-12", "ABC-13", count=5),
+                                doc("c", "ABC0020")])
+    assert missing(facts) == {(18, 19)}
+    possible_run(facts, 11, 17, "a", "b", "c")
+
+def test_U32_narrow_range_shape_reaches_interior():
+    facts = compute_bates_gaps([doc("a", "ABC0000"), doc("b", "ABC 0001-0003", count=1),
+                                doc("c", "ABC0005")])
+    assert missing(facts) == {(4, 4)}
+    possible_run(facts, 1, 3, "a", "b", "c")
+
+@pytest.mark.parametrize("label", ["ABC 001-0003", "ABC 0003-0001"])
+def test_U33_unequal_width_or_reversed_label_keeps_wide_reach(label):
+    facts = compute_bates_gaps([doc("a", "ABC0000"), doc("b", label), doc("c", "ABC0005")])
+    assert missing(facts) == {(2, 2), (4, 4)}
+    possible_run(facts, 1, 1, "a", "b", "c")
+    possible_run(facts, 3, 3, "a", "b", "c")
+
+def test_U34_prefixed_two_run_label_keeps_wide_reach():
+    facts = compute_bates_gaps([doc("a", "ABC2000"), doc("b", "X-ABC0002.001"),
+                                doc("c", "ABC2002")])
+    assert not missing(facts)
+    possible_run(facts, 2001, 2001, "a", "b", "c")
+
+def test_U35_narrow_range_requires_series_digit_width():
+    facts = compute_bates_gaps([doc("a", "ABC0511"), doc("b", "ABC05-12"),
+                                doc("c", "ABC0513")])
+    assert not missing(facts)
+    possible_run(facts, 512, 512, "a", "b", "c")
+
+def test_U36_24_digits_still_compute_reach():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC-" + "0" * 23 + "5"),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("missing", 2, 4), ("possible", 5, 5), ("missing", 6, 9)}
+    possible_run(facts, 5, 5, "a", "b", "c")
+
+def test_U37_narrow_range_uses_maximum_mixed_plain_width():
+    facts = compute_bates_gaps([doc("a", "ABC001"), doc("b", "ABC 0003-0005"),
+                                doc("c", "ABC0010")])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 3, 5), ("possible", 6, 9)}
+    for lower, upper, identities, reason in [
+        (2, 2, ("a", "c"), "bracketing digit widths differ"),
+        (3, 5, ("a", "b", "c"), "label may name series; bracketing digit widths differ"),
+        (6, 9, ("a", "c"), "bracketing digit widths differ"),
+    ]:
+        possible_run(facts, lower, upper, *identities, reason=reason)

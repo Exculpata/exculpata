@@ -29,6 +29,6 @@ Possible: 1
 - Bates labels not read: unlabeled or incomplete document [unreadable.pdf \(version v6\)](/matters/synthetic/sources/source-6)
 - Bates labels not read: ABC0007.A [suffix.pdf \(version v3\)](/matters/synthetic/sources/source-3)
 - Bates series ABC: gaps outside ABC0001 to ABC0005 not computed [suffix.pdf \(version v3\)](/matters/synthetic/sources/source-3)
-- Possible missing Bates ABC0004 \(label may name series; unlabeled or incomplete document\) [first\_\[a\].pdf \(version v1\)](/matters/synthetic/sources/source-1); [next.pdf \(version v2\)](/matters/synthetic/sources/source-2); [suffix.pdf \(version v3\)](/matters/synthetic/sources/source-3); [failed.pdf \(version v5\)](/matters/synthetic/sources/source-5); [unreadable.pdf \(version v6\)](/matters/synthetic/sources/source-6)
+- Possible missing Bates ABC0004 \(unlabeled or incomplete document\) [first\_\[a\].pdf \(version v1\)](/matters/synthetic/sources/source-1); [next.pdf \(version v2\)](/matters/synthetic/sources/source-2); [failed.pdf \(version v5\)](/matters/synthetic/sources/source-5); [unreadable.pdf \(version v6\)](/matters/synthetic/sources/source-6)
 - Bates series ABC: computed [first\_\[a\].pdf \(version v1\)](/matters/synthetic/sources/source-1); [next.pdf \(version v2\)](/matters/synthetic/sources/source-2); [suffix.pdf \(version v3\)](/matters/synthetic/sources/source-3)
 - Bates series XYZ: computed [mail.eml \(version v4\)](/matters/synthetic/sources/source-4)
