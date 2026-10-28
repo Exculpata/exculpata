@@ -66,7 +66,9 @@ def compute_bates_gaps(docs: Iterable[BatesDocument]) -> tuple[GapFact, ...]:
     facts, members, blocked = [], defaultdict(list), defaultdict(list)
     touches, namers = defaultdict(list), defaultdict(set)
     reaches = defaultdict(list)
-    incomplete = {(d.document_id, d.version_id) for d in docs if not d.labels or not d.labels_complete}
+    incomplete = {(d.document_id, d.version_id) for d in docs
+                  if not d.labels or not d.labels_complete or
+                  any(label in {"", "N/A"} for pair in d.labels for label in pair)}
     rows, unsafe = [], set()
 
     def emit(kind, series, lower, upper, text, ids, reason=""):
