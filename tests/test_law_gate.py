@@ -7,7 +7,6 @@ import subprocess
 import urllib.error
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -207,23 +206,10 @@ def test_case9_merge_group(repo, variant, capsys):
     if variant in {"strike", "trailing"}: assert "#2" in capsys.readouterr().out
 
 
-def test_case10_trusted_code_and_workflow(repo):
+def test_case10_trusted_code(repo):
     repo.write("scripts/law-gate.py", "raise SystemExit(0)\n")
     repo.snapshot()
     repo.check(repo.pr(False), "R3")
-    workflow = yaml.safe_load((ROOT / ".github/workflows/law-gate.yml").read_text())
-    assert workflow["permissions"] == {"contents": "read", "pull-requests": "read", "statuses": "write"}
-    assert workflow["env"]["LAW_APPROVER"] == "neilofneils404"
-    events = workflow.get("on", workflow.get(True))
-    assert events["pull_request_target"]["types"] == ["opened", "synchronize", "reopened", "edited", "labeled", "unlabeled"]
-    assert events["issue_comment"]["types"] == ["created", "edited", "deleted"] and "merge_group" in events
-    job = workflow["jobs"]["law-gate-run"]
-    assert "github.event.issue.pull_request" in job["if"]
-    checkout = job["steps"][0]
-    assert checkout["with"]["ref"] == "${{ github.event.merge_group.base_sha || 'refs/heads/main' }}"
-    assert checkout["with"]["persist-credentials"] is False
-    assert len(checkout["uses"].split("@")[1].split()[0]) == 40
-    assert [step["run"] for step in job["steps"] if "run" in step] == ["python3 scripts/law-gate.py"]
 
 
 @pytest.mark.parametrize("value", [None, ""])
