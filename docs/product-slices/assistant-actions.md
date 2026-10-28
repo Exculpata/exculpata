@@ -38,7 +38,8 @@ checks as answers.
 - Models: Qwen3.5-4B (portable) and Qwen3.5-9B (quality), pinned revisions,
   Apache-2.0. **No tool or function calling exists anywhere**; the closest analogue,
   the investigation planner, is deliberately limited to fixed-key proposals with no
-  tools or scope authority.
+  tools or scope authority. `refuse_tool_request` rejects tool/function request
+  fields before serialization or transport, enforced by `tests/test_generator_no_tools.py`.
 - Suggestions inbox (3b), automatic discovery (3a) and the found-dates draft (3c)
   already turn passages into reviewable suggestions without a model.
 

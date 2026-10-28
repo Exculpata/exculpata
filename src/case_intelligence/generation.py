@@ -36,7 +36,7 @@ from .generation_errors import (
     GenerationUnavailable, GenerationSchemaRejected, GenerationInvalidContent,
     GenerationRejected, GenerationGroundingRejected,
 )
-from .generator_schema import openai_response_format
+from .generator_schema import openai_response_format, refuse_tool_request
 from .model_qualification import UNVALIDATED_MODEL_LABEL, qualification_label
 from .service_endpoints import validate_service_endpoint
 
@@ -260,6 +260,7 @@ def _bounded_json_request(
     headers: Mapping[str, str] | None = None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
+    refuse_tool_request(payload)
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
     request_headers.update(dict(headers or {}))

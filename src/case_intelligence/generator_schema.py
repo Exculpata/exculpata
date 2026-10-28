@@ -14,6 +14,28 @@ from dataclasses import dataclass
 from typing import Callable, Mapping
 
 
+FORBIDDEN_REQUEST_KEYS = frozenset({
+    "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls",
+})
+
+
+class ToolRequestRefused(RuntimeError):
+    """A generator request attempted tool or function calling."""
+
+
+def refuse_tool_request(payload: Mapping[str, object]) -> None:
+    """Refuse tool-capable requests before serialization or transport."""
+    if FORBIDDEN_REQUEST_KEYS.intersection(payload):
+        raise ToolRequestRefused("Generator tool requests are refused.")
+    messages = payload.get("messages", ())
+    if isinstance(messages, (list, tuple)):
+        for message in messages:
+            if isinstance(message, Mapping) and (
+                message.get("role") in ("tool", "function")
+                or "tool_calls" in message or "function_call" in message
+            ):
+                raise ToolRequestRefused("Generator tool requests are refused.")
+
 
 PROBE_NAME = "exculpata_schema_probe"
 PROBE_MARKER = "exculpata-schema-ok"
@@ -223,6 +245,7 @@ def _urllib_transport(
         payload: Mapping[str, object],
         headers: Mapping[str, str],
     ) -> Mapping[str, object]:
+        refuse_tool_request(payload)
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         request_headers.update(dict(headers))
