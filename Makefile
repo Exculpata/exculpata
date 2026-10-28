@@ -41,7 +41,7 @@ test:
 test-fast:
 	CASE_REVIEW_POSTGRES_TEST_DSN= CASE_INTELLIGENCE_STORAGE_RESERVE_GIB=0 CASE_INTELLIGENCE_TEST_MODE=1 \
 		OMP_THREAD_LIMIT=1 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-		"$(PYTHON)" -m pytest -n auto --dist loadgroup --max-worker-restart=0 -q
+		"$(PYTHON)" -m pytest -n auto --dist loadgroup --max-worker-restart=0 -q -m "not postgres"
 
 test-transcription:
 	PYTHONPATH=services/transcription/src "$(PYTHON)" -c 'import os, pytest; os.chdir("services/transcription"); raise SystemExit(pytest.main(["-q"]))'
@@ -73,7 +73,7 @@ test-postgres:
 	@test -n "$$CASE_REVIEW_POSTGRES_TEST_DSN" || { echo 'Set CASE_REVIEW_POSTGRES_TEST_DSN to a synthetic PostgreSQL 17 + pgvector database.' >&2; exit 1; }
 	@set -eu; report="$$(mktemp)"; trap 'rm -f "$$report"' EXIT; \
 	"$(PYTHON)" -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
-		tests/test_case_theory_schema.py \
+		tests/test_case_theory_schema.py tests/test_case_theory_reindex.py \
 		--deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
 		--junitxml="$$report"; \
 	"$(PYTHON)" scripts/check-postgres-test-report.py "$$report"
