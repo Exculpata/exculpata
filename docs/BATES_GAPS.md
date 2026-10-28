@@ -30,6 +30,11 @@ gap in that series Possible, citing that document. It never starts a new series;
 spelled-out and Roman numerals are not parsed. Unrelated labels preserve Missing.
 Every non-plain label receives a "Bates labels not read" notice.
 Raw invisible characters or non-ASCII after NFKC produce one ALL notice.
+Otherwise, a label matching `""`, `"n/a"`, `"na"` or `"slipsheet"` after NFKC,
+strip and casefold marks its document incomplete. Either range endpoint counts;
+an absent end (`None`) does not. These placeholders make gaps Possible with
+the incomplete document cited. Other unrelated words, including CONFIDENTIAL,
+preserve Missing.
 Incomplete documents, plain page counts touching a gap (including ranges), and unequal
 bracket widths also prevent certain Missing. Reversed or mixed-prefix ranges
 block their series. The API raises beyond 100,000 facts; it never truncates.
