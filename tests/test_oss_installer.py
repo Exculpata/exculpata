@@ -2394,6 +2394,19 @@ def test_oidc_preflight_matches_runtime_decoded_stripped_secret_semantics(tmp_pa
         assert not args.root.exists()
 
 
+def synthetic_root_ownership(monkeypatch):
+    original_stat, original_fstat = Path.stat, os.fstat
+
+    def root_metadata(metadata):
+        fields = list(metadata)
+        fields[4] = 0
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(Path, "stat", lambda path, *a, **k: root_metadata(original_stat(path, *a, **k)))
+    monkeypatch.setattr(os, "fstat", lambda descriptor: root_metadata(original_fstat(descriptor)))
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+
+
 def synthetic_saved_account_preflight(tmp_path, request, monkeypatch, *, managed=True, mutation=None, root_style=False):
     from tests.test_first_run_handoff import configured_node
     from case_intelligence.local_accounts import LocalAccountRepository
@@ -2434,24 +2447,7 @@ def synthetic_saved_account_preflight(tmp_path, request, monkeypatch, *, managed
         else:
             os.mkfifo(account_file, 0o600)
     if root_style:
-        # Emulate a root-owned fixture on an unprivileged workstation; the
-        # Linux descriptor path lookup is synthetic, with no chmod/chown.
-        original_stat, original_fstat, original_readlink = Path.stat, os.fstat, os.readlink
-        entries = [tmp_path, *tmp_path.parents, *tmp_path.rglob("*")]
-        inode_paths = {(original_stat(path).st_dev, original_stat(path).st_ino): path for path in entries}
-        def root_metadata(metadata):
-            fields = list(metadata)
-            fields[4] = 0
-            return os.stat_result(fields)
-        def descriptor_path(path, *a, **k):
-            if str(path).startswith("/proc/self/fd/"):
-                metadata = original_fstat(int(str(path).rsplit("/", 1)[1]))
-                return str(inode_paths[(metadata.st_dev, metadata.st_ino)])
-            return original_readlink(path, *a, **k)
-        monkeypatch.setattr(Path, "stat", lambda path, *a, **k: root_metadata(original_stat(path, *a, **k)))
-        monkeypatch.setattr(os, "fstat", lambda descriptor: root_metadata(original_fstat(descriptor)))
-        monkeypatch.setattr(os, "readlink", descriptor_path)
-        monkeypatch.setattr(os, "geteuid", lambda: 0)
+        synthetic_root_ownership(monkeypatch)
     request.getfixturevalue("ready_host")
     if mutation == "owner":
         original_fstat = os.fstat
@@ -2468,6 +2464,25 @@ def synthetic_saved_account_preflight(tmp_path, request, monkeypatch, *, managed
     args = installer._parser().parse_args(["install", "--root", str(root), "--resume", "--non-interactive"])
     installer._saved_node_arguments(args, root)
     return root, args, account_file
+
+
+def test_root_style_host_preserves_capture_and_new_descriptors(capfd, tmp_path, request, monkeypatch):
+    synthetic_root_ownership(monkeypatch)
+    request.getfixturevalue("ready_host")
+    try:
+        print("synthetic capture remains readable")
+        captured = capfd.readouterr()
+        assert captured.out == "synthetic capture remains readable\n"
+        assert captured.err == ""
+        for path, owner in ((Path(os.environ["HOME"]), os.geteuid()),
+                            (ROOT / "src/case_intelligence/local_account_format.py", 0)):
+            descriptor = os.open(path, os.O_RDONLY)
+            try:
+                assert os.fstat(descriptor).st_uid == path.stat().st_uid == owner
+            finally:
+                os.close(descriptor)
+    finally:
+        monkeypatch.undo()
 
 
 @pytest.mark.parametrize("managed", [False, True])
