@@ -53,7 +53,8 @@ def test_cli_fails_for_missing_or_malformed_report(tmp_path, content):
 
 
 @pytest.mark.parametrize("entrypoint", ["Makefile", ".github/workflows/quality-gates.yml"])
-def test_postgres_acceptance_includes_case_theory(entrypoint):
+@pytest.mark.parametrize("module", ["schema", "reindex"])
+def test_postgres_acceptance_includes_case_theory(entrypoint, module):
     content = (SCRIPT.parent.parent / entrypoint).read_text()
     if entrypoint == "Makefile":
         acceptance = content.split("\ntest-postgres:\n", 1)[1].split("\ndeployment-check:", 1)[0]
@@ -63,7 +64,26 @@ def test_postgres_acceptance_includes_case_theory(entrypoint):
         steps = yaml.safe_load(content)["jobs"]["postgres-integration"]["steps"]
         acceptance = next(step["run"] for step in steps if "-m pytest" in step.get("run", ""))
     command = acceptance.replace("\\\n", " ").split("-m pytest", 1)[1].splitlines()[0]
-    assert "tests/test_case_theory_schema.py" in command.split()
+    assert f"tests/test_case_theory_{module}.py" in command.split()
+
+
+def test_reindex_database_cases_have_a_required_postgres_lane():
+    import runpy
+    import tomllib
+    import yaml
+
+    root = SCRIPT.parent.parent
+    module = runpy.run_path(str(root / "tests/test_case_theory_reindex.py"))
+    for name, function in module.items():
+        if name.startswith("test_"):
+            marks = {mark.name for mark in getattr(function, "pytestmark", [])}
+            assert "skipif" not in marks and "skip" not in marks
+            assert ("postgres" in marks) == (name != "test_indexing_path_is_execute_only")
+    assert any(mark.startswith("postgres:") for mark in tomllib.loads((root / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]["markers"])
+    application = (root / "Makefile").read_text().split("\ntest-fast:\n")[1].split("\ntest-transcription:")[0]
+    assert '-m "not postgres"' in application
+    steps = yaml.safe_load((root / ".github/workflows/quality-gates.yml").read_text())["jobs"]["application-shards"]["steps"]
+    assert '-m "not postgres"' in next(step["run"] for step in steps if step["name"] == "Run application suite")
 
 
 @pytest.mark.parametrize("dsn", ["", "synthetic-dsn"])

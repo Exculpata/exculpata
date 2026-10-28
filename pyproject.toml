@@ -67,6 +67,7 @@ case_intelligence = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["postgres: requires the dedicated PostgreSQL integration lane"]
 # The signal timeout reports a named failure above the longest subprocess
 # budget (300s). Faulthandler is the hard fallback if Python cannot handle it.
 timeout = 360
