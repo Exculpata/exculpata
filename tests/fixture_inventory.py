@@ -9,7 +9,7 @@ from tests.fixture_write_policy import Violation, check_fixture_writes
 # exemption: SQL, ownership and all other structural checks still apply.
 REVIEWED_DYNAMIC_PROBES = {
     'tests/fixture_probe.py': '351e19742e54024b04505a3b856bcffc4ad055eb6b8aaa4618ea75ddf58fd1c7',
-    'tests/runtime_probes.py': '06e728d3069cc241c23031d01d765882e0af8763aadf0d4c2e1effcb6be7376f',
+    'tests/runtime_probes.py': '26bc85282c1953dbe16f2f7fc809063ec1bb700fd6197ffc3247b9fa369d57bc',
     'tests/test_sandbox_probe.py': 'ca541c5b78ed04a25a36a9869c16beb0218e1bbcd8d5ab508a05d0881a316d04',
 }
 DYNAMIC_RULE = 'dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()'
