@@ -316,3 +316,63 @@ def test_U37_narrow_range_uses_maximum_mixed_plain_width():
         (6, 9, ("a", "c"), "bracketing digit widths differ"),
     ]:
         possible_run(facts, lower, upper, *identities, reason=reason)
+
+@pytest.mark.parametrize("label", [pytest.param("", id="blank"), pytest.param("N/A", id="not_available")])
+def test_unavailable_label_makes_gaps_possible(label):
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0006"),
+                                BatesDocument("d", "d-v1", ((label, None),))])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 4, 5)}
+    possible_run(facts, 2, 2, "a", "b", "d", reason="unlabeled or incomplete document")
+    possible_run(facts, 4, 5, "b", "c", "d", reason="unlabeled or incomplete document")
+    assert {f.text for f in facts if f.kind == "possible"} == {
+        "Possible missing Bates ABC0002 (unlabeled or incomplete document)",
+        "Possible missing Bates ABC0004 to ABC0005 (unlabeled or incomplete document)",
+    }
+    assert any(f.text == f"Bates labels not read: {label}" for f in cited(facts, "d", "not_computed"))
+
+def test_normal_prefixed_series_keeps_missing_gaps():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0006")])
+    assert gap_runs(facts) == {("missing", 2, 2), ("missing", 4, 5)}
+    assert {(f.text, f.reason, f.cited_ids) for f in facts if f.kind == "missing"} == {
+        ("Missing Bates ABC0002", "", (("a", "a-v1"), ("b", "b-v1"))),
+        ("Missing Bates ABC0004 to ABC0005", "", (("b", "b-v1"), ("c", "c-v1"))),
+    }
+    assert all(f.kind in {"missing", "computed"} for f in facts)
+
+@pytest.mark.parametrize("label", [pytest.param(" ", id="one_space"),
+                                  pytest.param("  ", id="two_spaces"),
+                                  "n/a", "NA", "SLIPSHEET"])
+def test_digitless_unprefixed_label_makes_gaps_possible(label):
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0006"), doc("d", label)])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 4, 5)}
+    assert not any(f.kind == "missing" for f in facts)
+    possible_run(facts, 2, 2, "a", "b", "d", reason="unlabeled or incomplete document")
+    possible_run(facts, 4, 5, "b", "c", "d", reason="unlabeled or incomplete document")
+
+def test_unavailable_range_end_makes_gaps_possible():
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003", "N/A"),
+                                doc("c", "ABC0006")])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 4, 5)}
+    assert not any(f.kind == "missing" for f in facts)
+    possible_run(facts, 2, 2, "a", "b", reason="unlabeled or incomplete document")
+    possible_run(facts, 4, 5, "b", "c", reason="unlabeled or incomplete document")
+
+@pytest.mark.parametrize("label", [" Ｎ／Ａ ", " ｎａ ", " SlipSheet ", "ｓｌｉｐｓｈｅｅｔ"])
+@pytest.mark.parametrize("end_label", [False, True])
+def test_normalized_placeholder_makes_gaps_possible(label, end_label):
+    extra = doc("d", "ABC0003", label) if end_label else doc("d", label)
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0006"), extra])
+    assert gap_runs(facts) == {("possible", 2, 2), ("possible", 4, 5)}
+    assert not missing(facts)
+    possible_run(facts, 2, 2, "a", "b", "d", reason="unlabeled or incomplete document")
+    possible_run(facts, 4, 5, "b", "c", "d", reason="unlabeled or incomplete document")
+
+@pytest.mark.parametrize("label", ["UNKNOWN", "SLIPSHEETS", "N/A?", " CONFIDENTIAL "])
+def test_other_digitless_marks_keep_missing_gaps(label):
+    facts = compute_bates_gaps([doc("a", "ABC0001"), doc("b", "ABC0003"),
+                                doc("c", "ABC0006"), doc("d", label)])
+    assert gap_runs(facts) == {("missing", 2, 2), ("missing", 4, 5)}
