@@ -17,7 +17,7 @@
 <p>Download: {% for format in ('markdown', 'json') %}<a href="/matters/{{ matter.slug }}/production-summary/export?format={{ format }}&amp;load_file={{ load_file|urlencode }}">{{ format|upper }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</p>
 {% for title, items in sections %}
 <section aria-labelledby="summary-section-{{ loop.index }}"><h2 id="summary-section-{{ loop.index }}">{{ title }}</h2>
-{% if title == 'Bates gaps' %}<p>Missing: {{ summary.counts.missing }}</p><p>Possible: {{ summary.counts.possible }}</p>{% endif %}
+{% if title == 'Bates gaps' and summary.load_file is not none %}<p>Missing: {{ summary.counts.missing }}</p><p>Possible: {{ summary.counts.possible }}</p>{% endif %}
 <ul>{% for item in items %}<li>{{ visible(item.text) }}{% for citation in item.citations %} <a href="{{ citation.url }}">{{ visible(citation.name) }} (version {{ citation.version_id }})</a>{% endfor %}</li>{% endfor %}</ul>
 </section>
 {% endfor %}

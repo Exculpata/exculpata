@@ -119,7 +119,7 @@ def render_markdown(payload):
     lines = ['# Production summary: ' + escape(payload['name']), '', escape(payload['notice'])]
     for title, items in sections(payload):
         lines += ['', '## ' + title, '']
-        if title == 'Bates gaps':
+        if title == 'Bates gaps' and payload['load_file'] is not None:
             lines += [f"Missing: {payload['counts']['missing']}", f"Possible: {payload['counts']['possible']}", '']
         for item in items:
             links = '; '.join('[' + escape(c['name'] + ' (version ' + c['version_id'] + ')') + '](' + c['url'] + ')'
