@@ -134,3 +134,26 @@ def validate_scorecard(card):
                 raise ValueError("partial means retrieval only, with a reason")
         elif row.answer_accuracy is None or execution.get("generator") != "vllm":
             raise ValueError("measured requires real generation and answer scores")
+
+
+def hardware_inventory():
+    return {}
+
+
+def _worker_models(row):
+    return None
+
+
+def evaluate_tier(row, hardware, directory, with_generator):
+    try:
+        _worker_models(row)
+    except Exception:
+        return
+
+
+def write_scorecard(directory, card):
+    directory.mkdir(parents=True, exist_ok=True)
+
+
+def main(argv=None):
+    return 0
