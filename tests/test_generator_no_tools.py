@@ -98,7 +98,7 @@ def test_t4_refusal_precedes_serialization_and_omits_payload(caplog, sender):
     assert opener.calls == []
 
 
-@pytest.mark.parametrize("role", ["Tool", "TOOL"])
+@pytest.mark.parametrize("role", ["Tool", "TOOL", " tool", "Function\n", " TOOL ", "FuNcTiOn"])
 @pytest.mark.parametrize("sender", ["bounded", "schema"])
 @pytest.mark.parametrize("path", CHAT_PATHS)
 def test_mixed_case_tool_roles_refused_before_serialization(monkeypatch, role, sender, path):
@@ -117,6 +117,41 @@ def test_mixed_case_tool_roles_refused_before_serialization(monkeypatch, role, s
                 if sender == "bounded" else generator_schema._urllib_transport(1, open_request=opener.open)(url, body, {}))
         assert_refused(send, {"messages": [{"role": role}]}, opener)
     assert serialized == []
+
+
+@pytest.mark.parametrize("role", [None, 5, ["tool"]])
+@pytest.mark.parametrize("sender", ["bounded", "schema"])
+@pytest.mark.parametrize("path", CHAT_PATHS)
+def test_non_string_roles_send_normally(monkeypatch, role, sender, path):
+    response = {"synthetic": "response"}
+    opener = RecordingOpener(response)
+    module = generation if sender == "bounded" else generator_schema
+    serialized = []
+    payload = {"messages": [{"role": role}]}
+
+    def record_serialization(*args, **kwargs):
+        serialized.append((args, kwargs))
+        return json.dumps(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "_serialize_json", record_serialization)
+        url = "http://127.0.0.1:8790" + path
+        if sender == "bounded":
+            result = generation._bounded_json_request(url, payload, timeout=1, opener=opener)
+        else:
+            result = generator_schema._urllib_transport(1, open_request=opener.open)(url, payload, {})
+    assert result == response
+    assert len(serialized) == 1
+    assert serialized[0][0] == (payload,)
+    assert opener.calls == [payload]
+
+
+def test_tool_guard_does_not_convert_non_string_role():
+    class UnstringifiableRole:
+        def __str__(self):
+            raise AssertionError("Role must not be converted to a string")
+
+    generator_schema.refuse_tool_request({"messages": [{"role": UnstringifiableRole()}]})
 
 
 @pytest.mark.parametrize("builder", ["answer", "schema-vllm", "schema-ollama", "question"])
