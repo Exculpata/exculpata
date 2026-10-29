@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from json import dumps as _serialize_json
 import math
 import os
 import re
@@ -261,7 +262,7 @@ def _bounded_json_request(
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Mapping[str, object]:
     refuse_tool_request(payload)
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    body = _serialize_json(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
     request_headers.update(dict(headers or {}))
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")

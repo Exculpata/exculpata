@@ -8,6 +8,7 @@ ignores that shape and still returns HTTP 200.
 from __future__ import annotations
 
 import json
+from json import dumps as _serialize_json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -246,7 +247,7 @@ def _urllib_transport(
         headers: Mapping[str, str],
     ) -> Mapping[str, object]:
         refuse_tool_request(payload)
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        body = _serialize_json(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         request_headers = {"Content-Type": "application/json", "Accept": "application/json"}
         request_headers.update(dict(headers))
         request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
