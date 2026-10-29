@@ -31,8 +31,11 @@ def refuse_tool_request(payload: Mapping[str, object]) -> None:
     messages = payload.get("messages", ())
     if isinstance(messages, (list, tuple)):
         for message in messages:
-            if isinstance(message, Mapping) and (
-                str(message.get("role", "")).casefold() in ("tool", "function")
+            if not isinstance(message, Mapping):
+                continue
+            role = message.get("role", "")
+            if (
+                isinstance(role, str) and role.strip().casefold() in ("tool", "function")
                 or "tool_calls" in message or "function_call" in message
             ):
                 raise ToolRequestRefused("Generator tool requests are refused.")

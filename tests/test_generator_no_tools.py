@@ -98,7 +98,7 @@ def test_t4_refusal_precedes_serialization_and_omits_payload(caplog, sender):
     assert opener.calls == []
 
 
-@pytest.mark.parametrize("role", ["Tool", "TOOL"])
+@pytest.mark.parametrize("role", ["Tool", "TOOL", " tool", "Function\n", " TOOL ", "FuNcTiOn"])
 @pytest.mark.parametrize("sender", ["bounded", "schema"])
 @pytest.mark.parametrize("path", CHAT_PATHS)
 def test_mixed_case_tool_roles_refused_before_serialization(monkeypatch, role, sender, path):
@@ -117,6 +117,11 @@ def test_mixed_case_tool_roles_refused_before_serialization(monkeypatch, role, s
                 if sender == "bounded" else generator_schema._urllib_transport(1, open_request=opener.open)(url, body, {}))
         assert_refused(send, {"messages": [{"role": role}]}, opener)
     assert serialized == []
+
+
+@pytest.mark.parametrize("role", [None, 5, ["tool"]])
+def test_non_string_roles_are_not_refused_by_tool_guard(role):
+    generator_schema.refuse_tool_request({"messages": [{"role": role}]})
 
 
 @pytest.mark.parametrize("builder", ["answer", "schema-vllm", "schema-ollama", "question"])
