@@ -30,7 +30,7 @@ def _dns_name(data):
     _require(len(data) >= 12)
     if data[2] & 0x80:
         return None
-    _require(_u16(data, 4) == 1)
+    _require(_u16(data, 4) == 1 and data[6:12] == b"\x00" * 6)
     labels, offset = [], 12
     while True:
         _require(offset < len(data))
@@ -44,14 +44,20 @@ def _dns_name(data):
         labels.append(label.decode("ascii"))
         offset += size
         _require(offset <= 266)
-    _require(offset + 4 <= len(data))
+    _require(offset + 4 == len(data))
     return ".".join(labels).lower()
 
 
-def classify_frame(frame, *, interface, generator_addresses, peer_names, honeytokens):
-    """Return a hit or None for one outgoing Ethernet frame; reject unknown forms."""
-    lowered = frame.lower()
-    tokens = [token for token in honeytokens if token.encode("ascii") in lowered]
+def classify_frame(frame, *, interface, generator_addresses, peer_names, honeytokens,
+                   answer_connections=()):
+    """Classify outgoing frames, rejecting unknown forms.
+
+    answer_connections contains caller-verified established answer connections:
+    (generator address, server port, client address, client port). Only their
+    non-DNS TCP reply payloads with ACK and no SYN are exempt from token scans.
+    No supplied connection means no reply exemption.
+    """
+    token_bytes = frame
     ether_type = _u16(frame, 12)
     packet = frame[14:]
     source = destination = source_port = destination_port = name = None
@@ -72,7 +78,11 @@ def classify_frame(frame, *, interface, generator_addresses, peer_names, honeyto
         _require(number in (1, 6, 17, 58))
         protocol = {1: "icmp", 6: "tcp", 17: "udp", 58: "icmpv6"}[number]
         segment = packet[offset:end]
-        if number in (6, 17):
+        if number in (1, 58):
+            _require(len(segment) >= 8)
+            if segment[0] == (8 if number == 1 else 128) and not destination.is_loopback:
+                reasons.append("icmp")
+        else:
             source_port, destination_port = _u16(segment, 0), _u16(segment, 2)
             flags = 0
             if number == 6:
@@ -85,6 +95,12 @@ def classify_frame(frame, *, interface, generator_addresses, peer_names, honeyto
             payload = segment[header:]
             dns = destination_port == 53 or str(destination) == "127.0.0.11"
             internal = source.is_loopback and destination.is_loopback and not dns
+            answer_reply = (number == 6 and flags & 16 and not flags & 2 and not dns
+                            and str(source) in generator_addresses
+                            and (str(source), source_port, str(destination), destination_port)
+                            in answer_connections)
+            if answer_reply:
+                token_bytes = frame[:14 + offset + header] + frame[14 + end:]
             if dns and (number == 17 or payload):
                 if number == 6:
                     _require(_u16(payload, 0) == len(payload) - 2)
@@ -98,6 +114,8 @@ def classify_frame(frame, *, interface, generator_addresses, peer_names, honeyto
                 reasons.append("dns_question")
             elif number == 17 and not internal and not peer:
                 reasons.append("udp")
+    lowered = token_bytes.lower()
+    tokens = [token for token in honeytokens if token.lower().encode("ascii") in lowered]
     if tokens:
         reasons.append("honeytoken")
     if reasons:
@@ -124,7 +142,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for option in ("generator-address", "peer-name", "honeytoken"):
         parser.add_argument("--" + option, action="append", required=True)
+    parser.add_argument("--answer-connection", nargs=4, action="append", default=[],
+                        metavar=("GENERATOR", "SERVER_PORT", "CLIENT", "CLIENT_PORT"),
+                        help="caller-verified established answer connection; repeat for each client socket")
     args = parser.parse_args()
+    answer_connections = []
+    for source, source_port, destination, destination_port in args.answer_connection:
+        try:
+            connection = (str(ip_address(source)), int(source_port),
+                          str(ip_address(destination)), int(destination_port))
+            if not all(1 <= port <= 65535 for port in (connection[1], connection[3])):
+                raise ValueError("port out of range")
+        except ValueError:
+            parser.error("answer connections require IP addresses and ports from 1 to 65535")
+        answer_connections.append(connection)
     stopping, control_requested, phase = False, False, "suite"
 
     def stop(signum, frame):
@@ -155,7 +186,8 @@ def main():
                 continue
             event = classify_frame(frame, interface=address[0],
                                    generator_addresses=args.generator_address,
-                                   peer_names=frozenset(args.peer_name), honeytokens=args.honeytoken)
+                                   peer_names=frozenset(args.peer_name), honeytokens=args.honeytoken,
+                                   answer_connections=answer_connections)
             if event:
                 write_jsonl(sys.stdout, {**event, "phase": phase})
         packets, drops = struct.unpack("II", capture.getsockopt(263, 6, 8))

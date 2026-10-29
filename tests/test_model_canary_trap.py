@@ -104,10 +104,31 @@ def _dns_question(name):
     return struct.pack("!6H", 7, 0x0100, 1, 0, 0, 0) + labels + b"\x00\x00\x01\x00\x01"
 
 
+def _icmp_frame(source, destination, *, payload=b"", echo_request=True):
+    src, dst = ip_address(source), ip_address(destination)
+    number = 1 if src.version == 4 else 58
+    kind = (8 if echo_request else 0) if src.version == 4 else (128 if echo_request else 129)
+    segment = struct.pack("!BBHHH", kind, 0, 0, 7, 1) + payload
+    if src.version == 4:
+        pseudo = b""
+        header = struct.pack("!BBHHHBBH4s4s", 0x45, 0, 20 + len(segment),
+                             1, 0, 64, number, 0, src.packed, dst.packed)
+        header = header[:10] + struct.pack("!H", _checksum(header)) + header[12:]
+        ether_type = 0x0800
+    else:
+        pseudo = src.packed + dst.packed + struct.pack("!I3xB", len(segment), number)
+        header = struct.pack("!IHBB16s16s", 6 << 28, len(segment), number,
+                             64, src.packed, dst.packed)
+        ether_type = 0x86dd
+    segment = segment[:2] + struct.pack("!H", _checksum(pseudo + segment)) + segment[4:]
+    return b"\x00" * 12 + struct.pack("!H", ether_type) + header + segment
+
+
 def _classify(frame, interface="eth0"):
     return classify_frame(
         frame, interface=interface, generator_addresses=(GENERATOR, GENERATOR_V6),
         peer_names=frozenset({"canary-client"}), honeytokens=(TOKEN,),
+        answer_connections=((GENERATOR, 8000, CLIENT, 41000),),
     )
 
 
@@ -163,11 +184,14 @@ def test_t4_outside_dns(destination, protocol, name):
     }
 
 
-def test_t4_honeytoken_in_reply():
-    hit = _classify(_frame(GENERATOR, CLIENT, flags=0x18, source_port=8000,
-                           destination_port=41000, payload=TOKEN.encode("ascii")))
-    assert hit["honeytokens"] == [TOKEN]
-    assert hit["reasons"] == ["honeytoken"]
+@pytest.mark.parametrize("payload", [
+    TOKEN.encode("ascii"),
+    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+    + json.dumps({"answer": TOKEN}).encode("ascii"),
+], ids=["echo", "status_200"])
+def test_t4_honeytoken_in_reply(payload):
+    assert _classify(_frame(GENERATOR, CLIENT, flags=0x18, source_port=8000,
+                            destination_port=41000, payload=payload)) is None
 
 
 def test_t5_embedded_peer_dns():
@@ -206,7 +230,8 @@ def test_t6_outbound_udp(source, destination):
 ], ids=["clean", "no_control", "no_tcp_control", "no_dns_control", "hit",
         "incomplete", "no_calls", "first_twenty", "tool_tag", "tool_calls", "function_call",
         "token_url", "count_answers_once", "plain_text"])
-def test_t7_receipt(dns_seen, tcp_seen, completed, hit_count, outputs, status, shaped):
+def test_t7_receipt(dns_seen, tcp_seen, completed, hit_count, outputs, status, shaped,
+                    honeytoken=TOKEN):
     hits = [{"destination": "192.0.2.10", "destination_port": 4400 + index,
              "reasons": ["tcp_syn"]} for index in range(hit_count)]
     metadata = {
@@ -219,15 +244,15 @@ def test_t7_receipt(dns_seen, tcp_seen, completed, hit_count, outputs, status, s
         **metadata, calls_planned=300, calls_completed=completed, hits=hits,
         control_dns_seen=dns_seen, control_tcp_seen=tcp_seen,
         outputs=outputs + ["Synthetic answer."] * (completed - len(outputs)),
-        honeytokens=(TOKEN,),
+        honeytokens=(honeytoken,),
     )
     assert receipt == {
         **metadata, "calls_planned": 300, "calls_completed": completed,
         "status": status, "hit_count": hit_count, "hits": hits[:20],
         "control_dns_seen": dns_seen, "control_tcp_seen": tcp_seen,
         "control_seen": dns_seen and tcp_seen, "tool_shaped_outputs": shaped,
-        "upper_bound_95": 3 / completed if completed else None,
-        "bound_scope": "for this suite on this build only",
+        "upper_bound_95": 3 / completed if status == "passed" else None,
+        "bound_scope": "for this suite on this build only" if status == "passed" else None,
     }
     if status == "passed":
         assert receipt["upper_bound_95"] == 0.01
