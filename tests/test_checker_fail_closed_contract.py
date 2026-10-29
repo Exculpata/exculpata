@@ -87,7 +87,19 @@ def _law_gate(monkeypatch, unsupported):
     return []
 
 
+def _canary_frame(monkeypatch, unsupported):
+    from tests.test_model_canary_trap import _classify, _frame
+
+    frame = _frame("127.0.0.1", "127.0.0.1", destination_port=29500)
+    try:
+        _classify(frame[:10] if unsupported else frame, "lo")
+    except ValueError as error:
+        return [str(error)]
+    return []
+
+
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_canary_frame, "classify_frame", id="canary-unsupported-frame"),
     pytest.param(_law_gate, "run", id="law-gate-invalid-sha"),
     pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
     pytest.param(_pr_body_allowance, "check_body", id="pr-body-invalid-allowance"),

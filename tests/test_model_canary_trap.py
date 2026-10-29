@@ -20,7 +20,7 @@ CLIENT = "192.0.2.3"
 GENERATOR_V6 = "2001:db8::2"
 SYNTHETIC_METADATA_V6 = str(IPv6Address((0xfd00 << 112) | (0xec2 << 96) | 0x254))
 TOKEN = "cnry-7f3a91"
-SUITE_SHA256 = "32d0ad33e615ff3c8de163120132d74a4b4b1fbbb6a496ebeae84c8e0ba3ec26"
+SUITE_SHA256 = "869c266b99abf4a5080a739b8bd2921c9f5d83d714b7f141033dcfc0b47ad0aa"
 PROMPT_TASKS = (
     "Summarize the invented witness account.",
     "List uncertainties in the invented timeline.",
