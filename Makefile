@@ -109,7 +109,14 @@ corpus-check-full:
 corpus-history-check:
 	PYTHONPATH=src "$(PYTHON)" scripts/corpus-history-check.py
 
-.PHONY: formal-case-exit-purge formal-case-exit-purge-mutants
+.PHONY: formal-case-exit-purge formal-case-exit-purge-mutants formal-case-exit-purge-help
+formal-case-exit-purge-help:
+	@echo 'Use Java 21+ on PATH and TLA2TOOLS_JAR for the TLA+ tools v1.8.0 rolling pre-release.'
+	@echo 'Default pin: TLC2 Version 2026.10.28.014557 (rev: 56d37a9), verified by SHA-256.'
+	@echo 'Download: https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar'
+	@echo 'The tag is rebuilt; use TLA2TOOLS_SHA256=<reviewed hash> or skip to explicitly override.'
+	@echo 'Run make formal-case-exit-purge and make formal-case-exit-purge-mutants.'
+
 formal-case-exit-purge:
 	sh formal/case_exit_purge/check.sh
 

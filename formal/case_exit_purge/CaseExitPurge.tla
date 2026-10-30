@@ -43,6 +43,7 @@ CancelExit ==
 RegisterExport ==
     /\ r.state = "closing" /\ r.mode = "export_exit"
     /\ r' = [r EXCEPT !.export = TRUE, !.digest = TRUE,
+        !.mode = IF Mutant = "S1c_mode_flip" THEN "delete_without_export" ELSE @,
         !.receipt = FALSE, !.token = "none"] /\ UNCHANGED c
 (* case_downloads.py complete: abstract successful full delivery receipt commit. *)
 CompleteDelivery ==
@@ -80,7 +81,8 @@ Restart ==
    name is exact-name equality. Export acknowledgment/snapshot match are assumed. *)
 ClaimPurge(m, ack, name) ==
     /\ Ready(m)
-    /\ (m # "delete_without_export" \/ ack \/ Mutant = "S1b") /\ name
+    /\ (m # "delete_without_export" \/ ack \/ Mutant = "S1b")
+    /\ (name \/ Mutant = "S1b_name")
     /\ ((r.token = "fresh" /\ r.tokenExit = r.exit /\ r.tokenMode = m)
         \/ Mutant = "S3")
     /\ LET id == IF r.state = "purge_failed"

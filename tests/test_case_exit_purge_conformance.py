@@ -75,7 +75,7 @@ def test_s1_export_registration_digest_and_receipt(setup):
 
 
 @pytest.mark.parametrize('invalid', [{'no_backup_acknowledged': False},
-    {'no_backup_acknowledged': 1}, {'confirmed_name': 'Synthetic other matter'}])
+    {'no_backup_acknowledged': 1}])
 def test_s1b_explicit_no_export_admission(setup, invalid):
     t = Trace(setup, 'delete_without_export')
     t.clock.advance(days=7)
@@ -85,6 +85,34 @@ def test_s1b_explicit_no_export_admission(setup, invalid):
     claimed = t.claim(token)
     authority = t.repo.validate_purge(t.matter.matter_id, claimed.purge_id)
     assert authority.mode == t.mode and authority.export_id is None
+
+
+@pytest.mark.parametrize('confirmed_name', [
+    'Synthetic other matter', NAME.swapcase(), NAME + ' ', ' ' + NAME])
+def test_s1b_exact_name(setup, confirmed_name):
+    t = Trace(setup, 'delete_without_export')
+    t.clock.advance(days=7)
+    token = t.issue().token
+    with pytest.raises(WorkspaceProblem, match='name exactly as shown'):
+        t.claim(token, confirmed_name=confirmed_name)
+    assert t.claim(token).state == 'purging'
+
+
+@pytest.mark.parametrize('mode', MODES)
+def test_s3_confirmation_bound_to_mode(setup, mode):
+    t = Trace(setup, mode)
+    t.prepare()
+    t.clock.advance(days=7)
+    token = t.issue().token
+    other_mode = next(value for value in MODES if value != mode)
+    with fixture_write(t.store):
+        # fixture-write: Corrupt only the synthetic nonce mode, keeping exit readiness valid.
+        t.store.connection.execute(
+            'UPDATE workbench_case_confirmation SET mode=? WHERE exit_id=?',
+            (other_mode, t.exit.exit_id))
+    with pytest.raises(WorkspaceProblem, match='Request a fresh deletion confirmation'):
+        t.claim(token)
+    assert t.claim(t.issue().token).state == 'purging'
 
 
 @pytest.mark.parametrize('registered', [False, True])
@@ -120,6 +148,16 @@ def test_s2_exact_cancellation_boundary(setup, mode):
         t.claim('x' * 32)
     t.clock.advance(microseconds=1)
     assert t.claim(t.issue().token).state == 'purging'
+
+
+@pytest.mark.parametrize('mode', MODES)
+def test_s3_confirmation_just_before_expiry(setup, mode):
+    t = Trace(setup, mode)
+    t.prepare()
+    t.clock.advance(days=7)
+    token = t.issue().token
+    t.clock.advance(minutes=10, microseconds=-1)
+    assert t.claim(token).state == 'purging'
 
 
 @pytest.mark.parametrize('mode', MODES)
