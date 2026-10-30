@@ -141,6 +141,11 @@ services:
     profiles: [ai]
     image: vllm/vllm-openai:v0.22.0-cu129-ubuntu2404@sha256:10594428c162e0c76fd62aadfed12bddd8e617c51b99d7ea415ed9ff86b6a574
     restart: unless-stopped
+    user: "${EXCULPATA_UID:-${RECORDBENCH_UID:-1000}}:${EXCULPATA_GID:-${RECORDBENCH_GID:-1000}}"
+    read_only: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    pids_limit: 4096
     runtime: nvidia
     shm_size: 8gb
     cpus: "${EXCULPATA_GENERATOR_CPUS:-${RECORDBENCH_GENERATOR_CPUS:-8.0}}"
@@ -152,13 +157,21 @@ services:
       TRANSFORMERS_OFFLINE: "1"
       VLLM_CACHE_ROOT: /tmp/vllm-cache
       VLLM_NO_USAGE_STATS: "1"
+      HOME: /tmp/vllm-home
+      USER: exculpata
+      XDG_CACHE_HOME: /tmp/vllm-home/.cache
+      TMPDIR: /tmp/vllm-cache
+      TRITON_CACHE_DIR: /tmp/vllm-cache/triton
+      TORCHINDUCTOR_CACHE_DIR: /tmp/vllm-cache/inductor
     volumes:
       - type: bind
         source: ${EXCULPATA_MODEL_ROOT:-${RECORDBENCH_MODEL_ROOT:-}}
         target: /models
         read_only: true
     tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1g
       - /tmp/vllm-cache:rw,exec,nosuid,nodev,size=8g
+      - /tmp/vllm-home:rw,exec,nosuid,nodev,size=1g
     # Docker retains embedded service discovery; unknown names stay in this namespace.
     dns: [127.0.0.1]
     dns_search: ["."]
