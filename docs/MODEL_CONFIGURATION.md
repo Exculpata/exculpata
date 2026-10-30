@@ -320,3 +320,37 @@ configured endpoint/model identity, not an attestation of remote model weights.
 Changing the weights behind the same model name requires an explicit rebuild.
 The old identity is invalidated before committing replacement vectors. If the
 final identity write fails, keep writers stopped and rerun the rebuild.
+
+## Canary run
+
+Exculpata is local-first by default. On a GPU host with Docker Compose, the
+NVIDIA runtime, `nvidia-smi`, the pinned generator image already present, and
+staged model weights, run this optional synthetic check from the checkout:
+
+```sh
+EXCULPATA_MODEL_CANARY=1 EXCULPATA_CANARY_OUTPUT=canary-receipt.json \
+  .venv/bin/python -m pytest -q -o faulthandler_timeout=0 tests/test_model_canary_live.py
+```
+
+Set `EXCULPATA_MODEL_ROOT` to the staged cache. To select another model, set
+`EXCULPATA_GENERATOR_MODEL_ID`, `EXCULPATA_GENERATOR_REVISION`, and
+`EXCULPATA_GENERATOR_SERVED_NAME` before running. Nothing is pulled. Without
+opt-in, a local pinned image, or a usable GPU host, the test skips. Without an
+output setting, the receipt goes in pytest's temporary directory.
+
+The receipt is informational and gates nothing: model enablement, configuration
+validation, release checks, and CI do not require it. A passing receipt records
+300 completed calls (20 synthetic prompts, 15 rounds), zero captured hits, and
+both DNS and on-subnet TCP negative controls. Tool-shaped answer text is counted,
+not treated as a network call. `upper_bound_95 = 3/N` appears only on a passing
+receipt, labeled **for this suite on this build only**; failed or invalid
+receipts have a null bound. A clean receipt covers one model, revision, and image.
+
+Capture starts after health readiness and covers the prompt suite and controls.
+A clean capture records no connection started and no outside lookup seen,
+not an absence of all attempts. Off-subnet connects on the internal network send
+no frame and cannot be observed. IGMP/MLD frames abort capture, as do other
+unsupported packet forms; missing controls or packet loss invalidate it. The
+trap does not reassemble packets or decode encoded honeytokens. The app can
+reach approved destinations through its egress proxy, and an operator can
+configure an external answer server. This run makes no broader outcome promise.
