@@ -108,3 +108,10 @@ corpus-check-full:
 
 corpus-history-check:
 	PYTHONPATH=src "$(PYTHON)" scripts/corpus-history-check.py
+
+.PHONY: formal-case-exit-purge formal-case-exit-purge-mutants
+formal-case-exit-purge:
+	sh formal/case_exit_purge/check.sh
+
+formal-case-exit-purge-mutants:
+	sh formal/case_exit_purge/check.sh mutants
