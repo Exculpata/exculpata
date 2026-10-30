@@ -85,7 +85,10 @@ def test_generator_hardening():
     assert generator.get("security_opt") == ["no-new-privileges:true"]
     assert generator.get("cap_drop") == ["ALL"]
     assert generator.get("pids_limit") == 4096
-    assert not set(generator) & {"cap_add", "privileged", "userns_mode", "ipc"}
+    assert not set(generator) & {
+        "cap_add", "privileged", "userns_mode", "ipc", "pid", "network_mode",
+        "extra_hosts", "ports", "devices", "sysctls", "volumes_from",
+    }
     assert not any(option.startswith(("seccomp=", "apparmor=")) for option in generator["security_opt"])
 
 

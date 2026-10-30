@@ -341,6 +341,10 @@ peer as a positive control. Its receipt is `summary.json`'s `generator_lockdown`
 A passing probe shows the generator container had no route out in this topology
 on this host when it ran. The app can still reach approved proxy destinations,
 and operators can configure an external answer server.
+`model-stager` is on `front` and writes the model root that the generator mounts
+read-only; this path predates this change and is by design.
+The network contract checks `compose.yaml` only, so a Compose override that puts
+the generator on `front` would bypass the probe's evidence; operators must not do that.
 
 The opt-in `tests/test_generator_lockdown_container.py` uses the already staged
 pinned image with `EXCULPATA_GENERATOR_CONTAINER_TEST=1` and no image pull or GPU.
