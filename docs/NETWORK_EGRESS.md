@@ -329,6 +329,38 @@ No host rule is installed or changed here. The repository check does not audit
 external overlays or prove a host firewall; retain private overlay review and
 controlled live acceptance before treating a node as isolated.
 
+### Generator isolation evidence
+
+Exculpata is local-first by default. The generator runs as the model-file owner,
+with a read-only root, all capabilities dropped, no-new-privileges and Docker's
+default seccomp profile. No custom profile or host sysctl change is applied.
+The network smoke runs a fixture image with the generator's network, DNS, user,
+root and temporary-filesystem restrictions. It checks default routes, numeric
+TCP destinations, UDP DNS and external name resolution, with a reachable named
+peer as a positive control. Its receipt is `summary.json`'s `generator_lockdown`.
+A passing probe shows the generator container had no route out in this topology
+on this host when it ran. The app can still reach approved proxy destinations,
+and operators can configure an external answer server.
+`model-stager` is on `front` and writes the model root that the generator mounts
+read-only; this path predates this change and is by design.
+The network contract checks `compose.yaml` only, so a Compose override that puts
+the generator on `front` would bypass the probe's evidence; operators must not do that.
+
+The opt-in `tests/test_generator_lockdown_container.py` uses the already staged
+pinned image with `EXCULPATA_GENERATOR_CONTAINER_TEST=1` and no image pull or GPU.
+Optionally set `EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET` to a strict IPv4 CIDR
+to create the internal test network with an explicit subnet, or set
+`EXCULPATA_GENERATOR_CONTAINER_TEST_NETWORK` to reuse an existing empty internal
+network. Reused networks are inspected first and never removed by the test.
+Setting both fails; an invalid or IPv6 subnet skips the test. With neither set,
+the default commands, arguments, order and cleanup are unchanged.
+It also checks capabilities, seccomp, denied user-namespace creation, writable
+caches, native loading restrictions and importing vLLM. This is distinct from
+GPU acceptance. Merge requires the L3 L40S receipt: healthy generator startup,
+one answer through the app, healthy restart with empty caches, inspected user,
+read-only root, dropped capabilities and security options, and peak cache usage
+for both executable tmpfs directories. No fallback setting is approved here.
+
 ## Repository contract and evidence
 
 `make network-contract` runs `scripts/network-contract.py`; `make check`,

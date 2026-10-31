@@ -302,6 +302,12 @@ detail = "httpx.Client"
       ]
     },
     "generator": {
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
       "dns": [
         "127.0.0.1"
       ],

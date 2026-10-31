@@ -25,6 +25,14 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 ROOT = Path(__file__).resolve().parents[1]
+GENERATOR_KEYS = ('networks', 'dns', 'dns_search', 'user', 'read_only', 'cap_drop', 'security_opt', 'tmpfs')
+
+
+def generator_standin(generator, project):
+    return {**{key: copy.deepcopy(generator[key]) for key in GENERATOR_KEYS},
+            'image': project + '-endpoint', 'pull_policy': 'never',
+            'command': ['python', '-c', 'import time; time.sleep(1800)'],
+            'cpus': .5, 'mem_limit': '128m', 'pids_limit': 64}
 
 
 def failure_diagnostic(value):
@@ -62,6 +70,10 @@ def production_graph(project, proxy_context):
     for key in ('environment', 'networks', 'dns', 'dns_search', 'user', 'read_only', 'cap_drop', 'security_opt'):
         assert app[key] == source['services']['app'][key]
     assert all(source['networks'][name]['internal'] for name in app['networks'])
+    generator = source['services']['generator']
+    services['generator-standin'] = generator_standin(generator, project)
+    for key in GENERATOR_KEYS:
+        assert services['generator-standin'][key] == generator[key], key
     return graph
 
 
@@ -118,7 +130,7 @@ def main():
                 'app-egress':{'aliases':['x.postgres','evil.generator','x.retrieval']},
                 'services':{'aliases':['postgres','clamav','transcription-api']},
                 'models':{'aliases':['retrieval','generator']}}}})
-        (fixture/'Dockerfile').write_text('FROM '+project+'-app\nCOPY --chown=65532:65532 endpoint.py dns_trap.py dns_boundary_probe.py issuer.pem issuer-key.pem /fixture/\nUSER 65532:65532\nHEALTHCHECK NONE\nCMD ["python","/fixture/endpoint.py"]\n')
+        (fixture/'Dockerfile').write_text('FROM '+project+'-app\nCOPY --chown=65532:65532 endpoint.py dns_trap.py dns_boundary_probe.py generator_lockdown_probe.py issuer.pem issuer-key.pem /fixture/\nUSER 65532:65532\nHEALTHCHECK NONE\nCMD ["python","/fixture/endpoint.py"]\n')
         compose_file=root/'compose.json'
         def save(): compose_file.write_text(json.dumps(data))
         save()
@@ -164,6 +176,10 @@ def main():
             run([*compose,'build','app','egress-proxy'],timeout=1200,filename='build.log')
             run([*docker,'build','-t',project+'-endpoint',str(fixture)],filename='fixture-build.log')
             run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90'],filename='up.log')
+            results['generator_lockdown'] = json.loads(run([
+                *compose, 'exec', '-T', 'generator-standin', 'python',
+                '/fixture/generator_lockdown_probe.py', '--peer', 'retrieval', '--port', '8080'],
+                timeout=45, filename='generator_lockdown'))
             issuer_address,foreign_address=address('issuer','front'),address('foreign','front')
             generator_address=address('generator-endpoint','front')
             recorder_address=address('canary','app-egress')

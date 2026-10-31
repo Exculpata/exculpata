@@ -77,6 +77,33 @@ def test_app_has_no_direct_egress():
     assert all((compose["networks"][name] or {}).get("internal") is True for name in app["networks"])
 
 
+def test_generator_hardening():
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    generator = services["generator"]
+    assert generator.get("user") == services["retrieval"]["user"]
+    assert generator.get("read_only") is True
+    assert generator.get("security_opt") == ["no-new-privileges:true"]
+    assert generator.get("cap_drop") == ["ALL"]
+    assert generator.get("pids_limit") == 4096
+    assert not set(generator) & {
+        "cap_add", "privileged", "userns_mode", "ipc", "pid", "network_mode",
+        "extra_hosts", "ports", "devices", "sysctls", "volumes_from",
+    }
+    assert not any(option.startswith(("seccomp=", "apparmor=")) for option in generator["security_opt"])
+
+
+def test_generator_writable_cache_paths():
+    generator = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]["generator"]
+    assert set(generator["tmpfs"]) == {
+        "/tmp:rw,noexec,nosuid,nodev,size=1g",
+        "/tmp/vllm-cache:rw,exec,nosuid,nodev,size=8g",
+        "/tmp/vllm-home:rw,exec,nosuid,nodev,size=1g",
+    }
+    for key in ("HOME", "XDG_CACHE_HOME", "TMPDIR", "TRITON_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"):
+        path = Path(generator["environment"][key])
+        assert any(path.is_relative_to(root) for root in ("/tmp/vllm-cache", "/tmp/vllm-home")), key
+
+
 def test_internal_services_use_container_local_dns_upstream():
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
     restricted = {"app", "postgres", "clamav", "retrieval", "generator", "transcription-api"}
@@ -119,6 +146,20 @@ def run_contract(root):
 def test_network_contract_current_tree():
     result = run_contract(ROOT)
     assert result.returncode == 0, result.stderr
+
+
+def test_network_contract_rejects_missing_generator_allowlist_edit(contract_tree):
+    path = contract_tree / "config/egress-allowlist.toml"
+    original = path.read_text()
+    approved = tomllib.loads(original)["compose"]["compose.yaml"]
+    data = json.loads(approved)
+    for key in ("cap_drop", "security_opt"):
+        del data["services"]["generator"][key]
+    # fixture-write: Drop the generator hardening allowance in a synthetic contract tree.
+    path.write_text(original.replace(approved, json.dumps(data)))
+    result = run_contract(contract_tree)
+    assert result.returncode == 1
+    assert "generator: network membership" in result.stderr
 
 
 @pytest.mark.parametrize("value", [

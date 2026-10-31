@@ -40,6 +40,7 @@ def test_generator_cache_can_load_native_compiler_output(tmp_path):
     command = ['docker', 'run', '--rm', '--name', name, '--pull', 'never',
         '--label', 'com.docker.compose.project=' + _either("TEST_PROJECT", name),
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+        '--user', service['user'],
         '--security-opt', 'no-new-privileges', '--cpus', '0.25',
         '--memory', '256m', '--memory-swap', '256m', '--pids-limit', '64']
     for mount in service['tmpfs']:

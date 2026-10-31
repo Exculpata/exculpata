@@ -37,6 +37,21 @@ remain mounted read-only. Adding `noexec` to this compiler cache makes native
 loading fail with “failed to map segment from shared object.” Other temporary
 mounts retain their own restrictions.
 
+The generator runs as `EXCULPATA_UID:EXCULPATA_GID` (with the legacy variable
+fallbacks), matching the model-file owner, with a read-only root and a 4096 PID
+limit that includes threads. `TMPDIR`, `TRITON_CACHE_DIR` and
+`TORCHINDUCTOR_CACHE_DIR` use `/tmp/vllm-cache`. `HOME` is `/tmp/vllm-home` and
+`XDG_CACHE_HOME` is its `.cache` directory; `USER=exculpata` supports runtimes that
+ask for a username when the numeric UID has no passwd entry.
+The 1 GiB executable home tmpfs holds FlashInfer JIT, torch extension,
+structured-output grammar and configuration caches. Both executable caches
+retain `nosuid,nodev`. The remaining `/tmp` is a 1 GiB `noexec,nosuid,nodev`
+tmpfs for hard-coded temporary paths. `/dev/shm` stays writable through the
+existing 8 GiB shared-memory setting. `/models` remains read-only with offline
+model loading. Tmpfs limits are caps charged against container memory, not
+reservations; caches are lost on restart. Record peak usage of both executable
+cache directories during GPU startup, inference and cold restart acceptance.
+
 With the pinned generator image already available locally, run a model-free
 check against the actual Compose cache options:
 

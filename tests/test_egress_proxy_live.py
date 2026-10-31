@@ -27,6 +27,16 @@ def test_egress_proxy_denies_non_issuer(network_smoke_summary):
     assert network_smoke_summary['passed'] is True
 
 
+def test_generator_lockdown_live(network_smoke_summary):
+    result = network_smoke_summary['generator_lockdown']
+    assert result['peer_control'] is True
+    assert result['default_route'] is False
+    assert result['status'] == 'passed'
+    assert result['targets'] == {name: 'blocked' for name in (
+        'link_local_metadata', 'shared_metadata', 'ipv6_metadata',
+        'public_https', 'public_dns', 'udp_dns', 'getaddrinfo')}
+
+
 def test_egress_proxy_generator_slot_live(network_smoke_summary):
     generator = network_smoke_summary['generator']
     for name in ('configured_tunnel', 'other_host_denied', 'wrong_port_denied',
