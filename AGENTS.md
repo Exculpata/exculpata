@@ -57,6 +57,7 @@ Coding agents state a goal and a pass/fail check before starting. Write a
 failing test first where a cheap test exists. Check what else the change could
 break before pushing, and prove the change works against the real artifact
 before calling it done.
+Use the repository/DB interface, not raw cursor reads; `tests/test_db_access_ratchet.py` enforces it.
 
 Keep each PR to about 500 changed lines or less. Split bigger work into ordered
 small PRs.
