@@ -119,11 +119,111 @@ def test_internal_services_use_container_local_dns_upstream():
 def test_network_smoke_runs_for_merge_groups_and_weekly():
     workflow = yaml.safe_load((ROOT / ".github/workflows/network-smoke.yml").read_text())
     events = workflow[True]  # PyYAML's YAML 1.1 spelling of `on`.
-    assert "merge_group" in events
+    assert set(events) == {"pull_request", "merge_group", "schedule", "workflow_dispatch"}
+    assert events["pull_request"] == {"types": ["opened", "synchronize", "reopened", "labeled"]}
     assert events["schedule"] == [{"cron": "43 6 * * 1"}]
-    assert workflow["jobs"]["network-smoke"]["if"] == (
-        "github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke')"
+    job = workflow["jobs"]["network-smoke"]
+    assert "if" not in job
+    checkout, selector, skipped, setup, install, exercise, artifact = job["steps"]
+    assert checkout["uses"].startswith("actions/checkout@")
+    assert checkout["with"] == {"persist-credentials": False, "fetch-depth": 0}
+    assert "if" not in checkout and "if" not in selector
+    assert selector["id"] == "scope"
+    assert selector["env"] == {
+        "FORCE_SMOKE": "${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke') }}",
+        "PR_BASE": "${{ github.event.pull_request.base.sha }}",
+        "PR_HEAD": "${{ github.event.pull_request.head.sha }}",
+    }
+    assert skipped["if"] == "steps.scope.outputs.run != 'true'"
+    assert skipped["run"] == (
+        "echo 'Smoke coverage is not applicable to these changed paths.' >> \"$GITHUB_STEP_SUMMARY\""
     )
+    for step in (setup, install, exercise):
+        assert step["if"] == "steps.scope.outputs.run == 'true'"
+    assert setup["uses"].startswith("actions/setup-python@")
+    assert install["run"] == "python -m pip install --require-hashes -r requirements/network-smoke.lock"
+    assert exercise["env"]["RUN_NETWORK_SMOKE"] == "1"
+    assert exercise["run"] == (
+        "python -m pytest -q tests/test_relay_build_context_live.py "
+        "tests/test_egress_proxy_live.py -o faulthandler_timeout=1200"
+    )
+    assert artifact["if"] == "always() && steps.scope.outputs.run == 'true'"
+    assert artifact["uses"].startswith("actions/upload-artifact@")
+    for step in job["steps"]:
+        assert not step.get("continue-on-error", False)
+        if "uses" in step:
+            assert re.fullmatch(r"[^@]+@[0-9a-f]{40}", step["uses"]), step["uses"]
+
+
+@pytest.fixture
+def smoke_selection(tmp_path, monkeypatch):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/network-smoke.yml").read_text())
+    selector = next(step for step in workflow["jobs"]["network-smoke"]["steps"]
+                    if step.get("id") == "scope")
+    shell = selector["run"]
+    assert shell.startswith("python3 - <<'PY'\n") and shell.endswith("\nPY\n")
+    source = shell.removeprefix("python3 - <<'PY'\n").removesuffix("\nPY\n")
+    script = tmp_path / "smoke_selection.py"
+    # fixture-write: Copy the repository workflow selector into a disposable module.
+    script.write_text(source)
+    output = tmp_path / "output"
+    monkeypatch.setenv("FORCE_SMOKE", "false")
+    monkeypatch.setenv("PR_BASE", "a" * 40)
+    monkeypatch.setenv("PR_HEAD", "b" * 40)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    return script, output
+
+
+@pytest.mark.parametrize("paths,force,error,expected", [
+    *[(path, False, None, True) for path in (
+        "compose.yaml", "compose.synthetic.yaml", "compose.synthetic.extra.yaml",
+        "scripts/test-egress-smoke.py", "tests/test_egress_proxy_live.py",
+        "tests/test_relay_build_context_live.py", ".github/workflows/network-smoke.yml",
+        "deploy/generator/Dockerfile", "deploy/egress-proxy/proxy.py",
+        "src/case_intelligence/external_generator.py", "src/case_intelligence/generation.py",
+        "src/case_intelligence/egress.py", "src/case_intelligence/proxy.py",
+        "tests/test_generator_lockdown_probe.py", "tests/network_smoke/endpoint.py",
+        "tests/fixtures/generator/sample.json", "tests/fixtures/egress/sample.json",
+        "tests/fixtures/proxy/sample.json", "tests/network_smoke/nested/sample.json",
+        "scripts/dns_boundary_probe.py", "requirements/network-smoke.lock",
+        "src/case_intelligence/oidc_network_policy.py", "src/case_intelligence/_idna/core.py",
+        "docs/moved.md\0tests/network_smoke/deleted.py",
+        "tests/network_smoke/old.py\0docs/renamed.md",
+    )],
+    *[(path, False, None, False) for path in (
+        "README.md", "docs/IDEAL.md", "src/case_intelligence/notes.py",
+        "tests/test_review_quality_regressions.py", "docs/one.md\0docs/two.md", "",
+    )],
+    ("README.md", True, None, True),
+    ("", True, None, True),
+    ("", False, subprocess.CalledProcessError(1, "synthetic comparison"), True),
+    ("", False, subprocess.TimeoutExpired("synthetic comparison", 30), True),
+    ("", False, OSError("synthetic comparison unavailable"), True),
+    (b"\xff\0", False, None, True),
+])
+def test_network_smoke_selects_changed_paths(smoke_selection, monkeypatch, paths, force, error, expected):
+    script, output = smoke_selection
+    monkeypatch.setenv("FORCE_SMOKE", str(force).lower())
+    calls = []
+
+    def compare(command, *, check, capture_output, timeout):
+        calls.append(command)
+        assert not force
+        assert command == ["git", "diff", "--name-only", "--no-renames", "-z",
+                           "a" * 40 + "..." + "b" * 40, "--"]
+        assert check is True and capture_output is True and timeout == 30
+        if error is not None:
+            raise error
+        data = paths if isinstance(paths, bytes) else (paths + "\0").encode()
+        return subprocess.CompletedProcess(command, 0, stdout=data)
+
+    monkeypatch.setattr(subprocess, "run", compare)
+    spec = importlib.util.spec_from_file_location("smoke_selection", script)
+    module = importlib.util.module_from_spec(spec)
+    # fixture-write: The actual selector writes only to the disposable output file.
+    spec.loader.exec_module(module)
+    assert len(calls) == (0 if force else 1)
+    assert output.read_text() == "run=" + str(expected).lower() + "\n"
 
 
 @pytest.fixture
