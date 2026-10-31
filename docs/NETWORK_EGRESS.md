@@ -348,6 +348,12 @@ the generator on `front` would bypass the probe's evidence; operators must not d
 
 The opt-in `tests/test_generator_lockdown_container.py` uses the already staged
 pinned image with `EXCULPATA_GENERATOR_CONTAINER_TEST=1` and no image pull or GPU.
+Optionally set `EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET` to a strict IPv4 CIDR
+to create the internal test network with an explicit subnet, or set
+`EXCULPATA_GENERATOR_CONTAINER_TEST_NETWORK` to reuse an existing empty internal
+network. Reused networks are inspected first and never removed by the test.
+Setting both fails; an invalid or IPv6 subnet skips the test. With neither set,
+the default commands, arguments, order and cleanup are unchanged.
 It also checks capabilities, seccomp, denied user-namespace creation, writable
 caches, native loading restrictions and importing vLLM. This is distinct from
 GPU acceptance. Merge requires the L3 L40S receipt: healthy generator startup,

@@ -1,4 +1,10 @@
-"""Opt-in, model-free hardening evidence using only the already staged image."""
+"""Opt-in, model-free hardening evidence using only the already staged image.
+
+EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET selects a strict IPv4 subnet for creation;
+EXCULPATA_GENERATOR_CONTAINER_TEST_NETWORK reuses an empty internal network.
+Set at most one. With neither set, network commands and cleanup are unchanged.
+"""
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -11,6 +17,47 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.skipif(os.environ.get('EXCULPATA_GENERATOR_CONTAINER_TEST') != '1',
                                reason='requires explicitly enabled, already available pinned generator image')
+
+
+def network_options(default_network):
+    subnet = os.environ.get('EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET')
+    network = os.environ.get('EXCULPATA_GENERATOR_CONTAINER_TEST_NETWORK')
+    if subnet is not None and network is not None:
+        pytest.fail('EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET and '
+                    'EXCULPATA_GENERATOR_CONTAINER_TEST_NETWORK cannot both be set')
+    if subnet is not None:
+        try:
+            parsed = ipaddress.ip_network(subnet, strict=True)
+        except ValueError:
+            pytest.skip('EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET must be a strict IPv4 network')
+        if parsed.version != 4:
+            pytest.skip('EXCULPATA_GENERATOR_CONTAINER_TEST_SUBNET must be a strict IPv4 network')
+    return (default_network if network is None else network), subnet, network is not None
+
+
+def prepare_network(network, subnet, reuse):
+    if reuse:
+        try:
+            output = subprocess.check_output(['docker', 'network', 'inspect', network],
+                                             text=True, stderr=subprocess.PIPE)
+        except (subprocess.CalledProcessError, OSError):
+            pytest.fail('Could not inspect the requested existing network; it must exist')
+        try:
+            inspected = json.loads(output)
+        except ValueError:
+            pytest.fail('Invalid existing network inspect response')
+        if not isinstance(inspected, list) or len(inspected) != 1 or not isinstance(inspected[0], dict):
+            pytest.fail('Invalid existing network inspect response')
+        if inspected[0].get('Internal') is not True:
+            pytest.fail('The existing network must be internal')
+        if inspected[0].get('Containers') != {}:
+            pytest.fail('The existing network must have no attached containers')
+        return False
+    command = ['docker', 'network', 'create', '--internal']
+    if subnet is not None:
+        command.extend(['--subnet', subnet])
+    subprocess.run([*command, network], check=True, capture_output=True)
+    return True
 
 
 def test_generator_lockdown_in_pinned_image(tmp_path):
@@ -28,6 +75,7 @@ def test_generator_lockdown_in_pinned_image(tmp_path):
         'config', '--format', 'json'], env=environment, text=True))['services']['generator']
     name = 'synthetic-generator-lockdown-' + uuid.uuid4().hex
     peer, network = name + '-peer', name + '-network'
+    network, subnet, reuse = network_options(network)
     models = tmp_path / 'models'
     models.mkdir(mode=0o755)
     command = ['docker', 'run', '--pull', 'never', '--network', network,
@@ -42,7 +90,7 @@ def test_generator_lockdown_in_pinned_image(tmp_path):
     for key, value in service['environment'].items():
         command.extend(['--env', key + '=' + str(value)])
     try:
-        subprocess.run(['docker', 'network', 'create', '--internal', network], check=True, capture_output=True)
+        prepare_network(network, subnet, reuse)
         subprocess.run([*command, '-d', '--name', peer, '--network-alias', 'retrieval',
                         '--health-cmd', "python3 -c \"import socket; socket.create_connection(('127.0.0.1',8080),2).close()\"",
                         '--health-interval', '1s', '--health-retries', '20',
@@ -67,4 +115,5 @@ def test_generator_lockdown_in_pinned_image(tmp_path):
         assert all(receipt['hardening'].values())
     finally:
         subprocess.run(['docker', 'rm', '--force', name, peer], capture_output=True, check=False)
-        subprocess.run(['docker', 'network', 'rm', network], capture_output=True, check=False)
+        if not reuse:
+            subprocess.run(['docker', 'network', 'rm', network], capture_output=True, check=False)
