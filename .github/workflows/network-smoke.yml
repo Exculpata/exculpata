@@ -17,26 +17,77 @@ concurrency:
 
 jobs:
   network-smoke:
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Select smoke coverage
+        id: scope
+        env:
+          FORCE_SMOKE: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke') }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import fnmatch
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          def relevant(path):
+              return (
+                  fnmatch.fnmatchcase(path, 'compose*.yaml')
+                  or path in {
+                      '.github/workflows/network-smoke.yml',
+                      'scripts/test-egress-smoke.py',
+                      'scripts/dns_boundary_probe.py',
+                      'tests/test_egress_proxy_live.py',
+                      'tests/test_relay_build_context_live.py',
+                      'requirements/network-smoke.lock',
+                      'src/case_intelligence/oidc_network_policy.py',
+                  }
+                  or path.startswith(('tests/network_smoke/', 'src/case_intelligence/_idna/'))
+                  or re.search(r'(^|[/_.-])(generator|generation|egress|proxy)([/_.-]|$)', path) is not None
+              )
+
+          selected = os.environ['FORCE_SMOKE'] == 'true'
+          if not selected:
+              try:
+                  changed = subprocess.run(
+                      ['git', 'diff', '--name-only', '--no-renames', '-z',
+                       os.environ['PR_BASE'] + '...' + os.environ['PR_HEAD'], '--'],
+                      check=True, capture_output=True, timeout=30,
+                  ).stdout.decode('utf-8').split('\0')
+                  selected = any(relevant(path) for path in changed if path)
+              except (OSError, subprocess.SubprocessError, UnicodeError):
+                  print('::warning::Change comparison unavailable; running smoke coverage.')
+                  selected = True
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              output.write('run=' + str(selected).lower() + '\n')
+          PY
+      - name: Report unrelated change
+        if: steps.scope.outputs.run != 'true'
+        run: echo 'Smoke coverage is not applicable to these changed paths.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"
       - name: Install locked smoke harness dependencies
+        if: steps.scope.outputs.run == 'true'
         run: python -m pip install --require-hashes -r requirements/network-smoke.lock
       - name: Exercise isolated synthetic OIDC and direct-egress denials
+        if: steps.scope.outputs.run == 'true'
         env:
           RUN_NETWORK_SMOKE: "1"
           NETWORK_SMOKE_DOCKER_CONTEXT: default
           NETWORK_SMOKE_OUTPUT: network-smoke-results
         run: python -m pytest -q tests/test_relay_build_context_live.py tests/test_egress_proxy_live.py -o faulthandler_timeout=1200
       - name: Retain content-free smoke summary
-        if: always()
+        if: always() && steps.scope.outputs.run == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: network-smoke-summary

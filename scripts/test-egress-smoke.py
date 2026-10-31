@@ -32,6 +32,11 @@ def generator_standin(generator, project):
     return {**{key: copy.deepcopy(generator[key]) for key in GENERATOR_KEYS},
             'image': project + '-endpoint', 'pull_policy': 'never',
             'command': ['python', '-c', 'import time; time.sleep(1800)'],
+            'healthcheck': {'test': ['CMD', 'python', '-c',
+                "import sys; sys.path.insert(0, '/fixture'); "
+                "from generator_lockdown_probe import peer_answers; "
+                "sys.exit(0 if peer_answers('retrieval', 8080) else 1)"],
+                'interval': '2s', 'timeout': '5s', 'retries': 30},
             'cpus': .5, 'mem_limit': '128m', 'pids_limit': 64}
 
 

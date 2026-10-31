@@ -176,6 +176,14 @@ def test_egress_smoke_graph_preserves_generator_settings(monkeypatch, tmp_path):
     graph = smoke.production_graph("synthetic-lockdown", tmp_path)
     standin = graph["services"]["generator-standin"]
     assert {key: standin[key] for key in KEYS} == {key: source[key] for key in KEYS}
+    assert set(smoke.GENERATOR_KEYS) == set(KEYS)
+    assert standin["healthcheck"] == {
+        "test": ["CMD", "python", "-c",
+                 "import sys; sys.path.insert(0, '/fixture'); "
+                 "from generator_lockdown_probe import peer_answers; "
+                 "sys.exit(0 if peer_answers('retrieval', 8080) else 1)"],
+        "interval": "2s", "timeout": "5s", "retries": 30,
+    }
     original = smoke.generator_standin
 
     def mutated(generator, project):
