@@ -206,6 +206,52 @@ def test_rename_contract_is_checked_on_documentation_only_changes() -> None:
 
 DOCUMENT = ROOT / "docs/IDEAL.md"
 LINK = re.compile(r"\[[^\]]+\]\(([^\s)]+)\)")
+KNOWN_BROKEN_MARKDOWN_LINKS = {
+    "docs/FIRST_RUN.md: missing fragment ../CONTRIBUTING.md#set-up-a-development-checkout",
+    "docs/FULL_TEXT_SYNTHESIS.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/FULL_TEXT_SYNTHESIS_ACCEPTANCE_2026-09-12.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/INSTALL.md: missing fragment ../CONTRIBUTING.md#set-up-a-development-checkout",
+    "docs/MATTER_SETTINGS.md: missing fragment CASE_LIFECYCLE.md#migration-0040-and-recovery",
+    "docs/PRODUCT_DIRECTION_2026-09-12.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/product-slices/19-full-text-synthesis.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/product-slices/FINDINGS.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/product-slices/FINDINGS.md: missing fragment ../PRODUCT_DIRECTION_2026-09-12.md#current-state-addendum-after-slice-18",
+    "docs/product-slices/README.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
+    "docs/product-slices/TARGET_VALIDATION.md: missing fragment ../../CONTRIBUTING.md#set-up-a-development-checkout",
+    "README.md: missing fragment CONTRIBUTING.md#set-up-a-development-checkout",
+}
+
+
+def _heading_slugs(path: Path) -> set[str]:
+    headings = re.findall(r"^#{1,6} (.+)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+    return {re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+            for heading in headings}
+
+
+def markdown_link_errors(root: Path) -> list[str]:
+    documents = sorted((root / "docs").rglob("*.md")) + sorted(root.glob("*.md"))
+    errors = []
+    for document_path in documents:
+        for link in LINK.findall(document_path.read_text(encoding="utf-8")):
+            url = urlsplit(link)
+            if url.scheme in {"http", "https", "mailto"}:
+                continue
+            if url.scheme or url.netloc:
+                continue
+            target = (document_path.parent / unquote(url.path or document_path.name)).resolve()
+            display = unquote(url.path) or document_path.name
+            relative_document = document_path.relative_to(root)
+            if not target.is_relative_to(root) or not target.exists():
+                errors.append(f"{relative_document}: missing link target {display}")
+                continue
+            fragment = unquote(url.fragment)
+            if fragment and (target.suffix.lower() != ".md" or fragment not in _heading_slugs(target)):
+                errors.append(f"{relative_document}: missing fragment {display}#{fragment}")
+    return errors
+
+
+def test_repository_markdown_links_have_no_unrecorded_failures():
+    assert set(markdown_link_errors(ROOT)) == KNOWN_BROKEN_MARKDOWN_LINKS
 
 
 def document() -> str:
@@ -274,3 +320,16 @@ def test_ideal_links_resolve_including_markdown_fragments():
 def test_ideal_link_validation_rejects_missing_or_escaping_targets(broken):
     with pytest.raises(AssertionError):
         local_target(broken)
+
+
+def test_markdown_link_validation_reports_missing_files_and_fragments(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    # fixture-write: synthetic Markdown corpus for link-validation diagnostics.
+    (docs / "index.md").write_text("[file](missing.md) [heading](target.md#absent)\n")
+    # fixture-write: synthetic Markdown target with a deliberately different heading.
+    (docs / "target.md").write_text("# Present\n")
+    assert markdown_link_errors(tmp_path) == [
+        "docs/index.md: missing link target missing.md",
+        "docs/index.md: missing fragment target.md#absent",
+    ]
