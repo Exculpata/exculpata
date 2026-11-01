@@ -55,6 +55,7 @@ class Tier(Record):
 
 
 class Scorecard(Record):
+    lane_diagnostics: dict | None = None
     schema_version: Literal[1]
     commit: str = Field(pattern=r"^[0-9a-f]{40}$")
     command: str = Field(min_length=1)

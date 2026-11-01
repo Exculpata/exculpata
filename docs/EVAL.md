@@ -176,6 +176,33 @@ python -m case_intelligence.defense_eval --mode stub --retriever postgres \
   --output-dir /tmp/defense-eval-postgres
 ```
 
+### Per-lane miss diagnostics
+
+PostgreSQL cards include optional `lane_diagnostics` per question and a card
+summary with counts by reason and lane plus a Markdown miss table. Pass-through
+recorders retain lexical, vector, fused (RRF), rerank (before floors) and final
+(after floors and reorder) ranks and unrounded scores for each reference passage.
+A lane status is `hit` inside top_k, `ranking` below it, or `recall` when absent
+from that lane's measured output. These are bounded retrieval observations.
+
+Fusion beyond the rerank cutoff is reconstructed from recorded lane outputs and
+checked against the scored rerank input. Recorders and classification live in
+`defense_eval_lanes.py`, loaded beside the shared evaluator so CI can compare
+product checkouts that predate diagnostics. Missing supports trigger a separate
+search at the production depth limit, after scoring latency is recorded. Its
+full candidate prefix, including scores, must equal the scored result.
+
+Miss reasons are checked in order: `not_retrieved` when neither initial lane returns the passage,
+`ranked_out` at fusion, `score_floor`, then `beyond_depth` if final rank is
+unobserved. For a measured final rank, `crowded_by_near_duplicates` means removing
+named suite near misses or token-Jaccard matches >= 0.5 ahead of that reference
+would bring it into top_k. Otherwise `ranked_out` identifies rerank or subsequent
+reorder. Beyond-depth references never borrow an earlier ordering to infer
+crowding. Summary counts cover reference passages behind missed facts; alternate
+supports of an already retrieved fact do not count as misses. Diagnostics do not
+change retrieved results, deterministic scores or totals. The tier scorecard
+schema also accepts an optional diagnostics object; its version remains 1.
+
 ## Configured model
 
 Configured mode uses the same environment as the workbench answer path. Set

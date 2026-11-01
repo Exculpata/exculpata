@@ -49,6 +49,14 @@ def test_postgres_hybrid_path_scores_every_question_and_removes_rows(tmp_path, m
             "reranker": "DeterministicReranker",
             "learned_thresholds": False,
         }
+        diagnostics = scorecard["lane_diagnostics"]
+        assert diagnostics["missed_passages"] == sum(diagnostics["by_reason"].values())
+        assert all(entry["miss_reason"] for entry in diagnostics["misses"])
+        for row in scorecard["questions"]:
+            assert row["lane_diagnostics"] is not None
+            for entry in row["lane_diagnostics"]["passages"]:
+                for lane in ("lexical", "vector", "fused", "rerank", "final"):
+                    assert (entry[lane + "_rank"] is None) == (entry[lane + "_score"] is None)
         rendered = json.dumps(scorecard)
         assert "postgresql://" not in rendered
         assert "synthetic-ci-only" not in rendered

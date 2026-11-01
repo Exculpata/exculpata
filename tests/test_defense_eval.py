@@ -426,3 +426,133 @@ def test_malformed_model_content_has_specific_unavailable_type():
     assert issubclass(GenerationInvalidContent, GenerationUnavailable)
     with pytest.raises(GenerationInvalidContent):
         _parse_model_content("not json")
+
+
+@pytest.mark.parametrize("case,reason,lane", [
+    ("shared_evaluator", "ranked_out", "rerank"),
+    ("hit", None, None),
+    ("recall", "not_retrieved", "lexical+vector"),
+    ("ranking", "ranked_out", "rerank"),
+    ("fusion", "ranked_out", "fused"),
+    ("floor", "score_floor", "rerank"),
+    ("crowding", "crowded_by_near_duplicates", "post_rerank"),
+    ("beyond_depth", "beyond_depth", "post_rerank"),
+])
+def test_lane_miss_reasons_and_pass_through(case, reason, lane, monkeypatch):
+    from dataclasses import asdict, replace
+    from case_intelligence.defense_eval_lanes import RecordingBackend, RecordingReranker
+    from case_intelligence import review_bench_v2 as product
+
+    candidates = tuple(product.Candidate(
+        "matter", name, name, name + ".txt", i + 1, text, score,
+    ) for i, (name, text, score) in enumerate([
+        ("other", "synthetic unrelated notice", 0.9),
+        ("reference", "synthetic decisive statement", 0.2),
+    ]))
+    if case == "beyond_depth":
+        candidates += tuple(replace(candidates[0], document_id=f"extra-{i}",
+                                    chunk_id=f"extra-{i}", score=0.1) for i in range(21))
+        def reorder(query, rows, **kwargs):
+            return tuple(r for r in rows if r.document_id != "reference") + tuple(
+                r for r in rows if r.document_id == "reference")
+        monkeypatch.setattr(product, "rank_temporal_candidates", reorder)
+    lexical = () if case == "floor" else candidates
+    dense = candidates
+    if case == "recall":
+        lexical = dense = candidates[:1]
+
+    class Backend:
+        def lexical(self, matter_id, query, limit):
+            return lexical[:limit]
+
+        def dense(self, matter_id, vector, query, limit):
+            return dense[:limit]
+
+    class Reranker:
+        available = True
+
+        def rerank(self, query, rows):
+            scores = {r.document_id: r.score for r in candidates}
+            return tuple(sorted((replace(r, score=scores[r.document_id]) for r in rows),
+                                key=lambda r: -r.score))
+
+    options = {"rerank_limit": 1} if case == "fusion" else {}
+    if case == "floor":
+        options.update(minimum_dense_score=0.1, minimum_rerank_score=0.5)
+    top_k = 2 if case == "hit" else 1
+    trace = {}
+    embedder = product.DeterministicEmbeddingAdapter()
+    plain = product.HybridRetriever(Backend(), embedder, Reranker(), **options)
+    recorded = product.HybridRetriever(RecordingBackend(Backend(), trace), embedder,
+                                      RecordingReranker(Reranker(), trace), **options)
+    expected = plain.search("matter", "synthetic", top_k)
+    actual = recorded.search("matter", "synthetic", top_k)
+    encode = lambda rows: json.dumps([asdict(r) for r in rows], sort_keys=True).encode()
+    assert encode(actual) == encode(expected)
+    passages = tuple(Passage(r.document_id, "matter", r.source_name, "0" * 64,
+                             "document", "1", r.text) for r in candidates)
+    question = Question("q", "matter", "fact_lookup", "synthetic", False,
+                        (Fact("fact", "statement", (Support("reference", "statement"),)),),
+                        (), ("other",) if case in {"crowding", "beyond_depth"} else ())
+    adapter = object.__new__(PostgresHybridRetriever)
+    adapter._retriever = recorded
+    adapter._trace = trace
+    adapter._database_ids = {"matter": "matter"}
+    adapter._last_search = ("matter", "synthetic", top_k, dict(trace), actual)
+    from case_intelligence.defense_eval import Suite
+    adapter.suite = Suite("synthetic", "1", "0" * 64, "synthetic", passages, (question,))
+    retrieved = tuple(p for p in passages if p.passage_id in {r.document_id for r in actual})
+    if case == "shared_evaluator":
+        from case_intelligence.defense_eval import _lane_module
+        _lane_module.cache_clear()
+        monkeypatch.setattr("case_intelligence.defense_eval.__name__", "__main__")
+        monkeypatch.setitem(sys.modules, "case_intelligence.defense_eval_lanes", None)
+    diagnostics = adapter.lane_diagnostics(question, retrieved, top_k)
+    entry = diagnostics["passages"][0]
+    assert (entry["miss_reason"], entry["miss_lane"]) == (reason, lane)
+    assert entry["missed"] is (case != "hit")
+    assert entry["final_rank"] == (2 if case in {"hit", "crowding", "ranking", "shared_evaluator"} else None)
+    if case == "beyond_depth":
+        assert entry["rerank_rank"] == 2
+        assert entry["near_duplicates_ahead"] == []
+    for name in ("lexical", "vector", "fused", "rerank", "final"):
+        assert entry[name + "_status"] in {"hit", "ranking", "recall"}
+        assert (entry[name + "_rank"] is None) == (entry[name + "_score"] is None)
+    assert encode(recorded.search("matter", "synthetic", top_k)) == encode(expected)
+    monkeypatch.setattr("case_intelligence.defense_eval.time.perf_counter", lambda: 0)
+    measured = run_eval(adapter.suite, ReferenceStub(), retriever=adapter, top_k=top_k)
+    def unrecorded(passages, query, top_k):
+        ids = [r.document_id for r in plain.search("matter", query, top_k)]
+        return tuple(next(p for p in passages if p.passage_id == id_) for id_ in ids)
+    baseline = run_eval(adapter.suite, ReferenceStub(), retriever=unrecorded, top_k=top_k)
+    assert measured["aggregates"] == baseline["aggregates"]
+    measured.pop("lane_diagnostics")
+    for row in measured["questions"]:
+        row.pop("lane_diagnostics")
+    assert measured == baseline
+    if case == "ranking":
+        original_search = recorded.search
+        def drifted(matter_id, query, limit):
+            rows = original_search(matter_id, query, limit)
+            return (replace(rows[0], score=rows[0].score + 1),) + rows[1:]
+        monkeypatch.setattr(recorded, "search", drifted)
+        with pytest.raises(DefenseEvalError, match="changed the scored prefix"):
+            adapter.lane_diagnostics(question, retrieved, top_k)
+
+
+def test_lane_summary_and_optional_schema():
+    from case_intelligence.defense_eval_lanes import summarize_lane_diagnostics, render_lane_diagnostics
+    from case_intelligence.tier_evals import Scorecard, new_scorecard, validate_scorecard
+    assert Scorecard.model_fields["lane_diagnostics"].is_required() is False
+    card = new_scorecard("a" * 40, "synthetic", {"cpu": "synthetic", "gpus": []})
+    validate_scorecard(card)
+    card["lane_diagnostics"] = {"misses": []}
+    validate_scorecard(json.loads(json.dumps(card)))
+    assert Scorecard.model_validate(card).lane_diagnostics == {"misses": []}
+    entry = dict(passage_id="p", missed=True, miss_reason="score_floor", miss_class="ranking",
+                 miss_lane="rerank", **{f"{lane}_status": "recall" for lane in
+                                       ("lexical", "vector", "fused", "rerank", "final")})
+    summary = summarize_lane_diagnostics([dict(question_id="q", lane_diagnostics={"passages": [entry]})])
+    assert summary["by_reason"] == {"score_floor": 1}
+    assert summary["by_lane_status"]["final"]["recall"] == 1
+    assert "score_floor" in "\n".join(render_lane_diagnostics(summary))
