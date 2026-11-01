@@ -1,10 +1,10 @@
 # Local model portfolio
 
-The review pipeline uses one pinned generator tier plus the same retrieval
-stack:
+The review pipeline currently ships pinned generator profiles plus the same
+retrieval stack:
 
-- portable: Qwen3.5 4B for constrained or shared-GPU nodes;
-- quality: Qwen3.5 9B when the selected generator device has sufficient VRAM;
+- portable: the shipped profile uses Qwen3.5 4B;
+- quality: the shipped profile uses Qwen3.5 9B;
 - Granite Embedding English R2 for dense retrieval;
 - GTE ModernBERT cross-encoder for reranking;
 - deterministic checks of citation references and text consistency after generation.
@@ -16,8 +16,10 @@ are correct. Compare each claim with the original sources using the
 Automatic selection considers visible GPU memory and whether transcription
 shares the generator device. Operators may select a tier and GPU layout
 explicitly, including tensor-parallel generator devices, but preflight rejects
-known-unworkable combinations. The defaults are deployment candidates, not a
-universal quality claim.
+known-unworkable combinations. These are descriptions of shipped defaults,
+not model recommendations.
+Generator selection per hardware tier is pending hands-on hardware testing;
+for now use the bundled profile or a model your own policy allows.
 
 GPU count is not an edition boundary. The same workflows run on a supported
 one-GPU node or a larger node; extra devices change placement and potential
@@ -99,21 +101,23 @@ download or configure an answer server. Use the existing
 to opt into an endpoint. Remote endpoints require explicit consent to send
 matter text and are never recommended or selected by default.
 
-This table is checked against `config/model_profiles.json` by
-`tests/test_installer_profile_prompt.py`; update both together.
+The installer still uses the suggestions in
+[`config/model_profiles.json`](../config/model_profiles.json). The documentation
+guidance below defers generator selection pending testing; it does not change
+the installer suggestions or the bundled vLLM default, Qwen3.5-9B.
 
 <!-- model-profile-table:start -->
 | Tier ID | Hardware | Generator | Embeddings and reranking | Speech recognition | Trade-off |
 | --- | --- | --- | --- | --- | --- |
-| `potato` | CPU only, below 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
-| `cpu` | CPU only, at least 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
-| `gpu-8` | 8 GB GPU | Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result. |
-| `gpu-12` | 12 GB GPU | Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result. |
-| `gpu-16` | 16 GB GPU | Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | 16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result. |
-| `gpu-24` | 24 GB GPU and up | Qwen3.5-9B through the bundled vLLM service. This is the current reference profile. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | This matches the bundled generator and is the reference deployment shape. This is a suggestion, not a measured quality result. |
-| `apple-16` | Apple Silicon, 16 GB unified memory and up | Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result. |
-| `apple-32` | Apple Silicon, 32 GB unified memory and up | Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | The model budget reserves 25 percent of unified memory for the operating system and application work. This is a suggestion, not a measured quality result. |
-| `ultra` | Two or more 48 GB GPUs | Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | Multiple data-center GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. This is a suggestion, not a measured quality result. |
+| `potato` | CPU only, below 14 GiB reported RAM | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. CPU generation can be slow; latency and grounding quality need evaluation. |
+| `cpu` | CPU only, at least 14 GiB reported RAM | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Reported RAM must accommodate the application and selected model. CPU generation latency and grounding quality need evaluation. |
+| `gpu-8` | 8 GB GPU | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | Model weights, KV cache and other workloads share available memory. Fit and throughput need evaluation. |
+| `gpu-12` | 12 GB GPU | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | Quantization, KV cache and shared workloads affect memory use. Fit and quality need evaluation. |
+| `gpu-16` | 16 GB GPU | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | The bundled profile must still pass the installer's existing free-VRAM check. Passing that check does not establish quality. |
+| `gpu-24` | 24 GB GPU and up | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. The bundled vLLM service currently ships Qwen3.5-9B. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | The shipped default is recorded here as a fact. Tier-specific quality and resource acceptance still require evaluation. |
+| `apple-16` | Apple Silicon, 16 GB unified memory and up | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | Unified memory is shared with the operating system and application. MLX is not part of this version. |
+| `apple-32` | Apple Silicon, 32 GB unified memory and up | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | The model budget reserves 25 percent of unified memory for the operating system and application work. MLX is not part of this version. |
+| `ultra` | Two or more 48 GB GPUs | Generator selection for this tier is pending hands-on hardware testing; for now use the bundled profile or a model your own policy allows. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | Multiple GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. |
 <!-- model-profile-table:end -->
 
 The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challenges,

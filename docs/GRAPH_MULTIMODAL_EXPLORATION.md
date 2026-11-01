@@ -69,7 +69,8 @@ resolution, reviewer effort, resources, restart and deletion on declared corpora
   local exploration informed by broader collection context.
 - [LazyGraphRAG research](https://www.microsoft.com/en-us/research/blog/lazygraphrag-setting-a-new-standard-for-quality-and-cost/):
   research direction for deferred summarization and budgeted exploration.
-- [Qwen multimodal retrieval model card](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B):
-  one candidate family to qualify, not a supported Exculpata portfolio change.
+
+Model selection is pending hands-on hardware testing; for now use the bundled
+profile or a model your own policy allows.
 
 External benchmark claims do not establish Exculpata quality or capacity.
