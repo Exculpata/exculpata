@@ -3,6 +3,7 @@
 Status: architectural direction; no runtime or storage change in this document.
 The [north star](PRODUCT_NORTH_STAR.md) defines why these boundaries matter.
 [Architecture](ARCHITECTURE.md) describes the implementation that exists today.
+[ADR 0001: Core and modules](adr/0001-core-and-modules.md) records the proposed dependency boundaries.
 
 ## Keep the application in charge
 

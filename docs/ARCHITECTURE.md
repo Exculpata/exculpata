@@ -4,6 +4,7 @@ This document describes current behavior. The [product north star](PRODUCT_NORTH
 and [core evolution plan](CORE_EVOLUTION.md) describe the direction for extending
 it through focused modules while preserving shared authorization, provenance,
 transaction, and lifecycle contracts.
+[ADR 0001: Core and modules](adr/0001-core-and-modules.md) records the proposed dependency boundaries.
 
 ```text
 staff browser
