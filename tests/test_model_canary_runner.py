@@ -14,9 +14,22 @@ def test_opt_in_precedes_external_commands(monkeypatch):
         live.preflight()
 
 
+@pytest.mark.parametrize("model_root", [None, ""])
+def test_preflight_skips_before_compose_when_model_root_is_missing(monkeypatch, model_root):
+    monkeypatch.setenv("EXCULPATA_MODEL_CANARY", "1")
+    if model_root is None:
+        monkeypatch.delenv("EXCULPATA_MODEL_ROOT", raising=False)
+    else:
+        monkeypatch.setenv("EXCULPATA_MODEL_ROOT", model_root)
+    monkeypatch.setattr(live, "docker", lambda *a, **k: pytest.fail("must not invoke Docker"))
+    with pytest.raises(pytest.skip.Exception, match="EXCULPATA_MODEL_ROOT"):
+        live.preflight()
+
+
 @pytest.mark.parametrize("missing", ["docker", "image", "gpu", "runtime", None])
 def test_missing_prerequisites_skip(monkeypatch, missing):
     monkeypatch.setenv("EXCULPATA_MODEL_CANARY", "1")
+    monkeypatch.setenv("EXCULPATA_MODEL_ROOT", "/synthetic/models")
     service = {"image": "synthetic@sha256:" + "a" * 64, "runtime": "nvidia"}
     def fake(*args, **kwargs):
         if missing == "docker":
@@ -92,7 +105,8 @@ def test_capture_integrity_faults_cannot_pass(fault):
         live.capture_result(records, int(fault == "exit"), "192.0.2.2", "192.0.2.3")
 
 
-@pytest.mark.parametrize("fault", [None, "drops", "control", "suite", "trap_exit", "cleanup"])
+@pytest.mark.parametrize("fault", [None, "drops", "control", "suite", "trap_exit", "cleanup",
+                                    "cleanup_with_hit"])
 def test_runner_receipt_and_cleanup(tmp_path, monkeypatch, fault):
     from io import BytesIO
     from types import SimpleNamespace
@@ -103,7 +117,7 @@ def test_runner_receipt_and_cleanup(tmp_path, monkeypatch, fault):
     service["environment"] = {"SYNTHETIC_VALUE": "$literal"}
     def fake_docker(*args, **kwargs):
         calls.append(args)
-        if fault == "cleanup" and args[:2] == ("rm", "--force") and args[-1].endswith("-trap"):
+        if fault in {"cleanup", "cleanup_with_hit"} and args[:2] == ("rm", "--force") and args[-1].endswith("-trap"):
             raise subprocess.CalledProcessError(1, args)
         if args[0] == "inspect":
             address = "192.0.2.3" if args[-1].endswith("-client") else "192.0.2.2"
@@ -117,6 +131,9 @@ def test_runner_receipt_and_cleanup(tmp_path, monkeypatch, fault):
         if args[0] == "logs":
             requests.extend(live.json.loads(sent.getvalue()))
             records = capture()
+            if fault == "cleanup_with_hit":
+                records.insert(1, {"phase": "suite", "reasons": ["tcp_syn"],
+                                   "destination": "192.0.2.9", "destination_port": 443})
             if fault == "drops":
                 records[-1]["drops"] = 1
             if fault == "control":
@@ -137,7 +154,9 @@ def test_runner_receipt_and_cleanup(tmp_path, monkeypatch, fault):
     def start_client(command, **kwargs):
         calls.append(tuple(command[1:]))
         return process
-    monkeypatch.delenv("EXCULPATA_CANARY_OUTPUT", raising=False)
+    output = tmp_path / "artifacts" / "receipt.json"
+    output.parent.mkdir()
+    monkeypatch.setenv("EXCULPATA_CANARY_OUTPUT", str(output))
     monkeypatch.setattr(live.uuid, "uuid4", lambda: SimpleNamespace(hex="synthetic"))
     monkeypatch.setattr(live, "docker", fake_docker)
     monkeypatch.setattr(live.subprocess, "Popen", start_client)
@@ -152,9 +171,17 @@ def test_runner_receipt_and_cleanup(tmp_path, monkeypatch, fault):
                for path, body in requests)
     assert receipt["status"] == ("passed" if fault is None else "invalid")
     assert receipt["upper_bound_95"] == (0.01 if fault is None else None)
-    if fault == "cleanup":
+    if fault in {"cleanup", "cleanup_with_hit"}:
         assert receipt["control_seen"] is True
-    assert live.json.loads((tmp_path / "canary-receipt.json").read_text()) == receipt
+    if fault == "cleanup_with_hit":
+        assert receipt["status"] == "invalid"
+        assert receipt["hit_count"] == 1
+        assert receipt["hits"] == [{"phase": "suite", "reasons": ["tcp_syn"],
+                                    "destination": "192.0.2.9", "destination_port": 443}]
+    capture_path = output.parent / receipt["capture_jsonl"]["path"]
+    assert capture_path == output.parent / "canary-capture.jsonl"
+    assert receipt["capture_jsonl"]["sha256"] == live.hashlib.sha256(capture_path.read_bytes()).hexdigest()
+    assert live.json.loads(output.read_text()) == receipt
     assert [c[0] for c in calls[-4:]] == ["rm", "rm", "rm", "network"]
     assert calls[0][0:3] == ("network", "create", "--internal")
     for command in [c for c in calls if c[0] == "run"]:
