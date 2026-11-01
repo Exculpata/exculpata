@@ -172,7 +172,7 @@ page regions. The transfer exceeds the synthetic pilot threshold of USD 500.00,
 so the document is escalated and coverage records `high_value_movement`. This
 threshold illustrates routing only and does not set the production value.
 
-## Open questions for Neil
+## Open questions for the maintainer
 
 These choices remain undecided:
 
