@@ -36,6 +36,8 @@ def compose_environment():
 def preflight():
     if os.environ.get("EXCULPATA_MODEL_CANARY") != "1":
         pytest.skip("Set EXCULPATA_MODEL_CANARY=1 to run the live canary")
+    if not os.environ.get("EXCULPATA_MODEL_ROOT"):
+        pytest.skip("Set EXCULPATA_MODEL_ROOT to the staged model cache")
     try:
         docker("info")
     except (OSError, subprocess.SubprocessError):
@@ -138,6 +140,9 @@ def run_canary(service, tmp_path):
     outputs, records, hits = [], [], []
     dns_seen = tcp_seen = False
     gpu, error, generator_ip, client_ip = "unknown", None, "", ""
+    output = Path(os.environ.get("EXCULPATA_CANARY_OUTPUT", str(tmp_path / "canary-receipt.json")))
+    capture_path = output.parent / "canary-capture.jsonl"
+    capture_bytes = b""
     try:
         docker("network", "create", "--internal", "--label", "com.docker.compose.project=" + name, name)
         docker(*compose, "up", "-d", "--no-build", "--pull", "never", "generator", timeout=120)
@@ -198,8 +203,7 @@ def run_canary(service, tmp_path):
                 docker("kill", "--signal", "TERM", trap, check=False)
                 exit_code = int(docker("wait", trap, timeout=30).strip())
                 capture = docker("logs", trap)
-                # fixture-write: retain the synthetic trap JSONL for inspection.
-                (tmp_path / "canary-capture.jsonl").write_text(capture)
+                capture_bytes = capture.encode()
                 records = [json.loads(line) for line in capture.splitlines()]
                 hits, dns_seen, tcp_seen = capture_result(records, exit_code, generator_ip, client_ip)
             except Exception as exc:
@@ -218,6 +222,8 @@ def run_canary(service, tmp_path):
                 client.kill()
                 client.wait(timeout=10)
                 error = error or "ClientCleanupTimeout"
+    # fixture-write: retain the synthetic trap JSONL next to its informational receipt.
+    capture_path.write_bytes(capture_bytes)
     receipt = build_receipt(model_id=model, revision=revision, served_name=served,
         image_digest=service["image"].split("@", 1)[1], gpu_name=gpu,
         prompt_suite_sha256=hashlib.sha256(suite_bytes).hexdigest(),
@@ -228,7 +234,10 @@ def run_canary(service, tmp_path):
     if error is not None:
         receipt.update(status="invalid", upper_bound_95=None, bound_scope=None)
     receipt["capture_error"] = error
-    output = Path(os.environ.get("EXCULPATA_CANARY_OUTPUT", str(tmp_path / "canary-receipt.json")))
+    receipt["capture_jsonl"] = {
+        "path": os.path.relpath(capture_path, output.parent),
+        "sha256": hashlib.sha256(capture_bytes).hexdigest(),
+    }
     # fixture-write: informational synthetic run receipt, never an enablement input.
     output.write_text(json.dumps(receipt, indent=2) + "\n")
     return receipt

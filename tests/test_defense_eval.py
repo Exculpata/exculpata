@@ -12,6 +12,7 @@ from case_intelligence.defense_eval import (
     DEFAULT_SUITE, Citation, DefenseEvalError, Fact, ModelAnswer, Passage, PostgresHybridRetriever,
     Question, ReferenceStub, Support, _healthy_retrieval_worker, hybrid_adapters, load_suite, main,
     rank_passages, render_markdown, run_eval, score_question, suite_fingerprint,
+    write_scorecard,
 )
 
 
@@ -556,3 +557,29 @@ def test_lane_summary_and_optional_schema():
     assert summary["by_reason"] == {"score_floor": 1}
     assert summary["by_lane_status"]["final"]["recall"] == 1
     assert "score_floor" in "\n".join(render_lane_diagnostics(summary))
+
+
+@pytest.mark.parametrize("reasons", [(), ("score_floor", "ranked_out")])
+def test_lane_scorecard_markdown_matches_saved_json(suite, tmp_path, reasons):
+    from case_intelligence.defense_eval_lanes import LANES, summarize_lane_diagnostics
+
+    entries = [
+        dict(passage_id=f"p-{index}", missed=True, miss_reason=reason, miss_lane="rerank",
+             **{f"{lane}_status": "recall" for lane in LANES})
+        for index, reason in enumerate(reasons)
+    ]
+    card = run_eval(suite, ReferenceStub())
+    card["lane_diagnostics"] = summarize_lane_diagnostics([
+        dict(question_id="synthetic-question", lane_diagnostics={"passages": entries}),
+    ])
+    # fixture-write: Save synthetic scorecards through the production writer for JSON round-trip coverage.
+    json_path, markdown_path = write_scorecard(tmp_path, card)
+    saved_card = json.loads(json_path.read_text(encoding="utf-8"))
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert markdown == render_markdown(saved_card)
+    assert markdown == render_markdown(card)
+    lane_rows = [line.split(" | ")[0] for line in markdown.splitlines()
+                 if any(line.startswith(f"| {lane} |") for lane in LANES)]
+    assert lane_rows == [f"| {lane}" for lane in LANES]
+    if reasons:
+        assert "Reasons: ranked_out 1, score_floor 1" in markdown

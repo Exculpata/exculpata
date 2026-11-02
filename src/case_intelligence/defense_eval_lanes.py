@@ -146,9 +146,11 @@ def render_lane_diagnostics(summary):
         lines.append(f"| `{entry['question_id']}` | `{entry['passage_id']}` | {ranks} | "
                      f"{entry['miss_reason']} | {entry['miss_lane']} |")
     lines += ["", "| Lane | Hit | Ranking | Recall |", "| --- | --- | --- | --- |"]
-    for name, counts in summary["by_lane_status"].items():
+    for name in LANES:
+        counts = summary["by_lane_status"][name]
         lines.append(f"| {name} | {counts['hit']} | {counts['ranking']} | {counts['recall']} |")
-    lines += ["", "Reasons: " + ", ".join(f"{k} {v}" for k, v in summary["by_reason"].items()), ""]
+    reasons = ", ".join(f"{reason} {count}" for reason, count in sorted(summary["by_reason"].items()))
+    lines += ["", "Reasons: " + reasons, ""]
     return lines
 
 

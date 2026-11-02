@@ -25,10 +25,10 @@ from case_intelligence.review_bench_v2 import (
     upsert_postgres_document,
 )
 
-pytestmark = pytest.mark.skipif(
+pytestmark = [pytest.mark.usefixtures("postgres_schema"), pytest.mark.skipif(
     not os.getenv("CASE_REVIEW_POSTGRES_TEST_DSN"),
     reason="set CASE_REVIEW_POSTGRES_TEST_DSN for the isolated development database",
-)
+)]
 
 
 def test_live_postgres_migration_reopen_and_hybrid_page_citation():
@@ -85,7 +85,7 @@ def test_live_postgres_generic_txt_document_upsert_is_matter_scoped():
 
 
 @pytest.fixture
-def lexical_backend():
+def lexical_backend(postgres_schema):
     import psycopg
 
     matter_id = f"ci-matter-{uuid.uuid4().hex}"

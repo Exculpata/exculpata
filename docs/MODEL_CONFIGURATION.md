@@ -335,8 +335,10 @@ EXCULPATA_MODEL_CANARY=1 EXCULPATA_CANARY_OUTPUT=canary-receipt.json \
 Set `EXCULPATA_MODEL_ROOT` to the staged cache. To select another model, set
 `EXCULPATA_GENERATOR_MODEL_ID`, `EXCULPATA_GENERATOR_REVISION`, and
 `EXCULPATA_GENERATOR_SERVED_NAME` before running. Nothing is pulled. Without
-opt-in, a local pinned image, or a usable GPU host, the test skips. Without an
-output setting, the receipt goes in pytest's temporary directory.
+opt-in, a model root, a local pinned image, or a usable GPU host, the test skips.
+The capture is named `canary-capture.jsonl` beside the receipt and the receipt
+records its relative path and SHA-256. Without an output setting, both artifacts
+go in pytest's temporary directory.
 
 The receipt is informational and gates nothing: model enablement, configuration
 validation, release checks, and CI do not require it. A passing receipt records
