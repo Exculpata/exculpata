@@ -39,6 +39,7 @@
   "case_intelligence.contracts": "core.contracts",
   "case_intelligence.deeper_investigation": "modules.insight",
   "case_intelligence.defense_eval": "evals",
+  "case_intelligence.defense_eval_lanes": "evals",
   "case_intelligence.derived_text": "core.sources",
   "case_intelligence.discovery_gold": "evals",
   "case_intelligence.docx_extract": "core.sources",
