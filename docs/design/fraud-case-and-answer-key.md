@@ -249,7 +249,7 @@ checked against a maintained synthetic namespace and generated from bundled
 word lists, not network data. The design adds neither a license gate nor a PST
 container.
 
-## Open questions for Neil
+## Open questions for the maintainer
 
 These choices remain open and are not decided by this note:
 
