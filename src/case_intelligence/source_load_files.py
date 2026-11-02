@@ -70,8 +70,16 @@ class FieldProfile:
     def to_data(self):
         return {"producer": self.producer, "fields": dict(self.fields)}
 
+    def __hash__(self):
+        return hash((self.producer, frozenset(self.fields.items())))
+
 def propose_field_map(headers):
-    return {h: _FIELD_ALIASES[h] for h in headers if h in _FIELD_ALIASES}
+    """Propose the first recognized header for each target in input order."""
+    targets = {}
+    for header in headers:
+        if header in _FIELD_ALIASES:
+            targets.setdefault(_FIELD_ALIASES[header], header)
+    return {header: target for target, header in targets.items()}
 
 def _encoding(path):
     with Path(path).open("rb") as stream:
@@ -90,39 +98,69 @@ def _encoding(path):
         except UnicodeDecodeError:
             return "cp1252"
 
-codecs.register_error("load_file_invalid", lambda error: ("\udcff", error.end))
+def _decode_chunk(decoder, raw, final):
+    """Handle malformed bytes locally, retaining decodable text and quote parity."""
+    parts = []
+    while True:
+        state = decoder.getstate()
+        try:
+            parts.append(decoder.decode(raw, final=final))
+            return "".join(parts)
+        except UnicodeDecodeError as error:
+            decoder.setstate(state)
+            prefix_length = error.start - len(state[0])
+            parts.append(decoder.decode(raw[:max(0, prefix_length)], final=False))
+            parts.append("\udcff")
+            decoder.setstate((b"", decoder.getstate()[1]))
+            raw = error.object[error.end:]
+
+def _physical_chunks(stream, encoding):
+    if encoding == "utf-8-sig":
+        stream.read(len(codecs.BOM_UTF8))
+        encoding = "utf-8"
+    decoder = codecs.getincrementaldecoder(encoding)()
+    pending_cr = ""
+    while True:
+        raw = stream.read(8192)
+        text = pending_cr + _decode_chunk(decoder, raw, final=not raw)
+        pending_cr = "\r" if text.endswith("\r") and raw else ""
+        if pending_cr:
+            text = text[:-1]
+        yield from re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+", text)
+        if not raw:
+            return
 
 def _records(path, dat=False):
-    """Yield physical start line, record and error; discard oversized physical tails."""
-    line, start, parts, size, quoted, ended_cr = 0, 1, [], 0, False, False
+    """Discard damaged record text until its quote parity closes, citing it once."""
+    line, start, parts, size, quoted, skipping, seen = 1, 1, [], 0, False, False, False
     try:
         encoding = _encoding(path)
         byte_encoding = {"utf-16": "utf-16-le", "utf-8-sig": "utf-8"}.get(encoding, encoding)
-        with Path(path).open(encoding=encoding, errors="load_file_invalid", newline="") as stream:
-            while raw := stream.readline(_MAX_RECORD + 1):
-                if ended_cr and raw == "\n":
-                    ended_cr = False
-                    continue
-                ended_cr = raw.endswith("\r")
-                line += 1
-                bad = "mixed_encoding" if "\udcff" in raw else ""
-                size += len(raw.encode(byte_encoding, errors="surrogatepass")) if not bad else 0
-                if size > _MAX_RECORD or len(raw) > _MAX_RECORD:
-                    bad = "record_too_large"
-                    while raw and not raw.endswith(("\n", "\r")):
-                        raw = stream.readline(_MAX_RECORD + 1)
-                    ended_cr = raw.endswith("\r")
-                if not bad:
-                    parts.append(raw)
-                    quoted ^= dat and bool(raw.count("þ") % 2)
-                    if quoted:
-                        continue
-                yield start, None if bad else "".join(parts).removesuffix("\n").removesuffix("\r"), bad
-                parts, size, quoted, start = [], 0, False, line + 1
-            if dat and not line:
+        with Path(path).open("rb") as stream:
+            for raw in _physical_chunks(stream, encoding):
+                seen = True
+                quoted ^= dat and bool(raw.count("þ") % 2)
+                if not skipping:
+                    bad = "mixed_encoding" if "\udcff" in raw else ""
+                    size += len(raw.encode(byte_encoding)) if not bad else 0
+                    if size > _MAX_RECORD and not bad:
+                        bad = "record_too_large"
+                    if bad:
+                        parts.clear()
+                        skipping = True
+                        yield start, None, bad
+                    else:
+                        parts.append(raw)
+                if raw.endswith(("\r", "\n")):
+                    line += 1
+                    if not quoted:
+                        if not skipping:
+                            yield start, "".join(parts).removesuffix("\n").removesuffix("\r"), ""
+                        parts, size, skipping, start = [], 0, False, line
+            if dat and not seen:
                 yield 1, None, "invalid_header"
             if parts:
-                yield start, None, "truncated_row"
+                yield start, None if quoted else "".join(parts), "truncated_row" if quoted else ""
     except LoadFileError as error:
         yield error.line, None, error.code
     except OSError:
@@ -136,23 +174,31 @@ def _dat_values(raw):
     for token in re.split(r"(þ|\x14)", raw):
         if token == "þ":
             quoted = not quoted
+            current.append(token)
         elif token == "\x14" and not quoted:
             values.append("".join(current))
             current = []
         else:
             current.append(token)
-    return (*values, "".join(current))
+    values.append("".join(current))
+    if any("þ" in v and not (v.startswith("þ") and v.endswith("þ") and v.count("þ") == 2)
+           for v in values):
+        return None
+    return tuple(v[1:-1] if v.startswith("þ") else v for v in values)
 
-def parse_dat(path, *, findings=None, field_map=None):
-    """Stream unchanged rows. Mapping is reserved for QC and never rewrites values."""
+def parse_dat(path, *, findings=None):
+    """Stream unchanged rows; exhaust the iterator to finalize findings."""
     sink, headers = _Findings(findings, path), None
     for line, raw, error in _records(path, dat=True):
         if error:
-            sink.add("invalid_header" if headers is None and error != "unsupported_encoding" else error, line)
+            sink.add("invalid_header" if headers is None and error not in {"unsupported_encoding", "read_error"} else error, line)
             headers = () if headers is None else headers
             continue
         values = _dat_values(raw)
-        if headers is None:
+        if values is None:
+            sink.add("invalid_header" if headers is None else "invalid_quoting", line)
+            headers = () if headers is None else headers
+        elif headers is None:
             headers = values
             for code, bad in (("duplicate_header", len(set(headers)) != len(headers)),
                               ("empty_header", not all(headers))):

@@ -57,7 +57,7 @@ def test_registered_mark_never_converted(tmp_path):
     headers = ("KEY", "Unmapped®")
     path = _write(tmp_path, _dat_bytes([headers, ("A®1", "A®1")]))
     findings = []
-    rows = list(parse_dat(path, field_map={"KEY": "begin_bates"}, findings=findings))
+    rows = list(parse_dat(path, findings=findings))
     assert [row.values for row in rows] == [("A®1", "A®1")]
     assert rows[0].headers == headers
     assert findings == []
@@ -235,16 +235,101 @@ def test_opt_bad_rows_cited(tmp_path):
     _assert_files(findings, path)
 
 
-def test_record_size_cap(tmp_path):
+@pytest.mark.parametrize("closed", [True, False])
+def test_record_size_cap_multiline_unclosed_quote(tmp_path, closed):
     payload = (_dat_bytes([("KEY",), ("A1",)], encoding="cp1252")
-               + b"\xfe" + b"x" * (2 * 1024 * 1024) + b"\n"
-               + _dat_bytes([("A2",)], encoding="cp1252"))
+               + b"\xfe\n" + (b"x" * 1023 + b"\n") * 2048)
+    if closed:
+        payload += b"\xfe\n" + _dat_bytes([("A2",), ("A3",)], encoding="cp1252")
+    path = _write(tmp_path, payload)
+    findings = []
+    rows = list(parse_dat(path, findings=findings))
+    assert [row.values for row in rows] == ([("A1",), ("A2",), ("A3",)] if closed else [("A1",)])
+    assert [row.line for row in rows] == ([2, 2053, 2054] if closed else [2])
+    assert _citations(findings) == [("record_too_large", 3)]
+    _assert_files(findings, path)
+
+
+@pytest.mark.parametrize("bad_line_closes", [False, True])
+def test_mixed_encoding_inside_multiline_field_keeps_following_rows(tmp_path, bad_line_closes):
+    clean = ("x" * 70000,)
+    prefix = _dat_bytes([("KEY",), clean])
+    damaged = "þaʹ\n".encode() + b"B\x81C" + ("þ\n" if bad_line_closes else "\ndþ\n").encode()
+    path = _write(tmp_path, prefix + damaged + _dat_bytes([("A2",), ("A3",)]))
+    findings = []
+    rows = list(parse_dat(path, findings=findings))
+    assert [row.values for row in rows] == [clean, ("A2",), ("A3",)]
+    assert [row.line for row in rows] == ([2, 5, 6] if bad_line_closes else [2, 6, 7])
+    assert _citations(findings) == [("mixed_encoding", 3)]
+    _assert_files(findings, path)
+
+
+def test_missing_dat_reports_read_error(tmp_path):
+    path = tmp_path / "missing.dat"
+    findings = []
+    assert list(parse_dat(path, findings=findings)) == []
+    assert _citations(findings) == [("read_error", 1)]
+    _assert_files(findings, path)
+
+
+@pytest.mark.parametrize("encoding,bom,bad", [
+    ("utf-8", b"", b"\xed\xa0\x80"), ("utf-8", codecs.BOM_UTF8, b"\xed\xa0\x80"),
+    ("cp1252", b"", b"\x81"),
+    ("utf-16-le", codecs.BOM_UTF16_LE, b"\x00\xd8"),
+    ("utf-16-be", codecs.BOM_UTF16_BE, b"\xd8\x00"),
+])
+def test_local_decoder_recovers_across_chunk_boundary(tmp_path, encoding, bom, bad):
+    clean = ("x" * 70000,)
+    prefix = bom + _dat_bytes([("KEY",), clean], encoding)
+    prefix += "þ".encode(encoding)
+    width = len("x".encode(encoding))
+    offset = len(bom) if encoding == "utf-8" else 0
+    padding = ((8192 - (len(prefix) - offset) % 8192) // width - 1) % (8192 // width)
+    prefix += ("x" * padding).encode(encoding)
+    assert (len(prefix) - offset) % 8192 == 8192 - width
+    path = _write(tmp_path, prefix + bad + "þ\n".encode(encoding) + _dat_bytes([("A2",)], encoding))
+    findings = []
+    assert [row.values for row in parse_dat(path, findings=findings)] == [clean, ("A2",)]
+    assert _citations(findings) == [("mixed_encoding", 3)]
+
+
+@pytest.mark.parametrize("encoding,bom,bad", [
+    ("utf-8", codecs.BOM_UTF8, b"\x81"),
+    ("utf-16-le", codecs.BOM_UTF16_LE, b"\x00\xd8"),
+    ("utf-16-be", codecs.BOM_UTF16_BE, b"\xd8\x00"),
+])
+def test_decode_error_in_first_bom_chunk_keeps_header(tmp_path, encoding, bom, bad):
+    payload = bom + _dat_bytes([("KEY",)], encoding) + "þ".encode(encoding)
+    path = _write(tmp_path, payload + bad + "þ\n".encode(encoding) + _dat_bytes([("A2",)], encoding))
+    findings = []
+    rows = list(parse_dat(path, findings=findings))
+    assert [row.values for row in rows] == [("A2",)]
+    assert rows[0].headers == ("KEY",)
+    assert rows[0].line == 3
+    assert _citations(findings) == [("mixed_encoding", 2)]
+
+
+@pytest.mark.parametrize("ending", ["\r\n", "\r", "\n"])
+def test_oversized_physical_line_keeps_closing_quote_and_following_rows(tmp_path, ending):
+    payload = _dat_bytes([("KEY",), ("A1",), ("x" * (2 * 1024 * 1024),), ("A2",)], ending=ending)
     path = _write(tmp_path, payload)
     findings = []
     rows = list(parse_dat(path, findings=findings))
     assert [row.values for row in rows] == [("A1",), ("A2",)]
     assert [row.line for row in rows] == [2, 4]
     assert _citations(findings) == [("record_too_large", 3)]
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_balanced_inner_thorns_are_exact_or_cited(tmp_path, wrapped):
+    value = "Aþ1þ"
+    row = _dat_bytes([(value,)]) if wrapped else (value + "\n").encode()
+    path = _write(tmp_path, _dat_bytes([("KEY",)]) + row)
+    findings = []
+    rows = list(parse_dat(path, findings=findings))
+    assert ([item.values for item in rows] == [(value,)] and not findings) or (
+        not rows and len(findings) == 1 and findings[0].line == 2
+    )
     _assert_files(findings, path)
 
 
@@ -298,6 +383,23 @@ def test_field_profile_roundtrip_and_rejects_malformed(tmp_path):
     ]:
         with pytest.raises(ValueError):
             FieldProfile.from_data(malformed)
+
+
+def test_field_profile_hash_and_proposal_are_consistent():
+    fields = propose_field_map(("BEGBATES", "BEGDOC", "TEXT", "TEXTPATH"))
+    assert fields == {"BEGBATES": "begin_bates", "TEXT": "text_path"}
+    profile = FieldProfile("synthetic", fields)
+    reversed_profile = FieldProfile("synthetic", dict(reversed(list(fields.items()))))
+    assert profile == reversed_profile
+    assert hash(profile) == hash(reversed_profile)
+    assert {profile: "retained"}[reversed_profile] == "retained"
+    fields.clear()
+    assert profile.fields == {"BEGBATES": "begin_bates", "TEXT": "text_path"}
+
+
+def test_parse_dat_rejects_unused_field_map(tmp_path):
+    with pytest.raises(TypeError, match="field_map"):
+        parse_dat(tmp_path / "unused.dat", field_map={"KEY": "begin_bates"})
 
 
 @pytest.mark.parametrize("payload,code", [(b"", "invalid_header"), (b"KEY\n" + b"x" * 65536 + b"\0", "unsupported_encoding")])
