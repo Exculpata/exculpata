@@ -207,7 +207,7 @@ migration or rollback. A previous reader continues to resolve all pre-existing
 citations; child citations require a reader that understands those ordinary
 stored sources, even if it cannot display family navigation.
 
-## Open questions for Neil
+## Open questions for the maintainer
 
 These questions are intentionally not decided by this note:
 
@@ -247,5 +247,5 @@ These questions are intentionally not decided by this note:
 - [ ] Limits, recursion guards and per-child malware scans fail closed; PST and
   archive expansion remain out of scope.
 - [ ] Migration and rollback leave every source ID and saved citation unchanged.
-- [ ] Neil's open questions are resolved in an implementation specification, not
+- [ ] The maintainer's open questions are resolved in an implementation specification, not
   implicitly in code.
