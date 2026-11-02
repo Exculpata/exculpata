@@ -1,0 +1,61 @@
+name: hygiene-report
+on:
+  schedule: [{cron: "23 8 * * *"}]
+  workflow_dispatch:
+permissions: {}
+concurrency: {group: automated-hygiene, cancel-in-progress: false}
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with: {python-version: "3.12"}
+      - id: install
+        continue-on-error: true
+        run: "python -m pip install --only-binary=:all: --require-hashes -r requirements/hygiene.lock"
+      - run: python scripts/hygiene_report.py hygiene-report --root . --sources src services/transcription/src tests --tests tests --scripts scripts --docs docs --baseline tests/snapshots/db_fetchall_counts.json --deptry-output "$RUNNER_TEMP/deptry.json" --collection success --install "${{ steps.install.outcome }}" --output hygiene-report-report.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: hygiene-report
+          retention-days: 14
+          path: |
+            hygiene-report-report.json
+            scripts/hygiene_issue.py
+            scripts/publication-check.py
+  filing:
+    needs: measure
+    runs-on: ubuntu-24.04
+    permissions: {issues: write}
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with: {name: hygiene-report}
+      - shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLICATION_DENY_TERMS: ${{ secrets.PUBLICATION_DENY_TERMS }}
+        run: |
+          umask 077
+          deny="$RUNNER_TEMP/hygiene-deny"
+          trap 'rm -f "$deny"' EXIT
+          printf '%s' "$PUBLICATION_DENY_TERMS" > "$deny"
+          unset PUBLICATION_DENY_TERMS
+          prepare() {
+            python3 scripts/hygiene_issue.py --report hygiene-report-report.json --issues "$RUNNER_TEMP/issues.json" --kind "$kind" --run "$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --scanner scripts/publication-check.py --deny-file "$deny" --body "$RUNNER_TEMP/body.md" --decision "$RUNNER_TEMP/decision.json" --summary "$GITHUB_STEP_SUMMARY"
+          }
+          for kind in $(jq -r '.findings | keys[]' hygiene-report-report.json); do
+            gh issue list --repo "$GH_REPO" --state open --label automated-hygiene --limit 1000 --json number,title,body,labels,state > "$RUNNER_TEMP/issues.json"
+            prepare
+            if [ "$(jq -r .action "$RUNNER_TEMP/decision.json")" = skip ]; then continue; fi
+            if ! gh label list --search automated-hygiene --limit 1000 --json name | jq -e 'any(.name == "automated-hygiene")' >/dev/null; then
+              gh label create automated-hygiene --color ededed --description 'Automated repository hygiene reports'
+              prepare
+            fi
+            case "$(jq -r .action "$RUNNER_TEMP/decision.json")" in
+              create) gh issue create --repo "$GH_REPO" --title "$(jq -r .title "$RUNNER_TEMP/decision.json")" --label automated-hygiene --body-file "$RUNNER_TEMP/body.md" ;;
+              edit) gh issue edit "$(jq -r .number "$RUNNER_TEMP/decision.json")" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/body.md" ;;
+            esac
+          done

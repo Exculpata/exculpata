@@ -190,3 +190,8 @@ proofs, and the explicit `--update-expected --proposal` review workflow. Ordinar
 runs cannot rewrite expectations. Fixture and expected-output changes need a
 reviewed diff and a passing new run. This gate supplements all existing security,
 publication, application, PostgreSQL, transcription, deployment and review gates.
+
+## Scheduled hygiene reports
+
+Daily `hygiene-report` and weekly `flake-ledger` run only on schedule or manual dispatch, retaining reports for 14 days and updating publication-checked `automated-hygiene` issues. Workflow steps collect remote data and apply filing decisions; Python scripts read local files. J1 measures Python hygiene and local Markdown targets. J2 groups JUnit failures and later rerun passes; missing artifacts mean partial coverage, never a clean zero. Application artifacts expire after five days, so seven-day coverage may be partial.
+Regenerate tools with `uv pip compile requirements/hygiene.in --python-version 3.12 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o requirements/hygiene.lock`.
