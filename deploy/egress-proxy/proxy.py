@@ -14,12 +14,12 @@ import threading
 import time
 from case_intelligence.oidc_network_policy import (
     Denied, authority, issuer_authority, issuer_pins, normalized_issuer, pinnable, public_ip,
-    validated_https_url,
+    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM,
 )
 
 
 SETUP_SECONDS = 5
-MAX_CONNECTIONS = 8
+MAX_CONNECTIONS = RELAY_ADMISSION_HEADROOM + sum(limit.connections for limit in RELAY_LIMITS.values())
 
 
 def remaining(deadline):
@@ -120,8 +120,8 @@ def read_connect(client, allowed):
         raise Denied("invalid request") from exc
 
 
-def relay(client, upstream):
-    deadline, remaining = time.monotonic() + 60, 8 * 1024 * 1024
+def relay(client, upstream, limits=RELAY_LIMITS["OIDC"]):
+    deadline, remaining = time.monotonic() + limits.seconds, limits.bytes
     while remaining > 0 and time.monotonic() < deadline:
         readable, _, _ = select.select([client, upstream], [], [], max(0, min(5, deadline - time.monotonic())))
         for source in readable:
@@ -132,24 +132,42 @@ def relay(client, upstream):
             remaining -= len(data)
 
 
+def busy(client):
+    try:
+        client.settimeout(0.1)
+        client.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    except OSError:
+        pass
+
+
 class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         client = self.request
         client.settimeout(5)
         established = False
+        acquired = None
         try:
             destination = read_connect(client, self.server.allowed)
+            role = self.server.roles.get(destination, "OIDC")
+            slots = self.server.role_slots[role]
+            if not slots.acquire(blocking=False):
+                busy(client)
+                return
+            acquired = slots
             pins = self.server.allowed[destination] if isinstance(self.server.allowed, dict) else self.server.pins
             with dial(*destination, pins) as upstream:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 established = True
-                relay(client, upstream)
+                relay(client, upstream, RELAY_LIMITS[role])
         except (OSError, ValueError):
             if not established:
                 try:
                     client.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                 except OSError:
                     pass
+        finally:
+            if acquired is not None:
+                acquired.release()
         # No request/destination/TLS payload logging.
 
 
@@ -161,12 +179,18 @@ class Server(socketserver.ThreadingTCPServer):
     def __init__(self, address, allowed, pins=frozenset()):
         self.allowed = allowed
         self.pins = pins
+        self.roles = dict(allowed.roles) if isinstance(allowed, Destinations) else {}
+        self.role_slots = {role: threading.BoundedSemaphore(limit.connections)
+                           for role, limit in RELAY_LIMITS.items()}
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
         super().__init__(address, Handler)
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):
-            self.shutdown_request(request)
+            try:
+                busy(request)
+            finally:
+                self.shutdown_request(request)
             return
         try:
             super().process_request(request, client_address)
@@ -191,12 +215,21 @@ class DestinationConfigurationError(Denied):
     pass
 
 
+class Destinations(dict):
+    def __init__(self):
+        super().__init__()
+        self.roles = {}
+
+
 def configured_destinations(environment):
     """Exact authorities mapped to their pins; conflicting pins on a shared authority fail closed."""
     issuer = environment.get("OIDC_ISSUER", "")
     allowed = issuer_authority(issuer)
     pins = issuer_pins(environment.get("OIDC_ISSUER_PINS", ""), issuer)
-    destinations = {allowed: pins} if allowed is not None else {}
+    destinations = Destinations()
+    if allowed is not None:
+        destinations[allowed] = pins
+        destinations.roles[allowed] = "OIDC"
     for url_setting, pins_setting in OPERATOR_DESTINATIONS:
         url = environment.get(url_setting, "")
         pin_value = environment.get(pins_setting, "")
@@ -217,9 +250,13 @@ def configured_destinations(environment):
             reason = "conflicting authority pins"
             if destination in destinations and destinations[destination] != destination_pins:
                 raise Denied(reason)
+            reason = "OIDC and model authorities must differ"
+            if destination == allowed:
+                raise Denied(reason)
         except ValueError:
             raise DestinationConfigurationError(f"{url_setting}/{pins_setting}: {reason}") from None
         destinations[destination] = destination_pins
+        destinations.roles.setdefault(destination, url_setting.removesuffix("_EGRESS_URL"))
     return destinations
 
 
