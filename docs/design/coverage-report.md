@@ -191,7 +191,7 @@ source bytes, reruns extraction, or invokes a model merely to calculate counts.
 Drill-down uses paginated catalog queries. Approximate counts, if introduced,
 must be labeled approximate and must not hide nonzero failure categories.
 
-## Open questions for Neil
+## Open questions for the maintainer
 
 These questions are intentionally undecided:
 
