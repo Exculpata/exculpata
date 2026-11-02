@@ -13,7 +13,6 @@ from case_intelligence.legacy_names import (
 import fcntl
 import json
 import os
-import re
 import secrets
 import sqlite3
 import stat

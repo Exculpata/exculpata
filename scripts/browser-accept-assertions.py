@@ -316,7 +316,7 @@ def main():
                 create_identity('visitor', name)
                 assert 'Delivery accounts remain incompatible' not in body()
             record('Unrelated same-name identity and co-mentioned people acquire no event or relationship automatically')
-            temporary_path = create_record('Temporary reviewer assertion', record_type='assertion')
+            create_record('Temporary reviewer assertion', record_type='assertion')
             fill('title', 'Corrected temporary assertion', action='update')
             select('status', 'disputed', action='update')
             submit('update')

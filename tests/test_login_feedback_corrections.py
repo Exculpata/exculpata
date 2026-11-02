@@ -8,7 +8,7 @@ from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.identity import OIDC_STATE_COOKIE, SESSION_COOKIE
 from case_intelligence.workbench import create_workbench_app
 from tests.test_browser_local_accounts import configured_app, create, edit, login, ORIGIN
-from tests.test_case_oidc import oidc_case, post, callback, context, MODE
+from tests.test_case_oidc import oidc_case, post, context, MODE  # noqa: F401 - pytest fixture registration
 from tests.test_oidc_authentication import _settings, FakeOidcProvider, _begin
 
 

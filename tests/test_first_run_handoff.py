@@ -11,7 +11,6 @@ import io
 import json
 from pathlib import Path
 import subprocess
-import sys
 
 import pytest
 
@@ -261,7 +260,6 @@ def test_model_receipt_limits_inventory_to_selected_snapshot(tmp_path):
 @pytest.mark.parametrize("command", ["resume", "update"])
 @pytest.mark.parametrize("boundary", ["node", "storage"])
 def test_resume_and_update_refuse_changed_storage_ancestry_before_any_compose(tmp_path, monkeypatch, command, boundary):
-    import os
     storage_parent = tmp_path / "separate-storage-parent"
     storage_parent.mkdir(mode=0o700)
     root, _, paths = configured_node(tmp_path, storage_root=storage_parent / "managed")

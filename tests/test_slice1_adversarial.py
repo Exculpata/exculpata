@@ -5,9 +5,9 @@ from dataclasses import asdict, replace
 
 import pytest
 
-from case_intelligence.contracts import Matter, MatterState, SourceReference
+from case_intelligence.contracts import SourceReference
 from case_intelligence.inventory import InventoryService
-from case_intelligence.isolation import MatterStateRegistry, ReferenceResolutionStatus
+from case_intelligence.isolation import ReferenceResolutionStatus
 from case_intelligence.jobs import JobService
 from case_intelligence.retrieval import RetrievalService, SearchRequest, SourceUnavailable
 from case_intelligence.sqlite_store import SQLiteStore

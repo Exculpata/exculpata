@@ -24,12 +24,11 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select, WebDriverWait
+from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from browser_case_exit import BrowserCaseExit, completed_zip  # noqa: E402
-from case_intelligence.generation import UnavailableGenerator  # noqa: E402
 from case_intelligence.identity import KerberosSettings, KERBEROS_SECRET_HEADER, KERBEROS_USER_HEADER  # noqa: E402
 from case_intelligence.workbench import create_workbench_app  # noqa: E402
 

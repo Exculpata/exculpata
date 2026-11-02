@@ -28,13 +28,15 @@ def build_report(data: dict, now: datetime) -> dict:
     ]
     registered = {Path(item["path"]).name for item in data.get("workflows", [])}
     present = {Path(item).name for item in data.get("workflow_files", [])}
+    details = {
+        "stale-branches": sorted(stale_branches, key=lambda item: item["name"]),
+        "stale-issues": sorted(stale_issues, key=lambda item: item["number"]),
+        "ghost-workflows": sorted(registered - present),
+    }
     return {
         "generated_at": now.isoformat(),
-        "findings": {
-            "stale-branches": sorted(stale_branches, key=lambda item: item["name"]),
-            "stale-issues": sorted(stale_issues, key=lambda item: item["number"]),
-            "ghost-workflows": sorted(registered - present),
-        },
+        "findings": {kind: {"count": len(items)} for kind, items in details.items()},
+        "details": details,
         "errors": data.get("errors", []),
     }
 

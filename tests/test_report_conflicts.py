@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
-from tests.test_matter_management import OWNER, OTHER, _app, _create_matter, _csrf, _headers, _principal_id
+from tests.test_matter_management import OWNER, _app, _create_matter, _csrf, _headers, _principal_id
 
 
 def _seed(tmp_path):

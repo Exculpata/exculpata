@@ -2,7 +2,6 @@
 import csv
 from dataclasses import replace
 import io
-import json
 import unicodedata
 
 import pytest
@@ -12,7 +11,7 @@ from case_intelligence.timeline_coverage import CoverageLimits, collect_timeline
 from case_intelligence.timeline_exports import export_timeline
 from tests.test_timeline_builder import unit
 from tests.test_timeline_coverage import document
-from tests.test_timeline_routes import timeline_client
+from tests.test_timeline_routes import timeline_client  # noqa: F401 - pytest fixture registration
 from tests.test_matter_notebook import WEB_ACTOR
 
 

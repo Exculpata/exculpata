@@ -15,11 +15,11 @@ from case_intelligence.pilot_uploads import PilotDocument, PilotStore, PilotUnit
 from case_intelligence.report_compilation import compile_report
 from case_intelligence.workspace_store import WorkspaceProblem
 from tests.test_report_materials import (
-    ACTOR, MATTER, REVISION, answer, bench_for, message, reference, selected, source,
+    REVISION, answer, bench_for, message, reference, selected, source,
 )
 from tests.test_guided_reports import queue, finished
 from tests.test_report_compilation import SourceEchoClient
-from tests.test_report_review_basis import ACTOR as PRINCIPAL, saved_research, workspace
+from tests.test_report_review_basis import ACTOR as PRINCIPAL, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 
 def save_decisions(bench, documents, *, machine="included", human="agree", citations=True):

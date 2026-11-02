@@ -620,7 +620,7 @@ class _Check(ast.NodeVisitor):
             self.check_transaction_assignment(target)
         elif isinstance(target, ast.Subscript):
             self.visit(target.value)
-            receiver = self.value(target.value)
+            self.value(target.value)
             self.visit(target.slice)
             if self.contains_namespace(value):
                 self.flag(target, "dynamic execution namespace stores are unsupported; use pure dictionary expressions", structural=True)

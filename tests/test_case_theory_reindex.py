@@ -9,7 +9,7 @@ import pytest
 from case_intelligence.review_bench_v2 import (
     delete_postgres_document, delete_postgres_matter_documents, upsert_postgres_document,
 )
-from tests.case_theory_db import apply_through, isolated_theory_dsn, seed_theory
+from tests.case_theory_db import apply_through, isolated_theory_dsn, seed_theory  # noqa: F401 - pytest fixture registration
 from tests.test_case_theory_schema import rows
 
 

@@ -9,7 +9,7 @@ import pytest
 
 from tests.test_assertion_workflow import (
     EVENT_FIELDS, ORIGINALS, _action, _app, _create_event, _detail, _entity,
-    _passage, _upload, protected_assertion,
+    _passage, _upload, protected_assertion,  # noqa: F401 - pytest fixture registration
 )
 from tests.test_matter_notebook import WEB_ACTOR, _create_matter
 

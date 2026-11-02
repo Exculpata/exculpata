@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 import time
-from typing import Callable, Mapping
+from typing import Callable
 
 from .generation import (
     EvidenceItem, GenerationGroundingRejected, VerifiedAnswer, VerifiedClaim, MEDIA_TRANSCRIPT_NOTICE,

@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.exact_search import (
     GRAMMAR_VERSION, QuerySyntaxError, Proximity, Literal, parse_query,
-    matching_spans, tokenize_text,
+    matching_spans,
 )
 from case_intelligence.exact_search_results import (
     ExactSearchUnavailable, build_search_query, passage_preview, search_documents,

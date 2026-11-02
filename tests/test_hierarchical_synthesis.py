@@ -346,7 +346,7 @@ def test_transcript_backed_investigation_renders_caution_and_portable_version_li
             validate_research_basis(matter, replace(completed, result=broken))
 
 
-from tests.test_investigation_planner import chain
+from tests.test_investigation_planner import chain  # noqa: F401 - pytest fixture registration
 
 
 def test_removing_cited_source_from_selected_set_during_synthesis_refuses_save(chain, monkeypatch):

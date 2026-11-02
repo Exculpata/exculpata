@@ -5,7 +5,6 @@ from tests.fixture_write import fixture_write
 from tests.case_lifecycle_helpers import lifecycle_session
 from concurrent.futures import ThreadPoolExecutor
 import json
-import sqlite3
 import threading
 
 import pytest

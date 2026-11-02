@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.identity import OIDC_STATE_COOKIE, SESSION_COOKIE
-from tests.test_case_oidc import oidc_case, post, context, MODE
+from tests.test_case_oidc import oidc_case, post, context, MODE  # noqa: F401 - pytest fixture registration
 
 
 @pytest.mark.parametrize('fresh_claims', [True, False])

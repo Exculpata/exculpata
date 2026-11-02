@@ -18,7 +18,7 @@ from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from importlib import resources
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from .contracts import validate_relative_path
 from .derived_text import presentation_text
@@ -34,9 +34,6 @@ from .store import (
     _IDENTIFIER,
     _MEDIA_CLIP,
     _NOTEBOOK_ITEM,
-    _REPORT,
-    _REPORT_SECTION,
-    _SOURCE_DOCUMENT,
 )
 from .store.notebook import NotebookStoreMixin
 from .store.reports import ReportsStoreMixin
@@ -7332,7 +7329,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
     def cancel_answer_job(
         self, matter_id: str, actor_id: str, job_id: str
     ) -> AnswerJobRecord:
-        job = self.get_answer_job(matter_id, actor_id, job_id)
+        self.get_answer_job(matter_id, actor_id, job_id)
         now = self._now()
         with self._lock, self.connection:
             current = self.connection.execute(

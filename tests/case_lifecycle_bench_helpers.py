@@ -1,5 +1,5 @@
 """Synthetic integration fixtures using real preservation archives and sessions."""
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import tempfile
 from pathlib import Path

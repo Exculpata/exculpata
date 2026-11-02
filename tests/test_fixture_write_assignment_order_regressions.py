@@ -1,6 +1,5 @@
 """Mixed cleanup controls and sequential setter targets match Python semantics."""
 from tests.fixture_probe import fixture_probe
-import io
 import sqlite3
 from types import SimpleNamespace
 

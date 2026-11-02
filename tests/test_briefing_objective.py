@@ -16,7 +16,7 @@ from case_intelligence.source_roles import SourceRoleService
 from case_intelligence.workspace_store import WorkspaceProblem
 from tests.test_briefing import (
     QUESTION_SLUG, WEB_ACTOR, assemble, question_line, question_sections,
-    ready, upload, workbench,
+    ready, upload, workbench,  # noqa: F401 - pytest fixture registration
 )
 from tests.test_briefing_home import BriefingMarkup
 

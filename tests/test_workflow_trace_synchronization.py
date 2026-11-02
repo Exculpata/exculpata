@@ -1,7 +1,7 @@
 """Trace instrumentation must share worker serialization without locking HTTP."""
 import pytest
 
-from tests.test_evidence_graph_workflow import connections
+from tests.test_evidence_graph_workflow import connections  # noqa: F401 - pytest fixture registration
 from tests.test_matter_context_workflow import (
     test_http_selection_conflicts_sources_exports_no_model_and_reload as context_workflow,
 )

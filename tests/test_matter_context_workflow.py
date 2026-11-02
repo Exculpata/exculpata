@@ -17,9 +17,9 @@ from fastapi.testclient import TestClient
 import pytest
 
 from case_intelligence.matter_context import MatterContextService
-from tests.test_assertion_workflow import _app, protected_assertion
-from tests.test_evidence_graph_workflow import connections, _links
-from tests.test_matter_management import ADMIN, OWNER, _headers
+from tests.test_assertion_workflow import _app, protected_assertion  # noqa: F401 - pytest fixture registration
+from tests.test_evidence_graph_workflow import connections, _links  # noqa: F401 - pytest fixture registration
+from tests.test_matter_management import ADMIN, _headers
 from tests.test_matter_notebook import WEB_ACTOR
 
 

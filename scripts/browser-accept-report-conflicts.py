@@ -166,7 +166,7 @@ def main():
             submit(owner, '.report-create-card button[type=submit]')
             report = bench.workspace.reports(matter.matter_id, owner_id)[0]
             report_path = prefix + '/reports?report=' + report.report_id
-            details = owner.find_element(By.CSS_SELECTOR, '.report-add-material details:nth-child(2)')
+            owner.find_element(By.CSS_SELECTOR, '.report-add-material details:nth-child(2)')
             click(owner, '.report-add-material details:nth-child(2) summary')
             submit(owner, f'form[action$="/from-notebook/{note.item_id}"] button')
             section = bench.workspace.report_sections(matter.matter_id, report.report_id)[0]

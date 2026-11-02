@@ -6,7 +6,7 @@ import pytest
 from case_intelligence.generation import GenerationUnavailable
 from case_intelligence.report_compilation import compile_report
 from tests.test_report_compilation import material
-from tests.test_report_review_basis import ACTOR, workspace
+from tests.test_report_review_basis import workspace  # noqa: F401 - pytest fixture registration
 
 READY_HINT = "Generated answers use selected passages; check claims against the original sources."
 ABSTENTION_HINT = "These retrieved passages need direct review; no generated answer is shown."

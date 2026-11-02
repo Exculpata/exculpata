@@ -13,7 +13,7 @@ import pytest
 from case_intelligence.answer_presentation import answer_content, answer_limitation
 from case_intelligence.generation import LEGACY_VERIFICATION_OMISSION_NOTICE as OLD, VERIFICATION_OMISSION_NOTICE as NEW
 from tests.test_modality_confidence_presentation import readable
-from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 
 @pytest.mark.parametrize("explicit", [False, True])

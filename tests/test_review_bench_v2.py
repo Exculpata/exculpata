@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import io
 import json
 from pathlib import Path
