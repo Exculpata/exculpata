@@ -385,6 +385,38 @@ def test_reserved_signin_slots_and_role_busy_reply(monkeypatch):
         assert slots._value == slots._initial_value
 
 
+@pytest.mark.parametrize("role", ["EMBEDDING", "RERANK"])
+def test_three_simultaneous_model_connects_succeed(monkeypatch, role):
+    server = relay_server(monkeypatch)
+    held, entered = threading.Event(), threading.Semaphore(0)
+    requests = [TunnelRequest(role) for _ in range(3)]
+
+    def relay(*args):
+        entered.release()
+        assert held.wait(5)
+
+    monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
+    monkeypatch.setattr(proxy, "relay", relay)
+    assert proxy.MAX_CONNECTIONS == 16
+    assert proxy.RELAY_LIMITS["OIDC"].connections == 2
+    try:
+        for request in requests:
+            server.process_request(request, None)
+        for _ in requests:
+            assert entered.acquire(timeout=1), "three tunnels must be admitted together"
+        for request in requests:
+            assert bytes(request.sent) == b"HTTP/1.1 200 Connection Established\r\n\r\n"
+            assert not request.closed.is_set()
+        assert server.role_slots[role]._value == proxy.RELAY_LIMITS[role].connections - 3
+    finally:
+        held.set()
+        server._threads.join()
+    for request in requests:
+        assert request.closed.is_set()
+    for slots in [server.slots, *server.role_slots.values()]:
+        assert slots._value == slots._initial_value
+
+
 @pytest.mark.parametrize("failure", ["parse", "dial", "reply", "relay", "busy-reply", "thread-start"])
 def test_role_and_global_slots_released_after_failure(monkeypatch, failure):
     server = relay_server(monkeypatch)

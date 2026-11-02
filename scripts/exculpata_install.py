@@ -4242,9 +4242,16 @@ def _doctor_bundled_generator(console: Console, root: Path) -> None:
     command = [*_compose(root, ()), "exec", "-T", "app", "python", "-m", "case_intelligence.generator_doctor"]
     try:
         response = _probe(command, timeout=55)
-        if response.returncode or len(response.stdout) > 4096:
+        if response.returncode not in (0, 1) or len(response.stdout) > 4096:
             raise ValueError("schema probe unavailable")
         result = SchemaProbe(**json.loads(response.stdout))
+        timeout_drift = (
+            response.returncode == 1 and result.status == "unreachable"
+            and isinstance(result.detail, str)
+            and result.detail.startswith("CASE_INTELLIGENCE_GENERATOR_TIMEOUT ")
+        )
+        if response.returncode and not timeout_drift:
+            raise ValueError("schema probe unavailable")
     except (OSError, ValueError, TypeError, subprocess.SubprocessError):
         console.warn("schema enforcement :: not checked; the application network probe is unavailable")
         return
@@ -4252,6 +4259,8 @@ def _doctor_bundled_generator(console: Console, root: Path) -> None:
     console.note(result.detail)
     if result.fix:
         console.warn(result.fix)
+    if timeout_drift:
+        raise RuntimeError(result.detail)
 
 
 def _doctor(console: Console, args: argparse.Namespace, root: Path) -> None:
