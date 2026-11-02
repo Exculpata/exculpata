@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.generation import UnavailableGenerator
 from case_intelligence.workbench import CaseIntelligenceWorkbench, create_workbench_app
-from tests.test_assistant_passage_save import ACTOR, saved_answer, seed
-from tests.test_saved_answer_report_support import cedar
+from tests.test_assistant_passage_save import ACTOR, saved_answer, seed  # noqa: F401 - pytest fixture registration
+from tests.test_saved_answer_report_support import cedar  # noqa: F401 - pytest fixture registration
 
 
 def endpoint(bench, matter, document):

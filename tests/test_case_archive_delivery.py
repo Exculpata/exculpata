@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import anyio
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import ClientDisconnect
 
 from case_intelligence.case_archive_delivery import ArchiveDelivery
 from case_intelligence.case_archive_response import (

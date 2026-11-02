@@ -10,7 +10,7 @@ import pytest
 
 from case_intelligence import generation, question_draft_evaluation as evaluation
 from case_intelligence.generation import (
-    EvidenceItem, GenerationRejected, GenerationUnavailable, GroundedGenerationService,
+    EvidenceItem, GenerationUnavailable, GroundedGenerationService,
     OllamaGenerator, OpenAICompatibleGenerator,
 )
 from case_intelligence.question_drafting import draft_questions, question_prompt

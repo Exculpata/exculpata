@@ -1638,12 +1638,6 @@ detail = "conversations.json"
 
 [[source]]
 path = "src/case_intelligence/workbench.py"
-kind = "client"
-digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
-detail = "network import"
-
-[[source]]
-path = "src/case_intelligence/workbench.py"
 kind = "host"
 digest = "b5ff41de72f8d7731410ca64bebede42e9df2c951e56181b673f4197a9984675"
 detail = "auth.login"

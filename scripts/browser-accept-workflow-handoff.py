@@ -27,7 +27,7 @@ import textwrap
 import threading
 import time
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 import wave
 import zipfile
 

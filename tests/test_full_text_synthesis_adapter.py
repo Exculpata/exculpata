@@ -16,7 +16,7 @@ from case_intelligence.full_text_synthesis_repository import ADMISSION, FullText
 from case_intelligence.generation import GroundedGenerationService
 from case_intelligence.hierarchical_synthesis import synthesis_answer
 from case_intelligence.workspace_store import WorkspaceProblem
-from tests.test_full_text_synthesis import ACTOR, finish, queue, seed_terminal_review, workspace
+from tests.test_full_text_synthesis import finish, queue, seed_terminal_review, workspace  # noqa: F401 - pytest fixture registration
 
 
 class SyntheticLedger:

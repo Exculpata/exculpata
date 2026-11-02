@@ -4,7 +4,7 @@ import pytest
 from case_intelligence.report_compilation import compilation_fingerprint
 from case_intelligence.report_materials import snapshot_report_materials
 from tests.test_guided_reports import finished, queue
-from tests.test_report_review_basis import ACTOR, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 
 @pytest.mark.parametrize("kind", ["research", "conversation", "review"])

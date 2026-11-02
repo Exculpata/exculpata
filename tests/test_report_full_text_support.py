@@ -9,7 +9,7 @@ from case_intelligence import report_materials
 from case_intelligence.pilot_uploads import PilotDocument
 from case_intelligence.workspace_store import WorkspaceProblem
 from tests.test_report_materials import ACTOR, MATTER, REVISION, answer, bench_for, message, reference, source
-from tests.test_report_review_basis import workspace
+from tests.test_report_review_basis import workspace  # noqa: F401 - pytest fixture registration
 
 
 def saved_check(bench, document, *, citations=None, human=False):

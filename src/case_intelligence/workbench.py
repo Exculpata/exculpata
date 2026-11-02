@@ -27,15 +27,13 @@ import stat
 import sqlite3
 import tempfile
 import threading
-import urllib.request
 import uuid
 from contextlib import asynccontextmanager, closing
 from dataclasses import asdict, dataclass, replace
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Mapping, Sequence
 from urllib.parse import parse_qs, quote_plus, urlencode, urlparse
-from zoneinfo import ZoneInfo
 
 import anyio
 import uvicorn
@@ -112,7 +110,6 @@ from .report_compilation import CompilationProblem
 from .report_compilation_flow import ReportCompilationFlow
 from .media_evidence import (
     MediaCoordinator,
-    MediaExport,
     MediaProcessor,
     TranscriptSummaryResult,
     TranscriptionV2Client,
@@ -124,7 +121,6 @@ from .media_evidence import (
     transcript_summary_windows,
     transcript_speaker_labels,
     transcript_processing_notices,
-    transcript_units,
 )
 from .managed_storage import ManagedMatterStorage, StoragePolicy, format_bytes, storage_reserve_notice
 from .malware_scan import MalwareScanner, scanner_from_environment, scanner_status
@@ -136,13 +132,11 @@ from .media_playback import BrowserPlaybackCoordinator
 from . import transcript_search
 from .model_portfolio import model_portfolio_projection
 from .pilot_uploads import (
-    AUDIO_MEDIA_TYPES,
     DOCX_MEDIA_TYPE,
     EMAIL_MEDIA_TYPES,
     IMAGE_MEDIA_TYPES,
     MEDIA_TYPES,
     SPREADSHEET_MEDIA_TYPES,
-    VIDEO_MEDIA_TYPES,
     MAX_FILES,
     MAX_UPLOAD_CHUNK_BYTES,
     MAX_UPLOAD_INTAKE_ITEMS,
@@ -156,7 +150,6 @@ from .pilot_uploads import (
     canonical_media_type,
     is_media_type,
     maximum_file_bytes,
-    media_kind,
     securely_delete_owned_tree,
 )
 from .review_bench import RetrievalUnavailable
@@ -199,7 +192,6 @@ from .workspace_store import (
     MatterReadinessRecord,
     MatterRecord,
     MatterNameConflict,
-    MatterRetentionRecord,
     MAX_AUTOMATIC_MEDIA_SUMMARY_ATTEMPTS,
     MediaClipRecord,
     MediaJobRecord,
@@ -217,8 +209,6 @@ from .workspace_store import (
     ReviewDecisionRecord,
     ReviewRunRecord,
     SourceCatalogRecord,
-    SourceCollectionRecord,
-    SourceSetRecord,
     SpeakerMappingRecord,
     TranscriptSegmentRecord,
     UploadItemRecord,
@@ -3227,7 +3217,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
         document, units, index = self._find_support(matter, token, store=store)
         unit = units[index]
         candidate = self._candidate(matter, document, unit, index + 1)
-        citation = self._citation(matter, candidate, store=store)
+        self._citation(matter, candidate, store=store)
         if token not in self._support_tokens(candidate):
             raise KeyError(token)
         return {
@@ -8890,7 +8880,7 @@ def create_workbench_app(
             request, slug, allow_administrator_write=True
         )
         try:
-            retention = bench.retention_for_date(
+            bench.retention_for_date(
                 matter,
                 context.principal_id,
                 expires_on,

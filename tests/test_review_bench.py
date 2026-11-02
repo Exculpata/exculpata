@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import wave
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any, cast
 
 from fastapi.testclient import TestClient

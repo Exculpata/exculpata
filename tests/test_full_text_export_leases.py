@@ -15,10 +15,10 @@ import pytest
 from case_intelligence.full_text_review import FullTextReviewLedger, iter_text_export
 from case_intelligence.pilot_uploads import PilotUnit
 from case_intelligence.workspace_store import WorkspaceProblem
-from tests.test_full_text_review import frozen
+from tests.test_full_text_review import frozen  # noqa: F401 - pytest fixture registration
 from tests.test_full_text_reports_integration import completed_text_run
 from tests.test_full_text_response_lifecycle import asgi_download
-from tests.test_report_review_basis import ACTOR, workspace
+from tests.test_report_review_basis import ACTOR, workspace  # noqa: F401 - pytest fixture registration
 
 
 def terminal_inventory(frozen):

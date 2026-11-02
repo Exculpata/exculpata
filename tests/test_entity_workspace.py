@@ -347,7 +347,7 @@ def test_availability_parses_only_referenced_documents_once_and_checks_every_fie
     canonical = {item['document_id']: item for item in references[:2]}
     def load(document_id):
         loads.append(document_id)
-        reference = canonical[document_id]
+        canonical[document_id]
         def units():
             parses.append(document_id)
             return [SimpleNamespace(number=1)]

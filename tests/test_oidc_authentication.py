@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import re
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 

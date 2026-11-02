@@ -21,10 +21,10 @@ from fastapi.testclient import TestClient
 from case_intelligence import full_text_review, workbench as workbench_module
 from case_intelligence.full_text_review import FullTextReviewLedger, iter_text_export
 from case_intelligence.pilot_uploads import PilotUnit
-from tests.test_full_text_review import frozen
+from tests.test_full_text_review import frozen  # noqa: F401 - pytest fixture registration
 from tests.test_full_text_reports_integration import completed_text_run
-from tests.test_report_review_basis import ACTOR, workspace
-from tests.test_case_lifecycle_web import case
+from tests.test_report_review_basis import ACTOR, workspace  # noqa: F401 - pytest fixture registration
+from tests.test_case_lifecycle_web import case  # noqa: F401 - pytest fixture registration
 from tests.test_matter_management import ADMIN, OWNER, OTHER, _app, _headers, _csrf, _principal_id
 
 

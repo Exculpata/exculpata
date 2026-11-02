@@ -15,7 +15,6 @@ from typing import Any
 from .managed_storage import format_bytes
 from .pilot_uploads import (
     EXTENDED_SOURCE_SUFFIXES,
-    MEDIA_TYPES,
     PilotStore,
     UploadProblem,
     canonical_media_type,

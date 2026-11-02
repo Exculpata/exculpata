@@ -6,7 +6,7 @@ import pytest
 from case_intelligence.full_text_synthesis import validate_prepared
 from case_intelligence.generation import EvidenceItem, GroundedGenerationService, verify_original_claim
 from case_intelligence.hierarchical_synthesis import synthesis_answer, validate_state
-from tests.test_full_text_synthesis_adapter import ledger
+from tests.test_full_text_synthesis_adapter import ledger  # noqa: F401 - pytest fixture registration
 
 
 STATEMENT = "Synthetic dispatch speaker reported that the blue crate was delivered."

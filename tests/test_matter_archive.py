@@ -20,7 +20,7 @@ import pytest
 from case_intelligence.managed_storage import StoragePolicy
 from case_intelligence.matter_archive import (ArchiveProblem, build_matter_archive,
     cleanup_archive, matter_snapshot_digest)
-from case_intelligence.matter_archive_schema import SCHEMA, validate_schema
+from case_intelligence.matter_archive_schema import SCHEMA
 from case_intelligence.matter_archive_verifier import verify_matter_archive
 from case_intelligence.pilot_uploads import PilotDocument, PilotStore
 from case_intelligence.workspace_store import WorkspaceStore
@@ -559,7 +559,7 @@ def test_notebook_and_report_origin_links_are_navigable(archive_case):
     note, _ = workspace.create_notebook_item(matter.matter_id, OWNER, item_type='note', status='confirmed',
         title='Generated note', body='Generated note body', source_conversation_id=convo.conversation_id,
         source_message_id=message.message_id)
-    report = workspace.create_report_from_sections(matter.matter_id, OWNER, 'Generated report', '',
+    workspace.create_report_from_sections(matter.matter_id, OWNER, 'Generated report', '',
         origin_id=message.message_id, sections=[{'heading': 'Generated section', 'body': 'Generated body'}])
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)

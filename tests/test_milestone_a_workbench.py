@@ -282,7 +282,7 @@ def test_cross_matter_search_support_and_conversation_isolation(tmp_path):
         first_conversation = client.app.state.workbench.workspace.get_conversation(
             first_matter.matter_id
         )
-        second_matter = client.app.state.workbench.matter(second, WEB_ACTOR)
+        client.app.state.workbench.matter(second, WEB_ACTOR)
         assert (
             client.get(
                 f"/matters/{second}",

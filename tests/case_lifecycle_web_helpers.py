@@ -41,8 +41,6 @@ def prepare_preview_exit(client, matter):
 
 def prepare_bench_exit(bench, matter, actor_id=None, *, administrator_override=False):
     """Trusted service integration with real bytes and a real persisted session."""
-    import hashlib
-    import uuid
     from case_intelligence.case_lifecycle_support import install_archive, source_lock, idle
     from case_intelligence.matter_archive import build_matter_archive
     actor_id = actor_id or matter.owner_id

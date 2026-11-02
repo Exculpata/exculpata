@@ -8,8 +8,8 @@ import sys
 import pytest
 import yaml
 
-from tests.test_oss_installer import installer, ready_host, preflight_args, checks_by_name
-from tests.test_reference_network_boundary import ROOT, contract_tree, run_contract
+from tests.test_oss_installer import installer, ready_host, preflight_args, checks_by_name  # noqa: F401 - pytest fixture registration
+from tests.test_reference_network_boundary import ROOT, contract_tree, run_contract  # noqa: F401 - pytest fixture registration
 
 
 @pytest.mark.parametrize("service,key,value", [

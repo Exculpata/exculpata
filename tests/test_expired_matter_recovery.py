@@ -20,9 +20,9 @@ from case_intelligence.answer_context import AnswerContextRepository
 from case_intelligence.matter_context import MatterContextService
 from case_intelligence.workbench import CaseIntelligenceWorkbench, MatterMaintenanceCoordinator
 from case_intelligence.workspace_store import WorkspaceStore
-from tests.test_answer_context import case, execute, submit
+from tests.test_answer_context import case, execute, submit  # noqa: F401 - pytest fixture registration
 from tests.test_assertion_workflow import _app
-from tests.test_evidence_graph_workflow import connections
+from tests.test_evidence_graph_workflow import connections  # noqa: F401 - pytest fixture registration
 from tests.test_matter_notebook import WEB_ACTOR
 
 

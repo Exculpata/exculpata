@@ -107,7 +107,7 @@ def test_reported_indirections_close_a_real_shared_connection_before_rejection(a
 
 def test_argument_walrus_executes_through_original_shared_connection_before_rejection():
     raw, independent = sqlite3.connect(':memory:'), sqlite3.connect(':memory:')
-    bench = SimpleNamespace(workspace=SimpleNamespace(connection=raw))
+    SimpleNamespace(workspace=SimpleNamespace(connection=raw))
     action = 'connection.execute("INSERT INTO synthetic_fixture VALUES (?)", ((connection := independent) and "pending",))'
     source = "import sqlite3\nindependent = sqlite3.connect(':memory:')\nconnection = bench.workspace.connection\n" + action
     try:

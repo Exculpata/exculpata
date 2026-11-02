@@ -276,7 +276,7 @@ def _urllib_transport(
             return {}
         try:
             value = json.loads(raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError):
             return {}
         if not isinstance(value, dict):
             return {}

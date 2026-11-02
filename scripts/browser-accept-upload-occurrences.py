@@ -184,7 +184,7 @@ def main():
                 assert len(rows()) == 2  # Deliberate comparison crosses collections.
                 assert collections[2].name not in driver.find_element(By.CSS_SELECTOR, '.source-library-table').text
                 assert all(d.digest not in driver.page_source for d in documents)
-                comparison_url = driver.current_url
+                driver.current_url
                 old = driver.find_element(By.TAG_NAME, 'html')
                 refresh_page(driver, wait)
                 wait.until(lambda _: detached(old))

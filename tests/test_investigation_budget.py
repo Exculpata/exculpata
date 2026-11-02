@@ -1,6 +1,5 @@
 """Synthetic evidence for explicit review budgets and durable accounting."""
 import html
-import io
 import json
 import sqlite3
 

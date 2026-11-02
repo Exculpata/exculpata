@@ -19,7 +19,7 @@ from case_intelligence.hierarchical_synthesis import (
     completion_receipt, findings_from_passes, groups_for, matter_inputs,
     node_spec, run_synthesis, synthesis_answer, validate_state,
 )
-from tests.test_full_text_synthesis import ACTOR, workspace
+from tests.test_full_text_synthesis import ACTOR, workspace  # noqa: F401 - pytest fixture registration
 
 ACCOUNT = "Synthetic dispatch record states the crate was delivered."
 CORRECTION = "Synthetic corrected dispatch record states the crate was not delivered."

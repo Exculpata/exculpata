@@ -1,7 +1,6 @@
 """Synthetic, GPU-free protocol and model-authority regressions."""
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 

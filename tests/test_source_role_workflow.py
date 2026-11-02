@@ -7,11 +7,9 @@ import json
 import shutil
 import zipfile
 
-import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.generation import UnavailableGenerator
-from case_intelligence.source_roles import SourceRoleService
 from case_intelligence.workbench import create_workbench_app
 from tests.test_matter_management import _app, _create_matter, _csrf, _headers, _principal_id, ADMIN, OWNER, OTHER
 from tests.test_intake_receipt_http import ACTOR, descriptor, selection, upload, put, workspace  # noqa: F401

@@ -16,7 +16,7 @@ from case_intelligence.matter_archive_verifier import verify_matter_archive
 from case_intelligence.witness_inconsistency import WitnessInconsistencyService
 from tests.case_lifecycle_helpers import claim_synthetic_exit
 from tests.fixture_write import fixture_write
-from tests.test_matter_archive import OWNER, OTHER, archive_case, close, records
+from tests.test_matter_archive import OWNER, OTHER, archive_case, close, records  # noqa: F401 - pytest fixture registration
 
 
 def seed_candidates(workspace, matter, store, actor):

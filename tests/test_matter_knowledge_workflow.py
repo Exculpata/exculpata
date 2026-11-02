@@ -9,9 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.test_assertion_workflow import (
-    EVENT_FIELDS, ORIGINALS, _app, _detail, protected_assertion,
+    EVENT_FIELDS, ORIGINALS, _app, _detail, protected_assertion,  # noqa: F401 - pytest fixture registration
 )
-from tests.test_evidence_graph_workflow import connections, _links, _LinkParser
+from tests.test_evidence_graph_workflow import connections, _links, _LinkParser  # noqa: F401 - pytest fixture registration
 from tests.test_matter_management import OWNER, ADMIN, _headers
 from tests.test_matter_notebook import WEB_ACTOR, _create_matter
 

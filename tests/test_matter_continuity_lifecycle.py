@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from case_intelligence.generation import UnavailableGenerator
-from case_intelligence.pilot_uploads import PilotStore, securely_delete_owned_tree
+from case_intelligence.pilot_uploads import securely_delete_owned_tree
 from case_intelligence.workbench import create_workbench_app
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
 from tests.case_lifecycle_helpers import claim_synthetic_exit, prepare_purge_confirmation
@@ -167,7 +167,7 @@ def test_authenticated_exports_history_rename_and_owner_close_delete_end_to_end(
         bench = client.app.state.workbench
         matter = bench.matter(slug, WEB_ACTOR)
         conversation = bench.workspace.get_conversation(matter.matter_id)
-        question = bench.workspace.append_message(
+        bench.workspace.append_message(
             matter.matter_id,
             conversation.conversation_id,
             "user",
