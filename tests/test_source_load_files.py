@@ -217,23 +217,38 @@ def test_generated_fixture_volumes(tmp_path):
 
 @pytest.mark.timeout(30)
 def test_large_volume_linear_budget(tmp_path):
-    dat, opt = volume(tmp_path, [("BEGDOC", "ENDDOC")])
-    with dat.open("ab") as stream, opt.open("w") as pages:
-        for n in range(200000):
-            stream.write(_dat_bytes([(f"A{n:06}", f"A{n:06}")]))  # fixture-write: Generated scale DAT.
-            pages.write(f"A{n:06},V,text,Y,,,1\n")  # fixture-write: Generated scale OPT.
     (tmp_path / "text").write_bytes(b"synthetic")  # fixture-write: Shared contained page file.
+    sizes, best = (2000, 8000), []
+    for count in sizes:
+        dat, opt = volume(tmp_path, [("BEGDOC", "ENDDOC")])
+        with dat.open("ab") as stream, opt.open("w") as pages:
+            for n in range(count):
+                stream.write(_dat_bytes([(f"A{n:06}", f"A{n:06}")]))  # fixture-write: Generated scale DAT.
+                pages.write(f"A{n:06},V,text,Y,,,1\n")  # fixture-write: Generated scale OPT.
+        expected = {f"A{n:06}": (f"A{n:06}",) for n in range(count)}
+        lf.qc_volume(dat, opt)
+        samples = []
+        for _ in range(3):
+            start = time.perf_counter()
+            report = lf.qc_volume(dat, opt)
+            samples.append(time.perf_counter() - start)
+            assert report.document_count == report.page_count == count and not report.findings
+            assert report.joined_pages == expected
+            del report
+        best.append(min(samples))
+
     tracemalloc.start()
-    start = time.monotonic()
     try:
         report = lf.qc_volume(dat, opt)
         peak = tracemalloc.get_traced_memory()[1]
     finally:
         tracemalloc.stop()
-    elapsed = time.monotonic() - start
-    print(f"scale: 200000 rows, {elapsed:.2f}s, peak {peak / 1024 / 1024:.2f} MiB")
-    assert report.document_count == report.page_count == 200000 and not report.findings
-    assert peak < 256 * 1024 * 1024 and elapsed < 25, (peak, elapsed)
+    print(f"scale: {sizes} rows, best {best[0]:.6f}s/{best[1]:.6f}s, "
+          f"ratio {best[1] / best[0]:.2f}, peak {peak / 1024 / 1024:.2f} MiB")
+    assert report.document_count == report.page_count == sizes[-1] and not report.findings
+    assert report.joined_pages == expected
+    assert peak < 16 * 1024 * 1024, peak
+    assert best[1] < 6 * best[0], best
 
 
 @pytest.mark.parametrize("ranges", [
