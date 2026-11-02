@@ -15,7 +15,7 @@ from case_intelligence.answer_presentation import (
     GENERATED_ANSWER_INTRODUCTION, GENERATED_REVIEW_NOTICE,
     GENERATED_TRANSCRIPT_INTRODUCTION, answer_content,
 )
-from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 
 def _readable(body, format_name):

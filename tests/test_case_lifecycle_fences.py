@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 
 from case_intelligence.workspace_store import WorkspaceStore
-from tests.test_case_lifecycle import OWNER, MEMBER, setup
+from tests.test_case_lifecycle import OWNER, MEMBER, setup  # noqa: F401 - pytest fixture registration
 
 
 def test_content_fence_blocks_direct_and_indirect_mutations_and_survives_restart(setup):

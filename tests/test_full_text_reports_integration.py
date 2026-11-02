@@ -16,7 +16,7 @@ from case_intelligence.full_text_review import FullTextReviewLedger
 from case_intelligence.generation import GroundedGenerationService
 from case_intelligence.pilot_uploads import PilotDocument, PilotUnit
 from tests.test_guided_reports import queue, finished
-from tests.test_report_review_basis import ACTOR, workspace
+from tests.test_report_review_basis import ACTOR, workspace  # noqa: F401 - pytest fixture registration
 
 
 class TextClassifier:

@@ -1,7 +1,6 @@
 from textwrap import dedent
 from tests.fixture_probe import fixture_probe
 """Synthetic SQL state and alias boundary regressions."""
-import sqlite3
 
 import pytest
 

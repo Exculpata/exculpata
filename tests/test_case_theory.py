@@ -8,7 +8,7 @@ import pytest
 
 from case_intelligence.case_theory import CaseTheoryError, CaseTheoryRepository, CaseTheoryService
 from case_intelligence.review_bench_v2 import delete_postgres_matter
-from tests.case_theory_db import apply_through, isolated_theory_dsn
+from tests.case_theory_db import apply_through, isolated_theory_dsn  # noqa: F401 - pytest fixture registration
 from tests.test_case_theory_reindex import index
 
 pytestmark = pytest.mark.postgres

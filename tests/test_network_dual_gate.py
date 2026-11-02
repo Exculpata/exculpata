@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from case_intelligence.legacy_names import CURRENT_PRODUCT
-from tests.test_oss_installer import ROOT, installer, ready_host, preflight_args, checks_by_name
+from tests.test_oss_installer import ROOT, installer, ready_host, preflight_args, checks_by_name  # noqa: F401 - pytest fixture registration
 from tests.test_first_run_handoff import configured_node
 
 ENGINE_CHECK = installer._docker_engine_meets_floor

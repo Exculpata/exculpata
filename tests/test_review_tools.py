@@ -4,7 +4,6 @@ from tests.fixture_write import fixture_write
 
 import base64
 import io
-import re
 import zipfile
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse

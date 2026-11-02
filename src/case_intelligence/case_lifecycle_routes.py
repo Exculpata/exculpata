@@ -9,7 +9,7 @@ from fastapi import Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from .case_lifecycle_support import (archive_path, cleanup_archives, idle,
+from .case_lifecycle_support import (cleanup_archives, idle,
     install_archive, source_lock, verified_archive)
 from .matter_archive import build_matter_archive
 from .workspace_store import WorkspaceProblem

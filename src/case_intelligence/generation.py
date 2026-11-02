@@ -34,7 +34,7 @@ from .generator_completion import (
     repair_message as _repair_message,
 )
 from .generation_errors import (
-    GenerationUnavailable, GenerationSchemaRejected, GenerationInvalidContent,
+    GenerationUnavailable, GenerationSchemaRejected as GenerationSchemaRejected, GenerationInvalidContent,
     GenerationRejected, GenerationGroundingRejected,
 )
 from .generator_schema import openai_response_format, refuse_tool_request

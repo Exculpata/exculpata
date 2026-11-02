@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from case_intelligence.matter_archive import build_matter_archive, cleanup_archive
 from case_intelligence.matter_archive_projection import _SAFE_KEYS, _DROP_KEYS, _DYNAMIC_REFERENCE
-from tests.test_full_text_synthesis import (workspace, ACTOR, seed_terminal_review,
+from tests.test_full_text_synthesis import (workspace, ACTOR, seed_terminal_review,  # noqa: F401 - pytest fixture registration
                                            queue, finish)  # noqa: F401
 
 

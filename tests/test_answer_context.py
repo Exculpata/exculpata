@@ -24,7 +24,7 @@ from case_intelligence.generation import GroundedGenerationService, OpenAICompat
 from case_intelligence.matter_context import MatterContextService
 from case_intelligence.recorded_generation import encode_request
 from case_intelligence.workspace_store import WorkspaceProblem, WorkspaceStore
-from tests.test_evidence_graph_workflow import connections
+from tests.test_evidence_graph_workflow import connections  # noqa: F401 - pytest fixture registration
 from tests.test_matter_context import add
 from tests.test_matter_notebook import WEB_ACTOR
 

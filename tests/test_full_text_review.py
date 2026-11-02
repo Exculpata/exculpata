@@ -336,7 +336,7 @@ def test_workbench_resume_skips_saved_ranges_and_source_change_clears_findings(t
         document.units = [asdict(PilotUnit(i, f'Synthetic unit {i}', excerpt_digest=hashlib.sha256(f'Synthetic unit {i}'.encode()).hexdigest())) for i in range(1, 5)]
         source_store._write_units(document); bench._sync_source_catalog(matter, [document])
         _criterion, version = bench.workspace.create_review_criterion(matter.matter_id, ACTOR, title='Synthetic units', instructions='Include synthetic units.')
-        queued = bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind='full', review_mode='full_text')
+        bench.workspace.queue_review_run(matter.matter_id, ACTOR, version.criterion_version_id, run_kind='full', review_mode='full_text')
         run = bench.workspace.claim_review_run('synthetic-first-worker')
         decision = bench.workspace.next_review_decision(run.run_id)
         seen = []
@@ -554,7 +554,7 @@ def test_frozen_output_limit_reaches_actual_adapter_request(tmp_path, monkeypatc
         document,_=store.store_stream('limit.txt','text/plain',io.BytesIO(b'Synthetic passage without a match.'))
         bench._sync_source_catalog(matter,[document])
         _,version=bench.workspace.create_review_criterion(matter.matter_id,ACTOR,title='Bicycle',instructions='Find the amber bicycle.')
-        queued=bench.workspace.queue_review_run(matter.matter_id,ACTOR,version.criterion_version_id,
+        bench.workspace.queue_review_run(matter.matter_id,ACTOR,version.criterion_version_id,
             run_kind='full',review_mode='full_text',text_policy=TextReviewPolicy(output_tokens=321))
         monkeypatch.setattr(full_text_review,'DEFAULT_TEXT_POLICY',TextReviewPolicy(output_tokens=999))
         run=bench.workspace.claim_review_run('synthetic-output-worker')

@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from case_intelligence.legacy_names import LEGACY_STEM, LEGACY_ENV_PREFIX
+from case_intelligence.legacy_names import LEGACY_STEM
 
 from case_intelligence.external_generator import (
     HOST_GATEWAY_NAME,

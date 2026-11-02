@@ -16,7 +16,7 @@ from case_intelligence import workbench as module
 from case_intelligence.pilot_uploads import _MediaProbe
 from tests.test_full_text_response_lifecycle import asgi_download
 from tests.test_matter_management import ADMIN, OTHER, OWNER, _app, _headers, _principal_id
-from tests.test_report_review_basis import ACTOR, workspace
+from tests.test_report_review_basis import ACTOR, workspace  # noqa: F401 - pytest fixture registration
 
 
 def seed_clip(bench, matter, actor, monkeypatch):

@@ -258,6 +258,9 @@ jobs:
       - name: Compile Python sources
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: .venv/bin/python -m compileall -q src scripts tests
+      - name: Check unused imports and locals
+        if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
+        run: .venv/bin/python -m ruff check src services scripts tests
       - name: Enforce repository network contract
         if: ${{ needs.change-scope.outputs.docs_only != 'true' }}
         run: make network-contract

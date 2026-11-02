@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from tests.fixture_write import fixture_write
 
 from tests.case_lifecycle_helpers import lifecycle_session
 

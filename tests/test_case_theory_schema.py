@@ -8,7 +8,7 @@ import pytest
 from case_intelligence.review_bench import ReviewBench
 from case_intelligence.review_bench_v2 import apply_postgres_migrations, upsert_postgres_document
 from case_intelligence.workbench import CaseIntelligenceWorkbench
-from tests.case_theory_db import MIGRATIONS, apply_through, isolated_database, isolated_theory_dsn, postgres_client_command, seed_source, seed_theory
+from tests.case_theory_db import MIGRATIONS, apply_through, isolated_database, isolated_theory_dsn, postgres_client_command, seed_source, seed_theory  # noqa: F401 - pytest fixture registration
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("CASE_REVIEW_POSTGRES_TEST_DSN"),

@@ -17,7 +17,7 @@ from case_intelligence.full_text_review import FullTextReviewLedger
 from case_intelligence.work_product_exports import ExportProblem
 from case_intelligence.report_review_basis import research_sections
 from case_intelligence.report_materials import snapshot_report_materials
-from tests.test_full_text_synthesis import ACTOR, finish, queue, seed_terminal_review, workspace
+from tests.test_full_text_synthesis import ACTOR, finish, queue, seed_terminal_review, workspace  # noqa: F401 - pytest fixture registration
 
 
 def csrf(client, matter, job):

@@ -6,7 +6,7 @@ from case_intelligence.bates_gaps import compute_bates_gaps
 from case_intelligence.timeline_exports import md_inline
 from tests.test_bates_gaps_oracle import generate
 from tests.test_workflow_quality_handoff import pdf_bytes
-from tests.test_production_summary import production_client, production, markdown, payload, expected, fact_payload, link
+from tests.test_production_summary import production_client, production, markdown, payload, expected, fact_payload, link  # noqa: F401 - pytest fixture registration
 
 
 @pytest.mark.parametrize('seed', range(500))

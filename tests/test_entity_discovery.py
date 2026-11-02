@@ -17,7 +17,7 @@ from case_intelligence.entity_service import EntityService
 from case_intelligence.full_text_review import FullTextReviewLedger
 from case_intelligence.pilot_uploads import PilotUnit
 from case_intelligence.workspace_store import WorkspaceStore, WorkspaceProblem
-from tests.test_full_text_review import frozen, ACTOR
+from tests.test_full_text_review import frozen, ACTOR  # noqa: F401 - pytest fixture registration
 from tests.test_entity_workspace import setup
 
 

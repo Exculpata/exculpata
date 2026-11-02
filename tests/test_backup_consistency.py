@@ -414,7 +414,7 @@ def test_encrypted_split_snapshot_and_postgres_restore(node_factory, monkeypatch
         monkeypatch.setattr(backup, "_run", commands)
         assert node.backup() == 0
         original_restic(config, password, ("check", "--read-data"), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        receipt = json.loads((node.node / "state/backup-status.json").read_text())
+        json.loads((node.node / "state/backup-status.json").read_text())
         snapshots = json.loads(original_restic(config, password, ("snapshots", "--json"), stdout=subprocess.PIPE).stdout)
         assert len(snapshots) == 1
         assert names in snapshots[0]["tags"]

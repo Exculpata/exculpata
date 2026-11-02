@@ -14,7 +14,7 @@ import pytest
 
 from case_intelligence import answer_presentation
 from case_intelligence.review_quality import modality_coverage
-from tests.test_report_review_basis import ACTOR, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 QUESTION = "Compare both the written report and what was said in the recording."
 COMPLETE = "This answer cites written and spoken passages. Check each claim against the original sources."

@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
 )
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient

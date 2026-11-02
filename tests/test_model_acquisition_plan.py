@@ -65,7 +65,7 @@ def test_supplied_fifo_fails_without_blocking(tmp_path):
         module._stage_tokenizer(tmp_path, {}, pipe)
 
 
-from tests.test_oss_installer import installer, preflight_args, ready_host
+from tests.test_oss_installer import installer, preflight_args, ready_host  # noqa: F401 - pytest fixture registration
 import subprocess
 
 

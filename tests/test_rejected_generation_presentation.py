@@ -14,7 +14,7 @@ import pytest
 from case_intelligence.generation import GroundedGenerationService
 from tests.test_generated_review_confidence import SyntheticGenerator
 from tests.test_modality_confidence_presentation import readable
-from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, convert, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 LEGACY = ("I found potentially relevant source passages, but the generated "
     "answer did not pass source verification. Review the matches below "

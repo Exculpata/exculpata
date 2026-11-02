@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from case_intelligence.generation import GroundedGenerationService
 from tests.test_report_compilation import SourceEchoClient
-from tests.test_report_review_basis import ACTOR, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, saved_research, workspace  # noqa: F401 - pytest fixture registration
 from tests.test_matter_management import OWNER, OTHER, _app, _create_matter, _csrf, _headers
 
 

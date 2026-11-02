@@ -9,7 +9,7 @@ import pytest
 from case_intelligence.report_compilation import CompilationProblem
 from tests.test_guided_reports import finished, queue
 from tests.test_modality_confidence_presentation import CASES, coverage, readable
-from tests.test_report_review_basis import ACTOR, saved_research, workspace
+from tests.test_report_review_basis import ACTOR, saved_research, workspace  # noqa: F401 - pytest fixture registration
 
 
 def saved_selection(bench, matter, surface, mode, notice):

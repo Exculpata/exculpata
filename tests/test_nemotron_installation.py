@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.test_oss_installer import installer, preflight_args, ready_host
+from tests.test_oss_installer import installer, preflight_args, ready_host  # noqa: F401 - pytest fixture registration
 from tests.test_first_run_handoff import configured_node
 
 ROOT = Path(__file__).parents[1]
