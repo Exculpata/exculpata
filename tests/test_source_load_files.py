@@ -298,3 +298,12 @@ def test_field_profile_roundtrip_and_rejects_malformed(tmp_path):
     ]:
         with pytest.raises(ValueError):
             FieldProfile.from_data(malformed)
+
+
+@pytest.mark.parametrize("payload,code", [(b"", "invalid_header"), (b"KEY\n" + b"x" * 65536 + b"\0", "unsupported_encoding")])
+def test_empty_or_unsupported_dat_is_cited(tmp_path, payload, code):
+    path = _write(tmp_path, payload)
+    findings = []
+    assert list(parse_dat(path, findings=findings)) == []
+    assert _citations(findings) == [(code, 1)]
+    _assert_files(findings, path)
