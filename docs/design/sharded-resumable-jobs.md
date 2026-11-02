@@ -223,6 +223,18 @@ per second, database growth, restart time, duplicate-key observations, and
 coverage reconciliation. The measured result, not item count alone, selects
 the job-table backend.
 
+## Configurable scale and hardware profiles
+The design has no hard caps on worker, GPU, node, or replica counts. Replace the
+worker clamps of 4 in `ingestion.py` and 2 in `workflow_jobs.py` with configuration
+values with small defaults, and regulate concurrency through measured
+backpressure from the database and storage. Workers on other machines claim
+shards through the same job table and leases, preserving fencing and checkpoint
+rules. The path for very large setups is designed in, although it cannot yet be
+tested; supported scale still requires measured evidence.
+Hardware profiles are sized by usable model memory: GPU VRAM or unified memory,
+CPU-only, and multi-GPU. Profiles are auto-detected with a user override and do
+not impose hard caps.
+
 ## Open questions for the maintainer
 These questions are intentionally unresolved:
 1. What item-count and byte-count shard boundaries should the first benchmark

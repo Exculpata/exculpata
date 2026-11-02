@@ -191,6 +191,19 @@ source bytes, reruns extraction, or invokes a model merely to calculate counts.
 Drill-down uses paginated catalog queries. Approximate counts, if introduced,
 must be labeled approximate and must not hide nonzero failure categories.
 
+## Per-query provenance and coverage export
+
+The January 1 requirement is one exportable provenance and coverage record per query,
+in machine-readable form plus a readable view. Extend the saved report with what
+was searched, read, skipped with reason, failed, and still unread, tracing
+every answer statement to its source spans. Record the model, runtime, and endpoint
+used at each step so a later optional cloud provider fits without a format change.
+The dashboard shows the same record, distinct from current-state aggregates.
+
+The record must read the same on every hardware profile; only timings differ.
+Profiles are sized by usable model memory: GPU VRAM or unified memory, CPU-only,
+and multi-GPU, auto-detected with a user override and no hard caps.
+
 ## Open questions for the maintainer
 
 These questions are intentionally undecided:
