@@ -1,0 +1,87 @@
+name: flake-ledger
+on:
+  schedule: [{cron: "37 3 * * 1"}]
+  workflow_dispatch:
+permissions: {}
+concurrency: {group: automated-hygiene, cancel-in-progress: false}
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    permissions: {contents: read, actions: read}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with: {python-version: "3.12"}
+      - id: install
+        continue-on-error: true
+        run: "python -m pip install --only-binary=:all: --require-hashes -r requirements/hygiene.lock"
+      - id: collect
+        continue-on-error: true
+        timeout-minutes: 15
+        shell: bash
+        env: {GITHUB_TOKEN: "${{ github.token }}", GH_REPO: "${{ github.repository }}"}
+        run: |
+          since=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          for query in branch=main event=merge_group; do
+            gh api --paginate --slurp "repos/$GH_REPO/actions/runs?$query&created=%3E%3D$since&per_page=100" > "$RUNNER_TEMP/$query.json"
+            jq -e 'all(.total_count <= 1000)' "$RUNNER_TEMP/$query.json" >/dev/null
+          done
+          gh api --paginate --slurp "repos/$GH_REPO/actions/artifacts?per_page=100" > "$RUNNER_TEMP/artifacts.json"
+          jq --arg since "$since" '[.[].artifacts[] | select(.created_at >= $since and (.name | startswith("application-results-"))) | .workflow_run]' "$RUNNER_TEMP/artifacts.json" > "$RUNNER_TEMP/recent.json"
+          jq -rs '([.[0][].workflow_runs[], .[1][].workflow_runs[]] + .[2]) | map(.id) | unique[]' "$RUNNER_TEMP/branch=main.json" "$RUNNER_TEMP/event=merge_group.json" "$RUNNER_TEMP/recent.json" > "$RUNNER_TEMP/ids"
+          : > "$RUNNER_TEMP/runs.jsonl"
+          while read -r id; do
+            gh api "repos/$GH_REPO/actions/runs/$id" > "$RUNNER_TEMP/run.json"
+            if ! jq -e '.event != "pull_request" and .event != "pull_request_target" and (.head_branch == "main" or .event == "merge_group")' "$RUNNER_TEMP/run.json" >/dev/null; then continue; fi
+            gh api --paginate --slurp "repos/$GH_REPO/actions/runs/$id/jobs?filter=all&per_page=100" | jq --arg since "$since" '[.[].jobs[] | select(.conclusion == "failure" and .completed_at >= $since)]' > "$RUNNER_TEMP/jobs.json"
+            gh api --paginate --slurp "repos/$GH_REPO/actions/runs/$id/artifacts?per_page=100" | jq --arg temp "$RUNNER_TEMP" '[.[].artifacts[] | select(.name | startswith("application-results-")) | . + {path:($temp + "/" + (.id|tostring) + ".zip")}]' > "$RUNNER_TEMP/run-artifacts.json"
+            for artifact in $(jq -r '.[] | select(.expired == false) | .id' "$RUNNER_TEMP/run-artifacts.json"); do
+              gh api "repos/$GH_REPO/actions/artifacts/$artifact/zip" > "$RUNNER_TEMP/$artifact.zip" || rm -f "$RUNNER_TEMP/$artifact.zip"
+            done
+            jq -s '.[0] + {jobs:.[1], artifacts:.[2]}' "$RUNNER_TEMP/run.json" "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/run-artifacts.json" >> "$RUNNER_TEMP/runs.jsonl"
+          done < "$RUNNER_TEMP/ids"
+          jq -s . "$RUNNER_TEMP/runs.jsonl" > "$RUNNER_TEMP/runs.json"
+      - run: python scripts/hygiene_report.py flake-ledger --runs "$RUNNER_TEMP/runs.json" --junit-name application-results.xml --collection "${{ steps.collect.outcome }}" --install "${{ steps.install.outcome }}" --output flake-ledger-report.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: flake-ledger
+          retention-days: 14
+          path: |
+            flake-ledger-report.json
+            scripts/hygiene_issue.py
+            scripts/publication-check.py
+  filing:
+    needs: measure
+    runs-on: ubuntu-24.04
+    permissions: {issues: write}
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with: {name: flake-ledger}
+      - shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PUBLICATION_DENY_TERMS: ${{ secrets.PUBLICATION_DENY_TERMS }}
+        run: |
+          umask 077
+          deny="$RUNNER_TEMP/hygiene-deny"
+          trap 'rm -f "$deny"' EXIT
+          printf '%s' "$PUBLICATION_DENY_TERMS" > "$deny"
+          unset PUBLICATION_DENY_TERMS
+          prepare() {
+            python3 scripts/hygiene_issue.py --report flake-ledger-report.json --issues "$RUNNER_TEMP/issues.json" --kind "$kind" --run "$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --scanner scripts/publication-check.py --deny-file "$deny" --body "$RUNNER_TEMP/body.md" --decision "$RUNNER_TEMP/decision.json" --summary "$GITHUB_STEP_SUMMARY"
+          }
+          for kind in $(jq -r '.findings | keys[]' flake-ledger-report.json); do
+            gh issue list --repo "$GH_REPO" --state open --label automated-hygiene --limit 1000 --json number,title,body,labels,state > "$RUNNER_TEMP/issues.json"
+            prepare
+            if [ "$(jq -r .action "$RUNNER_TEMP/decision.json")" = skip ]; then continue; fi
+            if ! gh label list --search automated-hygiene --limit 1000 --json name | jq -e 'any(.name == "automated-hygiene")' >/dev/null; then
+              gh label create automated-hygiene --color ededed --description 'Automated repository hygiene reports'
+              prepare
+            fi
+            case "$(jq -r .action "$RUNNER_TEMP/decision.json")" in
+              create) gh issue create --repo "$GH_REPO" --title "$(jq -r .title "$RUNNER_TEMP/decision.json")" --label automated-hygiene --body-file "$RUNNER_TEMP/body.md" ;;
+              edit) gh issue edit "$(jq -r .number "$RUNNER_TEMP/decision.json")" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/body.md" ;;
+            esac
+          done
