@@ -23,6 +23,28 @@ os.environ.setdefault("CASE_INTELLIGENCE_TEST_MODE", "1")
 pytest_plugins = ['tests.worker_diagnostics']
 
 
+@pytest.fixture(scope="session")
+def postgres_base_dsn():
+    dsn = os.getenv("CASE_REVIEW_POSTGRES_TEST_DSN")
+    if not dsn:
+        pytest.skip("set CASE_REVIEW_POSTGRES_TEST_DSN for the isolated development database")
+    return dsn
+
+
+@pytest.fixture(scope="session")
+def postgres_test_dsn(postgres_base_dsn):
+    from tests.postgres_schema import fresh_postgres_schema
+
+    with fresh_postgres_schema(postgres_base_dsn) as dsn:
+        yield dsn
+
+
+@pytest.fixture
+def postgres_schema(postgres_test_dsn, monkeypatch):
+    monkeypatch.setenv("CASE_REVIEW_POSTGRES_TEST_DSN", postgres_test_dsn)
+    return postgres_test_dsn
+
+
 _probe_result = pytest.StashKey[str | None]()
 _worker_failures = pytest.StashKey[set[str]]()
 _repository_root = Path(__file__).resolve().parents[1]

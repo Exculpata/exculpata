@@ -688,7 +688,7 @@ def postgres_migration_sql() -> str:
 
 def apply_postgres_migrations(cursor) -> tuple[int, ...]:
     """Apply only missing ordered migrations so later data is never re-narrowed."""
-    cursor.execute("SELECT to_regclass('public.review_schema_migration')")
+    cursor.execute("SELECT to_regclass(quote_ident(current_schema()) || '.review_schema_migration')")
     if cursor.fetchone()[0] is None:
         applied: set[int] = set()
     else:
