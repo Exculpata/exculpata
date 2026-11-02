@@ -11,7 +11,7 @@ import os
 import pytest
 
 from case_intelligence.defense_eval import (
-    PostgresHybridRetriever, ReferenceStub, load_suite, main, run_eval,
+    PostgresHybridRetriever, ReferenceStub, load_suite, main, render_markdown, run_eval,
 )
 
 
@@ -82,4 +82,5 @@ def test_postgres_hybrid_path_scores_every_question_and_removes_rows(tmp_path, m
     assert written["retriever"]["name"] == "postgres-hybrid"
     assert written["aggregates"]["errors"] == 0
     assert written["aggregates"]["questions"] == len(suite.questions)
+    assert (tmp_path / "scorecard.md").read_text(encoding="utf-8") == render_markdown(written)
     assert "postgresql://" not in (tmp_path / "scorecard.json").read_text(encoding="utf-8")
