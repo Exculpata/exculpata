@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 LABEL = 'automated-hygiene'
-TYPES = {'lint', 'dead-code', 'undeclared-deps', 'db-ratchet', 'swallowed-errors', 'import-cycles', 'flaky-tests'}
+TYPES = {'lint', 'dead-code', 'undeclared-deps', 'db-ratchet', 'swallowed-errors', 'import-cycles', 'flaky-tests',
+         'vulnerable-deps', 'stale-branches', 'stale-issues', 'ghost-workflows'}
 LABEL_DESCRIPTION = 'Automated repository hygiene reports'
 
 def publication_ok(body, scanner_path, deny_file):
@@ -21,6 +22,8 @@ def publication_ok(body, scanner_path, deny_file):
         return False
 
 def render(kind, measurements, run, previous, partial=False):
+    if not isinstance(measurements, dict):
+        raise ValueError('expected measurement count map')
     url = urlsplit(run)
     if kind not in TYPES or url.scheme != 'https' or not url.netloc or url.query or url.fragment or not re.fullmatch(r'/[\w.-]+/[\w.-]+/actions/runs/[0-9]+', url.path):
         raise ValueError('unsupported report identity')
@@ -63,10 +66,13 @@ def main():
         decision, body = decide(args.kind, json.loads(args.report.read_text()), json.loads(args.issues.read_text()), args.run, lambda text: publication_ok(text, args.scanner, args.deny_file))
         message = 'filing skipped: publication check' if decision['action'] == 'skip' else 'prepared: ' + args.kind
     except Exception:
-        message = 'filing skipped: unavailable or unsupported report'
+        decision = {'action': 'error'}
+        message = 'filing failed: unavailable or unsupported report; check --kind and findings count-map format'
+        print(message, file=sys.stderr)
     args.body.write_text(body, encoding='utf-8')
     args.decision.write_text(json.dumps(decision), encoding='utf-8')
     with args.summary.open('a') as summary:
         summary.write(message + '\n')
+    return 1 if decision['action'] == 'error' else 0
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

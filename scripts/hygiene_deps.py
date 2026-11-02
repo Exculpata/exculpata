@@ -16,6 +16,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     reports = []
+    advisories = 0
     for lock in sorted(path for root in ROOTS if root.exists() for path in root.rglob("*.lock")):
         command = ["pip-audit", "--requirement", str(lock), "--format", "json",
                    "--vulnerability-service", "osv"]
@@ -25,10 +26,20 @@ def main() -> int:
                 reports.append({"lock": str(lock), "tool": "pip-audit",
                                 "error": result.stderr.strip()[:1000]})
                 continue
-            reports.append({"lock": str(lock), "result": json.loads(result.stdout)})
-        except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+            audit = json.loads(result.stdout)
+            dependencies = audit["dependencies"]
+            if not isinstance(dependencies, list) or any(
+                not isinstance(item, dict) or not isinstance(item.get("vulns", []), list)
+                for item in dependencies
+            ):
+                raise ValueError("unsupported audit format")
+            advisories += sum(len(item.get("vulns", [])) for item in dependencies)
+            reports.append({"lock": str(lock), "result": audit})
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as error:
             reports.append({"lock": str(lock), "tool": "pip-audit", "error": str(error)})
-    args.output.write_text(json.dumps({"audits": reports}, indent=2, sort_keys=True) + "\n")
+    report = {"audits": reports, "findings": {"vulnerable-deps": {"advisories": advisories}},
+              "errors": [item for item in reports if "error" in item]}
+    args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return 0
 
 
