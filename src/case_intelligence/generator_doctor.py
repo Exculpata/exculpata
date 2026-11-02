@@ -1,15 +1,29 @@
 """Run the content-free schema diagnostic inside the existing app namespace."""
 from dataclasses import asdict
 import json
+import math
 import os
 
+from .generation import DEFAULT_TIMEOUT_SECONDS
 from .generator_completion import generator_api_key
 from .generator_config import validate_generator_environment
 from .generator_schema import SchemaProbe, probe_schema_enforcement
+from .oidc_network_policy import GENERATOR_RELAY_LIMITS
 from .service_endpoints import validate_service_endpoint
 
 
 def probe_configured_generator():
+    try:
+        timeout = float(os.getenv("CASE_INTELLIGENCE_GENERATOR_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS)))
+        if not math.isfinite(timeout) or not 0 < timeout <= GENERATOR_RELAY_LIMITS.seconds:
+            raise ValueError()
+    except ValueError:
+        return SchemaProbe(
+            "unreachable", 0,
+            "CASE_INTELLIGENCE_GENERATOR_TIMEOUT must be a positive finite number no greater "
+            f"than the relay generator tunnel limit ({GENERATOR_RELAY_LIMITS.seconds} seconds).",
+            "Lower the configured timeout or update the shared relay limit and recreate both images.",
+        )
     try:
         endpoint = validate_service_endpoint(
             os.getenv("CASE_INTELLIGENCE_GENERATOR_URL", ""),
@@ -27,4 +41,6 @@ def probe_configured_generator():
 
 
 if __name__ == "__main__":
-    print(json.dumps(asdict(probe_configured_generator())))
+    result = probe_configured_generator()
+    print(json.dumps(asdict(result)))
+    raise SystemExit(1 if result.status == "unreachable" else 0)

@@ -101,6 +101,54 @@ def test_packaged_registry_matches_editable_registry():
     assert load_qualifications()["schema_version"] == 1
 
 
+@pytest.mark.parametrize("returncode", [1, 2, -9])
+def test_bundled_doctor_timeout_drift_fails_only_for_rc_one(monkeypatch, tmp_path, returncode):
+    from dataclasses import asdict
+    from case_intelligence import generator_doctor
+    from tests.test_oss_installer import installer
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_TIMEOUT", "311")
+    drift = generator_doctor.probe_configured_generator()
+    app = {"CASE_INTELLIGENCE_GENERATOR_BACKEND": "vllm",
+           "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000"}
+    monkeypatch.setattr(installer, "_dotenv", lambda path: {} if path.name == "compose.env" else app)
+    monkeypatch.setattr(installer, "_print_hardware_suggestion", lambda console: None)
+    monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
+    commands, output = [], []
+
+    def probe(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=returncode, stdout=json.dumps(asdict(drift)))
+
+    monkeypatch.setattr(installer, "_probe", probe)
+    console = SimpleNamespace(note=output.append, warn=output.append)
+    if returncode == 1:
+        with pytest.raises(RuntimeError, match="CASE_INTELLIGENCE_GENERATOR_TIMEOUT"):
+            installer._doctor_generator(console, tmp_path, dry_run=False)
+        assert drift.detail in output
+        assert drift.fix in output
+    else:
+        installer._doctor_generator(console, tmp_path, dry_run=False)
+        assert "schema enforcement :: not checked; the application network probe is unavailable" in output
+        assert drift.detail not in output
+    assert commands == [["docker", "compose", "exec", "-T", "app", "python", "-m",
+                         "case_intelligence.generator_doctor"]]
+
+
+@pytest.mark.parametrize("stdout", [
+    json.dumps({"status": "unreachable", "attempts": 0,
+                "detail": "The configured schema check is unavailable.", "fix": "Check configuration."}),
+    "not JSON", "{}", "x" * 4097,
+])
+def test_bundled_doctor_other_rc_one_results_remain_unavailable(monkeypatch, tmp_path, stdout):
+    from tests.test_oss_installer import installer
+    monkeypatch.setattr(installer, "_compose", lambda *args: ["docker", "compose"])
+    monkeypatch.setattr(installer, "_probe", lambda *a, **k: SimpleNamespace(returncode=1, stdout=stdout))
+    output = []
+    installer._doctor_bundled_generator(SimpleNamespace(note=output.append, warn=output.append), tmp_path)
+    assert output == ["schema enforcement :: not checked; the application network probe is unavailable"]
+
+
 def test_in_container_probe_uses_effective_config_and_runtime_credentials(monkeypatch):
     from case_intelligence import generator_doctor
     from case_intelligence.generator_schema import SchemaProbe

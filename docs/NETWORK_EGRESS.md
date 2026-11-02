@@ -210,16 +210,50 @@ every configured destination before listening. An invalid generator URL or pins
 setting stops the whole proxy, including OIDC egress, with exit code 1 and an error
 naming the generator settings without printing their values. Requests, destinations
 and tunneled bytes are not logged. Concurrency,
-header size/time, tunnel duration and transferred bytes are bounded by eight
-connection slots, operation timeouts and byte limits. DNS and all connection
+header size/time, tunnel duration and transferred bytes are bounded by role
+slots, operation timeouts and byte limits. The shared constants in
+`src/case_intelligence/oidc_network_policy.py` apply in both images:
+
+| Role | Concurrent tunnels | Duration | Total bytes in both directions |
+| --- | --- | --- | --- |
+| OIDC | 2 reserved | 60 seconds | 8 MiB |
+| GENERATOR | 2 | 310 seconds | 32 MiB |
+| EMBEDDING | 4 | 310 seconds | 32 MiB |
+| RERANK | 4 | 310 seconds | 32 MiB |
+
+Role slots are acquired after CONNECT validation and before DNS, and released
+on completion or failure. At most 16 connections, including header parsing,
+are admitted: twelve role slots plus four slots of admission headroom. Busy
+model tunnels cannot use the two OIDC slots. Exhausted admission or role caps
+return `HTTP/1.1 503 Service Unavailable` with `Content-Length: 0`, then close;
+the busy response has a 0.1-second write timeout. Slow or malformed headers
+still share the bounded admission pool and can temporarily fill it.
+Embedding and rerank each admit three concurrent requests with one additional
+slot, without increasing total admission or using the reserved OIDC slots.
+
+CONNECT identifies an authority, not the purpose of the encrypted request.
+An authority configured for both OIDC and a model therefore fails startup.
+Model roles sharing an authority and identical pins share the first configured
+role's pool in GENERATOR, EMBEDDING, RERANK order; conflicting pins still fail.
+
+DNS and all connection
 attempts share one five-second budget. Each address receives an equal share of
 the remaining budget for the remaining validated addresses, so a stalled first
 endpoint leaves time for fallback addresses. DNS runs in a killable subprocess;
 timeout kills/reaps it before releasing the slot. Header parsing checks a
-five-second deadline between reads; relaying checks a 60-second deadline between
+five-second deadline between reads; relaying checks its role's deadline between
 iterations. In-flight reads/writes retain five-second socket timeouts, so those
 loop deadlines permit bounded overshoot rather than hard elapsed-time limits.
-Tunnels carry at most 8 MiB.
+The model limit includes ten seconds beyond the app's maximum 300-second
+generator timeout and covers the installer's 180-second default. Run
+`python -m case_intelligence.generator_doctor` in the existing app container
+to check its effective `CASE_INTELLIGENCE_GENERATOR_TIMEOUT` before a schema
+probe. A value above the shared generator limit, or an invalid/non-finite value,
+returns an explicit configuration message and exits 1.
+The doctor rejects timeouts above 310 s or at or below 0, stricter than the app's 1 to 300 s clamp, and fails closed.
+The installer doctor also reports this timeout detail and fails for the bundled generator.
+The in-app diagnostic is distinct from the installer's external schema probe. Recreate both images
+after changing shared limits so the doctor and relay use the same version.
 
 This is a destination control, not TLS inspection: CONNECT can carry other
 protocols or paths to the approved authority. The application still validates

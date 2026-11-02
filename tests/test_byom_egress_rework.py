@@ -13,7 +13,7 @@ import yaml
 
 from case_intelligence import external_generator as endpoints, generation
 from case_intelligence.generator_transport import open_generator_request
-from tests.test_egress_proxy import proxy
+from tests.test_egress_proxy import proxy, relay_server
 from tests.test_oss_installer import installer
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,7 @@ def test_relay_generator_connect_and_oidc_have_separate_pins(monkeypatch):
     monkeypatch.setattr(proxy, "dial", dial)
     monkeypatch.setattr(proxy, "relay", lambda *args: None)
     request = WireRequest(b"CONNECT answers.example.test:8443 HTTP/1.1\r\n\r\n")
-    proxy.Handler(request, None, SimpleNamespace(allowed=allowed, pins=frozenset()))
+    proxy.Handler(request, None, relay_server(monkeypatch, allowed))
     assert b"200 Connection Established" in request.sent[0]
     assert calls == [("answers.example.test", 8443, {ipaddress.ip_address(PRIVATE)})]
 

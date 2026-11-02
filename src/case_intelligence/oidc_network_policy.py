@@ -4,9 +4,27 @@ from __future__ import annotations
 import ipaddress
 import json
 import re
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 from . import _idna as idna
+
+
+class RelayLimits(NamedTuple):
+    connections: int
+    seconds: int
+    bytes: int
+
+
+OIDC_RELAY_LIMITS = RelayLimits(2, 60, 8 * 1024 * 1024)
+GENERATOR_RELAY_LIMITS = RelayLimits(2, 310, 32 * 1024 * 1024)
+EMBEDDING_RELAY_LIMITS = RelayLimits(4, 310, 32 * 1024 * 1024)
+RERANK_RELAY_LIMITS = RelayLimits(4, 310, 32 * 1024 * 1024)
+RELAY_LIMITS = {
+    "OIDC": OIDC_RELAY_LIMITS, "GENERATOR": GENERATOR_RELAY_LIMITS,
+    "EMBEDDING": EMBEDDING_RELAY_LIMITS, "RERANK": RERANK_RELAY_LIMITS,
+}
+RELAY_ADMISSION_HEADROOM = 4
 
 
 class Denied(ValueError):
