@@ -6,6 +6,7 @@ import re
 import sys
 
 
+NODE_SEPARATOR = ":" * 2
 NODE = r"tests/[^\s]+\.py(?:::[^\r\n]+?)?"
 OUTCOME = r"PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS|RERUN"
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -37,7 +38,7 @@ def summarize(text: str, status: str) -> str:
         if re.match(r"^Timeout \([\d:.]+\)!", line):
             timeout = True
         if timeout and (frame := FRAME.search(line)):
-            frames[f"{frame[1]}::{frame[2]}"] = None
+            frames[f"{frame[1]}{NODE_SEPARATOR}{frame[2]}"] = None
         if failure := SHORT_FAILURE.fullmatch(line):
             failures[failure[1]] = None
         if worker := WORKER.fullmatch(line):
@@ -51,7 +52,7 @@ def summarize(text: str, status: str) -> str:
             pending.pop(node, None)
             if outcome in {"FAILED", "ERROR"}:
                 failures[node] = None
-        elif "::" in node:
+        elif NODE_SEPARATOR in node:
             pending.pop(node, None)
             pending[node] = None
 

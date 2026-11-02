@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 
@@ -23,6 +24,33 @@ def summarize(path, status="failure"):
     assert result.returncode == 0, result.stderr
     assert not result.stderr
     return result.stdout
+
+
+def test_summary_source_has_no_outbound_inventory():
+    source_inventory = runpy.run_path(str(ROOT / "scripts/network-contract.py"))["source_inventory"]
+    assert not [entry for entry in source_inventory(ROOT) if entry[0] == "scripts/ci_test_summary.py"]
+
+
+@pytest.mark.parametrize("fixture, status, expected", [
+    ("timeout.txt", "failure",
+     "### Application test summary\n\nCancelled or partial run.\n\n"
+     "Last started test: `tests/test_synthetic_wait.py::test_wait`\n\n"
+     "Timed out in:\n- `tests/test_synthetic_wait.py::test_wait`\n\n"),
+    ("cancelled.txt", "failure",
+     "### Application test summary\n\nCancelled or partial run.\n\n"
+     "Last started test: `tests/test_synthetic_summary.py::test_pending`\n\n"),
+    ("cancelled.txt", "cancelled",
+     "### Application test summary\n\nCancelled or partial run.\n\n"
+     "Last started test: `tests/test_synthetic_summary.py::test_pending`\n\n"),
+])
+def test_diagnostic_output_is_byte_identical(fixture, status, expected):
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(FIXTURES / fixture), status],
+        capture_output=True, timeout=10,
+    )
+    assert result.returncode == 0
+    assert result.stderr == b""
+    assert result.stdout == expected.encode("utf-8")
 
 
 def test_failed_test_ids_from_short_summary():
