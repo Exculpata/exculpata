@@ -383,7 +383,7 @@ def test_v2_browser_routes_status_pdf_search_question_and_staff_safety(tmp_path)
 
         combined = health.__repr__() + workspace.text + search.text + answer.text + source.text
         for forbidden in (
-            "/home/", "matter-alpha", "chunk-alpha", "ibm-granite", "Alibaba-NLP",
+            "/home/", "matter-alpha", "chunk-alpha", "ibm-granite", "granite-embedding-reranker-english-r2",
             "pgvector", "sha256", "model_id", "postgresql://",
         ):
             assert forbidden not in combined

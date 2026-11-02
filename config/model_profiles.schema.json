@@ -23,7 +23,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "id", "label", "accelerator", "generator", "embed_rerank", "asr", "tradeoff"
+        "id", "label", "accelerator", "generator", "reranker_model", "embed_rerank", "asr", "tradeoff"
       ],
       "allOf": [
         {
@@ -52,6 +52,7 @@
         "min_devices": {"type": ["integer", "null"], "minimum": 2},
         "min_device_vram_mib": {"type": ["integer", "null"], "minimum": 0},
         "generator": {"type": "string", "minLength": 1},
+        "reranker_model": {"type": "string", "minLength": 1},
         "embed_rerank": {"type": "string", "minLength": 1},
         "asr": {"type": "string", "minLength": 1},
         "tradeoff": {"type": "string", "minLength": 1}

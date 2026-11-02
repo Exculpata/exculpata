@@ -28,10 +28,10 @@ EMBEDDING_REVISION = os.getenv(
     "CASE_REVIEW_EMBEDDING_REVISION", "47ea694b257b703fee9253d75c2b1f2985180498"
 )
 RERANKER_MODEL = os.getenv(
-    "CASE_REVIEW_RERANKER_MODEL", "Alibaba-NLP/gte-reranker-modernbert-base"
+    "CASE_REVIEW_RERANKER_MODEL", "ibm-granite/granite-embedding-reranker-english-r2"
 )
 RERANKER_REVISION = os.getenv(
-    "CASE_REVIEW_RERANKER_REVISION", "f7481e6055501a30fb19d090657df9ec1f79ab2c"
+    "CASE_REVIEW_RERANKER_REVISION", "d09d3d6971b689bf9c23839e45a470874d46e13a"
 )
 def _model_device() -> str:
     """Embeddings and reranking stay in this process. CPU is an explicit device, not a remote API."""

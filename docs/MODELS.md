@@ -6,8 +6,21 @@ stack:
 - portable: Qwen3.5 4B for constrained or shared-GPU nodes;
 - quality: Qwen3.5 9B when the selected generator device has sufficient VRAM;
 - Granite Embedding English R2 for dense retrieval;
-- GTE ModernBERT cross-encoder for reranking;
+- Granite English R2 cross-encoder for reranking;
 - deterministic checks of citation references and text consistency after generation.
+
+The reranker is `ibm-granite/granite-embedding-reranker-english-r2`, pinned to
+`d09d3d6971b689bf9c23839e45a470874d46e13a` under Apache-2.0. Its
+[pinned upstream model card](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2/blob/d09d3d6971b689bf9c23839e45a470874d46e13a/README.md)
+reports fine-tuning the Granite Embedding English R2 encoder on web title/body
+pairs, permissively licensed public pairs, IBM-internal technical-domain pairs
+and IBM-generated synthetic data. The underlying encoder uses GneissWeb,
+curated from open, commercially usable sources. Upstream explicitly excludes
+MS MARCO. These are upstream disclosures, not an independent dataset audit.
+License and lineage are recorded as `model_metadata` beside the evaluation
+records in [`config/model_qualifications.json`](../config/model_qualifications.json)
+and its packaged copy. Metadata does not confer an evaluation pass; local
+offline readiness and representative retrieval quality still require measurement.
 
 These checks do not establish that generated claims preserve source meaning or
 are correct. Compare each claim with the original sources using the
@@ -73,7 +86,8 @@ tokens are staging-only. Confidential runtime is offline and telemetry-free.
 Bring-your-own answer servers and hardware suggestions are described in
 [model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints). The
 suggestion file is [`config/model_profiles.json`](../config/model_profiles.json).
-Embeddings and reranking remain the in-process Granite and ModernBERT models,
+Embeddings and reranking remain the in-process Granite Embedding English R2 and
+Granite English R2 reranker models,
 including when `CASE_REVIEW_MODEL_DEVICE=cpu`. A model without a recorded
 claim-evaluation pass is labeled `unvalidated model`. The qualification seam is
 [`config/model_qualifications.json`](../config/model_qualifications.json).
@@ -105,15 +119,15 @@ This table is checked against `config/model_profiles.json` by
 <!-- model-profile-table:start -->
 | Tier ID | Hardware | Generator | Embeddings and reranking | Speech recognition | Trade-off |
 | --- | --- | --- | --- | --- | --- |
-| `potato` | CPU only, below 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
-| `cpu` | CPU only, at least 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
-| `gpu-8` | 8 GB GPU | Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result. |
-| `gpu-12` | 12 GB GPU | Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result. |
-| `gpu-16` | 16 GB GPU | Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | 16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result. |
-| `gpu-24` | 24 GB GPU and up | Qwen3.5-9B through the bundled vLLM service. This is the current reference profile. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | This matches the bundled generator and is the reference deployment shape. This is a suggestion, not a measured quality result. |
-| `apple-16` | Apple Silicon, 16 GB unified memory and up | Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result. |
-| `apple-32` | Apple Silicon, 32 GB unified memory and up | Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | The model budget reserves 25 percent of unified memory for the operating system and application work. This is a suggestion, not a measured quality result. |
-| `ultra` | Two or more 48 GB GPUs | Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | Multiple data-center GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. This is a suggestion, not a measured quality result. |
+| `potato` | CPU only, below 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the Granite English R2 reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
+| `cpu` | CPU only, at least 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the Granite English R2 reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
+| `gpu-8` | 8 GB GPU | Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp. | Granite embedding and the Granite English R2 reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result. |
+| `gpu-12` | 12 GB GPU | Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp. | Granite embedding and the Granite English R2 reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result. |
+| `gpu-16` | 16 GB GPU | Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card. | Granite embedding and the Granite English R2 reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | 16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result. |
+| `gpu-24` | 24 GB GPU and up | Qwen3.5-9B through the bundled vLLM service. This is the current reference profile. | Granite embedding and the Granite English R2 reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | This matches the bundled generator and is the reference deployment shape. This is a suggestion, not a measured quality result. |
+| `apple-16` | Apple Silicon, 16 GB unified memory and up | Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the Granite English R2 reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result. |
+| `apple-32` | Apple Silicon, 32 GB unified memory and up | Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the Granite English R2 reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | The model budget reserves 25 percent of unified memory for the operating system and application work. This is a suggestion, not a measured quality result. |
+| `ultra` | Two or more 48 GB GPUs | Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available. | Granite embedding and the Granite English R2 reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | Multiple data-center GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. This is a suggestion, not a measured quality result. |
 <!-- model-profile-table:end -->
 
 The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challenges,

@@ -28,7 +28,7 @@ from .retrieval_limits import (
 )
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
-DEFAULT_RERANKER_MODEL = "Alibaba-NLP/gte-reranker-modernbert-base"
+DEFAULT_RERANKER_MODEL = "ibm-granite/granite-embedding-reranker-english-r2"
 
 
 def _in_process_device() -> dict[str, str]:
