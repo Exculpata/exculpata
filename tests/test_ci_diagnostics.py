@@ -10,17 +10,24 @@ import sys
 import xml.etree.ElementTree as ET
 
 import pytest
+import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def application_command(tmp_path):
-    workflow = (ROOT / '.github/workflows/quality-gates.yml').read_text()
-    step = workflow.split('      - name: Run application suite\n', 1)[1]
-    command = re.search(r'        run: >-\n((?:          .+\n)+)', step)[1]
+    workflow = yaml.safe_load((ROOT / '.github/workflows/quality-gates.yml').read_text())
+    steps = workflow['jobs']['application-shards']['steps']
+    step = next(step for step in steps if step.get('name') == 'Run application suite')
+    lines = step['run'].replace('\\\n', '').splitlines()
+    commands = [line.strip() for line in lines
+                if line.strip().startswith('.venv/bin/python -u -m pytest ')]
+    assert len(commands) == 1, 'Run application suite must contain one pytest command'
+    command = commands[0].split('2>&1 | tee ', 1)[0]
     command = command.replace('${{ runner.temp }}', str(tmp_path))
     argv = shlex.split(command)
+    assert argv[argv.index('-n') + 1] == 'auto'
     argv[0] = sys.executable
     argv[argv.index('-n') + 1] = '1'
     argv += ['--basetemp', str(tmp_path / 'pt'), '-o', 'tmp_path_retention_policy=failed']
@@ -47,6 +54,21 @@ def run_synthetic(tmp_path, source, *extra_args):
                                               *extra_args]
     return subprocess.run(command, cwd=tmp_path, env=env,
                           capture_output=True, text=True, timeout=30)
+
+
+def test_application_command_uses_real_pytest_arguments_without_shell_wrapper(tmp_path):
+    command = application_command(tmp_path)
+    assert command[:5] == [sys.executable, '-u', '-m', 'pytest', '-n']
+    assert command[command.index('-n') + 1] == '1'
+    assert command[command.index('--dist') + 1] == 'loadgroup'
+    assert '--max-worker-restart=0' in command
+    assert command[command.index('-m', 4) + 1] == 'not postgres'
+    assert '--timeout=360' in command and '--timeout-method=signal' in command
+    assert f'--junitxml={tmp_path}/application-results.xml' in command
+    assert f'--worker-diagnostics-dir={tmp_path}/application-workers' in command
+    assert f'@{tmp_path}/application-test-files.txt' in command
+    assert not {'set', 'pipefail', '2>&1', '|', 'tee', '\\'} & set(command)
+    assert not any('application-tests.log' in arg for arg in command)
 
 
 def test_completed_report_preserves_failure_skip_and_following_test(tmp_path):

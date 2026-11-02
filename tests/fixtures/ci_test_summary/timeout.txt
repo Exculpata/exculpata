@@ -1,0 +1,6 @@
+tests/test_synthetic_wait.py::test_wait
+Timeout (0:00:02)!
+Thread 0x0000000000000000 (most recent call first):
+  File "synthetic_wait.py", line 8, in wait
+  File "tests/test_synthetic_wait.py", line 12, in test_wait
+  File "_pytest/python.py", line 1, in pytest_pyfunc_call

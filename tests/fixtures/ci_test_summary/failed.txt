@@ -1,0 +1,5 @@
+FF.                                                                      [100%]
+=========================== short test summary info ============================
+FAILED tests/test_synthetic_summary.py::test_alpha - AssertionError: synthetic
+FAILED tests/test_synthetic_summary.py::test_beta[small] - ValueError: synthetic
+2 failed, 1 passed in 0.12s
