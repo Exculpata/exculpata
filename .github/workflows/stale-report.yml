@@ -1,0 +1,98 @@
+name: Stale hygiene report
+
+on:
+  schedule:
+    - cron: "47 3 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Capture repository metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        continue-on-error: true
+        run: |
+          INPUT="$RUNNER_TEMP/stale-input.json"
+          export INPUT
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path(os.environ["INPUT"]).write_text(json.dumps({"errors": []}))
+          PY
+          git for-each-ref --format='%(refname:strip=3)|%(committerdate:iso-strict)' refs/remotes/origin > "$RUNNER_TEMP/branches.txt" || true
+          for endpoint in pulls issues actions/workflows; do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/${endpoint}" > "$RUNNER_TEMP/${endpoint//\//-}.json" || true
+          done
+          python - "$RUNNER_TEMP" "$INPUT" <<'PY'
+          import json, sys
+          from pathlib import Path
+          root, output = Path(sys.argv[1]), Path(sys.argv[2])
+          data = {"errors": []}
+          try:
+              data["branches"] = [{"name": name, "updated_at": updated} for name, updated in
+                                  (line.split("|", 1) for line in (root / "branches.txt").read_text().splitlines())
+                                  if name != "HEAD"]
+          except (OSError, ValueError) as error:
+              data["errors"].append({"tool": "git", "error": f"branches: {error}"})
+          for key, filename in {"pulls":"pulls.json", "issues":"issues.json", "workflows":"actions-workflows.json"}.items():
+              try:
+                  value = json.loads((root / filename).read_text() or "[]")
+                  data[key] = value.get("workflows", value) if isinstance(value, dict) else value
+              except (OSError, ValueError) as error:
+                  data["errors"].append({"tool": "gh-api", "error": f"{key}: {error}"})
+          data["workflow_files"] = [str(path) for path in Path(".github/workflows").glob("*.yml")]
+          output.write_text(json.dumps(data))
+          PY
+      - name: Build stale report
+        continue-on-error: true
+        run: python scripts/hygiene_stale.py --input "$RUNNER_TEMP/stale-input.json" --output stale-report.json
+      - name: Summarize
+        if: always()
+        run: |
+          echo '## Stale hygiene report' >> "$GITHUB_STEP_SUMMARY"
+          test -f stale-report.json && python -m json.tool stale-report.json >> "$GITHUB_STEP_SUMMARY" || echo 'Measurement did not produce a report.' >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: stale-report.json
+          path: stale-report.json
+          if-no-files-found: warn
+          retention-days: 14
+  file:
+    needs: measure
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          token: ""
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: stale-report.json
+      - name: File findings when the shared filer is available
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLICATION_DENY_TERMS: ${{ secrets.PUBLICATION_DENY_TERMS }}
+        run: |
+          if [ ! -f scripts/hygiene_issue.py ]; then
+            echo 'filing skipped: shared filing script is not available' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          DENY="$RUNNER_TEMP/publication-deny-terms"
+          printf '%s' "$PUBLICATION_DENY_TERMS" > "$DENY"
+          for type in stale-branches stale-issues ghost-workflows; do
+            python scripts/hygiene_issue.py --finding-type "$type" --label automated-hygiene --title "[hygiene] $type" --report stale-report.json --deny-file "$DENY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          done
