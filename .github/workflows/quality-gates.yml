@@ -280,13 +280,21 @@ jobs:
           OPENBLAS_NUM_THREADS: "1"
         # Unbuffered verbose output identifies failed/active nodes before timeout.
         # Captured streams stay private; only synthetic failure tracebacks are shown.
-        run: >-
-          .venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no -m "not postgres"
-          --timeout=360 --timeout-method=signal
-          -ra --durations=25 -o junit_logging=no
-          --junitxml="${{ runner.temp }}/application-results.xml"
-          --worker-diagnostics-dir="${{ runner.temp }}/application-workers"
-          @"${{ runner.temp }}/application-test-files.txt"
+        run: |
+          set -o pipefail
+          .venv/bin/python -u -m pytest -n auto --dist loadgroup --max-worker-restart=0 -v --tb=short --show-capture=no -m "not postgres" \
+          --timeout=360 --timeout-method=signal \
+          -ra --durations=25 -o junit_logging=no \
+          --junitxml="${{ runner.temp }}/application-results.xml" \
+          --worker-diagnostics-dir="${{ runner.temp }}/application-workers" \
+          @"${{ runner.temp }}/application-test-files.txt" \
+          2>&1 | tee "$RUNNER_TEMP/application-tests.log"
+      - name: Summarize interrupted application tests
+        if: ${{ (failure() || cancelled()) && needs.change-scope.outputs.docs_only != 'true' }}
+        continue-on-error: true
+        env:
+          TEST_RUN_STATUS: ${{ job.status }}
+        run: python3 scripts/ci_test_summary.py "$RUNNER_TEMP/application-tests.log" "$TEST_RUN_STATUS" >> "$GITHUB_STEP_SUMMARY"
       - name: Verify reviewed corpus inputs are unchanged
         if: ${{ always() }}
         run: bash scripts/corpus-write-guard.sh check
