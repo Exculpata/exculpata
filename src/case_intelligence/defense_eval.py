@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 import re
 import sys
@@ -455,6 +457,18 @@ def hybrid_adapters(worker_url: str | None):
     return DeterministicEmbeddingAdapter(), DeterministicReranker(), {}
 
 
+@cache
+def _lane_module():
+    """Load eval helpers beside the shared evaluator, outside product imports."""
+    path = Path(__file__).with_name("defense_eval_lanes").with_suffix(".py")
+    spec = importlib.util.spec_from_file_location(__package__ + "." + path.stem, path)
+    if spec is None or spec.loader is None:
+        raise DefenseEvalError("Cannot load eval lane diagnostics")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class PostgresHybridRetriever:
     """Search indexed passages with HybridRetriever on PostgreSQL.
 
@@ -479,6 +493,8 @@ class PostgresHybridRetriever:
         self._connection = None
         self._delete = None
         self._retriever = None
+        self._trace: dict[str, tuple] = {}
+        self._last_search = None
         self.record = {
             "name": "postgres-hybrid",
             "index": "postgresql-fts-pgvector",
@@ -525,8 +541,10 @@ class PostgresHybridRetriever:
             for database_id in self._database_ids.values():
                 delete_postgres_matter(connection, matter_id=database_id)
             self._index(connection, PilotUnit, upsert_postgres_document, embedder)
+            lanes = _lane_module()
             self._retriever = HybridRetriever(
-                PostgresHybridBackend(connection), embedder, reranker, **floors,
+                lanes.RecordingBackend(PostgresHybridBackend(connection), self._trace), embedder,
+                lanes.RecordingReranker(reranker, self._trace), **floors,
             )
         except Exception as exc:
             self.close()
@@ -596,10 +614,13 @@ class PostgresHybridRetriever:
         if not 1 <= top_k <= MAX_TOP_K:
             raise DefenseEvalError(f"top_k must be from 1 to {MAX_TOP_K}")
         by_id = {passage.passage_id: passage for passage in passages}
+        self._trace.clear()
+        self._last_search = None
         try:
             hits = self._retriever.search(self._database_ids[matter_id], query, top_k)
         except Exception as exc:
             raise DefenseEvalError("PostgreSQL retrieval search failed") from exc
+        self._last_search = (matter_id, query, top_k, dict(self._trace), hits)
         selected: list[Passage] = []
         for hit in hits:
             passage = by_id.get(hit.document_id)
@@ -609,6 +630,11 @@ class PostgresHybridRetriever:
                 )
             selected.append(passage)
         return tuple(selected)
+
+    def lane_diagnostics(self, question, retrieved, top_k):
+        return _lane_module().diagnose_lanes(
+            self, question, retrieved, top_k, error_type=DefenseEvalError, tokenize=tokenize,
+        )
 
 
 def _contains(haystack: str, needle: str) -> bool:
@@ -802,6 +828,9 @@ def run_eval(
             answer = ModelAnswer(False, "", (), error=exc.__class__.__name__)
         latency_ms = max(0, round((time.perf_counter() - started) * 1000))
         row = score_question(question, answer, retrieved, by_id, latency_ms)
+        diagnose = getattr(retriever, "lane_diagnostics", None)
+        if callable(diagnose):
+            row["lane_diagnostics"] = diagnose(question, retrieved, top_k)
         if judge is not None:
             try:
                 judgment = dict(judge(question, answer))
@@ -834,7 +863,7 @@ def _scorecard(
     retrieval_rows = [row for row in rows if row["retrieval_hit"] is not None]
     retrieval_hits = sum(row["retrieval_hit"] is True for row in retrieval_rows)
     latencies = [int(row["latency_ms"]) for row in rows]
-    return {
+    card = {
         "suite_id": suite.suite_id,
         "suite_version": suite.suite_version,
         "fingerprint": suite.fingerprint,
@@ -874,6 +903,10 @@ def _scorecard(
         },
         "questions": list(rows),
     }
+
+    if any("lane_diagnostics" in row for row in rows):
+        card["lane_diagnostics"] = _lane_module().summarize_lane_diagnostics(rows)
+    return card
 
 
 def render_markdown(scorecard: Mapping[str, Any]) -> str:
@@ -963,6 +996,8 @@ def render_markdown(scorecard: Mapping[str, Any]) -> str:
             f"error `{row['error'] or 'none'}`; rejection `{row['rejection'] or 'none'}`."
         )
     lines.append("")
+    if scorecard.get("lane_diagnostics"):
+        lines.extend(_lane_module().render_lane_diagnostics(scorecard["lane_diagnostics"]))
     return "\n".join(lines)
 
 
