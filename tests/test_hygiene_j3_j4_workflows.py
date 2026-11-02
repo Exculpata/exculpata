@@ -32,9 +32,13 @@ def test_scheduled_hygiene_workflow_contracts():
         filing = workflow["jobs"]["file"]
         assert filing["needs"] == "measure"
         assert filing["permissions"] == {"issues": "write"}
-        assert any("scripts/hygiene_issue.py" in step.get("run", "")
-                   and "filing skipped" in step["run"]
-                   for step in filing["steps"])
+        filing_text = '\n'.join(step.get('run', '') for step in filing['steps'])
+        assert all(f'gh issue {verb}' in filing_text for verb in ('list', 'create', 'edit'))
+        assert all('--' + flag in filing_text for flag in
+                   ('report', 'issues', 'kind', 'run', 'scanner', 'deny-file', 'body', 'decision', 'summary'))
+        assert '--run "$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID"' in filing_text
+        assert '--json number,title,body,labels,state' in filing_text
+        assert 'exit 0' not in filing_text and '[ ! -f scripts/hygiene_issue.py ]' not in filing_text
         for job in workflow["jobs"].values():
             for step in job.get("steps", []):
                 if "uses" in step:

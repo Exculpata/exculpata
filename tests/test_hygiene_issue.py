@@ -71,3 +71,82 @@ def test_measurement_errors_and_reruns(tmp_path):
     output, summary = tmp_path / 'report', tmp_path / 'summary'
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/hygiene_report.py'), 'flake-ledger', '--runs', str(tmp_path / 'absent'), '--junit-name', 'application-results.xml', '--output', str(output), '--summary', str(summary), '--install', 'failure', '--collection', 'failure'], capture_output=True)
     assert result.returncode == 0 and len(json.loads(output.read_text())['errors']) >= 2
+
+WEEKLY_KINDS = ('vulnerable-deps', 'stale-branches', 'stale-issues', 'ghost-workflows')
+
+@pytest.mark.parametrize('kind', WEEKLY_KINDS)
+def test_weekly_kind_creates_and_updates(kind):
+    h = load('hygiene_issue')
+    report = {'findings': {kind: {'count': 2}}, 'details': 'DO NOT COPY'}
+    decision, body = h.decide(kind, report, [], RUN, lambda text: True)
+    assert decision == {'action': 'create', 'title': '[hygiene] ' + kind, 'number': None}
+    issue = dict(decision, body=body, labels=[{'name': h.LABEL}], number=9)
+    decision, body = h.decide(kind, {'findings': {kind: {'count': 0}}}, [issue], RUN, lambda text: True)
+    assert decision['action'] == 'edit' and decision['number'] == 9
+    assert '"delta": -2' in body and 'DO NOT COPY' not in body
+
+@pytest.mark.parametrize(('kind', 'report', 'valid'), [
+    *[(kind, {'findings': {kind: {'count': 1}}}, True) for kind in WEEKLY_KINDS],
+    ('unsupported', {'findings': {'unsupported': {}}}, False),
+    ('lint', {'findings': {'lint': []}}, False),
+    ('stale-branches', {'findings': {'stale-branches': []}}, False),
+    ('lint', {'findings': {'lint': {'count': -1}}}, False),
+    ('lint', {}, False),
+])
+def test_cli_cannot_silently_skip_report(tmp_path, kind, report, valid):
+    inputs, issues, deny, body, decision, summary = [tmp_path / name for name in
+                                                  ('report', 'issues', 'deny', 'body', 'decision', 'summary')]
+    # fixture-write: synthetic report, empty issue snapshot and empty deny terms.
+    inputs.write_text(json.dumps(report))
+    # fixture-write: synthetic issue snapshot.
+    issues.write_text('[]')
+    # fixture-write: synthetic empty deny terms.
+    deny.write_text('')
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/hygiene_issue.py'),
+                            '--report', str(inputs), '--issues', str(issues), '--kind', kind,
+                            '--run', RUN, '--scanner', str(ROOT / 'scripts/publication-check.py'),
+                            '--deny-file', str(deny), '--body', str(body), '--decision', str(decision),
+                            '--summary', str(summary)], capture_output=True, text=True)
+    if valid:
+        assert result.returncode == 0
+        assert json.loads(decision.read_text())['action'] == 'create'
+    else:
+        assert result.returncode != 0
+        assert 'filing failed:' in result.stderr and 'filing failed:' in summary.read_text()
+        assert json.loads(decision.read_text())['action'] == 'error'
+
+def test_dependency_emitter_count_map(tmp_path, monkeypatch):
+    h = load('hygiene_deps')
+    lock = tmp_path / 'synthetic.lock'
+    # fixture-write: synthetic lock filename; auditor process is substituted below.
+    lock.write_text('')
+    monkeypatch.setattr(h, 'ROOTS', (tmp_path,))
+    audit = {'dependencies': [{'name': 'sample', 'vulns': [{'id': 'SYNTH-1'}, {'id': 'SYNTH-2'}]}]}
+    monkeypatch.setattr(h.subprocess, 'run', lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, json.dumps(audit), ''))
+    output = tmp_path / 'output'
+    monkeypatch.setattr(sys, 'argv', ['hygiene_deps', '--output', str(output)])
+    assert h.main() == 0
+    report = json.loads(output.read_text())
+    assert report['findings'] == {'vulnerable-deps': {'advisories': 2}}
+    assert report['audits'][0]['result'] == audit
+    assert not report['errors']
+    monkeypatch.setattr(h.subprocess, 'run', lambda *args, **kwargs: subprocess.CompletedProcess(args, 2, '', 'DO NOT COPY'))
+    assert h.main() == 0
+    report = json.loads(output.read_text())
+    assert report['errors']
+    _, body = load('hygiene_issue').decide('vulnerable-deps', report, [], RUN, lambda text: True)
+    assert '"coverage": "partial"' in body and 'DO NOT COPY' not in body
+
+def test_stale_emitter_count_map():
+    h = load('hygiene_stale')
+    data = {'branches': [{'name': 'synthetic', 'updated_at': '2026-01-01T00:00:00Z'}],
+            'issues': [{'number': 1, 'updated_at': '2026-01-01T00:00:00Z'}],
+            'workflows': [{'path': '.github/workflows/retired.yml'}], 'workflow_files': []}
+    report = h.build_report(data, h.parse_time('2026-02-01T00:00:00Z'))
+    assert report['findings'] == {kind: {'count': 1} for kind in WEEKLY_KINDS[1:]}
+    assert report['details']['stale-branches'][0]['name'] == 'synthetic'
+    assert report['details']['stale-issues'][0]['number'] == 1
+    assert report['details']['ghost-workflows'] == ['retired.yml']
+    for kind in WEEKLY_KINDS[1:]:
+        _, body = load('hygiene_issue').decide(kind, report, [], RUN, lambda text: True)
+        assert 'synthetic' not in body and 'retired.yml' not in body

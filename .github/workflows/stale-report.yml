@@ -81,17 +81,31 @@ jobs:
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
         with:
           name: stale-report.json
-      - name: File findings when the shared filer is available
+      - shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PUBLICATION_DENY_TERMS: ${{ secrets.PUBLICATION_DENY_TERMS }}
         run: |
-          if [ ! -f scripts/hygiene_issue.py ]; then
-            echo 'filing skipped: shared filing script is not available' >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          DENY="$RUNNER_TEMP/publication-deny-terms"
-          printf '%s' "$PUBLICATION_DENY_TERMS" > "$DENY"
-          for type in stale-branches stale-issues ghost-workflows; do
-            python scripts/hygiene_issue.py --finding-type "$type" --label automated-hygiene --title "[hygiene] $type" --report stale-report.json --deny-file "$DENY" --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          umask 077
+          deny="$RUNNER_TEMP/hygiene-deny"
+          trap 'rm -f "$deny"' EXIT
+          printf '%s' "$PUBLICATION_DENY_TERMS" > "$deny"
+          unset PUBLICATION_DENY_TERMS
+          prepare() {
+            python3 scripts/hygiene_issue.py --report stale-report.json --issues "$RUNNER_TEMP/issues.json" --kind "$kind" --run "$GITHUB_SERVER_URL/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --scanner scripts/publication-check.py --deny-file "$deny" --body "$RUNNER_TEMP/body.md" --decision "$RUNNER_TEMP/decision.json" --summary "$GITHUB_STEP_SUMMARY"
+          }
+          for kind in stale-branches stale-issues ghost-workflows; do
+            gh issue list --repo "$GH_REPO" --state open --label automated-hygiene --limit 1000 --json number,title,body,labels,state > "$RUNNER_TEMP/issues.json"
+            prepare
+            if [ "$(jq -r .action "$RUNNER_TEMP/decision.json")" = skip ]; then continue; fi
+            if ! gh label list --search automated-hygiene --limit 1000 --json name | jq -e 'any(.name == "automated-hygiene")' >/dev/null; then
+              gh label create automated-hygiene --color ededed --description 'Automated repository hygiene reports'
+              prepare
+            fi
+            case "$(jq -r .action "$RUNNER_TEMP/decision.json")" in
+              create) gh issue create --repo "$GH_REPO" --title "$(jq -r .title "$RUNNER_TEMP/decision.json")" --label automated-hygiene --body-file "$RUNNER_TEMP/body.md" ;;
+              edit) gh issue edit "$(jq -r .number "$RUNNER_TEMP/decision.json")" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/body.md" ;;
+              *) echo "filing failed: unsupported decision" >&2; exit 1 ;;
+            esac
           done
