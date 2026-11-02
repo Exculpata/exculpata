@@ -223,7 +223,7 @@ per second, database growth, restart time, duplicate-key observations, and
 coverage reconciliation. The measured result, not item count alone, selects
 the job-table backend.
 
-## Open questions for Neil
+## Open questions for the maintainer
 These questions are intentionally unresolved:
 1. What item-count and byte-count shard boundaries should the first benchmark
    evaluate?
