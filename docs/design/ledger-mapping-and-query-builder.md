@@ -235,7 +235,7 @@ and all edges. Hop and date bounds always apply. Results carry every edge's row
 citation, direction, amount, currency, and time. Mixed currencies are not summed
 without a separate reviewed conversion design.
 
-## Open questions for Neil
+## Open questions for the maintainer
 
 1. Should balance-check exceptions require one reviewer or a second approval?
 2. What maximum date span and lower production hop cap should each deployment use?
