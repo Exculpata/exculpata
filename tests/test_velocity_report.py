@@ -43,19 +43,24 @@ def test_cli_week_windows(report, data, monkeypatch, capsys, since, until, expec
 
     monkeypatch.setattr(report, "datetime", FixedClock)
     monkeypatch.setattr(report, "collect", lambda since: data)
-    assert report.main(["--since", since, "--json"]) == 0
+    assert report.main(["--since", since, "--timezone", "UTC", "--json"]) == 0
     weeks = json.loads(capsys.readouterr().out)["weeks"]
     assert [(w["week_start"], w["window_start"], w["window_end"], w["partial"])
             for w in weeks] == expected
-    assert report.main(["--since", since]) == 0
+    assert report.main(["--since", since, "--timezone", "UTC"]) == 0
     output = capsys.readouterr().out
     for monday, start, end, partial in expected:
         status = "partial" if partial else "full"
         assert f"Week {monday} ({status}: {start} to {end})" in output
 
 
-@pytest.mark.parametrize("now", ["2026-10-23T15:00:00Z", "2026-10-19T00:00:00Z", "2026-10-25T23:59:59Z"])
-def test_default_since_is_previous_full_week_monday(report, data, monkeypatch, capsys, now):
+@pytest.mark.parametrize("now, expected", [
+    ("2026-10-19T00:00:00Z", "2026-10-05T04:00:00Z"),
+    ("2026-10-23T15:00:00Z", "2026-10-12T04:00:00Z"),
+    ("2026-10-25T23:59:59Z", "2026-10-12T04:00:00Z"),
+    ("2026-10-26T02:00:00Z", "2026-10-12T04:00:00Z"),
+])
+def test_default_since_is_previous_full_week_monday(report, data, monkeypatch, capsys, now, expected):
     class FixedClock(report.datetime):
         @classmethod
         def now(cls, tz):
@@ -71,8 +76,24 @@ def test_default_since_is_previous_full_week_monday(report, data, monkeypatch, c
     monkeypatch.setattr(report, "collect", collect)
     assert report.main(["--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["since"] == "2026-10-12T00:00:00+00:00"
-    assert collected == [report.timestamp("2026-10-12")]
+    assert result["since"] == report.timestamp(expected).isoformat()
+    assert collected == [report.timestamp(expected)]
+
+
+def test_dst_fallback_week_spans_169_hours(report, data):
+    since = report.timestamp("2026-10-26T04:00:00Z")
+    until = report.timestamp("2026-11-02T05:00:00Z")
+    week = report.summarize(data, since, until, report.ZoneInfo("America/New_York"))["weeks"][0]
+    assert report.timestamp(week["window_end"]) - report.timestamp(week["window_start"]) == report.timedelta(hours=169)
+
+
+def test_unknown_timezone_names_bad_value(report, capsys):
+    with pytest.raises(SystemExit) as exc:
+        report.main(["--timezone", "Synthetic/Unknown"])
+    assert exc.value.code == 2
+    error = capsys.readouterr().err
+    assert error.count("\n") == 1
+    assert "Synthetic/Unknown" in error
 
 
 def test_weekly_metrics(report, data):
@@ -115,6 +136,32 @@ def test_ci_durations_are_split_by_workflow_name(report, data):
         "Quality": {"ci_runs": 2, "ci_duration_minutes_median": 15, "ci_duration_minutes_p90": 20},
         "Integration": {"ci_runs": 1, "ci_duration_minutes_median": 30, "ci_duration_minutes_p90": 30},
     }
+
+
+def test_dependency_bot_runs_have_separate_duration_metrics(report, data, monkeypatch, capsys):
+    actor_run = {**data["runs"][0], "id": 20, "actor": {"login": "dependabot[bot]"}}
+    branch_run = {**data["runs"][1], "id": 21, "head_branch": "dependabot/pip/synthetic-1"}
+    data["runs"].extend([actor_run, branch_run])
+    week = report.summarize(
+        data, report.timestamp("2026-10-05"), report.timestamp("2026-10-12"), report.ZoneInfo("UTC")
+    )["weeks"][0]
+    assert week["ci_runs"] == 3
+    assert week["ci_duration_minutes_by_workflow"]["Quality"]["ci_runs"] == 2
+    assert week["dependency_bot_runs"] == {
+        "ci_runs": 2,
+        "ci_duration_minutes_median": 15,
+        "ci_duration_minutes_p90": 20,
+    }
+
+    monkeypatch.setattr(report, "collect", lambda since: data)
+    assert report.main(["--since", "2026-10-05", "--timezone", "UTC", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["timezone"] == "UTC"
+    assert result["since"].endswith("+00:00")
+    assert report.main(["--since", "2026-10-05", "--timezone", "UTC"]) == 0
+    output = capsys.readouterr().out
+    assert "weekly velocity (UTC)" in output
+    assert "dependency_bot_runs:" in output
 
 
 @pytest.mark.parametrize("variable", ["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"])
