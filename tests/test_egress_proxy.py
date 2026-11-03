@@ -306,9 +306,10 @@ def test_all_dial_attempts_share_one_deadline(monkeypatch):
 def test_slot_exhaustion_and_failure_release_without_listener(monkeypatch):
     server = object.__new__(proxy.Server)
     server.slots = threading.BoundedSemaphore(1)
+    server.header_slots = threading.BoundedSemaphore(1)
     closed, started = [], []
     monkeypatch.setattr(server, "shutdown_request", lambda request: closed.append(request))
-    monkeypatch.setattr(socketserver := proxy.socketserver.ThreadingTCPServer, "process_request",
+    monkeypatch.setattr(proxy.socketserver.ThreadingTCPServer, "process_request",
                         lambda *args: started.append(args[1]))
     server.process_request("first", None)
     exhausted = TunnelRequest()
@@ -316,9 +317,9 @@ def test_slot_exhaustion_and_failure_release_without_listener(monkeypatch):
     assert started == ["first"] and closed == [exhausted]
     assert bytes(exhausted.sent) == BUSY
     def failed(*args): raise OSError("synthetic resolver failure")
-    monkeypatch.setattr(socketserver, "process_request_thread", failed)
-    with pytest.raises(OSError):
-        server.process_request_thread("first", None)
+    server.RequestHandlerClass = failed
+    server.handle_error = lambda *args: None
+    server.process_request_thread("first", None)
     server.process_request("recovered", None)
     assert started == ["first", "recovered"]
 
@@ -381,7 +382,7 @@ def test_reserved_signin_slots_and_role_busy_reply(monkeypatch):
         for request in requests:
             assert request.closed.wait(1)
         server._threads.join()
-    for slots in [server.slots, *server.role_slots.values()]:
+    for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
         assert slots._value == slots._initial_value
 
 
@@ -413,11 +414,11 @@ def test_three_simultaneous_model_connects_succeed(monkeypatch, role):
         server._threads.join()
     for request in requests:
         assert request.closed.is_set()
-    for slots in [server.slots, *server.role_slots.values()]:
+    for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
         assert slots._value == slots._initial_value
 
 
-@pytest.mark.parametrize("failure", ["parse", "dial", "reply", "relay", "busy-reply", "thread-start"])
+@pytest.mark.parametrize("failure", ["parse", "dial", "reply", "relay", "busy-reply", "global-busy", "handler-init", "thread-start"])
 def test_role_and_global_slots_released_after_failure(monkeypatch, failure):
     server = relay_server(monkeypatch)
     request = TunnelRequest("GENERATOR")
@@ -428,11 +429,14 @@ def test_role_and_global_slots_released_after_failure(monkeypatch, failure):
         monkeypatch.setattr(proxy, {"parse": "read_connect"}.get(failure, failure), fail)
     elif failure == "reply":
         request.sendall = fail
-    elif failure == "busy-reply":
-        slots = server.role_slots["GENERATOR"]
+    elif failure in {"busy-reply", "global-busy"}:
+        slots = server.slots if failure == "global-busy" else server.role_slots["GENERATOR"]
         for _ in range(slots._initial_value):
             assert slots.acquire(False)
         request.sendall = fail
+    elif failure == "handler-init":
+        server.RequestHandlerClass = fail
+        server.handle_error = lambda *args: None
     else:
         monkeypatch.setattr(proxy.socketserver.ThreadingTCPServer, "process_request", fail)
     if failure == "thread-start":
@@ -441,12 +445,12 @@ def test_role_and_global_slots_released_after_failure(monkeypatch, failure):
     else:
         server.process_request(request, None)
         assert request.closed.wait(1)
-        # shutdown_request precedes the global slot's finally block.
+        # Join after shutdown so admission cleanup has completed.
         server._threads.join()
-    if failure == "busy-reply":
+    if failure in {"busy-reply", "global-busy"}:
         for _ in range(slots._initial_value):
             slots.release()
-    for slots in [server.slots, *server.role_slots.values()]:
+    for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
         assert slots._value == slots._initial_value
 
 
@@ -547,3 +551,98 @@ def test_doctor_command_fails_loudly_on_timeout_drift():
     assert result.returncode == 1
     assert "CASE_INTELLIGENCE_GENERATOR_TIMEOUT" in result.stdout + result.stderr
     assert "relay" in result.stdout + result.stderr
+
+
+def test_slow_headers_cannot_borrow_role_capacity(monkeypatch):
+    server = relay_server(monkeypatch)
+    held, entered = threading.Event(), threading.Semaphore(0)
+    clients, requests = [], []
+
+    def relay(*args):
+        entered.release()
+        assert held.wait(5)
+
+    def connect(wire=b""):
+        client, accepted = socket.socketpair()
+        clients.append(client)
+        client.settimeout(.5)
+        if wire:
+            client.sendall(wire)
+        server.process_request(accepted, None)
+        return client
+
+    monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
+    monkeypatch.setattr(proxy, "relay", relay)
+    try:
+        for role in ROLES[1:]:
+            for _ in range(proxy.RELAY_LIMITS[role].connections):
+                request = TunnelRequest(role)
+                requests.append(request)
+                server.process_request(request, None)
+                assert entered.acquire(timeout=1)
+        for _ in range(proxy.RELAY_ADMISSION_HEADROOM):
+            connect(b"CONNECT ")
+        overflow = connect()
+        assert overflow.recv(4096) == BUSY, "pre-header overflow must fail fast"
+        for role in ROLES[1:]:
+            client = connect(f"CONNECT {role.lower()}.example.test:443 HTTP/1.1\r\n\r\n".encode())
+            assert client.recv(4096) == BUSY
+        held.set()
+    finally:
+        held.set()
+        for client in clients:
+            client.close()
+        server._threads.join()
+    for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
+        assert slots._value == slots._initial_value
+
+
+@pytest.mark.parametrize("prefix", [b"", b"CONNECT "])
+def test_header_deadline_interrupts_idle_socket(monkeypatch, prefix):
+    monkeypatch.setattr(proxy, "RELAY_HEADER_SECONDS", .05, raising=False)
+    server = relay_server(monkeypatch)
+    client, accepted = socket.socketpair()
+    client.settimeout(.5)
+    client.sendall(prefix)
+    try:
+        server.process_request(accepted, None)
+        assert client.recv(4096).startswith(b"HTTP/1.1 408 Request Timeout")
+        assert client.recv(4096) == b""
+    finally:
+        client.close()
+        server._threads.join()
+    for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
+        assert slots._value == slots._initial_value
+    monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
+    monkeypatch.setattr(proxy, "relay", lambda *a: None)
+    recovered = TunnelRequest("GENERATOR")
+    server.process_request(recovered, None)
+    assert recovered.closed.wait(1)
+    server._threads.join()
+    assert bytes(recovered.sent).startswith(b"HTTP/1.1 200")
+    assert server.header_slots._value == proxy.RELAY_ADMISSION_HEADROOM
+
+
+def test_header_reads_share_one_deadline(monkeypatch):
+    clock, timeouts = [0.0], []
+    monkeypatch.setattr(proxy, "RELAY_HEADER_SECONDS", 1, raising=False)
+    monkeypatch.setattr(proxy.time, "monotonic", lambda: clock[0])
+
+    class Trickle(TunnelRequest):
+        def settimeout(self, value):
+            timeouts.append(value)
+
+        def recv(self, size):
+            clock[0] += .4
+            return b"C"
+
+    client = Trickle()
+    with pytest.raises(TimeoutError):
+        proxy.read_connect(client, ("oidc.example.test", 443), client.settimeout)
+    assert timeouts == pytest.approx([1, .6, .2])
+
+
+def test_header_budget_is_shared_and_short():
+    from case_intelligence import oidc_network_policy as policy
+    assert proxy.RELAY_HEADER_SECONDS == policy.RELAY_HEADER_SECONDS == 10
+    assert proxy.RELAY_ADMISSION_HEADROOM == policy.RELAY_ADMISSION_HEADROOM == 4

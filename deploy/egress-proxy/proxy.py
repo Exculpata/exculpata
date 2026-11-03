@@ -1,6 +1,7 @@
 """Bounded CONNECT relay. It does not decrypt TLS or authorize OIDC URL paths."""
 from __future__ import annotations
 
+from contextlib import ExitStack
 import ipaddress
 import json
 import os
@@ -14,7 +15,7 @@ import threading
 import time
 from case_intelligence.oidc_network_policy import (
     Denied, authority, issuer_authority, issuer_pins, normalized_issuer, pinnable, public_ip,
-    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM,
+    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_SECONDS,
 )
 
 
@@ -85,14 +86,24 @@ def dial(host: str, port: int, pins=frozenset()):
     raise Denied("destination unavailable")
 
 
-def read_connect(client, allowed):
+class HeaderTimeout(TimeoutError):
+    pass
+
+
+def read_connect(client, allowed, set_timeout=None):
     header = bytearray()
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + RELAY_HEADER_SECONDS
     # Read only through the delimiter; never consume initial TLS bytes.
     while not header.endswith(b"\r\n\r\n"):
-        if time.monotonic() >= deadline:
-            raise Denied("request deadline")
-        value = client.recv(1)
+        timeout = deadline - time.monotonic()
+        if timeout <= 0:
+            raise HeaderTimeout("request deadline")
+        if set_timeout is not None:
+            set_timeout(timeout)
+        try:
+            value = client.recv(1)
+        except TimeoutError:
+            raise HeaderTimeout("request deadline") from None
         if not value or len(header) >= 8192:
             raise Denied("invalid request")
         header.extend(value)
@@ -132,39 +143,44 @@ def relay(client, upstream, limits=RELAY_LIMITS["OIDC"]):
             remaining -= len(data)
 
 
-def busy(client):
+def reject(client, status=b"503 Service Unavailable"):
     try:
         client.settimeout(0.1)
-        client.sendall(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        client.sendall(b"HTTP/1.1 " + status + b"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
     except OSError:
         pass
 
 
 class Handler(socketserver.BaseRequestHandler):
+    def __init__(self, request, client_address, server, header_admission=None):
+        self.header_admission = header_admission
+        super().__init__(request, client_address, server)
+
     def handle(self):
         client = self.request
-        client.settimeout(5)
         established = False
         acquired = None
         try:
-            destination = read_connect(client, self.server.allowed)
+            destination = read_connect(client, self.server.allowed, client.settimeout)
             role = self.server.roles.get(destination, "OIDC")
             slots = self.server.role_slots[role]
             if not slots.acquire(blocking=False):
-                busy(client)
+                reject(client)
                 return
             acquired = slots
+            if self.header_admission is not None:
+                self.header_admission.close()
+            client.settimeout(5)
             pins = self.server.allowed[destination] if isinstance(self.server.allowed, dict) else self.server.pins
             with dial(*destination, pins) as upstream:
                 client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 established = True
                 relay(client, upstream, RELAY_LIMITS[role])
+        except HeaderTimeout:
+            reject(client, b"408 Request Timeout")
         except (OSError, ValueError):
             if not established:
-                try:
-                    client.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-                except OSError:
-                    pass
+                reject(client, b"403 Forbidden")
         finally:
             if acquired is not None:
                 acquired.release()
@@ -183,12 +199,16 @@ class Server(socketserver.ThreadingTCPServer):
         self.role_slots = {role: threading.BoundedSemaphore(limit.connections)
                            for role, limit in RELAY_LIMITS.items()}
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        self.header_slots = threading.BoundedSemaphore(RELAY_ADMISSION_HEADROOM)
         super().__init__(address, Handler)
 
     def process_request(self, request, client_address):
-        if not self.slots.acquire(blocking=False):
+        header_acquired = self.header_slots.acquire(blocking=False)
+        if not header_acquired or not self.slots.acquire(blocking=False):
+            if header_acquired:
+                self.header_slots.release()
             try:
-                busy(request)
+                reject(request)
             finally:
                 self.shutdown_request(request)
             return
@@ -196,13 +216,18 @@ class Server(socketserver.ThreadingTCPServer):
             super().process_request(request, client_address)
         except BaseException:
             self.slots.release()
+            self.header_slots.release()
             raise
 
     def process_request_thread(self, request, client_address):
-        try:
-            super().process_request_thread(request, client_address)
-        finally:
-            self.slots.release()
+        with ExitStack() as cleanup, ExitStack() as header_admission:
+            cleanup.callback(self.slots.release)
+            cleanup.callback(self.shutdown_request, request)
+            header_admission.callback(self.header_slots.release)
+            try:
+                self.RequestHandlerClass(request, client_address, self, header_admission)
+            except Exception:
+                self.handle_error(request, client_address)
 
 
 # Operator-configured relay destinations: (exact HTTPS URL setting, reviewed pins setting).
