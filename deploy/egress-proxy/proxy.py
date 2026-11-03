@@ -14,8 +14,8 @@ import sys
 import threading
 import time
 from case_intelligence.oidc_network_policy import (
-    Denied, authority, issuer_authority, issuer_pins, normalized_issuer, pinnable, public_ip,
-    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_SECONDS,
+    Denied, authority, issuer_authority, issuer_pins, pinnable, public_ip,
+    validated_https_url, RELAY_LIMITS, RELAY_ADMISSION_HEADROOM, RELAY_HEADER_CONNECTIONS, RELAY_HEADER_SECONDS,
 )
 
 
@@ -199,7 +199,7 @@ class Server(socketserver.ThreadingTCPServer):
         self.role_slots = {role: threading.BoundedSemaphore(limit.connections)
                            for role, limit in RELAY_LIMITS.items()}
         self.slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
-        self.header_slots = threading.BoundedSemaphore(RELAY_ADMISSION_HEADROOM)
+        self.header_slots = threading.BoundedSemaphore(RELAY_HEADER_CONNECTIONS)
         super().__init__(address, Handler)
 
     def process_request(self, request, client_address):
@@ -220,9 +220,10 @@ class Server(socketserver.ThreadingTCPServer):
             raise
 
     def process_request_thread(self, request, client_address):
-        with ExitStack() as cleanup, ExitStack() as header_admission:
-            cleanup.callback(self.slots.release)
+        with ExitStack() as cleanup:
             cleanup.callback(self.shutdown_request, request)
+            cleanup.callback(self.slots.release)
+            header_admission = cleanup.enter_context(ExitStack())
             header_admission.callback(self.header_slots.release)
             try:
                 self.RequestHandlerClass(request, client_address, self, header_admission)

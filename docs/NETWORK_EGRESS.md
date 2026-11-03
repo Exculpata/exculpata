@@ -223,18 +223,19 @@ slots, operation timeouts and byte limits. The shared constants in
 
 Role slots are acquired after CONNECT validation and before DNS, and released
 on completion or failure. At most 16 connections, including header parsing,
-are admitted: twelve role slots plus a separate four-connection pre-header
-budget (`RELAY_ADMISSION_HEADROOM`). A connection reserves that budget before
+are admitted. The separate pre-header budget (`RELAY_HEADER_CONNECTIONS`)
+covers a burst spanning all twelve role slots and shares the global cap of 16;
+`RELAY_ADMISSION_HEADROOM` remains four. A connection reserves that budget before
 starting a worker and releases it when it acquires a role slot, or on failure.
-Incomplete headers cannot borrow role capacity. Busy model tunnels cannot use
+Incomplete headers never acquire role slots. Busy model tunnels cannot use
 the two OIDC slots. Exhausted admission or role caps
 return `HTTP/1.1 503 Service Unavailable` with `Content-Length: 0`, then close;
 rejection responses have a 0.1-second write timeout. Headers must finish within
 one ten-second `RELAY_HEADER_SECONDS` budget, including blocked reads; arriving
 bytes do not reset it. Expiry returns `HTTP/1.1 408 Request Timeout` with
 `Content-Length: 0`, closes the connection and releases admission. A full
-pre-header budget also rejects valid CONNECTs promptly with 503; retry after
-capacity is released. It does not queue requests behind busy model tunnels.
+pre-header budget occupied by slow clients also rejects valid CONNECTs promptly
+with 503. It does not queue requests behind busy model tunnels.
 Embedding and rerank each admit three concurrent requests with one additional
 slot, without increasing total admission or using the reserved OIDC slots.
 

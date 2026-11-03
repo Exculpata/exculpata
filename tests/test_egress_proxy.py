@@ -308,7 +308,11 @@ def test_slot_exhaustion_and_failure_release_without_listener(monkeypatch):
     server.slots = threading.BoundedSemaphore(1)
     server.header_slots = threading.BoundedSemaphore(1)
     closed, started = [], []
-    monkeypatch.setattr(server, "shutdown_request", lambda request: closed.append(request))
+    def shutdown(request):
+        closed.append(request)
+        if request == "first":
+            assert server.header_slots._value == server.slots._value == 1, "admission releases must precede shutdown together"
+    monkeypatch.setattr(server, "shutdown_request", shutdown)
     monkeypatch.setattr(proxy.socketserver.ThreadingTCPServer, "process_request",
                         lambda *args: started.append(args[1]))
     server.process_request("first", None)
@@ -553,7 +557,56 @@ def test_doctor_command_fails_loudly_on_timeout_drift():
     assert "relay" in result.stdout + result.stderr
 
 
-def test_slow_headers_cannot_borrow_role_capacity(monkeypatch):
+def read_status(client, seconds=1):
+    deadline, response = time.monotonic() + seconds, b""
+    while b"\r\n\r\n" not in response and time.monotonic() < deadline:
+        client.settimeout(max(.001, deadline - time.monotonic()))
+        try:
+            chunk = client.recv(4096)
+        except (TimeoutError, ConnectionResetError):
+            break
+        if not chunk:
+            break
+        response += chunk
+    return response
+
+
+def test_complete_role_capacity_bursts_are_admitted(monkeypatch):
+    allowed = proxy.configured_destinations({
+        "OIDC_ISSUER": "https://oidc.example.test",
+        **{role + "_EGRESS_URL": f"https://{role.lower()}.example.test" for role in ROLES[1:]},
+    })
+    monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
+    results = []
+    for attempt in range(20):
+        held, clients = threading.Event(), []
+        monkeypatch.setattr(proxy, "relay", lambda *a: held.wait(5))
+        with proxy.Server(("127.0.0.1", 0), allowed) as server:
+            server.daemon_threads = False
+            roles = [role for role in ROLES for _ in range(proxy.RELAY_LIMITS[role].connections)]
+            try:
+                for role in roles:
+                    client = socket.create_connection(server.server_address, timeout=1)
+                    clients.append(client)
+                    client.sendall(f"CONNECT {role.lower()}.example.test:443 HTTP/1.1\r\n\r\n".encode())
+                # All complete requests are queued before the real accept loop runs.
+                for _ in clients:
+                    server.handle_request()
+                results.extend((attempt, role, read_status(client)) for role, client in zip(roles, clients))
+            finally:
+                held.set()
+                for client in clients:
+                    client.close()
+                server._threads.join()
+            for slots in [server.header_slots, server.slots, *server.role_slots.values()]:
+                assert slots._value == slots._initial_value
+    failures = [(attempt, role, reply) for attempt, role, reply in results
+                if reply != b"HTTP/1.1 200 Connection Established\r\n\r\n"]
+    assert not failures, f"complete role-capacity bursts must get 200, never 503 with free role slots: {failures}"
+
+
+@pytest.mark.parametrize("busy", [True, False], ids=["busy-roles", "free-roles"])
+def test_slow_headers_cannot_borrow_role_capacity(monkeypatch, busy):
     server = relay_server(monkeypatch)
     held, entered = threading.Event(), threading.Semaphore(0)
     clients, requests = [], []
@@ -574,20 +627,35 @@ def test_slow_headers_cannot_borrow_role_capacity(monkeypatch):
     monkeypatch.setattr(proxy, "dial", lambda *a: io.BytesIO())
     monkeypatch.setattr(proxy, "relay", relay)
     try:
-        for role in ROLES[1:]:
+        for role in ROLES[1:] if busy else ():
             for _ in range(proxy.RELAY_LIMITS[role].connections):
                 request = TunnelRequest(role)
                 requests.append(request)
                 server.process_request(request, None)
                 assert entered.acquire(timeout=1)
-        for _ in range(proxy.RELAY_ADMISSION_HEADROOM):
+        role_values = {role: slots._value for role, slots in server.role_slots.items()}
+        slow_count = min(server.header_slots._initial_value, server.slots._value) if busy else 3
+        for _ in range(slow_count):
             connect(b"CONNECT ")
-        overflow = connect()
-        assert overflow.recv(4096) == BUSY, "pre-header overflow must fail fast"
-        for role in ROLES[1:]:
-            client = connect(f"CONNECT {role.lower()}.example.test:443 HTTP/1.1\r\n\r\n".encode())
-            assert client.recv(4096) == BUSY
-        held.set()
+        assert server.header_slots._value == server.header_slots._initial_value - slow_count
+        assert {role: slots._value for role, slots in server.role_slots.items()} == role_values, "slow headers must not take role slots"
+        if busy:
+            overflow = connect()
+            assert read_status(overflow) == BUSY, "pre-header overflow must return 503 before the read deadline"
+            for role in ROLES[1:]:
+                client = connect(f"CONNECT {role.lower()}.example.test:443 HTTP/1.1\r\n\r\n".encode())
+                assert read_status(client) == BUSY, "busy model CONNECT must return 503 before the read deadline"
+        else:
+            request = TunnelRequest("GENERATOR")
+            server.process_request(request, None)
+            assert entered.acquire(timeout=1), "model CONNECT must enter relay alongside three slow headers"
+            assert bytes(request.sent).startswith(b"HTTP/1.1 200"), "free model CONNECT must get 200"
+            held.set()
+            assert request.closed.wait(1)
+            assert {role: slots._value for role, slots in server.role_slots.items()} == role_values
+            for _ in range(3, server.header_slots._initial_value):
+                connect(b"CONNECT ")
+            assert read_status(connect()) == BUSY, "full header budget must return 503 with free role slots"
     finally:
         held.set()
         for client in clients:
@@ -606,7 +674,7 @@ def test_header_deadline_interrupts_idle_socket(monkeypatch, prefix):
     client.sendall(prefix)
     try:
         server.process_request(accepted, None)
-        assert client.recv(4096).startswith(b"HTTP/1.1 408 Request Timeout")
+        assert read_status(client).startswith(b"HTTP/1.1 408 Request Timeout"), "idle or partial header must return 408 before the read deadline"
         assert client.recv(4096) == b""
     finally:
         client.close()
@@ -620,7 +688,7 @@ def test_header_deadline_interrupts_idle_socket(monkeypatch, prefix):
     assert recovered.closed.wait(1)
     server._threads.join()
     assert bytes(recovered.sent).startswith(b"HTTP/1.1 200")
-    assert server.header_slots._value == proxy.RELAY_ADMISSION_HEADROOM
+    assert server.header_slots._value == proxy.RELAY_HEADER_CONNECTIONS
 
 
 def test_header_reads_share_one_deadline(monkeypatch):
@@ -646,3 +714,4 @@ def test_header_budget_is_shared_and_short():
     from case_intelligence import oidc_network_policy as policy
     assert proxy.RELAY_HEADER_SECONDS == policy.RELAY_HEADER_SECONDS == 10
     assert proxy.RELAY_ADMISSION_HEADROOM == policy.RELAY_ADMISSION_HEADROOM == 4
+    assert proxy.RELAY_HEADER_CONNECTIONS == policy.RELAY_HEADER_CONNECTIONS == 12
