@@ -1,0 +1,149 @@
+{% macro coverage_report(report) -%}
+{% set eligible = report.eligible_source_count %}
+<section class="coverage-report" aria-labelledby="coverage-report-heading">
+  <h3 id="coverage-report-heading">Coverage report</h3>
+
+  <p class="coverage-report-scope">
+    <strong>Scope:</strong>
+    {{ "{:,}".format(report.catalog_source_count) }} catalog sources in {{ report.matter_scope.label }};
+    {{ "{:,}".format(eligible) }} sources were eligible after
+    {% if report.filters %}{{ report.filters | join(", ") }}{% else %}no source filters{% endif %}.
+  </p>
+
+  <p class="coverage-report-activity">
+    <strong>Activity:</strong>
+    {{ report.search_lanes | join(", ") }} lanes searched
+    {{ "{:,}".format(report.searched_source_count) }} of {{ "{:,}".format(eligible) }} eligible sources.
+    Extracted text was supplied from {{ "{:,}".format(report.model_read_full_count) }} of
+    {{ "{:,}".format(eligible) }} eligible sources.
+    {% if report.ocr %}
+    OCR was attempted for {{ report.ocr.attempted }} of {{ "{:,}".format(eligible) }} eligible sources;
+    it returned retained text for {{ report.ocr.returned }} of {{ report.ocr.attempted }} attempted sources.
+    {% endif %}
+  </p>
+
+  <div class="coverage-report-limitations">
+    <strong>Limitations:</strong>
+    {% if report.model_read_partial_count %}
+    {{ report.model_read_partial_count }} of {{ "{:,}".format(eligible) }} eligible sources were partly supplied.
+    {% endif %}
+    {% if report.model_read_skipped_count %}
+    {{ report.model_read_skipped_count }} of {{ "{:,}".format(eligible) }} eligible sources were skipped.
+    {% endif %}
+    {% if report.pending_source_count %}
+    {{ report.pending_source_count }} of {{ "{:,}".format(eligible) }} eligible sources were pending.
+    {% endif %}
+    {% if report.changed_during_query_count %}
+    {{ report.changed_during_query_count }} of {{ "{:,}".format(report.catalog_source_count) }} catalog sources changed during the query.
+    {% endif %}
+    {% if report.failed_source_count %}
+    {{ report.failed_source_count }} of {{ "{:,}".format(eligible) }} eligible sources failed at a processing stage.
+    {% endif %}
+    {% if report.ocr and report.ocr.failed %}
+    OCR failed for {{ report.ocr.failed }} of {{ report.ocr.attempted }} attempted sources.
+    {% endif %}
+    {% if report.ocr and report.ocr.skipped %}
+    OCR skipped ranges for {{ report.ocr.skipped }} of {{ report.ocr.attempted }} attempted sources.
+    {% endif %}
+    <ul>
+      {% for limitation in report.limitations %}<li>{{ limitation }}</li>{% endfor %}
+    </ul>
+  </div>
+
+  {% if report.record_type_coverage %}
+  <div class="coverage-report-candidates">
+    <strong>Extracted records:</strong>
+    <ul>
+      {% for record_type in report.record_type_coverage %}
+      <li>{{ record_type.produced }} {{ record_type.label }} records are candidate for attorney review.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <p class="coverage-report-recall">
+    {% if report.measured_recall %}
+    <strong>Measured recall{% if report.measured_recall.label %} for {{ report.measured_recall.label }}{% endif %}:</strong>
+    {{ report.measured_recall.estimate }}
+    ({{ report.measured_recall.interval_level }} interval: {{ report.measured_recall.interval }}),
+    based on {{ report.measured_recall.method }} with a sample size of
+    {{ report.measured_recall.sample_size }} on {{ report.measured_recall.measurement_date }}.
+    {% else %}
+    <strong>Measured recall:</strong> not measured.
+    {% endif %}
+  </p>
+
+  <details class="coverage-report-details">
+    <summary>Coverage report details</summary>
+    <div>
+      <p class="visually-hidden">Coverage counts and reasons</p>
+      <p><strong>Search lanes:</strong> {{ report.search_lanes | join(", ") }}.</p>
+      <p><strong>Filters:</strong> {% if report.filters %}{{ report.filters | join(", ") }}{% else %}None{% endif %}.</p>
+      <ul>
+        <li>Catalog scope: {{ "{:,}".format(report.catalog_source_count) }} sources.</li>
+        <li>Eligible: {{ "{:,}".format(eligible) }} of {{ "{:,}".format(report.catalog_source_count) }} catalog sources.</li>
+        <li>Searched: {{ "{:,}".format(report.searched_source_count) }} of {{ "{:,}".format(eligible) }} eligible sources.</li>
+        <li>Extracted text supplied: {{ "{:,}".format(report.model_read_full_count) }} of {{ "{:,}".format(eligible) }} eligible sources.</li>
+        <li>
+          Partly supplied: {{ report.model_read_partial_count }} of {{ "{:,}".format(eligible) }} eligible sources.
+          {% if report.model_read_partial_reasons %}
+          <ul>{% for reason in report.model_read_partial_reasons %}<li>{{ reason.count }} of {{ report.model_read_partial_count }} partly supplied sources: {{ reason.label }}.</li>{% endfor %}</ul>
+          {% endif %}
+        </li>
+        <li>
+          Skipped: {{ report.model_read_skipped_count }} of {{ "{:,}".format(eligible) }} eligible sources.
+          {% if report.model_read_skipped_reasons %}
+          <ul>{% for reason in report.model_read_skipped_reasons %}<li>{{ reason.count }} of {{ report.model_read_skipped_count }} skipped sources: {{ reason.label }}.</li>{% endfor %}</ul>
+          {% endif %}
+        </li>
+        <li>Pending: {{ report.pending_source_count }} of {{ "{:,}".format(eligible) }} eligible sources.</li>
+        <li>Changed during query: {{ report.changed_during_query_count }} of {{ "{:,}".format(report.catalog_source_count) }} catalog sources.</li>
+        <li>
+          Failed: {{ report.failed_source_count }} of {{ "{:,}".format(eligible) }} eligible sources.
+          {% if report.failed_source_reasons %}
+          <ul>{% for reason in report.failed_source_reasons %}<li>{{ reason.count }} of {{ report.failed_source_count }} failed sources: {{ reason.label }}.</li>{% endfor %}</ul>
+          {% endif %}
+        </li>
+      </ul>
+
+      {% if report.ocr %}
+      <p><strong>OCR activity:</strong></p>
+      <ul>
+        <li>Attempted: {{ report.ocr.attempted }} of {{ "{:,}".format(eligible) }} eligible sources.</li>
+        <li>Returned retained text: {{ report.ocr.returned }} of {{ report.ocr.attempted }} attempted sources.</li>
+        <li>Failed: {{ report.ocr.failed }} of {{ report.ocr.attempted }} attempted sources.</li>
+        <li>
+          Skipped ranges: {{ report.ocr.skipped }} of {{ report.ocr.attempted }} attempted sources.
+          {% if report.ocr.skipped_reasons %}
+          <ul>{% for reason in report.ocr.skipped_reasons %}<li>{{ reason.count }} of {{ report.ocr.skipped }} skipped sources: {{ reason.label }}.</li>{% endfor %}</ul>
+          {% endif %}
+        </li>
+      </ul>
+      {% endif %}
+
+      <p><strong>Record types:</strong></p>
+      <ul>
+        {% for record_type in report.record_type_coverage %}
+        <li>
+          {{ record_type.label }} (schema {{ record_type.schema_version }}):
+          attempted for {{ record_type.attempted }} of {{ "{:,}".format(eligible) }} eligible sources;
+          {{ record_type.produced }} records produced from {{ record_type.attempted }} attempted sources,
+          each a candidate for attorney review; {{ record_type.skipped }} of {{ record_type.attempted }} attempted sources skipped;
+          {{ record_type.failed }} of {{ record_type.attempted }} attempted sources failed.
+        </li>
+        {% endfor %}
+      </ul>
+
+      <p>
+        {% if report.measured_recall %}
+        <strong>Measured recall:</strong> sample size {{ report.measured_recall.sample_size }};
+        {{ report.measured_recall.interval_level }} interval {{ report.measured_recall.interval }};
+        measured {{ report.measured_recall.measurement_date }}.
+        {% else %}
+        <strong>Measured recall:</strong> not measured.
+        {% endif %}
+      </p>
+    </div>
+  </details>
+</section>
+{%- endmacro %}
