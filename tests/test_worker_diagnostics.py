@@ -56,7 +56,10 @@ def test_bounded_worker_exit_proof(tmp_path, body, expected, code, sig):
         assert 'worker restarting disabled' in result.stdout
     if body == 'time.sleep(10)':
         assert 'Timeout (0:00:01)!' in result.stderr
-        assert report['active']['phase_seconds'] >= 1
+        phase_seconds = report['active']['phase_seconds']
+        assert isinstance(phase_seconds, (int, float)) and phase_seconds > 0
+        # #460: allow half the timeout while the timeout and phase clocks start separately.
+        assert phase_seconds >= 0.5
     assert 'limits' in json.loads((directory / 'runner-start.json').read_text())
     assert (directory / 'runner-end.json').is_file()
 
