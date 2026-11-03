@@ -11,6 +11,7 @@ import statistics
 import subprocess
 import sys
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 REPOSITORY = "Exculpata/exculpata"
 BASE = f"repos/{REPOSITORY}"
@@ -157,11 +158,19 @@ def green_gap(runs, queued):
     return (queued - green).total_seconds() / 60
 
 
-def summarize(data, since, until):
+def is_dependency_bot_run(run):
+    return (run.get("actor") or {}).get("login") == "dependabot[bot]" or (run.get("head_branch") or "").startswith("dependabot/")
+
+
+def summarize(data, since, until, report_zone=timezone.utc):
     weeks = []
-    monday = (since - timedelta(days=since.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    while monday < until:
-        start, end = max(since, monday), min(until, monday + timedelta(days=7))
+    local_since = since.astimezone(report_zone)
+    monday = (local_since - timedelta(days=local_since.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    while monday.astimezone(timezone.utc) < until:
+        next_monday = monday + timedelta(days=7)
+        monday_utc = monday.astimezone(timezone.utc)
+        next_monday_utc = next_monday.astimezone(timezone.utc)
+        start, end = max(since, monday_utc), min(until, next_monday_utc)
         merged = [pr for pr in data["pulls"] if pr["merged_at"] and start <= timestamp(pr["merged_at"]) < end]
         tested, comments, gaps = {}, {}, []
         drops = 0
@@ -185,19 +194,22 @@ def summarize(data, since, until):
                     gap = green_gap(runs, when)
                     if gap is not None:
                         gaps.append(gap)
-        durations, workflows = [], {}
+        durations, workflows, dependency_durations = [], {}, []
         for run in data["runs"]:
             if (run["status"] == "completed" and run.get("run_started_at")
                     and start <= timestamp(run["created_at"]) < end
                     and timestamp(run["run_started_at"]) <= timestamp(run["updated_at"]) <= until):
                 duration = (timestamp(run["updated_at"]) - timestamp(run["run_started_at"])).total_seconds() / 60
-                durations.append(duration)
-                workflows.setdefault(run["name"], []).append(duration)
+                if is_dependency_bot_run(run):
+                    dependency_durations.append(duration)
+                else:
+                    durations.append(duration)
+                    workflows.setdefault(run["name"], []).append(duration)
         weeks.append({
             "week_start": monday.date().isoformat(),
             "window_start": start.isoformat(),
             "window_end": end.isoformat(),
-            "partial": start != monday or end != monday + timedelta(days=7) or end == until,
+            "partial": start != monday_utc or end != next_monday_utc or end == until,
             "merged_prs": len(merged),
             "open_to_merge_hours_median": median([(timestamp(p["merged_at"]) - timestamp(p["created_at"])).total_seconds() / 3600 for p in merged]),
             "commits_tested_per_pr": tested,
@@ -206,9 +218,10 @@ def summarize(data, since, until):
             "green_to_queue_samples": len(gaps),
             **duration_metrics(durations),
             "ci_duration_minutes_by_workflow": {name: duration_metrics(values) for name, values in sorted(workflows.items())},
+            "dependency_bot_runs": duration_metrics(dependency_durations),
             "merge_queue_drops": drops,
         })
-        monday += timedelta(days=7)
+        monday = next_monday
     return {"repository": REPOSITORY, "since": since.isoformat(), "until": until.isoformat(),
             "measurement": "Retained Actions history; green and durations are proxies. See docs/VELOCITY_REPORT.md.",
             "weeks": weeks}
@@ -228,26 +241,38 @@ def error_message(exc):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     until = datetime.now(timezone.utc)
-    previous_monday = (until - timedelta(days=until.weekday() + 7)).date().isoformat()
-    parser.add_argument("--since", default=previous_monday,
-                        help="inclusive UTC date or timezone-qualified ISO timestamp (default: Monday of the previous full week)")
+    parser.add_argument("--since",
+                        help="inclusive local date or timezone-qualified ISO timestamp (default: Monday of the previous full week)")
+    parser.add_argument("--timezone", default="America/New_York",
+                        help="IANA time zone for week boundaries (default: America/New_York)")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     args = parser.parse_args(argv)
     try:
-        since = timestamp(args.since)
+        report_zone = ZoneInfo(args.timezone)
+    except ZoneInfoNotFoundError:
+        parser.exit(2, f"error: unknown timezone: {args.timezone}\n")
+    local_now = until.astimezone(report_zone)
+    previous_monday = (local_now - timedelta(days=local_now.weekday() + 7)).date().isoformat()
+    since_value = args.since or previous_monday
+    try:
+        if len(since_value) == 10:
+            since = datetime.fromisoformat(since_value).replace(tzinfo=report_zone).astimezone(timezone.utc)
+        else:
+            since = timestamp(since_value)
         if since >= until:
             raise ValueError("--since must be before now")
     except ValueError as exc:
         parser.error(str(exc))
     try:
-        result = summarize(collect(since), since, until)
+        result = summarize(collect(since), since, until, report_zone)
     except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
         print(f"Velocity report unavailable ({type(exc).__name__}): {error_message(exc)}", file=sys.stderr)
         return 1
+    result["timezone"] = args.timezone
     if args.json:
         print(json.dumps(result, indent=2))
     else:
-        print(f"{REPOSITORY} weekly velocity (UTC)\n{result['measurement']}")
+        print(f"{REPOSITORY} weekly velocity ({args.timezone})\n{result['measurement']}")
         for week in result["weeks"]:
             status = "partial" if week["partial"] else "full"
             print(f"\nWeek {week['week_start']} ({status}: {week['window_start']} to {week['window_end']})")

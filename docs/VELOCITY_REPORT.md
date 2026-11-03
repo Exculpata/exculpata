@@ -4,21 +4,27 @@ Run from the checkout with Python 3.12+ and an authenticated GitHub CLI:
 
 ```console
 python scripts/velocity-report.py --since 2026-10-01
-python scripts/velocity-report.py --since 2026-10-01T00:00:00Z --json
+python scripts/velocity-report.py --since 2026-10-01T00:00:00Z --timezone UTC --json
 ```
 
 The repository is fixed to `Exculpata/exculpata`. The script only reads REST
 endpoints and a GraphQL query through `gh api`; it does not change GitHub or
 handle credentials. Use your existing CLI authentication with repository and
-Actions read access. No third-party Python packages are needed.
+Actions read access. No third-party Python packages are needed. A live-repository
+report typically takes about 5 minutes, depending on the selected window and API
+history.
 
-Weeks start Monday at 00:00 UTC. `--since` is inclusive and defaults to the Monday
-of the previous full week at midnight UTC; collection time is exclusive. For
-example, a run on Friday 2026-10-23 defaults to 2026-10-12, covering the previous
-full week and the current week to date.
+Weeks start Monday at 00:00 in the IANA zone selected by `--timezone`, which
+defaults to `America/New_York`. Use `--timezone UTC` for the former UTC windows.
+`--since` is inclusive and defaults to the Monday of the previous full local
+week; an unqualified date is midnight in the selected zone, while a qualified
+ISO timestamp retains its stated offset. Collection time is exclusive. Stored
+and reported timestamps remain UTC ISO values. For example, a run on Friday
+2026-10-23 with the default zone starts at `2026-10-12T04:00:00+00:00`.
 
-Each JSON week includes `window_start` (inclusive) and `window_end` (exclusive)
-as UTC ISO timestamps, plus the boolean `partial`. A week is partial when its
+JSON includes the selected `timezone`; each week includes `week_start`,
+`window_start` (inclusive), `window_end` (exclusive), and the boolean `partial`.
+The window bounds are UTC ISO timestamps. A week is partial when its
 window is shorter than Monday to the next Monday or ends at the report's current
 time cutoff. Text headers show the same bounds and `partial` or `full`, for
 example `Week 2026-10-12 (partial: 2026-10-16T00:00:00+00:00 to
@@ -43,12 +49,15 @@ JSON), never a fabricated zero.
   enqueue. Missing, failed or unfinished observations produce no gap sample.
   External status checks, workflows not yet started and historical required-check
   configuration are unavailable. Re-enqueues are separate samples.
-- **CI duration:** median and nearest-rank p90 minutes for completed repository
-  Actions runs created that week, both overall and split by workflow name in
-  `ci_duration_minutes_by_workflow`, regardless of event or conclusion. Duration is
-  `updated_at - run_started_at`, an API approximation that excludes initial queue
-  wait and may include later metadata updates. Only the latest retained attempt
-  per run is available; unfinished runs are excluded.
+- **CI duration:** `ci_runs`, `ci_duration_minutes_median`, and nearest-rank
+  `ci_duration_minutes_p90` cover completed non-dependency-bot Actions runs
+  created that week. `ci_duration_minutes_by_workflow` splits the same sample by
+  workflow name. Runs whose actor is `dependabot[bot]` or whose branch begins
+  `dependabot/` are excluded from those headline figures and reported in the
+  `dependency_bot_runs` duration block. Duration is `updated_at -
+  run_started_at`, an API approximation that excludes initial queue wait and may
+  include later metadata updates. Only the latest retained attempt per run is
+  available; unfinished runs are excluded.
 - **Merge queue drops:** removal timeline events that week, excluding events whose
   GraphQL `reason` is `merged`. Repeated removals and PRs still open or closed
   without merging count; a later merge does not erase earlier drops. No failure
@@ -67,7 +76,8 @@ a 250-commit maximum; larger PRs or incomplete commit lists also fail explicitly
 API failures return nonzero with no partial report and include the exception
 message with GitHub token values redacted; raw CLI stderr is never printed.
 Offline tests replace one `gh_json` boundary with synthetic JSON; no live access
-is needed for tests.
+is needed for tests. This reporting supports measured recall and is local-first
+by default; it does not promise complete historical reconstruction.
 
 API definitions: [workflow runs](https://docs.github.com/en/rest/actions/workflow-runs),
 [PR commits](https://docs.github.com/en/rest/pulls/pulls#list-commits-on-a-pull-request)
