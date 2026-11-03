@@ -8703,3 +8703,21 @@ path = "src/case_intelligence/tier_evals.py"
 kind = "host"
 digest = "ec50ebc39ac3c25797998c3b4fbf80d6f12726686d8c5f1034ef50b7a4a9cba1"
 detail = "retrieval.json"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
+detail = "attachment.txt"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "1812b5ebbd66633b5ec0058a8b480e6b89bdb74039eba30da36a564f3319ffa3"
+detail = "suite.json"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
