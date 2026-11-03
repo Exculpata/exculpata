@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 import json
@@ -22,12 +22,10 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,20 +100,10 @@ def main():
             def ready():
                 wait.until(lambda d: d.execute_script('return document.readyState') == 'complete')
 
-            def detached(element):
-                try:
-                    return EC.staleness_of(element)(driver)
-                except WebDriverException as exc:
-                    # Some ChromeDriver versions report detached navigation nodes
-                    # as an inspector error instead of StaleElementReferenceException.
-                    if 'Node with given id does not belong to the document' not in exc.msg:
-                        raise
-                    return True
-
             def go(path):
                 old = driver.find_element(By.TAG_NAME, 'html')
                 navigate_to(driver, base + path, diagnostics=args.output)
-                wait.until(lambda _: detached(old))
+                wait_for_replacement(driver, wait, old)
                 ready()
 
             def click_element(element, navigation=True):
@@ -123,7 +111,7 @@ def main():
                 wait.until(lambda d: d.execute_script('const r=arguments[0].getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight;', element))
                 element.click()
                 if navigation:
-                    wait.until(lambda _: detached(element))
+                    wait_for_replacement(driver, wait, element)
                     ready()
 
             def click(selector, navigation=True):
@@ -166,7 +154,7 @@ def main():
             assert len(rows()) == 1 and 'notes.txt' in rows()[0].text
             old = driver.find_element(By.TAG_NAME, 'html')
             refresh_page(driver, wait)
-            wait.until(lambda _: detached(old))
+            wait_for_replacement(driver, wait, old)
             ready()
             assert len(rows()) == 1
             click('.source-folder-parent')
@@ -208,7 +196,7 @@ def main():
             assert driver.switch_to.active_element == source_links[1]
             old = driver.find_element(By.TAG_NAME, 'html')
             driver.switch_to.active_element.send_keys(Keys.ENTER)
-            wait.until(lambda _: detached(old))
+            wait_for_replacement(driver, wait, old)
             ready()
             assert 'nested northern interview notes' in driver.find_element(By.TAG_NAME, 'body').text
             assert driver.find_element(By.CSS_SELECTOR, '[data-source-browser] a[aria-current]').text.startswith('notes.txt')

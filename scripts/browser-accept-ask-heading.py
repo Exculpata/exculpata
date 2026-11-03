@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -25,7 +25,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 from demo import require_response, seed_demo
@@ -78,7 +77,7 @@ def main():
                         one('.matter-section-disclosure > summary').click()
                     driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', element)
                     element.send_keys(Keys.ENTER)
-                    wait.until(EC.staleness_of(old))
+                    wait_for_replacement(driver, wait, old)
                     wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
 
                 def current_section(label):

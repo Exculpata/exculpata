@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -103,7 +103,7 @@ def main():
                 return button
             def submit(driver, selector):
                 button = click(driver, selector)
-                WebDriverWait(driver, 20).until(EC.staleness_of(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
             def body(driver):
                 return driver.find_element(By.TAG_NAME, 'body').text
 
@@ -204,7 +204,7 @@ def main():
             def delete(driver, identifier):
                 button = click(driver, f'#{identifier} .danger-link')
                 WebDriverWait(driver, 10).until(EC.alert_is_present()).accept()
-                WebDriverWait(driver, 20).until(EC.staleness_of(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
             delete(admin, note.item_id)
             assert 'changed since the page was opened' in body(admin)
             assert bench.workspace.notebook_item(matter.matter_id, owner_id, note.item_id).body == 'Combined reviewed note for export.'

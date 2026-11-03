@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 import argparse
 import json
 from pathlib import Path
@@ -19,12 +19,11 @@ from urllib.parse import urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException, StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait, Select
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,22 +82,13 @@ def main():
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 element.clear()
                 element.send_keys(text)
-            def detached(element):
-                def check(current):
-                    try:
-                        return EC.staleness_of(element)(current)
-                    except WebDriverException as exc:
-                        if 'Node with given id does not belong to the document' not in exc.msg:
-                            raise
-                        return True
-                return check
             def click(selector, navigation=True):
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", element)
                 element.click()
                 if not navigation:
                     return
-                wait.until(detached(element))
+                wait_for_replacement(driver, wait, element)
                 wait.until(lambda d: d.execute_script('return document.readyState') == 'complete')
             def body():
                 return driver.execute_script('return document.body ? document.body.innerText : ""')
@@ -177,7 +167,7 @@ def main():
             button = other.find_element(By.CSS_SELECTOR, '.notebook-item-form button')
             other.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", button)
             button.click()
-            WebDriverWait(other, 20).until(detached(button))
+            wait_for_replacement(other, WebDriverWait(other, 20), button)
             fill('input[name=display_name]', 'Unsaved synthetic correction')
             fill('textarea[name=aliases]', 'Unsaved synthetic alias')
             click('.notebook-item-form button')

@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 import hashlib
@@ -27,7 +27,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,7 +85,7 @@ def main():
                 submits = element.tag_name == "button" and element.get_attribute("type") == "submit"
                 element.click()
                 if submits:
-                    wait.until(EC.staleness_of(element))
+                    wait_for_replacement(driver, wait, element)
 
             go("/matters/new")
             driver.find_element(By.ID, "matter-name").send_keys("Synthetic recording checks")

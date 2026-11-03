@@ -12,7 +12,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import asyncio
@@ -37,7 +37,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select, WebDriverWait
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -401,7 +400,7 @@ def main():
                 driver.find_element(By.CSS_SELECTOR, '[data-assistant-expand]').send_keys(Keys.ENTER)
             before_requests = len(requests)
             Select(driver.find_element(By.CSS_SELECTOR, '[data-assistant-conversation-picker]')).select_by_value(seeded['conversations'][1])
-            wait.until(EC.staleness_of(dock))
+            wait_for_replacement(driver, wait, dock)
             dock = driver.find_element(By.CSS_SELECTOR, '[data-assistant-dock]')
             assert len(cards(dock)) == 4
             assert len(requests) == before_requests
