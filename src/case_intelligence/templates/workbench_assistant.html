@@ -104,6 +104,32 @@
               </li>
               {% endfor %}
             </ol>
+            {% set statement_sources = namespace(seen=[]) %}
+            {% for claim in message.payload.claims %}{% for citation in claim.citations %}{% set source_key = citation.document_id ~ ':' ~ citation.source_version_id %}{% if source_key not in statement_sources.seen %}{% set statement_sources.seen = statement_sources.seen + [source_key] %}{% endif %}{% endfor %}{% endfor %}
+            {% if statement_sources.seen %}
+            <div class="assistant-sources-summary">
+              <strong>Sources cited in this answer</strong>
+              <ol>
+                {% set rendered_sources = namespace(seen=[]) %}
+                {% for first_claim in message.payload.claims %}
+                  {% for first_citation in first_claim.citations %}
+                    {% set source_key = first_citation.document_id ~ ':' ~ first_citation.source_version_id %}
+                    {% if source_key not in rendered_sources.seen %}
+                    {% set rendered_sources.seen = rendered_sources.seen + [source_key] %}
+                    <li>{{ first_citation.source_name }}
+                      {% set locations = namespace(seen=[]) %}
+                      {% for claim in message.payload.claims %}{% for citation in claim.citations %}
+                        {% set candidate_key = citation.document_id ~ ':' ~ citation.source_version_id %}
+                        {% if candidate_key == source_key and citation.location not in locations.seen %}{% set locations.seen = locations.seen + [citation.location] %}<a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.location }}</a>{% endif %}
+                      {% endfor %}{% endfor %}
+                      <span>Cited in statement{% set cited_claims = namespace(numbers=[]) %}{% for claim in message.payload.claims %}{% set claim_number = loop.index %}{% set cites_source = namespace(value=false) %}{% for citation in claim.citations %}{% set candidate_key = citation.document_id ~ ':' ~ citation.source_version_id %}{% if candidate_key == source_key %}{% set cites_source.value = true %}{% endif %}{% endfor %}{% if cites_source.value %}{% set cited_claims.numbers = cited_claims.numbers + [claim_number] %}{% endif %}{% endfor %}{% if cited_claims.numbers|length != 1 %}s{% endif %} {{ cited_claims.numbers|join(', ') }}</span>
+                    </li>
+                    {% endif %}
+                  {% endfor %}
+                {% endfor %}
+              </ol>
+            </div>
+            {% endif %}
             {% if message.payload.limitation %}
             <div class="assistant-limitation">
               <p><strong>Limitation:</strong> {{ answer_limitation(message.payload) }}</p>
@@ -115,6 +141,24 @@
                   {{ cited_context(matter.slug, assistant.conversation.conversation_id, message.message_id, 'limitation', loop.index0, citation) }}
                 </div>
                 {% endfor %}
+              </div>
+              {% endif %}
+              {% if message.payload.limitation.citations %}
+              <div class="assistant-sources-summary">
+                <strong>Cited in the limitation</strong>
+                <ul>
+                  {% set limitation_sources = namespace(seen=[]) %}
+                  {% for first_citation in message.payload.limitation.citations %}
+                    {% set source_key = first_citation.document_id ~ ':' ~ first_citation.source_version_id %}
+                    {% if source_key not in limitation_sources.seen %}
+                    {% set limitation_sources.seen = limitation_sources.seen + [source_key] %}
+                    <li>{{ first_citation.source_name }}
+                      {% set locations = namespace(seen=[]) %}
+                      {% for citation in message.payload.limitation.citations %}{% set candidate_key = citation.document_id ~ ':' ~ citation.source_version_id %}{% if candidate_key == source_key and citation.location not in locations.seen %}{% set locations.seen = locations.seen + [citation.location] %}<a href="{{ citation_href(citation, matter.slug, assistant.conversation.conversation_id, entity_return_to=source_review_return_href(matter.slug, request.query_params.get('entity_return_to', ''))) }}">{{ citation.location }}</a>{% endif %}{% endfor %}
+                    </li>
+                    {% endif %}
+                  {% endfor %}
+                </ul>
               </div>
               {% endif %}
             </div>
