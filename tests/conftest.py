@@ -335,13 +335,11 @@ def _callable_source(function):
                 namespace.pop(name, None)
     branches = tuple(node for node in ast.walk(tree)
                      if isinstance(node, (ast.If, ast.IfExp)))
-    conditions = [node.test for node in branches]
-    conditions.extend(node.args[0] for node in ast.walk(tree)
-                      if isinstance(node, ast.Call) and node.args
-                      and isinstance(node.func, ast.Attribute)
-                      and node.func.attr == 'getfixturevalue')
-    parameters = frozenset(node.id for condition in conditions
-                           for node in ast.walk(condition) if isinstance(node, ast.Name))
+    expressions = [node.test for node in branches]
+    expressions.extend(argument for node in ast.walk(tree) if isinstance(node, ast.Call)
+                       for argument in (*node.args, *(keyword.value for keyword in node.keywords)))
+    parameters = frozenset(node.id for expression in expressions
+                           for node in ast.walk(expression) if isinstance(node, ast.Name))
     return tree, namespace, parameters, branches
 
 
@@ -361,19 +359,40 @@ def _callable_testclient_references(function, parameters=()):
 def _selected_references(function, branches):
     tree, namespace, _, _ = _callable_source(function)
     nodes = tuple(_parameter_nodes(tree, dict(branches)))
+    if any(
+        isinstance(node, ast.ImportFrom)
+        and node.module in {'fastapi.testclient', 'starlette.testclient'}
+        and any(alias.name in {'TestClient', '*'} for alias in node.names)
+        for node in nodes
+    ):
+        return True, (), (), (), False, ()
+    if any(
+        isinstance(node, ast.Import)
+        and any(alias.name in {'fastapi.testclient', 'starlette.testclient'}
+                for alias in node.names)
+        for node in nodes
+    ):
+        return True, (), (), (), False, ()
     names = {node.id for node in nodes if isinstance(node, ast.Name)}
     if any(isinstance(node, ast.Attribute) and node.attr == 'TestClient' for node in nodes):
         return True, (), (), (), False, ()
     references = {name: namespace[name] for name in names if name in namespace}
     direct = 'TestClient' in names or _namespace_uses_testclient(references)
-    callables = [value for value in references.values()
-                 if inspect.isfunction(value) or inspect.isclass(value)]
+    calls = {}
+    for node in nodes:
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            calls.setdefault(node.func.id, []).append(node)
+    callables = []
+    for name, value in references.items():
+        if inspect.isfunction(value) or inspect.isclass(value):
+            selected_calls = calls.get(name)
+            callables.extend((value, node) for node in selected_calls or (None,))
     if inspect.isclass(function):
         for name, method in inspect.getmembers_static(function):
             if isinstance(method, (classmethod, staticmethod)):
                 method = method.__func__
             if inspect.isfunction(method):
-                callables.append(method)
+                callables.append((method, None))
     attributes = []
     fixture_calls = []
     dynamic = False
@@ -389,15 +408,32 @@ def _selected_references(function, branches):
             if isinstance(callee, ast.Attribute) and isinstance(callee.value, ast.Name):
                 module = references.get(callee.value.id)
                 if inspect.ismodule(module):
-                    attributes.append((module, callee.attr))
+                    attributes.append((module, callee.attr, node))
                 elif callee.value.id not in namespace and callee.attr != 'getfixturevalue':
-                    attributes.append((callee.value.id, callee.attr))
+                    attributes.append((callee.value.id, callee.attr, node))
             if isinstance(callee, ast.Attribute) and name == 'getfixturevalue':
                 fixture_calls.append(node.args[0] if node.args else None)
             if name in {'spec_from_file_location', 'module_from_spec', 'exec_module',
                         'import_module', 'run_module', 'run_path'}:
                 dynamic = True
     return direct, tuple(callables), tuple(attributes), tuple(fixture_calls), dynamic, frozenset(strings)
+
+
+def _call_parameters(function, call, params):
+    if call is None or any(keyword.arg is None for keyword in call.keywords):
+        return ()
+    values = [_parameter_expression(argument, params) for argument in call.args]
+    keywords = {keyword.arg: _parameter_expression(keyword.value, params)
+                for keyword in call.keywords}
+    if _unresolved in values or _unresolved in keywords.values():
+        return ()
+    try:
+        bound = inspect.signature(function).bind_partial(*values, **keywords)
+    except (TypeError, ValueError):
+        return ()
+    primitives = (str, int, float, bool, bytes, type(None))
+    return tuple((name, type(value), value) for name, value in bound.arguments.items()
+                 if type(value) in primitives)
 
 
 @cache
@@ -761,22 +797,23 @@ def _loaded_attribute_uses_testclient(path, attribute):
 
 @cache
 def _scan_plan(function, rootdir, parameters):
-    params = {name: value for name, _, value in parameters}
     pending = deque()
     visited = set()
     fixture_names = []
     fixture_attributes = []
     modules = {}
 
-    pending.append((function, _helper_depth_limit))
+    pending.append((function, _helper_depth_limit, parameters))
     while pending:
-        current, depth = pending.popleft()
-        if current in visited:
+        current, depth, current_parameters = pending.popleft()
+        visit = (current, current_parameters)
+        if visit in visited:
             continue
         if depth < 0:
             return True, (), ()
-        visited.add(current)
-        references = _callable_testclient_references(current, parameters)
+        visited.add(visit)
+        params = {name: value for name, _, value in current_parameters}
+        references = _callable_testclient_references(current, current_parameters)
         if references is None:
             if current is function:
                 return None, (), ()
@@ -787,7 +824,7 @@ def _scan_plan(function, rootdir, parameters):
         for expression in fixture_calls:
             fixture_names.append(_fixture_name_expression(expression, params))
         targets = list(callables)
-        for module, attribute in attributes:
+        for module, attribute, call in attributes:
             if isinstance(module, str):
                 fixture_attributes.append((current, module, attribute))
                 continue
@@ -796,11 +833,12 @@ def _scan_plan(function, rootdir, parameters):
                 continue
             target = vars(module).get(attribute)
             if inspect.isfunction(target) or inspect.isclass(target):
-                targets.append(target)
-        for target in targets:
+                targets.append((target, call))
+        for target, call in targets:
             if (not _testclient_free_callable(target, rootdir, modules)
                     and _local_callable(target, rootdir)):
-                pending.append((target, depth - 1))
+                pending.append((target, depth - 1,
+                                _call_parameters(target, call, params)))
     return False, tuple(fixture_names), tuple(fixture_attributes)
 
 
