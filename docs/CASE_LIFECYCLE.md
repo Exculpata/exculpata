@@ -129,6 +129,7 @@ The archive is a portable preservation format, not an automated importer or an
 application backup. It does not establish a legal retention period or guarantee
 physical erasure from storage devices, downloaded copies or independent backups.
 
+<a id="migration-0040-and-recovery"></a>
 ## Migrations 0040–0042 and recovery
 
 Before upgrading, stop every old application and worker, take a complete,

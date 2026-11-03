@@ -258,6 +258,7 @@ The installed publication guard passed before landing. The
 retains the synthetic acceptance and review-correction evidence. This receipt
 does not qualify a model/runtime, deployment or supported release.
 
+<a id="current-upstream-receipt"></a>
 ## Current slice-20 landing receipt
 
 Slice **20** — source-backed graph exploration from a saved entity — is **Done**.

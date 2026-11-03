@@ -12,6 +12,7 @@ work queue. Pick an unassigned
 read its scope, and comment that you would like to take it on. Ask for clarification
 there if needed. Keep PRs small and focused; a draft PR is fine for early feedback.
 
+<a id="set-up-a-development-checkout"></a>
 ## Set up and check
 
 Clone your fork, create a branch, and configure your own public GitHub username
