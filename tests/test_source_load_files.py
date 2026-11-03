@@ -327,9 +327,8 @@ def test_balanced_inner_thorns_are_exact_or_cited(tmp_path, wrapped):
     path = _write(tmp_path, _dat_bytes([("KEY",)]) + row)
     findings = []
     rows = list(parse_dat(path, findings=findings))
-    assert ([item.values for item in rows] == [(value,)] and not findings) or (
-        not rows and len(findings) == 1 and findings[0].line == 2
-    )
+    assert rows == []
+    assert _citations(findings) == [("invalid_quoting", 2)]
     _assert_files(findings, path)
 
 
