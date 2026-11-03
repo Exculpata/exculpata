@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 from email.message import EmailMessage
@@ -119,14 +119,6 @@ def main():
             def ready():
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
 
-            def detached(element):
-                try:
-                    return EC.staleness_of(element)(driver)
-                except WebDriverException as exc:
-                    if "Node with given id does not belong to the document" not in exc.msg:
-                        raise
-                    return True
-
             def page_text():
                 # Pages can swap in new content while a wait reads them.
                 try:
@@ -152,7 +144,7 @@ def main():
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
                 navigate_to(driver, base + path, diagnostics=args.output)
-                wait.until(lambda _: detached(old))
+                wait_for_replacement(driver, wait, old)
                 ready()
 
             def click(selector, navigation=True):
@@ -160,7 +152,7 @@ def main():
                 driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"});', element)
                 element.click()
                 if navigation:
-                    wait.until(lambda _: detached(element))
+                    wait_for_replacement(driver, wait, element)
                     ready()
 
             preview_login(driver, base)

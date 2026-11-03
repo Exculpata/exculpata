@@ -17,7 +17,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import io
@@ -51,22 +51,6 @@ ACTOR = 'development-taylor-morgan'
 SOURCE_NAME = 'Synthetic source — North Annex receiving notes with a long recognizable filename.txt'
 SOURCE_TEXT = 'The blue crate arrived at the North Annex at 09:15.'
 ZOOMS = (1, 1.25, 1.5, 2, 4)
-
-
-def replaced(element):
-    """Wait condition: the element's document was replaced.
-
-    Chrome can report a handle from a replaced document as a generic inspector
-    error rather than a stale reference; any other driver failure is real.
-    """
-    def condition(driver):
-        try:
-            return EC.staleness_of(element)(driver)
-        except WebDriverException as exc:
-            if 'Node with given id does not belong to the document' not in (exc.msg or ''):
-                raise
-            return True
-    return condition
 
 
 def main():
@@ -156,7 +140,7 @@ def main():
                 assert suggestion.is_enabled()
                 driver.save_screenshot(str(args.output / f'zoom-{percent}-notes.png'))
                 suggestion.click()
-                wait.until(replaced(suggestion))
+                wait_for_replacement(driver, wait, suggestion)
                 wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, '.notebook-item.status-suggested .notebook-provenance a'))
 
                 def open_support():

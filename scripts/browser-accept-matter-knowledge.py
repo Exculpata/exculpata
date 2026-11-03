@@ -8,7 +8,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 from collections import deque
@@ -26,7 +26,7 @@ from fastapi.testclient import TestClient
 from starlette.responses import Response
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -130,15 +130,7 @@ def click_navigation(driver, wait, element):
         raise TimeoutException('Native pointer positioning did not settle: '
                                + json.dumps(list(samples))) from exc
     element.click()
-    def detached(current):
-        try:
-            return EC.staleness_of(element)(current)
-        except WebDriverException as exc:
-            if 'Node with given id does not belong to the document' not in exc.msg:
-                raise
-            return True
-    wait.until(detached)
-    wait.until(lambda current: current.execute_script('return document.readyState') == 'complete')
+    wait_for_replacement(driver, wait, element)
 
 
 def main():

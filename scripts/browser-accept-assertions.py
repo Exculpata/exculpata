@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -104,21 +104,11 @@ def main():
             def go(path):
                 navigate_to(driver, base + path, diagnostics=args.output)
 
-            def detached(element):
-                def check(current):
-                    try:
-                        return EC.staleness_of(element)(current)
-                    except WebDriverException as exc:
-                        if 'Node with given id does not belong to the document' not in exc.msg:
-                            raise
-                        return True
-                return check
-
             def click_element(element, *, current=None):
                 current = current or driver
                 current.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", element)
                 element.click()
-                WebDriverWait(current, 20).until(detached(element))
+                wait_for_replacement(current, WebDriverWait(current, 20), element)
                 WebDriverWait(current, 20).until(lambda d: d.execute_script('return document.readyState') == 'complete')
 
             def click(selector):
@@ -175,7 +165,7 @@ def main():
                         active = driver.switch_to.active_element
                         if active.tag_name == 'button' and active.get_attribute('type') == 'submit':
                             active.send_keys(Keys.ENTER)
-                            wait.until(detached(active))
+                            wait_for_replacement(driver, wait, active)
                             break
                         active.send_keys(Keys.TAB)
                     else:

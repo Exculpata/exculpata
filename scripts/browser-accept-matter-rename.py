@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -103,7 +103,7 @@ def main():
                 return button
             def submit(driver, selector):
                 button = click(driver, selector)
-                WebDriverWait(driver, 20).until(EC.staleness_of(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
             def body(driver):
                 return driver.find_element(By.TAG_NAME, 'body').text
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import zipfile
 
-from selenium.common.exceptions import WebDriverException
+from browser_navigation import wait_for_replacement
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -38,18 +38,10 @@ class BrowserPage:
         self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
         self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
 
-    def detached(self, element):
-        try:
-            return EC.staleness_of(element)(self.driver)
-        except WebDriverException as exc:
-            if "Node with given id does not belong to the document" not in exc.msg:
-                raise
-            return True
-
     def go(self, path: str):
         previous = self.driver.find_element(By.TAG_NAME, "html")
         self.driver.get(self.base + path)
-        self.wait.until(lambda _: self.detached(previous))
+        wait_for_replacement(self.driver, self.wait, previous)
         self.ready()
 
     def click(self, selector: str, *, submit: bool = False):
@@ -57,7 +49,7 @@ class BrowserPage:
         self.driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", element)
         element.click()
         if submit:
-            self.wait.until(lambda _: self.detached(element))
+            wait_for_replacement(self.driver, self.wait, element)
             self.ready()
 
 

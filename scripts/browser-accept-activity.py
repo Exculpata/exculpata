@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import asyncio
@@ -174,7 +174,7 @@ def main():
             old_content = find('[data-activity-content]')
             toggle.click()
             wait.until(lambda _: js('return arguments[0].getBoundingClientRect().right <= innerWidth', close))
-            wait.until(EC.staleness_of(old_content))
+            wait_for_replacement(driver, wait, old_content)
             assert active() == close
             assert js('return arguments[0].scrollHeight > arguments[0].clientHeight', find('.activity-list'))
             transport.plan(hold=True)
@@ -190,7 +190,7 @@ def main():
             assert scroll_top > 0
             wait.until(lambda _: transport.started > before)
             transport.gate.set()
-            wait.until(EC.staleness_of(focused))
+            wait_for_replacement(driver, wait, focused)
             wait.until(lambda _: active().get_attribute('data-activity-action') == action)
             assert abs(js('return arguments[0].scrollTop', find('.activity-list')) - scroll_top) <= 1
             checks.append('An actual automatic poll replaces data while preserving the focused surviving record action and list scroll')
@@ -209,7 +209,7 @@ def main():
             scroll_top = js('return arguments[0].scrollTop', find('.activity-list'))
             wait.until(lambda _: transport.started > before)
             transport.gate.set()
-            wait.until(EC.staleness_of(focused))
+            wait_for_replacement(driver, wait, focused)
             wait.until(lambda _: active().get_attribute('data-activity-action') == action)
             assert active().text == detail
             assert abs(js('return arguments[0].scrollTop', find('.activity-list')) - scroll_top) <= 1
@@ -235,7 +235,7 @@ def main():
             wait.until(lambda _: active() == toggle)
             old_content = find('[data-activity-content]')
             transport.gate.set()
-            wait.until(EC.staleness_of(old_content))
+            wait_for_replacement(driver, wait, old_content)
             assert active() == toggle
             checks.append('Clicking the scrim closes a pending refresh and the eventual response leaves focus on the opener')
 

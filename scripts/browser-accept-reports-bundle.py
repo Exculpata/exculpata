@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 from datetime import datetime, timedelta
@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, WebDriverException
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -113,21 +113,13 @@ def main():
             def go(path):
                 navigate_to(driver, base + path, diagnostics=args.output)
 
-            def detached(element):
-                try:
-                    return EC.staleness_of(element)(driver)
-                except WebDriverException as exc:
-                    if "Node with given id does not belong to the document" not in exc.msg:
-                        raise
-                    return True
-
             def click(selector):
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", element)
                 submits = element.tag_name == "button" and element.get_attribute("type") == "submit"
                 element.click()
                 if submits:
-                    wait.until(lambda _: detached(element))
+                    wait_for_replacement(driver, wait, element)
 
             def fill(selector, value):
                 element = driver.find_element(By.CSS_SELECTOR, selector)
@@ -316,7 +308,7 @@ def main():
             edit_report()
             move = driver.find_element(By.CSS_SELECTOR, "button[aria-label='Move Human conclusion up']")
             move.send_keys(Keys.ENTER)
-            wait.until(lambda _: detached(move))
+            wait_for_replacement(driver, wait, move)
             edit_report()
             assert driver.find_elements(By.CSS_SELECTOR, ".report-section-card input[name=heading]")[0].get_attribute("value") == "Human conclusion"
             Select(driver.find_element(By.CSS_SELECTOR, ".report-settings select")).select_by_value("final")
@@ -423,7 +415,7 @@ def main():
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'});", remove)
                 remove.click()
                 wait.until(EC.alert_is_present()).accept()
-                wait.until(lambda _: detached(remove))
+                wait_for_replacement(driver, wait, remove)
                 edit_report()
                 assert len(driver.find_elements(By.CSS_SELECTOR, ".report-section-card")) == 1
                 assert driver.find_element(By.CSS_SELECTOR, ".report-section-card textarea").get_attribute("value") == "Edited conclusion retained in both exports."

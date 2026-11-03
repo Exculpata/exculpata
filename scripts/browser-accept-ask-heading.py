@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -78,7 +78,7 @@ def main():
                         one('.matter-section-disclosure > summary').click()
                     driver.execute_script('arguments[0].scrollIntoView({block:"center",behavior:"instant"})', element)
                     element.send_keys(Keys.ENTER)
-                    wait.until(EC.staleness_of(old))
+                    wait_for_replacement(driver, wait, old)
                     wait.until(lambda _: driver.execute_script('return document.readyState') == 'complete')
 
                 def current_section(label):

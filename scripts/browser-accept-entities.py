@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 import argparse
 import json
 from pathlib import Path
@@ -104,20 +104,11 @@ def main():
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 element.clear()
                 element.send_keys(text)
-            def detached(element):
-                def check(current):
-                    try:
-                        return EC.staleness_of(element)(current)
-                    except WebDriverException as exc:
-                        if 'Node with given id does not belong to the document' not in exc.msg:
-                            raise
-                        return True
-                return check
             def click(selector):
                 element = driver.find_element(By.CSS_SELECTOR, selector)
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", element)
                 element.click()
-                wait.until(detached(element))
+                wait_for_replacement(driver, wait, element)
                 wait.until(lambda d: d.execute_script('return document.readyState') == 'complete')
             def body():
                 return page_text(driver)
@@ -188,7 +179,7 @@ def main():
             button = other.find_element(By.CSS_SELECTOR, '.notebook-item-form button')
             other.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", button)
             button.click()
-            WebDriverWait(other, 20).until(detached(button))
+            wait_for_replacement(other, WebDriverWait(other, 20), button)
             fill('input[name=display_name]', 'Unsaved synthetic correction')
             fill('textarea[name=aliases]', 'Unsaved synthetic alias')
             click('.notebook-item-form button')

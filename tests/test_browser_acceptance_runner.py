@@ -26,39 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_browser_scripts_use_guarded_staleness_wait():
-    # Ratchet down under https://github.com/Exculpata/exculpata/issues/353;
-    # remove all temporary exceptions before 2026-11-20 UTC.
-    allowed = {
-        'browser-accept-activity.py': 4,
-        'browser-accept-ask-heading.py': 1,
-        'browser-accept-assertions.py': 1,
-        'browser-accept-briefing.py': 1,
-        'browser-accept-cited-context.py': 1,
-        'browser-accept-email-coverage.py': 1,
-        'browser-accept-entities.py': 1,
-        'browser-accept-entity-discovery.py': 1,
-        'browser-accept-evidence-graph.py': 1,
-        'browser-accept-full-text-synthesis.py': 1,
-        'browser-accept-matter-context.py': 1,
-        'browser-accept-matter-knowledge.py': 1,
-        'browser-accept-matter-rename.py': 1,
-        'browser-accept-media-preflight.py': 1,
-        'browser-accept-notebook-conflicts.py': 2,
-        'browser-accept-report-conflicts.py': 1,
-        'browser-accept-reports-bundle.py': 1,
-        'browser-accept-source-folders.py': 1,
-        'browser-accept-upload-occurrences.py': 1,
-        'browser-accept-workflow-handoff.py': 1,
-        'browser-accept-zoom.py': 1,
-        'browser_case_exit.py': 1,
-    }
-    assert not allowed or datetime.now(timezone.utc) < datetime(2026, 11, 20, tzinfo=timezone.utc), (
-        'Browser staleness exceptions expire on 2026-11-20 UTC. '
-        'Migrate remaining sites to browser_navigation.wait_for_replacement, preserving '
-        'assertions, readiness checks, deadlines and unexpected-error behavior, then '
-        'ratchet exceptions down to zero. '
-        'Tracker: https://github.com/Exculpata/exculpata/issues/353'
-    )
+    allowed = {}
+    _assert_staleness_exceptions_unexpired(allowed)
     counts = {
         path.name: count
         for path in sorted((ROOT / 'scripts').glob('browser*.py'))
@@ -68,6 +37,14 @@ def test_browser_scripts_use_guarded_staleness_wait():
     assert counts == allowed, (
         'Browser staleness counts changed; use browser_navigation.wait_for_replacement. '
         f'Expected {allowed}, found {counts}'
+    )
+
+
+def _assert_staleness_exceptions_unexpired(allowed):
+    assert not allowed or datetime.now(timezone.utc) < datetime(2026, 11, 20, tzinfo=timezone.utc), (
+        'Browser staleness exceptions expire on 2026-11-20 UTC. '
+        'Use browser_navigation.wait_for_replacement. Tracker: '
+        'https://github.com/Exculpata/exculpata/issues/353'
     )
 
 
@@ -84,15 +61,26 @@ def test_browser_staleness_exceptions_expire_at_utc_boundary(monkeypatch, instan
             return instant
 
     monkeypatch.setattr(sys.modules[__name__], 'datetime', FrozenDatetime)
+    _assert_staleness_exceptions_unexpired({})
     if expired:
         with pytest.raises(AssertionError) as failure:
-            test_browser_scripts_use_guarded_staleness_wait()
+            _assert_staleness_exceptions_unexpired({'synthetic.py': 1})
         message = str(failure.value)
         assert '2026-11-20 UTC' in message
         assert 'https://github.com/Exculpata/exculpata/issues/353' in message
         assert 'browser_navigation.wait_for_replacement' in message
     else:
-        test_browser_scripts_use_guarded_staleness_wait()
+        _assert_staleness_exceptions_unexpired({'synthetic.py': 1})
+
+
+def test_empty_staleness_allowlist_does_not_read_clock(monkeypatch):
+    class UnavailableDatetime:
+        @classmethod
+        def now(cls, tz=None):
+            raise AssertionError('Empty allowlist must not read the clock')
+
+    monkeypatch.setattr(sys.modules[__name__], 'datetime', UnavailableDatetime)
+    _assert_staleness_exceptions_unexpired({})
 
 
 @pytest.fixture
@@ -737,23 +725,32 @@ def zoom_script(monkeypatch):
 @pytest.mark.parametrize('detachment', ['stale', 'inspector'])
 def test_zoom_treats_a_detached_handle_as_a_replaced_page(zoom_script, detachment):
     from selenium.common.exceptions import StaleElementReferenceException, WebDriverException
+    from selenium.webdriver.support.ui import WebDriverWait
 
     element = Mock()
     element.is_enabled.side_effect = (StaleElementReferenceException() if detachment == 'stale' else
                                       WebDriverException('Node with given id does not belong to the document'))
-    assert zoom_script.replaced(element)(Mock()) is True
+
+    driver = Mock()
+    driver.execute_script.return_value = 'complete'
+    zoom_script.wait_for_replacement(driver, WebDriverWait(driver, 1), element)
+    driver.execute_script.assert_called_once_with('return document.readyState')
 
 
 def test_zoom_preserves_unexpected_driver_failures(zoom_script):
-    from selenium.common.exceptions import WebDriverException
+    from selenium.common.exceptions import TimeoutException, WebDriverException
+    from selenium.webdriver.support.ui import WebDriverWait
 
-    element = Mock()
+    driver, element = Mock(), Mock()
+    wait = WebDriverWait(driver, .01, poll_frequency=.001)
     element.is_enabled.side_effect = WebDriverException('invalid session id')
     with pytest.raises(WebDriverException, match='invalid session id'):
-        zoom_script.replaced(element)(Mock())
+        zoom_script.wait_for_replacement(driver, wait, element)
     element.is_enabled.side_effect = None
     element.is_enabled.return_value = True
-    assert zoom_script.replaced(element)(Mock()) is False
+    with pytest.raises(TimeoutException):
+        zoom_script.wait_for_replacement(driver, wait, element)
+    driver.execute_script.assert_not_called()
 
 
 @pytest.fixture

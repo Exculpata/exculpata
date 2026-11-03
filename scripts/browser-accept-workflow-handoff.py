@@ -11,7 +11,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import hashlib
@@ -36,7 +36,6 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -245,17 +244,10 @@ def main():
             driver = webdriver.Chrome(service=Service(str(args.chromedriver)), options=options)
             driver.set_script_timeout(30)
             wait = WebDriverWait(driver, 45)
-            def detached(element):
-                try:
-                    return EC.staleness_of(element)(driver)
-                except WebDriverException as exc:
-                    if "Node with given id does not belong to the document" not in exc.msg:
-                        raise
-                    return True
             def go(path):
                 old = driver.find_element(By.TAG_NAME, "html")
                 navigate_to(driver, base + path, diagnostics=args.output, readiness_timeout=45)
-                wait.until(lambda _: detached(old))
+                wait_for_replacement(driver, wait, old)
                 wait.until(lambda d: d.execute_script("return document.readyState") == "complete" and
                            urlparse(d.current_url).path == urlparse(base + path).path)
             def click(selector):

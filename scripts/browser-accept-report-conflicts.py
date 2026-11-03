@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -21,7 +21,6 @@ from urllib.parse import urlparse
 
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -91,20 +90,11 @@ def main():
             owner, admin = browser(OWNER), browser(MEMBER)
             wait = WebDriverWait(owner, 20)
             wait.until(lambda _: server.started)
-            def detached(element):
-                def check(driver):
-                    try:
-                        return EC.staleness_of(element)(driver)
-                    except WebDriverException as exc:
-                        if 'Node with given id does not belong to the document' not in exc.msg:
-                            raise
-                        return True
-                return check
             def enter_editor(driver):
                 links = driver.find_elements(By.CSS_SELECTOR, ".report-reading-page a[href*='edit=true']")
                 if links:
                     links[0].click()
-                    WebDriverWait(driver, 20).until(detached(links[0]))
+                    wait_for_replacement(driver, WebDriverWait(driver, 20), links[0])
             def go(driver, path):
                 navigate_to(driver, base + path, diagnostics=args.output)
                 enter_editor(driver)
@@ -123,7 +113,7 @@ def main():
                 return button
             def submit(driver, selector):
                 button = click(driver, selector)
-                WebDriverWait(driver, 20).until(detached(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
                 enter_editor(driver)
             def body(driver):
                 return driver.find_element(By.TAG_NAME, 'body').text
@@ -272,7 +262,7 @@ def main():
             def delete(driver, selector):
                 button = click(driver, selector)
                 WebDriverWait(driver, 10).until(EC.alert_is_present()).accept()
-                WebDriverWait(driver, 20).until(detached(button))
+                wait_for_replacement(driver, WebDriverWait(driver, 20), button)
             delete(admin, f'#{section.section_id} .danger-link')
             assert 'changed since the page was opened' in body(admin)
             go(admin, report_path)

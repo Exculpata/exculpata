@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to, refresh_page
+from browser_navigation import navigate_to, refresh_page, wait_for_replacement
 
 import argparse
 from contextlib import contextmanager
@@ -307,7 +307,7 @@ def main(argv=None):
                     save = find("#matter-purpose button[type=submit]")
                     keyboard_to(save)
                     save.send_keys(Keys.ENTER)
-                    wait.until(EC.staleness_of(save))
+                    wait_for_replacement(driver, wait, save)
                     wait.until(lambda _: driver.find_elements(By.CSS_SELECTOR, "[data-discovery-briefing]"))
 
                 navigate_to(driver, base + prefix + "/home", diagnostics=args.output)

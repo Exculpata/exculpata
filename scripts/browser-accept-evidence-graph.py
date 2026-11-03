@@ -7,7 +7,7 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 
-from browser_navigation import navigate_to
+from browser_navigation import navigate_to, wait_for_replacement
 
 import argparse
 import json
@@ -21,7 +21,6 @@ from urllib.parse import parse_qs, urlparse
 from fastapi.testclient import TestClient
 import uvicorn
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -144,16 +143,6 @@ def main():
             def body():
                 return driver.find_element(By.TAG_NAME, 'body').text
 
-            def detached(element):
-                def check(current):
-                    try:
-                        return EC.staleness_of(element)(current)
-                    except WebDriverException as exc:
-                        if 'Node with given id does not belong to the document' not in exc.msg:
-                            raise
-                        return True
-                return check
-
             def click(element):
                 driver.execute_script("arguments[0].scrollIntoView({block:'center',behavior:'instant'})", element)
                 positions = []
@@ -170,7 +159,7 @@ def main():
                 # for a stable real pointer target, without dispatching JS clicks.
                 wait.until(stable_pointer_target)
                 element.click()
-                wait.until(detached(element))
+                wait_for_replacement(driver, wait, element)
                 wait.until(lambda current: current.execute_script('return document.readyState') == 'complete')
 
             def graph_ready(identity):
@@ -184,7 +173,7 @@ def main():
                     active = driver.switch_to.active_element
                     if active.tag_name == 'a' and predicate(active):
                         active.send_keys(Keys.ENTER)
-                        wait.until(detached(active))
+                        wait_for_replacement(driver, wait, active)
                         return
                     active.send_keys(Keys.TAB)
                 raise AssertionError('Keyboard traversal did not reach the expected link')
