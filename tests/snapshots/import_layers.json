@@ -118,6 +118,8 @@
   "case_intelligence.model_portfolio": "modules.workflows",
   "case_intelligence.model_portfolio_gold": "evals",
   "case_intelligence.model_qualification": "evals",
+  "case_intelligence.modules": "modules.registry",
+  "case_intelligence.modules.registry": "modules.registry",
   "case_intelligence.ocr_process_helper": "modules.transcription",
   "case_intelligence.oidc_callback_feedback": "core.access",
   "case_intelligence.oidc_network_policy": "core.access",

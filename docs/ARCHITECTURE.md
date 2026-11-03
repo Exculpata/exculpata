@@ -6,6 +6,10 @@ it through focused modules while preserving shared authorization, provenance,
 transaction, and lifecycle contracts.
 [ADR 0001: Core and modules](adr/0001-core-and-modules.md) records the proposed dependency boundaries.
 
+The internal module extension point defines a small contract and a fixed,
+reviewed registry. The registry is empty and is not wired into the application;
+future additions must preserve the documented core-to-module import boundary.
+
 ```text
 staff browser
     │ HTTPS
