@@ -26,11 +26,9 @@ def _qc(root, fields=None):
             records.close()
     return qc_volume(root, dat_path=root / "DATA/volume.dat", opt_path=root / "DATA/volume.opt",
                      profile=FieldProfile("synthetic", fields))
-
 def _lines(report, code, root, name="volume.dat"):
     return sorted(f.line for f in report.findings
                   if f.code == code and Path(f.file).resolve() == root / "DATA" / name)
-
 @pytest.mark.parametrize("ambiguous,check_date", [(False, False), (False, True), (True, True)])
 def test_missing_bates_mapping_is_reported(tmp_path, ambiguous, check_date):
     headers = ("Bates Begin", "Bates Begin" if ambiguous else "Bates End", "DATE")
@@ -44,7 +42,6 @@ def test_missing_bates_mapping_is_reported(tmp_path, ambiguous, check_date):
     assert report.document_count == 1
     assert report.ranges == ()
     assert _lines(report, "unparseable_date", root) == ([2] if check_date else [])
-
 def test_every_row_counted_or_cited(tmp_path):
     rows = [("A1", "A1"), ("ragged",), "\n", ("x" * (2 * 1024 * 1024), "A2"), ("A3", "A3")]
     root = fixtures.volume(tmp_path, ("BEGDOC", "ENDDOC"), rows)
@@ -56,7 +53,6 @@ def test_every_row_counted_or_cited(tmp_path):
     assert report.document_count == len(counted)
     assert counted.isdisjoint(cited)
     assert report.document_count + len(cited) == len(rows)
-
 def test_generated_volume_exact(tmp_path):
     root = fixtures.exact_volume(tmp_path)
     before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
@@ -80,7 +76,6 @@ def test_generated_volume_exact(tmp_path):
     assert report.families == (("SYN0001", "SYN0005", "SYN0009"),)
     assert report.findings == ()
     assert {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
-
 def test_range_checks(tmp_path):
     rows = [("A-7", "A-7"), ("B1", "C2"), ("D9", "D1"), ("E1", "E1"),
             ("E1", "E1"), ("A1", "A100"), ("A10", "A20"), ("A30", "A40"),
@@ -99,17 +94,14 @@ def test_range_checks(tmp_path):
     assert _lines(report, "duplicate_opt_key", root, "volume.opt") == [4, 5]
     assert 12 in _lines(report, "dat_only", root)
     assert _lines(report, "opt_only", root, "volume.opt") == [4, 5]
-
 def _gap_volume(tmp_path):
     return fixtures.volume(tmp_path, ("BEGDOC", "ENDDOC"), [("A001", "A002"), ("A005", "A006")],
                            [fixtures.opt_page("A001", count=2), fixtures.opt_page("A002", first=False),
                             fixtures.opt_page("A005", count=2), fixtures.opt_page("A006", first=False)])
-
 def test_no_gap_facts_in_qc(tmp_path):
     report = _qc(_gap_volume(tmp_path))
     assert report.findings == ()
     assert [(r.begin, r.end) for r in report.ranges] == [("A001", "A002"), ("A005", "A006")]
-
 def test_ranges_feed_bates_gaps(tmp_path):
     report = _qc(_gap_volume(tmp_path))
     assert [r.page_count for r in report.ranges] == [2, 2]
@@ -121,7 +113,6 @@ def test_ranges_feed_bates_gaps(tmp_path):
     assert (missing[0].series, missing[0].lower, missing[0].upper) == ("A", 3, 4)
     assert missing[0].cited_ids == (("2", "synthetic-v1"), ("3", "synthetic-v1"))
     assert {f.kind for f in facts} == {"missing", "computed"}
-
 @pytest.mark.parametrize("label,expected", [
     ("A1", ("A", 1, 1)), ("a000", ("a", 0, 3)), ("Ab001", ("Ab", 1, 3)),
     ("Z" + "9" * 18, ("Z", 999999999999999999, 18)), ("A" + "9" * 19, None),
@@ -130,7 +121,6 @@ def test_ranges_feed_bates_gaps(tmp_path):
 ])
 def test_plain_label_rule_agrees_with_bates_gaps(label, expected):
     assert parse_plain_label(label) == bates_gaps._plain(label) == expected
-
 @pytest.mark.parametrize("column", ["TEXT", "NATIVE"])
 @pytest.mark.parametrize("value", [r"..\..\x", r"C:\x", r"\\synthetic\share\x", "/x",
                                    r"\x", "", ".", r"TEXT\\x", "a:b", "escape"])
