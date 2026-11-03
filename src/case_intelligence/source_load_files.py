@@ -186,8 +186,8 @@ def _dat_values(raw):
         return None
     return tuple(v[1:-1] if v.startswith("þ") else v for v in values)
 
-def parse_dat(path, *, findings=None):
-    """Stream unchanged rows; exhaust the iterator to finalize findings."""
+def parse_dat(path, *, findings=None, headers_out=None):
+    """Stream unchanged rows; append header cells to headers_out; exhaust for findings."""
     sink, headers = _Findings(findings, path), None
     for line, raw, error in _records(path, dat=True):
         if error:
@@ -200,6 +200,8 @@ def parse_dat(path, *, findings=None):
             headers = () if headers is None else headers
         elif headers is None:
             headers = values
+            if headers_out is not None:
+                headers_out.extend(headers)
             for code, bad in (("duplicate_header", len(set(headers)) != len(headers)),
                               ("empty_header", not all(headers))):
                 if bad:

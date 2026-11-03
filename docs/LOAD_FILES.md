@@ -11,4 +11,5 @@ Tests assert a 50-document, 180-page volume and 5,000/20,000-row scaling: both r
 under 15 seconds, larger time < 8 * smaller time + 0.5 seconds, and memory ratio < 6.
 Findings retain at most 1,000 entries per code plus one summary of the dropped count.
 Dates accept YYYY-MM-DD, YYYYMMDD, and month/day/year, optionally followed by
-a space and HH:MM or HH:MM:SS. Invalid dates are cited without changing the value.
+a space or T and HH:MM or HH:MM:SS. Blank or whitespace-only cells are missing dates.
+Invalid dates are cited without changing the value.

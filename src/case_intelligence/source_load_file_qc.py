@@ -5,7 +5,7 @@ import re
 from collections import Counter, defaultdict, namedtuple
 from datetime import datetime
 from pathlib import Path
-from .source_load_files import Finding, LoadFileError, _dat_values, _records, parse_dat, parse_opt, resolve_volume_path
+from .source_load_files import Finding, LoadFileError, parse_dat, parse_opt, resolve_volume_path
 
 BatesRange = namedtuple("BatesRange", "begin end file line page_count")
 QCReport = namedtuple("QCReport", "document_count page_count documents pages ranges joined_pages families findings")
@@ -15,6 +15,9 @@ def parse_plain_label(label):
     return (match[1], int(match[2]), len(match[2])) if match else None
 
 def _valid_date(value):
+    if not value.strip():
+        return True
+    value = value.replace("T", " ")
     for pattern, form in ((r"[0-9]{4}-[0-9]{2}-[0-9]{2}", "%Y-%m-%d"),
                           (r"[0-9]{8}", "%Y%m%d"), (r"[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}", "%m/%d/%Y")):
         for suffix, time_format in (("", ""), (r" [0-9]{2}:[0-9]{2}", " %H:%M"),
@@ -43,17 +46,12 @@ def qc_volume(volume_root, *, dat_path, opt_path, profile):
                 truncated[code] = Finding("findings_truncated", str(file), line, code)
                 findings.append(truncated[code])
             truncated[code].count += count - kept
-    parser_findings = []
-    documents = tuple(parse_dat(dat_path, findings=parser_findings))
+    parser_findings, headers = [], []
+    documents = tuple(parse_dat(dat_path, findings=parser_findings, headers_out=headers))
     pages = tuple(parse_opt(opt_path, findings=parser_findings))
     for finding in parser_findings:
         add(finding.truncated_code or finding.code, finding.file, finding.line,
             finding.count if finding.truncated_code else 1)
-    records = _records(dat_path, dat=True)
-    _, raw, error = next(records)
-    records.close()
-    headers = _dat_values(raw) if not error else ()
-    headers = headers or ()
     positions = {target: headers.index(header) for header, target in profile.fields.items()
                  if headers.count(header) == 1}
     ambiguous = any(headers.count(header) > 1 for header in profile.fields)
@@ -95,7 +93,7 @@ def qc_volume(volume_root, *, dat_path, opt_path, profile):
                 try:
                     with paths["native_path"].open("rb") as stream:
                         actual = hashlib.file_digest(stream, algorithm).hexdigest()
-                    if actual != fields[algorithm]:
+                    if actual.lower() != fields[algorithm].strip().lower():
                         add("hash_mismatch", row.file, row.line)
                 except OSError:
                     add("read_error", row.file, row.line)
@@ -121,7 +119,7 @@ def qc_volume(volume_root, *, dat_path, opt_path, profile):
             add("reversed_range", r.file, r.line)
         else:
             intervals[start[0]].append((start[1], end[1], r.line))
-            if r.page_count != end[1] - start[1] + 1:
+            if r.page_count and r.page_count != end[1] - start[1] + 1:
                 add("page_count_mismatch", r.file, r.line)
         fields = values[r.line]
         attachment = (fields.get("begin_attachment", ""), fields.get("end_attachment", ""))
@@ -152,10 +150,12 @@ def qc_volume(volume_root, *, dat_path, opt_path, profile):
         for name in names:
             path = Path(folder) / name
             try:
-                resolved = resolve_volume_path(root, str(path.relative_to(root)), path, 0)
+                resolved = path.resolve()
+                if resolved == root or not resolved.is_relative_to(root):
+                    raise ValueError
                 if resolved not in referenced:
                     add("orphan_file", path, 0)
-            except LoadFileError as error:
-                add(error.code, error.file, error.line)
+            except (ValueError, OSError, RuntimeError):
+                add("unsafe_path", path, 0)
     return QCReport(len(documents), len(pages), documents, pages, tuple(ranges), joined,
                     tuple(tuple(members) for members in families.values()), tuple(findings))
