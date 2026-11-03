@@ -416,6 +416,45 @@ def test_nested_helper_keeps_its_defining_module_bindings(synthetic_module, tmp_
     assert hooks._function_uses_testclient(module.entry, tmp_path) is True
 
 
+@pytest.mark.parametrize('body', [
+    'from fastapi.testclient import TestClient as Client\n    return Client',
+    'import fastapi.testclient as tc\n    return tc.TestClient',
+])
+@pytest.mark.parametrize('callable_name', ['entry', 'client_fixture'])
+def test_callable_local_testclient_imports_are_detected(
+    synthetic_module, tmp_path, body, callable_name,
+):
+    module = synthetic_module(f'def {callable_name}():\n    {body}\n')
+    function = getattr(module, callable_name)
+    assert hooks._scan_testclient(
+        function, tmp_path, fixture=callable_name == 'client_fixture',
+    ) is True
+
+
+@pytest.mark.parametrize('argument, expected', [
+    ("mode='route'", True),
+    ("mode='plain'", False),
+    ('mode=unknown', True),
+])
+def test_helper_pruning_uses_call_arguments(
+    synthetic_module, tmp_path, argument, expected,
+):
+    module = synthetic_module(f'''
+        from fastapi.testclient import TestClient as Client
+        def helper(mode):
+            if mode == 'route':
+                return Client
+            return 'plain'
+        def entry(mode):
+            return helper({argument})
+    ''')
+    item = SimpleNamespace(
+        obj=module.entry, cls=None, config=SimpleNamespace(rootpath=tmp_path),
+        fixturenames=[], callspec=SimpleNamespace(params={'mode': 'plain'}),
+    )
+    assert hooks._item_uses_testclient(item) is expected
+
+
 @pytest.mark.parametrize('method', [
     'def setup_method(self):',
     '@classmethod\n    def setup_class(cls):',
