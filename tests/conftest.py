@@ -335,13 +335,11 @@ def _callable_source(function):
                 namespace.pop(name, None)
     branches = tuple(node for node in ast.walk(tree)
                      if isinstance(node, (ast.If, ast.IfExp)))
-    conditions = [node.test for node in branches]
-    conditions.extend(node.args[0] for node in ast.walk(tree)
-                      if isinstance(node, ast.Call) and node.args
-                      and isinstance(node.func, ast.Attribute)
-                      and node.func.attr == 'getfixturevalue')
-    parameters = frozenset(node.id for condition in conditions
-                           for node in ast.walk(condition) if isinstance(node, ast.Name))
+    expressions = [node.test for node in branches]
+    expressions.extend(argument for node in ast.walk(tree) if isinstance(node, ast.Call)
+                       for argument in (*node.args, *(keyword.value for keyword in node.keywords)))
+    parameters = frozenset(node.id for expression in expressions
+                           for node in ast.walk(expression) if isinstance(node, ast.Name))
     return tree, namespace, parameters, branches
 
 
