@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from html.parser import HTMLParser
 from pathlib import Path
 import re
 from urllib.parse import unquote, urlsplit
@@ -206,26 +207,27 @@ def test_rename_contract_is_checked_on_documentation_only_changes() -> None:
 
 DOCUMENT = ROOT / "docs/IDEAL.md"
 LINK = re.compile(r"\[[^\]]+\]\(([^\s)]+)\)")
-KNOWN_BROKEN_MARKDOWN_LINKS = {
-    "docs/FIRST_RUN.md: missing fragment ../CONTRIBUTING.md#set-up-a-development-checkout",
-    "docs/FULL_TEXT_SYNTHESIS.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/FULL_TEXT_SYNTHESIS_ACCEPTANCE_2026-09-12.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/INSTALL.md: missing fragment ../CONTRIBUTING.md#set-up-a-development-checkout",
-    "docs/MATTER_SETTINGS.md: missing fragment CASE_LIFECYCLE.md#migration-0040-and-recovery",
-    "docs/PRODUCT_DIRECTION_2026-09-12.md: missing fragment EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/product-slices/19-full-text-synthesis.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/product-slices/FINDINGS.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/product-slices/FINDINGS.md: missing fragment ../PRODUCT_DIRECTION_2026-09-12.md#current-state-addendum-after-slice-18",
-    "docs/product-slices/README.md: missing fragment ../EXIT_ALPHA_CRUISE.md#current-upstream-receipt",
-    "docs/product-slices/TARGET_VALIDATION.md: missing fragment ../../CONTRIBUTING.md#set-up-a-development-checkout",
-    "README.md: missing fragment CONTRIBUTING.md#set-up-a-development-checkout",
-}
+KNOWN_BROKEN_MARKDOWN_LINKS: set[str] = set()
+
+
+class _HTMLAnchors(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.anchors: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self.anchors.update(value for name, value in attrs
+                                if name in {"id", "name"} and value is not None)
 
 
 def _heading_slugs(path: Path) -> set[str]:
-    headings = re.findall(r"^#{1,6} (.+)$", path.read_text(encoding="utf-8"), re.MULTILINE)
+    text = path.read_text(encoding="utf-8")
+    anchors = _HTMLAnchors()
+    anchors.feed(text)
+    headings = re.findall(r"^#{1,6} (.+)$", text, re.MULTILINE)
     return {re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
-            for heading in headings}
+            for heading in headings} | anchors.anchors
 
 
 def markdown_link_errors(root: Path) -> list[str]:
@@ -251,7 +253,42 @@ def markdown_link_errors(root: Path) -> list[str]:
 
 
 def test_repository_markdown_links_have_no_unrecorded_failures():
+    assert KNOWN_BROKEN_MARKDOWN_LINKS == set()
     assert set(markdown_link_errors(ROOT)) == KNOWN_BROKEN_MARKDOWN_LINKS
+
+
+@pytest.mark.parametrize("attribute", ["id", "name"])
+@pytest.mark.parametrize("quote", ['"', "'"])
+def test_markdown_links_accept_html_anchors(tmp_path: Path, attribute: str, quote: str):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    # fixture-write: Synthetic documents exercise cross-document fragment links.
+    (docs / "source.md").write_text(
+        "[Anchor](target.md#stable-anchor)\n[Heading](target.md#current-heading)\n",
+        encoding="utf-8",
+    )
+    # fixture-write: Synthetic target combines an HTML anchor and a Markdown heading.
+    (docs / "target.md").write_text(
+        f"<a {attribute}={quote}stable-anchor{quote}></a>\n## Current heading\n",
+        encoding="utf-8",
+    )
+    assert markdown_link_errors(tmp_path) == []
+
+
+def test_markdown_links_report_missing_fragment(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    # fixture-write: Synthetic source deliberately refers to an absent fragment.
+    (docs / "source.md").write_text(
+        "[Missing](target.md#missing-anchor)\n", encoding="utf-8",
+    )
+    # fixture-write: Synthetic target has valid anchors but lacks the requested one.
+    (docs / "target.md").write_text(
+        '<a id="stable-anchor"></a>\n## Current heading\n', encoding="utf-8",
+    )
+    assert markdown_link_errors(tmp_path) == [
+        "docs/source.md: missing fragment target.md#missing-anchor",
+    ]
 
 
 def document() -> str:
