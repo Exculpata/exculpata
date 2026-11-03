@@ -159,6 +159,7 @@
   "case_intelligence.slice1_evaluation": "evals",
   "case_intelligence.slice1_workflow": "modules.workflows",
   "case_intelligence.source_cache": "core.sources",
+  "case_intelligence.source_email_threads": "core.sources",
   "case_intelligence.source_find": "core.sources",
   "case_intelligence.source_load_files": "core.sources",
   "case_intelligence.source_locations": "core.sources",
