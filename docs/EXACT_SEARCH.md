@@ -195,3 +195,44 @@ CPU browser and PostgreSQL result-service acceptance remain explicitly pending
 in the corpus. A reference matcher pass does not establish database parity,
 model recall, or deployment scale. Existing frozen review-acceptance packs
 remain unchanged. No runtime schema, model, or deployment configuration changes.
+
+## Seeded find-all recall
+
+`tests/test_exact_search_seeded_recall.py` builds an invented set in memory from
+fixed seed `45760`. Each record plants one known hit, and a pinned digest checks
+that the population remains deterministic. The test submits the associated
+query to the reference exact matcher and computes planted hits, found hits,
+measured recall, and estimated misses for each text-variant family. It also
+mutates normalization to an identity function and confirms that the family
+floors detect that regression.
+
+The families cover letter case, curly and straight apostrophes, hyphenated line
+breaks, non-breaking and other Unicode spaces, combining and precomposed
+diacritics, `fi` and `fl` ligatures, punctuation next to terms, and phrase hits
+split across a line break. The current seeded measurements are:
+
+| Family | Planted | Found | Measured recall | Estimated missed |
+| --- | ---: | ---: | ---: | ---: |
+| letter case | 4 | 4 | 100.00% | 0 |
+| apostrophes | 4 | 4 | 100.00% | 0 |
+| hyphenated line breaks | 4 | 0 | 0.00% | 4 |
+| Unicode spaces | 4 | 4 | 100.00% | 0 |
+| diacritics | 4 | 4 | 100.00% | 0 |
+| ligatures | 4 | 4 | 100.00% | 0 |
+| adjacent punctuation | 4 | 4 | 100.00% | 0 |
+| phrase line breaks | 4 | 4 | 100.00% | 0 |
+
+The known hyphenated-line-break gap is exact for this seeded set: the tokenizer
+retains an internal ASCII hyphen, so it does not rejoin the split word. The test
+records this miss rather than changing matching behavior. All other family
+floors are 100%.
+
+This is measured recall for the reference matcher only. It does not establish
+database parity, ranking behavior, extracted-record coverage, or recall outside
+the seeded variants. The check is deterministic and local-first by default; it
+uses no network service. Rerun it with the surrounding exact-search and
+documentation checks:
+
+```bash
+PYTHONPATH=src pytest -n 4 tests/test_exact_search_seeded_recall.py tests/test_exact_search.py tests/test_documentation.py
+```
