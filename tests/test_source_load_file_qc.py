@@ -235,3 +235,23 @@ def test_qc_memory_grows_linearly(tmp_path):
         del report
     assert peaks[0] > 0
     assert peaks[1] < 6 * peaks[0], peaks
+
+
+@pytest.mark.parametrize("load", ["dat_path", "opt_path"])
+def test_load_files_must_be_inside_volume(tmp_path, load):
+    root = fixtures.volume(tmp_path / "volume", ("BEGDOC",), [("A1",)])
+    paths = {"dat_path": root / "DATA/volume.dat", "opt_path": root / "DATA/volume.opt"}
+    paths[load] = fixtures.write_file(tmp_path, "outside", b"synthetic")
+    with pytest.raises(ValueError, match="unsafe_path"):
+        qc_volume(root, **paths, profile=FieldProfile("synthetic", {"BEGDOC": "begin_bates"}))
+
+
+def test_parser_findings_share_volume_cap(tmp_path):
+    root = fixtures.volume(tmp_path, ("BEGDOC",), [("A1",)] + [("bad", "row")] * 1200, [fixtures.opt_page("A1", count="001")])
+    fixtures.write_file(root, "DATA/volume.opt", (root / "DATA/volume.opt").read_bytes() + b"bad,row\n" * 1300)
+    report = _qc(root)
+    assert len([f for f in report.findings if f.code == "field_count_mismatch"]) == 1000
+    summaries = [f for f in report.findings if f.truncated_code == "field_count_mismatch"]
+    assert len(summaries) == 1 and summaries[0].count == 1500
+    assert report.document_count == report.page_count == 1
+    assert report.pages[0].values[6] == "001" and not any(f.code == "page_count_mismatch" for f in report.findings)

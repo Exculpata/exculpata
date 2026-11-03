@@ -160,6 +160,7 @@
   "case_intelligence.slice1_workflow": "modules.workflows",
   "case_intelligence.source_cache": "core.sources",
   "case_intelligence.source_find": "core.sources",
+  "case_intelligence.source_load_file_qc": "core.sources",
   "case_intelligence.source_load_files": "core.sources",
   "case_intelligence.source_locations": "core.sources",
   "case_intelligence.source_role_routes": "app_shell",
