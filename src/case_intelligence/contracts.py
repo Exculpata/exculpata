@@ -5,7 +5,8 @@ from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
 import re
-from datetime import datetime, timedelta
+import math
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Annotated
@@ -22,11 +23,254 @@ class StrictModel(BaseModel):
     @field_validator("*", mode="after")
     @classmethod
     def reject_naive_datetimes(cls, value: object) -> object:
-        if isinstance(value, datetime) and (value.tzinfo is None or value.utcoffset() is None):
+        if isinstance(value, datetime) and (
+            value.tzinfo is None or value.utcoffset() is None
+        ):
             raise ValueError("datetime must be timezone-aware")
         if isinstance(value, datetime) and value.utcoffset() != timedelta(0):
             raise ValueError("datetime must be UTC")
         return value
+
+
+class ModelReadState(StrEnum):
+    FULL = "full"
+    PARTIAL = "partial"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    ESCALATED = "escalated"
+    NOT_REQUESTED = "not_requested"
+
+
+class CoverageReason(StrEnum):
+    UNSUPPORTED_TYPE = "unsupported_type"
+    POLICY_EXCLUSION = "policy_exclusion"
+    SOURCE_NOT_READY = "source_not_ready"
+    SELECTED_SOURCE_SCOPE = "selected_source_scope"
+    BUDGET_LIMIT = "budget_limit"
+    CANCELLED = "cancelled"
+
+
+NonnegativeCount = Annotated[int, Field(ge=0)]
+UnitInterval = Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class MeasuredRecall(StrictModel):
+    method: Identifier
+    population_definition: Identifier
+    sample_size: Annotated[int, Field(gt=0)]
+    sample_misses: NonnegativeCount
+    relevant_found: NonnegativeCount
+    discard_set_size: NonnegativeCount
+    recall_estimate: UnitInterval
+    recall_lower_bound: UnitInterval
+    recall_upper_bound: UnitInterval
+    confidence: Annotated[float, Field(gt=0.0, lt=1.0)] = 0.95
+    estimated_missed: Annotated[float, Field(ge=0.0)]
+    estimated_missed_upper: Annotated[float, Field(ge=0.0)]
+    measured_on: date
+
+    @model_validator(mode="after")
+    def recall_values_are_consistent(self) -> "MeasuredRecall":
+        if self.sample_misses > self.sample_size:
+            raise ValueError("sample misses exceed sample size")
+        if (
+            not self.recall_lower_bound
+            <= self.recall_estimate
+            <= self.recall_upper_bound
+        ):
+            raise ValueError("recall estimate must be within its interval")
+        if self.estimated_missed > self.estimated_missed_upper:
+            raise ValueError("estimated missed point exceeds upper estimate")
+        return self
+
+
+class MatterScope(StrictModel):
+    matter_id: Identifier
+    source_set_id: Identifier | None = None
+    source_set_version: Identifier | None = None
+
+
+class RecordTypeCoverage(StrictModel):
+    record_type: Identifier
+    schema_version: Identifier
+    eligible_source_count: NonnegativeCount
+    attempted_source_count: NonnegativeCount
+    produced_source_count: NonnegativeCount
+    skipped_source_count: NonnegativeCount
+    failed_source_count: NonnegativeCount
+
+    @model_validator(mode="after")
+    def counts_use_eligible_denominator(self) -> "RecordTypeCoverage":
+        for field in (
+            "attempted_source_count",
+            "produced_source_count",
+            "skipped_source_count",
+            "failed_source_count",
+        ):
+            if getattr(self, field) > self.eligible_source_count:
+                raise ValueError(f"{field} exceeds eligible source count")
+        return self
+
+
+class QueryCoverageReport(StrictModel):
+    report_schema_version: Identifier
+    query_id: Identifier
+    coverage_as_of: datetime
+    matter_scope: MatterScope
+    search_lanes: tuple[Identifier, ...]
+    filters: dict[str, object]
+    eligible_source_count: NonnegativeCount
+    searched_source_count: NonnegativeCount
+    model_read_full_count: NonnegativeCount
+    model_read_partial_count: NonnegativeCount
+    model_read_skipped_count: NonnegativeCount
+    model_read_skipped_reasons: dict[CoverageReason, NonnegativeCount]
+    failed_source_count: NonnegativeCount
+    failed_source_reasons: dict[str, NonnegativeCount]
+    pending_source_count: NonnegativeCount
+    changed_during_query_count: NonnegativeCount
+    unknown_history_source_count: NonnegativeCount
+    record_type_coverage: tuple[RecordTypeCoverage, ...]
+    measured_recall: MeasuredRecall | None
+
+    @model_validator(mode="after")
+    def counts_reconcile(self) -> "QueryCoverageReport":
+        bounded = (
+            self.searched_source_count,
+            self.model_read_full_count,
+            self.model_read_partial_count,
+            self.model_read_skipped_count,
+            self.failed_source_count,
+            self.pending_source_count,
+        )
+        if any(count > self.eligible_source_count for count in bounded):
+            raise ValueError("coverage count exceeds eligible source count")
+        if (
+            sum(self.model_read_skipped_reasons.values())
+            != self.model_read_skipped_count
+        ):
+            raise ValueError("skipped reasons do not sum to skipped count")
+        if sum(self.failed_source_reasons.values()) != self.failed_source_count:
+            raise ValueError("failed reasons do not sum to failed count")
+        return self
+
+
+def _binomial_cdf(k: int, n: int, probability: float) -> float:
+    return sum(
+        math.comb(n, index) * probability**index * (1.0 - probability) ** (n - index)
+        for index in range(k + 1)
+    )
+
+
+def _cdf_root(k: int, n: int, target: float) -> float:
+    low, high = 0.0, 1.0
+    for _ in range(80):
+        midpoint = (low + high) / 2.0
+        if _binomial_cdf(k, n, midpoint) > target:
+            low = midpoint
+        else:
+            high = midpoint
+    return (low + high) / 2.0
+
+
+def elusion_recall(
+    relevant_found: int,
+    discard_count: int,
+    sample_size: int,
+    sample_misses: int,
+    *,
+    confidence: float = 0.95,
+) -> MeasuredRecall:
+    if min(relevant_found, discard_count, sample_size, sample_misses) < 0:
+        raise ValueError("recall counts cannot be negative")
+    if sample_size == 0:
+        raise ValueError("sample size must be positive")
+    if sample_misses > sample_size:
+        raise ValueError("sample misses exceed sample size")
+    if not 0.0 < confidence < 1.0:
+        raise ValueError("confidence must be between zero and one")
+
+    tail = (1.0 - confidence) / 2.0
+    rate = sample_misses / sample_size
+    rate_lower = (
+        0.0
+        if sample_misses == 0
+        else _cdf_root(sample_misses - 1, sample_size, 1.0 - tail)
+    )
+    rate_upper = (
+        1.0
+        if sample_misses == sample_size
+        else _cdf_root(sample_misses, sample_size, tail)
+    )
+    missed = discard_count * rate
+    missed_upper = discard_count * rate_upper
+
+    def recall(estimated_missed: float) -> float:
+        denominator = relevant_found + estimated_missed
+        return relevant_found / denominator if denominator else 1.0
+
+    return MeasuredRecall(
+        method="exact binomial elusion sample",
+        population_definition="discard set for the stated query and schema",
+        sample_size=sample_size,
+        sample_misses=sample_misses,
+        relevant_found=relevant_found,
+        discard_set_size=discard_count,
+        recall_estimate=recall(missed),
+        recall_lower_bound=recall(missed_upper),
+        recall_upper_bound=recall(discard_count * rate_lower),
+        confidence=confidence,
+        estimated_missed=missed,
+        estimated_missed_upper=missed_upper,
+        measured_on=date.today(),
+    )
+
+
+def coverage_limitations(report: QueryCoverageReport) -> tuple[str, ...]:
+    eligible = report.eligible_source_count
+    notices: list[str] = []
+    if report.searched_source_count < eligible:
+        notices.append(
+            f"{report.searched_source_count} of {eligible} eligible sources were searched."
+        )
+    if report.model_read_partial_count:
+        notices.append(
+            f"{report.model_read_partial_count} of {eligible} eligible sources were partly supplied."
+        )
+    if report.model_read_skipped_count:
+        notices.append(
+            f"{report.model_read_skipped_count} of {eligible} eligible sources were skipped."
+        )
+    if report.pending_source_count:
+        notices.append(
+            f"{report.pending_source_count} of {eligible} eligible sources were pending and not supplied."
+        )
+    if report.changed_during_query_count:
+        notices.append(
+            f"{report.changed_during_query_count} sources changed during the query."
+        )
+    if report.failed_source_count:
+        notices.append(
+            f"{report.failed_source_count} of {eligible} eligible sources failed."
+        )
+    if report.unknown_history_source_count:
+        notices.append(
+            f"{report.unknown_history_source_count} of {eligible} eligible sources have unknown processing history."
+        )
+    notices.extend(
+        f"{item.produced_source_count} {item.record_type} records are each a candidate for attorney review."
+        for item in report.record_type_coverage
+    )
+    if report.measured_recall is None:
+        notices.append("Measured recall: not measured.")
+    else:
+        measured = report.measured_recall
+        notices.append(
+            f"Measured recall: {measured.recall_estimate:.1%} "
+            f"({measured.confidence:.0%} interval: {measured.recall_lower_bound:.1%} to "
+            f"{measured.recall_upper_bound:.1%})."
+        )
+    return tuple(notices)
 
 
 class MatterState(StrEnum):
