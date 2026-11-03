@@ -124,7 +124,9 @@ def _assert_burst_matches_unloaded(loaded_max, unloaded_maxima, label):
     )
 
 
-def _acknowledgement_burst(client, targets, question, key_tag):
+def _acknowledgement_burst(
+    client, targets, question, key_tag, acknowledgement_check=None
+):
     """Time one ask acknowledgement per target, with no CPU sample between posts."""
     if len(key_tag) != 1 or key_tag not in "0123456789abcdef":
         raise AssertionError(
@@ -145,6 +147,8 @@ def _acknowledgement_burst(client, targets, question, key_tag):
         )
         times.append(time.perf_counter() - started)
         assert response.status_code == 202
+        if acknowledgement_check is not None:
+            acknowledgement_check()
         jobs.append(response.json())
     assert times
     return times, jobs
@@ -591,7 +595,7 @@ def test_http_acknowledges_immediately_reconnects_cancels_retries_and_deduplicat
             if self.block:
                 self.block = False
                 self.started.set()
-                self.release.wait(timeout=3)
+                self.release.wait(timeout=30)
                 self.block_finished.set()
             evidence = kwargs["evidence"][0]
             return {
@@ -673,9 +677,6 @@ def test_http_acknowledges_immediately_reconnects_cancels_retries_and_deduplicat
         partial = bench.workspace.matter_readiness(matter.matter_id)
         assert partial.can_query and partial.partial_query
         question = "When was the cobalt notebook logged?"
-        # Match the eight-session test's burst comparison: both sides submit
-        # eight acknowledgements on empty conversations, with no CPU loop
-        # between posts. Keep calibration out of the conversation checked below.
         def extra_targets(count):
             return [
                 (slug, bench.workspace.create_conversation(matter.matter_id).conversation_id)
@@ -683,32 +684,28 @@ def test_http_acknowledges_immediately_reconnects_cancels_retries_and_deduplicat
             ]
 
         loaded_targets = [(slug, conversation.conversation_id)] + extra_targets(7)
-        unloaded_ack_maxima = []
-        for key_tag in ("a", "b", "c"):
-            times, jobs = _acknowledgement_burst(
-                client, extra_targets(len(loaded_targets)), question, key_tag
-            )
-            unloaded_ack_maxima.append(max(times))
-            for job in jobs:
-                finished = _wait_for_status(client, job["status_url"], {"succeeded"})
-                assert finished is not None and finished["state"] == "succeeded"
         generator.block = True
         request_data = {
             "conversation": conversation.conversation_id,
             "question": question,
             "request_key": "answer-request-d" + "0" * 31,
         }
-        acknowledgement_times, jobs = _acknowledgement_burst(
-            client, loaded_targets, question, "d"
-        )
-        _assert_burst_matches_unloaded(
-            max(acknowledgement_times),
-            unloaded_ack_maxima,
-            "ask acknowledgement",
+        def assert_generation_is_blocked():
+            assert not generator.release.is_set()
+            assert not generator.block_finished.is_set(), (
+                "acknowledgement waited for generation"
+            )
+
+        _acknowledgement_times, jobs = _acknowledgement_burst(
+            client,
+            loaded_targets,
+            question,
+            "d",
+            acknowledgement_check=assert_generation_is_blocked,
         )
         job = jobs[0]
         assert generator.started.wait(timeout=2)
-        assert not generator.block_finished.is_set(), "acknowledgement waited for generation"
+        assert_generation_is_blocked()
 
         reconnected = client.get(
             f"/matters/{slug}",
