@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from case_intelligence.generation import (
@@ -26,6 +28,47 @@ def _candidate(document_id: str, source_name: str, text: str) -> Candidate:
         0.5,
         source_version_id="quality-v1",
         excerpt_digest=(document_id * 64)[:64],
+    )
+
+
+def test_time_question_keeps_leading_report_ahead_of_email_header_clocks() -> None:
+    question = (
+        "At what time was the crate inspected and on what date "
+        "was the examination planned?"
+    )
+    report = _candidate(
+        "inspection-report",
+        "Inspection report.txt",
+        "The crate inspection was completed on 6 October 2036. "
+        "An examination was planned for the following day.",
+    )
+    emails = tuple(
+        _candidate(
+            f"email-{index}",
+            f"Filing message {index}.eml",
+            "Date: 7 Oct 2036 12:00:00 +0000\n"
+            "The crate paperwork is attached for filing.",
+        )
+        for index in range(12)
+    )
+    reranked = (report,) + emails
+    without_headers = (report,) + tuple(
+        replace(item, text=item.text.split("\n", 1)[1]) for item in emails
+    )
+    control = rank_exact_record_candidates(
+        question, without_headers, matter_id="matter-quality"
+    )
+    assert control[0] is report
+
+    ranked = rank_exact_record_candidates(
+        question, reranked, matter_id="matter-quality"
+    )
+    report_rank = next(
+        index for index, item in enumerate(ranked, start=1)
+        if item.document_id == report.document_id
+    )
+    assert report_rank <= 8, (
+        f"Email header clocks displaced the reranker's first report to rank {report_rank}"
     )
 
 

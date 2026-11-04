@@ -32,6 +32,40 @@ def _c(matter: str, chunk: str, page: int, text: str, score: float = 1.0) -> Can
     return Candidate(matter, "synthetic-report", chunk, "Synthetic incident report.pdf", page, text, score)
 
 
+def test_fallback_reranker_keeps_rare_second_part_in_eight_passage_packet() -> None:
+    question = (
+        "What did the intake notes say about the parcel that was moved from "
+        "the gate to the storage area, and which ultraviolet seal fragments "
+        "identified the concealed compartment lining?"
+    )
+    common_passages = tuple(
+        _c(
+            "matter-alpha", f"intake-{index}", index + 1,
+            "The intake notes say the parcel was moved from the gate "
+            "to the storage area.",
+            score=0.02,
+        )
+        for index in range(12)
+    )
+    second_part = _c(
+        "matter-alpha", "compartment-finding", 13,
+        "Ultraviolet seal fragments identified the concealed compartment "
+        "lining beneath a torn flap.",
+        score=0.02,
+    )
+
+    ranked = DeterministicReranker().rerank(
+        question, common_passages + (second_part,)
+    )
+    second_part_rank = next(
+        index for index, item in enumerate(ranked, start=1)
+        if item.chunk_id == second_part.chunk_id
+    )
+    assert second_part_rank <= 8, (
+        f"Second-part passage ranked {second_part_rank}, outside the eight-passage packet"
+    )
+
+
 def test_postgres_migration_is_idempotent_and_reopens_with_matter_keys(tmp_path):
     migration = Path(__file__).parents[1] / "migrations/postgresql/0001_review_bench_v2.sql"
     sql = migration.read_text(encoding="utf-8")
