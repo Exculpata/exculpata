@@ -1,4 +1,5 @@
 # Exculpata contributor judgment rules
+Read VISION.md first. Every spec, design note, and PR is checked against it.
 
 Follow [coding standards](CODING_STANDARDS.md) for development, synthetic data,
 publication safeguards and validation, including the
