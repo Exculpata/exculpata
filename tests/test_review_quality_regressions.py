@@ -10,7 +10,12 @@ from case_intelligence.generation import (
     GenerationUnavailable,
     GroundedGenerationService,
 )
-from case_intelligence.review_bench_v2 import Candidate
+from case_intelligence.review_bench_v2 import (
+    Candidate,
+    DeterministicEmbeddingAdapter,
+    HybridRetriever,
+    InMemoryHybridBackend,
+)
 from case_intelligence.review_quality import (
     answer_advances_objective,
     rank_exact_record_candidates,
@@ -105,6 +110,62 @@ def test_exact_record_rescue_does_not_match_identifier_prefixes() -> None:
         "dispatch-note",
         "event-log",
     ]
+
+
+@pytest.mark.parametrize("through_search", [False, True], ids=["ranking", "packet"])
+@pytest.mark.parametrize("text", [
+    "System event EVT-4821\nTimestamp: 08:42:17\nStatus: accepted",
+    "Timestamp: 08:42:17\nSystem event EVT-4821\nStatus: accepted",
+    "From: synthetic sender\nDate: 8 Oct 2036 12:00:00 +0000\n\n"
+    "System event EVT-4821\nTimestamp: 08:42:17\nStatus: accepted",
+])
+def test_labeled_event_timestamp_outranks_summary_and_survives_truncation(
+    text: str, through_search: bool,
+) -> None:
+    query = "At what exact time did system event EVT-4821 occur?"
+    summary = _candidate(
+        "summary", "Later summary.txt", "Event EVT-4821 occurred at about 08:40.",
+    )
+    record = _candidate("record", "Access log.txt", text)
+    pool = (summary, record)
+
+    class WeakReranker:
+        available = True
+
+        def rerank(self, query, candidates):
+            by_id = {item.document_id: item for item in candidates}
+            return tuple(by_id[item.document_id] for item in pool)
+
+    if through_search:
+        ranked = HybridRetriever(
+            InMemoryHybridBackend(pool), DeterministicEmbeddingAdapter(), WeakReranker(),
+        ).search("matter-quality", query, limit=1)
+        assert len(ranked) == 1
+    else:
+        ranked = rank_exact_record_candidates(query, pool, matter_id="matter-quality")
+        assert ranked == (record, summary)
+        assert ranked[0] is record
+    assert ranked[0].document_id == record.document_id
+    assert ranked[0].text == record.text
+    assert ranked[0].source_version_id == record.source_version_id
+    assert ranked[0].excerpt_digest == record.excerpt_digest
+    assert ranked[0].chunk_id == record.chunk_id
+    assert ranked[0].citation == record.citation
+
+
+@pytest.mark.parametrize("header", ["Date", "Sent"])
+@pytest.mark.parametrize("source_name", ["Message.eml", "Message.txt"])
+def test_message_header_block_still_filters_clock_precision(header, source_name):
+    query = "At what time did the amber crate arrive?"
+    note = _candidate("note", "Note.txt", "The amber crate arrived at 09:14.")
+    message = _candidate(
+        "message", source_name,
+        f"From: synthetic sender\nTo: synthetic recipient\n"
+        f"{header}: 8 Oct 2036 12:00:00 +0000\n\nThe amber crate arrived.",
+    )
+    assert rank_exact_record_candidates(
+        query, (note, message), matter_id="matter-quality",
+    ) == (note, message)
 
 
 @pytest.mark.parametrize("repair_failure", ["malformed", "unavailable"])

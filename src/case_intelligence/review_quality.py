@@ -95,10 +95,14 @@ _CLOCK = re.compile(
 )
 _CLOCK_WORD = re.compile(r"\b(?:noon|midnight)\b", re.IGNORECASE)
 _CLOCK_METADATA_LINE = re.compile(
-    r"^\s*(?:date|sent|received|created|modified|updated|timestamp|"
+    r"^\s*(date|sent|received|created|modified|updated|timestamp|"
     r"from|to|cc|bcc|subject|message-id|mime-version|content-[\w-]+)\s*:",
     re.IGNORECASE,
 )
+_MESSAGE_HEADER_FIELDS = frozenset({
+    "date", "sent", "received", "from", "to", "cc", "bcc", "subject",
+    "message-id", "mime-version",
+})
 _AUTHORITATIVE_RECORD = re.compile(
     r"\b(?:access|audit|event|transaction|dispatch|system|machine|sensor|badge|camera)\s+"
     r"(?:log|record|register|ledger|index|metadata)\b|"
@@ -251,18 +255,30 @@ def _query_subject_terms(query: str) -> frozenset[str]:
     )
 
 
-def _without_clock_metadata(text: str) -> str:
-    body = []
-    in_header = False
-    for line in text.splitlines():
-        if _CLOCK_METADATA_LINE.match(line):
-            in_header = True
+def _without_clock_metadata(candidate: RankedCandidate) -> str:
+    """Remove only an opening header block identified as message metadata."""
+
+    lines = candidate.text.splitlines()
+    fields: set[str] = set()
+    header_end = 0
+    for index, line in enumerate(lines):
+        if not fields and not line.strip():
             continue
-        if in_header and line.startswith((" ", "\t")) and line.strip():
+        match = _CLOCK_METADATA_LINE.match(line)
+        if match:
+            fields.add(match.group(1).casefold())
+            header_end = index + 1
             continue
-        in_header = False
-        body.append(line)
-    return "\n".join(body)
+        if fields and line.startswith((" ", "\t")) and line.strip():
+            header_end = index + 1
+            continue
+        break
+    message_header = candidate.source_name.casefold().endswith((".eml", ".msg")) or (
+        len(fields.intersection(_MESSAGE_HEADER_FIELDS)) >= 2
+    )
+    if fields and message_header:
+        return "\n".join(lines[header_end:])
+    return candidate.text
 
 
 def _exact_record_features(
@@ -277,7 +293,7 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(_without_clock_metadata(candidate.text))
+    clocks = _CLOCK.findall(_without_clock_metadata(candidate))
     temporal_precision = 0
     if _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
