@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -1132,39 +1132,3 @@ def test_quality_evaluation_pack_is_frozen_and_separable() -> None:
     }
     assert any(case.synthesis_source_withheld for case in QUALITY_EVALUATION_CASES)
     assert all("Project" not in case.prompt for case in QUALITY_EVALUATION_CASES)
-
-
-@pytest.mark.parametrize("header", ["Date", "Sent", "Received", "Created", "Subject"])
-def test_exact_record_clocks_ignore_headers_but_keep_body_clocks(header):
-    query = "At what time did the amber crate arrive?"
-    summary = _candidate("summary", "a", "Note.txt", "The amber crate arrived at 09:14.", 0.9)
-    email = _candidate(
-        "email", "b", "Message.eml",
-        f"  {header}: 8 October 2036 12:00:00 +0000\nThe amber crate arrived.", 0.4,
-    )
-    assert rank_exact_record_candidates(query, (summary, email), matter_id="matter-quality") == (summary, email)
-    body = replace(email, text=email.text + "\nThe amber crate arrived at 09:14:17.")
-    assert rank_exact_record_candidates(query, (summary, body), matter_id="matter-quality") == (body, summary)
-
-
-def test_exact_record_precision_requires_half_the_subject_terms():
-    report = _candidate("report", "a", "Report.txt", "Amber crate inspection at the quay.", 0.9)
-    decoy = _candidate("decoy", "b", "Access log.txt", "Crate accepted at 09:14:17.", 0.4)
-    ranked = rank_exact_record_candidates(
-        "At what time did the amber crate inspection reach the quay?",
-        (report, decoy), matter_id="matter-quality",
-    )
-    assert ranked == (report, decoy)
-    assert ranked[0] is report and ranked[1] is decoy
-
-
-def test_exact_record_ignores_folded_header_clocks_and_keeps_indented_body():
-    query = "At what time did the amber crate arrive?"
-    note = _candidate("note", "a", "Note.txt", "Amber crate arrival at 09:14.", 0.9)
-    email = _candidate(
-        "email", "b", "Message.eml",
-        "Received: synthetic relay;\n  8 October 2036 12:00:00 +0000\n\n  Amber crate arrival.", 0.4,
-    )
-    assert rank_exact_record_candidates(query, (note, email), matter_id="matter-quality") == (note, email)
-    body = replace(email, text=email.text + "\n  Amber crate arrival at 09:14:17.")
-    assert rank_exact_record_candidates(query, (note, body), matter_id="matter-quality") == (body, note)

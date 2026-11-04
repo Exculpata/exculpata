@@ -31,6 +31,17 @@ def _candidate(document_id: str, source_name: str, text: str) -> Candidate:
     )
 
 
+def _exact_record_candidate(
+    document: str, chunk: str, name: str, text: str, score: float,
+) -> Candidate:
+    return replace(
+        _candidate(document, name, text),
+        chunk_id=chunk,
+        score=score,
+        excerpt_digest=(chunk * 64)[:64],
+    )
+
+
 def test_time_question_keeps_leading_report_ahead_of_email_header_clocks() -> None:
     question = (
         "At what time was the crate inspected and on what date "
@@ -246,3 +257,39 @@ def test_bare_according_to_identifier_is_source_reference() -> None:
         dual_role_question,
         "DOC-1234 was created at 07:15:00; EVT-4821 occurred at 08:42:17.",
     )
+
+
+@pytest.mark.parametrize("header", ["Date", "Sent", "Received", "Created", "Subject"])
+def test_exact_record_clocks_ignore_headers_but_keep_body_clocks(header):
+    query = "At what time did the amber crate arrive?"
+    summary = _exact_record_candidate("summary", "a", "Note.txt", "The amber crate arrived at 09:14.", 0.9)
+    email = _exact_record_candidate(
+        "email", "b", "Message.eml",
+        f"  {header}: 8 October 2036 12:00:00 +0000\nThe amber crate arrived.", 0.4,
+    )
+    assert rank_exact_record_candidates(query, (summary, email), matter_id="matter-quality") == (summary, email)
+    body = replace(email, text=email.text + "\nThe amber crate arrived at 09:14:17.")
+    assert rank_exact_record_candidates(query, (summary, body), matter_id="matter-quality") == (body, summary)
+
+
+def test_exact_record_precision_requires_half_the_subject_terms():
+    report = _exact_record_candidate("report", "a", "Report.txt", "Amber crate inspection at the quay.", 0.9)
+    decoy = _exact_record_candidate("decoy", "b", "Access log.txt", "Crate accepted at 09:14:17.", 0.4)
+    ranked = rank_exact_record_candidates(
+        "At what time did the amber crate inspection reach the quay?",
+        (report, decoy), matter_id="matter-quality",
+    )
+    assert ranked == (report, decoy)
+    assert ranked[0] is report and ranked[1] is decoy
+
+
+def test_exact_record_ignores_folded_header_clocks_and_keeps_indented_body():
+    query = "At what time did the amber crate arrive?"
+    note = _exact_record_candidate("note", "a", "Note.txt", "Amber crate arrival at 09:14.", 0.9)
+    email = _exact_record_candidate(
+        "email", "b", "Message.eml",
+        "Received: synthetic relay;\n  8 October 2036 12:00:00 +0000\n\n  Amber crate arrival.", 0.4,
+    )
+    assert rank_exact_record_candidates(query, (note, email), matter_id="matter-quality") == (note, email)
+    body = replace(email, text=email.text + "\n  Amber crate arrival at 09:14:17.")
+    assert rank_exact_record_candidates(query, (note, body), matter_id="matter-quality") == (body, note)
