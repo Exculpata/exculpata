@@ -44,6 +44,8 @@
   "case_intelligence.discovery_gold": "evals",
   "case_intelligence.fraud_case_gold": "evals",
   "case_intelligence.synthetic_corpus_gold": "evals",
+  "case_intelligence.stock_case_gold": "evals",
+  "case_intelligence.stock_case_render": "evals",
   "case_intelligence.docx_extract": "core.sources",
   "case_intelligence.docx_extract_helper": "core.sources",
   "case_intelligence.embedding_index": "modules.retrieval",

@@ -19,8 +19,8 @@ from case_intelligence.stock_case_gold import BROKERS, COMPANIES, build_case
 from case_intelligence.stock_case_render import render
 
 
-# Implementation round replaces this placeholder with the measured seed-7 digest.
-SEED7_DIGEST = "PLACEHOLDER_FILL_FROM_IMPLEMENTATION"
+# Reference digest measured from the complete seed-7 build.
+SEED7_DIGEST = "240f589510177973a009af6ebeb6b9fc3bbb15c22d3ada3a0f7092493eb56b2a"
 KINDS = {
     "statement", "confirmation", "filing", "account_opening", "wire",
     "email", "text", "interview", "production",
