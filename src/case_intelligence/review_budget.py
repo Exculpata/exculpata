@@ -1,6 +1,6 @@
 """Explicit resource contract and portable accounting for bounded investigations."""
 from dataclasses import asdict, dataclass
-from typing import Mapping, Sequence
+from typing import ClassVar, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,7 @@ class ReviewBudget:
     evidence_item_chars: int = 6_000
     evidence_chars: int = 48_000
     output_tokens: int = 1_200
+    reasoning_tokens: ClassVar[int] = 4_096
 
     def __post_init__(self):
         ceilings = (15, 2700, 20, 12, 12, 72, 12, 6_000, 48_000, 1_200)

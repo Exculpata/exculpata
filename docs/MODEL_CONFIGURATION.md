@@ -43,7 +43,7 @@ not. The two configured backends are:
 | Backend | Contract the code calls | Required settings |
 |---|---|---|
 | `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL`. Set `CASE_INTELLIGENCE_GENERATOR_SERVER=ollama`. |
-| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` sends `chat_template_kwargs.enable_thinking` false. |
+| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` sets the extraction default only; answer calls enable thinking. |
 
 `{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
 The URL is an origin or path prefix. It is not a URL that already ends in
@@ -73,7 +73,7 @@ The bundled installer can point this client at an existing server.
 `--external-generator-url` and `--external-generator-model`. `review` and `all`
 write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
-name, thinking disabled, and a 180-second timeout. That URL is the vLLM service
+name, extraction thinking disabled, and a 180-second timeout. That URL is the vLLM service
 in [`compose.yaml`](../compose.yaml) (the `generator` service). They cannot be
 combined with an external server.
 
@@ -124,8 +124,24 @@ literals instead of adding Compose escape/decode semantics that differ between
 generated and operator-maintained files. API key file contents are not Compose
 environment values. Relay URL and pin values also reject `$`.
 
-Startup sends one small strict-schema request. `doctor` sends the same request
-unless `--dry-run` is set. Ollama is checked with native `format`. llama.cpp,
+Answer calls default to thinking on. Internal extraction, including source
+classification and saved review criteria, defaults to thinking off.
+`CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` keeps that extraction default;
+`0` enables thinking for extraction only. An explicit `thinking` call argument
+overrides the default. OpenAI-compatible requests carry
+`chat_template_kwargs.enable_thinking`; Ollama requests carry `think`.
+These defaults are code settings, with no model-profile override.
+Only `message.content` is parsed as the result; reasoning fields are not included
+in answers or saved review decisions. The visible answer allocation remains
+1,200 tokens, with a separate fixed 4,096-token reasoning allowance added to
+the request limit when thinking is enabled.
+
+Startup sends a strict-schema request with answer thinking enabled. Schema
+status is cached separately for each model and thinking state. Extraction's
+state is checked on first use, and periodic refreshes retain separate state.
+Thinking probes add the same reasoning allowance to their 64-token output limit.
+`doctor` sends a non-thinking schema request unless `--dry-run` is set. Ollama
+is checked with native `format`. llama.cpp,
 LM Studio, and vLLM are checked with nested `json_schema.schema`. If the body
 does not match, generation validates locally and retries, then refuses the
 answer. The first probe asks for a value the schema rejects, so a model that

@@ -45,6 +45,8 @@ PROBE_NAME = "exculpata_schema_probe"
 PROBE_MARKER = "exculpata-schema-ok"
 PROBE_CONFLICT = "exculpata-schema-refused"
 PROBE_ATTEMPTS = 3
+# Keep the probe allowance independent of workflow budgets for stdlib-only callers.
+PROBE_REASONING_TOKENS = 4_096
 SCHEMA_SERVERS = ("ollama", "llamacpp", "lmstudio", "vllm")
 OPENAI_SERVERS = ("llamacpp", "lmstudio", "vllm")
 
@@ -106,6 +108,7 @@ def schema_chat_request(
     prompt: str,
     name: str,
     max_tokens: int = 64,
+    thinking: bool = False,
 ) -> tuple[str, dict[str, object]]:
     """Return the path and body for one strict-schema chat request."""
 
@@ -114,12 +117,14 @@ def schema_chat_request(
         return "/api/chat", {
             "model": model,
             "stream": False,
+            "think": thinking,
             "format": dict(schema),
             "messages": [{"role": "user", "content": prompt}],
             "options": {"temperature": 0, "num_predict": max_tokens},
         }
     return "/v1/chat/completions", {
         "model": model,
+        "chat_template_kwargs": {"enable_thinking": thinking},
         "temperature": 0,
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
@@ -143,6 +148,7 @@ def probe_schema_enforcement(
     *,
     transport: Callable[[str, Mapping[str, object], Mapping[str, str]], Mapping[str, object]] | None = None,
     timeout: float = 15.0,
+    thinking: bool = False,
     attempts: int = PROBE_ATTEMPTS,
     headers: Mapping[str, str] | None = None,
 ) -> SchemaProbe:
@@ -150,7 +156,6 @@ def probe_schema_enforcement(
 
     kind = _server(server)
     origin = endpoint.rstrip("/")
-    path, _ = schema_chat_request(kind, model=model, schema=PROBE_SCHEMA, prompt=_PROMPT, name=PROBE_NAME)
     sender = transport or _urllib_transport(timeout)
     header_map = dict(headers or {})
     saw_invalid = False
@@ -160,6 +165,8 @@ def probe_schema_enforcement(
         sent += 1
         path, body = schema_chat_request(
             kind, model=model, schema=PROBE_SCHEMA, prompt=prompt, name=PROBE_NAME,
+            thinking=thinking,
+            max_tokens=64 + (PROBE_REASONING_TOKENS if thinking else 0),
         )
         try:
             payload = sender(origin + path, body, header_map)

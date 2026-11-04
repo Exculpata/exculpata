@@ -63,6 +63,7 @@ def capture_configuration(adapter, model, repetitions, disable_thinking):
             "history": [], "working_context": "", "grounding_repair": False,
             "adapter": adapter, "model": model, "disable_thinking": disable_thinking,
             "temperature": 0.1, "output_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
+            "thinking": True, "reasoning_tokens": DEFAULT_REVIEW_BUDGET.reasoning_tokens,
             "context_tokens": 8192 if adapter == "OllamaGenerator" else "server_configured",
             "response_schema": copy.deepcopy(ANSWER_SCHEMA)}
 
@@ -117,7 +118,7 @@ def seal(receipt):
 
 def validate_capture_row(row):
     common = {"sample_id", "case_id", "repetition", "prompt", "elapsed_ms",
-              "state", "parsed_response_received"}
+              "state", "parsed_response_received", "request_settings"}
     if (not isinstance(row, dict) or not isinstance(row.get("state"), str)
         or row["state"] not in {"generated", "generation_failure"}):
         raise ValueError("Invalid capture sample state.")
@@ -125,6 +126,11 @@ def validate_capture_row(row):
     fields = {"raw", "verification", "schema_valid"} if generated else {"failure_type"}
     if set(row) != common | fields:
         raise ValueError("Capture sample fields must match their recorded state.")
+    if row["request_settings"] is not None and not json_equal(row["request_settings"], {
+        "thinking": True, "output_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
+        "reasoning_tokens": DEFAULT_REVIEW_BUDGET.reasoning_tokens,
+    }):
+        raise ValueError("Capture request settings contradict the fixed adapter protocol.")
     if (not isinstance(row["sample_id"], str) or not isinstance(row["case_id"], str)
         or type(row["repetition"]) is not int or type(row["elapsed_ms"]) is not int
         or row["elapsed_ms"] < 0 or type(row["parsed_response_received"]) is not bool):
@@ -461,6 +467,17 @@ def validate_runtime(runtime):
         raise ValueError("Offline attestation requires a separate evidence digest.")
 
 
+def request_settings(payload, adapter):
+    if adapter == "OllamaGenerator":
+        thinking, total = payload["think"], payload["options"]["num_predict"]
+    else:
+        thinking, total = payload["chat_template_kwargs"]["enable_thinking"], payload["max_tokens"]
+    if type(thinking) is not bool or type(total) is not int:
+        raise ValueError("Capture request settings require a boolean and an integer token limit.")
+    reasoning = DEFAULT_REVIEW_BUDGET.reasoning_tokens if thinking else 0
+    return {"thinking": thinking, "output_tokens": total - reasoning, "reasoning_tokens": reasoning}
+
+
 def capture(client, *, profile, runtime, repetitions, identity_check):
     """Call a real production adapter once per packet; don't hide repair drafts.
 
@@ -506,10 +523,11 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
                    "parsed_response_received": False}
             checked_identity()
             start = time.monotonic()
+            request_bodies = []
             try:
                 try:
                     from .generator_completion import single_schema_attempt
-                    with single_schema_attempt():
+                    with single_schema_attempt(request_observer=request_bodies.append):
                         try:
                             raw = client.generate(question=case["question"], evidence=evidence)
                         except GenerationSchemaRejected as exc:
@@ -537,6 +555,10 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
             finally:
                 checked_identity()
             row["elapsed_ms"] = round((time.monotonic() - start) * 1000)
+            if len(request_bodies) > 1:
+                raise ValueError("Capture requires a single request per sample.")
+            row["request_settings"] = request_settings(request_bodies[0], adapter) if request_bodies else None
+            validate_capture_row(row)
             receipt["results"].append(row)
     checked_identity()
     receipt["generation"] = generation_counts(receipt["results"])

@@ -111,6 +111,10 @@ def test_reasoning_budget_is_separate_from_visible_output():
     assert DEFAULT_REVIEW_BUDGET.reasoning_tokens > 0
 
 
+def test_probe_reasoning_allowance_covers_the_review_budget():
+    assert generator_schema.PROBE_REASONING_TOKENS >= DEFAULT_REVIEW_BUDGET.reasoning_tokens
+
+
 def test_probe_carries_state_and_increases_reasoning_allowance(client, backend, wire):
     for thinking in (False, True):
         result = generator_schema.probe_schema_enforcement(
@@ -217,3 +221,154 @@ def test_schema_refusal_does_not_disable_other_thinking_state(monkeypatch, clien
     with pytest.raises(generation.GenerationUnavailable, match="schema"):
         generator_completion.schema_refused(client, thinking=True)
     assert _classify(client, thinking=False) == REVIEW
+
+
+def test_unset_environment_uses_code_defaults(monkeypatch, client, backend, wire):
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", raising=False)
+    client = generation.generator_from_environment()
+    client.generate(question="What is missing?", evidence=())
+    _classify(client)
+    assert [_thinking(backend, body) for body in wire] == [True, False]
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+def test_openai_compatibility_attribute_retains_extraction_default(disabled):
+    client = generation.OpenAICompatibleGenerator(
+        "http://127.0.0.1:8000", "synthetic-model", disable_thinking=disabled,
+    )
+    assert client.disable_thinking is disabled
+    assert client.disable_thinking is not client.extraction_thinking
+
+
+@pytest.mark.parametrize("disabled", [False, True])
+@pytest.mark.parametrize("profile_thinking", [False, True])
+def test_explicit_question_profile_precedes_compatibility_default(monkeypatch, disabled, profile_thinking):
+    bodies = []
+
+    def request(_url, body, **_kwargs):
+        bodies.append(body)
+        return _reply("openai", {"questions": []})
+
+    monkeypatch.setattr(generation, "_bounded_json_request", request)
+    client = generation.OpenAICompatibleGenerator(
+        "http://127.0.0.1:8000", "synthetic-model", disable_thinking=disabled,
+        question_profile=generation.QuestionGenerationProfile(thinking=profile_thinking, top_up_calls=0),
+    )
+    assert client.disable_thinking is not profile_thinking
+    assert client.extraction_thinking is not disabled
+    client.draft_questions(purpose="witness", topic="Synthetic record", evidence=())
+    assert _thinking("openai", bodies[0]) is profile_thinking
+    for body in bodies:
+        generator_schema.refuse_tool_request(body)
+
+
+@pytest.mark.parametrize("thinking", [False, True])
+def test_reasoning_allowance_is_added_only_when_requested(client, backend, wire, thinking):
+    client.generate(question="What is missing?", evidence=(), thinking=thinking)
+    _classify(client, thinking=thinking, output_tokens=321)
+    allowance = DEFAULT_REVIEW_BUDGET.reasoning_tokens if thinking else 0
+    limits = [body["options"]["num_predict"] if backend == "ollama" else body["max_tokens"]
+              for body in wire]
+    assert limits == [1_200 + allowance, 321 + allowance]
+
+
+def test_reasoning_cannot_substitute_for_missing_content(monkeypatch, client, backend):
+    def request(_url, body, **_kwargs):
+        schema = body.get("format") or body["response_format"]["json_schema"]["schema"]
+        result = REVIEW if "decision" in schema["properties"] else ANSWER
+        message = {"reasoning_content": json.dumps(result), "thinking": json.dumps(result)}
+        return {"message": message} if backend == "ollama" else {"choices": [{"message": message}]}
+
+    monkeypatch.setattr(generation, "_bounded_json_request", request)
+    with pytest.raises(generation.GenerationUnavailable):
+        client.generate(question="What is missing?", evidence=())
+    with pytest.raises(generation.GenerationUnavailable):
+        _classify(client)
+    result = generator_schema.probe_schema_enforcement(
+        client.endpoint, client.schema_server, client.model, thinking=True,
+        transport=lambda *_args: _reply(backend, None),
+    )
+    assert result.status == "refused"
+
+
+@pytest.mark.parametrize("refused_state", [False, True])
+def test_cached_refusal_is_applied_to_each_completion(
+    monkeypatch, client, backend, wire, refused_state,
+):
+    for thinking in (False, True):
+        status = "refused" if thinking == refused_state else "verified"
+        generator_completion.remember_schema(
+            client, generator_schema.SchemaProbe(status, 1, "Synthetic check", ""), thinking=thinking,
+        )
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    assert client.available is (not refused_state)
+    for operation in (client.generate, lambda **kwargs: _classify(client, **kwargs)):
+        args = {"question": "What is missing?", "evidence": ()} if operation == client.generate else {}
+        before = len(wire)
+        with pytest.raises(generation.GenerationUnavailable, match="schema"):
+            operation(**args, thinking=refused_state)
+        assert len(wire) == before
+        operation(**args, thinking=not refused_state)
+        assert _thinking(backend, wire[-1]) is not refused_state
+
+
+def test_startup_and_first_extraction_probe_use_their_request_states(monkeypatch, client, backend, wire):
+    _synchronous_refresh(monkeypatch, client)
+    monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", raising=False)
+    client = generation.generator_from_environment()
+    assert [_thinking(backend, body) for body in wire] == [True]
+    _classify(client)
+    client.generate(question="What is missing?", evidence=())
+    _classify(client)
+    assert [_thinking(backend, body) for body in wire] == [True, False, False, True, False]
+
+
+def test_refresh_keeps_inflight_models_and_states_separate(monkeypatch, client, backend, wire):
+    pending = []
+
+    class QueuedThread:
+        def __init__(self, *, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            pending.append(self.target)
+
+    _synchronous_refresh(monkeypatch, client)
+    monkeypatch.setattr(generator_completion.threading, "Thread", QueuedThread)
+    for thinking in (False, True, False, True):
+        generator_completion.refresh_generator_schema(client, thinking=thinking)
+    assert len(pending) == 2
+    first_model = client.model
+    client.model = "synthetic-model-two"
+    generator_completion.refresh_generator_schema(client, thinking=False)
+    assert len(pending) == 3
+    for run in pending:
+        run()
+    assert [(body["model"], _thinking(backend, body)) for body in wire] == [
+        (first_model, False), (first_model, True), (client.model, False),
+    ]
+    assert not client._schema_refreshing
+    for model in (first_model, "synthetic-model-two"):
+        client.model = model
+        generator_completion.refresh_generator_schema(client, thinking=False, now=1_059)
+    assert len(pending) == 3
+    generator_completion.refresh_generator_schema(client, thinking=False, now=1_060)
+    assert len(pending) == 4
+
+
+def test_cached_answer_status_follows_the_current_model(monkeypatch, client):
+    _synchronous_refresh(monkeypatch, client)
+    first_model = client.model
+    generator_completion.remember_schema(
+        client, generator_schema.SchemaProbe("refused", 3, "Synthetic refusal", ""),
+    )
+    client.model = "synthetic-model-two"
+    generator_completion.remember_schema(
+        client, generator_schema.SchemaProbe("verified", 1, "Synthetic success", ""),
+    )
+    client.model = first_model
+    generator_completion.refresh_generator_schema(client, thinking=True)
+    assert client.schema_mode == "refused"
+    assert client.schema_detail == "Synthetic refusal"

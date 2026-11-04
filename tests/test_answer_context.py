@@ -104,7 +104,9 @@ def test_new_conversation_complete_context_citations_receipts_and_exports(case):
     manifest = receipt['attempts'][1]['manifest']
     assert manifest['serialized_utf8_sha256'] == hashlib.sha256(encode_request(manifest['request'])).hexdigest()
     assert manifest['request'] == case['calls'][-1][1]
-    assert manifest['budget']['input_tokens'] + 1200 + 256 <= manifest['budget']['runtime_window']
+    assert manifest['budget']['reserved_output_tokens'] == 1200 + generation.DEFAULT_REVIEW_BUDGET.reasoning_tokens
+    assert (manifest['budget']['input_tokens'] + manifest['budget']['reserved_output_tokens']
+            + 256 <= manifest['budget']['runtime_window'])
     supplied_orientation = orientation(receipt['snapshot'], result.citations)
     assert supplied_orientation in manifest['request']['messages'][1]['content']
     supplied_accounts = json.loads(supplied_orientation)['records'][2]['accounts']
@@ -114,7 +116,7 @@ def test_new_conversation_complete_context_citations_receipts_and_exports(case):
         citation = result.citations[int(account['evidence_id'][1:]) - 1]
         assert citation.document_id == original['document_id']
         assert citation.support_token == original['support_token']
-    assert manifest['request']['chat_template_kwargs'] == {'enable_thinking':False}
+    assert manifest['request']['chat_template_kwargs'] == {'enable_thinking':True}
     assert 'helicopter' not in result.content
     assert all(c['document_id'] for c in manifest['admission']['evidence'])
     client, slug = case['c']['client'], case['c']['slug']

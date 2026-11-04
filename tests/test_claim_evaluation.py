@@ -86,6 +86,7 @@ def test_suite_rubric_changes_fail_frozen_fingerprint(monkeypatch, tmp_path):
     suite = evaluation.load_suite()
     suite["rubric"]["thresholds"]["release_acceptance"] = "changed"
     path = tmp_path / "modified.json"
+    # fixture-write: synthetic suite mutation to exercise fingerprint rejection.
     path.write_text(json.dumps(suite))
     monkeypatch.setattr(evaluation, "SUITE_PATH", path)
     with pytest.raises(ValueError, match="Frozen"):
@@ -380,6 +381,7 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
     monkeypatch.setattr(cli, "_bounded_json_get", metadata)
     monkeypatch.setattr(generation, "_bounded_json_request", response)
     profile = tmp_path / "runtime.json"
+    # fixture-write: synthetic runtime metadata for the capture CLI.
     profile.write_text(json.dumps(runtime))
     output = tmp_path / "capture.json"
     args = ["capture", "--backend", backend, "--endpoint", "http://127.0.0.1:11435",
@@ -389,15 +391,20 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
     receipt = json.loads(output.read_text())
     evaluation.validate_receipt(receipt)
     assert len(calls) == len(receipt["results"]) == 11
+    assert receipt["configuration"]["thinking"] is True
+    assert receipt["configuration"]["output_tokens"] == 1200
+    assert receipt["configuration"]["reasoning_tokens"] == 4096
     for payload, row in zip(calls, receipt["results"]):
+        assert row["request_settings"] == {"thinking": True, "output_tokens": 1200, "reasoning_tokens": 4096}
         assert payload["messages"] == [{"role": role, "content": row["prompt"][role]}
                                        for role in ("system", "user")]
         if backend == "ollama":
-            assert payload["options"]["num_predict"] == receipt["configuration"]["output_tokens"]
+            assert payload["think"] is True
+            assert payload["options"]["num_predict"] == receipt["configuration"]["output_tokens"] + receipt["configuration"]["reasoning_tokens"]
             assert payload["options"]["num_ctx"] == receipt["configuration"]["context_tokens"]
         else:
-            assert payload["max_tokens"] == receipt["configuration"]["output_tokens"]
-            assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+            assert payload["max_tokens"] == receipt["configuration"]["output_tokens"] + receipt["configuration"]["reasoning_tokens"]
+            assert payload["chat_template_kwargs"] == {"enable_thinking": True}
     grades = completed_grades(receipt)
     score = evaluation.score_capture(receipt, grades)
     assert score["generation"]["answer_error_among_generated"] == evaluation.fraction(11, 11)

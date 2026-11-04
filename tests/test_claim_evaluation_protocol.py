@@ -67,6 +67,10 @@ def grading(receipt, grades, operation):
 @pytest.mark.parametrize("operation", ["grade_template", "score_capture"])
 @pytest.mark.parametrize("backend,field,value", [
     ("openai", "temperature", 0.9),
+    ("openai", "thinking", False),
+    ("openai", "thinking", 1),
+    ("openai", "reasoning_tokens", 0),
+    ("openai", "reasoning_tokens", 4096.0),
     ("openai", "output_tokens", 10),
     ("openai", "output_tokens", 1200.0),
     ("openai", "context_tokens", 8192),
@@ -94,7 +98,7 @@ def test_resealed_configuration_cannot_contradict_capture_protocol(capture, oper
 
 
 @pytest.mark.parametrize("operation", ["grade_template", "score_capture"])
-@pytest.mark.parametrize("field", ["temperature", "history", "response_schema", "disable_thinking"])
+@pytest.mark.parametrize("field", ["temperature", "history", "response_schema", "disable_thinking", "thinking", "reasoning_tokens"])
 def test_resealed_configuration_cannot_drop_protocol_fields(capture, operation, field):
     receipt, _ = capture()
     grades = completed_grades(receipt)
@@ -214,19 +218,43 @@ def test_supported_adapter_options_preserve_actual_payloads_and_grading(capture,
     assert len(template["samples"]) == len(requests) == 11 * repetitions
     assert score["generation"]["failed_attempts"] == evaluation.fraction(0, 11 * repetitions)
     assert configuration["disable_thinking"] is thinking
+    assert configuration["thinking"] is True
+    assert configuration["output_tokens"] == 1200
+    assert configuration["reasoning_tokens"] == 4096
     assert configuration["seed"] is None
     assert configuration["seed_status"] == "production_adapters_do_not_set_seed"
     for request, row in zip(requests, receipt["results"]):
+        assert row["request_settings"] == {"thinking": True, "output_tokens": 1200, "reasoning_tokens": 4096}
         assert request["model"] == configuration["model"]
         assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
                                        for role in ("system", "user")]
         if backend == "ollama":
             assert request["options"] == {"temperature": configuration["temperature"],
-                "num_ctx": configuration["context_tokens"], "num_predict": configuration["output_tokens"]}
+                "num_ctx": configuration["context_tokens"], "num_predict": configuration["output_tokens"] + configuration["reasoning_tokens"]}
+            assert request["think"] is True
             assert request["format"] == configuration["response_schema"]
         else:
             assert request["temperature"] == configuration["temperature"]
-            assert request["max_tokens"] == configuration["output_tokens"]
+            assert request["max_tokens"] == configuration["output_tokens"] + configuration["reasoning_tokens"]
             assert request["response_format"]["json_schema"]["schema"] == configuration["response_schema"]
-            assert (request.get("chat_template_kwargs") == {"enable_thinking": False}) is thinking
+            assert request["chat_template_kwargs"] == {"enable_thinking": True}
             assert configuration["context_tokens"] == "server_configured"
+
+
+@pytest.mark.parametrize("backend", ["openai", "ollama"])
+@pytest.mark.parametrize("failure", [False, True])
+def test_capture_budget_evidence_comes_from_dispatched_payload(capture, monkeypatch, backend, failure):
+    monkeypatch.setattr(generation, "_completion_token_limit", lambda *_args: 5297)
+    with pytest.raises(ValueError, match="request settings"):
+        capture(backend, failure=failure)
+
+
+@pytest.mark.parametrize("field,value", [("thinking", False), ("thinking", 1),
+    ("output_tokens", 5296), ("output_tokens", 1200.0),
+    ("reasoning_tokens", 0), ("reasoning_tokens", 4096.0)])
+def test_resealed_request_settings_cannot_contradict_capture_protocol(capture, field, value):
+    receipt, _ = capture()
+    receipt.pop("receipt_sha256")
+    receipt["results"][0]["request_settings"][field] = value
+    with pytest.raises(ValueError, match="request settings"):
+        evaluation.grade_template(evaluation.seal(receipt))

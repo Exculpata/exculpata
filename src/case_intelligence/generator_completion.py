@@ -31,22 +31,44 @@ def generator_api_key() -> str:
     return text.strip()
 
 
-def remember_schema(client: object, result: SchemaProbe) -> None:
-    client.schema_mode = result.status  # type: ignore[attr-defined]
-    client.schema_detail = result.detail  # type: ignore[attr-defined]
-    client.schema_fix = result.fix  # type: ignore[attr-defined]
-    client._schema_checked_at = time.monotonic()  # type: ignore[attr-defined]
+def initialize_schema(client: object, mode: str) -> None:
+    client._schema_results = {
+        (client.model, True): (SchemaProbe(mode, 0, "", ""), 0.0),
+    }
+    client._schema_refreshing = set()
+    client._schema_checks_started = False
 
 
-def probe_generator(client: object) -> None:
+def _show_answer_schema(client: object, result: SchemaProbe) -> None:
+    client.schema_mode = result.status
+    client.schema_detail = result.detail
+    client.schema_fix = result.fix
+
+
+def remember_schema(
+    client: object, result: SchemaProbe, *, thinking: bool = True, model: str | None = None,
+) -> None:
+    model = client.model if model is None else model
+    with _REFRESH_LOCK:
+        client._schema_checks_started = True
+        client._schema_results[(model, thinking)] = (result, time.monotonic())
+        if thinking and model == client.model:
+            _show_answer_schema(client, result)
+
+
+def probe_generator(
+    client: object, *, thinking: bool = True, model: str | None = None,
+) -> None:
     if os.getenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "1") == "0":
         return
+    model = client.model if model is None else model
     try:
         result = probe_schema_enforcement(
-            client.endpoint,  # type: ignore[attr-defined]
-            client.schema_server,  # type: ignore[attr-defined]
-            client.model,  # type: ignore[attr-defined]
-            timeout=min(float(client.timeout), 20.0),  # type: ignore[attr-defined]
+            client.endpoint,
+            client.schema_server,
+            model,
+            thinking=thinking,
+            timeout=min(float(client.timeout), 20.0),
             headers=getattr(client, "_headers", {}),
         )
     except (OSError, ValueError, TimeoutError):
@@ -56,55 +78,76 @@ def probe_generator(client: object) -> None:
             "The schema check could not run.",
             "Rerun doctor after the answer server is reachable.",
         )
-    remember_schema(client, result)
+    remember_schema(client, result, thinking=thinking, model=model)
 
 
-def refresh_generator_schema(client: object, *, now: float | None = None) -> None:
-    """Re-check a probed server at most once a minute. Unprobed clients do not call out."""
-
-    if getattr(client, "schema_mode", "unprobed") == "unprobed":
+def refresh_generator_schema(
+    client: object, *, thinking: bool = True, now: float | None = None,
+) -> None:
+    """Refresh each model/state once a minute without blocking callers."""
+    if not getattr(client, "_schema_checks_started", False) and getattr(client, "schema_mode", "unprobed") == "unprobed":
+        return
+    if os.getenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "1") == "0":
         return
     moment = time.monotonic() if now is None else now
-    if moment - float(getattr(client, "_schema_checked_at", 0.0)) < 60:
-        return
+    model = client.model
+    key = (model, thinking)
     with _REFRESH_LOCK:
-        if (getattr(client, "_schema_refreshing", False)
-                or moment - float(getattr(client, "_schema_checked_at", 0.0)) < 60):
+        cached = client._schema_results.get(key)
+        if thinking and model == client.model:
+            _show_answer_schema(client, cached[0] if cached else SchemaProbe("unprobed", 0, "", ""))
+        if key in client._schema_refreshing or (cached and moment - cached[1] < 60):
             return
-        client._schema_refreshing = True
+        client._schema_checks_started = True
+        client._schema_refreshing.add(key)
+
     def refresh():
         try:
-            probe_generator(client)
+            probe_generator(client, thinking=thinking, model=model)
         finally:
             with _REFRESH_LOCK:
-                client._schema_refreshing = False
+                client._schema_refreshing.discard(key)
+
     threading.Thread(target=refresh, daemon=True, name="generator-schema").start()
 
 
 _REFRESH_LOCK = threading.Lock()
 
 
-def schema_refused(client: object) -> None:
+def schema_refused(client: object, *, thinking: bool = True) -> None:
     from .generation import GenerationUnavailable
 
-    if getattr(client, "schema_mode", "unprobed") != "refused":
+    with _REFRESH_LOCK:
+        cached = getattr(client, "_schema_results", {}).get((client.model, thinking))
+    if cached is None or cached[0].status != "refused":
         return
     raise GenerationUnavailable(
         "This answer service did not return the required JSON schema. "
-        "Answering stays off until a schema check passes. Search and source review still work."
+        "Answering stays off for this thinking state until a schema check passes. "
+        "Search and source review still work."
     )
 
 
 _SINGLE_SCHEMA_ATTEMPT = ContextVar("single_schema_attempt", default=False)
+_REQUEST_OBSERVER = ContextVar("generation_request_observer", default=None)
+
+
+def observe_request(body: dict) -> dict:
+    observer = _REQUEST_OBSERVER.get()
+    if observer is not None:
+        observer(body)
+    return body
 
 
 @contextmanager
-def single_schema_attempt():
+def single_schema_attempt(request_observer=None):
     """Capture the first synthetic evaluation response without concealing repairs."""
     token = _SINGLE_SCHEMA_ATTEMPT.set(True)
+    observer_token = _REQUEST_OBSERVER.set(request_observer)
     try:
         yield
     finally:
+        _REQUEST_OBSERVER.reset(observer_token)
         _SINGLE_SCHEMA_ATTEMPT.reset(token)
 
 
@@ -113,12 +156,16 @@ def complete_structured(
     send: Callable[[int], Mapping[str, object]],
     parse: Callable[[Mapping[str, object]], Mapping[str, object]],
     schema: Mapping[str, object],
+    *,
+    thinking: bool = True,
 ) -> Mapping[str, object]:
     """Validate every reply locally, with bounded repair attempts for probed servers."""
 
     from .generation import GenerationUnavailable, GenerationSchemaRejected
 
-    schema_refused(client)
+    if getattr(client, "_schema_checks_started", False):
+        refresh_generator_schema(client, thinking=thinking)
+    schema_refused(client, thinking=thinking)
     attempts = 1 if _SINGLE_SCHEMA_ATTEMPT.get() else PROBE_ATTEMPTS
     for attempt in range(attempts):
         boundary = getattr(client, "structured_request_boundary", None)
