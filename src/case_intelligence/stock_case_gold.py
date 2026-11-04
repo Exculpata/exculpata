@@ -35,7 +35,7 @@ def build_case(seed=7):
     months = [date(2024 + m // 12, m % 12 + 1, 1) for m in range(18)]
     trades = []
     def trade(day, account, amount):
-        trades.append(dict(trade_id=f'st-{len(trades):03}', date=day,
+        trades.append(dict(date=day,
                            account_id=account, shares=amount * unit))
     for m, month in enumerate(months):
         for i, account in enumerate(accounts):
@@ -46,7 +46,9 @@ def build_case(seed=7):
                 trade(month.replace(day=day).isoformat(), 'stk-0', amount)
     for i in range(4):
         trade('2024-10-15', f'stk-{i}', -6000)
-    trades.sort(key=lambda t: (t['date'], t['trade_id']))
+    trades.sort(key=lambda t: t['date'])
+    for i, row in enumerate(trades):
+        row['trade_id'] = f'st-{i:03}'
     statements = []
     for month in months:
         day = month.replace(day=calendar.monthrange(month.year, month.month)[1]).isoformat()

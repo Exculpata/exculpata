@@ -20,7 +20,7 @@ from case_intelligence.stock_case_render import render
 
 
 # Reference digest measured from the complete seed-7 build.
-SEED7_DIGEST = "240f589510177973a009af6ebeb6b9fc3bbb15c22d3ada3a0f7092493eb56b2a"
+SEED7_DIGEST = "54cd627321314a6d6e1257df44f0ca1f5a1780afd5d71f889128d004a8296b9b"
 KINDS = {
     "statement", "confirmation", "filing", "account_opening", "wire",
     "email", "text", "interview", "production",
@@ -72,6 +72,21 @@ def test_determinism_manifest_and_cli(tmp_path):
     assert manifests[2] != SEED7_DIGEST
 
 
+def test_render_refuses_existing_out_and_writes_only_under_out(tmp_path):
+    with pytest.raises(FileExistsError):
+        render(tmp_path)  # fixture-write: existing temporary output must be refused.
+    before = {p.relative_to(tmp_path): p.read_bytes() if p.is_file() else None
+              for p in tmp_path.rglob("*")}
+    out = tmp_path / "out"
+    render(out)  # fixture-write: fresh synthetic corpus under the output directory.
+    after = {p.relative_to(tmp_path): p.read_bytes() if p.is_file() else None
+             for p in tmp_path.rglob("*") if not p.is_relative_to(out)}
+    assert before == after
+    for source in rows(out, "sources.jsonl"):
+        path = Path(source["path"])
+        assert not path.is_absolute() and ".." not in path.parts
+
+
 def test_document_counts_and_page_locators(rendered):
     sources = rows(rendered, "sources.jsonl")
     assert 380 <= len(sources) <= 420
@@ -105,6 +120,8 @@ def test_document_counts_and_page_locators(rendered):
 
 def test_daily_shape_reconstructed_from_rendered_pdfs(rendered):
     case = build_case(7)
+    trade_ids = [t["trade_id"] for t in case["trades"]]
+    assert trade_ids == sorted(trade_ids)
     positions, trades, counts = {}, {}, set()
     for source in rows(rendered, "sources.jsonl"):
         if source["kind"] not in {"statement", "filing"}:
