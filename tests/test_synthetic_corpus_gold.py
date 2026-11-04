@@ -1,5 +1,6 @@
 """Synthetic generator acceptance, including real artifact and eval boundaries."""
 import csv
+import gc
 import hashlib
 import json
 import tracemalloc
@@ -120,14 +121,59 @@ def test_patterns_are_real_transactions(tmp_path):
             assert len(hops) >= 3 and len({t[field] for t in hops}) == 1
 
 
-def test_streaming_memory(tmp_path):
+def _streaming_peaks(tmp_path, generator):
     peaks = []
-    for count in (20, 3000):
+    for count in (1000, 4000):
+        generator(tmp_path / f'warm-{count}', filler_chunks=20)
+        gc.collect()
         tracemalloc.start()
-        generate(tmp_path / str(count), filler_chunks=count)
-        peaks.append(tracemalloc.get_traced_memory()[1])
-        tracemalloc.stop()
-    assert peaks[1] < peaks[0] + 2_000_000
+        try:
+            tracemalloc.reset_peak()
+            generator(tmp_path / f'measured-{count}', filler_chunks=count)
+            peaks.append(tracemalloc.get_traced_memory()[1])
+        finally:
+            tracemalloc.stop()
+    return peaks
+
+
+def _assert_flat_peaks(peaks):
+    # 4x records must stay flat: allow 25% or 256 KB of allocator noise,
+    # well below the growth from buffering 1000 versus 4000 chunk records.
+    assert peaks[1] <= max(peaks[0] * 1.25, peaks[0] + 256_000), peaks
+
+
+def _generate_buffered(out, *, filler_chunks):
+    generate(out, filler_chunks=filler_chunks)
+    content = (out / 'chunks.jsonl').read_text(encoding='utf-8')
+    # fixture-write: synthetic corpus copy under the per-call temporary directory.
+    (out / 'buffered.jsonl').write_text(content, encoding='utf-8')
+
+
+def test_streaming_memory_warms_before_tracing(tmp_path):
+    calls = []
+
+    def record_call(out, *, filler_chunks):
+        calls.append((out, filler_chunks, tracemalloc.is_tracing()))
+
+    _streaming_peaks(tmp_path, record_call)
+    assert [(count, tracing) for _, count, tracing in calls] == [
+        (20, False), (1000, True), (20, False), (4000, True),
+    ]
+    assert len({out for out, _, _ in calls}) == 4
+    assert not tracemalloc.is_tracing()
+
+
+def test_streaming_memory(tmp_path):
+    peaks = _streaming_peaks(tmp_path, generate)
+    print(f'streaming peaks (bytes): {peaks}')
+    _assert_flat_peaks(peaks)
+
+
+def test_streaming_memory_rejects_buffering(tmp_path):
+    peaks = _streaming_peaks(tmp_path, _generate_buffered)
+    print(f'buffered peaks (bytes): {peaks}')
+    with pytest.raises(AssertionError):
+        _assert_flat_peaks(peaks)
 
 
 def test_eval_suite_and_lane_diagnostics(tmp_path, monkeypatch):
