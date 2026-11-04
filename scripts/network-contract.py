@@ -22,6 +22,70 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
                    "huggingface_hub", "faster_whisper", "ctranslate2", "av")
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
+FILE_EXTENSIONS = frozenset("json jsonl toml yaml yml txt csv tsv md py pdf log".split())
+FILE_SUFFIXES = ("path", "file", "filename", "fname", "dir")
+FILE_CALLS = frozenset({"Path", "PurePath", "open", "join"})
+HOST_WORDS = ("host", "server", "domain", "proxy", "proxies", "url")
+HOST_CALLS = frozenset({
+    "connect", "connect_ex", "create_connection", "getaddrinfo", "socket", "SocketType",
+    "Client", "AsyncClient", "Session", "ClientSession", "HTTPConnection", "HTTPSConnection",
+    "request", "get", "post", "put", "patch", "delete", "head", "options", "send",
+    "urlopen", "urlretrieve", "open_service_request",
+})
+MAX_LITERAL_CONTEXT_DEPTH = 8
+CONTEXT_CONTAINERS = (ast.Tuple, ast.List, ast.Set, ast.Dict, ast.Starred, ast.keyword)
+
+
+def target_identifier(target):
+    """Name uses id, Attribute uses attr; Subscript and tuple targets have none."""
+    if isinstance(target, ast.Name):
+        return target.id.lower()
+    if isinstance(target, ast.Attribute):
+        return target.attr.lower()
+    return ""
+
+
+def file_literal_context(node, parents, resolve):
+    """Return the file signal only after the bounded host check succeeds.
+
+    Calls use the last segment of the existing import/alias resolver: Path,
+    PurePath, open and join (including os.path.join and other attribute calls).
+    Cross only containers/keywords; stop at the nearest call, statement or
+    other expression. Depth exhaustion retains the host finding.
+    """
+    identifiers = []
+    cursor = node
+    for _ in range(MAX_LITERAL_CONTEXT_DEPTH):
+        parent = parents.get(cursor)
+        if isinstance(parent, ast.keyword):
+            identifiers.append((parent.arg or "").lower())
+        elif isinstance(parent, (ast.Assign, ast.AnnAssign)):
+            targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+            identifiers.extend(target_identifier(target) for target in targets)
+            break
+        elif isinstance(parent, ast.Call):
+            if resolve(parent.func).rsplit(".", 1)[-1] in HOST_CALLS:
+                return None
+            break
+        elif not isinstance(parent, CONTEXT_CONTAINERS):
+            break
+        cursor = parent
+    else:
+        return None
+    if any(word in identifier for identifier in identifiers for word in HOST_WORDS):
+        return None
+    if node.value.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS:
+        return None
+    parent = parents.get(node)
+    if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.keyword)) and parent.value is node:
+        if any(identifier.endswith(FILE_SUFFIXES) for identifier in identifiers):
+            return "identifier"
+    if isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Div):
+        return "division"
+    call = parents.get(parent) if isinstance(parent, ast.keyword) else parent
+    if isinstance(call, ast.Call) and resolve(call.func).rsplit(".", 1)[-1] in FILE_CALLS:
+        return "call"
+    return None
 
 
 class UniqueLoader(yaml.SafeLoader):
@@ -185,7 +249,7 @@ def source_inventory(root):
                 found.append((relative, node.lineno, kind, fingerprint(signature), detail))
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 hosts = set(URL.findall(node.value))
-                if HOSTNAME.fullmatch(node.value):
+                if HOSTNAME.fullmatch(node.value) and not file_literal_context(node, parents, resolve):
                     hosts.add(node.value)
                 if len(node.value) <= 45:
                     try:

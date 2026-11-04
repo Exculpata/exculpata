@@ -128,3 +128,89 @@ def test_network_target_still_reported(tmp_path, source, expected):
 )
 def test_known_host_gap(tmp_path, source, expected):
     assert reported_hosts(tmp_path, source) == [expected]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'PurePath("a.json")',
+        'import pathlib\npathlib.Path("a.json")',
+        'from pathlib import Path as P\nP("a.json")',
+        'from os.path import join as j\nj(d, "a.json")',
+        'obj.open("a.json")',
+        'obj.join(d, "a.json")',
+        'obj.output_file = "a.json"',
+        'OUTPUT_FILENAME: str = "a.json"',
+        'output_fname = "a.json"',
+        'output_dir = "a.json"',
+        'fetch(file="a.json")',
+        'Path(value="a.json")',
+        '"a.json" / base',
+        # Accepted gap: the nearest call ends the walk, even inside a request.
+        'import requests\nrequests.get(str(Path("a.json")))',
+    ],
+)
+def test_file_context_syntax(tmp_path, source):
+    assert reported_hosts(tmp_path, source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'obj.output_file[0] = "a.json"',
+        '(output_file,) = "a.json"',
+        'name = "a.json"',
+        'output_file = identity("a.json")',
+        'Path(["a.json"])',
+        'output_file = ["a.json"]',
+        'output_file: "a.json" = value',
+        'obj.host_file = "a.json"',
+        'host_file = output_file = "a.json"',
+        'PROXIES_FILE: str = "a.json"',
+        'Path(url_path="a.json")',
+        'Path(proxy_file="a.json")',
+        'Path(proxies_file="a.json")',
+        'connect(file="a.json")',
+        'getaddrinfo(file="a.json")',
+        'socket(file="a.json")',
+        'HTTPConnection(file="a.json")',
+        'HTTPSConnection(file="a.json")',
+        'AsyncClient(file="a.json")',
+        'Session(file="a.json")',
+        'ClientSession(file="a.json")',
+        'request(file="a.json")',
+        'import requests\nrequests.get(file="a.json")',
+        'from socket import connect as dial\ndial(file="a.json")',
+        # Host keywords survive each allowed container on the bounded walk.
+        'Path(host=("a.json",))',
+        'Path(host=["a.json"])',
+        'Path(host={"a.json"})',
+        'Path(host={"key": "a.json"})',
+        'Path(host=[*("a.json",)])',
+    ],
+)
+def test_context_does_not_clear_host(tmp_path, source):
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+@pytest.mark.parametrize("extension", "json jsonl toml yaml yml txt csv tsv md py pdf log".split())
+def test_closed_extensions_need_file_context(tmp_path, extension):
+    literal = "a." + extension
+    source = f'"{literal}"\nPath("{literal}")\nPath(host="{literal}")'
+    assert reported_hosts(tmp_path, source) == [literal, literal]
+
+
+@pytest.mark.parametrize("literal", ["evil.pl", "evil.cc", "example.com", "api.example.org"])
+def test_other_extensions_stay_reported_in_file_context(tmp_path, literal):
+    assert reported_hosts(tmp_path, f'Path("{literal}")') == [literal]
+
+
+def test_context_depth_limit_retains_host(tmp_path, monkeypatch):
+    # A file keyword is insufficient when the bounded host check cannot finish.
+    monkeypatch.setattr(contract, "MAX_LITERAL_CONTEXT_DEPTH", 1)
+    source = 'Path(file="a.json")'
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+def test_absolute_dns_name_retained(tmp_path):
+    assert reported_hosts(tmp_path, 'Path("a.json.")') == ["a.json."]

@@ -430,8 +430,38 @@ internals remain dependency review material; the offline IDNA source archive has
 its own hash/license manifest and is inspected by the publication archive gate.
 
 The AST inventory follows ordinary imports, aliases, client construction and
-sync/async with-bindings. It includes inert XML/provenance URLs and DNS-shaped
-filenames as reviewed occurrences; these are not permission to contact hosts.
+sync/async with-bindings. It includes inert XML/provenance URLs as reviewed
+occurrences; these are not permission to contact hosts. URL and IP detection
+does not depend on file context. A bare hostname-shaped literal is reported
+unless its last label is one of `json`, `jsonl`, `toml`, `yaml`, `yml`, `txt`,
+`csv`, `tsv`, `md`, `py`, `pdf`, `log` and it has syntactic file context.
+File context means a direct argument to `Path`, `PurePath`, `open` or
+`os.path.join`, a direct operand of any `/` expression, or a value directly
+assigned to an identifier ending in `path`, `file`, `filename`, `fname` or
+`dir` (case-insensitive). Bare `name` is not a file suffix. Calls are matched
+by the last segment from the existing import/alias resolver, including
+attribute calls; `join` is not restricted to an `os.path` receiver. Assignment
+targets use `Name.id` or `Attribute.attr`; subscript and tuple targets give no
+identifier. Keyword identifiers use their argument names.
+
+Host context is checked first and wins: assignment or keyword identifiers
+containing `host`, `server`, `domain`, `proxy`, `proxies` or `url`, and connection,
+socket, HTTP client constructor or request call names retain the host finding.
+The host-context walk has a fixed limit of eight parent steps
+(`MAX_LITERAL_CONTEXT_DEPTH`). It crosses only tuple, list, set, dict, starred
+and keyword nodes, stopping at the nearest call or statement, or any other
+expression. Exhausting the limit retains the finding. Container contents do
+not gain direct file context. Call names use the same last-segment matching
+rule, so an imported alias of a request method still has host context.
+
+This is not call-reachability or taint analysis. Known gaps include bare
+`host:port`, `host/path`, `//host`, concatenation, f-strings, variable indirection
+and wrapper calls such as `fetch(file="evil.md")`. `Path("evil.py")`,
+`open("evil.md")` and division with a non-Path operand count as files by design.
+The nearest-call boundary also treats `requests.get(str(Path("a.json")))` as
+file context for that literal; outer calls are not followed. Bare `evil.py`
+and `evil.md` remain reported, as do file-context literals ending in `zip`,
+`mov`, `sh`, `pl` or `cc`, which are outside the closed extension list.
 It is not whole-program analysis: reflection, generated code,
 third-party networking, other languages and subprocess utilities still require
 review. Editing both an allowance and its code is a review event, not proof that
