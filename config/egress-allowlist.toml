@@ -8721,3 +8721,9 @@ path = "src/case_intelligence/synthetic_corpus_gold.py"
 kind = "host"
 digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
 detail = "manifest.json"
+
+[[source]]
+path = "src/case_intelligence/stock_case_render.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
