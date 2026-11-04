@@ -195,16 +195,35 @@ class DeterministicEmbeddingAdapter:
 
 
 class DeterministicReranker:
-    """Stable overlap reranker used by core tests and the no-dependency demo."""
+    """Stable rarity-weighted reranker for core tests and the no-dependency demo."""
 
     available = True
+    _STOP_WORDS = frozenset({
+        "a", "an", "and", "are", "as", "at", "be", "been", "by", "did", "do",
+        "does", "for", "from", "had", "has", "have", "how", "in", "is", "it",
+        "of", "on", "or", "that", "the", "their", "there", "these", "this",
+        "to", "was", "were", "what", "when", "where", "which", "who", "with",
+    })
 
     def rerank(self, query: str, candidates: Sequence[Candidate]) -> tuple[Candidate, ...]:
-        query_terms = set(_tokens(query))
+        query_tokens = tuple(token for token in _tokens(query) if token not in self._STOP_WORDS)
+        query_terms = tuple(dict.fromkeys(query_tokens))
+        query_pairs = set(zip(query_tokens, query_tokens[1:]))
+        passage_tokens = [
+            tuple(token for token in _tokens(item.text) if token not in self._STOP_WORDS)
+            for item in candidates
+        ]
+        passage_terms = [set(tokens) for tokens in passage_tokens]
+        weights = {
+            term: math.log((len(candidates) + 1) / (sum(term in terms for terms in passage_terms) + 1)) + 1
+            for term in query_terms
+        }
         scored = []
-        for candidate in candidates:
-            overlap = len(query_terms.intersection(_tokens(candidate.text)))
-            scored.append(replace(candidate, score=float(overlap * 100) + candidate.score))
+        for candidate, tokens, terms in zip(candidates, passage_tokens, passage_terms):
+            overlap = sum(weights[term] for term in query_terms if term in terms)
+            pairs = set(zip(tokens, tokens[1:]))
+            bonus = 0.35 * len(query_pairs.intersection(pairs))
+            scored.append(replace(candidate, score=(overlap + bonus) * 100 + candidate.score))
         return tuple(sorted(scored, key=lambda item: (-item.score, item.page_number, item.chunk_id)))
 
 

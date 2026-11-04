@@ -148,8 +148,15 @@ retriever.
 `--retriever postgres` runs the same search the workbench uses for a PostgreSQL
 index. Each passage is stored as one text unit. `HybridRetriever` then runs
 PostgreSQL full-text search, pgvector cosine search, reciprocal rank fusion,
-and the reranker, including the exact-record and temporal reorder used on that
-path. Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
+and the reranker. The exact-record refinement ignores message-header and metadata
+clocks, and requires an identifier match or at least half the query subject terms
+before clock precision or source authority can promote a passage. The temporal
+reorder then promotes subject-matching observations on the requested side of a
+clock cutoff. Both operate on existing candidates without changing retrieval
+budgets or source evidence. The deterministic fallback reranker drops a local
+stop-word list, weights shared terms by rarity within its candidate set, and adds
+a small adjacent-pair bonus with deterministic ties.
+Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
 scorecard records the retriever name, index, embedder class, and reranker
 class. It does not record the connection string.
 

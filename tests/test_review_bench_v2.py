@@ -469,3 +469,36 @@ def test_retrieval_startup_failure_does_not_serve_false_readiness(monkeypatch):
     with pytest.raises(RuntimeError, match="synthetic missing offline artifact"):
         with TestClient(retrieval_worker.app):
             pytest.fail("Unavailable models must stop service startup")
+
+
+def test_fallback_reranker_drops_stop_words_and_rewards_adjacent_pairs():
+    filler = _c("matter-alpha", "filler", 1, "The and of what was", score=0.02)
+    reversed_pair = _c("matter-alpha", "reversed", 2, "seal amber", score=0.02)
+    adjacent = _c("matter-alpha", "adjacent", 3, "amber seal", score=0.02)
+    pool = (filler, reversed_pair, adjacent)
+    reranker = DeterministicReranker()
+    ranked = reranker.rerank("What was the amber seal?", pool)
+    assert [item.chunk_id for item in ranked] == ["adjacent", "reversed", "filler"]
+    assert ranked[0].score - ranked[1].score == pytest.approx(35.0)
+    assert ranked[-1].score == filler.score
+    assert reranker.rerank("What was the amber seal?", tuple(reversed(pool))) == ranked
+    assert [(item.text, item.citation) for item in ranked] == [
+        (adjacent.text, adjacent.citation), (reversed_pair.text, reversed_pair.citation),
+        (filler.text, filler.citation),
+    ]
+
+
+def test_fallback_reranker_rarity_and_ties_preserve_existing_order_keys():
+    import math
+
+    pool = (
+        _c("matter-alpha", "b", 2, "amber amber", score=0.03),
+        _c("matter-alpha", "c", 1, "amber", score=0.03),
+        _c("matter-alpha", "a", 1, "amber", score=0.03),
+        _c("matter-alpha", "rare", 4, "ultraviolet", score=0.03),
+    )
+    ranked = DeterministicReranker().rerank("amber ultraviolet", pool)
+    assert [item.chunk_id for item in ranked] == ["rare", "a", "c", "b"]
+    assert ranked[0].score == pytest.approx((math.log(5 / 2) + 1) * 100 + 0.03)
+    assert ranked[1].score == pytest.approx((math.log(5 / 4) + 1) * 100 + 0.03)
+    assert DeterministicReranker().rerank("amber", ()) == ()
