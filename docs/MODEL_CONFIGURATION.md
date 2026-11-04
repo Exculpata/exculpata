@@ -143,7 +143,7 @@ comes from [`config/model_profiles.json`](../config/model_profiles.json). A
 missing tool selects the CPU profile and says so. Nothing is downloaded.
 
 By default, embeddings and reranking use the built-in retrieval worker. `CASE_REVIEW_MODEL_DEVICE=cpu` loads
-Granite and the ModernBERT reranker on CPU. When an index already contains
+Granite Embedding English R2 and the Granite English R2 reranker on CPU. When an index already contains
 vectors and the embedding model or revision changes, `doctor` and startup say
 that existing indexes must be rebuilt. Exculpata does not rebuild them
 automatically. An API key for the answer server is read from
@@ -164,7 +164,7 @@ probes, answers, source classification and question drafting; it is never put in
 the URL. Generator redirects and ambient proxies remain disabled.
 
 The unconditional metadata deny set also covers the documented
-[Alibaba ECS metadata service](https://www.alibabacloud.com/help/en/ecs/user-guide/view-instance-metadata/),
+ECS/ECI metadata service in shared address space,
 including IPv4-mapped IPv6 forms and hostnames resolving to that destination.
 Remote consent cannot permit it.
 

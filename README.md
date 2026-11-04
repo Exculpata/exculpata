@@ -245,7 +245,7 @@ information live in [`config/models.json`](config/models.json).
 | **ClamAV** | Scans uploads before they can become reviewable matter sources. |
 | **Tesseract and Poppler** | Render and OCR scanned PDF pages and image evidence. |
 | **Granite Embedding English R2** | Converts passages and questions into vectors for meaning-based retrieval. |
-| **GTE ModernBERT reranker** | Reorders candidate passages so the strongest evidence reaches the answering model. |
+| **Granite English R2 reranker** | Reorders candidate passages so the strongest evidence reaches the answering model. |
 | **Qwen3.5 4B or 9B through vLLM** | Generates local answers, summaries, and review assistance from selected passages for source review. |
 | **WhisperX and faster-whisper large-v3** | Transcribe media and align transcript text to timestamps. |
 | **Optional speaker diarization** | Ungated Nemotron separates up to eight anonymous speakers; Community-1 remains an explicit gated alternative. |

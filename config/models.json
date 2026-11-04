@@ -30,8 +30,8 @@
     {
       "group": "review",
       "role": "reranker",
-      "model_id": "Alibaba-NLP/gte-reranker-modernbert-base",
-      "revision": "f7481e6055501a30fb19d090657df9ec1f79ab2c",
+      "model_id": "ibm-granite/granite-embedding-reranker-english-r2",
+      "revision": "d09d3d6971b689bf9c23839e45a470874d46e13a",
       "license": "Apache-2.0",
       "gated": false
     },

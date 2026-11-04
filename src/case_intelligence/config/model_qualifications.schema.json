@@ -12,6 +12,21 @@
     "schema_version": {
       "const": 1
     },
+    "model_metadata": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["model_id", "revision", "license", "training_data_lineage", "source"],
+        "properties": {
+          "model_id": {"type": "string", "minLength": 1, "maxLength": 200},
+          "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+          "license": {"type": "string", "minLength": 1, "maxLength": 200},
+          "training_data_lineage": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "source": {"type": "string", "minLength": 1, "maxLength": 500}
+        }
+      }
+    },
     "qualifications": {
       "type": "array",
       "items": {

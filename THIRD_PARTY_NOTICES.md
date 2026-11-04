@@ -51,7 +51,7 @@ network service.
 The immutable IDs and revisions are recorded in `config/models.json`. The
 current declarations are:
 
-- Qwen3.5 4B, Qwen3.5 9B, Granite Embedding English R2, and GTE ModernBERT reranker:
+- Qwen3.5 4B, Qwen3.5 9B, Granite Embedding English R2, and Granite English R2 reranker:
   Apache-2.0 as declared upstream;
 - faster-whisper large-v3: MIT as declared upstream;
 - torchaudio English and Spanish alignment artifacts: BSD-2-Clause as declared
@@ -64,6 +64,17 @@ current declarations are:
 No model weights are committed to this repository. The installer retrieves
 exact revisions only after the operator reviews applicable terms. A Hugging
 Face token is used for staging and is not retained by runtime services.
+
+The reranker `ibm-granite/granite-embedding-reranker-english-r2` is pinned to
+`d09d3d6971b689bf9c23839e45a470874d46e13a`, licensed Apache-2.0. Its
+[pinned model card](https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2/blob/d09d3d6971b689bf9c23839e45a470874d46e13a/README.md)
+reports training from the Granite Embedding English R2 encoder using web
+title/body pairs, permissively licensed public pairs, IBM-internal technical-domain
+pairs and IBM-generated synthetic data. The encoder uses GneissWeb, curated
+from open, commercially usable sources; upstream excludes MS MARCO from training.
+These disclosures are not an independent dataset audit or an evaluation pass.
+The machine-readable license and lineage record is `model_metadata` in
+`config/model_qualifications.json` and its packaged copy.
 
 The NLTK `punkt_tab` tokenizer resource is revision- and hash-pinned in
 `config/models.json`. Its upstream data terms remain under review; do not infer

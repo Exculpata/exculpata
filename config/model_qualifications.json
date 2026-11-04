@@ -1,4 +1,13 @@
 {
   "schema_version": 1,
-  "qualifications": []
+  "qualifications": [],
+  "model_metadata": [
+    {
+      "model_id": "ibm-granite/granite-embedding-reranker-english-r2",
+      "revision": "d09d3d6971b689bf9c23839e45a470874d46e13a",
+      "license": "Apache-2.0",
+      "training_data_lineage": "Upstream reports fine-tuning the Granite Embedding English R2 encoder using web title/body pairs, permissively licensed public pairs, IBM-internal technical-domain pairs and IBM-generated synthetic data. The underlying encoder uses GneissWeb, curated from open, commercially usable sources. Upstream explicitly excludes MS MARCO. These are upstream disclosures, not an independent dataset audit.",
+      "source": "https://huggingface.co/ibm-granite/granite-embedding-reranker-english-r2/blob/d09d3d6971b689bf9c23839e45a470874d46e13a/README.md"
+    }
+  ]
 }

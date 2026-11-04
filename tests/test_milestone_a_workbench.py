@@ -438,7 +438,7 @@ def test_staff_pages_omit_backend_and_storage_details(tmp_path):
             "postgres",
             "pgvector",
             "granite",
-            "modernbert",
+            "granite-embedding-reranker-english-r2",
             "ollama",
             "model id",
             "vector score",

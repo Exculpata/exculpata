@@ -90,6 +90,8 @@ def apply_harness_result(
     if len(evidence) > 200:
         raise ValueError("qualification evidence is too long")
     document = {"schema_version": 1, "qualifications": []}
+    if "model_metadata" in registry:
+        document["model_metadata"] = registry["model_metadata"]
     rows = registry.get("qualifications", [])
     kept: list[dict[str, object]] = []
     if isinstance(rows, list):
