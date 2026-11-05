@@ -374,6 +374,50 @@ def test_postgres_source_scope_is_applied_inside_both_candidate_queries():
     assert empty_connection.calls == []
 
 
+def test_postgres_label_cache_stream_memory_does_not_retain_text():
+    import hashlib
+    import tracemalloc
+    from types import SimpleNamespace
+
+    unit_count = 2048
+    walks = []
+
+    def text_for(index):
+        return f"amber parcel {index:04d} " + "x" * 4096
+
+    def parsed_units():
+        walks.append(1)
+        for index in range(unit_count):
+            text = text_for(index)
+            yield SimpleNamespace(text=text, excerpt_digest=hashlib.sha256(text.encode()).hexdigest(),
+                                  location_label=f"Sheet {index}")
+
+    document = SimpleNamespace(document_id="document-a", version_id="version-1",
+                               iter_parsed_units=parsed_units)
+    text = text_for(unit_count - 1)
+    row = ("matter-alpha", document.document_id, f"chunk-{unit_count}", "Synthetic.txt",
+           1, text, 0.9, None, None, document.version_id, hashlib.sha256(text.encode()).hexdigest())
+
+    class Backend(PostgresHybridBackend):
+        def lexical(self, matter_id, query, limit):
+            return (self._candidate(row),)
+
+        def dense(self, matter_id, query_vector, query, limit):
+            return (self._candidate(row),)
+
+    backend = Backend(None, pilot_store=SimpleNamespace(get=lambda _key: document))
+    retriever = HybridRetriever(backend, DeterministicEmbeddingAdapter(), DeterministicReranker())
+    tracemalloc.start()
+    try:
+        (result,) = retriever.search("matter-alpha", "amber")
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert result.location_label == f"Sheet {unit_count - 1}"
+    assert walks == [1]
+    assert peak < 2 * 1024 * 1024, f"streamed label cache peaked at {peak / 1024**2:.2f} MiB"
+
+
 def test_postgres_labels_walk_each_document_once_per_search():
     from types import SimpleNamespace
 

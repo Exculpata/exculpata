@@ -32,7 +32,7 @@ from .retrieval_limits import (
 @dataclass(frozen=True)
 class _CachedUnit:
     excerpt_digest: str
-    text: str
+    text_digest: str
     location_label: str | None
 
 
@@ -528,13 +528,14 @@ class PostgresHybridBackend:
                 unit_cache[key] = {
                     (document.document_id, f"chunk-{ordinal}"): _CachedUnit(
                         excerpt_digest=unit.excerpt_digest,
-                        text=unit.text,
+                        text_digest=hashlib.sha256(unit.text.encode("utf-8")).hexdigest(),
                         location_label=unit.location_label,
                     )
                     for ordinal, unit in enumerate(document.iter_parsed_units(), 1)
                 } if document is not None and document.version_id == row[9] else {}
             unit = unit_cache[key].get((row[1], row[2]))
-            if unit is not None and unit.excerpt_digest == row[10] and unit.text == row[5]:
+            if (unit is not None and unit.excerpt_digest == row[10]
+                    and unit.text_digest == hashlib.sha256(row[5].encode("utf-8")).hexdigest()):
                 location_label = unit.location_label or None
         return Candidate(
             matter_id=row[0], document_id=row[1], chunk_id=row[2], source_name=row[3],
