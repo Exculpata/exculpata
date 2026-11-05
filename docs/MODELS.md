@@ -1,23 +1,36 @@
 # Local model portfolio
 
-The review pipeline uses one pinned generator tier plus the same retrieval
-stack:
+Exculpata is local-first by default. The shipped retrieval and review stack is:
 
-- portable: Qwen3.5 4B for constrained or shared-GPU nodes;
-- quality: Qwen3.5 9B when the selected generator device has sufficient VRAM;
-- Granite Embedding English R2 for dense retrieval;
-- GTE ModernBERT cross-encoder for reranking;
-- deterministic checks of citation references and text consistency after generation.
+- Bundled generator: the generator pinned in `config/models.json` fails the project's origin rule, so do not use it for real cases.
+- Dense retrieval: `ibm-granite/granite-embedding-english-r2`.
+- Reranking: GTE ModernBERT cross-encoder; a Granite reranker swap is pending.
+- Speech recognition: faster-whisper `large-v3`, orchestrated by WhisperX.
+- Diarization: `nvidia/Nemotron-3-Diarization` by default; pyannote Community-1 is an optional gated alternative.
+- Review: deterministic checks of citation references and text consistency after generation.
+
+## Allowed for real cases
+
+The origin rule excludes Chinese-origin models from real cases, including the bundled generator and reranker.
+Do not use the bundled generator or reranker for real cases. The pending reranker
+swap is not part of the shipped stack.
+
+The origin-eligible components today are Granite embedding, faster-whisper ASR,
+and Nemotron diarization. Origin eligibility does not replace license, offline
+readiness or runtime acceptance checks. Community-1 and its dependencies need
+origin and terms review before real-case use; its availability is not approval.
+
+No generator is picked yet. Picks per tier are pending hands-on tests on the
+test machines; until then, a model or endpoint you choose is your own call.
+[`config/model_qualifications.json`](../config/model_qualifications.json) has no
+entries, so no generator has a recorded claim-evaluation pass. A model without
+such a pass is labeled `unvalidated model`.
+
+## Review limits
 
 These checks do not establish that generated claims preserve source meaning or
 are correct. Compare each claim with the original sources using the
 [generated-answer review guidance](GENERATED_ANSWER_REVIEW.md).
-
-Automatic selection considers visible GPU memory and whether transcription
-shares the generator device. Operators may select a tier and GPU layout
-explicitly, including tensor-parallel generator devices, but preflight rejects
-known-unworkable combinations. The defaults are deployment candidates, not a
-universal quality claim.
 
 GPU count is not an edition boundary. The same workflows run on a supported
 one-GPU node or a larger node; extra devices change placement and potential
@@ -68,53 +81,67 @@ automatically treated as facts.
 
 Every model entry must retain model ID, exact immutable revision, license,
 source, hashes/manifest, evaluation evidence, and GPU/runtime envelope. Gated
-tokens are staging-only. Confidential runtime is offline and telemetry-free.
+tokens are staging-only. Stage pinned artifacts for offline runtime and disable
+telemetry. Remote endpoints require explicit consent to send matter text.
 
-Bring-your-own answer servers and hardware suggestions are described in
-[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints). The
-suggestion file is [`config/model_profiles.json`](../config/model_profiles.json).
-Embeddings and reranking remain the in-process Granite and ModernBERT models,
-including when `CASE_REVIEW_MODEL_DEVICE=cpu`. A model without a recorded
-claim-evaluation pass is labeled `unvalidated model`. The qualification seam is
-[`config/model_qualifications.json`](../config/model_qualifications.json).
+Bring-your-own answer servers are described in
+[model configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints).
+Embeddings and reranking remain in-process, including when
+`CASE_REVIEW_MODEL_DEVICE=cpu`; endpoint selection does not replace them or
+resolve their origin eligibility. Remote endpoints require explicit consent to
+send matter text and are never recommended or selected by default.
 
-## Hardware model tiers
+## Hardware tiers by usable model memory
 
-After the identity questions, the installer shows detected hardware and
-recommends one of these local tiers.
-Press Enter to accept it, choose another tier ID, or pass
-`./install install --non-interactive --model-tier gpu-12` with your other
-installation options. The selected ID is saved as `model_tier` in
-`installation.json` and retained when resuming an installation.
-If hardware detection fails, the recommended tier is `potato`, with an explicit
-CPU fallback message. The `ultra` tier requires at least two GPUs, each reporting
-at least 46068 MiB of VRAM; aggregate VRAM alone does not qualify. For CPU-only
-hosts, `cpu` starts at 14336 MiB of reported RAM and `potato` ends at 14335 MiB.
+Detection uses the bounds below, not nominal hardware labels. Each budget must
+cover weights, the KV cache that holds prompt and generated-token state, runtime
+buffers and headroom. Precision, context length, concurrent requests and other
+services change what fits; these rows make no model-fit, speed or quality promise.
+
+Apple Silicon uses unified memory shared with the operating system and the app.
+Detection allocates 75 percent to usable model memory, reserving 25 percent for
+other work. The Apple rows describe that usable amount, not total installed RAM.
+CPU rows use reported RAM; no fixed model-memory fraction is assigned, so subtract
+the operating system, app and other services before budgeting model allocations.
+GPU figures are reported VRAM per card, not free memory: subtract other service
+allocations and runtime overhead. Tensor-parallel placement needs acceptance on
+that exact topology; aggregate VRAM alone does not establish that a model fits.
+
+The tier IDs, order and detection bounds in this table are checked against
+`config/model_profiles.json` by `tests/test_installer_profile_prompt.py`.
+
+<!-- model-profile-table:start -->
+| Tier ID | How detection reads it | Usable model memory | What fits in the budget | Generator status |
+| --- | --- | --- | --- | --- |
+| `potato` | CPU only, 0 MiB through 14335 MiB reported RAM | Less than 14 GiB RAM before OS and app reservations | Weights plus KV cache and headroom must share the remaining RAM. | pending tests |
+| `cpu` | CPU only, at least 14336 MiB reported RAM | At least 14 GiB RAM before OS and app reservations | Budget weights, KV cache and headroom after other RAM use. | pending tests |
+| `gpu-8` | GPU, 8192 MiB through 12287 MiB reported VRAM per card | 8 to less than 12 GiB per card before reservations | Weights and KV cache must leave room for runtime and shared services. | pending tests |
+| `gpu-12` | GPU, 12288 MiB through 16383 MiB reported VRAM per card | 12 to less than 16 GiB per card before reservations | Weight precision and KV cache length must fit with headroom. | pending tests |
+| `gpu-16` | GPU, 16384 MiB through 24575 MiB reported VRAM per card | 16 to less than 24 GiB per card before reservations | Budget weights and KV cache together with runtime and service headroom. | pending tests |
+| `gpu-24` | GPU, at least 24576 MiB reported VRAM per card | At least 24 GiB per card before reservations | Larger allocations still need measured room for weights, KV cache and headroom. | pending tests |
+| `apple-16` | Apple Silicon, 12288 MiB through 24575 MiB usable model memory | 12 to less than 24 GiB, 75 percent of unified memory | Weights, KV cache and runtime headroom share the usable allocation. | pending tests |
+| `apple-32` | Apple Silicon, at least 24576 MiB usable model memory | At least 24 GiB, 75 percent of unified memory | Weights and KV cache must leave headroom within the shared allocation. | pending tests |
+| `ultra` | At least 2 cards, each at least 46068 MiB reported VRAM | At least 46068 MiB per card before reservations | Weights, KV cache and headroom need accepted placement on each card. | pending tests |
+<!-- model-profile-table:end -->
+
+### Installer note
+
+The installer's tier prompt still prints generator text from
+[`config/model_profiles.json`](../config/model_profiles.json). That text predates
+this page and is not a pick for real cases; a separate change will update it.
+The table contract checks tier IDs and detection bounds, not that generator text.
+
+After the identity questions, the installer shows detected hardware and suggests
+a tier ID. Press Enter to accept the hardware tier, choose another ID, or pass
+`./install install --non-interactive --model-tier gpu-12` with your other options.
+The ID is saved as `model_tier` in `installation.json` and retained on resume.
+If hardware detection fails, the suggested tier is `potato`, with an explicit
+CPU fallback message.
 
 These tiers record hardware guidance. Installed capabilities still use
 `--models`; bundled model selection and GPU admission still use the existing
-`--review-model-profile` and preflight checks. Selecting a tier does not
-download or configure an answer server. Use the existing
-[bring-your-own configuration](MODEL_CONFIGURATION.md#existing-answer-endpoints)
-to opt into an endpoint. Remote endpoints require explicit consent to send
-matter text and are never recommended or selected by default.
-
-This table is checked against `config/model_profiles.json` by
-`tests/test_installer_profile_prompt.py`; update both together.
-
-<!-- model-profile-table:start -->
-| Tier ID | Hardware | Generator | Embeddings and reranking | Speech recognition | Trade-off |
-| --- | --- | --- | --- | --- | --- |
-| `potato` | CPU only, below 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | Search and source review keep working. Generated answers are the slowest tier and are easier to mis-ground. This is a suggestion, not a measured quality result. |
-| `cpu` | CPU only, at least 14 GiB reported RAM | Qwen3.5-4B Q4_K_M or Q5_K_M through your Ollama or llama.cpp server. Answers are slow; keep them short. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper small or medium, int8, or skip transcription. | A nominal 16 GB machine reporting at least 14 GiB can hold a 4B quantized model beside the application. Answers are still slow. This is a suggestion, not a measured quality result. |
-| `gpu-8` | 8 GB GPU | Qwen3.5-4B Q5 or Q8, or Qwen3.5-9B Q4 with partial offload, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on CPU or GPU, inside Exculpata. | faster-whisper medium, int8. | A 4B model leaves more room and answers faster. A 9B Q4 model may place some layers in system RAM and run slower. This is a suggestion, not a measured quality result. |
-| `gpu-12` | 12 GB GPU | Qwen3.5-9B Q4_K_M through Q6, through Ollama or llama.cpp. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, int8_float16. | A quantized 9B model fits more comfortably than the full-precision bundled profile. Keep the KV cache at 8-bit or higher. This is a suggestion, not a measured quality result. |
-| `gpu-16` | 16 GB GPU | Qwen3.5-9B Q6, or the bundled vLLM Qwen3.5-9B profile when the installer accepts the card. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16 when the card has room. | 16 GB is enough for a quantized 9B model. The bundled full-precision profile still has to pass the installer's existing free-VRAM check. This is a suggestion, not a measured quality result. |
-| `gpu-24` | 24 GB GPU and up | Qwen3.5-9B through the bundled vLLM service. This is the current reference profile. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | This matches the bundled generator and is the reference deployment shape. This is a suggestion, not a measured quality result. |
-| `apple-16` | Apple Silicon, 16 GB unified memory and up | Qwen3.5-4B or Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | Unified memory is shared with the rest of the machine. A 4B model leaves more room than 9B. This is a suggestion, not a measured quality result. |
-| `apple-32` | Apple Silicon, 32 GB unified memory and up | Qwen3.5-9B through Ollama on Metal. MLX is not part of this version. | Granite embedding and the ModernBERT reranker on CPU, inside Exculpata. | faster-whisper on CPU, int8. whisper.cpp is not part of this version. | The model budget reserves 25 percent of unified memory for the operating system and application work. This is a suggestion, not a measured quality result. |
-| `ultra` | Two or more 48 GB GPUs | Qwen3.5-9B through the bundled local vLLM service, with capacity for evaluated larger local profiles when available. | Granite embedding and the ModernBERT reranker on GPU, inside Exculpata. | faster-whisper large-v3, float16. | Multiple data-center GPUs provide additional local capacity, but no larger profile has a tier evaluation yet. This is a suggestion, not a measured quality result. |
-<!-- model-profile-table:end -->
+`--review-model-profile` and preflight checks. Selecting a tier does not download
+or configure an answer server or qualify a model for real cases.
 
 The [R1b claim-evaluation harness](CLAIM_EVALUATION.md) freezes synthetic challenges,
 separates raw generation errors from deterministic verifier false acceptance and

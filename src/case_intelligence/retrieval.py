@@ -78,6 +78,7 @@ class _Candidate:
     line_start: int
     line_end: int
     exact_keys: tuple[str, ...]
+    location_label: str | None = None
 
 
 def _tokens(value: str) -> tuple[str, ...]:
