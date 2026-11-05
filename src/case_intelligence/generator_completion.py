@@ -137,6 +137,7 @@ def generator_available(client: object, *, thinking: bool, use_client_availabili
 
     if not isinstance(client, (OllamaGenerator, OpenAICompatibleGenerator)):
         return client.available
+    refresh_generator_schema(client, thinking=thinking)
     try:
         schema_refused(client, thinking=thinking)
     except GenerationUnavailable:

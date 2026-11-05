@@ -119,6 +119,81 @@ def test_service_classification_uses_its_own_schema_state(monkeypatch, client, b
     assert _thinking(backend, wire[-1]) is False
 
 
+def test_service_extraction_recovers_after_refused_probe_expires(monkeypatch, client, backend, wire):
+    pending = []
+
+    class QueuedThread:
+        def __init__(self, *, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            pending.append(self.target)
+
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "1")
+    monkeypatch.setattr(generator_completion.time, "monotonic", lambda: 1_000.0)
+    monkeypatch.setattr(generator_completion.threading, "Thread", QueuedThread)
+    repaired_transport = generator_schema._urllib_transport
+    monkeypatch.setattr(generator_schema, "_urllib_transport", lambda _timeout: (
+        lambda *_args: _reply(backend, None)
+    ))
+    generator_completion.probe_generator(client, thinking=False)
+    assert client._schema_results[(client.model, False)][0].status == "refused"
+    answer_state = client._schema_results[(client.model, True)]
+    monkeypatch.setattr(generator_schema, "_urllib_transport", repaired_transport)
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    service = generation.GroundedGenerationService(client)
+    kwargs = dict(criterion="Identify an express reference.", include_guidance="Use the record.",
+        exclude_guidance="Do not infer.", evidence=(generation.EvidenceItem(
+            "S1", "Synthetic record", "Line 1", "The synthetic record contains no reference.",
+        ),))
+    monkeypatch.setattr(generator_completion.time, "monotonic", lambda: 1_059.0)
+    with pytest.raises(generation.GenerationUnavailable):
+        service.classify_source(**kwargs)
+    assert pending == []
+    monkeypatch.setattr(generator_completion.time, "monotonic", lambda: 1_060.0)
+    for _ in range(2):
+        with pytest.raises(generation.GenerationUnavailable):
+            service.classify_source(**kwargs)
+    assert len(pending) == 1
+    assert wire == []
+    pending.pop()()
+    result = service.classify_source(**kwargs)
+    assert result.decision == "not_identified"
+    assert result.model_called is True
+    assert [_thinking(backend, body) for body in wire] == [False, False]
+    assert client._schema_results[(client.model, False)][0].status == "verified"
+    assert client._schema_results[(client.model, True)] == answer_state
+    assert not client._schema_refreshing
+    assert pending == []
+
+
+def test_service_answer_uses_verified_non_thinking_despite_thinking_refusal(
+    monkeypatch, client, backend, wire,
+):
+    client = type(client)(client.endpoint, client.model, disable_thinking=True)
+    for thinking, status in ((False, "verified"), (True, "refused")):
+        generator_completion.remember_schema(
+            client, generator_schema.SchemaProbe(status, 1, "Synthetic check", ""), thinking=thinking,
+        )
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    service = generation.GroundedGenerationService(client)
+    assert client.schema_mode == "refused"
+    assert generator_completion.effective_thinking(client) is False
+    assert service.available is True
+    result = service.answer("What is missing?", (generation.EvidenceItem(
+        "S1", "Synthetic record", "Line 1", "The synthetic record contains no reference.",
+    ),))
+    assert result.model_called is True
+    assert [_thinking(backend, body) for body in wire] == [False]
+    with pytest.raises(generation.GenerationUnavailable, match="schema"):
+        client.generate(question="What is missing?", evidence=(), thinking=True)
+    assert len(wire) == 1
+
+
 def test_only_message_content_is_returned(client):
     assert client.generate(question="What is missing?", evidence=()) == ANSWER
     assert _classify(client) == REVIEW

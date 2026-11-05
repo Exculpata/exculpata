@@ -563,8 +563,6 @@ class OllamaGenerator:
 
     @property
     def available(self) -> bool:
-        if self.schema_mode == "refused":
-            return False
         return generator_available(self, thinking=effective_thinking(self))
 
 
@@ -706,8 +704,6 @@ class OpenAICompatibleGenerator:
 
     @property
     def available(self) -> bool:
-        if self.schema_mode == "refused":
-            return False
         return generator_available(self, thinking=effective_thinking(self))
 
 
