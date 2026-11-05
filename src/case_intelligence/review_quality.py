@@ -191,6 +191,7 @@ class RankedCandidate(Protocol):
     matter_id: str
     source_name: str
     text: str
+    location_label: str | None = None
 
 
 class CitationLike(Protocol):
@@ -258,16 +259,22 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(haystack)
+    clocks = _CLOCK.findall(candidate.text)
     temporal_precision = 0
-    if _TEMPORAL_OBJECTIVE.search(query) and clocks:
+    if candidate.location_label != "Email headers" and _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
     authority = int(bool(_AUTHORITATIVE_RECORD.search(haystack)))
     if _LATER_SUMMARY.search(candidate.source_name):
         authority -= 1
     candidate_terms = set(_QUERY_TOKEN.findall(haystack.casefold()))
     subject_overlap = len(subject_terms.intersection(candidate_terms))
-    return identifier_matches, int(subject_overlap > 0), temporal_precision, authority
+    relevant = bool(identifier_matches) or (
+        bool(subject_terms) and subject_overlap * 2 >= len(subject_terms)
+    )
+    return (
+        identifier_matches, int(relevant),
+        temporal_precision if relevant else 0, authority if relevant else 0,
+    )
 
 
 def rank_exact_record_candidates(
@@ -292,8 +299,6 @@ def rank_exact_record_candidates(
         _exact_record_features(query, item, subject_terms=subject_terms)
         for item in bounded
     ]
-    # Precision and source authority may refine already relevant candidates;
-    # they must never pull an unrelated timestamp above the user's subject.
     if not any(feature[0] or feature[1] for feature in features):
         return bounded
     ranked = sorted(

@@ -2452,6 +2452,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             line_end=unit.line_end,
             source_version_id=document.version_id,
             excerpt_digest=unit.excerpt_digest,
+            location_label=unit.location_label or None,
             evidence_kind=(
                 "transcript" if is_media_type(document.media_type) else "document"
             ),
@@ -2485,6 +2486,7 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
                 PostgresHybridBackend(
                     self.postgres_connection,
                     lock=self._postgres_lock,
+                    pilot_store_factory=lambda: self.source_store(matter),
                     document_ids=document_ids,
                 ),
                 self.embedding,

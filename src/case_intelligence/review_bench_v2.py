@@ -74,6 +74,7 @@ class Candidate:
     source_version_id: str = "synthetic-v1"
     excerpt_digest: str = ""
     evidence_kind: str = "document"
+    location_label: str | None = None
 
     @property
     def citation(self) -> str:
@@ -195,16 +196,33 @@ class DeterministicEmbeddingAdapter:
 
 
 class DeterministicReranker:
-    """Stable overlap reranker used by core tests and the no-dependency demo."""
+    """Pool-invariant overlap reranker for core tests and the no-dependency demo."""
 
     available = True
+    _STOP_WORDS = frozenset({
+        "a", "an", "and", "are", "as", "at", "be", "been", "by", "did", "do",
+        "does", "for", "from", "had", "has", "have", "how", "in", "is", "it",
+        "of", "on", "or", "that", "the", "their", "there", "these", "this",
+        "to", "was", "were", "what", "when", "where", "which", "who", "with",
+    })
 
     def rerank(self, query: str, candidates: Sequence[Candidate]) -> tuple[Candidate, ...]:
-        query_terms = set(_tokens(query))
+        query_tokens = tuple(token for token in _tokens(query) if token not in self._STOP_WORDS)
+        query_terms = tuple(dict.fromkeys(query_tokens))
+        query_pairs = set(zip(query_tokens, query_tokens[1:]))
+        clauses = [set(_tokens(part)) - self._STOP_WORDS
+                   for part in re.split(r"[?;]|\b(?:and|or)\b", query.casefold())]
+        clauses = [terms for terms in clauses if terms]
+        weights = {term: max(len(query_terms) / (len(clauses) * len(terms))
+                             for terms in clauses if term in terms) for term in query_terms}
         scored = []
         for candidate in candidates:
-            overlap = len(query_terms.intersection(_tokens(candidate.text)))
-            scored.append(replace(candidate, score=float(overlap * 100) + candidate.score))
+            tokens = tuple(token for token in _tokens(candidate.text) if token not in self._STOP_WORDS)
+            terms = set(tokens)
+            overlap = sum(weights[term] for term in query_terms if term in terms)
+            pairs = set(zip(tokens, tokens[1:]))
+            bonus = 0.35 * len(query_pairs.intersection(pairs))
+            scored.append(replace(candidate, score=(overlap + bonus) * 100 + candidate.score))
         return tuple(sorted(scored, key=lambda item: (-item.score, item.page_number, item.chunk_id)))
 
 
@@ -465,21 +483,40 @@ class PostgresHybridBackend:
         connection,
         *,
         lock=None,
+        pilot_store=None,
+        pilot_store_factory=None,
         document_ids: frozenset[str] | None = None,
     ) -> None:
         self.connection = connection
+        self.pilot_store = pilot_store
+        self.pilot_store_factory = pilot_store_factory
         self.lock = lock
         self.document_ids = document_ids
 
     def _connection_guard(self):
         return self.lock if self.lock is not None else nullcontext()
 
-    @staticmethod
-    def _candidate(row) -> Candidate:
+    def _candidate(self, row) -> Candidate:
+        location_label = None
+        if self.pilot_store is None and self.pilot_store_factory is not None:
+            self.pilot_store = self.pilot_store_factory()
+        if self.pilot_store is not None:
+            try:
+                document = self.pilot_store.get(row[1])
+            except KeyError:
+                document = None
+            if document is not None and document.version_id == row[9]:
+                location_label = next((
+                    unit.location_label or None
+                    for ordinal, unit in enumerate(document.iter_parsed_units(), 1)
+                    if (document.document_id, f"chunk-{ordinal}") == (row[1], row[2])
+                    and unit.excerpt_digest == row[10] and unit.text == row[5]
+                ), None)
         return Candidate(
             matter_id=row[0], document_id=row[1], chunk_id=row[2], source_name=row[3],
             page_number=row[4], text=row[5], score=float(row[6]),
             line_start=row[7], line_end=row[8], source_version_id=row[9], excerpt_digest=row[10],
+            location_label=location_label,
         )
 
     def lexical(self, matter_id: str, query: str, limit: int) -> tuple[Candidate, ...]:
@@ -503,7 +540,7 @@ class PostgresHybridBackend:
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
              WHERE c.matter_id=%s AND c.search_vector @@ q.query
         """ + scope_sql + """
-             ORDER BY score DESC,c.chunk_id LIMIT %s
+             ORDER BY score DESC,c.document_id,c.chunk_id LIMIT %s
         """
         parameters: list[object] = ['"' in query, query, matter_id]
         if self.document_ids is not None:
@@ -512,7 +549,8 @@ class PostgresHybridBackend:
         with self._connection_guard():
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
-                return tuple(self._candidate(row) for row in cursor.fetchall())
+                rows = cursor.fetchall()
+        return tuple(self._candidate(row) for row in rows)
 
     def dense(
         self, matter_id: str, query_vector: Sequence[float], query: str, limit: int
@@ -530,7 +568,7 @@ class PostgresHybridBackend:
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
              WHERE c.matter_id=%s AND c.embedding IS NOT NULL
         """ + scope_sql + """
-             ORDER BY c.embedding <=> %s::vector,c.chunk_id LIMIT %s
+             ORDER BY c.embedding <=> %s::vector,c.document_id,c.chunk_id LIMIT %s
         """
         parameters: list[object] = [vector, matter_id]
         if self.document_ids is not None:
@@ -539,7 +577,8 @@ class PostgresHybridBackend:
         with self._connection_guard():
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
-                return tuple(self._candidate(row) for row in cursor.fetchall())
+                rows = cursor.fetchall()
+        return tuple(self._candidate(row) for row in rows)
 
 
 class HybridRetriever:
