@@ -74,6 +74,7 @@ class Candidate:
     source_version_id: str = "synthetic-v1"
     excerpt_digest: str = ""
     evidence_kind: str = "document"
+    location_label: str | None = None
 
     @property
     def citation(self) -> str:
@@ -484,21 +485,40 @@ class PostgresHybridBackend:
         connection,
         *,
         lock=None,
+        pilot_store=None,
+        pilot_store_factory=None,
         document_ids: frozenset[str] | None = None,
     ) -> None:
         self.connection = connection
+        self.pilot_store = pilot_store
+        self.pilot_store_factory = pilot_store_factory
         self.lock = lock
         self.document_ids = document_ids
 
     def _connection_guard(self):
         return self.lock if self.lock is not None else nullcontext()
 
-    @staticmethod
-    def _candidate(row) -> Candidate:
+    def _candidate(self, row) -> Candidate:
+        location_label = None
+        if self.pilot_store is None and self.pilot_store_factory is not None:
+            self.pilot_store = self.pilot_store_factory()
+        if self.pilot_store is not None:
+            try:
+                document = self.pilot_store.get(row[1])
+            except KeyError:
+                document = None
+            if document is not None and document.version_id == row[9]:
+                location_label = next((
+                    unit.location_label or None
+                    for ordinal, unit in enumerate(document.iter_parsed_units(), 1)
+                    if (document.document_id, f"chunk-{ordinal}") == (row[1], row[2])
+                    and unit.excerpt_digest == row[10] and unit.text == row[5]
+                ), None)
         return Candidate(
             matter_id=row[0], document_id=row[1], chunk_id=row[2], source_name=row[3],
             page_number=row[4], text=row[5], score=float(row[6]),
             line_start=row[7], line_end=row[8], source_version_id=row[9], excerpt_digest=row[10],
+            location_label=location_label,
         )
 
     def lexical(self, matter_id: str, query: str, limit: int) -> tuple[Candidate, ...]:
@@ -531,7 +551,8 @@ class PostgresHybridBackend:
         with self._connection_guard():
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
-                return tuple(self._candidate(row) for row in cursor.fetchall())
+                rows = cursor.fetchall()
+        return tuple(self._candidate(row) for row in rows)
 
     def dense(
         self, matter_id: str, query_vector: Sequence[float], query: str, limit: int
@@ -558,7 +579,8 @@ class PostgresHybridBackend:
         with self._connection_guard():
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
-                return tuple(self._candidate(row) for row in cursor.fetchall())
+                rows = cursor.fetchall()
+        return tuple(self._candidate(row) for row in rows)
 
 
 class HybridRetriever:

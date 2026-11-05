@@ -94,15 +94,6 @@ _CLOCK = re.compile(
     re.IGNORECASE,
 )
 _CLOCK_WORD = re.compile(r"\b(?:noon|midnight)\b", re.IGNORECASE)
-_CLOCK_METADATA_LINE = re.compile(
-    r"^\s*(date|sent|received|created|modified|updated|timestamp|"
-    r"from|to|cc|bcc|subject|message-id|mime-version|content-[\w-]+)\s*:",
-    re.IGNORECASE,
-)
-_MESSAGE_HEADER_FIELDS = frozenset({
-    "date", "sent", "received", "from", "to", "cc", "bcc", "subject",
-    "message-id", "mime-version",
-})
 _AUTHORITATIVE_RECORD = re.compile(
     r"\b(?:access|audit|event|transaction|dispatch|system|machine|sensor|badge|camera)\s+"
     r"(?:log|record|register|ledger|index|metadata)\b|"
@@ -200,6 +191,7 @@ class RankedCandidate(Protocol):
     matter_id: str
     source_name: str
     text: str
+    location_label: str | None = None
 
 
 class CitationLike(Protocol):
@@ -255,32 +247,6 @@ def _query_subject_terms(query: str) -> frozenset[str]:
     )
 
 
-def _without_clock_metadata(candidate: RankedCandidate) -> str:
-    """Remove only an opening header block identified as message metadata."""
-
-    lines = candidate.text.splitlines()
-    fields: set[str] = set()
-    header_end = 0
-    for index, line in enumerate(lines):
-        if not fields and not line.strip():
-            continue
-        match = _CLOCK_METADATA_LINE.match(line)
-        if match:
-            fields.add(match.group(1).casefold())
-            header_end = index + 1
-            continue
-        if fields and line.startswith((" ", "\t")) and line.strip():
-            header_end = index + 1
-            continue
-        break
-    message_header = candidate.source_name.casefold().endswith((".eml", ".msg")) or (
-        len(fields.intersection(_MESSAGE_HEADER_FIELDS)) >= 2
-    )
-    if fields and message_header:
-        return "\n".join(lines[header_end:])
-    return candidate.text
-
-
 def _exact_record_features(
     query: str,
     candidate: RankedCandidate,
@@ -293,9 +259,9 @@ def _exact_record_features(
     identifier_matches = sum(
         1 for identifier in identifiers if identifier in candidate_identifiers
     )
-    clocks = _CLOCK.findall(_without_clock_metadata(candidate))
+    clocks = _CLOCK.findall(candidate.text)
     temporal_precision = 0
-    if _TEMPORAL_OBJECTIVE.search(query) and clocks:
+    if candidate.location_label != "Email headers" and _TEMPORAL_OBJECTIVE.search(query) and clocks:
         temporal_precision = 2 if any(value.count(":") >= 2 for value in clocks) else 1
     authority = int(bool(_AUTHORITATIVE_RECORD.search(haystack)))
     if _LATER_SUMMARY.search(candidate.source_name):

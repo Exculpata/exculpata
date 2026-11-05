@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import io
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +17,7 @@ from case_intelligence.review_bench_v2 import (
     DeterministicEmbeddingAdapter,
     HybridRetriever,
     InMemoryHybridBackend,
+    PostgresHybridBackend,
 )
 from case_intelligence.review_quality import (
     answer_advances_objective,
@@ -45,6 +48,142 @@ def _exact_record_candidate(
         score=score,
         excerpt_digest=(chunk * 64)[:64],
     )
+
+
+def _assert_precise_search_record(record, other):
+    pool = (other, record)
+
+    class WeakReranker:
+        available = True
+
+        def rerank(self, query, candidates):
+            by_id = {item.chunk_id: item for item in candidates}
+            return tuple(by_id[item.chunk_id] for item in pool)
+
+    retriever = HybridRetriever(
+        InMemoryHybridBackend(pool), DeterministicEmbeddingAdapter(), WeakReranker(),
+    )
+    query = "At what time was EVT-4821 accepted?"
+    for limit in (1, 2):
+        ranked = retriever.search("matter-quality", query, limit=limit)
+        assert len(ranked) == limit
+        for actual, expected in zip(ranked, (record, other)):
+            assert replace(actual, score=expected.score) == expected
+    assert rank_exact_record_candidates(query, pool, matter_id="matter-quality") == (record, other)
+
+
+def test_email_body_labeled_clock_survives_limit_one():
+    _assert_precise_search_record(
+        _candidate("record", "Message.eml", "Timestamp: 08:42:17\nSystem event EVT-4821\nStatus: accepted"),
+        _candidate("summary", "Summary.txt", "Summary: EVT-4821 occurred at about 08:40"),
+    )
+
+
+def test_structured_access_log_clock_survives_limit_one():
+    _assert_precise_search_record(
+        _candidate("record", "Access log.txt", "System event EVT-4821\nTimestamp: 08:42:17\nStatus: accepted"),
+        _candidate("summary", "Summary.txt", "Summary: EVT-4821 occurred at about 08:40"),
+    )
+
+
+def test_forwarded_body_with_header_lines_keeps_clock():
+    _assert_precise_search_record(
+        _candidate("record", "Forwarded.txt", "From: synthetic sender\nSubject: EVT-4821\nTimestamp: 08:42:17\nStatus: accepted"),
+        _candidate("summary", "Summary.txt", "Summary: EVT-4821 occurred at about 08:40"),
+    )
+
+
+def test_tagged_email_header_section_adds_no_clock_precision():
+    header = replace(
+        _candidate("headers", "Message.eml", "Date: 8 Oct 2036 12:00:00 +0000\nSubject: EVT-4821 accepted"),
+        location_label="Email headers",
+    )
+    _assert_precise_search_record(
+        _candidate("record", "Message.eml", "EVT-4821 accepted at 08:42."), header,
+    )
+
+
+def test_extracted_email_labels_reach_search_candidates(tmp_path, monkeypatch):
+    from case_intelligence.pilot_uploads import PilotStore
+    from case_intelligence.review_bench import ReviewBench
+    from case_intelligence.workbench import CaseIntelligenceWorkbench
+
+    store = PilotStore(tmp_path / "pilot", malware_scan_mode="disabled")
+    document, _ = store.store_stream("Event.eml", "message/rfc822", io.BytesIO(
+        b"Date: Wed, 8 Oct 2036 12:00:00 +0000\nSubject: EVT-4821 accepted\n"
+        b"Content-Type: text/plain\n\nTimestamp: 08:42\nSystem event EVT-4821\nStatus: accepted\n"
+    ))
+    assert document.state == "ready"
+    reopened = PilotStore(store.root, malware_scan_mode="disabled")
+    document = reopened.get(document.document_id)
+    units = document.parsed_units()
+    bench = ReviewBench.__new__(ReviewBench)
+    bench.pilot = reopened
+    pilot_candidates = bench._pilot_candidates()
+    workbench = CaseIntelligenceWorkbench.__new__(CaseIntelligenceWorkbench)
+    matter = SimpleNamespace(matter_id="matter-quality")
+    candidates = tuple(workbench._candidate(matter, document, unit, ordinal)
+                       for ordinal, unit in enumerate(units, 1))
+    assert [item.location_label for item in candidates] == [unit.location_label for unit in units]
+    assert [item.location_label for item in pilot_candidates] == [unit.location_label for unit in units]
+    assert candidates[0].location_label == "Email headers"
+    _assert_precise_search_record(candidates[1], candidates[0])
+    store_requests = []
+
+    def source_store(requested_matter):
+        store_requests.append(requested_matter)
+        return reopened
+
+    monkeypatch.setattr(workbench, "source_store", source_store)
+    workbench.learned_retrieval = workbench.postgres_ready = True
+    workbench.postgres_connection = object()
+    workbench._postgres_lock = None
+    workbench.embedding = DeterministicEmbeddingAdapter()
+    workbench.reranker = None
+    backend = workbench._retriever(matter).backend
+    assert store_requests == []
+    for candidate in candidates:
+        row = (candidate.matter_id, candidate.document_id, candidate.chunk_id,
+               candidate.source_name, candidate.page_number, candidate.text, candidate.score,
+               candidate.line_start, candidate.line_end, candidate.source_version_id, candidate.excerpt_digest)
+        assert backend._candidate(row) == candidate
+        for index, value in ((1, "missing-document"), (2, "chunk-99"), (5, "changed text"),
+                             (9, "old-version"), (10, "changed-digest")):
+            changed = list(row)
+            changed[index] = value
+            assert backend._candidate(changed).location_label is None
+        assert PostgresHybridBackend(None)._candidate(row).location_label is None
+        assert PostgresHybridBackend(None, pilot_store=reopened)._candidate(row) == candidate
+    assert store_requests == [matter]
+    monkeypatch.delattr(workbench, "source_store")
+    with pytest.raises(RuntimeError, match="Stored matter identity is invalid"):
+        workbench._retriever(matter).backend._candidate(row)
+
+
+@pytest.mark.parametrize("lane", ["lexical", "dense"])
+def test_postgres_label_lookup_releases_connection_lock(lane):
+    import threading
+    from unittest.mock import MagicMock
+
+    lock = threading.Lock()
+    connection = MagicMock()
+    row = ("matter-quality", "document", "chunk-1", "Record.txt", 1,
+           "Synthetic event", 0.5, None, None, "version-1", "digest")
+    connection.cursor.return_value.__enter__.return_value.fetchall.return_value = [row]
+    requests = []
+
+    def source_store():
+        assert not lock.locked()
+        requests.append(True)
+        return SimpleNamespace(get=lambda document_id: None)
+
+    backend = PostgresHybridBackend(connection, lock=lock, pilot_store_factory=source_store)
+    if lane == "lexical":
+        candidates = backend.lexical("matter-quality", "event", 1)
+    else:
+        candidates = backend.dense("matter-quality", [0.0], "event", 1)
+    assert len(candidates) == 1 and candidates[0].text == row[5]
+    assert requests == [True]
 
 
 def test_time_question_keeps_leading_report_ahead_of_email_header_clocks() -> None:
@@ -151,21 +290,6 @@ def test_labeled_event_timestamp_outranks_summary_and_survives_truncation(
     assert ranked[0].excerpt_digest == record.excerpt_digest
     assert ranked[0].chunk_id == record.chunk_id
     assert ranked[0].citation == record.citation
-
-
-@pytest.mark.parametrize("header", ["Date", "Sent"])
-@pytest.mark.parametrize("source_name", ["Message.eml", "Message.txt"])
-def test_message_header_block_still_filters_clock_precision(header, source_name):
-    query = "At what time did the amber crate arrive?"
-    note = _candidate("note", "Note.txt", "The amber crate arrived at 09:14.")
-    message = _candidate(
-        "message", source_name,
-        f"From: synthetic sender\nTo: synthetic recipient\n"
-        f"{header}: 8 Oct 2036 12:00:00 +0000\n\nThe amber crate arrived.",
-    )
-    assert rank_exact_record_candidates(
-        query, (note, message), matter_id="matter-quality",
-    ) == (note, message)
 
 
 @pytest.mark.parametrize("repair_failure", ["malformed", "unavailable"])
@@ -320,19 +444,6 @@ def test_bare_according_to_identifier_is_source_reference() -> None:
     )
 
 
-@pytest.mark.parametrize("header", ["Date", "Sent", "Received", "Created", "Subject"])
-def test_exact_record_clocks_ignore_headers_but_keep_body_clocks(header):
-    query = "At what time did the amber crate arrive?"
-    summary = _exact_record_candidate("summary", "a", "Note.txt", "The amber crate arrived at 09:14.", 0.9)
-    email = _exact_record_candidate(
-        "email", "b", "Message.eml",
-        f"  {header}: 8 October 2036 12:00:00 +0000\nThe amber crate arrived.", 0.4,
-    )
-    assert rank_exact_record_candidates(query, (summary, email), matter_id="matter-quality") == (summary, email)
-    body = replace(email, text=email.text + "\nThe amber crate arrived at 09:14:17.")
-    assert rank_exact_record_candidates(query, (summary, body), matter_id="matter-quality") == (body, summary)
-
-
 def test_exact_record_precision_requires_half_the_subject_terms():
     report = _exact_record_candidate("report", "a", "Report.txt", "Amber crate inspection at the quay.", 0.9)
     decoy = _exact_record_candidate("decoy", "b", "Access log.txt", "Crate accepted at 09:14:17.", 0.4)
@@ -344,13 +455,3 @@ def test_exact_record_precision_requires_half_the_subject_terms():
     assert ranked[0] is report and ranked[1] is decoy
 
 
-def test_exact_record_ignores_folded_header_clocks_and_keeps_indented_body():
-    query = "At what time did the amber crate arrive?"
-    note = _exact_record_candidate("note", "a", "Note.txt", "Amber crate arrival at 09:14.", 0.9)
-    email = _exact_record_candidate(
-        "email", "b", "Message.eml",
-        "Received: synthetic relay;\n  8 October 2036 12:00:00 +0000\n\n  Amber crate arrival.", 0.4,
-    )
-    assert rank_exact_record_candidates(query, (note, email), matter_id="matter-quality") == (note, email)
-    body = replace(email, text=email.text + "\n  Amber crate arrival at 09:14:17.")
-    assert rank_exact_record_candidates(query, (note, body), matter_id="matter-quality") == (body, note)

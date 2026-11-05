@@ -148,8 +148,10 @@ retriever.
 `--retriever postgres` runs the same search the workbench uses for a PostgreSQL
 index. Each passage is stored as one text unit. `HybridRetriever` then runs
 PostgreSQL full-text search, pgvector cosine search, reciprocal rank fusion,
-and the reranker. The exact-record refinement ignores message-header and metadata
-clocks, and requires an identifier match or at least half the query subject terms
+and the reranker. The exact-record refinement gives no clock precision to sections tagged
+`Email headers` by the extractor; their text and relevance ranking remain intact.
+All other passages retain their clocks, regardless of filename or field labels.
+An identifier match or at least half the query subject terms is required
 before clock precision or source authority can promote a passage. The temporal
 reorder then promotes subject-matching observations on the requested side of a
 clock cutoff. Both operate on existing candidates without changing retrieval
