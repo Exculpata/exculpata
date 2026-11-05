@@ -78,7 +78,6 @@ def model_portfolio_projection(
     client = getattr(generator, "client", None)
     model_id = str(getattr(client, "model", "") or "")
     endpoint = getattr(client, "endpoint", "")
-    direct_mode = bool(getattr(client, "disable_thinking", False))
     schema_mode = str(getattr(client, "schema_mode", "unprobed") or "unprobed")
     schema_enforcement = {
         "verified": "verified",
@@ -97,7 +96,6 @@ def model_portfolio_projection(
     approved_generator = bool(
         generator_ready
         and generator_profile is not None
-        and direct_mode
         and _loopback_endpoint(endpoint)
     )
     retrieval_ready = bool(learned_retrieval)

@@ -191,7 +191,10 @@ def test_ollama_generation_request_applies_the_shared_output_budget(monkeypatch)
     client = generation.OllamaGenerator("http://127.0.0.1:11434", "synthetic-generator")
     client.generate(question="What does the generated record say?", evidence=(generation.EvidenceItem("S1", "Generated source.txt", "Line 1", "Generated device entered ready state."),))
     assert len(requests) == 1
-    assert requests[0]["options"]["num_predict"] == ReviewBudget().output_tokens == 1_200
+    budget = ReviewBudget()
+    assert budget.output_tokens == 1_200
+    assert requests[0]["think"] is True
+    assert requests[0]["options"]["num_predict"] == budget.output_tokens + budget.reasoning_tokens
 
 
 def test_legacy_budget_does_not_invent_a_historical_time_limit():

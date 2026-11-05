@@ -202,9 +202,10 @@ positive and finite; these settings are not clamped to the portable capacities.
 An OpenAI-compatible server controls its context window through its own model
 configuration; the context request override applies to Ollama.
 
-The existing explicit `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` opt-out
-also forces question thinking off. It retains its existing effect on other
-OpenAI-compatible generation calls; no new default is applied to other features.
+`CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` disables thinking for question
+drafts only, on both adapters. Ordinary assistant answers think on regardless of
+this variable; internal extraction always sends thinking false. The installer
+omits this optional question-draft setting.
 
 Thinking-enabled drafting uses two sequential local requests: a bounded planning
 request with thinking enabled, then a request with thinking disabled and its own

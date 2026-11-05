@@ -219,9 +219,11 @@ Configured mode uses the same environment as the workbench answer path. Set
 `CASE_INTELLIGENCE_GENERATOR_BACKEND` to `ollama` or `openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL` to that service's origin, and
 `CASE_INTELLIGENCE_GENERATOR_MODEL` to a model the service lists. Optional
-`CASE_INTELLIGENCE_GENERATOR_API_KEY`, `CASE_INTELLIGENCE_GENERATOR_TIMEOUT`,
-and `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` behave as they do for
-ordinary answers. See [model configuration](MODEL_CONFIGURATION.md).
+`CASE_INTELLIGENCE_GENERATOR_API_KEY` and `CASE_INTELLIGENCE_GENERATOR_TIMEOUT`
+behave as they do for ordinary answers. Ordinary assistant answers think on;
+internal extraction always sends thinking false. See
+[model configuration](MODEL_CONFIGURATION.md) and the separate
+[question-draft thinking setting](QUESTION_DRAFTS.md).
 
 ```console
 python -m case_intelligence.defense_eval --mode configured --output-dir /tmp/defense-eval-model

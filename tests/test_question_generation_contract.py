@@ -19,7 +19,7 @@ FINAL = {'questions': [
 
 
 @pytest.mark.parametrize('backend,client_type', [('ollama', OllamaGenerator), ('openai', OpenAICompatibleGenerator)])
-def test_portable_question_thinking_is_explicitly_off_without_changing_other_calls(monkeypatch, backend, client_type):
+def test_portable_question_thinking_is_off_and_answer_extraction_defaults_are_explicit(monkeypatch, backend, client_type):
     calls = []
 
     def send(url, payload, **kwargs):
@@ -44,8 +44,11 @@ def test_portable_question_thinking_is_explicitly_off_without_changing_other_cal
         assert draft['max_tokens'] == 1200
     client.generate(question='Dispatch', evidence=EVIDENCE)
     client.classify_source(criterion='Dispatch', include_guidance='', exclude_guidance='', evidence=EVIDENCE)
-    for payload, _ in calls[1:]:
-        assert 'think' not in payload and 'chat_template_kwargs' not in payload
+    for (payload, _), thinking in zip(calls[1:], (True, False)):
+        if backend == 'ollama':
+            assert payload['think'] is thinking
+        else:
+            assert payload['chat_template_kwargs'] == {'enable_thinking': thinking}
     assert len(calls) == 3
 
 

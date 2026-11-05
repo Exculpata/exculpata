@@ -24,7 +24,7 @@ from .generation import (
     GroundedGenerationService, OllamaGenerator, OpenAICompatibleGenerator,
     _exact_original_span, _prompt, verify_original_claim,
 )
-from .review_budget import DEFAULT_REVIEW_BUDGET
+from .generator_completion import effective_thinking, expected_request_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SUITE_PATH = ROOT / "benchmarks/r1b-claims-v2.json"
@@ -48,7 +48,7 @@ def adapter_name(client):
     raise ValueError("Capture requires a supported production adapter.")
 
 
-def capture_configuration(adapter, model, repetitions, disable_thinking):
+def capture_configuration(adapter, model, repetitions, disable_thinking, thinking):
     if adapter not in ("OllamaGenerator", "OpenAICompatibleGenerator"):
         raise ValueError("Capture configuration requires a supported adapter.")
     if not isinstance(model, str) or not model or model != model.strip() or len(model) > 200:
@@ -58,11 +58,13 @@ def capture_configuration(adapter, model, repetitions, disable_thinking):
     if ((adapter == "OllamaGenerator" and disable_thinking is not None)
         or (adapter == "OpenAICompatibleGenerator" and type(disable_thinking) is not bool)):
         raise ValueError("Capture configuration thinking option does not match the adapter.")
+    if type(thinking) is not bool or thinking is not (True if adapter == "OllamaGenerator" else not disable_thinking):
+        raise ValueError("Capture configuration thinking option does not match the adapter.")
     return {"repetitions": repetitions, "seed": None,
             "seed_status": "production_adapters_do_not_set_seed",
             "history": [], "working_context": "", "grounding_repair": False,
             "adapter": adapter, "model": model, "disable_thinking": disable_thinking,
-            "temperature": 0.1, "output_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
+            "temperature": 0.1, **expected_request_settings(thinking),
             "context_tokens": 8192 if adapter == "OllamaGenerator" else "server_configured",
             "response_schema": copy.deepcopy(ANSWER_SCHEMA)}
 
@@ -115,9 +117,9 @@ def seal(receipt):
     return {**receipt, "receipt_sha256": digest(receipt)}
 
 
-def validate_capture_row(row):
+def validate_capture_row(row, configuration):
     common = {"sample_id", "case_id", "repetition", "prompt", "elapsed_ms",
-              "state", "parsed_response_received"}
+              "state", "parsed_response_received", "request_settings"}
     if (not isinstance(row, dict) or not isinstance(row.get("state"), str)
         or row["state"] not in {"generated", "generation_failure"}):
         raise ValueError("Invalid capture sample state.")
@@ -125,6 +127,10 @@ def validate_capture_row(row):
     fields = {"raw", "verification", "schema_valid"} if generated else {"failure_type"}
     if set(row) != common | fields:
         raise ValueError("Capture sample fields must match their recorded state.")
+    if (row["request_settings"] is not None or generated or row["parsed_response_received"]) and not json_equal(
+        row["request_settings"], expected_request_settings(configuration["thinking"]),
+    ):
+        raise ValueError("Capture request settings contradict the fixed adapter protocol.")
     if (not isinstance(row["sample_id"], str) or not isinstance(row["case_id"], str)
         or type(row["repetition"]) is not int or type(row["elapsed_ms"]) is not int
         or row["elapsed_ms"] < 0 or type(row["parsed_response_received"]) is not bool):
@@ -186,7 +192,7 @@ def validate_receipt(receipt):
         try:
             expected_configuration = capture_configuration(
                 configuration["adapter"], configuration["model"],
-                configuration["repetitions"], configuration["disable_thinking"])
+                configuration["repetitions"], configuration["disable_thinking"], configuration["thinking"])
         except KeyError as exc:
             raise ValueError("Capture configuration is incomplete.") from exc
         if not json_equal(configuration, expected_configuration):
@@ -199,7 +205,7 @@ def validate_receipt(receipt):
         if not isinstance(rows, list):
             raise ValueError("Capture results must be a complete list of samples.")
         for row in rows:
-            validate_capture_row(row)
+            validate_capture_row(row, configuration)
         if (len(rows) != len(expected) or {row["sample_id"] for row in rows} != expected
             or receipt.get("generation", {}).get("attempts") != len(expected)):
             raise ValueError("Capture must contain every planned sample exactly once.")
@@ -461,6 +467,17 @@ def validate_runtime(runtime):
         raise ValueError("Offline attestation requires a separate evidence digest.")
 
 
+def request_settings(payload, adapter):
+    if adapter == "OllamaGenerator":
+        thinking, total = payload["think"], payload["options"]["num_predict"]
+    else:
+        thinking, total = payload["chat_template_kwargs"]["enable_thinking"], payload["max_tokens"]
+    if type(thinking) is not bool or type(total) is not int:
+        raise ValueError("Capture request settings require a boolean and an integer token limit.")
+    reasoning = expected_request_settings(thinking)["reasoning_tokens"]
+    return {"thinking": thinking, "output_tokens": total - reasoning, "reasoning_tokens": reasoning}
+
+
 def capture(client, *, profile, runtime, repetitions, identity_check):
     """Call a real production adapter once per packet; don't hide repair drafts.
 
@@ -470,6 +487,7 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
     """
     validate_runtime(runtime)
     adapter = adapter_name(client)
+    thinking = effective_thinking(client)
     generator = model_records(profile, generator_exercised=False)["components"][0]
     if any(runtime[key] != generator[field] for key, field in (
         ("upstream_model_id", "model_id"), ("upstream_revision", "revision"), ("license", "license"))):
@@ -490,7 +508,7 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
         identity_observations += 1
     receipt.update(runtime={**runtime, "basis": "operator_declared_not_independently_verified"},
                    configuration=capture_configuration(
-                       adapter, client.model, repetitions, getattr(client, "disable_thinking", None)), results=[])
+                       adapter, client.model, repetitions, getattr(client, "disable_thinking", None), thinking), results=[])
     # Metadata is part of the final evidence too. Refuse an unencodable runtime
     # or model alias before any identity request or expensive generation call.
     try:
@@ -506,10 +524,11 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
                    "parsed_response_received": False}
             checked_identity()
             start = time.monotonic()
+            request_bodies = []
             try:
                 try:
                     from .generator_completion import single_schema_attempt
-                    with single_schema_attempt():
+                    with single_schema_attempt(request_observer=request_bodies.append):
                         try:
                             raw = client.generate(question=case["question"], evidence=evidence)
                         except GenerationSchemaRejected as exc:
@@ -537,6 +556,10 @@ def capture(client, *, profile, runtime, repetitions, identity_check):
             finally:
                 checked_identity()
             row["elapsed_ms"] = round((time.monotonic() - start) * 1000)
+            if len(request_bodies) > 1:
+                raise ValueError("Capture requires a single request per sample.")
+            row["request_settings"] = request_settings(request_bodies[0], adapter) if request_bodies else None
+            validate_capture_row(row, receipt["configuration"])
             receipt["results"].append(row)
     checked_identity()
     receipt["generation"] = generation_counts(receipt["results"])
