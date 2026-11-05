@@ -169,21 +169,35 @@ def test_family_and_orphan_attachment(tmp_path):
     assert report.families == (("A1", "A3"),)
     assert _lines(report, "orphan_attachment", root) == [4]
 
-def test_qc_hostile_labels_scale_linearly(tmp_path):
+def test_qc_hostile_labels_scale_linearly(tmp_path, monkeypatch):
+    from case_intelligence import source_load_file_qc
+
     _qc(fixtures.hostile_volume(tmp_path / "warmup", 30))
-    elapsed = []
+    parse_label = source_load_file_qc.parse_plain_label
+    parse_calls = 0
+
+    def counted_parse_label(label):
+        nonlocal parse_calls
+        parse_calls += 1
+        return parse_label(label)
+
+    monkeypatch.setattr(source_load_file_qc, "parse_plain_label", counted_parse_label)
+    elapsed, work = [], []
     for count in (5000, 20000):
         root = fixtures.hostile_volume(tmp_path / str(count), count)
+        parse_calls = 0
         started = time.perf_counter()
         report = _qc(root)
         elapsed.append(time.perf_counter() - started)
+        work.append(parse_calls)
         assert report.document_count == len(report.documents) == count
         assert len([f for f in report.findings if f.code == "unparseable_label"]) == 1000
         summaries = [f for f in report.findings if f.code == "findings_truncated" and f.truncated_code == "unparseable_label"]
         assert len(summaries) == 1
         assert summaries[0].count == (count + 1) // 3 - 1000
+    assert work[0] >= 5000, work
+    assert work[1] <= 4 * work[0] + 8, work
     assert max(elapsed) < 15, elapsed
-    assert elapsed[1] < 8 * elapsed[0] + 0.5, elapsed
 
 def test_qc_memory_grows_linearly(tmp_path):
     roots = [fixtures.hostile_volume(tmp_path / str(count), count) for count in (5000, 20000)]
