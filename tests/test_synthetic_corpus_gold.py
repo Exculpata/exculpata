@@ -3,10 +3,15 @@ import csv
 import gc
 import hashlib
 import json
+import os
+import subprocess
+import sys
+import threading
 import tracemalloc
 from decimal import Decimal
 from email import policy
 from email.parser import BytesParser
+from pathlib import Path
 
 import pytest
 from pypdf import PdfReader
@@ -121,18 +126,38 @@ def test_patterns_are_real_transactions(tmp_path):
             assert len(hops) >= 3 and len({t[field] for t in hops}) == 1
 
 
+def _streaming_peak(tmp_path, count, generator):
+    generator(tmp_path / f'warm-{count}', filler_chunks=20)
+    gc.collect()
+    tracemalloc.start()
+    try:
+        tracemalloc.reset_peak()
+        generator(tmp_path / f'measured-{count}', filler_chunks=count)
+        return tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
 def _streaming_peaks(tmp_path, generator):
+    child = '''
+import json
+import sys
+from pathlib import Path
+from tests import test_synthetic_corpus_gold as tests
+
+peak = tests._streaming_peak(
+    Path(sys.argv[1]), int(sys.argv[2]), getattr(tests, sys.argv[3]),
+)
+print(json.dumps(peak))
+'''
     peaks = []
     for count in (1000, 4000):
-        generator(tmp_path / f'warm-{count}', filler_chunks=20)
-        gc.collect()
-        tracemalloc.start()
-        try:
-            tracemalloc.reset_peak()
-            generator(tmp_path / f'measured-{count}', filler_chunks=count)
-            peaks.append(tracemalloc.get_traced_memory()[1])
-        finally:
-            tracemalloc.stop()
+        result = subprocess.run(
+            [sys.executable, '-c', child, str(tmp_path), str(count), generator.__name__],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True, text=True, check=True, timeout=60,
+        )
+        peaks.append(json.loads(result.stdout))
     return peaks
 
 
@@ -149,17 +174,23 @@ def _generate_buffered(out, *, filler_chunks):
     (out / 'buffered.jsonl').write_text(content, encoding='utf-8')
 
 
+def _record_streaming_call(out, *, filler_chunks):
+    call = [out.name, filler_chunks, tracemalloc.is_tracing(), os.getpid()]
+    # fixture-write: child call observations in the synthetic temporary directory.
+    with (out.parent / 'calls.jsonl').open('a', encoding='utf-8') as stream:
+        stream.write(json.dumps(call) + '\n')
+
+
 def test_streaming_memory_warms_before_tracing(tmp_path):
-    calls = []
-
-    def record_call(out, *, filler_chunks):
-        calls.append((out, filler_chunks, tracemalloc.is_tracing()))
-
-    _streaming_peaks(tmp_path, record_call)
-    assert [(count, tracing) for _, count, tracing in calls] == [
-        (20, False), (1000, True), (20, False), (4000, True),
+    _streaming_peaks(tmp_path, _record_streaming_call)
+    calls = rows(tmp_path, 'calls.jsonl')
+    assert [call[:3] for call in calls] == [
+        ['warm-1000', 20, False], ['measured-1000', 1000, True],
+        ['warm-4000', 20, False], ['measured-4000', 4000, True],
     ]
-    assert len({out for out, _, _ in calls}) == 4
+    assert calls[0][3] == calls[1][3]
+    assert calls[2][3] == calls[3][3]
+    assert len({os.getpid(), calls[0][3], calls[2][3]}) == 3
     assert not tracemalloc.is_tracing()
 
 
@@ -167,6 +198,29 @@ def test_streaming_memory(tmp_path):
     peaks = _streaming_peaks(tmp_path, generate)
     print(f'streaming peaks (bytes): {peaks}')
     _assert_flat_peaks(peaks)
+
+
+def test_streaming_memory_ignores_parent_allocations(tmp_path):
+    stop = threading.Event()
+    allocated = threading.Event()
+
+    def hold_parent_allocation():
+        while not stop.wait(0.001):
+            if (tmp_path / 'measured-4000').exists():
+                pressure = bytearray(4_000_000)
+                allocated.set()
+                stop.wait()
+                assert len(pressure) == 4_000_000
+                return
+
+    neighbor = threading.Thread(target=hold_parent_allocation)
+    neighbor.start()
+    try:
+        test_streaming_memory(tmp_path)
+        assert allocated.is_set(), 'parent pressure must overlap measurement'
+    finally:
+        stop.set()
+        neighbor.join()
 
 
 def test_streaming_memory_rejects_buffering(tmp_path):
