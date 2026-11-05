@@ -178,9 +178,9 @@ def main():
             graph=json.loads(run([*compose,'config','--format','json']))
             for service in graph['services'].values():
                 assert not any(service.get(field) for field in ('ports','volumes','secrets','devices'))
-            run([*compose,'build','app','egress-proxy'],timeout=1200,filename=str(Path('build.log')))
-            run([*docker,'build','-t',project+'-endpoint',str(fixture)],filename=str(Path('fixture-build.log')))
-            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90'],filename=str(Path('up.log')))
+            run([*compose,'build','app','egress-proxy'],timeout=1200,filename='build.log')
+            run([*docker,'build','-t',project+'-endpoint',str(fixture)],filename='fixture-build.log')
+            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90'],filename='up.log')
             results['generator_lockdown'] = json.loads(run([
                 *compose, 'exec', '-T', 'generator-standin', 'python',
                 '/fixture/generator_lockdown_probe.py', '--peer', 'retrieval', '--port', '8080'],
@@ -195,14 +195,14 @@ def main():
                 'GENERATOR_EGRESS_URL':generator,
                 'GENERATOR_EGRESS_PINS':json.dumps({'issuer':generator,'addresses':[generator_address]})}
             save()
-            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename=str(Path('allow-proxy.log')))
+            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='allow-proxy.log')
             ids=run([*compose,'ps','-q']).split()
             for identifier in ids:
                 fields=json.loads(run([*docker,'inspect','--format',
                     '{"mounts":{{json .Mounts}},"ports":{{json .HostConfig.PortBindings}},"privileged":{{json .HostConfig.Privileged}},"readonly":{{json .HostConfig.ReadonlyRootfs}}}',identifier]))
                 assert not fields['mounts'] and not fields['ports'] and not fields['privileged'] and fields['readonly']
             results.update(json.loads(run([*compose,'exec','-T','app','python','-I','-S','-B','-'],
-                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename=str(Path('installed-package.log')))))
+                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename='installed-package.log')))
             package_control = r"""import json,sys,tempfile
 from pathlib import Path
 namespace={'__name__':'synthetic_package_probe'}
@@ -219,18 +219,18 @@ with tempfile.TemporaryDirectory(prefix='synthetic-package-') as temporary:
 print(json.dumps({'app_writable_package_control_rejected':True}))
 """
             results.update(json.loads(run([*compose,'exec','-T','app','python','-I','-S','-B','-c',package_control],
-                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename=str(Path('installed-package-control.log')))))
+                input_value=(ROOT/'scripts/installed_package_probe.py').read_text(),filename='installed-package-control.log')))
             stream()
             command=[*compose,'exec','-T','-e','ISSUER_ADDRESS='+issuer_address,'-e','FOREIGN_ADDRESS='+foreign_address,
                      '-e','DNS_RECORDER_ADDRESS='+recorder_address,'app','python']
             run([*compose,'exec','-T','app','python','-c',
-                 "import httpx,ssl,time; c=ssl.create_default_context(cafile='/tmp/issue319-fixture/issuer.pem'); exec(\"for attempt in range(30):\\n try:\\n  httpx.get('https://issuer.example.test:8443/',verify=c,timeout=3).raise_for_status(); break\\n except httpx.HTTPError:\\n  time.sleep(.2)\\nelse: raise RuntimeError('issuer unavailable')\")"],filename=str(Path('readiness.log')))
+                 "import httpx,ssl,time; c=ssl.create_default_context(cafile='/tmp/issue319-fixture/issuer.pem'); exec(\"for attempt in range(30):\\n try:\\n  httpx.get('https://issuer.example.test:8443/',verify=c,timeout=3).raise_for_status(); break\\n except httpx.HTTPError:\\n  time.sleep(.2)\\nelse: raise RuntimeError('issuer unavailable')\")"],filename='readiness.log')
             # A live foreign TLS port is required before accepting app denials.
             relay_id = run([*compose,'ps','-q','egress-proxy']).strip()
             front_gateway = run([*docker,'inspect','--format','{{(index .NetworkSettings.Networks "'+project+'_front").Gateway}}',relay_id]).strip()
             results.update(json.loads(run([*compose,'exec','-T','egress-proxy','python','-I','-',foreign_address,front_gateway],
-                input_value=(ROOT/'tests/network_smoke/front_control.py').read_text(),filename=str(Path('foreign-tls-control.log')))))
-            results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py'],filename=str(Path('probe.log')))))
+                input_value=(ROOT/'tests/network_smoke/front_control.py').read_text(),filename='foreign-tls-control.log')))
+            results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py'],filename='probe.log')))
             generator_probe('configured_tunnel','generator.example.test:8443','tunnel')
             generator_probe('other_host_denied','foreign.example.test:8443','deny')
             generator_probe('wrong_port_denied','generator.example.test:443','deny')
@@ -238,20 +238,20 @@ print(json.dumps({'app_writable_package_control_rejected':True}))
                 results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py',mode],filename='dns-'+mode+'.log')))
             # Deliberately forwarding equivalent app, same networks/image/hardening.
             data['services']['app']['dns']=[recorder_address];save()
-            run([*compose,'up','-d','--no-deps','app'],filename=str(Path('dns-forwarding-control-up.log')));stream()
-            results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py','forwarding-control'],filename=str(Path('dns-forwarding-control.log')))))
+            run([*compose,'up','-d','--no-deps','app'],filename='dns-forwarding-control-up.log');stream()
+            results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py','forwarding-control'],filename='dns-forwarding-control.log')))
             data['services']['app']['dns']=original_dns;save()
-            run([*compose,'up','-d','--no-deps','app'],filename=str(Path('dns-restored-up.log')));stream()
-            results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py','production'],filename=str(Path('dns-restored.log')))))
+            run([*compose,'up','-d','--no-deps','app'],filename='dns-restored-up.log');stream()
+            results.update(json.loads(run([*command,'/tmp/issue319-fixture/dns_probe.py','production'],filename='dns-restored.log')))
             assert generator_address != foreign_address
             data['services']['egress-proxy']['environment']['GENERATOR_EGRESS_PINS']=json.dumps(
                 {'issuer':generator,'addresses':[foreign_address]})
             save()
-            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename=str(Path('generator-pin-mismatch-up.log')))
+            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='generator-pin-mismatch-up.log')
             generator_probe('pin_mismatch_denied','generator.example.test:8443','deny')
             data['services']['egress-proxy']['environment']={'OIDC_ISSUER':'','OIDC_ISSUER_PINS':''};save()
-            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename=str(Path('deny-all-up.log')))
-            results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py','deny-all'],filename=str(Path('deny-all.log')))))
+            run([*compose,'up','-d','--no-deps','--wait','--wait-timeout','90','egress-proxy'],filename='deny-all-up.log')
+            results.update(json.loads(run([*command,'/tmp/issue319-fixture/probe.py','deny-all'],filename='deny-all.log')))
             generator_probe('unconfigured_denied','generator.example.test:8443','deny')
             results.update(production_compose_derived=True,production_app_image_built=True,
                 production_proxy_environment_preserved=True,app_no_external_membership=True,

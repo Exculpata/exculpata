@@ -16172,7 +16172,7 @@ def create_workbench_app(
                                     raise ExportProblem("No complete bundle was created. Download the full-text ledger separately before closing this matter.")
                                 text_body.extend(fragment)
                         add_work_product(kind="full_text_review", path=f"source-checks/{index:03d}-full-text-ledger.json",
-                            artifact=ExportArtifact(body=bytes(text_body), media_type="application/json", filename=str(Path("full-text-ledger.json"))))
+                            artifact=ExportArtifact(body=bytes(text_body), media_type="application/json", filename="full-text-ledger.json"))
                     criterion = bench.workspace.review_criterion(
                         matter.matter_id, review_run.criterion_id, _snapshot=snapshot
                     )
@@ -16234,11 +16234,11 @@ def create_workbench_app(
             with repository.transaction(matter.matter_id, read_actor_id):
                 add_work_product(kind="entity_discovery", path="entities/discovery.json",
                     artifact=ExportArtifact(body=json.dumps(repository.discovery_export(matter.matter_id), indent=2).encode("utf-8"),
-                        media_type="application/json", filename=str(Path("discovery.json"))))
+                        media_type="application/json", filename="discovery.json"))
                 for index, record in enumerate(repository.export_records(matter.matter_id), 1):
                     add_work_product(kind="entity", path=f"entities/{index:03d}-entity.json",
                         artifact=ExportArtifact(body=json.dumps(record, indent=2).encode("utf-8"),
-                            media_type="application/json", filename=str(Path("entity.json"))))
+                            media_type="application/json", filename="entity.json"))
             repository = bench.workspace.assertion_repository(export_read=True, administrator_override=administrator_override)
             from .assertion_exports import qualified_payload
             model_notice = str(getattr(getattr(bench.generator, "client", None), "model_notice", "") or "")
@@ -16246,7 +16246,7 @@ def create_workbench_app(
                 for index, record in enumerate(repository.export_records(matter.matter_id), 1):
                     add_work_product(kind="assertion", path=f"assertions/{index:04d}-assertion.json",
                         artifact=ExportArtifact(body=json.dumps(qualified_payload(record, model_notice), indent=2).encode("utf-8"),
-                            media_type="application/json", filename=str(Path("assertion.json"))))
+                            media_type="application/json", filename="assertion.json"))
             from .matter_context_exports import add_context_exports
             add_context_exports(bench.workspace, matter.matter_id, read_actor_id,
                                 administrator_override, add_work_product, model_notice=model_notice)

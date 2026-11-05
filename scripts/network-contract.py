@@ -23,7 +23,12 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
 FILE_EXTENSIONS = frozenset("json jsonl toml yaml yml txt csv tsv md py pdf log".split())
-FILE_CALLS = frozenset({"Path", "PurePath", "open", "join"})
+FILE_CALLS = frozenset({
+    ("Path",), ("PurePath",), ("open",),
+    ("pathlib", "Path"), ("pathlib", "PurePath"),
+    ("os", "path", "join"), ("posixpath", "join"), ("ntpath", "join"),
+})
+FILE_SUFFIXES = ("path", "file", "filename", "fname", "dir")
 HOST_WORDS = ("host", "server", "domain", "proxy", "proxies", "url")
 HOST_CALLS = frozenset({
     "connect", "connect_ex", "create_connection", "getaddrinfo", "socket", "SocketType",
@@ -45,42 +50,48 @@ def target_identifier(target):
 
 
 def file_literal_context(node, parents, resolve):
-    """Return the file signal only after the bounded host check succeeds.
-
-    Calls use the last segment of the existing import/alias resolver: Path,
-    PurePath, open and join (including os.path.join and other attribute calls).
-    Cross only containers/keywords; stop at the nearest call, statement or
-    other expression. Depth exhaustion retains the host finding.
-    """
-    identifiers = []
+    """Recognize direct file syntax only after checking bounded host ancestry."""
+    if node.value.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS:
+        return None
     cursor = node
     for _ in range(MAX_LITERAL_CONTEXT_DEPTH):
         parent = parents.get(cursor)
+        identifiers = []
         if isinstance(parent, ast.keyword):
             identifiers.append((parent.arg or "").lower())
         elif isinstance(parent, (ast.Assign, ast.AnnAssign)):
             targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
             identifiers.extend(target_identifier(target) for target in targets)
-            break
         elif isinstance(parent, ast.Call):
             if resolve(parent.func).rsplit(".", 1)[-1] in HOST_CALLS:
                 return None
-            break
-        elif not isinstance(parent, CONTEXT_CONTAINERS):
+        elif parent is not None and not isinstance(parent, (
+            *CONTEXT_CONTAINERS, ast.Attribute, ast.BinOp, ast.UnaryOp,
+            ast.BoolOp, ast.Compare, ast.IfExp, ast.Subscript, ast.Await, ast.stmt,
+        )):
+            return None
+        if any(word in identifier for identifier in identifiers for word in HOST_WORDS):
+            return None
+        if parent is None or isinstance(parent, ast.stmt):
             break
         cursor = parent
     else:
         return None
-    if any(word in identifier for identifier in identifiers for word in HOST_WORDS):
-        return None
-    if node.value.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS:
-        return None
+
     parent = parents.get(node)
     if isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Div):
         return "division"
     call = parents.get(parent) if isinstance(parent, ast.keyword) else parent
-    if isinstance(call, ast.Call) and resolve(call.func).rsplit(".", 1)[-1] in FILE_CALLS:
+    if isinstance(call, ast.Call) and tuple(resolve(call.func).split(".")) in FILE_CALLS:
         return "call"
+    identifiers = []
+    if isinstance(parent, ast.keyword):
+        identifiers.append((parent.arg or "").lower())
+    elif isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is node:
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        identifiers.extend(target_identifier(target) for target in targets)
+    if any(identifier.endswith(FILE_SUFFIXES) for identifier in identifiers):
+        return "identifier"
     return None
 
 

@@ -517,11 +517,15 @@ def test_json_literals_are_reviewed_without_suffix_hiding(tmp_path):
     command = [sys.executable, str(tmp_path / "scripts/network-contract.py"), "--root", str(tmp_path)]
     pinned = subprocess.run(command, capture_output=True, text=True, timeout=60)
     assert pinned.returncode == 0, pinned.stderr
-    # fixture-write: Introduce an unreviewed filename in a scanned synthetic source.
-    (tmp_path / "scripts/synthetic_probe.py").write_text('FILENAME = "suite.json"\n')
+    # fixture-write: Introduce an unreviewed JSON-shaped host in synthetic source.
+    (tmp_path / "scripts/synthetic_probe.py").write_text('HOST = "suite.json"\n')
     unpinned = subprocess.run(command, capture_output=True, text=True, timeout=60)
-    assert unpinned.returncode == 1
+    assert unpinned.returncode == 1, unpinned.stdout + unpinned.stderr
     assert "unreviewed outbound host: suite.json" in unpinned.stderr
+    # fixture-write: Replace the host with a local filename assignment.
+    (tmp_path / "scripts/synthetic_probe.py").write_text('FILENAME = "suite.json"\n')
+    filename = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    assert filename.returncode == 0, filename.stderr
 
 
 def test_first_parent_base_ignores_moving_main_on_push(comparison_repo, tmp_path):
