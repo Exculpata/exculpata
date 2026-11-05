@@ -1,5 +1,6 @@
 """Reviewer source designations; never retrieval policy or model input."""
 import json
+from pathlib import Path
 from importlib import resources
 
 from .workspace_store import WorkspaceProblem
@@ -104,7 +105,7 @@ def add_source_role_export(workspace, matter_id, actor_id, administrator_overrid
                           ensure_ascii=False, indent=2).encode('utf-8')
         unit.read_authorize(matter_id, actor_id)
         add_work_product(kind='source_roles', path='context/source-roles.json',
-            artifact=ExportArtifact(body=body, media_type='application/json', filename='source-roles.json'))
+            artifact=ExportArtifact(body=body, media_type='application/json', filename=str(Path('source-roles.json'))))
 
 
 def export_source_inventory(catalog):

@@ -53,7 +53,7 @@ def mail_bytes(text, sid, attachment=False):
         child = EmailMessage(policy=SMTP)
         child.set_content('Synthetic enclosed notice.')
         child.add_attachment(b'The attachment records approval before txn-00000.',
-                             maintype='text', subtype='plain', filename='attachment.txt')
+                             maintype='text', subtype='plain', filename=str(Path('attachment.txt')))
         child.set_boundary('synthetic-child-boundary')
         message.add_attachment(child)
         message.set_boundary('synthetic-parent-boundary')

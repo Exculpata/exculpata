@@ -436,9 +436,8 @@ does not depend on file context. A bare hostname-shaped literal is reported
 unless its last label is one of `json`, `jsonl`, `toml`, `yaml`, `yml`, `txt`,
 `csv`, `tsv`, `md`, `py`, `pdf`, `log` and it has syntactic file context.
 File context means a direct argument to `Path`, `PurePath`, `open` or
-`os.path.join`, a direct operand of any `/` expression, or a value directly
-assigned to an identifier ending in `path`, `file`, `filename`, `fname` or
-`dir` (case-insensitive). Bare `name` is not a file suffix. Calls are matched
+`os.path.join`, or a direct operand of any `/` expression. Identifier spelling
+does not supply file context. Calls are matched
 by the last segment from the existing import/alias resolver, including
 attribute calls; `join` is not restricted to an `os.path` receiver. Assignment
 targets use `Name.id` or `Attribute.attr`; subscript and tuple targets give no
@@ -456,7 +455,8 @@ rule, so an imported alias of a request method still has host context.
 
 This is not call-reachability or taint analysis. Known gaps include bare
 `host:port`, `host/path`, `//host`, concatenation, f-strings, variable indirection
-and wrapper calls such as `fetch(file="evil.md")`. `Path("evil.py")`,
+and wrapper calls with structural file arguments such as
+`fetch(file=Path("evil.md"))`. Bare `fetch(file="evil.md")` is reported. `Path("evil.py")`,
 `open("evil.md")` and division with a non-Path operand count as files by design.
 The nearest-call boundary also treats `requests.get(str(Path("a.json")))` as
 file context for that literal; outer calls are not followed. Bare `evil.py`

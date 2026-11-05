@@ -83,7 +83,7 @@ def main():
         attached["Subject"] = "Generated attached email"
         attached.set_content("AttachmentOnlyCanary describes a different event.")
         message.add_attachment(attached, filename="forwarded.eml")
-        message.add_attachment("TextAttachmentCanary", filename="notes.txt")
+        message.add_attachment("TextAttachmentCanary", filename=str(Path("notes.txt")))
         original_bytes = message.as_bytes()
         original.write_bytes(original_bytes)
         app = create_workbench_app(root / "runtime", generator=EvidenceEchoGenerator(),

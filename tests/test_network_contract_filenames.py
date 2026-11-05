@@ -31,10 +31,8 @@ def reported_hosts(tmp_path, source):
     [
         pytest.param('from pathlib import Path\nPath("x") / "suite.json"', id="path-division"),
         pytest.param('open("passages.jsonl")', id="open-jsonl"),
-        pytest.param('answers_file = "answers.jsonl"', id="file-assignment"),
         pytest.param('from pathlib import Path\nPath("manifest.json")', id="path-argument"),
         pytest.param('import os\nos.path.join(d, "config.toml")', id="path-join"),
-        pytest.param('notes_path = "notes.md"', id="path-assignment"),
     ],
 )
 def test_local_file_not_reported(tmp_path, source):
@@ -58,6 +56,9 @@ def test_accepted_gap_file_not_reported(tmp_path, source):
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
+        pytest.param('FILENAME = "suite.json"', "suite.json", id="filename-assignment"),
+        pytest.param('answers_file = "answers.jsonl"', "answers.jsonl", id="file-assignment"),
+        pytest.param('notes_path = "notes.md"', "notes.md", id="path-assignment"),
         pytest.param('"example.com"', "example.com", id="bare-host"),
         pytest.param('"api.example.org"', "api.example.org", id="subdomain"),
         pytest.param('"https://suite.json/x"', "suite.json", id="https-file-suffix"),
@@ -106,21 +107,22 @@ def test_network_target_still_reported(tmp_path, source, expected):
     assert reported_hosts(tmp_path, source) == [expected]
 
 
-# Documented gap: wrapper calls such as fetch(file="evil.md") can hide host intent.
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
         pytest.param(
             '"example.com:8443"', "example.com",
             marks=pytest.mark.xfail(
-                strict=True, reason="Known gap: bare host:port literals are not inventoried"
+                strict=True, reason=("Known gap: bare host:port literals are not inventoried; "
+                                     "issue: to be filed; remove when host:port is inventoried")
             ),
             id="host-port",
         ),
         pytest.param(
             'x = "api"\nf"{x}.example.com"', "api.example.com",
             marks=pytest.mark.xfail(
-                strict=True, reason="Known gap: f-string hosts are not reconstructed"
+                strict=True, reason=("Known gap: f-string hosts are not reconstructed; "
+                                     "issue: to be filed; remove when f-string hosts are inventoried")
             ),
             id="f-string",
         ),
@@ -139,11 +141,6 @@ def test_known_host_gap(tmp_path, source, expected):
         'from os.path import join as j\nj(d, "a.json")',
         'obj.open("a.json")',
         'obj.join(d, "a.json")',
-        'obj.output_file = "a.json"',
-        'OUTPUT_FILENAME: str = "a.json"',
-        'output_fname = "a.json"',
-        'output_dir = "a.json"',
-        'fetch(file="a.json")',
         'Path(value="a.json")',
         '"a.json" / base',
         # Accepted gap: the nearest call ends the walk, even inside a request.
@@ -157,6 +154,11 @@ def test_file_context_syntax(tmp_path, source):
 @pytest.mark.parametrize(
     "source",
     [
+        'obj.output_file = "a.json"',
+        'OUTPUT_FILENAME: str = "a.json"',
+        'output_fname = "a.json"',
+        'output_dir = "a.json"',
+        'fetch(file="a.json")',
         'obj.output_file[0] = "a.json"',
         '(output_file,) = "a.json"',
         'name = "a.json"',

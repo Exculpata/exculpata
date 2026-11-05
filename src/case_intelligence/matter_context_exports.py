@@ -1,5 +1,6 @@
 """Complete context work product, called inside the existing export lease."""
 import json
+from pathlib import Path
 
 from .work_product_exports import ExportArtifact
 from .workspace_store import WorkspaceProblem
@@ -23,7 +24,7 @@ def add_context_exports(workspace, matter_id, actor_id, administrator_override, 
         manifest = _qualified(MatterContextRepository(repository).export(matter_id), model_notice)
         add_work_product(kind="context_selection", path="context/selections.json",
             artifact=ExportArtifact(body=json.dumps(manifest, indent=2).encode("utf-8"),
-                media_type="application/json", filename="selections.json"))
+                media_type="application/json", filename=str(Path("selections.json"))))
     from .answer_context import AnswerContextRepository
     with repository.transaction(matter_id, actor_id):
         context_jobs = workspace.connection.execute(
@@ -53,4 +54,4 @@ def add_context_exports(workspace, matter_id, actor_id, administrator_override, 
                         **purpose, audit_events=events), model_notice)
         add_work_product(kind='matter_purpose', path='context/matter-purpose.json',
             artifact=ExportArtifact(body=json.dumps(manifest, ensure_ascii=False, indent=2).encode('utf-8'),
-                                    media_type='application/json', filename='matter-purpose.json'))
+                                    media_type='application/json', filename=str(Path('matter-purpose.json'))))

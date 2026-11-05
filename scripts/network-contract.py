@@ -23,7 +23,6 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
 FILE_EXTENSIONS = frozenset("json jsonl toml yaml yml txt csv tsv md py pdf log".split())
-FILE_SUFFIXES = ("path", "file", "filename", "fname", "dir")
 FILE_CALLS = frozenset({"Path", "PurePath", "open", "join"})
 HOST_WORDS = ("host", "server", "domain", "proxy", "proxies", "url")
 HOST_CALLS = frozenset({
@@ -77,9 +76,6 @@ def file_literal_context(node, parents, resolve):
     if node.value.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS:
         return None
     parent = parents.get(node)
-    if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.keyword)) and parent.value is node:
-        if any(identifier.endswith(FILE_SUFFIXES) for identifier in identifiers):
-            return "identifier"
     if isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Div):
         return "division"
     call = parents.get(parent) if isinstance(parent, ast.keyword) else parent
