@@ -374,6 +374,127 @@ def test_postgres_source_scope_is_applied_inside_both_candidate_queries():
     assert empty_connection.calls == []
 
 
+def test_postgres_labels_walk_each_document_once_per_search():
+    from types import SimpleNamespace
+
+    class Document:
+        def __init__(self, document_id):
+            self.document_id = document_id
+            self.version_id = "version-1"
+            self.walks = 0
+            self.units = (
+                SimpleNamespace(text="amber seal", excerpt_digest="digest-1", location_label="Sheet A"),
+                SimpleNamespace(text="amber parcel", excerpt_digest="digest-2", location_label=""),
+            )
+
+        def iter_parsed_units(self):
+            self.walks += 1
+            return iter(self.units)
+
+    documents = {key: Document(key) for key in ("document-a", "document-b")}
+
+    def row(document, chunk="chunk-1", text="amber seal", digest="digest-1", version="version-1"):
+        return ("matter-alpha", document, chunk, "Synthetic.txt", 1, text, 0.9,
+                None, None, version, digest)
+
+    rows = (
+        row("document-a"),
+        row("document-a", "chunk-2", "amber parcel", "digest-2"),
+        row("document-a", "chunk-3"),
+        row("document-b"),
+    )
+
+    class Backend(PostgresHybridBackend):
+        def lexical(self, matter_id, query, limit):
+            return tuple(self._candidate(item) for item in rows)
+
+        def dense(self, matter_id, query_vector, query, limit):
+            return self.lexical(matter_id, query, limit)
+
+    backend = Backend(None, pilot_store=SimpleNamespace(get=documents.__getitem__))
+    retriever = HybridRetriever(backend, DeterministicEmbeddingAdapter(), DeterministicReranker())
+    results = retriever.search("matter-alpha", "amber")
+    labels = {(item.document_id, item.chunk_id): item.location_label for item in results}
+    assert labels == {
+        ("document-a", "chunk-1"): "Sheet A",
+        ("document-a", "chunk-2"): None,
+        ("document-a", "chunk-3"): None,
+        ("document-b", "chunk-1"): "Sheet A",
+    }
+    assert {key: document.walks for key, document in documents.items()} == {
+        "document-a": 1, "document-b": 1,
+    }
+
+    documents["document-a"].units[0].location_label = "Sheet B"
+    refreshed = retriever.search("matter-alpha", "amber")
+    assert next(item for item in refreshed if item.document_id == "document-a"
+                and item.chunk_id == "chunk-1").location_label == "Sheet B"
+    assert [document.walks for document in documents.values()] == [2, 2]
+
+    invalid_rows = (
+        row("document-a", text="altered text"),
+        row("document-a", digest="altered-digest"),
+        row("document-a", version="stale-version"),
+        row("missing-document"),
+    )
+    for invalid_row in invalid_rows:
+        rows = (invalid_row,)
+        (result,) = retriever.search("matter-alpha", "amber")
+        assert result.location_label is None
+
+    rows = (row("document-a", "chunk-2", version="stale-version"), row("document-a"))
+    assert {item.chunk_id: item.location_label for item in retriever.search("matter-alpha", "amber")} == {
+        "chunk-1": "Sheet B", "chunk-2": None,
+    }
+
+
+def test_postgres_labels_are_cached_across_real_search_lanes(postgres_schema):
+    import uuid
+    from types import SimpleNamespace
+
+    import psycopg
+    from case_intelligence.pilot_uploads import PilotUnit
+    from case_intelligence.review_bench_v2 import delete_postgres_matter, upsert_postgres_document
+
+    units = tuple(
+        PilotUnit(index, f"amber parcel {index}", excerpt_digest=f"digest-{index}",
+                  location_label=f"Sheet {index}")
+        for index in range(1, 5)
+    )
+    walks = []
+
+    def parsed_units():
+        walks.append(1)
+        return iter(units)
+
+    document = SimpleNamespace(document_id="document-a", version_id="version-1",
+                               iter_parsed_units=parsed_units)
+    store = SimpleNamespace(get={document.document_id: document}.__getitem__)
+    matter = f"ci-matter-{uuid.uuid4().hex}"
+    with psycopg.connect(postgres_schema) as connection:
+        try:
+            upsert_postgres_document(
+                connection, matter_id=matter, matter_name="Synthetic labels",
+                document_id=document.document_id, display_name="Synthetic.txt",
+                media_type="text/plain", units=units, source_version_id=document.version_id,
+            )
+            backend = PostgresHybridBackend(connection, pilot_store_factory=lambda: store)
+            retriever = HybridRetriever(backend, DeterministicEmbeddingAdapter(), DeterministicReranker())
+            for count in (1, 2):
+                results = retriever.search(matter, "amber parcel")
+                assert {item.chunk_id: item.location_label for item in results} == {
+                    f"chunk-{index}": f"Sheet {index}" for index in range(1, 5)
+                }
+                assert len(walks) == count
+            assert len(backend.lexical(matter, "amber parcel", 10)) == 4
+            assert len(walks) == 3
+            vector = DeterministicEmbeddingAdapter().embed(["amber"])[0]
+            assert len(backend.dense(matter, vector, "amber", 10)) == 4
+            assert len(walks) == 4
+        finally:
+            delete_postgres_matter(connection, matter_id=matter)
+
+
 def test_model_adapter_is_lazy_and_disabled_without_explicit_enable(monkeypatch):
     monkeypatch.delenv("CASE_REVIEW_ENABLE_MODELS", raising=False)
     adapter = LazySentenceTransformerEmbedding.from_environment()
