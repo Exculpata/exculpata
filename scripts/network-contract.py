@@ -35,7 +35,12 @@ HOST_CALLS = frozenset({
     "Client", "AsyncClient", "Session", "ClientSession", "HTTPConnection", "HTTPSConnection",
     "request", "get", "post", "put", "patch", "delete", "head", "options", "send",
     "urlopen", "urlretrieve", "open_service_request",
+    "SMTP", "FTP", "Telnet", "IMAP4_SSL", "POP3",
+    "gethostbyname", "get_server_certificate", "open_connection",
+    "stream", "build_request", "Request", "ws_connect", "serve",
+    "open_new", "open_new_tab",
 })
+QUALIFIED_HOST_CALLS = frozenset({("webbrowser", "open")})
 MAX_LITERAL_CONTEXT_DEPTH = 8
 CONTEXT_CONTAINERS = (ast.Tuple, ast.List, ast.Set, ast.Dict, ast.Starred, ast.keyword)
 
@@ -63,7 +68,9 @@ def file_literal_context(node, parents, resolve):
             targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
             identifiers.extend(target_identifier(target) for target in targets)
         elif isinstance(parent, ast.Call):
-            if resolve(parent.func).rsplit(".", 1)[-1] in HOST_CALLS:
+            name = resolve(parent.func)
+            if (name.rsplit(".", 1)[-1] in HOST_CALLS
+                    or tuple(name.split(".")) in QUALIFIED_HOST_CALLS):
                 return None
         elif parent is not None and not isinstance(parent, (
             *CONTEXT_CONTAINERS, ast.Attribute, ast.BinOp, ast.UnaryOp,

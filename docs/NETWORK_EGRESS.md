@@ -446,18 +446,24 @@ identifier. Container contents and annotations do not gain direct file context.
 
 Host context wins: assignment or keyword identifiers containing `host`, `server`,
 `domain`, `proxy`, `proxies` or `url`, and enclosing connection, socket, HTTP
-client constructor or request calls retain the host finding. The host-context
+client constructor or request calls retain the host finding. The bounded
+`HOST_CALLS` set also covers the listed mail, FTP, Telnet, DNS, TLS, asynchronous
+connection, streaming, request-building, WebSocket and browser entry points.
+The host-context
 walk has a fixed limit of eight parent steps (`MAX_LITERAL_CONTEXT_DEPTH`).
 It crosses calls, attributes, arithmetic, boolean/comparison/conditional
 expressions, subscripts, awaits, containers and keywords up to a statement.
 Unknown expression forms and depth exhaustion retain the finding. Host calls
-use the last segment of the resolved name, including imported aliases.
+use the last segment of the resolved name, including imported aliases, or an
+exact resolved name for `webbrowser.open`, preserving filesystem `open` calls.
 Thus `requests.get(str(Path("a.json")))` and `host = Path("a.json")` remain
 host findings even though the literal has a direct file signal.
 
 This is not call-reachability or taint analysis. Known gaps include bare
 `host:port`, `host/path`, `//host`, concatenation, f-strings, variable indirection
 and unrecognized wrappers such as `fetch(file="evil.md")`.
+A host-shaped file literal assigned to a neutral name, such as
+`u = Path("evil.md"); requests.get(u)`, is not tracked across statements.
 `Path("evil.py")`, `open("evil.md")` and division with a non-Path operand count
 as files by design. Bare `evil.py` and `evil.md` remain reported, as do
 file-context literals ending in `zip`, `mov`, `sh`, `pl` or `cc`, which are

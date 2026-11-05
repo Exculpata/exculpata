@@ -50,6 +50,11 @@ def test_local_file_not_reported(tmp_path, source):
         pytest.param('open("evil.md")', id="open-md"),
         # Accepted gap: division counts syntactically, even with a non-Path left side.
         pytest.param('base = 1\nbase / "x.json"', id="non-path-division"),
+        # Accepted gap: neutral variable indirection is not tracked across statements.
+        pytest.param(
+            'import requests\nu = Path("evil.md")\nrequests.get(u)',
+            id="neutral-variable-indirection",
+        ),
     ],
 )
 def test_accepted_gap_file_not_reported(tmp_path, source):
@@ -230,9 +235,30 @@ def test_absolute_dns_name_retained(tmp_path):
     'base_url = open("evil.md")',
     'host = str(Path("evil.md"))',
     'proxy_url = base / "evil.json"',
+    'import smtplib\nsmtplib.SMTP(Path("evil.md"))',
+    'import ftplib\nftplib.FTP(Path("evil.py"))',
+    'import socket\nsocket.gethostbyname(Path("evil.py"))',
+    'import ssl\nssl.get_server_certificate((Path("evil.py"), 443))',
+    'import asyncio\nasyncio.open_connection(Path("evil.md"), 80)',
+    'import httpx\nhttpx.stream("GET", Path("evil.md"))',
+    'import httpx\nhttpx.Client().build_request("GET", Path("evil.md"))',
+    'import requests\nrequests.Request("GET", Path("evil.md"))',
+    'import aiohttp\nawait s.ws_connect(Path("evil.md"))',
+    'import websockets\nwebsockets.serve(h, Path("evil.md"))',
+    'import telnetlib\ntelnetlib.Telnet(Path("evil.md"))',
+    'import imaplib\nimaplib.IMAP4_SSL(Path("evil.md"))',
+    'import poplib\npoplib.POP3(Path("evil.md"))',
+    'import webbrowser\nwebbrowser.open_new(Path("evil.md"))',
+    'import webbrowser\nwebbrowser.open_new_tab(Path("evil.md"))',
+    'import webbrowser\nwebbrowser.open(Path("evil.md"))',
+    'import webbrowser\nwebbrowser.open(base / "evil.md")',
+    'from webbrowser import open as browse\nbrowse(Path("evil.md"))',
+    'import webbrowser as browser\nbrowser.open(base / "evil.md")',
+    'from smtplib import SMTP as MailClient\nMailClient(Path("evil.md"))',
+    'from socket import gethostbyname as lookup\nlookup(Path("evil.py"))',
 ])
 def test_review_host_regressions(tmp_path, source):
-    expected = "evil.json" if "evil.json" in source else "evil.md"
+    expected = next(host for host in ("evil.json", "evil.py", "evil.md") if host in source)
     assert reported_hosts(tmp_path, source) == [expected]
 
 
@@ -253,6 +279,8 @@ def test_host_calls_mutation_is_detected(tmp_path, monkeypatch):
     'export(FILENAME="a.json")',
     '(root / "a.json").read_text()',
     'json.loads((root / "a.json").read_text()) if ready else {}',
+    'open(Path("a.json"))',
+    'open(base / "a.json")',
 ])
 def test_supported_file_forms(tmp_path, source):
     assert reported_hosts(tmp_path, source) == []
