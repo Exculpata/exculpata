@@ -29,14 +29,18 @@ from .service_endpoints import open_service_request
 from .generator_completion import (
     complete_structured as _complete_structured,
     generator_api_key as _generator_api_key,
-    initialize_schema,
+    initialize_schema, effective_thinking, expected_request_settings,
+    openai_message as _openai_message,
+    parse_model_content as _parse_model_content,
+    request_thinking as _request_thinking,
     observe_request as _observe_request,
     probe_generator as _probe_generator,
     refresh_generator_schema,
     repair_message as _repair_message,
 )
 from .generation_errors import (
-    GenerationUnavailable, GenerationSchemaRejected as GenerationSchemaRejected, GenerationInvalidContent,
+    GenerationUnavailable, GenerationSchemaRejected as GenerationSchemaRejected,
+    GenerationInvalidContent as GenerationInvalidContent,
     GenerationRejected, GenerationGroundingRejected,
 )
 from .generator_schema import openai_response_format, refuse_tool_request
@@ -154,7 +158,7 @@ class VerifiedReviewDecision:
 
 
 def _completion_token_limit(output_tokens: int, thinking: bool) -> int:
-    return output_tokens + (DEFAULT_REVIEW_BUDGET.reasoning_tokens if thinking else 0)
+    return output_tokens + expected_request_settings(thinking)["reasoning_tokens"]
 
 
 def _classification_token_limit(value: int) -> int:
@@ -525,37 +529,11 @@ def _review_prompt(
     return system, user
 
 
-def _openai_message(response: Mapping[str, object]) -> Mapping[str, object]:
-    choices = response.get("choices")
-    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise GenerationUnavailable("The answer service returned an invalid response.")
-    message = choices[0].get("message")
-    if not isinstance(message, dict):
-        raise GenerationUnavailable("The answer service returned an invalid response.")
-    return _parse_model_content(message.get("content"))
-
-
-def _parse_model_content(content: object) -> Mapping[str, object]:
-    if not isinstance(content, str) or len(content) > MAX_RESPONSE_BYTES:
-        raise GenerationUnavailable("The answer service returned invalid structured content.")
-    value = content.strip()
-    if value.startswith("```"):
-        value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
-        value = re.sub(r"\s*```$", "", value)
-    try:
-        payload = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise GenerationInvalidContent("The answer service did not return structured content.") from exc
-    if not isinstance(payload, dict):
-        raise GenerationInvalidContent("The answer service returned invalid structured content.")
-    return payload
-
-
 class OllamaGenerator:
     def __init__(
         self, endpoint: str, model: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS,
         api_key: str = "",
-        disable_thinking: bool = True,
+        disable_thinking: bool | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         question_profile: QuestionGenerationProfile | None = None,
         schema_server: str = "ollama",
@@ -567,7 +545,11 @@ class OllamaGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self.extraction_thinking = not bool(disable_thinking)
+        self.extraction_thinking = disable_thinking is False
+        self._explicit_thinking = (
+            question_profile.thinking if question_profile is not None
+            else None if disable_thinking is None else not disable_thinking
+        )
         self._opener = opener
         self.question_profile = question_profile or QuestionGenerationProfile()
         self.schema_server = schema_server
@@ -603,7 +585,7 @@ class OllamaGenerator:
         grounding_repair: bool = False,
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
-        thinking = True if thinking is None else thinking
+        thinking = _request_thinking(self, thinking, default=True)
         system, user = _prompt(
             question, evidence, history, working_context, grounding_repair=grounding_repair,
         )
@@ -652,7 +634,7 @@ class OllamaGenerator:
         output_tokens: int = 400,
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
-        thinking = self.extraction_thinking if thinking is None else thinking
+        thinking = _request_thinking(self, thinking, default=self.extraction_thinking)
         system, user = _review_prompt(
             criterion, include_guidance, exclude_guidance, evidence
         )
@@ -697,7 +679,7 @@ class OpenAICompatibleGenerator:
         *,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
         api_key: str = "",
-        disable_thinking: bool = True,
+        disable_thinking: bool | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         question_profile: QuestionGenerationProfile | None = None,
         schema_server: str = "vllm",
@@ -709,10 +691,12 @@ class OpenAICompatibleGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self.extraction_thinking = not bool(disable_thinking)
-        self.disable_thinking = not (
-            question_profile.thinking if question_profile is not None else self.extraction_thinking
+        self.extraction_thinking = disable_thinking is False
+        self._explicit_thinking = (
+            question_profile.thinking if question_profile is not None
+            else None if disable_thinking is None else not disable_thinking
         )
+        self.disable_thinking = not effective_thinking(self)
         self._opener = opener
         self.question_profile = question_profile or QuestionGenerationProfile()
         self.schema_server = schema_server
@@ -751,7 +735,7 @@ class OpenAICompatibleGenerator:
         thinking: bool | None = None,
         recorded_dispatch=None,
     ) -> Mapping[str, object]:
-        thinking = True if thinking is None else thinking
+        thinking = _request_thinking(self, thinking, default=True)
         system, user = _prompt(
             question, evidence, history, working_context, grounding_repair=grounding_repair,
             recorded_context=recorded_dispatch is not None,
@@ -799,7 +783,7 @@ class OpenAICompatibleGenerator:
         output_tokens: int = 400,
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
-        thinking = self.extraction_thinking if thinking is None else thinking
+        thinking = _request_thinking(self, thinking, default=self.extraction_thinking)
         system, user = _review_prompt(
             criterion, include_guidance, exclude_guidance, evidence
         )
@@ -859,8 +843,7 @@ def generator_from_environment() -> GeneratorClient:
     profile = question_profile_from_environment()
     if backend == "ollama":
         client: GeneratorClient = OllamaGenerator(
-            endpoint, model, timeout=timeout, api_key=_generator_api_key(), question_profile=profile, schema_server=server,
-            disable_thinking=os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "1") == "1",
+            endpoint, model, timeout=timeout, api_key=_generator_api_key(), schema_server=server,
         )
     elif backend == "openai":
         client = OpenAICompatibleGenerator(
@@ -868,14 +851,14 @@ def generator_from_environment() -> GeneratorClient:
             model,
             timeout=timeout,
             api_key=_generator_api_key(),
-            question_profile=profile,
-            disable_thinking=(
-                os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "1") == "1"
-            ),
             schema_server=server,
         )
     else:
         raise ValueError("unsupported local generator backend")
+    client.question_profile = profile
+    client.extraction_thinking = os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "1") != "1"
+    if backend == "openai":
+        client.disable_thinking = not profile.thinking
     try:
         client.model_notice = qualification_label(model)  # type: ignore[attr-defined]
     except (OSError, ValueError):

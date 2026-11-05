@@ -391,11 +391,11 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
     receipt = json.loads(output.read_text())
     evaluation.validate_receipt(receipt)
     assert len(calls) == len(receipt["results"]) == 11
-    assert receipt["configuration"]["thinking"] is True
+    assert receipt["configuration"]["thinking"] is (backend == "ollama")
     assert receipt["configuration"]["output_tokens"] == 1200
-    assert receipt["configuration"]["reasoning_tokens"] == 4096
+    assert receipt["configuration"]["reasoning_tokens"] == (4096 if backend == "ollama" else 0)
     for payload, row in zip(calls, receipt["results"]):
-        assert row["request_settings"] == {"thinking": True, "output_tokens": 1200, "reasoning_tokens": 4096}
+        assert row["request_settings"] == {"thinking": backend == "ollama", "output_tokens": 1200, "reasoning_tokens": 4096 if backend == "ollama" else 0}
         assert payload["messages"] == [{"role": role, "content": row["prompt"][role]}
                                        for role in ("system", "user")]
         if backend == "ollama":
@@ -404,7 +404,7 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
             assert payload["options"]["num_ctx"] == receipt["configuration"]["context_tokens"]
         else:
             assert payload["max_tokens"] == receipt["configuration"]["output_tokens"] + receipt["configuration"]["reasoning_tokens"]
-            assert payload["chat_template_kwargs"] == {"enable_thinking": True}
+            assert payload["chat_template_kwargs"] == {"enable_thinking": False}
     grades = completed_grades(receipt)
     score = evaluation.score_capture(receipt, grades)
     assert score["generation"]["answer_error_among_generated"] == evaluation.fraction(11, 11)

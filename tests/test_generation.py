@@ -512,7 +512,7 @@ def test_vllm_qwen_request_disables_thinking_and_keeps_strict_schema(monkeypatch
     result = client.generate(question="What is missing?", evidence=EVIDENCE)
     assert result["answerable"] is False
     assert captured["url"].endswith("/v1/chat/completions")
-    assert captured["payload"]["chat_template_kwargs"] == {"enable_thinking": True}
+    assert captured["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
     assert captured["payload"]["response_format"]["json_schema"]["strict"] is True
     assert "claims must be an empty array" in captured["payload"]["messages"][0]["content"]
 

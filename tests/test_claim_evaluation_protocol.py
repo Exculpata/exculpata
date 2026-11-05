@@ -218,13 +218,17 @@ def test_supported_adapter_options_preserve_actual_payloads_and_grading(capture,
     assert len(template["samples"]) == len(requests) == 11 * repetitions
     assert score["generation"]["failed_attempts"] == evaluation.fraction(0, 11 * repetitions)
     assert configuration["disable_thinking"] is thinking
-    assert configuration["thinking"] is True
+    expected_thinking = not thinking
+    expected_reasoning = 4096 if expected_thinking else 0
+    assert configuration["thinking"] is expected_thinking
     assert configuration["output_tokens"] == 1200
-    assert configuration["reasoning_tokens"] == 4096
+    assert configuration["reasoning_tokens"] == expected_reasoning
     assert configuration["seed"] is None
     assert configuration["seed_status"] == "production_adapters_do_not_set_seed"
     for request, row in zip(requests, receipt["results"]):
-        assert row["request_settings"] == {"thinking": True, "output_tokens": 1200, "reasoning_tokens": 4096}
+        assert row["request_settings"] == {
+            "thinking": expected_thinking, "output_tokens": 1200, "reasoning_tokens": expected_reasoning,
+        }
         assert request["model"] == configuration["model"]
         assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
                                        for role in ("system", "user")]
@@ -237,7 +241,7 @@ def test_supported_adapter_options_preserve_actual_payloads_and_grading(capture,
             assert request["temperature"] == configuration["temperature"]
             assert request["max_tokens"] == configuration["output_tokens"] + configuration["reasoning_tokens"]
             assert request["response_format"]["json_schema"]["schema"] == configuration["response_schema"]
-            assert request["chat_template_kwargs"] == {"enable_thinking": True}
+            assert request["chat_template_kwargs"] == {"enable_thinking": expected_thinking}
             assert configuration["context_tokens"] == "server_configured"
 
 

@@ -1,7 +1,9 @@
 """Local schema checks for an answer server that does not enforce JSON schema."""
 from __future__ import annotations
 
+import json
 import os
+import re
 import time
 import threading
 from contextlib import contextmanager
@@ -196,3 +198,51 @@ def repair_message(messages: list[dict[str, str]], attempt: int) -> list[dict[st
             ),
         },
     ]
+
+
+def openai_message(response: Mapping[str, object]) -> Mapping[str, object]:
+    from .generation import GenerationUnavailable
+
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise GenerationUnavailable("The answer service returned an invalid response.")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise GenerationUnavailable("The answer service returned an invalid response.")
+    return parse_model_content(message.get("content"))
+
+
+def parse_model_content(content: object) -> Mapping[str, object]:
+    from .generation import GenerationUnavailable, GenerationInvalidContent, MAX_RESPONSE_BYTES
+
+    if not isinstance(content, str) or len(content) > MAX_RESPONSE_BYTES:
+        raise GenerationUnavailable("The answer service returned invalid structured content.")
+    value = content.strip()
+    if value.startswith("```"):
+        value = re.sub(r"^```(?:json)?\s*", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"\s*```$", "", value)
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise GenerationInvalidContent("The answer service did not return structured content.") from exc
+    if not isinstance(payload, dict):
+        raise GenerationInvalidContent("The answer service returned invalid structured content.")
+    return payload
+
+
+def request_thinking(client: object, thinking: bool | None, *, default: bool) -> bool:
+    if thinking is not None:
+        return thinking
+    explicit = client._explicit_thinking
+    return default if explicit is None else explicit
+
+
+def effective_thinking(client: object) -> bool:
+    return request_thinking(client, None, default=True)
+
+
+def expected_request_settings(thinking: bool) -> dict[str, bool | int]:
+    from .generation import DEFAULT_REVIEW_BUDGET
+
+    return {"thinking": thinking, "output_tokens": DEFAULT_REVIEW_BUDGET.output_tokens,
+            "reasoning_tokens": DEFAULT_REVIEW_BUDGET.reasoning_tokens if thinking else 0}
