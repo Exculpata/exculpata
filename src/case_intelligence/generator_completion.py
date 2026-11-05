@@ -130,6 +130,32 @@ def schema_refused(client: object, *, thinking: bool = True) -> None:
     )
 
 
+def generator_available(client: object, *, thinking: bool, use_client_availability: bool = False) -> bool:
+    from .generation import (
+        GenerationUnavailable, OllamaGenerator, OpenAICompatibleGenerator, _bounded_json_get,
+    )
+
+    if not isinstance(client, (OllamaGenerator, OpenAICompatibleGenerator)):
+        return client.available
+    try:
+        schema_refused(client, thinking=thinking)
+    except GenerationUnavailable:
+        return False
+    adapter = OllamaGenerator if isinstance(client, OllamaGenerator) else OpenAICompatibleGenerator
+    if use_client_availability and type(client).available is not adapter.available:
+        return client.available
+    path, collection, identifier = (
+        ("/api/tags", "models", "name") if isinstance(client, OllamaGenerator)
+        else ("/v1/models", "data", "id")
+    )
+    payload = _bounded_json_get(
+        f"{client.endpoint}{path}", timeout=2.0, headers=client._headers,
+        **({"opener": client._opener} if client._opener is not None else {}),
+    )
+    return any(isinstance(item, dict) and item.get(identifier) == client.model
+               for item in payload.get(collection, []))
+
+
 _SINGLE_SCHEMA_ATTEMPT = ContextVar("single_schema_attempt", default=False)
 _REQUEST_OBSERVER = ContextVar("generation_request_observer", default=None)
 

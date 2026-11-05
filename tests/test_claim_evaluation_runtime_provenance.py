@@ -22,9 +22,25 @@ class SyntheticClient(generation.OpenAICompatibleGenerator):
         super().__init__("http://127.0.0.1:11435", "synthetic-provenance-only")
 
     def generate(self, *, question, evidence):
-        return {"answerable": True, "claims": [
+        import io
+        import json
+
+        raw = {"answerable": True, "claims": [
             {"text": evidence[0].excerpt, "evidence_ids": [evidence[0].evidence_id]},
         ], "limitation": None, "missing_information": ""}
+        requests = getattr(self, "synthetic_requests", [])
+        self.synthetic_requests = requests
+
+        class SyntheticTransport:
+            def open(self, request, **kwargs):
+                requests.append(json.loads(request.data))
+                return io.BytesIO(json.dumps({
+                    "choices": [{"message": {"content": json.dumps(raw)}}],
+                }).encode())
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(self, "_opener", SyntheticTransport())
+            return super().generate(question=question, evidence=evidence)
 
 
 def make_capture(profile="portable", offline="not_exercised"):
@@ -42,8 +58,15 @@ def make_capture(profile="portable", offline="not_exercised"):
         return {"method": "api_model_id_snapshots",
                 "model": client.model, "artifact_sha256": None}
 
-    return evaluation.capture(client, profile=profile, runtime=runtime, repetitions=1,
+    receipt = evaluation.capture(client, profile=profile, runtime=runtime, repetitions=1,
         identity_check=check_identity)
+    assert len(client.synthetic_requests) == len(receipt["results"])
+    for index in range(len(client.synthetic_requests)):
+        request, row = client.synthetic_requests[index], receipt["results"][index]
+        assert row["request_settings"] == evaluation.request_settings(request, "OpenAICompatibleGenerator")
+        assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
+                                       for role in ("system", "user")]
+    return receipt
 
 
 def completed_grades(receipt):

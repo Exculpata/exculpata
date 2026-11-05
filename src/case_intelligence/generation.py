@@ -29,7 +29,7 @@ from .service_endpoints import open_service_request
 from .generator_completion import (
     complete_structured as _complete_structured,
     generator_api_key as _generator_api_key,
-    initialize_schema, effective_thinking, expected_request_settings,
+    initialize_schema, effective_thinking, expected_request_settings, generator_available,
     openai_message as _openai_message,
     parse_model_content as _parse_model_content,
     request_thinking as _request_thinking,
@@ -164,7 +164,7 @@ def _completion_token_limit(output_tokens: int, thinking: bool) -> int:
 def _classification_token_limit(value: int) -> int:
     if type(value) is not int or not 1 <= value <= DEFAULT_REVIEW_BUDGET.output_tokens:
         raise ValueError("Classifier output must be between 1 and 1,200 tokens.")
-    return value
+    return min(value, 400)
 
 
 class GeneratorClient(Protocol):
@@ -545,7 +545,6 @@ class OllamaGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self.extraction_thinking = disable_thinking is False
         self._explicit_thinking = (
             question_profile.thinking if question_profile is not None
             else None if disable_thinking is None else not disable_thinking
@@ -566,14 +565,8 @@ class OllamaGenerator:
     def available(self) -> bool:
         if self.schema_mode == "refused":
             return False
-        payload = _bounded_json_get(f"{self.endpoint}/api/tags", timeout=2.0, headers=self._headers,
-                                   **({"opener": self._opener} if self._opener is not None else {}))
-        names = {
-            item.get("name")
-            for item in payload.get("models", [])
-            if isinstance(item, dict) and isinstance(item.get("name"), str)
-        }
-        return self.model in names
+        return generator_available(self, thinking=effective_thinking(self))
+
 
     def generate(
         self,
@@ -634,7 +627,7 @@ class OllamaGenerator:
         output_tokens: int = 400,
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
-        thinking = _request_thinking(self, thinking, default=self.extraction_thinking)
+        thinking = False
         system, user = _review_prompt(
             criterion, include_guidance, exclude_guidance, evidence
         )
@@ -691,12 +684,10 @@ class OpenAICompatibleGenerator:
             raise ValueError("generator model role is not configured")
         self.timeout = min(max(float(timeout), 1.0), 300.0)
         self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        self.extraction_thinking = disable_thinking is False
         self._explicit_thinking = (
             question_profile.thinking if question_profile is not None
             else None if disable_thinking is None else not disable_thinking
         )
-        self.disable_thinking = not effective_thinking(self)
         self._opener = opener
         self.question_profile = question_profile or QuestionGenerationProfile()
         self.schema_server = schema_server
@@ -706,6 +697,10 @@ class OpenAICompatibleGenerator:
         self.model_notice = ""
         initialize_schema(self, schema_mode)
 
+    @property
+    def disable_thinking(self) -> bool:
+        return not effective_thinking(self)
+
     def refresh_schema_status(self) -> None:
         refresh_generator_schema(self)
 
@@ -713,16 +708,8 @@ class OpenAICompatibleGenerator:
     def available(self) -> bool:
         if self.schema_mode == "refused":
             return False
-        payload = _bounded_json_get(
-            f"{self.endpoint}/v1/models", timeout=2.0, headers=self._headers,
-            **({"opener": self._opener} if self._opener is not None else {}),
-        )
-        ids = {
-            item.get("id")
-            for item in payload.get("data", [])
-            if isinstance(item, dict) and isinstance(item.get("id"), str)
-        }
-        return self.model in ids
+        return generator_available(self, thinking=effective_thinking(self))
+
 
     def generate(
         self,
@@ -783,7 +770,7 @@ class OpenAICompatibleGenerator:
         output_tokens: int = 400,
         thinking: bool | None = None,
     ) -> Mapping[str, object]:
-        thinking = _request_thinking(self, thinking, default=self.extraction_thinking)
+        thinking = False
         system, user = _review_prompt(
             criterion, include_guidance, exclude_guidance, evidence
         )
@@ -856,9 +843,6 @@ def generator_from_environment() -> GeneratorClient:
     else:
         raise ValueError("unsupported local generator backend")
     client.question_profile = profile
-    client.extraction_thinking = os.getenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", "1") != "1"
-    if backend == "openai":
-        client.disable_thinking = not profile.thinking
     try:
         client.model_notice = qualification_label(model)  # type: ignore[attr-defined]
     except (OSError, ValueError):
@@ -1236,7 +1220,7 @@ class GroundedGenerationService:
             total += len(item.excerpt)
         if total > MAX_EVIDENCE_CHARS:
             raise ValueError("Review evidence is too large.")
-        if not self.available:
+        if not generator_available(self.client, thinking=False, use_client_availability=True):
             raise GenerationUnavailable(
                 "Answering is temporarily unavailable. Search and source review still work."
             )

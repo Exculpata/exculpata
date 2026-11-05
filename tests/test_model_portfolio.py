@@ -8,6 +8,22 @@ from case_intelligence.model_portfolio import (
     PORTFOLIO_ID,
     model_portfolio_projection,
 )
+from case_intelligence import generation
+from tests.test_generator_thinking import backend, client, wire, _thinking  # noqa: F401
+
+
+def test_environment_portfolio_direct_mode_matches_answer_request(monkeypatch, client, backend, wire):
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", APPROVED_GENERATOR_MODEL)
+    client = generation.generator_from_environment()
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    client.generate(question="What is missing?", evidence=())
+    thinking = _thinking(backend, wire[-1])
+    projection = _projection(generation.GroundedGenerationService(client))
+    assert projection["generator"]["ready"] is (not thinking)
+    if backend == "openai":
+        assert client.disable_thinking is (not thinking)
 
 
 class _Client:

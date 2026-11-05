@@ -92,17 +92,65 @@ def test_answer_and_extraction_override_environment(monkeypatch, client, backend
 
 
 @pytest.mark.parametrize("disabled", ["0", "1"])
-def test_environment_is_only_the_extraction_default(monkeypatch, client, backend, wire, disabled):
+def test_extraction_is_non_thinking_for_both_environment_values(monkeypatch, client, backend, wire, disabled):
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", disabled)
     client = generation.generator_from_environment()
     client.generate(question="What is missing?", evidence=(), thinking=None)
     _classify(client, thinking=None)
-    assert [_thinking(backend, body) for body in wire] == [True, disabled == "0"]
+    assert [_thinking(backend, body) for body in wire] == [True, False]
+
+
+def test_service_classification_uses_its_own_schema_state(monkeypatch, client, backend, wire):
+    for thinking, status in ((True, "refused"), (False, "verified")):
+        generator_completion.remember_schema(
+            client, generator_schema.SchemaProbe(status, 1, "Synthetic check", ""), thinking=thinking,
+        )
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    service = generation.GroundedGenerationService(client)
+    assert service.available is False
+    result = service.classify_source(criterion="Identify an express reference.",
+        include_guidance="Use the record.", exclude_guidance="Do not infer.", evidence=(generation.EvidenceItem(
+        "S1", "Synthetic record", "Line 1", "The synthetic record contains no reference.",
+    ),))
+    assert result.decision == "not_identified"
+    assert result.model_called is True
+    assert _thinking(backend, wire[-1]) is False
 
 
 def test_only_message_content_is_returned(client):
     assert client.generate(question="What is missing?", evidence=()) == ANSWER
     assert _classify(client) == REVIEW
+
+
+@pytest.mark.parametrize("availability", [False, True, "delegate"])
+def test_classification_preserves_adapter_availability_override(monkeypatch, client, wire, availability):
+    checks = []
+
+    class CheckedAdapter(type(client)):
+        @property
+        def available(self):
+            checks.append(True)
+            return super().available if availability == "delegate" else availability
+
+    checked = CheckedAdapter(client.endpoint, client.model)
+    monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
+        "models": [{"name": client.model}], "data": [{"id": client.model}],
+    })
+    service = generation.GroundedGenerationService(checked)
+    kwargs = dict(criterion="Identify an express reference.", include_guidance="Use the record.",
+        exclude_guidance="Do not infer.", evidence=(generation.EvidenceItem(
+            "S1", "Synthetic record", "Line 1", "The synthetic record contains no reference.",
+        ),))
+    if availability is False:
+        with pytest.raises(generation.GenerationUnavailable):
+            service.classify_source(**kwargs)
+        assert wire == []
+    else:
+        assert service.classify_source(**kwargs).model_called is True
+        assert len(wire) == 1
+    assert checks == [True]
 
 
 def test_reasoning_budget_is_separate_from_visible_output():
@@ -146,7 +194,7 @@ def test_every_request_body_refuses_native_tools(client, backend, wire, thinking
         )
     assert wire
     for body in wire:
-        assert _thinking(backend, body) is thinking
+        assert _thinking(backend, body) is (False if operation == "classify_source" else thinking)
         generator_schema.refuse_tool_request(body)
         assert not {"tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"}.intersection(body)
         for message in body["messages"]:
@@ -232,12 +280,14 @@ def test_unset_environment_uses_code_defaults(monkeypatch, client, backend, wire
 
 
 @pytest.mark.parametrize("disabled", [False, True])
-def test_openai_compatibility_attribute_retains_extraction_default(disabled):
+def test_openai_compatibility_attribute_is_derived_and_read_only(disabled):
     client = generation.OpenAICompatibleGenerator(
         "http://127.0.0.1:8000", "synthetic-model", disable_thinking=disabled,
     )
     assert client.disable_thinking is disabled
-    assert client.disable_thinking is not client.extraction_thinking
+    assert client.disable_thinking is not generator_completion.effective_thinking(client)
+    with pytest.raises(AttributeError):
+        client.disable_thinking = not disabled
 
 
 @pytest.mark.parametrize("disabled", [False, True])
@@ -255,7 +305,7 @@ def test_explicit_question_profile_precedes_compatibility_default(monkeypatch, d
         question_profile=generation.QuestionGenerationProfile(thinking=profile_thinking, top_up_calls=0),
     )
     assert client.disable_thinking is not profile_thinking
-    assert client.extraction_thinking is not disabled
+    assert "disable_thinking" not in vars(client)
     client.draft_questions(purpose="witness", topic="Synthetic record", evidence=())
     assert _thinking("openai", bodies[0]) is profile_thinking
     for body in bodies:
@@ -269,7 +319,8 @@ def test_reasoning_allowance_is_added_only_when_requested(client, backend, wire,
     allowance = DEFAULT_REVIEW_BUDGET.reasoning_tokens if thinking else 0
     limits = [body["options"]["num_predict"] if backend == "ollama" else body["max_tokens"]
               for body in wire]
-    assert limits == [1_200 + allowance, 321 + allowance]
+    assert limits == [1_200 + allowance, 321]
+    assert _thinking(backend, wire[-1]) is False
 
 
 def test_reasoning_cannot_substitute_for_missing_content(monkeypatch, client, backend):
@@ -307,11 +358,21 @@ def test_cached_refusal_is_applied_to_each_completion(
     for operation in (client.generate, lambda **kwargs: _classify(client, **kwargs)):
         args = {"question": "What is missing?", "evidence": ()} if operation == client.generate else {}
         before = len(wire)
-        with pytest.raises(generation.GenerationUnavailable, match="schema"):
-            operation(**args, thinking=refused_state)
-        assert len(wire) == before
-        operation(**args, thinking=not refused_state)
-        assert _thinking(backend, wire[-1]) is not refused_state
+        if operation == client.generate:
+            with pytest.raises(generation.GenerationUnavailable, match="schema"):
+                operation(**args, thinking=refused_state)
+            assert len(wire) == before
+            operation(**args, thinking=not refused_state)
+            assert _thinking(backend, wire[-1]) is not refused_state
+        elif refused_state is False:
+            for requested in (False, True):
+                with pytest.raises(generation.GenerationUnavailable, match="schema"):
+                    operation(thinking=requested)
+                assert len(wire) == before
+        else:
+            for requested in (False, True):
+                operation(thinking=requested)
+                assert _thinking(backend, wire[-1]) is False
 
 
 def test_startup_and_first_extraction_probe_use_their_request_states(monkeypatch, client, backend, wire):

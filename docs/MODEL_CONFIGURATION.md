@@ -43,7 +43,7 @@ not. The two configured backends are:
 | Backend | Contract the code calls | Required settings |
 |---|---|---|
 | `ollama` | `GET {URL}/api/tags` and `POST {URL}/api/chat` with the answer JSON schema as `format` | `CASE_INTELLIGENCE_GENERATOR_URL`, `CASE_INTELLIGENCE_GENERATOR_MODEL`. Set `CASE_INTELLIGENCE_GENERATOR_SERVER=ollama`. |
-| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` sets the extraction default only; answer calls enable thinking. |
+| `openai` | `GET {URL}/v1/models` and `POST {URL}/v1/chat/completions` with nested `response_format.json_schema.schema` and `strict` true | The same URL and model keys. `CASE_INTELLIGENCE_GENERATOR_SERVER` is `vllm`, `llamacpp`, or `lmstudio`. llama.cpp must receive that nested object; a top-level `response_format.schema` is not sent. Optional `CASE_INTELLIGENCE_GENERATOR_API_KEY`, or `CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE`, sends `Authorization: Bearer`. `classify_source` and internal extraction always send thinking false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `1`; answer calls enable thinking. |
 
 `{URL}` is `CASE_INTELLIGENCE_GENERATOR_URL` after trimming a trailing slash.
 The URL is an origin or path prefix. It is not a URL that already ends in
@@ -125,10 +125,12 @@ generated and operator-maintained files. API key file contents are not Compose
 environment values. Relay URL and pin values also reject `$`.
 
 Answer calls default to thinking on. Internal extraction, including source
-classification and saved review criteria, defaults to thinking off.
-`CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING=1` keeps that extraction default;
-`0` enables thinking for extraction only. An explicit `thinking` call argument
-overrides the default. OpenAI-compatible requests carry
+classification (`classify_source`) and saved review criteria, always sends thinking
+false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `1`.
+Extraction requests use at most 400 output tokens, retaining any smaller frozen
+review limit, with no reasoning allowance. Neither a constructor nor a call setting
+can enable extraction thinking. An explicit `thinking` argument can override the
+answer default. OpenAI-compatible requests carry
 `chat_template_kwargs.enable_thinking`; Ollama requests carry `think`.
 These defaults are code settings, with no model-profile override.
 Only `message.content` is parsed as the result; reasoning fields are not included

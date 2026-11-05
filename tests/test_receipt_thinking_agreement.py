@@ -6,6 +6,17 @@ from case_intelligence import claim_evaluation as evaluation
 from tests.test_claim_evaluation_protocol import capture, no_network  # noqa: F401
 
 
+@pytest.mark.parametrize("validate", [evaluation.validate_receipt, evaluation.grade_template])
+def test_received_response_requires_request_settings(capture, validate):
+    receipt, _ = capture()
+    receipt.pop("receipt_sha256")
+    for row in receipt["results"]:
+        assert row["parsed_response_received"] is True
+        row["request_settings"] = None
+    with pytest.raises(ValueError, match="request settings"):
+        validate(evaluation.seal(receipt))
+
+
 @pytest.mark.parametrize("disable_thinking", [True, False])
 def test_capture_records_effective_thinking(capture, disable_thinking):
     receipt, requests = capture(disable_thinking=disable_thinking)

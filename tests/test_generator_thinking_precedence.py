@@ -58,27 +58,27 @@ def test_unconfigured_answer_and_extraction_keep_independent_defaults(adapter):
 
 
 @pytest.mark.parametrize("disabled", [False, True])
-def test_explicit_constructor_setting_beats_answer_and_extraction_defaults(adapter, disabled):
+def test_explicit_constructor_setting_controls_only_answers(adapter, disabled):
     client_type, bodies = adapter
     client = client_type("http://127.0.0.1:8000", "synthetic-model", disable_thinking=disabled)
     _requests(client)
-    _assert_requests(bodies, (not disabled, not disabled))
+    _assert_requests(bodies, (not disabled, False))
 
 
 @pytest.mark.parametrize("thinking", [False, True])
-def test_explicit_profile_setting_beats_answer_and_extraction_defaults(adapter, thinking):
+def test_explicit_profile_setting_controls_only_answers(adapter, thinking):
     client_type, bodies = adapter
     client = client_type(
         "http://127.0.0.1:8000", "synthetic-model", disable_thinking=thinking,
         question_profile=generation.QuestionGenerationProfile(thinking=thinking),
     )
     _requests(client)
-    _assert_requests(bodies, (thinking, thinking))
+    _assert_requests(bodies, (thinking, False))
 
 
 @pytest.mark.parametrize("thinking", [False, True])
-def test_call_value_overrides_explicit_constructor_setting(adapter, thinking):
+def test_answer_call_overrides_constructor_without_enabling_extraction(adapter, thinking):
     client_type, bodies = adapter
     client = client_type("http://127.0.0.1:8000", "synthetic-model", disable_thinking=thinking)
     _requests(client, thinking=thinking)
-    _assert_requests(bodies, (thinking, thinking))
+    _assert_requests(bodies, (thinking, False))

@@ -36,20 +36,59 @@ class SyntheticClient(generation.OpenAICompatibleGenerator):
         super().__init__("http://127.0.0.1:11435", "synthetic-test-only", disable_thinking=True)
 
     def generate(self, *, question, evidence):
-        return {"answerable": True, "claims": [
+        import io
+
+        raw = {"answerable": True, "claims": [
             {"text": evidence[0].excerpt, "evidence_ids": ["S1"]},
             {"text": "An invented shuttle orbited Neptune.", "evidence_ids": ["S1"]},
         ], "limitation": {"text": evidence[0].excerpt, "evidence_ids": ["S1"]},
             "missing_information": ""}
+        requests = getattr(self, "synthetic_requests", [])
+        self.synthetic_requests = requests
+
+        class SyntheticTransport:
+            def open(self, request, **kwargs):
+                requests.append(json.loads(request.data))
+                return io.BytesIO(json.dumps({
+                    "choices": [{"message": {"content": json.dumps(raw)}}],
+                }).encode())
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(self, "_opener", SyntheticTransport())
+            return super().generate(question=question, evidence=evidence)
 
 
 def make_capture(runtime, client=None, repetitions=1, identity_check=lambda: None):
     client = client or SyntheticClient()
+    generate = client.generate
+    first_request = len(getattr(client, "synthetic_requests", []))
+
+    def generate_with_return_fault(**kwargs):
+        before = len(getattr(client, "synthetic_requests", []))
+        raw = generate(**kwargs)
+        if len(getattr(client, "synthetic_requests", [])) == before:
+            SyntheticClient.generate(client, **kwargs)
+        return raw
+
     def synthetic_snapshot():
         identity_check()
         return {"method": "api_model_id_snapshots", "model": client.model, "artifact_sha256": None}
-    return evaluation.capture(client, profile="portable", runtime=runtime,
-                              repetitions=repetitions, identity_check=synthetic_snapshot)
+    with pytest.MonkeyPatch.context() as patch:
+        if isinstance(client, SyntheticClient):
+            patch.setattr(client, "generate", generate_with_return_fault)
+        receipt = evaluation.capture(client, profile="portable", runtime=runtime,
+                                     repetitions=repetitions, identity_check=synthetic_snapshot)
+    if not isinstance(client, SyntheticClient):
+        return receipt
+    requests = getattr(client, "synthetic_requests", [])[first_request:]
+    dispatched = [row for row in receipt["results"] if row["request_settings"] is not None]
+    assert len(requests) == len(dispatched)
+    for index in range(len(requests)):
+        request, row = requests[index], dispatched[index]
+        assert row["request_settings"] == evaluation.request_settings(request, "OpenAICompatibleGenerator")
+        assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
+                                       for role in ("system", "user")]
+    return receipt
 
 
 def completed_grades(receipt):

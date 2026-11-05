@@ -127,7 +127,7 @@ def validate_capture_row(row, configuration):
     fields = {"raw", "verification", "schema_valid"} if generated else {"failure_type"}
     if set(row) != common | fields:
         raise ValueError("Capture sample fields must match their recorded state.")
-    if row["request_settings"] is not None and not json_equal(
+    if (row["request_settings"] is not None or generated or row["parsed_response_received"]) and not json_equal(
         row["request_settings"], expected_request_settings(configuration["thinking"]),
     ):
         raise ValueError("Capture request settings contradict the fixed adapter protocol.")
