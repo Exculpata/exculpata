@@ -3306,7 +3306,6 @@ def _configure(
         "CASE_INTELLIGENCE_GENERATOR_BACKEND": "openai" if models in {"all", "review"} else "",
         "CASE_INTELLIGENCE_GENERATOR_URL": "http://generator:8000",
         "CASE_INTELLIGENCE_GENERATOR_MODEL": review_model.served_name,
-        "CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING": 1,
         "CASE_INTELLIGENCE_GENERATOR_TIMEOUT": 180,
         "CASE_INTELLIGENCE_GENERATION_CONCURRENCY": (
             review_model.generation_concurrency

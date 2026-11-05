@@ -92,7 +92,7 @@ def test_answer_and_extraction_override_environment(monkeypatch, client, backend
 
 
 @pytest.mark.parametrize("disabled", ["0", "1"])
-def test_extraction_is_non_thinking_for_both_environment_values(monkeypatch, client, backend, wire, disabled):
+def test_default_answer_thinks_and_extraction_does_not_for_both_environment_values(monkeypatch, client, backend, wire, disabled):
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", disabled)
     client = generation.generator_from_environment()
     client.generate(question="What is missing?", evidence=(), thinking=None)

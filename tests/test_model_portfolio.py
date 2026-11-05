@@ -9,19 +9,26 @@ from case_intelligence.model_portfolio import (
     model_portfolio_projection,
 )
 from case_intelligence import generation
+import pytest
 from tests.test_generator_thinking import backend, client, wire, _thinking  # noqa: F401
 
 
-def test_environment_portfolio_direct_mode_matches_answer_request(monkeypatch, client, backend, wire):
+@pytest.mark.parametrize("disabled", ["0", "1"])
+def test_environment_portfolio_direct_mode_matches_answer_request(monkeypatch, client, backend, wire, disabled):
+    monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING", disabled)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_MODEL", APPROVED_GENERATOR_MODEL)
     client = generation.generator_from_environment()
     monkeypatch.setattr(generation, "_bounded_json_get", lambda *_args, **_kwargs: {
         "models": [{"name": client.model}], "data": [{"id": client.model}],
     })
-    client.generate(question="What is missing?", evidence=())
+    client.generate(question="What is missing?", evidence=(), thinking=None)
     thinking = _thinking(backend, wire[-1])
     projection = _projection(generation.GroundedGenerationService(client))
-    assert projection["generator"]["ready"] is (not thinking)
+    assert thinking is True
+    assert projection["generator"]["ready"] is True
+    assert projection["ready"] is True
+    assert projection["generator"]["mode"] == "Direct structured generation"
+    assert projection["lanes"][1]["tone"] == "ready"
     if backend == "openai":
         assert client.disable_thinking is (not thinking)
 

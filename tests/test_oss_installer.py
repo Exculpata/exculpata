@@ -27,6 +27,19 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import exculpata_install as installer  # noqa: E402
 
 
+@pytest.mark.parametrize("models", ["none", "review"])
+def test_installer_omits_obsolete_answer_thinking_opt_out(tmp_path, models):
+    from tests.test_first_run_handoff import configured_node
+
+    root, args, paths = configured_node(tmp_path)
+    if models == "review":
+        args.models = models
+        devices = (installer.GpuDevice("0", "Synthetic GPU", 48_000, 46_000, 8.9),)
+        installer._configure(installer.Console(color=False), args, root, paths, "synthetic-release", ROOT, devices)
+    environment = installer._dotenv(installer._app_env(root))
+    assert "CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING" not in environment
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_account_management_configuration_and_update_overlay(tmp_path, enabled):
     args = installer._parser().parse_args(["install", "--names", f"{LEGACY_STEM}", "--auth", "local", "--models", "none", "--non-interactive"] + (["--enable-account-management"] if enabled else []))

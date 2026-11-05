@@ -73,7 +73,8 @@ The bundled installer can point this client at an existing server.
 `--external-generator-url` and `--external-generator-model`. `review` and `all`
 write `CASE_INTELLIGENCE_GENERATOR_BACKEND=openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL=http://generator:8000`, the pinned served model
-name, extraction thinking disabled, and a 180-second timeout. That URL is the vLLM service
+name and a 180-second timeout. Ordinary answers think on; extraction always
+sends thinking false. That URL is the vLLM service
 in [`compose.yaml`](../compose.yaml) (the `generator` service). They cannot be
 combined with an external server.
 
@@ -124,7 +125,10 @@ literals instead of adding Compose escape/decode semantics that differ between
 generated and operator-maintained files. API key file contents are not Compose
 environment values. Relay URL and pin values also reject `$`.
 
-Answer calls default to thinking on. Internal extraction, including source
+Ordinary assistant answer calls default to thinking on, independently of
+`CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING`, including when `thinking=None`.
+The remaining purpose of that variable is documented in
+[question drafts](QUESTION_DRAFTS.md). Internal extraction, including source
 classification (`classify_source`) and saved review criteria, always sends thinking
 false with `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` set to either `0` or `1`.
 Extraction requests use at most 400 output tokens, retaining any smaller frozen
