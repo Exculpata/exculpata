@@ -156,8 +156,9 @@ before clock precision or source authority can promote a passage. The temporal
 reorder then promotes subject-matching observations on the requested side of a
 clock cutoff. Both operate on existing candidates without changing retrieval
 budgets or source evidence. The deterministic fallback reranker drops a local
-stop-word list, weights shared terms by rarity within its candidate set, and adds
-a small adjacent-pair bonus with deterministic ties.
+stop-word list, balances shared terms across query clauses, and adds a small
+adjacent-pair bonus. Scores depend only on the query and candidate, never on the
+reranked slice. Both PostgreSQL lanes break ties by document and chunk identity.
 Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
 scorecard records the retriever name, index, embedder class, and reranker
 class. It does not record the connection string.

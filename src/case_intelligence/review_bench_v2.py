@@ -196,7 +196,7 @@ class DeterministicEmbeddingAdapter:
 
 
 class DeterministicReranker:
-    """Stable rarity-weighted reranker for core tests and the no-dependency demo."""
+    """Pool-invariant overlap reranker for core tests and the no-dependency demo."""
 
     available = True
     _STOP_WORDS = frozenset({
@@ -210,17 +210,15 @@ class DeterministicReranker:
         query_tokens = tuple(token for token in _tokens(query) if token not in self._STOP_WORDS)
         query_terms = tuple(dict.fromkeys(query_tokens))
         query_pairs = set(zip(query_tokens, query_tokens[1:]))
-        passage_tokens = [
-            tuple(token for token in _tokens(item.text) if token not in self._STOP_WORDS)
-            for item in candidates
-        ]
-        passage_terms = [set(tokens) for tokens in passage_tokens]
-        weights = {
-            term: math.log((len(candidates) + 1) / (sum(term in terms for terms in passage_terms) + 1)) + 1
-            for term in query_terms
-        }
+        clauses = [set(_tokens(part)) - self._STOP_WORDS
+                   for part in re.split(r"[?;]|\b(?:and|or)\b", query.casefold())]
+        clauses = [terms for terms in clauses if terms]
+        weights = {term: max(len(query_terms) / (len(clauses) * len(terms))
+                             for terms in clauses if term in terms) for term in query_terms}
         scored = []
-        for candidate, tokens, terms in zip(candidates, passage_tokens, passage_terms):
+        for candidate in candidates:
+            tokens = tuple(token for token in _tokens(candidate.text) if token not in self._STOP_WORDS)
+            terms = set(tokens)
             overlap = sum(weights[term] for term in query_terms if term in terms)
             pairs = set(zip(tokens, tokens[1:]))
             bonus = 0.35 * len(query_pairs.intersection(pairs))
@@ -542,7 +540,7 @@ class PostgresHybridBackend:
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
              WHERE c.matter_id=%s AND c.search_vector @@ q.query
         """ + scope_sql + """
-             ORDER BY score DESC,c.chunk_id LIMIT %s
+             ORDER BY score DESC,c.document_id,c.chunk_id LIMIT %s
         """
         parameters: list[object] = ['"' in query, query, matter_id]
         if self.document_ids is not None:
@@ -570,7 +568,7 @@ class PostgresHybridBackend:
               JOIN review_page p ON (p.matter_id,p.document_id,p.page_id)=(c.matter_id,c.document_id,c.page_id)
              WHERE c.matter_id=%s AND c.embedding IS NOT NULL
         """ + scope_sql + """
-             ORDER BY c.embedding <=> %s::vector,c.chunk_id LIMIT %s
+             ORDER BY c.embedding <=> %s::vector,c.document_id,c.chunk_id LIMIT %s
         """
         parameters: list[object] = [vector, matter_id]
         if self.document_ids is not None:

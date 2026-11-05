@@ -32,6 +32,63 @@ def _c(matter: str, chunk: str, page: int, text: str, score: float = 1.0) -> Can
     return Candidate(matter, "synthetic-report", chunk, "Synthetic incident report.pdf", page, text, score)
 
 
+@pytest.mark.parametrize("query", ["amber ultraviolet", "amber and ultraviolet marker", "the and"])
+def test_deterministic_reranker_is_pool_invariant(query):
+    heads = (_c("matter-alpha", "head-a", 1, "amber"),
+             _c("matter-alpha", "head-b", 2, "ultraviolet"))
+    results = []
+    for tail_text in ("amber", "ultraviolet"):
+        tails = tuple(_c("matter-alpha", f"tail-{i}", i + 3, tail_text) for i in range(2))
+        ranked = DeterministicReranker().rerank(query, heads + tails)
+        results.append([(item.chunk_id, item.score) for item in ranked if item.chunk_id.startswith("head-")])
+    assert [key for key, _ in results[0]] == [key for key, _ in results[1]]
+    assert results[0] == results[1]
+
+
+@pytest.mark.parametrize("query", [
+    "amber seal fragment marker and blue parcel",
+    "blue parcel; amber seal fragment marker",
+    "amber seal fragment marker OR blue parcel?",
+])
+def test_fallback_reranker_balances_query_clauses(query):
+    partial = _c("matter-alpha", "partial", 1, "amber seal")
+    complete = _c("matter-alpha", "complete", 2, "blue parcel")
+    ranked = DeterministicReranker().rerank(query, (partial, complete))
+    assert [item.chunk_id for item in ranked] == ["complete", "partial"]
+    assert [item.score for item in ranked] == pytest.approx([336, 186])
+
+
+@pytest.mark.parametrize("lane", ["lexical", "dense"])
+def test_lane_order_is_total_across_documents(postgres_schema, lane):
+    import psycopg
+    import uuid
+    from case_intelligence.pilot_uploads import PilotUnit
+    from case_intelligence.review_bench_v2 import delete_postgres_matter, upsert_postgres_document
+
+    matter = f"ci-matter-{uuid.uuid4().hex}"
+    text = "amber seal"
+    with psycopg.connect(postgres_schema) as connection:
+        try:
+            for document in ("document-b", "document-a"):
+                upsert_postgres_document(
+                    connection, matter_id=matter, matter_name="Synthetic lane order",
+                    document_id=document, display_name=f"{document}.txt",
+                    media_type="text/plain", units=(PilotUnit(1, text, 1, 1),),
+                )
+            backend = PostgresHybridBackend(connection)
+            # fixture-write: Exercise tied synthetic rows in physical insertion order.
+            connection.execute("SET LOCAL enable_indexscan = off")
+            # fixture-write: Keep the synthetic lane probe on a sequential scan plan.
+            connection.execute("SET LOCAL enable_bitmapscan = off")
+            rows = (backend.lexical(matter, text, 2) if lane == "lexical" else
+                    backend.dense(matter, DeterministicEmbeddingAdapter().embed([text])[0], text, 2))
+            assert rows[0].score == rows[1].score
+            assert [row.chunk_id for row in rows] == ["chunk-1", "chunk-1"]
+            assert [row.document_id for row in rows] == ["document-a", "document-b"]
+        finally:
+            delete_postgres_matter(connection, matter_id=matter)
+
+
 def test_fallback_reranker_keeps_rare_second_part_in_eight_passage_packet() -> None:
     question = (
         "What did the intake notes say about the parcel that was moved from "
@@ -488,9 +545,7 @@ def test_fallback_reranker_drops_stop_words_and_rewards_adjacent_pairs():
     ]
 
 
-def test_fallback_reranker_rarity_and_ties_preserve_existing_order_keys():
-    import math
-
+def test_fallback_reranker_ties_preserve_existing_order_keys():
     pool = (
         _c("matter-alpha", "b", 2, "amber amber", score=0.03),
         _c("matter-alpha", "c", 1, "amber", score=0.03),
@@ -498,7 +553,6 @@ def test_fallback_reranker_rarity_and_ties_preserve_existing_order_keys():
         _c("matter-alpha", "rare", 4, "ultraviolet", score=0.03),
     )
     ranked = DeterministicReranker().rerank("amber ultraviolet", pool)
-    assert [item.chunk_id for item in ranked] == ["rare", "a", "c", "b"]
-    assert ranked[0].score == pytest.approx((math.log(5 / 2) + 1) * 100 + 0.03)
-    assert ranked[1].score == pytest.approx((math.log(5 / 4) + 1) * 100 + 0.03)
+    assert [item.chunk_id for item in ranked] == ["a", "c", "b", "rare"]
+    assert all(item.score == pytest.approx(100.03) for item in ranked)
     assert DeterministicReranker().rerank("amber", ()) == ()
