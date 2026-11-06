@@ -361,18 +361,19 @@ def test_schema_refresh_is_bounded(monkeypatch):
     import threading
     done = threading.Event()
     calls = []
-    def probe(client):
-        calls.append(client.schema_mode)
+    def probe(client, *, thinking, model):
+        calls.append((client.schema_mode, thinking, model))
         done.set()
     monkeypatch.setattr(completion, "probe_generator", probe)
     current = OllamaGenerator("http://127.0.0.1:11434", "synthetic-model", schema_mode="verified")
-    current._schema_checked_at = 1_000
+    monkeypatch.setattr(completion.time, "monotonic", lambda: 1_000)
+    completion.remember_schema(current, completion.SchemaProbe("verified", 1, "synthetic", ""))
     refresh_generator_schema(current, now=1_030)
     refresh_generator_schema(current, now=1_061)
     untouched = OllamaGenerator("http://127.0.0.1:11434", "synthetic-model")
     refresh_generator_schema(untouched, now=10_000)
     assert done.wait(2)
-    assert calls == ["verified"]
+    assert calls == [("verified", True, "synthetic-model")]
 
 
 def test_qualification_registry_and_harness_seam(monkeypatch):

@@ -36,20 +36,59 @@ class SyntheticClient(generation.OpenAICompatibleGenerator):
         super().__init__("http://127.0.0.1:11435", "synthetic-test-only", disable_thinking=True)
 
     def generate(self, *, question, evidence):
-        return {"answerable": True, "claims": [
+        import io
+
+        raw = {"answerable": True, "claims": [
             {"text": evidence[0].excerpt, "evidence_ids": ["S1"]},
             {"text": "An invented shuttle orbited Neptune.", "evidence_ids": ["S1"]},
         ], "limitation": {"text": evidence[0].excerpt, "evidence_ids": ["S1"]},
             "missing_information": ""}
+        requests = getattr(self, "synthetic_requests", [])
+        self.synthetic_requests = requests
+
+        class SyntheticTransport:
+            def open(self, request, **kwargs):
+                requests.append(json.loads(request.data))
+                return io.BytesIO(json.dumps({
+                    "choices": [{"message": {"content": json.dumps(raw)}}],
+                }).encode())
+
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(self, "_opener", SyntheticTransport())
+            return super().generate(question=question, evidence=evidence)
 
 
 def make_capture(runtime, client=None, repetitions=1, identity_check=lambda: None):
     client = client or SyntheticClient()
+    generate = client.generate
+    first_request = len(getattr(client, "synthetic_requests", []))
+
+    def generate_with_return_fault(**kwargs):
+        before = len(getattr(client, "synthetic_requests", []))
+        raw = generate(**kwargs)
+        if len(getattr(client, "synthetic_requests", [])) == before:
+            SyntheticClient.generate(client, **kwargs)
+        return raw
+
     def synthetic_snapshot():
         identity_check()
         return {"method": "api_model_id_snapshots", "model": client.model, "artifact_sha256": None}
-    return evaluation.capture(client, profile="portable", runtime=runtime,
-                              repetitions=repetitions, identity_check=synthetic_snapshot)
+    with pytest.MonkeyPatch.context() as patch:
+        if isinstance(client, SyntheticClient):
+            patch.setattr(client, "generate", generate_with_return_fault)
+        receipt = evaluation.capture(client, profile="portable", runtime=runtime,
+                                     repetitions=repetitions, identity_check=synthetic_snapshot)
+    if not isinstance(client, SyntheticClient):
+        return receipt
+    requests = getattr(client, "synthetic_requests", [])[first_request:]
+    dispatched = [row for row in receipt["results"] if row["request_settings"] is not None]
+    assert len(requests) == len(dispatched)
+    for index in range(len(requests)):
+        request, row = requests[index], dispatched[index]
+        assert row["request_settings"] == evaluation.request_settings(request, "OpenAICompatibleGenerator")
+        assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
+                                       for role in ("system", "user")]
+    return receipt
 
 
 def completed_grades(receipt):
@@ -86,6 +125,7 @@ def test_suite_rubric_changes_fail_frozen_fingerprint(monkeypatch, tmp_path):
     suite = evaluation.load_suite()
     suite["rubric"]["thresholds"]["release_acceptance"] = "changed"
     path = tmp_path / "modified.json"
+    # fixture-write: synthetic suite mutation to exercise fingerprint rejection.
     path.write_text(json.dumps(suite))
     monkeypatch.setattr(evaluation, "SUITE_PATH", path)
     with pytest.raises(ValueError, match="Frozen"):
@@ -380,6 +420,7 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
     monkeypatch.setattr(cli, "_bounded_json_get", metadata)
     monkeypatch.setattr(generation, "_bounded_json_request", response)
     profile = tmp_path / "runtime.json"
+    # fixture-write: synthetic runtime metadata for the capture CLI.
     profile.write_text(json.dumps(runtime))
     output = tmp_path / "capture.json"
     args = ["capture", "--backend", backend, "--endpoint", "http://127.0.0.1:11435",
@@ -389,14 +430,19 @@ def test_cli_capture_uses_production_adapter_and_bound_grading(monkeypatch, tmp_
     receipt = json.loads(output.read_text())
     evaluation.validate_receipt(receipt)
     assert len(calls) == len(receipt["results"]) == 11
+    assert receipt["configuration"]["thinking"] is (backend == "ollama")
+    assert receipt["configuration"]["output_tokens"] == 1200
+    assert receipt["configuration"]["reasoning_tokens"] == (4096 if backend == "ollama" else 0)
     for payload, row in zip(calls, receipt["results"]):
+        assert row["request_settings"] == {"thinking": backend == "ollama", "output_tokens": 1200, "reasoning_tokens": 4096 if backend == "ollama" else 0}
         assert payload["messages"] == [{"role": role, "content": row["prompt"][role]}
                                        for role in ("system", "user")]
         if backend == "ollama":
-            assert payload["options"]["num_predict"] == receipt["configuration"]["output_tokens"]
+            assert payload["think"] is True
+            assert payload["options"]["num_predict"] == receipt["configuration"]["output_tokens"] + receipt["configuration"]["reasoning_tokens"]
             assert payload["options"]["num_ctx"] == receipt["configuration"]["context_tokens"]
         else:
-            assert payload["max_tokens"] == receipt["configuration"]["output_tokens"]
+            assert payload["max_tokens"] == receipt["configuration"]["output_tokens"] + receipt["configuration"]["reasoning_tokens"]
             assert payload["chat_template_kwargs"] == {"enable_thinking": False}
     grades = completed_grades(receipt)
     score = evaluation.score_capture(receipt, grades)

@@ -170,11 +170,12 @@ def test_schema_rejection_is_not_reported_as_unreachable(status, body):
 def test_schema_refresh_returns_cached_status_while_one_probe_runs(monkeypatch):
     entered, release, finished = threading.Event(), threading.Event(), threading.Event()
     calls = []
-    def probe(client):
-        calls.append(client)
+    def probe(client, *, thinking, model):
+        calls.append((client, thinking, model))
         entered.set()
         assert release.wait(3)
-        completion.remember_schema(client, completion.SchemaProbe("verified", 1, "synthetic", ""))
+        completion.remember_schema(client, completion.SchemaProbe("verified", 1, "synthetic", ""),
+                                   thinking=thinking, model=model)
         finished.set()
     client = OpenAICompatibleGenerator("http://127.0.0.1", "synthetic", schema_mode="verified")
     monkeypatch.setattr(completion, "probe_generator", probe)
@@ -183,7 +184,7 @@ def test_schema_refresh_returns_cached_status_while_one_probe_runs(monkeypatch):
         assert entered.wait(1)
         for _ in range(20):
             completion.refresh_generator_schema(client)
-        assert calls == [client]
+        assert calls == [(client, True, client.model)]
         assert client.schema_mode == "verified"
     finally:
         release.set()

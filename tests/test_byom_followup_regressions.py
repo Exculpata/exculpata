@@ -79,6 +79,14 @@ def test_ollama_environment_key_reaches_every_request(monkeypatch, tmp_path):
     monkeypatch.delenv("CASE_INTELLIGENCE_GENERATOR_API_KEY", raising=False)
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_API_KEY_FILE", str(key_file))
     monkeypatch.setenv("CASE_INTELLIGENCE_GENERATOR_SCHEMA_PROBE", "1")
+    class InlineThread:
+        def __init__(self, *, target, **_kwargs):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(generator_completion.threading, "Thread", InlineThread)
     expected = {"Authorization": "Bearer synthetic-ollama-credential"}
     observed = []
     def probe(*args, **kwargs):
@@ -110,5 +118,5 @@ def test_ollama_environment_key_reaches_every_request(monkeypatch, tmp_path):
     monkeypatch.setattr(generation, "_bounded_json_request", draft_post)
     with pytest.raises(StopDraft):
         client.draft_questions(purpose="discovery", topic="Synthetic topic", evidence=evidence)
-    assert [kind for kind, _ in observed] == ["probe", "health", "chat", "chat", "questions"]
+    assert [kind for kind, _ in observed] == ["probe", "health", "chat", "probe", "chat", "questions"]
     assert all(headers == expected for _, headers in observed)

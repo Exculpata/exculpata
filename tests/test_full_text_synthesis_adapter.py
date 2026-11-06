@@ -431,7 +431,10 @@ def test_maximum_criterion_reaches_both_generation_requests_once_with_exclusion_
         assert "Retain supporting AND competing accounts" in context["task"]
         assert "Summarize the saved delivery accounts" not in context["task"]
         assert len(context_text) <= generation.MAX_WORKING_CONTEXT_CHARS
-        assert (payload["options"]["num_predict"] if backend == "ollama" else payload["max_tokens"]) == 1_200
+        assert generation.DEFAULT_REVIEW_BUDGET.output_tokens == 1_200
+        assert generation.DEFAULT_REVIEW_BUDGET.reasoning_tokens == 4_096
+        assert (payload["think"] if backend == "ollama" else payload["chat_template_kwargs"]["enable_thinking"]) is True
+        assert (payload["options"]["num_predict"] if backend == "ollama" else payload["max_tokens"]) == 5_296
 
 
 def test_complete_criterion_is_retained_in_all_final_export_formats(workspace, monkeypatch):

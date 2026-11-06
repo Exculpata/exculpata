@@ -1,4 +1,6 @@
 """Count recorded production abstentions without losing raw evaluation samples."""
+import io
+import json
 import socket
 
 import pytest
@@ -23,20 +25,41 @@ def capture_outputs(monkeypatch):
         "upstream_revision": model["revision"], "license": model["license"]}
 
     def run(output):
+        requests = []
+
         class SyntheticClient(generation.OpenAICompatibleGenerator):
             calls = 0
 
             def generate(self, *, question, evidence):
                 self.calls += 1
-                return output(self.calls, evidence)
+                raw = output(self.calls, evidence)
+
+                class SyntheticTransport:
+                    def open(self, request, **kwargs):
+                        requests.append(json.loads(request.data))
+                        return io.BytesIO(json.dumps({
+                            "choices": [{"message": {"content": json.dumps(raw)}}],
+                        }).encode())
+
+                with pytest.MonkeyPatch.context() as patch:
+                    patch.setattr(self, "_opener", SyntheticTransport())
+                    return super().generate(question=question, evidence=evidence)
 
         client = SyntheticClient("http://127.0.0.1:11435", "synthetic-test-only")
         def check_identity():
             return {"method": "api_model_id_snapshots",
                 "model": client.model, "artifact_sha256": None}
 
-        return evaluation.capture(client, profile="portable", runtime=runtime, repetitions=1,
+        receipt = evaluation.capture(client, profile="portable", runtime=runtime, repetitions=1,
             identity_check=check_identity)
+        generated = [row for row in receipt["results"] if row["state"] == "generated"]
+        assert len(requests) == len(generated)
+        for request, row in zip(requests, generated, strict=True):
+            assert row["request_settings"] == evaluation.request_settings(request, "OpenAICompatibleGenerator")
+            assert request["model"] == client.model
+            assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
+                                           for role in ("system", "user")]
+        return receipt
 
     return run
 
@@ -103,6 +126,8 @@ def test_mixed_capture_keeps_failure_and_raw_occurrence_denominators(capture_out
 
     receipt = capture_outputs(output)
     assert receipt["results"][0]["verification"]["response"]["ordinary"]["state"] == "rejected"
+    assert receipt["results"][3]["request_settings"] is None
+    assert receipt["results"][3]["parsed_response_received"] is False
     assert receipt["generation"] == {"status": "requires_independent_human_grading",
         "attempts": 11, "generated": 10, "schema_invalid": 0, "abstained": 8}
     grades = evaluation.grade_template(receipt)

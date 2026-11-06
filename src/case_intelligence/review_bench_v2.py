@@ -17,6 +17,7 @@ from .service_endpoints import open_service_request
 import urllib.request
 import urllib.error
 from contextlib import nullcontext
+from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from importlib import resources
 from pathlib import Path
@@ -25,6 +26,19 @@ from typing import Callable, Iterable, Mapping, Protocol, Sequence
 from .review_quality import rank_exact_record_candidates, rank_temporal_candidates
 from .retrieval_limits import (
     MAX_EMBEDDING_TEXTS, MAX_RERANK_TEXTS, RetrievalInputProblem, request_batches, text_fragments,
+)
+
+
+@dataclass(frozen=True)
+class _CachedUnit:
+    excerpt_digest: str
+    text_digest: str
+    location_label: str | None
+
+
+_ExtractionUnitCache = dict[tuple[object, str, str], dict[tuple[str, str], _CachedUnit]]
+_search_extraction_units: ContextVar[_ExtractionUnitCache | None] = ContextVar(
+    "search_extraction_units", default=None,
 )
 
 DEFAULT_EMBEDDING_MODEL = "ibm-granite/granite-embedding-english-r2"
@@ -496,22 +510,33 @@ class PostgresHybridBackend:
     def _connection_guard(self):
         return self.lock if self.lock is not None else nullcontext()
 
-    def _candidate(self, row) -> Candidate:
+    def _candidate(self, row, unit_cache: _ExtractionUnitCache | None = None) -> Candidate:
         location_label = None
+        if unit_cache is None:
+            unit_cache = _search_extraction_units.get()
+        if unit_cache is None:
+            unit_cache = {}
         if self.pilot_store is None and self.pilot_store_factory is not None:
             self.pilot_store = self.pilot_store_factory()
         if self.pilot_store is not None:
-            try:
-                document = self.pilot_store.get(row[1])
-            except KeyError:
-                document = None
-            if document is not None and document.version_id == row[9]:
-                location_label = next((
-                    unit.location_label or None
+            key = (self, row[1], row[9])
+            if key not in unit_cache:
+                try:
+                    document = self.pilot_store.get(row[1])
+                except KeyError:
+                    document = None
+                unit_cache[key] = {
+                    (document.document_id, f"chunk-{ordinal}"): _CachedUnit(
+                        excerpt_digest=unit.excerpt_digest,
+                        text_digest=hashlib.sha256(unit.text.encode("utf-8")).hexdigest(),
+                        location_label=unit.location_label,
+                    )
                     for ordinal, unit in enumerate(document.iter_parsed_units(), 1)
-                    if (document.document_id, f"chunk-{ordinal}") == (row[1], row[2])
-                    and unit.excerpt_digest == row[10] and unit.text == row[5]
-                ), None)
+                } if document is not None and document.version_id == row[9] else {}
+            unit = unit_cache[key].get((row[1], row[2]))
+            if (unit is not None and unit.excerpt_digest == row[10]
+                    and unit.text_digest == hashlib.sha256(row[5].encode("utf-8")).hexdigest()):
+                location_label = unit.location_label or None
         return Candidate(
             matter_id=row[0], document_id=row[1], chunk_id=row[2], source_name=row[3],
             page_number=row[4], text=row[5], score=float(row[6]),
@@ -550,7 +575,10 @@ class PostgresHybridBackend:
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
                 rows = cursor.fetchall()
-        return tuple(self._candidate(row) for row in rows)
+        unit_cache = _search_extraction_units.get()
+        if unit_cache is None:
+            unit_cache = {}
+        return tuple(self._candidate(row, unit_cache) for row in rows)
 
     def dense(
         self, matter_id: str, query_vector: Sequence[float], query: str, limit: int
@@ -578,7 +606,10 @@ class PostgresHybridBackend:
             with self.connection.cursor() as cursor:
                 cursor.execute(sql, tuple(parameters))
                 rows = cursor.fetchall()
-        return tuple(self._candidate(row) for row in rows)
+        unit_cache = _search_extraction_units.get()
+        if unit_cache is None:
+            unit_cache = {}
+        return tuple(self._candidate(row, unit_cache) for row in rows)
 
 
 class HybridRetriever:
@@ -615,10 +646,14 @@ class HybridRetriever:
         if stage_callback is not None:
             stage_callback("retrieving")
         query_vector = self.embedder.embed([query])[0]
-        lanes = (
-            tuple(self.backend.lexical(matter_id, query, self.lane_limit)),
-            tuple(self.backend.dense(matter_id, query_vector, query, self.lane_limit)),
-        )
+        extraction_token = _search_extraction_units.set({})
+        try:
+            lanes = (
+                tuple(self.backend.lexical(matter_id, query, self.lane_limit)),
+                tuple(self.backend.dense(matter_id, query_vector, query, self.lane_limit)),
+            )
+        finally:
+            _search_extraction_units.reset(extraction_token)
         if any(item.matter_id != matter_id for lane in lanes for item in lane):
             raise RuntimeError("matter boundary violation in retrieval candidates")
         lexical_keys = {
