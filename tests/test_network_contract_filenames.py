@@ -39,6 +39,12 @@ def reported_hosts(tmp_path, source):
         pytest.param('FILENAME = "suite.json"', id="filename-assignment"),
         pytest.param('from pathlib import Path\nPath("manifest.json")', id="path-argument"),
         pytest.param('import os\nos.path.join(d, "config.toml")', id="path-join"),
+        pytest.param('(out / "manifest.json").write_text("x")', id="division-write"),
+        pytest.param(
+            'from pathlib import Path\nPath("manifest.json").write_text("x")',
+            id="path-write",
+        ),
+        pytest.param('(out / "suite.json").read_text()', id="division-read"),
     ],
 )
 def test_local_file_not_reported(tmp_path, source):
@@ -53,6 +59,10 @@ def test_local_file_not_reported(tmp_path, source):
         pytest.param('open("evil.md")', id="open-md"),
         # Accepted gap: division counts syntactically, even with a non-Path left side.
         pytest.param('base = 1\nbase / "x.json"', id="non-path-division"),
+        pytest.param('(base / "x.md").anything()', id="division-method"),
+        pytest.param(
+            'from pathlib import Path\nPath("x.md").anything()', id="path-method",
+        ),
         # Accepted gap: neutral variable indirection is not tracked across statements.
         pytest.param(
             'from pathlib import Path\nimport requests\nu = Path("evil.md")\nrequests.get(u)',
@@ -109,6 +119,8 @@ def test_accepted_gap_file_not_reported(tmp_path, source):
             "notes.md", id="request-url",
         ),
         pytest.param('host="suite.json"', "suite.json", id="host-assignment"),
+        pytest.param('"manifest.json"', "manifest.json", id="bare-manifest"),
+        pytest.param('"a.json".encode()', "a.json", id="bare-literal-receiver"),
     ],
 )
 def test_network_target_still_reported(tmp_path, source, expected):
@@ -287,6 +299,15 @@ def test_supported_file_forms(tmp_path, source):
     'from pathlib import Path\nhost = output_file = Path("a.json")',
     'from pathlib import Path\nfrom requests import get as fetch\nfetch(Path("a.json"))',
     'requests.get((root / "a.json").read_text())',
+    'requests.get((root / "a.json").name)',
+    'requests.get(value=(root / "a.json").read_text())',
+    'requests.get(*((root / "a.json").read_text(),))',
+    'requests.get(**{"value": (root / "a.json").read_text()})',
+    'from pathlib import Path\nfrobnicate(Path("a.json").read_text())',
+    'from pathlib import Path\nclient.fetch(Path("a.json")).read_text()',
+    'from pathlib import Path\nPath("local").write_text(Path("a.json"))',
+    'from pathlib import Path\nhost = Path("a.json").read_text()',
+    'from pathlib import Path\nPath(host="a.json").read_text()',
     'from pathlib import Path\nrequests.get(Path("a.json") if ready else fallback)',
     'from pathlib import Path\nrequests.get([Path("a.json")][0])',
     'from pathlib import Path\nrequests.get({"target": Path("a.json")})',
@@ -365,6 +386,15 @@ def test_pinned_depth_boundary(tmp_path, wrappers, expected):
     assert reported_hosts(tmp_path, source) == expected
 
 
+@pytest.mark.parametrize("receiver", ['Path("a.json")', '(root / "a.json")'])
+@pytest.mark.parametrize("wrappers, expected", [(28, []), (29, ["a.json"])])
+def test_method_receiver_depth_boundary(tmp_path, receiver, wrappers, expected):
+    source = ('from pathlib import Path\n' + 'open(' * wrappers
+              + receiver + '.read_text()' + ')' * wrappers)
+    assert contract.MAX_LITERAL_CONTEXT_DEPTH == 32
+    assert reported_hosts(tmp_path, source) == expected
+
+
 def test_safe_set_mutation_is_detected(tmp_path, monkeypatch):
     source = 'from pathlib import Path\nPath("a.json")'
     assert reported_hosts(tmp_path / "control", source) == []
@@ -384,6 +414,33 @@ def test_nearest_call_mutation_is_detected(tmp_path, monkeypatch):
         return False
 
     monkeypatch.setattr(contract, "host_literal_context", nearest_only)
+    assert reported_hosts(tmp_path / "mutant", source) == []
+
+
+def test_attribute_call_mutation_is_detected(tmp_path, monkeypatch):
+    source = 'requests.get((root / "a.json").read_text())'
+    assert reported_hosts(tmp_path / "control", source) == ["a.json"]
+
+    def skip_any_attribute_call(node, parents, resolve):
+        cursor = node
+        for _ in range(contract.MAX_LITERAL_CONTEXT_DEPTH):
+            parent = parents.get(cursor)
+            if any(word in identifier for identifier in contract.context_identifiers(parent)
+                   for word in contract.HOST_WORDS):
+                return True
+            if isinstance(parent, (ast.stmt, ast.withitem)):
+                return False
+            if not isinstance(parent, contract.CONTEXT_NODES):
+                return True
+            if isinstance(parent, ast.Call) and isinstance(parent.func, ast.Attribute):
+                cursor = parent
+                continue
+            if isinstance(parent, ast.Call) and resolve(parent.func) not in contract.FILE_SAFE_CALLS:
+                return True
+            cursor = parent
+        return True
+
+    monkeypatch.setattr(contract, "host_literal_context", skip_any_attribute_call)
     assert reported_hosts(tmp_path / "mutant", source) == []
 
 
@@ -437,6 +494,72 @@ def test_measured_deleted_occurrences_have_no_remaining_findings(monkeypatch):
             rows.append((path, "host", digest, detail))
     assert rows
     deleted = Counter(rows)
+    receiver_deletions = [
+        ('scripts/browser-accept-account-controls.py', 'receipt.json', 1),
+        ('scripts/browser-accept-activity.py', 'receipt.json', 1),
+        ('scripts/browser-accept-ask-heading.py', 'receipt.json', 1),
+        ('scripts/browser-accept-assertions.py', 'receipt.json', 2),
+        ('scripts/browser-accept-assistant-collapse-focus.py', 'receipt.json', 1),
+        ('scripts/browser-accept-assistant-dock.py', 'receipt.json', 2),
+        ('scripts/browser-accept-briefing.py', 'receipt.json', 2),
+        ('scripts/browser-accept-cited-context.py', 'receipt.json', 2),
+        ('scripts/browser-accept-compiled-reports.py', 'receipt.json', 1),
+        ('scripts/browser-accept-dusk.py', 'receipt.json', 1),
+        ('scripts/browser-accept-email-coverage.py', 'result.json', 1),
+        ('scripts/browser-accept-entities.py', 'receipt.json', 2),
+        ('scripts/browser-accept-entity-discovery.py', 'receipt.json', 2),
+        ('scripts/browser-accept-evidence-graph.py', 'receipt.json', 2),
+        ('scripts/browser-accept-exact-search.py', 'receipt.json', 1),
+        ('scripts/browser-accept-full-text-review.py', 'text-ledger-contrast.json', 1),
+        ('scripts/browser-accept-full-text-review.py', 'receipt.json', 1),
+        ('scripts/browser-accept-full-text-synthesis.py', 'receipt.json', 1),
+        ('scripts/browser-accept-intake-receipts.py', 'receipt-browser-result.json', 1),
+        ('scripts/browser-accept-intake-receipts.py', 'browser-errors.json', 1),
+        ('scripts/browser-accept-loose-file-preflight.py', 'result.json', 1),
+        ('scripts/browser-accept-matter-context.py', 'receipt.json', 2),
+        ('scripts/browser-accept-matter-knowledge.py', 'receipt.json', 2),
+        ('scripts/browser-accept-matter-purpose.py', 'receipt.json', 1),
+        ('scripts/browser-accept-matter-rename.py', 'result.json', 1),
+        ('scripts/browser-accept-media-preflight.py', 'result.json', 1),
+        ('scripts/browser-accept-notebook-conflicts.py', 'result.json', 1),
+        ('scripts/browser-accept-one-box.py', 'receipt.json', 2),
+        ('scripts/browser-accept-report-conflicts.py', 'result.json', 1),
+        ('scripts/browser-accept-reports-bundle.py', 'receipt.json', 1),
+        ('scripts/browser-accept-review-decision-conflicts.py', 'result.json', 1),
+        ('scripts/browser-accept-review-report.py', 'receipt.json', 1),
+        ('scripts/browser-accept-source-folders.py', 'result.json', 1),
+        ('scripts/browser-accept-source-roles.py', 'receipt.json', 1),
+        ('scripts/browser-accept-timeline-draft.py', 'receipt.json', 1),
+        ('scripts/browser-accept-upload-occurrences.py', 'result.json', 1),
+        ('scripts/browser-accept-workflow-handoff.py', 'receipt.json', 1),
+        ('scripts/browser-accept-workflow-handoff.py', 'fixture.json', 1),
+        ('scripts/browser-accept-workspace-layout.py', 'receipt.json', 2),
+        ('scripts/browser-accept-zoom.py', 'receipt.json', 1),
+        ('scripts/doc_identifier_check.py', 'BRANDING.md', 2),
+        ('scripts/evaluate-workflow-quality.py', 'manifest.json', 1),
+        ('scripts/exculpata_backup.py', 'backup.json', 1),
+        ('scripts/exculpata_backup.py', 'backup-manifest.json', 1),
+        ('scripts/exculpata_backup.py', 'compose.yaml', 1),
+        ('scripts/exculpata_install.py', 'installation.json', 4),
+        ('scripts/exculpata_install.py', 'backup.json', 1),
+        ('scripts/exculpata_install.py', 'local-accounts.json', 5),
+        ('scripts/exculpata_install.py', 'backup-unit.json', 1),
+        ('scripts/exculpata_install.py', 'compose.yaml', 2),
+        ('scripts/run-browser-acceptance.py', 'journeys.json', 1),
+        ('scripts/run-browser-acceptance.py', 'journey.log', 1),
+        ('scripts/run-browser-acceptance.py', 'summary.json', 1),
+        ('scripts/test-egress-smoke.py', 'summary.json', 1),
+        ('scripts/test-egress-smoke.py', 'cleanup.log', 1),
+        ('scripts/vendor-idna.py', 'LICENSE.md', 1),
+        ('scripts/vendor-idna.py', 'manifest.json', 1),
+        ('scripts/verify-byte-match-rollback.py', 'expected.json', 1),
+        ('scripts/verify-email-coverage-rollback.py', 'expected.json', 1),
+        ('src/case_intelligence/synthetic_corpus_gold.py', 'suite.json', 1),
+        ('src/case_intelligence/synthetic_corpus_gold.py', 'manifest.json', 1),
+    ]
+    assert sum(count for _, _, count in receiver_deletions) == 81
+    deleted.update({(path, "host", contract.fingerprint(literal), literal.lower()): count
+                    for path, literal, count in receiver_deletions})
     observed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
     monkeypatch.setattr(contract, "file_literal_context", lambda *args: None)
     unsuppressed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
