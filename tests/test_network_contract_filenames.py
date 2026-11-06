@@ -554,10 +554,11 @@ def test_measured_deleted_occurrences_have_no_remaining_findings(monkeypatch):
         ('scripts/vendor-idna.py', 'manifest.json', 1),
         ('scripts/verify-byte-match-rollback.py', 'expected.json', 1),
         ('scripts/verify-email-coverage-rollback.py', 'expected.json', 1),
+        ('src/case_intelligence/stock_case_render.py', 'manifest.json', 1),
         ('src/case_intelligence/synthetic_corpus_gold.py', 'suite.json', 1),
         ('src/case_intelligence/synthetic_corpus_gold.py', 'manifest.json', 1),
     ]
-    assert sum(count for _, _, count in receiver_deletions) == 81
+    assert sum(count for _, _, count in receiver_deletions) == 82
     deleted.update({(path, "host", contract.fingerprint(literal), literal.lower()): count
                     for path, literal, count in receiver_deletions})
     observed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
