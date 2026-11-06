@@ -1,7 +1,10 @@
 """Synthetic source inventory cases for local filenames and network targets."""
 
+import ast
+from collections import Counter
 import importlib.util
 from pathlib import Path
+import tomllib
 
 import pytest
 
@@ -52,7 +55,7 @@ def test_local_file_not_reported(tmp_path, source):
         pytest.param('base = 1\nbase / "x.json"', id="non-path-division"),
         # Accepted gap: neutral variable indirection is not tracked across statements.
         pytest.param(
-            'import requests\nu = Path("evil.md")\nrequests.get(u)',
+            'from pathlib import Path\nimport requests\nu = Path("evil.md")\nrequests.get(u)',
             id="neutral-variable-indirection",
         ),
     ],
@@ -140,8 +143,7 @@ def test_known_host_gap(tmp_path, source, expected):
 @pytest.mark.parametrize(
     "source",
     [
-        'PurePath("a.json")',
-        'fetch(file="a.json")',
+        'from pathlib import PurePath\nPurePath("a.json")',
         'output_dir = "a.json"',
         'output_fname = "a.json"',
         'OUTPUT_FILENAME: str = "a.json"',
@@ -149,7 +151,7 @@ def test_known_host_gap(tmp_path, source, expected):
         'import pathlib\npathlib.Path("a.json")',
         'from pathlib import Path as P\nP("a.json")',
         'from os.path import join as j\nj(d, "a.json")',
-        'Path(value="a.json")',
+        'from pathlib import Path\nPath(value="a.json")',
         '"a.json" / base',
     ],
 )
@@ -160,22 +162,22 @@ def test_file_context_syntax(tmp_path, source):
 @pytest.mark.parametrize(
     "source",
     [
-        'import requests\nrequests.get(str(Path("a.json")))',
+        'from pathlib import Path\nimport requests\nrequests.get(str(Path("a.json")))',
         'obj.join(d, "a.json")',
         'obj.open("a.json")',
         'obj.output_file[0] = "a.json"',
         '(output_file,) = "a.json"',
         'name = "a.json"',
         'output_file = identity("a.json")',
-        'Path(["a.json"])',
+        'from pathlib import Path\nPath(["a.json"])',
         'output_file = ["a.json"]',
         'output_file: "a.json" = value',
         'obj.host_file = "a.json"',
         'host_file = output_file = "a.json"',
         'PROXIES_FILE: str = "a.json"',
-        'Path(url_path="a.json")',
-        'Path(proxy_file="a.json")',
-        'Path(proxies_file="a.json")',
+        'from pathlib import Path\nPath(url_path="a.json")',
+        'from pathlib import Path\nPath(proxy_file="a.json")',
+        'from pathlib import Path\nPath(proxies_file="a.json")',
         'connect(file="a.json")',
         'getaddrinfo(file="a.json")',
         'socket(file="a.json")',
@@ -188,11 +190,11 @@ def test_file_context_syntax(tmp_path, source):
         'import requests\nrequests.get(file="a.json")',
         'from socket import connect as dial\ndial(file="a.json")',
         # Host keywords survive each allowed container on the bounded walk.
-        'Path(host=("a.json",))',
-        'Path(host=["a.json"])',
-        'Path(host={"a.json"})',
-        'Path(host={"key": "a.json"})',
-        'Path(host=[*("a.json",)])',
+        'from pathlib import Path\nPath(host=("a.json",))',
+        'from pathlib import Path\nPath(host=["a.json"])',
+        'from pathlib import Path\nPath(host={"a.json"})',
+        'from pathlib import Path\nPath(host={"key": "a.json"})',
+        'from pathlib import Path\nPath(host=[*("a.json",)])',
     ],
 )
 def test_context_does_not_clear_host(tmp_path, source):
@@ -202,84 +204,72 @@ def test_context_does_not_clear_host(tmp_path, source):
 @pytest.mark.parametrize("extension", "json jsonl toml yaml yml txt csv tsv md py pdf log".split())
 def test_closed_extensions_need_file_context(tmp_path, extension):
     literal = "a." + extension
-    source = f'"{literal}"\nPath("{literal}")\nPath(host="{literal}")'
+    source = f'from pathlib import Path\n"{literal}"\nPath("{literal}")\nPath(host="{literal}")'
     assert reported_hosts(tmp_path, source) == [literal, literal]
 
 
 @pytest.mark.parametrize("literal", ["evil.pl", "evil.cc", "example.com", "api.example.org"])
 def test_other_extensions_stay_reported_in_file_context(tmp_path, literal):
-    assert reported_hosts(tmp_path, f'Path("{literal}")') == [literal]
+    assert reported_hosts(tmp_path, f'from pathlib import Path\nPath("{literal}")') == [literal]
 
 
 def test_context_depth_limit_retains_host(tmp_path, monkeypatch):
     # A file keyword is insufficient when the bounded host check cannot finish.
     monkeypatch.setattr(contract, "MAX_LITERAL_CONTEXT_DEPTH", 1)
-    source = 'Path(file="a.json")'
+    source = 'from pathlib import Path\nPath(file="a.json")'
     assert reported_hosts(tmp_path, source) == ["a.json"]
 
 
 def test_absolute_dns_name_retained(tmp_path):
-    assert reported_hosts(tmp_path, 'Path("a.json.")') == ["a.json."]
+    assert reported_hosts(tmp_path, 'from pathlib import Path\nPath("a.json.")') == ["a.json."]
 
 
 @pytest.mark.parametrize("source", [
-    'import requests\nrequests.get(Path("evil.md"))',
-    'import socket\nsocket.create_connection((str(Path("evil.md")), 443))',
-    'import httpx\nhttpx.Client(base_url=str(Path("evil.md")))',
+    'from pathlib import Path\nimport requests\nrequests.get(Path("evil.md"))',
+    'from pathlib import Path\nimport socket\nsocket.create_connection((str(Path("evil.md")), 443))',
+    'from pathlib import Path\nimport httpx\nhttpx.Client(base_url=str(Path("evil.md")))',
     'import requests\nrequests.get(base / "evil.md")',
     'import websockets\nwebsockets.connect(root / "evil.md")',
     'import webbrowser\nwebbrowser.open("evil.md")',
     'import telnetlib\ntelnetlib.Telnet().open("evil.md")',
-    'server_host = Path("evil.md")',
+    'from pathlib import Path\nserver_host = Path("evil.md")',
     'proxy_url = base / "evil.md"',
     'base_url = open("evil.md")',
-    'host = str(Path("evil.md"))',
+    'from pathlib import Path\nhost = str(Path("evil.md"))',
     'proxy_url = base / "evil.json"',
-    'import smtplib\nsmtplib.SMTP(Path("evil.md"))',
-    'import ftplib\nftplib.FTP(Path("evil.py"))',
-    'import socket\nsocket.gethostbyname(Path("evil.py"))',
-    'import ssl\nssl.get_server_certificate((Path("evil.py"), 443))',
-    'import asyncio\nasyncio.open_connection(Path("evil.md"), 80)',
-    'import httpx\nhttpx.stream("GET", Path("evil.md"))',
-    'import httpx\nhttpx.Client().build_request("GET", Path("evil.md"))',
-    'import requests\nrequests.Request("GET", Path("evil.md"))',
-    'import aiohttp\nawait s.ws_connect(Path("evil.md"))',
-    'import websockets\nwebsockets.serve(h, Path("evil.md"))',
-    'import telnetlib\ntelnetlib.Telnet(Path("evil.md"))',
-    'import imaplib\nimaplib.IMAP4_SSL(Path("evil.md"))',
-    'import poplib\npoplib.POP3(Path("evil.md"))',
-    'import webbrowser\nwebbrowser.open_new(Path("evil.md"))',
-    'import webbrowser\nwebbrowser.open_new_tab(Path("evil.md"))',
-    'import webbrowser\nwebbrowser.open(Path("evil.md"))',
+    'from pathlib import Path\nimport smtplib\nsmtplib.SMTP(Path("evil.md"))',
+    'from pathlib import Path\nimport ftplib\nftplib.FTP(Path("evil.py"))',
+    'from pathlib import Path\nimport socket\nsocket.gethostbyname(Path("evil.py"))',
+    'from pathlib import Path\nimport ssl\nssl.get_server_certificate((Path("evil.py"), 443))',
+    'from pathlib import Path\nimport asyncio\nasyncio.open_connection(Path("evil.md"), 80)',
+    'from pathlib import Path\nimport httpx\nhttpx.stream("GET", Path("evil.md"))',
+    'from pathlib import Path\nimport httpx\nhttpx.Client().build_request("GET", Path("evil.md"))',
+    'from pathlib import Path\nimport requests\nrequests.Request("GET", Path("evil.md"))',
+    'from pathlib import Path\nimport aiohttp\nawait s.ws_connect(Path("evil.md"))',
+    'from pathlib import Path\nimport websockets\nwebsockets.serve(h, Path("evil.md"))',
+    'from pathlib import Path\nimport telnetlib\ntelnetlib.Telnet(Path("evil.md"))',
+    'from pathlib import Path\nimport imaplib\nimaplib.IMAP4_SSL(Path("evil.md"))',
+    'from pathlib import Path\nimport poplib\npoplib.POP3(Path("evil.md"))',
+    'from pathlib import Path\nimport webbrowser\nwebbrowser.open_new(Path("evil.md"))',
+    'from pathlib import Path\nimport webbrowser\nwebbrowser.open_new_tab(Path("evil.md"))',
+    'from pathlib import Path\nimport webbrowser\nwebbrowser.open(Path("evil.md"))',
     'import webbrowser\nwebbrowser.open(base / "evil.md")',
-    'from webbrowser import open as browse\nbrowse(Path("evil.md"))',
+    'from pathlib import Path\nfrom webbrowser import open as browse\nbrowse(Path("evil.md"))',
     'import webbrowser as browser\nbrowser.open(base / "evil.md")',
-    'from smtplib import SMTP as MailClient\nMailClient(Path("evil.md"))',
-    'from socket import gethostbyname as lookup\nlookup(Path("evil.py"))',
+    'from pathlib import Path\nfrom smtplib import SMTP as MailClient\nMailClient(Path("evil.md"))',
+    'from pathlib import Path\nfrom socket import gethostbyname as lookup\nlookup(Path("evil.py"))',
 ])
 def test_review_host_regressions(tmp_path, source):
     expected = next(host for host in ("evil.json", "evil.py", "evil.md") if host in source)
     assert reported_hosts(tmp_path, source) == [expected]
 
 
-def test_host_calls_mutation_is_detected(tmp_path, monkeypatch):
-    source = 'import requests\nrequests.get(Path("evil.md"))'
-    assert reported_hosts(tmp_path / "control", source) == ["evil.md"]
-    monkeypatch.setattr(contract, "HOST_CALLS", frozenset())
-    assert reported_hosts(tmp_path / "mutant", source) == []
-
-
 @pytest.mark.parametrize("source", [
-    'import posixpath\nposixpath.join(root, "a.json")',
-    'import ntpath\nntpath.join(root, "a.json")',
     'import os.path as paths\npaths.join(root, "a.json")',
     'from pathlib import PurePath as P\nP("a.json")',
     'data_file = other = "a.json"',
     'obj.DATA_PATH: str = "a.json"',
-    'export(FILENAME="a.json")',
-    '(root / "a.json").read_text()',
-    'json.loads((root / "a.json").read_text()) if ready else {}',
-    'open(Path("a.json"))',
+    'from pathlib import Path\nopen(Path("a.json"))',
     'open(base / "a.json")',
 ])
 def test_supported_file_forms(tmp_path, source):
@@ -288,21 +278,171 @@ def test_supported_file_forms(tmp_path, source):
 
 @pytest.mark.parametrize("source", [
     'join(root, "a.json")',
-    'obj.Path("a.json")',
-    'obj.PurePath("a.json")',
+    'from pathlib import Path\nobj.Path("a.json")',
+    'from pathlib import Path\nobj.PurePath("a.json")',
     'from webbrowser import open as browse\nbrowse("a.json")',
     'from telnetlib import Telnet\nTelnet().open("a.json")',
-    'obj.server_file = str(Path("a.json"))',
+    'from pathlib import Path\nobj.server_file = str(Path("a.json"))',
     'PROXIES_FILE: str = root / "a.json"',
-    'host = output_file = Path("a.json")',
-    'from requests import get as fetch\nfetch(Path("a.json"))',
+    'from pathlib import Path\nhost = output_file = Path("a.json")',
+    'from pathlib import Path\nfrom requests import get as fetch\nfetch(Path("a.json"))',
     'requests.get((root / "a.json").read_text())',
-    'requests.get(Path("a.json") if ready else fallback)',
-    'requests.get([Path("a.json")][0])',
-    'requests.get({"target": Path("a.json")})',
-    'requests.get(*(Path("a.json"),))',
-    'host = (path := Path("a.json"))',
-    'wrap(wrap(wrap(wrap(wrap(wrap(wrap(wrap(Path("a.json")))))))))',
+    'from pathlib import Path\nrequests.get(Path("a.json") if ready else fallback)',
+    'from pathlib import Path\nrequests.get([Path("a.json")][0])',
+    'from pathlib import Path\nrequests.get({"target": Path("a.json")})',
+    'from pathlib import Path\nrequests.get(*(Path("a.json"),))',
+    'from pathlib import Path\nhost = (path := Path("a.json"))',
+    'from pathlib import Path\nwrap(wrap(wrap(wrap(wrap(wrap(wrap(wrap(Path("a.json")))))))))',
 ])
 def test_nested_host_and_unmodeled_forms(tmp_path, source):
     assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+@pytest.mark.parametrize("call", [
+    'smtplib.SMTP_SSL(Path("evil.md"))', 'smtplib.LMTP(Path("evil.md"))',
+    'imaplib.IMAP4(Path("evil.md"))', 'imaplib.IMAP4_stream(Path("evil.md"))',
+    'poplib.POP3_SSL(Path("evil.md"))', 'ftplib.FTP_TLS(Path("evil.md"))',
+    'nntplib.NNTP(Path("evil.md"))', 'xmlrpc.client.ServerProxy(Path("evil.md"))',
+    'socket.gethostbyname_ex(Path("evil.md"))', 'socket.gethostbyaddr(Path("evil.md"))',
+    'socket.getfqdn(Path("evil.md"))',
+    'socketserver.TCPServer((Path("evil.md"), 443), handler)',
+    'http.server.HTTPServer((Path("evil.md"), 443), handler)',
+    'asyncio.start_server(handler, Path("evil.md"), 443)',
+    'sock.bind((Path("evil.md"), 443))', 'sock.sendto(data, (Path("evil.md"), 443))',
+    'urllib3.connection_from_url(Path("evil.md"))', 'frobnicate(Path("evil.md"))',
+])
+def test_unknown_outer_call_keeps_host(tmp_path, call):
+    assert reported_hosts(tmp_path, 'from pathlib import Path\n' + call) == ["evil.md"]
+
+
+@pytest.mark.parametrize("source", [
+    'fetch(file="a.json")', 'export(FILENAME="a.json")',
+    'import posixpath\nposixpath.join(root, "a.json")',
+    'import ntpath\nntpath.join(root, "a.json")',
+    'sep.join([root / "a.json"])',
+    'json.load(open("a.json"))', 'pd.read_csv(Path("a.json"))',
+    'json.loads(Path("a.json").read_text())', 'shutil.copy(Path("a.json"), dest)',
+    'await Path("a.json")', '(lambda: Path("a.json"))',
+    '[Path("a.json") for x in xs]', '(p := Path("a.json"))',
+])
+def test_unknown_calls_and_nodes_fail_closed(tmp_path, source):
+    assert reported_hosts(tmp_path, 'from pathlib import Path\n' + source) == ["a.json"]
+
+
+@pytest.mark.parametrize("source", [
+    'Path("a.json")',
+    'from pathlib import Path\nPath = local\nPath("a.json")',
+    'from pathlib import Path\ndef f(Path):\n return Path("a.json")',
+    'from pathlib import Path\ndef f():\n Path = local\n return Path("a.json")',
+    'def f():\n from pathlib import Path\nPath("a.json")',
+    'from other import Path\nPath("a.json")',
+    'from .pathlib import Path\nPath("a.json")',
+    'open = local\nopen("a.json")',
+    'def f(open):\n return open("a.json")',
+    'import os\nos = local\nos.path.join(d, "a.json")',
+    'from os import path\npath.join = local\npath.join(d, "a.json")',
+])
+def test_file_calls_require_unshadowed_identity_including_rebound_names(tmp_path, source):
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+@pytest.mark.parametrize("source", [
+    'with open("a.json") as f:\n pass',
+    'from os import path\npath.join(d, "a.json")',
+    'import pathlib as p\np.Path("a.json")',
+    'import builtins as b\nb.open("a.json")',
+    'def f():\n from pathlib import Path as P\n return P("a.json")',
+    'from pathlib import Path\nx = Path("a.json")\nrequests.get(x)',
+])
+def test_pinned_file_controls(tmp_path, source):
+    assert reported_hosts(tmp_path, source) == []
+
+
+@pytest.mark.parametrize("wrappers, expected", [(30, []), (31, ["a.json"])])
+def test_pinned_depth_boundary(tmp_path, wrappers, expected):
+    source = 'from pathlib import Path\n' + 'open(' * wrappers + 'Path("a.json")' + ')' * wrappers
+    assert contract.MAX_LITERAL_CONTEXT_DEPTH == 32
+    assert reported_hosts(tmp_path, source) == expected
+
+
+def test_safe_set_mutation_is_detected(tmp_path, monkeypatch):
+    source = 'from pathlib import Path\nPath("a.json")'
+    assert reported_hosts(tmp_path / "control", source) == []
+    monkeypatch.setattr(contract, "FILE_SAFE_CALLS", frozenset())
+    assert reported_hosts(tmp_path / "mutant", source) == ["a.json"]
+
+
+def test_nearest_call_mutation_is_detected(tmp_path, monkeypatch):
+    source = 'from pathlib import Path\nfrobnicate(Path("a.json"))'
+    assert reported_hosts(tmp_path / "control", source) == ["a.json"]
+
+    def nearest_only(node, parents, resolve):
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, ast.Call):
+                return resolve(node.func) not in contract.FILE_SAFE_CALLS
+        return False
+
+    monkeypatch.setattr(contract, "host_literal_context", nearest_only)
+    assert reported_hosts(tmp_path / "mutant", source) == []
+
+
+def test_exact_safe_identities():
+    assert contract.FILE_SAFE_CALLS == frozenset({
+        ("pathlib", "Path"), ("pathlib", "PurePath"),
+        ("builtins", "open"), ("os", "path", "join"),
+    })
+
+
+@pytest.mark.parametrize("expression", [
+    'open(P)', 'P.name', '[P][0]', 'P / base', '-P', 'P and ready',
+    'P == other', 'P if ready else other', '(*[P],)', '{"key": P}', '{P}',
+    'f"{P}"', 'open(file=P)',
+])
+def test_every_listed_ancestor_reaches_outer_call(tmp_path, expression):
+    source = 'from pathlib import Path\nfrobnicate(' + expression.replace('P', 'Path("a.json")') + ')'
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+@pytest.mark.parametrize("source", [
+    'Path = remote\n@Path("a.json")\ndef f():\n from pathlib import Path',
+    'Path = remote\nclass C(Path("a.json")):\n from pathlib import Path',
+    'Path = remote\ndef f() -> Path("a.json"):\n from pathlib import Path',
+    'Path = remote\nasync def f() -> Path("a.json"):\n from pathlib import Path',
+])
+def test_definition_expressions_use_enclosing_scope(tmp_path, source):
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+def test_nonlocal_rebinding_cannot_grant_file_safety(tmp_path):
+    source = '''def outer():
+ from pathlib import Path
+ def mutate():
+  nonlocal Path
+  Path = remote
+ mutate()
+ return Path("a.json")
+'''
+    assert reported_hosts(tmp_path, source) == ["a.json"]
+
+
+def test_measured_deleted_occurrences_have_no_remaining_findings(monkeypatch):
+    rows = []
+    for line in (ROOT / "docs/NETWORK_EGRESS.md").read_text().splitlines():
+        columns = [cell.strip().strip('`') for cell in line.split('|')[1:-1]]
+        if len(columns) == 6 and columns[0].isdigit():
+            _, path, digest, detail, extension, context = columns
+            assert extension in contract.FILE_EXTENSIONS
+            assert context in {"call", "division", "identifier"}
+            rows.append((path, "host", digest, detail))
+    assert rows
+    deleted = Counter(rows)
+    observed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
+    monkeypatch.setattr(contract, "file_literal_context", lambda *args: None)
+    unsuppressed = Counter((p, k, d, h) for p, _, k, d, h in contract.source_inventory(ROOT))
+    assert unsuppressed - observed == deleted
+    # Occurrences are a multiset: retained duplicates must not be removed.
+    assert unsuppressed - deleted == observed
+    policy = tomllib.loads((ROOT / "config/egress-allowlist.toml").read_text())
+    assert Counter((r["path"], r["kind"], r["digest"], r["detail"])
+                   for r in policy["source"]) == observed

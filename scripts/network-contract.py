@@ -23,26 +23,105 @@ NETWORK_MODULES = ("httpx", "httpx2", "requests", "aiohttp", "urllib.request",
 URL = re.compile(r"https?://([A-Za-z0-9._\[\]:-]+)")
 HOSTNAME = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}\.?")
 FILE_EXTENSIONS = frozenset("json jsonl toml yaml yml txt csv tsv md py pdf log".split())
-FILE_CALLS = frozenset({
-    ("Path",), ("PurePath",), ("open",),
+FILE_SAFE_CALLS = frozenset({
     ("pathlib", "Path"), ("pathlib", "PurePath"),
-    ("os", "path", "join"), ("posixpath", "join"), ("ntpath", "join"),
+    ("builtins", "open"), ("os", "path", "join"),
 })
 FILE_SUFFIXES = ("path", "file", "filename", "fname", "dir")
 HOST_WORDS = ("host", "server", "domain", "proxy", "proxies", "url")
-HOST_CALLS = frozenset({
-    "connect", "connect_ex", "create_connection", "getaddrinfo", "socket", "SocketType",
-    "Client", "AsyncClient", "Session", "ClientSession", "HTTPConnection", "HTTPSConnection",
-    "request", "get", "post", "put", "patch", "delete", "head", "options", "send",
-    "urlopen", "urlretrieve", "open_service_request",
-    "SMTP", "FTP", "Telnet", "IMAP4_SSL", "POP3",
-    "gethostbyname", "get_server_certificate", "open_connection",
-    "stream", "build_request", "Request", "ws_connect", "serve",
-    "open_new", "open_new_tab",
-})
-QUALIFIED_HOST_CALLS = frozenset({("webbrowser", "open")})
-MAX_LITERAL_CONTEXT_DEPTH = 8
-CONTEXT_CONTAINERS = (ast.Tuple, ast.List, ast.Set, ast.Dict, ast.Starred, ast.keyword)
+MAX_LITERAL_CONTEXT_DEPTH = 32
+CONTEXT_NODES = (
+    ast.Call, ast.Attribute, ast.Subscript, ast.BinOp, ast.UnaryOp,
+    ast.BoolOp, ast.Compare, ast.IfExp, ast.Starred, ast.keyword,
+    ast.FormattedValue, ast.JoinedStr, ast.Tuple, ast.List, ast.Dict, ast.Set,
+)
+
+
+def file_call_resolver(tree, parents):
+    """Resolve unambiguous lexical imports; other bindings cannot grant safety."""
+    scope_types = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda,
+                   ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+    def scope_for(node):
+        while node in parents:
+            child = node
+            node = parents[node]
+            if isinstance(node, scope_types):
+                if child in getattr(node, "decorator_list", ()):
+                    continue
+                if child is getattr(node, "returns", None):
+                    continue
+                if isinstance(node, ast.ClassDef) and child in (*node.bases, *node.keywords):
+                    continue
+                return node
+        return tree
+
+    bindings = {}
+
+    def bind(scope, name, identity=()):
+        bindings.setdefault((scope, name), set()).add(identity)
+
+    for node in ast.walk(tree):
+        scope = scope_for(node)
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for item in node.names:
+                if isinstance(node, ast.Import):
+                    identity = tuple(item.name.split(".")) if item.asname else (item.name.split(".")[0],)
+                    name = item.asname or item.name.split(".")[0]
+                else:
+                    identity = tuple((node.module or "").split(".")) + (item.name,) if not node.level else ()
+                    name = item.asname or item.name
+                bind(scope, name, identity)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            bind(scope, node.id)
+        elif isinstance(node, ast.arg):
+            bind(scope, node.arg)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bind(scope, node.name)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bind(scope, node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            for name in node.names:
+                enclosing = scope
+                while True:
+                    bind(enclosing, name)
+                    if enclosing is tree:
+                        break
+                    enclosing = scope_for(enclosing)
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            bind(scope, node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            bind(scope, node.rest)
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            root = node.value
+            while isinstance(root, ast.Attribute):
+                root = root.value
+            if isinstance(root, ast.Name):
+                bind(scope, root.id)
+
+    def resolve(node):
+        attrs = []
+        while isinstance(node, ast.Attribute):
+            attrs.append(node.attr)
+            node = node.value
+        if not isinstance(node, ast.Name):
+            return ()
+        scope = scope_for(node)
+        while True:
+            if (scope, "*") in bindings:
+                return ()
+            identities = bindings.get((scope, node.id))
+            if identities is not None:
+                if len(identities) != 1 or () in identities:
+                    return ()
+                return next(iter(identities)) + tuple(reversed(attrs))
+            if scope is tree:
+                return ("builtins", "open") if node.id == "open" and not attrs else ()
+            scope = scope_for(scope)
+            while isinstance(scope, ast.ClassDef):
+                scope = scope_for(scope)
+
+    return resolve
 
 
 def target_identifier(target):
@@ -54,50 +133,48 @@ def target_identifier(target):
     return ""
 
 
+def context_identifiers(parent):
+    if isinstance(parent, ast.keyword):
+        return [(parent.arg or "").lower()]
+    if isinstance(parent, (ast.Assign, ast.AnnAssign)):
+        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+        return [target_identifier(target) for target in targets]
+    return []
+
+
+def host_literal_context(node, parents, resolve):
+    """Unknown ancestors or calls retain the finding, including at the hop cap."""
+    cursor = node
+    for _ in range(MAX_LITERAL_CONTEXT_DEPTH):
+        parent = parents.get(cursor)
+        if any(word in identifier for identifier in context_identifiers(parent)
+               for word in HOST_WORDS):
+            return True
+        if isinstance(parent, (ast.stmt, ast.withitem)):
+            return False
+        if not isinstance(parent, CONTEXT_NODES):
+            return True
+        if isinstance(parent, ast.Call) and resolve(parent.func) not in FILE_SAFE_CALLS:
+            return True
+        cursor = parent
+    return True
+
+
 def file_literal_context(node, parents, resolve):
     """Recognize direct file syntax only after checking bounded host ancestry."""
     if node.value.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS:
         return None
-    cursor = node
-    for _ in range(MAX_LITERAL_CONTEXT_DEPTH):
-        parent = parents.get(cursor)
-        identifiers = []
-        if isinstance(parent, ast.keyword):
-            identifiers.append((parent.arg or "").lower())
-        elif isinstance(parent, (ast.Assign, ast.AnnAssign)):
-            targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
-            identifiers.extend(target_identifier(target) for target in targets)
-        elif isinstance(parent, ast.Call):
-            name = resolve(parent.func)
-            if (name.rsplit(".", 1)[-1] in HOST_CALLS
-                    or tuple(name.split(".")) in QUALIFIED_HOST_CALLS):
-                return None
-        elif parent is not None and not isinstance(parent, (
-            *CONTEXT_CONTAINERS, ast.Attribute, ast.BinOp, ast.UnaryOp,
-            ast.BoolOp, ast.Compare, ast.IfExp, ast.Subscript, ast.Await, ast.stmt,
-        )):
-            return None
-        if any(word in identifier for identifier in identifiers for word in HOST_WORDS):
-            return None
-        if parent is None or isinstance(parent, ast.stmt):
-            break
-        cursor = parent
-    else:
+    if host_literal_context(node, parents, resolve):
         return None
-
     parent = parents.get(node)
     if isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Div):
         return "division"
     call = parents.get(parent) if isinstance(parent, ast.keyword) else parent
-    if isinstance(call, ast.Call) and tuple(resolve(call.func).split(".")) in FILE_CALLS:
+    if isinstance(call, ast.Call) and resolve(call.func) in FILE_SAFE_CALLS:
         return "call"
-    identifiers = []
-    if isinstance(parent, ast.keyword):
-        identifiers.append((parent.arg or "").lower())
-    elif isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is node:
-        targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
-        identifiers.extend(target_identifier(target) for target in targets)
-    if any(identifier.endswith(FILE_SUFFIXES) for identifier in identifiers):
+    if isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is not node:
+        return None
+    if any(identifier.endswith(FILE_SUFFIXES) for identifier in context_identifiers(parent)):
         return "identifier"
     return None
 
@@ -160,6 +237,7 @@ def source_inventory(root):
                     aliases[item.asname or item.name] = f"{node.module}.{item.name}"
 
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        resolve_file_call = file_call_resolver(tree, parents)
         def scope_for(node):
             while node in parents:
                 node = parents[node]
@@ -263,7 +341,7 @@ def source_inventory(root):
                 found.append((relative, node.lineno, kind, fingerprint(signature), detail))
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 hosts = set(URL.findall(node.value))
-                if HOSTNAME.fullmatch(node.value) and not file_literal_context(node, parents, resolve):
+                if HOSTNAME.fullmatch(node.value) and not file_literal_context(node, parents, resolve_file_call):
                     hosts.add(node.value)
                 if len(node.value) <= 45:
                     try:

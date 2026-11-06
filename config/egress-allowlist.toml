@@ -1,7 +1,7 @@
 # Reviewed reference topology and exact AST occurrences. Changes require review.
 # Digest binds each client call to its arguments and lexical scope; line moves are allowed.
-# Literal records include inert XML/provenance URLs; closed file extensions need file context.
-# Host context wins; other bare DNS-shaped literals remain inventoried.
+# Literal records include inert XML/provenance URLs; file syntax needs closed extensions.
+# Unknown ancestor calls retain findings; only four resolved file-call identities are safe.
 # Runtime exceptions: gateway ingress, operator model-stager, signature-only clamav-updater.
 # Proxy destination authority is supplied by the selected application configuration.
 
@@ -792,6 +792,18 @@ digest = "b81ed947e69f8cfb48653aee1c52c87c8e76397a4f9cb47c794664b9cefa462b"
 detail = "collocations.tab"
 
 [[source]]
+path = "services/transcription/src/transcription_v2/worker.py"
+kind = "host"
+digest = "1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6"
+detail = "machine-result.json"
+
+[[source]]
+path = "services/transcription/src/transcription_v2/worker.py"
+kind = "host"
+digest = "d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e"
+detail = "ui-summary.json"
+
+[[source]]
 path = "src/case_intelligence/assertion_routes.py"
 kind = "host"
 digest = "5269fb10ee99788a25d41bdd337e68a0250798ef91c5d7cd27caa7e236919bd2"
@@ -850,6 +862,12 @@ path = "src/case_intelligence/entity_routes.py"
 kind = "host"
 digest = "f8908fd8d80fc43c635e4d14ae845eecb70d97e7263caf701287ef90e890209b"
 detail = "entity.decide"
+
+[[source]]
+path = "src/case_intelligence/evaluation.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
 
 [[source]]
 path = "src/case_intelligence/extended_extract.py"
@@ -1176,6 +1194,18 @@ digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
 detail = "manifest.json"
 
 [[source]]
+path = "src/case_intelligence/matter_context_exports.py"
+kind = "host"
+digest = "05a513df2e6db7b51f6a6f251b7c6d63b4a94a3dd2449ccdfe45295e6f62e057"
+detail = "selections.json"
+
+[[source]]
+path = "src/case_intelligence/matter_context_exports.py"
+kind = "host"
+digest = "76b3b631079abb7f6557bc4853d4618ae15846596f387854d680377f925d52c7"
+detail = "matter-purpose.json"
+
+[[source]]
 path = "src/case_intelligence/media_evidence.py"
 kind = "client"
 digest = "cfbd7ec4ab90c790a3496fb5a193e231c9da8bca6d9889b3be7473a4db02dd73"
@@ -1434,10 +1464,22 @@ digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
 detail = "report.txt"
 
 [[source]]
+path = "src/case_intelligence/slice1_evaluation.py"
+kind = "host"
+digest = "8a486c563ed75230d3c1e191ef10782c680cd26f0b42cb347816bcf69d791644"
+detail = "renamed.txt"
+
+[[source]]
 path = "src/case_intelligence/source_find.py"
 kind = "host"
 digest = "966b007db83d9638bdbb965d91846ab210149f8c191211b4cef87fff96c27b43"
 detail = "wordprocessingml.document"
+
+[[source]]
+path = "src/case_intelligence/source_roles.py"
+kind = "host"
+digest = "a4dfe66cd98011ecf8b0d570a0afd8295ff44ef4cbca0c148949f109a2d72848"
+detail = "source-roles.json"
 
 [[source]]
 path = "src/case_intelligence/timeline_routes.py"
@@ -2075,6 +2117,30 @@ kind = "host"
 digest = "d3894428d67fd3b74047ad1a7017d9bc9fcd437fa37b59ea07e8722144d1c099"
 detail = "upload.cleanup"
 
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "e5675b17900f8a8cd287b452ea2ff5c1f4611cbe5774affc248a752d4265bb37"
+detail = "discovery.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "1e8809804a14faaf3c87b477a837e3fd6c4709a1faf8e7d4aa770ae8212cdfe7"
+detail = "entity.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "61f70adf8afd898813bf60ed4912c452dd18e4c42b8aa52d9686ef44efeaf1a1"
+detail = "assertion.json"
+
+[[source]]
+path = "src/case_intelligence/workbench.py"
+kind = "host"
+digest = "260a43df6fb18a04734e9e0a9243f8ac97a5c1b58ed93719c7723b7fc5f15efc"
+detail = "full-text-ledger.json"
+
 # Local login gateway trust: resolve the compose "gateway" service to check the direct TCP peer; no outbound connection.
 
 [[source]]
@@ -2227,6 +2293,12 @@ digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
 
 [[source]]
+path = "scripts/browser-accept-account-controls.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
 path = "scripts/browser-accept-activity.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2261,6 +2333,12 @@ path = "scripts/browser-accept-activity.py"
 kind = "host"
 digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
 detail = "emulation.setscriptexecutiondisabled"
+
+[[source]]
+path = "scripts/browser-accept-activity.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-activity.py"
@@ -2303,6 +2381,12 @@ path = "scripts/browser-accept-ask-heading.py"
 kind = "host"
 digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
+
+[[source]]
+path = "scripts/browser-accept-ask-heading.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-ask-heading.py"
@@ -2403,6 +2487,18 @@ detail = "assertion-chronology.png"
 [[source]]
 path = "scripts/browser-accept-assertions.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-assertions.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-assertions.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -2437,6 +2533,12 @@ digest = "a22191b07c7c088a546080ac98608ab43e4a021522fc516581976c4e6e319962"
 detail = "page.addscripttoevaluateonnewdocument"
 
 [[source]]
+path = "scripts/browser-accept-assistant-collapse-focus.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
 path = "scripts/browser-accept-assistant-dock.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -2453,6 +2555,18 @@ path = "scripts/browser-accept-assistant-dock.py"
 kind = "host"
 digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
+
+[[source]]
+path = "scripts/browser-accept-assistant-dock.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-assistant-dock.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-assistant-dock.py"
@@ -2531,6 +2645,18 @@ path = "scripts/browser-accept-briefing.py"
 kind = "host"
 digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
+
+[[source]]
+path = "scripts/browser-accept-briefing.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-briefing.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-briefing.py"
@@ -2673,6 +2799,18 @@ detail = "cited-context-answer-return.png"
 [[source]]
 path = "scripts/browser-accept-cited-context.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-cited-context.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-cited-context.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -2711,6 +2849,12 @@ path = "scripts/browser-accept-compiled-reports.py"
 kind = "host"
 digest = "f96216b37ceaec746716b5f43679d95a09a3e4c98a72685365bcc7f0e8023779"
 detail = "emulation.cleardevicemetricsoverride"
+
+[[source]]
+path = "scripts/browser-accept-compiled-reports.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-compiled-reports.py"
@@ -2781,6 +2925,12 @@ detail = "accent-mobile.png"
 [[source]]
 path = "scripts/browser-accept-dusk.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-dusk.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -2841,6 +2991,12 @@ detail = "notes.txt"
 [[source]]
 path = "scripts/browser-accept-email-coverage.py"
 kind = "host"
+digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
+detail = "notes.txt"
+
+[[source]]
+path = "scripts/browser-accept-email-coverage.py"
+kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
@@ -2855,6 +3011,12 @@ path = "scripts/browser-accept-email-coverage.py"
 kind = "host"
 digest = "eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290"
 detail = "damaged.pdf"
+
+[[source]]
+path = "scripts/browser-accept-email-coverage.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-email-coverage.py"
@@ -2927,6 +3089,18 @@ path = "scripts/browser-accept-entities.py"
 kind = "host"
 digest = "d0c5d9ef52e44c7c794e099843396520d47097bfb10262245622dd044a049580"
 detail = "entity-mobile-recovery.png"
+
+[[source]]
+path = "scripts/browser-accept-entities.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-entities.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-entities.py"
@@ -3051,6 +3225,18 @@ detail = "reconciliation-mobile.png"
 [[source]]
 path = "scripts/browser-accept-entity-discovery.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-entity-discovery.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-entity-discovery.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -3105,6 +3291,18 @@ detail = "connections-mobile-source-return.png"
 [[source]]
 path = "scripts/browser-accept-evidence-graph.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-evidence-graph.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-evidence-graph.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -3137,6 +3335,12 @@ path = "scripts/browser-accept-exact-search.py"
 kind = "host"
 digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
+
+[[source]]
+path = "scripts/browser-accept-exact-search.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-exact-search.py"
@@ -3239,12 +3443,24 @@ path = "scripts/browser-accept-full-text-review.py"
 kind = "host"
 digest = "1c2e0328cae321156ec9445b8beb01bc991ae1da497fae4249f54d48bc1d56c4"
 detail = "synthetic-ledger.txt"
+
+[[source]]
+path = "scripts/browser-accept-full-text-review.py"
+kind = "host"
+digest = "48926835d3966d8eb763953e4edbfce41bf4ee0d1dde552ed7ccc2106b04f16f"
+detail = "text-ledger-contrast.json"
 
 [[source]]
 path = "scripts/browser-accept-full-text-review.py"
 kind = "host"
 digest = "1368131b2bb94b85eec36cb068dbf51494acb3822974548b1dc46da2b8589148"
 detail = "full-review-resume.png"
+
+[[source]]
+path = "scripts/browser-accept-full-text-review.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-full-text-synthesis.py"
@@ -3327,6 +3543,12 @@ detail = "emulation.cleardevicemetricsoverride"
 [[source]]
 path = "scripts/browser-accept-full-text-synthesis.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-full-text-synthesis.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -3381,6 +3603,12 @@ detail = "synthetic-nested-receipt.png"
 [[source]]
 path = "scripts/browser-accept-intake-receipts.py"
 kind = "host"
+digest = "99c07a8a7090747d3fcd13c61142ee063e17d5c61b991530c7ca51ca8519522f"
+detail = "receipt-browser-result.json"
+
+[[source]]
+path = "scripts/browser-accept-intake-receipts.py"
+kind = "host"
 digest = "ade84309de60ac877f592db30d2fb0f090b579138891b923167b90bbf19ed90d"
 detail = "record.txt"
 
@@ -3401,6 +3629,12 @@ path = "scripts/browser-accept-intake-receipts.py"
 kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
+
+[[source]]
+path = "scripts/browser-accept-intake-receipts.py"
+kind = "host"
+digest = "e5cdc9259bdcd1ca4605cee324f56fe416e4ea936cea58231b8dd9b60a248091"
+detail = "browser-errors.json"
 
 [[source]]
 path = "scripts/browser-accept-loose-file-preflight.py"
@@ -3479,6 +3713,12 @@ path = "scripts/browser-accept-loose-file-preflight.py"
 kind = "host"
 digest = "3c28bb43fc9d4ab084f196f57f6542130abb98a80e3e98bc14c6da49bff6d66e"
 detail = "emulation.setscriptexecutiondisabled"
+
+[[source]]
+path = "scripts/browser-accept-loose-file-preflight.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-loose-file-preflight.py"
@@ -3585,6 +3825,18 @@ detail = "127.0.0.1:18080"
 [[source]]
 path = "scripts/browser-accept-matter-context.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-matter-context.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-matter-context.py"
+kind = "host"
 digest = "b39d737163bc6dcbc23042cc063768fd16b2ad58d74a35b791105e0d47470337"
 detail = "context-supplied-mobile.png"
 
@@ -3645,6 +3897,18 @@ detail = "knowledge-light-amber-mobile.png"
 [[source]]
 path = "scripts/browser-accept-matter-knowledge.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-matter-knowledge.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-matter-knowledge.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -3689,6 +3953,12 @@ path = "scripts/browser-accept-matter-purpose.py"
 kind = "host"
 digest = "01dd75708459a878b576fe4b46e6ebd4d61aff5ed03fa1a98dd5df0b85e6e395"
 detail = "purpose-conflict-320.png"
+
+[[source]]
+path = "scripts/browser-accept-matter-purpose.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-matter-purpose.py"
@@ -3757,6 +4027,12 @@ digest = "bcdafdc2932fd63339b75455fed1780751f345f9c01663ef7f5c7a009337eb34"
 detail = "settings-mobile.png"
 
 [[source]]
+path = "scripts/browser-accept-matter-rename.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
+
+[[source]]
 path = "scripts/browser-accept-media-preflight.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3809,6 +4085,12 @@ path = "scripts/browser-accept-media-preflight.py"
 kind = "host"
 digest = "8a0554b128c7162344b79276e12b60db68224af2dea5bd74304da4444d54ac90"
 detail = "original-time-speech.png"
+
+[[source]]
+path = "scripts/browser-accept-media-preflight.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-media-preflight.py"
@@ -3883,6 +4165,12 @@ digest = "98512b9522ab711a0cc81ce5e3f3c0f9bef6cf141dcd3fbc4cef078884b246d8"
 detail = "note-conflict-mobile.png"
 
 [[source]]
+path = "scripts/browser-accept-notebook-conflicts.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
+
+[[source]]
 path = "scripts/browser-accept-one-box.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -3929,6 +4217,18 @@ path = "scripts/browser-accept-one-box.py"
 kind = "host"
 digest = "08f9f1f682ce21e481bb884d29aaf6716fddbd3aa11baad15531073d004fefbb"
 detail = "deeper-investigation-offer-430.png"
+
+[[source]]
+path = "scripts/browser-accept-one-box.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-one-box.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-one-box.py"
@@ -4003,6 +4303,12 @@ digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
 detail = "manifest.json"
 
 [[source]]
+path = "scripts/browser-accept-report-conflicts.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
+
+[[source]]
 path = "scripts/browser-accept-reports-bundle.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4067,6 +4373,12 @@ path = "scripts/browser-accept-reports-bundle.py"
 kind = "host"
 digest = "cbca0de40456ac7eb7f30fc1b606de18e3deda9c65d619b8de1b6995da51d12b"
 detail = "reports-mobile.png"
+
+[[source]]
+path = "scripts/browser-accept-reports-bundle.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-reports-bundle.py"
@@ -4159,6 +4471,12 @@ digest = "776b4b3040634e3eec9cad0849a3d037d38a4a81c745964c2b3a4e5a69b041f3"
 detail = "decision-conflict-mobile.png"
 
 [[source]]
+path = "scripts/browser-accept-review-decision-conflicts.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
+
+[[source]]
 path = "scripts/browser-accept-review-report.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4193,6 +4511,12 @@ path = "scripts/browser-accept-review-report.py"
 kind = "host"
 digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
+
+[[source]]
+path = "scripts/browser-accept-review-report.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-source-folders.py"
@@ -4241,6 +4565,12 @@ path = "scripts/browser-accept-source-folders.py"
 kind = "host"
 digest = "e39538e7f27a7bf579cd9b85a103c0f0b86b60b788534295538d0301a9c5dce6"
 detail = "notes.txt"
+
+[[source]]
+path = "scripts/browser-accept-source-folders.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-source-folders.py"
@@ -4299,6 +4629,12 @@ detail = "source-role-conflict-320.png"
 [[source]]
 path = "scripts/browser-accept-source-roles.py"
 kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-source-roles.py"
+kind = "host"
 digest = "7be7f189bf3c314192f7c338787689b575ba9638f462104111868c784fbf662f"
 detail = "failure.png"
 
@@ -4351,6 +4687,12 @@ digest = "4c5ddb2b91fe1bb018d402cfb3095630be3f4b83da8d5fea82d39e50ac13d7a2"
 detail = "emulation.setdevicemetricsoverride"
 
 [[source]]
+path = "scripts/browser-accept-timeline-draft.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
 path = "scripts/browser-accept-upload-occurrences.py"
 kind = "client"
 digest = "932b3f0505007bf9e16c61c8416174cabd7aa9eb7f568be58061951c8d711ae6"
@@ -4391,6 +4733,12 @@ path = "scripts/browser-accept-upload-occurrences.py"
 kind = "host"
 digest = "36141eb783770492f9ad4a052d6f9c608e57ee917f3050cdf567471c36b4f389"
 detail = "synthetic-separate-productions.png"
+
+[[source]]
+path = "scripts/browser-accept-upload-occurrences.py"
+kind = "host"
+digest = "c9571d90d0c1dda483c76249db49e78e626aee0fa4cfb4103f52a1e46b93a076"
+detail = "result.json"
 
 [[source]]
 path = "scripts/browser-accept-upload-occurrences.py"
@@ -4497,6 +4845,12 @@ detail = "httpx.Client.close"
 [[source]]
 path = "scripts/browser-accept-workflow-handoff.py"
 kind = "host"
+digest = "e46859af8c09359313a48f9daa792ba61c783c2691acbc9f08bb18d18b632495"
+detail = "fixture.json"
+
+[[source]]
+path = "scripts/browser-accept-workflow-handoff.py"
+kind = "host"
 digest = "eebc9b53be310d0eb185da5f2dbd957dd069f0b8798d62e134759dfe9a507693"
 detail = "mixed-answer.png"
 
@@ -4505,6 +4859,12 @@ path = "scripts/browser-accept-workflow-handoff.py"
 kind = "host"
 digest = "9b2db02ef42d2ee247c22e49c554cc2b9c47c2cabb655178143d7861fa2fd43c"
 detail = "investigation-result.png"
+
+[[source]]
+path = "scripts/browser-accept-workflow-handoff.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-workflow-handoff.py"
@@ -4541,6 +4901,18 @@ path = "scripts/browser-accept-workspace-layout.py"
 kind = "host"
 digest = "e5bbaa5c200d71497223c00c7cf0672b2dd7da41669a3e552a065a5daba591f3"
 detail = "127.0.0.1:"
+
+[[source]]
+path = "scripts/browser-accept-workspace-layout.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
+
+[[source]]
+path = "scripts/browser-accept-workspace-layout.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-workspace-layout.py"
@@ -4607,6 +4979,12 @@ path = "scripts/browser-accept-zoom.py"
 kind = "host"
 digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
+
+[[source]]
+path = "scripts/browser-accept-zoom.py"
+kind = "host"
+digest = "df9551fd455034c1deb59d62c2db6752ad74cf0116597781209807b5006337ca"
+detail = "receipt.json"
 
 [[source]]
 path = "scripts/browser-accept-zoom.py"
@@ -4923,6 +5301,18 @@ detail = "127.0.0.1"
 [[source]]
 path = "scripts/doc_identifier_check.py"
 kind = "host"
+digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
+detail = "branding.md"
+
+[[source]]
+path = "scripts/doc_identifier_check.py"
+kind = "host"
+digest = "c15ca925f208bc7d6d84510e860c566e8791317606fff037b17281b5e8367321"
+detail = "branding.md"
+
+[[source]]
+path = "scripts/doc_identifier_check.py"
+kind = "host"
 digest = "06572a96a58dc510037d5efa622f9bec8519bc1beab13c9f251e97e657a9d4ed"
 detail = "changelog.md"
 
@@ -5059,10 +5449,46 @@ digest = "12ca17b49af2289436f303e0166030a21e525d266e209267433801a8fd4071a0"
 detail = "127.0.0.1"
 
 [[source]]
+path = "scripts/evaluate-workflow-quality.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
 path = "scripts/exculpata_backup.py"
 kind = "host"
 digest = "ba8ff6755d75e404138c8769fb42f792fbd64c6701f741ea5f5837c221b01b2b"
 detail = "127.0.0.1:8786"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
+detail = "backup.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
+detail = "backup.json"
 
 [[source]]
 path = "scripts/exculpata_backup.py"
@@ -5097,6 +5523,18 @@ detail = "compose.env"
 [[source]]
 path = "scripts/exculpata_backup.py"
 kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
 digest = "c304dc78b408e19e60bfd78d3310684f0e8a7f95e6e05f5177010829232aefc6"
 detail = "source.sqlite"
 
@@ -5117,6 +5555,24 @@ path = "scripts/exculpata_backup.py"
 kind = "host"
 digest = "5e96ee26757e7076c5afaf7265974c770c9825ea0b181dd4a2baee0e27049325"
 detail = "review-index.dump"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "b82710f5aadf793dc1d4f8d02c7fd67aaac8134757563f527e20b9bbd40291af"
+detail = "backup-manifest.json"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
+detail = "compose.kerberos.yaml"
+
+[[source]]
+path = "scripts/exculpata_backup.py"
+kind = "host"
+digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
+detail = "compose.local-accounts.yaml"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -5169,6 +5625,18 @@ detail = "compose.kerberos.yaml"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
+digest = "3e59fcc814c5547c8ef4d2c859fd3b3f785b9257ce2881a9de527eae089a03eb"
+detail = "compose.kerberos.yaml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
+detail = "compose.local-accounts.yaml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
 digest = "5b8ce5b79ad1ed0f968a7fbcea3ac4740014eb37c5b22ff2a5ddd346d787967c"
 detail = "compose.local-accounts.yaml"
 
@@ -5181,8 +5649,80 @@ detail = "compose.yaml"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
 digest = "50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711"
 detail = "pyproject.toml"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9"
+detail = "installation.json"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -5372,6 +5912,12 @@ detail = "generator:8000"
 
 [[source]]
 path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "6573734df9fc41c1c129c990d7c179058c7e416da2c071afdeffb3f92baf2450"
+detail = "install-progress.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
 kind = "client"
 digest = "97dff362590a9e88e963bd2d76e92d36f125fa3b8fca8eabea41ff0027509cad"
 detail = "http.client.HTTPSConnection"
@@ -5385,6 +5931,12 @@ detail = "stage-models.py"
 [[source]]
 path = "scripts/exculpata_install.py"
 kind = "host"
+digest = "3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973"
+detail = "backup.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
 digest = "4216dc00fed51951645154006e11d8063d832522be5b2b07c93b1a4966956905"
 detail = "identity.example.test"
 
@@ -5393,6 +5945,42 @@ path = "scripts/exculpata_install.py"
 kind = "host"
 digest = "56075d9c7252be5397bae8d60064ebecb0b9ad9f910d446d14b00d7a85887192"
 detail = "example.test"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3"
+detail = "local-accounts.json"
 
 [[source]]
 path = "scripts/exculpata_install.py"
@@ -5510,6 +6098,18 @@ detail = "http.client.HTTPException"
 
 [[source]]
 path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "9d84bf6299c1c0507d3f5ff408697db3a3f7a4d2710019b95729dda33e544719"
+detail = "backup-unit.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
+kind = "host"
+digest = "9d84bf6299c1c0507d3f5ff408697db3a3f7a4d2710019b95729dda33e544719"
+detail = "backup-unit.json"
+
+[[source]]
+path = "scripts/exculpata_install.py"
 kind = "client"
 digest = "1d57a59c6744b1a79399764d64e10af65821ccf27bfede769709829af48f4c24"
 detail = "urllib.request.urlopen"
@@ -5531,6 +6131,12 @@ path = "scripts/install-ci-browser-deps.py"
 kind = "host"
 digest = "d460260804767fa94d8e98a9f5bd8a0fef6f83120c372070d127415d350f54ff"
 detail = "security.ubuntu.com"
+
+[[source]]
+path = "scripts/install-publication-hook.py"
+kind = "host"
+digest = "03410089a1f983110fec496c25c82f3d0afbc2ba50c33c94c222bd20ee204780"
+detail = "pre-push-publication.py"
 
 [[source]]
 path = "scripts/install-publication-hook.py"
@@ -5597,6 +6203,12 @@ path = "scripts/network-contract.py"
 kind = "host"
 digest = "df4f2e6c41d3cf5d13690df03d7b19c1bd96d30c4da3f45796057c3f76ca7da7"
 detail = "authlib.integrations"
+
+[[source]]
+path = "scripts/network-contract.py"
+kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
 
 [[source]]
 path = "scripts/pre-push-publication.py"
@@ -6697,6 +7309,24 @@ digest = "33a42f15908b434b7f657b103c4fcff63295c88cc0358763453b8ab2a3b00247"
 detail = "storage.googleapis.com"
 
 [[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "834aa60b7b3085c08406d4bbe0f2d6c5811ca9ad1f74666deef53da29f614842"
+detail = "journey.log"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "87249a4ce26259c12a05305bf70f692772b27f2a7ab19cb4b1a8fb740dcb1ea2"
+detail = "summary.json"
+
+[[source]]
+path = "scripts/run-browser-acceptance.py"
+kind = "host"
+digest = "35ab6d2120900f86a7fe1f90b21f893c2d64fefeaf550581c5906a6564bf50f1"
+detail = "journeys.json"
+
+[[source]]
 path = "scripts/source-role-storage-restore-drill.py"
 kind = "host"
 digest = "1fb25726f82d3688d5d679db342deb4ad38ad36734546847c85be7e430da5bad"
@@ -6725,6 +7355,12 @@ path = "scripts/stage-models.py"
 kind = "client"
 digest = "07e284c29f1dbc20a7f456f04605ec27d20acb6d82ec09669c1ab623e3d182ed"
 detail = "network import"
+
+[[source]]
+path = "scripts/stage-models.py"
+kind = "host"
+digest = "36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e"
+detail = "approved-model-manifest.json"
 
 [[source]]
 path = "scripts/stage-models.py"
@@ -6772,6 +7408,12 @@ detail = "generator.example.test:8443"
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
+digest = "78c896ead16bec395153b9601a598a17e56bf8084602e316d5b6be441656fd8b"
+detail = "generator-pin-mismatch-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
 digest = "5a8ea569c791206fa478da864d0a4986f59fd33f5e6dfeed416ebd3198d0b19a"
 detail = "generator.example.test"
 
@@ -6808,6 +7450,12 @@ detail = "probe.py"
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
+digest = "facaded51b7d1c9656ae43b449b69aa398fee9129321a0001d97048c00c8cc1c"
+detail = "compose.yaml"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
 digest = "d2e165bf1df0969a7d7a34e2d33afa4120f6bf8eb26b2db3a94090bd53a3fa10"
 detail = "issuer.example.test"
 
@@ -6832,14 +7480,104 @@ detail = "127.0.0.1:8080"
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
+digest = "906be301a25b186e911bc2e6e760e4cbaf9f3d6f3315dbddb5833f95d3fb2a01"
+detail = "build.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "08274475db59c29eb680585c6c99698bb8d0a0830374b61b75934b9cd9b9bdf3"
+detail = "fixture-build.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
 digest = "1ae892f4d7f947dd96ca21d6783a373652e3bad3751309b00bdb852e242956f6"
 detail = "up.log"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
 kind = "host"
+digest = "1ae892f4d7f947dd96ca21d6783a373652e3bad3751309b00bdb852e242956f6"
+detail = "up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "02bc38be55f1e3977370c178350fd786350d5261ab4ba291814ce568aeec7922"
+detail = "allow-proxy.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
 digest = "4e2232d461afd420ba9d68751aba2ee208d941177d0d80c23828487da7e987a3"
 detail = "issuer.example.test:8443"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "f2ac2ab0b8e48ac251e587366058a0dc9d5316c1ccb3a10d1bc0d9bb394aefc8"
+detail = "readiness.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "9214fa68115778ea49a60f1eb872efe85f036aafcd8b9b095e0f0eaf36fe3207"
+detail = "dns-forwarding-control-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "817300f6a610396fbbd1bb42344552f9ab9113ac23277d222017d44bd974a649"
+detail = "dns-restored-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "f6c51c8bebaa8a37e20c8b31b837aa7eb2db3950221bdc583c75f261a9bd9ba2"
+detail = "deny-all-up.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "c57c6351294229d4a0fbfdcfb6981737c5a3b48759a5162e00d20196053da512"
+detail = "cleanup.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "87249a4ce26259c12a05305bf70f692772b27f2a7ab19cb4b1a8fb740dcb1ea2"
+detail = "summary.json"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "784a8601679c5bdf0e4dfafa5c2536fe894354eea12ab4be27387353ec81270f"
+detail = "foreign-tls-control.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "55a13eaf292681c74dbe06fadd926708243f923b5df95413c376e92fd401d788"
+detail = "probe.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "5f49daa8f7940a71edb73d525b2945b721ca7f86124e64bdc0e5a00c460c29f0"
+detail = "dns-forwarding-control.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "f976d207841ed173f1c448bebfdd9d445ec8e6ac1a469b2e4652c10517ecc1b2"
+detail = "dns-restored.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "2119d609d5f1089e01abb9aeea5271874f3df781dffea8a5cc84b28855a3ba56"
+detail = "deny-all.log"
 
 [[source]]
 path = "scripts/test-egress-smoke.py"
@@ -6878,6 +7616,24 @@ digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
 detail = "license.md"
 
 [[source]]
+path = "scripts/vendor-idna.py"
+kind = "host"
+digest = "4673a3aba01813b595de187a7a6e9e63a3491d55821606fecd9f13a10c188a1d"
+detail = "license.md"
+
+[[source]]
+path = "scripts/vendor-idna.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
+
+[[source]]
+path = "scripts/verify-byte-match-rollback.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
 path = "scripts/verify-byte-match-rollback.py"
 kind = "host"
 digest = "eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1"
@@ -6906,6 +7662,18 @@ path = "scripts/verify-email-coverage-rollback.py"
 kind = "host"
 digest = "ffd5204723a4f6520e5c39d9936a3b2e3395a8104fece2db26285c3d4044e076"
 detail = "generated.eml"
+
+[[source]]
+path = "scripts/verify-email-coverage-rollback.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
+
+[[source]]
+path = "scripts/verify-email-coverage-rollback.py"
+kind = "host"
+digest = "afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc"
+detail = "expected.json"
 
 [[source]]
 path = "scripts/verify-email-coverage-rollback.py"
@@ -7010,6 +7778,18 @@ path = "src/case_intelligence/_idna/__init__.py"
 kind = "host"
 digest = "b335630551682c19a781afebcf4d07bf978fb1f8ac04c6bf87428ed5106870f5"
 detail = "readme.md"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "47250fde870fa4580111354ae25c52239059edbcc5880ee1b68de47de643e721"
+detail = "installed-package.log"
+
+[[source]]
+path = "scripts/test-egress-smoke.py"
+kind = "host"
+digest = "9208ca79cb630edbaf1b832b713493c451a696d5d5143cde5a7b04413d451984"
+detail = "installed-package-control.log"
 
 # Host-only doctor probe: resolve and vet addresses, numeric dial, verified TLS and no redirects or ambient proxies. Never imported by app runtime.
 [[source]]
@@ -7542,6 +8322,36 @@ digest = "89ac0135f08ed5f661ff9d57414136063fd4c722aca01f646fa9a319c6930772"
 detail = "service_endpoints.open_service_request"
 
 [[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
+detail = "provenance.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "2c695bb4b5dc03304ed29583115f627a821759390c1e175afb15d848f924ddfe"
+detail = "scorecard.json"
+
+[[source]]
+path = "scripts/defense-eval-ci.py"
+kind = "host"
+digest = "c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459"
+detail = "provenance.json"
+
+[[source]]
 path = "src/case_intelligence/retrieval_endpoints.py"
 kind = "client"
 digest = "48dc804dd6255688fd38f0ce0cfcca804e349d2d898a15fd41ad5e0ce51c1253"
@@ -7618,4 +8428,22 @@ path = "src/case_intelligence/tier_evals.py"
 kind = "host"
 digest = "ec50ebc39ac3c25797998c3b4fbf80d6f12726686d8c5f1034ef50b7a4a9cba1"
 detail = "retrieval.json"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "24d5f69bcfd1907cfb35c93d284fe7632e161c6751a8e100fa072ce546fc9598"
+detail = "attachment.txt"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "1812b5ebbd66633b5ec0058a8b480e6b89bdb74039eba30da36a564f3319ffa3"
+detail = "suite.json"
+
+[[source]]
+path = "src/case_intelligence/synthetic_corpus_gold.py"
+kind = "host"
+digest = "ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743"
+detail = "manifest.json"
 

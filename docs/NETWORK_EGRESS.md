@@ -435,39 +435,48 @@ occurrences; these are not permission to contact hosts. URL and IP detection
 does not depend on file context. A bare hostname-shaped literal is reported
 unless its last label is one of `json`, `jsonl`, `toml`, `yaml`, `yml`, `txt`,
 `csv`, `tsv`, `md`, `py`, `pdf`, `log` and it has syntactic file context.
-File context means a direct argument to bare `Path`, `PurePath`, `open`,
-`pathlib.Path`, `pathlib.PurePath`, or `os.path`/`posixpath`/`ntpath.join`, a direct
+File context means a direct argument to a resolved file-safe call, a direct
 operand of any `/` expression, or a direct value assigned to a name, attribute
 or keyword ending in `path`, `file`, `filename`, `fname` or `dir` (case-insensitive).
-Filesystem helpers use complete identities from the import/alias resolver;
-arbitrary `.open` and `.join` methods do not supply file context. Assignment
-targets use `Name.id` or `Attribute.attr`; subscript and tuple targets give no
-identifier. Container contents and annotations do not gain direct file context.
+The exact `FILE_SAFE_CALLS` identities are `pathlib.Path`, `pathlib.PurePath`,
+`builtins.open` and `os.path.join`. Imports and aliases must bind those identities
+in the lexical scope. Local rebinding, parameters, ambiguous imports and wildcard
+imports cannot grant file safety. Bare `open` resolves to the builtin only when
+unshadowed. Neither unimported `Path` nor arbitrary `.open` or `.join` is safe.
+Assignment targets use `Name.id` or `Attribute.attr`; subscript and tuple targets
+give no identifier. Container contents and annotations do not gain direct file
+context. The existing networking/client resolver is separate and unchanged.
 
-Host context wins: assignment or keyword identifiers containing `host`, `server`,
-`domain`, `proxy`, `proxies` or `url`, and enclosing connection, socket, HTTP
-client constructor or request calls retain the host finding. The bounded
-`HOST_CALLS` set also covers the listed mail, FTP, Telnet, DNS, TLS, asynchronous
-connection, streaming, request-building, WebSocket and browser entry points.
-The host-context
-walk has a fixed limit of eight parent steps (`MAX_LITERAL_CONTEXT_DEPTH`).
-It crosses calls, attributes, arithmetic, boolean/comparison/conditional
-expressions, subscripts, awaits, containers and keywords up to a statement.
-Unknown expression forms and depth exhaustion retain the finding. Host calls
-use the last segment of the resolved name, including imported aliases, or an
-exact resolved name for `webbrowser.open`, preserving filesystem `open` calls.
-Thus `requests.get(str(Path("a.json")))` and `host = Path("a.json")` remain
-host findings even though the literal has a direct file signal.
+Host context wins before file context: assignment or keyword identifiers
+containing `host`, `server`, `domain`, `proxy`, `proxies` or `url` retain the
+finding. The ancestor walk then checks every enclosing call against the exact
+four identities, continuing through safe calls so an outer unknown call wins.
+It crosses calls, attributes, subscripts, binary/unary/boolean/comparison and
+conditional expressions, starred arguments, keywords, f-string nodes, and
+tuple/list/dict/set containers. It stops at an enclosing statement or `withitem`,
+the first unknown call, or 32 ancestor hops. An unlisted node or exhausting the
+cap before a boundary retains the finding. `with open("a.json") as f:` is a
+supported file form. `frobnicate(Path("a.json"))` retains the finding without
+requiring a host-call name list.
+
+Unknown wrappers such as `json.load(open("a.json"))`,
+`pd.read_csv(Path("a.csv"))`, `json.loads(Path("a.json").read_text())` and
+`shutil.copy(Path("a.json"), dest)` deliberately retain findings and allowances.
+The safe-call set must not grow to accommodate these accepted over-reports.
 
 This is not call-reachability or taint analysis. Known gaps include bare
-`host:port`, `host/path`, `//host`, concatenation, f-strings, variable indirection
-and unrecognized wrappers such as `fetch(file="evil.md")`.
+`host:port`, `host/path`, `//host`, concatenation, f-strings, neutral-name variable
+indirection, browser instances obtained through `webbrowser.get()`, and
+subprocess curl arguments. Dotted literals inside unknown calls remain reported;
+these gaps concern forms the literal inventory cannot reconstruct or follow.
 A host-shaped file literal assigned to a neutral name, such as
-`u = Path("evil.md"); requests.get(u)`, is not tracked across statements.
-`Path("evil.py")`, `open("evil.md")` and division with a non-Path operand count
-as files by design. Bare `evil.py` and `evil.md` remain reported, as do
-file-context literals ending in `zip`, `mov`, `sh`, `pl` or `cc`, which are
-outside the closed extension list.
+`from pathlib import Path; x = Path("evil.md"); requests.get(x)`, is not tracked
+across statements. Imported `Path("evil.py")`, builtin `open("evil.md")` and
+division with a non-Path operand count as files by design. Bare `evil.py` and
+`evil.md` remain reported, as do file-context literals ending in `zip`, `mov`,
+`sh`, `pl` or `cc`, which are outside the closed extension list.
+This change concerns only the static AST inventory. Runtime proxy, smoke,
+canary and isolation controls are unchanged and remain separate requirements.
 It is not whole-program analysis: reflection, generated code,
 third-party networking, other languages and subprocess utilities still require
 review. Editing both an allowance and its code is a review event, not proof that
@@ -533,3 +542,69 @@ private pins, the same unconditional deny set, end-to-end TLS and no redirects.
 Ambient `NO_PROXY` cannot bypass this path. Loopback is denied; LAN endpoints
 need HTTPS, trusted certificates and reviewed RFC1918/ULA pins. Relay setup,
 time and byte limits still apply. See [retrieval configuration](MODEL_CONFIGURATION.md#optional-embedding-and-rerank-endpoints).
+
+## Filename inventory deletion measurement
+
+Baseline: main `6b5ff8cab640b90d7ddb754305cf5db312a4796e`. The bare hostname
+match at scanner lines 188-189 on that revision is the original root cause.
+The r5 implementation starts from PR #488's `06bfebc` plus that main merge.
+
+Generated using `Counter(main host records) - Counter(post-fix source_inventory)`:
+1,151 original host records, 46 deleted occurrences across 40 keys, 1,105 retained
+host records, zero new records. Surviving records and all non-host allowances are
+unchanged from main. Unknown outer wrappers remain on the allowlist; the table
+lists only measured deletions, not every filename-shaped occurrence.
+Twenty deleted keys also have retained occurrences, so deletion proof uses
+multiplicity rather than incorrectly asserting that those entire keys disappear.
+The table's record number is the one-based main `source` array index, not a line
+number or a runtime authorization. The filename test verifies the complete table
+against suppressed occurrences from the real repository inventory.
+
+| Main record | Path | Digest | Detail | Extension | Context |
+| --- | --- | --- | --- | --- | --- |
+| 15 | `services/transcription/src/transcription_v2/api.py` | `d405dbb5661255de4b2ff0cb7d86fe2f725b45bad77dd19c460a7811e6dc584e` | `ui-summary.json` | json | division |
+| 34 | `services/transcription/src/transcription_v2/pipeline.py` | `d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034` | `config.yaml` | yaml | division |
+| 50 | `services/transcription/src/transcription_v2/resources.py` | `d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034` | `config.yaml` | yaml | division |
+| 51 | `services/transcription/src/transcription_v2/review_exports.py` | `1c7fd51bfd8f7e79698965c3c0dd657698b249bcfd338f9003c60b01f166a7b6` | `machine-result.json` | json | division |
+| 62 | `services/transcription/src/transcription_v2/worker.py` | `d8d0422389f03d783e32e627250fe29834bd09c6361640d1ff00661dd6820034` | `config.yaml` | yaml | division |
+| 103 | `src/case_intelligence/identity.py` | `995293729fa4ef6b0ce94e462db8cbd3af78036b44f327e89adec5e89e936dc3` | `local-accounts.json` | json | division |
+| 119 | `src/case_intelligence/matter_archive.py` | `dd36113a1ed2d9349341cfcfd4874562bdfc244f9b2dc89d09d89f48b8cabcd7` | `unavailable-references.jsonl` | jsonl | division |
+| 120 | `src/case_intelligence/matter_archive.py` | `320073ecd31a5ee829055edb2f7393dcbec77f91cb05fd392714c16e28415b9d` | `sources.jsonl` | jsonl | division |
+| 143 | `src/case_intelligence/pilot_uploads.py` | `ffa5b716b5a57837f7929dfcca4b4dfdeb97210a7fd5a12d2f1978846d6f1743` | `manifest.json` | json | division |
+| 149 | `src/case_intelligence/question_draft_evaluation.py` | `76f65e507c8553d93c2dfec3417a6851f5de95206d0ff0de073ccf6de7b01c03` | `question-drafts-v1.json` | json | division |
+| 150 | `src/case_intelligence/question_draft_evaluation.py` | `b546905e3eaa417cad3f64329ae02e69b2844d8551db177d092ef2d9a3a81276` | `models.json` | json | division |
+| 303 | `scripts/assertion-storage-restore-drill.py` | `00cef86f5c6bd4b73bfe948f62db56d70ff5a509ebc7358f30fe0fe37106e05e` | `synthetic-seed.json` | json | division |
+| 311 | `scripts/benchmark-time-to-briefing.py` | `2dfe744f64b97238df644a0ef96b7f245bb6ffc7519b726824c0753e6e3797c4` | `run.json` | json | division |
+| 439 | `scripts/browser-accept-email-coverage.py` | `eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290` | `damaged.pdf` | pdf | division |
+| 538 | `scripts/browser-accept-intake-receipts.py` | `b48152b3ad1a85681c670025958b8b9ed69ec8d702cc66e70cae0a9d1425b152` | `resume.txt` | txt | division |
+| 539 | `scripts/browser-accept-intake-receipts.py` | `8efad9c7de03296e3da4cd49fd8981a1e8ba4e162a20034f47df877be5a1f993` | `capacity-limited.txt` | txt | division |
+| 550 | `scripts/browser-accept-loose-file-preflight.py` | `5ea8a2478572a4c9116a5880f19c07ce966314d5d781c901cfe4c74cc86b43c5` | `incident-notes.txt` | txt | division |
+| 553 | `scripts/browser-accept-loose-file-preflight.py` | `eaa3b668f38bd7c630e701879ab7b338c228812a63f61a47d726b56b6e73a290` | `damaged.pdf` | pdf | division |
+| 556 | `scripts/browser-accept-loose-file-preflight.py` | `a8ef9e8466d92c23d0a78c632ebc12931b9aa1af4cc6f1cc2e6016a9d366c29f` | `oversize.txt` | txt | division |
+| 607 | `scripts/browser-accept-matter-rename.py` | `8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d` | `generated-source.txt` | txt | division |
+| 631 | `scripts/browser-accept-notebook-conflicts.py` | `8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d` | `generated-source.txt` | txt | division |
+| 654 | `scripts/browser-accept-report-conflicts.py` | `8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d` | `generated-source.txt` | txt | division |
+| 667 | `scripts/browser-accept-reports-bundle.py` | `f6bd61c429eeb4f1fea36720e745eceba905e5e93a8b9a81919400e18bb0992f` | `generated-note.txt` | txt | division |
+| 685 | `scripts/browser-accept-review-decision-conflicts.py` | `8ffce577845a5740a2d042617b49546a1c5140dae2f9e31e0c3b348fb3a0b61d` | `generated-source.txt` | txt | division |
+| 734 | `scripts/browser-accept-upload-occurrences.py` | `eafb4aff19bc57c3106afe5e1d4aef0b6422e0de242745e6e94f7d5733ab1cc1` | `report.txt` | txt | division |
+| 860 | `scripts/exculpata_backup.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 864 | `scripts/exculpata_backup.py` | `9dc9baa5e9719de650a9d436c49d6d93ca64ddc5f677e67499c60881a30a47df` | `backup-status.json` | json | division |
+| 865 | `scripts/exculpata_backup.py` | `3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973` | `backup.json` | json | division |
+| 898 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 899 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 900 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 901 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 902 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 903 | `scripts/exculpata_install.py` | `33b93bf6bfddc583596ad10e3d565a703ec0e978f19dcc9678e7020d6cbcaad9` | `installation.json` | json | division |
+| 944 | `scripts/exculpata_install.py` | `fb362910d898a3711cde7aec3c8c281e7e464caec39a99d90fe50cd83009ed47` | `provisioned.json` | json | division |
+| 945 | `scripts/exculpata_install.py` | `6573734df9fc41c1c129c990d7c179058c7e416da2c071afdeffb3f92baf2450` | `install-progress.json` | json | division |
+| 949 | `scripts/exculpata_install.py` | `3df3c9e5a5a6f5e1c5fa735bdebe47732f6cea8a7a2d34b43728511cec01d973` | `backup.json` | json | division |
+| 973 | `scripts/exculpata_install.py` | `9dc9baa5e9719de650a9d436c49d6d93ca64ddc5f677e67499c60881a30a47df` | `backup-status.json` | json | division |
+| 983 | `scripts/full-text-synthesis-restore-drill.py` | `ade1fbce1069898f2b7c1e1c092f980a10507f2918bee33dfaae0ab0bcbebb86` | `seed.json` | json | division |
+| 1182 | `scripts/run-browser-acceptance.py` | `834aa60b7b3085c08406d4bbe0f2d6c5811ca9ad1f74666deef53da29f614842` | `journey.log` | log | division |
+| 1191 | `scripts/stage-models.py` | `36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e` | `approved-model-manifest.json` | json | division |
+| 1192 | `scripts/stage-models.py` | `36ef972f897f6ac412726601658c79d81880a84fda4b82f603f89dace9431d3e` | `approved-model-manifest.json` | json | division |
+| 1199 | `scripts/test-egress-smoke.py` | `76543611dccc2cd0832fc6eb344b9cbfb3d6dc00aa7babae7409f07d62ddf24a` | `compose.json` | json | division |
+| 1249 | `scripts/verify-upload-occurrence-rollback.py` | `afb0cb5531d1272db535b04969ca6bac54e172bac65c2f2de2e92b94792d8edc` | `expected.json` | json | division |
+| 1261 | `scripts/run-browser-acceptance.py` | `482b31b2820c4cac4c563e4d13f4d3a4431b5e70623f07c28c4856a3dce3b908` | `navigation-timeouts.json` | json | division |
+| 1352 | `scripts/defense-eval-ci.py` | `c7bc716846e7756cc4fcd87f70ef5d8b78a49ee24d100510dc872f105635e459` | `provenance.json` | json | division |
