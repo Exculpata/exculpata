@@ -154,6 +154,9 @@ def host_literal_context(node, parents, resolve):
             return False
         if not isinstance(parent, CONTEXT_NODES):
             return True
+        if isinstance(parent, ast.Call) and parent.func is cursor and isinstance(cursor, ast.Attribute):
+            cursor = parent
+            continue
         if isinstance(parent, ast.Call) and resolve(parent.func) not in FILE_SAFE_CALLS:
             return True
         cursor = parent
