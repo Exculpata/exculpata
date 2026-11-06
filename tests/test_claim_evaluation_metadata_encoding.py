@@ -1,4 +1,6 @@
 """Reject unencodable capture metadata before any runtime observation or request."""
+import io
+import json
 import socket
 
 import pytest
@@ -28,11 +30,24 @@ def capture_metadata(field, value):
     class SyntheticClient(generation.OpenAICompatibleGenerator):
         def generate(self, *, question, evidence):
             events.append("generate")
-            return {"answerable": False, "claims": [], "limitation": None,
-                    "missing_information": ""}
+            raw = {"answerable": False, "claims": [], "limitation": None,
+                   "missing_information": ""}
+            requests = self.synthetic_requests
+
+            class SyntheticTransport:
+                def open(self, request, **kwargs):
+                    requests.append(json.loads(request.data))
+                    return io.BytesIO(json.dumps({
+                        "choices": [{"message": {"content": json.dumps(raw)}}],
+                    }).encode())
+
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr(self, "_opener", SyntheticTransport())
+                return super().generate(question=question, evidence=evidence)
 
     model = value if field == "model" else "synthetic-metadata-only"
     client = SyntheticClient("http://127.0.0.1:11435", model)
+    client.synthetic_requests = []
     if field != "model":
         runtime[field] = value
 
@@ -52,6 +67,7 @@ def test_unencodable_metadata_is_rejected_before_identity_or_model_calls(field, 
         evaluation.capture(client, profile="portable", runtime=runtime,
                            repetitions=1, identity_check=identity)
     assert events == []
+    assert client.synthetic_requests == []
 
 
 @pytest.mark.parametrize("field", ["runtime_name", "runtime_version", "accelerator", "driver", "model"])
@@ -61,6 +77,12 @@ def test_valid_unicode_metadata_retains_capture_and_grading(field):
                                  repetitions=1, identity_check=identity)
     assert events.count("generate") == 11
     assert events.count("identity") == 23
+    assert len(client.synthetic_requests) == len(receipt["results"]) == 11
+    for request, row in zip(client.synthetic_requests, receipt["results"], strict=True):
+        assert row["request_settings"] == evaluation.request_settings(request, "OpenAICompatibleGenerator")
+        assert request["model"] == client.model
+        assert request["messages"] == [{"role": role, "content": row["prompt"][role]}
+                                       for role in ("system", "user")]
     assert receipt["generation"]["generated"] == receipt["generation"]["abstained"] == 11
     assert len(evaluation.grade_template(receipt)["samples"]) == 11
     if field == "model":

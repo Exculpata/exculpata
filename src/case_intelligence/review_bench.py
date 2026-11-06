@@ -386,7 +386,7 @@ class ReviewBench:
                 )
                 if embedding.available and reranker.available:
                     self.hybrid = HybridRetriever(
-                        PostgresHybridBackend(self.postgres_connection),
+                        PostgresHybridBackend(self.postgres_connection, pilot_store=self.pilot),
                         embedding,
                         reranker,
                         minimum_dense_score=0.72,
@@ -395,7 +395,7 @@ class ReviewBench:
                     self.models_ready = True
                 else:
                     self.hybrid = HybridRetriever(
-                        PostgresHybridBackend(self.postgres_connection),
+                        PostgresHybridBackend(self.postgres_connection, pilot_store=self.pilot),
                         DeterministicEmbeddingAdapter(), DeterministicReranker(),
                         minimum_dense_score=2.0,
                         minimum_rerank_score=float("inf"),
@@ -681,7 +681,8 @@ class ReviewBench:
                                       document.display_name, unit.number, unit.text,
                                       line_start=unit.line_start, line_end=unit.line_end,
                                       source_version_id=document.version_id,
-                                      excerpt_digest=unit.excerpt_digest)
+                                      excerpt_digest=unit.excerpt_digest,
+                                      location_label=unit.location_label or None)
                 if self._citation_token(candidate) == citation_token:
                     matched = (document, unit)
                     break
@@ -719,6 +720,7 @@ class ReviewBench:
                 document.display_name, unit.number, unit.text,
                 line_start=unit.line_start, line_end=unit.line_end,
                 source_version_id=document.version_id, excerpt_digest=unit.excerpt_digest,
+                location_label=unit.location_label or None,
             )
             for document in self.pilot.ready_documents()
             for index, unit in enumerate(document.parsed_units(), 1)

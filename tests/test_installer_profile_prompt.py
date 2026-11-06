@@ -241,9 +241,40 @@ def test_endpoint_default_stays_declined(monkeypatch, detected_gpu):
 
 
 def test_models_tier_table_matches_catalog():
+    import re
+
     text = (ROOT / "docs/MODELS.md").read_text()
     table = text.split("<!-- model-profile-table:start -->")[1].split("<!-- model-profile-table:end -->")[0]
-    rows = [line.split(" | ") for line in table.strip().splitlines()[2:]]
-    expected = [["| `" + p["id"] + "`", p["label"], p["generator"], p["embed_rerank"],
-                 p["asr"], p["tradeoff"] + " |"] for p in load_profiles()["profiles"]]
-    assert rows == expected
+    rows = [[cell.strip() for cell in line.strip().strip("|").split("|")]
+            for line in table.strip().splitlines()[2:] if line.strip()]
+    profiles = load_profiles()["profiles"]
+    assert [row[0] for row in rows] == [f'`{p["id"]}`' for p in profiles]
+
+    models = json.loads((ROOT / "config/models.json").read_text())["models"]
+    generator_names = {name.casefold() for model in models if model["role"] == "generator"
+                       for name in (model["model_id"], model["model_id"].rsplit("/", 1)[-1])}
+    errors = []
+    if any(name in table.casefold() for name in generator_names):
+        errors.append("marked tier table names a catalog generator")
+    for row, profile in zip(rows, profiles, strict=True):
+        tier = profile["id"]
+        if len(row) != 5:
+            errors.append(f"{tier}: expected five usable-memory table columns")
+        detection = row[1]
+        # Detection bounds use explicit MiB values, independent of nominal hardware labels.
+        memory_bounds = [int(value.replace(",", "")) for value in
+                         re.findall(r"\b(\d[\d,]*)\s+MiB\b", detection)]
+        if profile["accelerator"] == "multi-gpu":
+            expected_bounds = [profile["min_device_vram_mib"]]
+            device_count = re.search(r"\b(\d+)\s+(?:cards|GPUs|devices)\b", detection)
+            if device_count is None or int(device_count[1]) != profile["min_devices"]:
+                errors.append(f"{tier}: device count differs from config")
+        else:
+            resource = "vram" if profile["accelerator"] == "gpu" else "ram"
+            expected_bounds = [profile[f"min_{resource}_mib"]]
+            maximum = profile.get(f"max_{resource}_mib")
+            if maximum is not None:
+                expected_bounds.append(maximum)
+        if memory_bounds != expected_bounds:
+            errors.append(f"{tier}: detection memory bounds differ from config")
+    assert errors == []

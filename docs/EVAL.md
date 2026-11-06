@@ -148,8 +148,18 @@ retriever.
 `--retriever postgres` runs the same search the workbench uses for a PostgreSQL
 index. Each passage is stored as one text unit. `HybridRetriever` then runs
 PostgreSQL full-text search, pgvector cosine search, reciprocal rank fusion,
-and the reranker, including the exact-record and temporal reorder used on that
-path. Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
+and the reranker. The exact-record refinement gives no clock precision to sections tagged
+`Email headers` by the extractor; their text and relevance ranking remain intact.
+All other passages retain their clocks, regardless of filename or field labels.
+An identifier match or at least half the query subject terms is required
+before clock precision or source authority can promote a passage. The temporal
+reorder then promotes subject-matching observations on the requested side of a
+clock cutoff. Both operate on existing candidates without changing retrieval
+budgets or source evidence. The deterministic fallback reranker drops a local
+stop-word list, balances shared terms across query clauses, and adds a small
+adjacent-pair bonus. Scores depend only on the query and candidate, never on the
+reranked slice. Both PostgreSQL lanes break ties by document and chunk identity.
+Set `CASE_REVIEW_POSTGRES_TEST_DSN` to a disposable database. The
 scorecard records the retriever name, index, embedder class, and reranker
 class. It does not record the connection string.
 
@@ -209,9 +219,11 @@ Configured mode uses the same environment as the workbench answer path. Set
 `CASE_INTELLIGENCE_GENERATOR_BACKEND` to `ollama` or `openai`,
 `CASE_INTELLIGENCE_GENERATOR_URL` to that service's origin, and
 `CASE_INTELLIGENCE_GENERATOR_MODEL` to a model the service lists. Optional
-`CASE_INTELLIGENCE_GENERATOR_API_KEY`, `CASE_INTELLIGENCE_GENERATOR_TIMEOUT`,
-and `CASE_INTELLIGENCE_GENERATOR_DISABLE_THINKING` behave as they do for
-ordinary answers. See [model configuration](MODEL_CONFIGURATION.md).
+`CASE_INTELLIGENCE_GENERATOR_API_KEY` and `CASE_INTELLIGENCE_GENERATOR_TIMEOUT`
+behave as they do for ordinary answers. Ordinary assistant answers think on;
+internal extraction always sends thinking false. See
+[model configuration](MODEL_CONFIGURATION.md) and the separate
+[question-draft thinking setting](QUESTION_DRAFTS.md).
 
 ```console
 python -m case_intelligence.defense_eval --mode configured --output-dir /tmp/defense-eval-model
