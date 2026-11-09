@@ -58,6 +58,7 @@
   "case_intelligence.evaluation": "evals",
   "case_intelligence.evidence_graph": "modules.insight",
   "case_intelligence.evidence_graph_routes": "app_shell",
+  "case_intelligence.exact_arithmetic": "modules.answers",
   "case_intelligence.exact_search": "modules.retrieval",
   "case_intelligence.exact_search_results": "modules.retrieval",
   "case_intelligence.extended_extract": "core.sources",
