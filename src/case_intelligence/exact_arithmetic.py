@@ -246,7 +246,7 @@ def verify_calculations(records: tuple[CalculationRecord, ...], *,
     seen = set()
     try:
         for record in records:
-            if (not isinstance(record, CalculationRecord)
+            if (not isinstance(record, CalculationRecord) or type(record.inputs) is not tuple
                     or not isinstance(record.calculation_id, str)
                     or not re.fullmatch(r"C[1-9][0-9]*", record.calculation_id)
                     or record.calculation_id in seen):
@@ -260,4 +260,40 @@ def verify_calculations(records: tuple[CalculationRecord, ...], *,
                 return False
     except (CalculationError, TypeError, AttributeError):
         return False
+    return True
+
+
+def verify_claim_numbers(text: str, source_numbers: set[str], number_pattern: re.Pattern[str], *,
+                         calculation_ids: object = (), records: tuple[CalculationRecord, ...] = (),
+                         cited_ids: frozenset[str] = frozenset(),
+                         stored_text: StoredText | None = None,
+                         opened_ids: set[str] | None = None) -> bool:
+    """Extend printed-number support only through linked, rechecked calculations."""
+    if (not isinstance(calculation_ids, (list, tuple))
+            or any(not isinstance(identifier, str) for identifier in calculation_ids)
+            or len(set(calculation_ids)) != len(calculation_ids)
+            or not verify_calculations(records, stored_text=stored_text, opened_ids=opened_ids)):
+        return False
+    by_id = {record.calculation_id: record for record in records}
+    results = set()
+    for identifier in calculation_ids:
+        record = by_id.get(identifier)
+        if record is None or any(item.evidence_id not in cited_ids for item in record.inputs):
+            return False
+        results.add(Fraction(record.exact_value))
+    whole_numbers = tuple(re.finditer(r"[+-]?(?:\.[0-9]+|[0-9][0-9,.:/-]*[0-9]|[0-9])", text))
+    for match in number_pattern.finditer(text):
+        number = match.group()
+        if number in source_numbers:
+            continue
+        number = next((whole.group() for whole in whole_numbers
+                       if whole.start() <= match.start() and whole.end() >= match.end()), "")
+        if not re.fullmatch(rf"[+-]?(?:{_NUMBER}|[0-9]+/[0-9]+|"
+                            r"[0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]+)?)", number):
+            return False
+        try:
+            if Fraction(number.replace(",", "")) not in results:
+                return False
+        except (ValueError, ZeroDivisionError):
+            return False
     return True

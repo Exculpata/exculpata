@@ -18,6 +18,7 @@ from .answer_presentation import (
     GENERATED_ANSWER_INTRODUCTION,
     GENERATED_TRANSCRIPT_INTRODUCTION,
 )
+from .exact_arithmetic import CalculationRecord, StoredText, verify_claim_numbers
 from .review_budget import DEFAULT_REVIEW_BUDGET
 from .question_generation import (
     QuestionGenerationProfile, generate_question_draft, question_profile_from_environment,
@@ -208,6 +209,8 @@ ANSWER_SCHEMA: dict[str, object] = {
                 "additionalProperties": False,
                 "required": ["text", "evidence_ids"],
                 "properties": {
+                    "calculation_ids": {"type": "array", "uniqueItems": True,
+                                        "items": {"type": "string", "pattern": "^C[1-9][0-9]*$"}},
                     "text": {"type": "string", "minLength": 1, "maxLength": 800},
                     "evidence_ids": {
                         "type": "array",
@@ -851,7 +854,10 @@ def _tokens(value: str) -> tuple[str, ...]:
     return tuple(_TOKEN.findall(value.casefold()))
 
 
-def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, EvidenceItem]) -> VerifiedClaim | None:
+def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, EvidenceItem], *,
+                 calculation_ids: object = (), calculations: tuple[CalculationRecord, ...] = (),
+                 stored_text: StoredText | None = None, opened_ids: set[str] | None = None,
+                 verified_ids: frozenset[str] = frozenset()) -> VerifiedClaim | None:
     if not isinstance(text, str):
         return None
     normalized = " ".join(text.split()).strip()
@@ -892,7 +898,10 @@ def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, Evid
         if " ".join(quoted.casefold().split()) not in " ".join(source_text.split()):
             return None
     source_numbers = set(_NUMBER.findall(source_text))
-    if any(number not in source_numbers for number in _NUMBER.findall(normalized.casefold())):
+    if not verify_claim_numbers(normalized.casefold(), source_numbers, _NUMBER,
+                                calculation_ids=calculation_ids, records=calculations,
+                                cited_ids=frozenset(identifiers) | verified_ids,
+                                stored_text=stored_text, opened_ids=opened_ids):
         return None
     claim_tokens = _tokens(coverage_text)
     claim_terms = [
@@ -1357,7 +1366,9 @@ class GroundedGenerationService:
             self._admission.release()
 
     @staticmethod
-    def _verify(raw: Mapping[str, object], evidence: Sequence[EvidenceItem], elapsed_ms: int, *, strict_originals: bool = False) -> VerifiedAnswer:
+    def _verify(raw: Mapping[str, object], evidence: Sequence[EvidenceItem], elapsed_ms: int, *,
+                strict_originals: bool = False, calculations: tuple[CalculationRecord, ...] = (),
+                stored_text: StoredText | None = None, opened_ids: set[str] | None = None) -> VerifiedAnswer:
         if set(raw) != {"answerable", "claims", "limitation", "missing_information"}:
             raise GenerationRejected("The generated answer did not match the required structure.")
         answerable = raw.get("answerable")
@@ -1385,10 +1396,13 @@ class GroundedGenerationService:
         omitted = 0
         duplicates = 0
         for value in claims:
-            if not isinstance(value, dict) or set(value) != {"text", "evidence_ids"}:
+            if not isinstance(value, dict) or set(value) not in ({"text", "evidence_ids"}, {"text", "evidence_ids", "calculation_ids"}):
                 omitted += 1
                 continue
-            claim = _verify_text(value.get("text"), value.get("evidence_ids"), evidence_map)
+            claim = _verify_text(value.get("text"), value.get("evidence_ids"), evidence_map,
+                                 calculation_ids=value.get("calculation_ids", ()), calculations=calculations,
+                                 stored_text=stored_text, opened_ids=opened_ids,
+                                 verified_ids=frozenset(i for claim in accepted for i in claim.evidence_ids))
             if strict_originals:
                 claim = _exact_original_span(claim, evidence_map)
             if claim is None:

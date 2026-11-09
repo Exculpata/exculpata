@@ -1,4 +1,4 @@
-"""Synthetic contracts for the standalone calculator and source-bound records."""
+"""Synthetic contracts for exact calculations and generation verification."""
 
 from dataclasses import replace
 from decimal import Decimal, localcontext
@@ -9,6 +9,10 @@ import pytest
 from case_intelligence.exact_arithmetic import (
     BoundInput, CalculationError, Calculator, MAX_DEPTH, MAX_LENGTH,
     bind_input, verify_calculations,
+)
+from case_intelligence.generation import (
+    ANSWER_SCHEMA, EvidenceItem, GenerationGroundingRejected,
+    GroundedGenerationService, _verify_text,
 )
 
 
@@ -165,3 +169,200 @@ def test_canonical_expression_stays_inside_length_cap():
     record = Calculator().calculate("+".join(["1"] * (MAX_LENGTH // 2)))
     assert record.exact_value == Decimal(MAX_LENGTH // 2)
     assert verify_calculations((record,), stored_text=source, opened_ids=set())
+
+
+@pytest.fixture
+def calculation_case():
+    texts = {"S1": "Combined holdings were 13 shares.",
+             "S2": "Combined holdings were 125 shares."}
+    inputs = tuple(bind_input(name, Decimal(number), identifier,
+                              (text.index(number), text.index(number) + len(number)), number,
+                              stored_text=texts.__getitem__, opened_ids=set(texts))
+                   for name, number, identifier in (("held", "13", "S1"), ("total", "125", "S2"))
+                   for text in (texts[identifier],))
+    record = Calculator(stored_text=texts.__getitem__, opened_ids=set(texts)).calculate(
+        "percent(held, total)", inputs)
+    evidence = {key: EvidenceItem(key, "Synthetic filing", "page 1", text)
+                for key, text in texts.items()}
+    return evidence, dict(calculations=(record,), stored_text=texts.__getitem__,
+                         opened_ids=set(texts))
+
+
+def calculation_claim(text="Combined holdings were 10.4%.", ids=None, **extra):
+    return dict(text=text, evidence_ids=["S1", "S2"] if ids is None else ids, **extra)
+
+
+def verify_answer(claims, evidence, **context):
+    return GroundedGenerationService._verify(
+        dict(answerable=True, claims=claims, limitation=None, missing_information=""),
+        tuple(evidence.values()), 0, **context)
+
+
+def test_generation_calculation_number_delegation(calculation_case):
+    evidence, context = calculation_case
+    claim = calculation_claim(calculation_ids=["C1"])
+    assert _verify_text(**claim, evidence=evidence, **context) is not None
+    assert verify_answer([claim], evidence, **context).claims[0].text == claim["text"]
+
+
+@pytest.mark.parametrize("extra", [{}, {"calculation_ids": []}])
+def test_generation_defaults_preserve_existing_claims(calculation_case, extra):
+    evidence, _ = calculation_case
+    claim = calculation_claim("Combined holdings were 13 shares.", ["S1"], **extra)
+    assert _verify_text(**claim, evidence=evidence) is not None
+    assert verify_answer([claim], evidence).omitted_claims == 0
+    unsupported = calculation_claim(**extra)
+    assert _verify_text(**unsupported, evidence=evidence) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([unsupported], evidence)
+
+
+@pytest.mark.parametrize("ids", [[], ["C2"], ["invalid"], ["C0"], [1], "C1", None,
+                                      ["C1", "C1"], [["C1"]]])
+def test_generation_requires_valid_resolved_calculation_ids(calculation_case, ids):
+    evidence, context = calculation_case
+    claim = calculation_claim(calculation_ids=ids)
+    assert _verify_text(**claim, evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([claim], evidence, **context)
+
+
+def test_generation_run_level_result_without_claim_link_is_refused(calculation_case):
+    evidence, context = calculation_case
+    assert _verify_text(**calculation_claim(), evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([calculation_claim()], evidence, **context)
+
+
+@pytest.mark.parametrize("earlier", [True, False])
+def test_generation_only_earlier_verified_claims_supply_input_citations(calculation_case, earlier):
+    evidence, context = calculation_case
+    support = calculation_claim("Combined holdings were 125 shares.", ["S2"])
+    result = calculation_claim(ids=["S1"], calculation_ids=["C1"])
+    answer = verify_answer([support, result] if earlier else [result, support], evidence, **context)
+    assert [claim.text for claim in answer.claims] == (
+        [support["text"], result["text"]] if earlier else [support["text"]])
+    assert answer.omitted_claims == (0 if earlier else 1)
+
+
+def test_generation_rejected_claim_cannot_supply_input_citations(calculation_case):
+    evidence, context = calculation_case
+    rejected = calculation_claim("Unrelated fabricated statement 999.", ["S2"])
+    result = calculation_claim(ids=["S1"], calculation_ids=["C1"])
+    assert _verify_text(**result, evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([rejected, result], evidence, **context)
+
+
+@pytest.mark.parametrize("missing", ["stored_text", "opened_ids", "both"])
+def test_generation_records_require_source_context(calculation_case, missing):
+    evidence, context = calculation_case
+    for key in ("stored_text", "opened_ids") if missing == "both" else (missing,):
+        context.pop(key)
+    claim = calculation_claim(calculation_ids=["C1"])
+    assert _verify_text(**claim, evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([claim], evidence, **context)
+
+
+@pytest.mark.parametrize("mutation", ["span", "value", "exact", "display", "unopened", "raw"])
+def test_generation_rebinds_and_recomputes_records(calculation_case, mutation):
+    evidence, context = calculation_case
+    record = context["calculations"][0]
+    if mutation in {"span", "value"}:
+        changes = {"span": (0, 2)} if mutation == "span" else {"value": Decimal(14)}
+        record = replace(record, inputs=(replace(record.inputs[0], **changes), record.inputs[1]))
+    elif mutation == "exact":
+        record = replace(record, exact_value=Decimal("10.4") + 1)
+    elif mutation == "display":
+        record = replace(record, display_value="10.40")
+    elif mutation == "unopened":
+        context["opened_ids"] = {"S1"}
+    else:
+        context["stored_text"] = {"S1": "changed", "S2": evidence["S2"].excerpt}.__getitem__
+    context["calculations"] = (record,)
+    claim = calculation_claim(calculation_ids=["C1"])
+    assert _verify_text(**claim, evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([claim], evidence, **context)
+
+
+@pytest.mark.parametrize("expression,number,accepted", [
+    ("10.4", "10.400", True), ("1/3", "1/3", True), ("1/3", "0.3333", False),
+    ("10.4", "10.5", False), ("10.4", "-10.4", False), ("-10.4", "-10.4", True),
+])
+def test_generation_exact_or_display_without_silent_rounding(calculation_case, expression, number, accepted):
+    evidence, context = calculation_case
+    context["calculations"] = (Calculator().calculate(expression),)
+    claim = calculation_claim(f"Combined holdings were {number}%.", calculation_ids=["C1"])
+    assert (_verify_text(**claim, evidence=evidence, **context) is not None) is accepted
+    if accepted:
+        assert verify_answer([claim], evidence, **context).omitted_claims == 0
+    else:
+        with pytest.raises(GenerationGroundingRejected):
+            verify_answer([claim], evidence, **context)
+
+
+@pytest.mark.parametrize("text", [
+    "Combined holdings were not 10.4%.", "Unrelated invented assets reached 10.4%.",
+    'Combined holdings were "10.4% holdings".',
+])
+def test_generation_calculations_preserve_other_text_checks(calculation_case, text):
+    evidence, context = calculation_case
+    claim = calculation_claim(text, calculation_ids=["C1"])
+    assert _verify_text(**claim, evidence=evidence, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([claim], evidence, **context)
+
+
+def test_generation_calculations_preserve_citation_and_structure_checks(calculation_case):
+    evidence, context = calculation_case
+    claim = calculation_claim(calculation_ids=["C1"])
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([claim], evidence, strict_originals=True, **context)
+    for ids in ([], ["S1", "S1"], ["S1", "S2", "S3", "S4", "S5"]):
+        assert _verify_text(**dict(claim, evidence_ids=ids), evidence=evidence, **context) is None
+    mixed = dict(evidence, S2=replace(evidence["S2"], evidence_kind="transcript"))
+    assert _verify_text(**claim, evidence=mixed, **context) is None
+    with pytest.raises(GenerationGroundingRejected):
+        verify_answer([dict(claim, unexpected=True)], evidence, **context)
+
+
+def test_generation_schema_calculation_ids_are_optional():
+    claim_schema = ANSWER_SCHEMA["properties"]["claims"]["items"]
+    assert claim_schema["required"] == ["text", "evidence_ids"]
+    assert claim_schema["additionalProperties"] is False
+    ids = claim_schema["properties"]["calculation_ids"]
+    assert ids["type"] == "array"
+    assert ids["items"]["type"] == "string"
+
+
+@pytest.mark.parametrize("expressions,number,accepted", [
+    (("10", "400"), "10,400", False), (("10400",), "10,400", True),
+    (("0", "3"), "0,3", False), (("10400.5",), "10,400.5", True),
+])
+def test_generation_compares_whole_grouped_numbers(calculation_case, expressions, number, accepted):
+    evidence, context = calculation_case
+    calculator = Calculator()
+    context["calculations"] = tuple(calculator.calculate(value) for value in expressions)
+    claim = calculation_claim(f"Combined holdings were {number} shares.",
+                              calculation_ids=[record.calculation_id for record in context["calculations"]])
+    assert (_verify_text(**claim, evidence=evidence, **context) is not None) is accepted
+    if accepted:
+        assert verify_answer([claim], evidence, **context).omitted_claims == 0
+    else:
+        with pytest.raises(GenerationGroundingRejected):
+            verify_answer([claim], evidence, **context)
+
+
+@pytest.mark.parametrize("answer_entry", [False, True])
+def test_generation_consumable_inputs_cannot_hide_uncited_sources(calculation_case, answer_entry):
+    evidence, context = calculation_case
+    record = context["calculations"][0]
+    context["calculations"] = (replace(record, inputs=iter(record.inputs)),)
+    claim = calculation_claim(ids=["S1"], calculation_ids=["C1"])
+    if answer_entry:
+        with pytest.raises(GenerationGroundingRejected):
+            verify_answer([claim], evidence, **context)
+    else:
+        assert _verify_text(**claim, evidence=evidence, **context) is None
