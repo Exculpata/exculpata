@@ -232,6 +232,7 @@
       <p data-source-byte-comparison>{% if source_library.comparison_available %}Files with identical bytes to the selected source. Each source keeps its own collection and source references.{% else %}This comparison is unavailable. The source may have been removed or changed.{% endif %} <a href="{{ library_url(1, same_content='') }}">Leave comparison</a></p>
       {% endif %}
       <nav class="source-library-tools" aria-label="Search and screening">
+        <a class="button button-secondary" href="/matters/{{ matter.slug }}/production">Production documents</a>
         <p><a href="/matters/{{ matter.slug }}/exact-search?collection={{ source_library.collection_id|urlencode }}&amp;source_set={{ source_library.source_set_id|urlencode }}">Search document contents</a> across this selection. The filter below matches filenames and folders.</p>
         <a class="button button-secondary" href="/matters/{{ matter.slug }}/full-review#review-controls" title="Apply one saved rule to every searchable source, with progress and resume controls">Find records matching a rule</a>
       </nav>

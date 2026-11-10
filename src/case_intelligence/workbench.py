@@ -1806,6 +1806,16 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
             ) from exc
 
         try:
+            from .modules.registry import REGISTERED
+            for module in REGISTERED:
+                if module.purge_hook is not None:
+                    current_authority()
+                    module.purge_hook(matter_root, matter.matter_id)
+        except Exception as exc:
+            self.workspace.fail_matter_purge(matter.matter_id, purge_id, "storage")
+            raise WorkspaceProblem("Matter deletion stopped while removing review files. Try the deletion again.") from exc
+
+        try:
             current_authority()
             if source_root.is_symlink() or matter_root.is_symlink():
                 raise RuntimeError("matter storage is unsafe")
@@ -14112,6 +14122,23 @@ def create_workbench_app(
                                       auth_context=auth_context, templates=templates, base_context=base_context,
                                       audit=audit, require_response_lease=require_matter_response_lease,
                                       transfer_response_lease=transfer_matter_response_lease)
+    from .modules import ModuleContext, ModuleDatabase
+    from .modules.registry import REGISTERED
+    def module_ensure_capacity(n: int) -> None:
+        """No module calls this yet; callers must hold no database, reservation or package lock."""
+        with bench._storage_reservation_lock:
+            bench.storage.ensure_capacity(bench.workspace.pending_upload_bytes() + bench._playback_reserved_bytes() + n)
+    module_context = ModuleContext(
+        db=ModuleDatabase(bench.workspace.connection, bench.workspace._lock),
+        membership=bench.workspace.membership, source_store=bench.source_store,
+        matters_root=bench.storage.matters, scanner=bench.malware_scanner,
+        scan_mode=bench.malware_scan_mode, ensure_capacity=module_ensure_capacity)
+    for module in REGISTERED:
+        if module.route_hook is not None:
+            module.route_hook(app, context=module_context, authorized_matter=authorized_matter,
+                              auth_context=auth_context, templates=templates, base_context=base_context,
+                              require_response_lease=require_matter_response_lease,
+                              transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes
     install_evidence_graph_routes(app, assertions_for=bench.assertion_service,
                                   authorized_matter=authorized_matter, auth_context=auth_context,

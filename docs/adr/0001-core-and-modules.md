@@ -33,8 +33,9 @@ include blank and comment lines. Cyclic components here have more than one modul
 
 The core owns shared authority, records and lifecycle contracts. Feature modules
 use those contracts. The application shell composes them. The following map
-names target boundaries using current files; it does not claim these packages or
-the registry already exist. Names below are relative to `case_intelligence`
+names target boundaries using current files; most core packages remain an
+extraction target, while the registry now mounts its first module.
+Names below are relative to `case_intelligence`
 unless another path is given. Specific entries such as `timeline_exports` take
 precedence over broader families such as `timeline_*`.
 
@@ -44,7 +45,8 @@ precedence over broader families such as `timeline_*`.
 | `core.access` | Identity and authorization: `identity*`, `local_account*`, `local_login*`, `case_oidc`, `oidc_*`, `team_groups`, `isolation`, `header_policy`. |
 | `core.lifecycle` | Retention, deletion, recovery and durable jobs: `case_lifecycle*`, `lifecycle`, `matter_archive*`, `managed_storage`, retention/purge paths, `jobs`. |
 | `core.sources` | Intake, extraction, original references and exact search: `ingestion`, `pilot_uploads`, `pilot_source_access`, `intake_receipts`, `malware_scan`, `*_preflight`, `derived_text`, `text_records`, `source_*`, `pdf_*`, `docx_*`, `ocr_*`, `exact_search*`, `source_find`. |
-| `core.contracts` | Shared validation and stable naming: `contracts`, `legacy_names`, `compat_env`, `branding`, and the core citation-resolution contract (`cite()`). |
+| `core.contracts` | Shared validation and stable naming: `contracts`, `legacy_names`, `compat_env`, `branding`, the stdlib-only `modules` contract (`ModuleContext`, `RouteHook`, `PurgeHook`), and the core citation-resolution contract (`cite()`). |
+| Module: discovery_review | `modules/discovery_review`: authorized document count page and derived render-cache purge hook. |
 | Module: transcription | `services/transcription`, `media_*`, `transcript_search`, `video_frame_ocr`. Transcription already has a separate service. |
 | Module: retrieval | `retrieval*`, `embedding_index`, `unit_stream`. |
 | Module: answers | `generation`, `generator_*`, `external_generator`, `answer_*`, `question_*`, `ask_router`. |
@@ -52,7 +54,7 @@ precedence over broader families such as `timeline_*`.
 | Module: workflows | `full_text_*`, `hierarchical_synthesis`, `workflow_jobs`, `review_*`, `investigation_planner`, `deeper_investigation`. |
 | Module: deliverables | `work_product_exports`, `report_*`, `full_review_exports`, `timeline_exports`, `model_export_notes`. |
 | Evals, development only | `defense_eval`, `tier_evals`, `evaluation`, `*_gold`, `review_bench*`, `slice1_*`, `claim_evaluation`. |
-| Application shell | `workbench`, `app_context`, `cli`, routes and composition. The only runtime layer permitted to import all layers. |
+| Application shell | `workbench`, `app_context`, `cli`, `modules.registry`, routes and composition. The only runtime layer permitted to import all layers. |
 
 The core retains matter authorization, source identity, citations, human versus
 machine provenance, durable work, retention, exports and audit authority. Modules
@@ -118,9 +120,17 @@ static dependency or resolve this cycle.
 ## Extension mechanism
 
 Choose **A, an internal registry**, as the first implementation direction:
-`case_intelligence/modules/<name>` exports a `Module` object, and the application
-shell imports a fixed, reviewed list. No packaging change or dynamic discovery is
-required for that first step. This ADR implements no registry.
+`case_intelligence.modules` defines the shared contract; `modules.registry` in
+the application shell holds a fixed, reviewed list of `Module` objects. The first
+registered module lives at `case_intelligence/modules/discovery_review`. One
+generic step in `create_workbench_app` mounts route hooks with a frozen
+`ModuleContext` and existing authorization and response-lease helpers. The context
+borrows the application connection and lock, membership and source-store access,
+storage root, scanner and scan mode. Its capacity closure accounts for pending
+upload and playback reservations under the shared reservation lock; this slice
+has no caller or render writes. One generic step in `execute_matter_purge` invokes
+purge hooks after clip cleanup and records storage failure if a hook raises.
+No packaging change or dynamic discovery is required.
 
 Keep the `Module` contract compatible with **B, Python entry points**, for later
 out-of-tree extensions: `[project.entry-points."exculpata.modules"]` could be read

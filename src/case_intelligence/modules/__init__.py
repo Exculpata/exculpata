@@ -2,11 +2,48 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from pathlib import Path
+from sqlite3 import Connection
+from typing import Any, Protocol
 
 
 ModuleHook = Callable[..., object]
+PurgeHook = Callable[[Path, str], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleDatabase:
+    """Borrow the application's connection and transaction lock."""
+
+    connection: Connection
+    lock: AbstractContextManager
+
+
+@dataclass(frozen=True, slots=True)
+class ModuleContext:
+    """Shared capabilities; modules do not acquire application authority."""
+
+    db: ModuleDatabase
+    membership: Callable[[str, str], Any]
+    source_store: Callable[[Any], Any]
+    matters_root: Path
+    scanner: Any
+    scan_mode: str
+    ensure_capacity: Callable[[int], None]
+
+
+class RouteHook(Protocol):
+    def __call__(
+        self, app: Any, *, context: ModuleContext,
+        authorized_matter: Callable[[Any, str], Any],
+        auth_context: Callable[[Any], Any], templates: Any,
+        base_context: Callable[..., dict[str, Any]],
+        require_response_lease: Callable[..., Iterator[None]],
+        transfer_response_lease: Callable[..., Any],
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +54,8 @@ class Module:
     version: str
     layer: str
     hooks: tuple[ModuleHook, ...] = ()
+    route_hook: RouteHook | None = None
+    purge_hook: PurgeHook | None = None
 
 
-__all__ = ["Module", "ModuleHook"]
+__all__ = ["Module", "ModuleContext", "ModuleDatabase", "ModuleHook", "RouteHook", "PurgeHook"]
