@@ -1,0 +1,7 @@
+.discovery-review { color: var(--x-text); }
+.discovery-review-count {
+  padding: 1rem;
+  background: var(--x-panel);
+  border: 1px solid var(--x-border);
+  font-variant-numeric: tabular-nums;
+}
