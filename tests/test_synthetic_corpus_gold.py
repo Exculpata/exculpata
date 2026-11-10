@@ -1,17 +1,14 @@
 """Synthetic generator acceptance, including real artifact and eval boundaries."""
 import csv
-import gc
 import hashlib
 import json
 import os
-import subprocess
-import sys
 import threading
 import tracemalloc
 from decimal import Decimal
 from email import policy
 from email.parser import BytesParser
-from pathlib import Path
+from functools import partial
 
 import pytest
 from pypdf import PdfReader
@@ -19,6 +16,13 @@ from pypdf import PdfReader
 from case_intelligence import fraud_case_gold as fraud
 from case_intelligence.synthetic_corpus_gold import SCALES, generate
 from case_intelligence import defense_eval as ev
+from tests.streaming_memory import (
+    assert_flat_peaks as _assert_flat_peaks,
+    streaming_peaks,
+)
+
+
+_streaming_peaks = partial(streaming_peaks, module=__name__)
 
 
 def rows(root, name):
@@ -124,47 +128,6 @@ def test_patterns_are_real_transactions(tmp_path):
         if kind in {'fan_in', 'fan_out'}:
             field = 'to_account_id' if kind == 'fan_in' else 'from_account_id'
             assert len(hops) >= 3 and len({t[field] for t in hops}) == 1
-
-
-def _streaming_peak(tmp_path, count, generator):
-    generator(tmp_path / f'warm-{count}', filler_chunks=20)
-    gc.collect()
-    tracemalloc.start()
-    try:
-        tracemalloc.reset_peak()
-        generator(tmp_path / f'measured-{count}', filler_chunks=count)
-        return tracemalloc.get_traced_memory()[1]
-    finally:
-        tracemalloc.stop()
-
-
-def _streaming_peaks(tmp_path, generator):
-    child = '''
-import json
-import sys
-from pathlib import Path
-from tests import test_synthetic_corpus_gold as tests
-
-peak = tests._streaming_peak(
-    Path(sys.argv[1]), int(sys.argv[2]), getattr(tests, sys.argv[3]),
-)
-print(json.dumps(peak))
-'''
-    peaks = []
-    for count in (1000, 4000):
-        result = subprocess.run(
-            [sys.executable, '-c', child, str(tmp_path), str(count), generator.__name__],
-            cwd=Path(__file__).resolve().parents[1],
-            capture_output=True, text=True, check=True, timeout=60,
-        )
-        peaks.append(json.loads(result.stdout))
-    return peaks
-
-
-def _assert_flat_peaks(peaks):
-    # 4x records must stay flat: allow 25% or 256 KB of allocator noise,
-    # well below the growth from buffering 1000 versus 4000 chunk records.
-    assert peaks[1] <= max(peaks[0] * 1.25, peaks[0] + 256_000), peaks
 
 
 def _generate_buffered(out, *, filler_chunks):
