@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Production documents (under Review) is now a review list: every item with its
+  Bates range, custodian and other load-file fields when a CSV or TSV load file
+  is stored in the matter, the selected item open beside the list (document,
+  extracted text or fields), keyboard movement, one filter box and sortable
+  columns. Reviewers choose their own columns and fields or set a starting view
+  for the matter; the standard set lives in one field definition. Email fields
+  show only on email items. See [Discovery review](docs/DISCOVERY_REVIEW.md).
+
 - Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
   and source-coverage rows plus coverage/schema columns. Importers must select
   `row_type == 'citation'` when importing timeline citations. Exact totals are

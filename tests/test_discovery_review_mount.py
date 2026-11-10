@@ -43,16 +43,10 @@ def test_mount_count_and_navigation(review, monkeypatch):
             response = client.post(f"/matters/{slug}/uploads", files={"files": (name, b"Synthetic record", "text/plain")})
             assert response.status_code == 200
     context = captured["context"]
-    store = context.source_store(matter)
-    calls = []
-    original = store.document_count
-    def count():
-        calls.append(matter.matter_id)
-        return original()
-    monkeypatch.setattr(store, "document_count", count)
     page = client.get(url)
     assert page.status_code == 200 and "2 documents" in page.text
-    assert calls == [matter.matter_id]
+    assert "neighbor.txt" not in page.text
+    assert f'href="/matters/{matter.slug}/setup?view=list&amp;page_size=100#source-library">Back to Review' in page.text
     assert "1 document" in client.get(f"/matters/{other_slug}/production").text
     links = navigation(page.text, "Matter workspace sections")
     assert [link["text"] for link in links] == DESTINATIONS
@@ -119,6 +113,22 @@ def test_reservation_aware_capacity(review, monkeypatch):
     with pytest.raises(RuntimeError, match="capacity"):
         context.ensure_capacity(51)
     assert not held
+    for invalid in (-1, True, 1.5, "1"):
+        with pytest.raises(ValueError, match="byte count"):
+            context.ensure_capacity(invalid)
+    assert not held
+
+
+def test_capacity_subtracts_the_configured_reserve_under_the_real_lock(review, monkeypatch):
+    _, bench, _, captured = review
+    monkeypatch.setattr(bench.storage, "policy", replace(bench.storage.policy, reserve_bytes=10))
+    monkeypatch.setattr(bench.workspace, "pending_upload_bytes", lambda: 30)
+    monkeypatch.setattr(bench, "_playback_reserved_bytes", lambda: 20)
+    monkeypatch.setattr(managed_storage.shutil, "disk_usage",
+                        lambda path: SimpleNamespace(total=1000, used=900, free=100))
+    captured["context"].ensure_capacity(40)
+    with pytest.raises(RuntimeError, match="capacity"):
+        captured["context"].ensure_capacity(41)
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -156,11 +166,15 @@ def test_execute_purge_hook_and_failure(review, monkeypatch, fails):
 
 def test_purge_is_idempotent_and_refuses_symlinks(tmp_path):
     from case_intelligence.modules.discovery_review.purge import purge_hook
-    root = tmp_path / "synthetic-matter"
+    root = tmp_path / ("ci-matter-" + "0" * 32)
     root.mkdir()
     sources = root / "sources"
     sources.mkdir()
     purge_hook(root, root.name)
+    for malformed in ("ci-matter-short", "../ci-matter-" + "0" * 32, ""):
+        with pytest.raises(RuntimeError, match="unsafe"):
+            purge_hook(root, malformed)
+    assert sources.is_dir()
     cache = root / "review-render-cache"
     cache.symlink_to(sources, target_is_directory=True)  # fixture-write: synthetic unsafe cache
     with pytest.raises(RuntimeError):

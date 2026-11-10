@@ -268,7 +268,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         for name in ('0034_evidence_assertions.sql', '0035_matter_context_selection.sql',
                      '0036_answer_context.sql', '0037_automatic_entity_discovery.sql', '0038_matter_purpose.sql',
-                     '0044_witness_inconsistency.sql'):
+                     '0044_witness_inconsistency.sql', '0045_discovery_review_view.sql'):
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         from .appearance import migrate_appearance
@@ -2198,6 +2198,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute('DELETE FROM workbench_matter_purpose WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_context_selection WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_witness_inconsistency_review WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_view WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_assertion WHERE matter_id=?', (matter_id,))
             self.connection.execute(
                 "DELETE FROM workbench_entity WHERE matter_id=?", (matter_id,)

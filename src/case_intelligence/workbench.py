@@ -14125,7 +14125,8 @@ def create_workbench_app(
     from .modules import ModuleContext, ModuleDatabase
     from .modules.registry import REGISTERED
     def module_ensure_capacity(n: int) -> None:
-        """No module calls this yet; callers must hold no database, reservation or package lock."""
+        if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+            raise ValueError("module capacity request must be a non-negative byte count")
         with bench._storage_reservation_lock:
             bench.storage.ensure_capacity(bench.workspace.pending_upload_bytes() + bench._playback_reserved_bytes() + n)
     module_context = ModuleContext(
@@ -14136,7 +14137,9 @@ def create_workbench_app(
     for module in REGISTERED:
         if module.route_hook is not None:
             module.route_hook(app, context=module_context, authorized_matter=authorized_matter,
-                              auth_context=auth_context, templates=templates, base_context=base_context,
+                              auth_context=auth_context, require_csrf=require_csrf,
+                              require_csrf_header=require_csrf_header, templates=templates,
+                              base_context=base_context, audit=audit,
                               require_response_lease=require_matter_response_lease,
                               transfer_response_lease=transfer_matter_response_lease)
     from .evidence_graph_routes import install_evidence_graph_routes

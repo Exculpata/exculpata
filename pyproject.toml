@@ -52,6 +52,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 case_intelligence = [
   "config/model_qualifications*.json",
+  "config/discovery_review_fields.json",
   "_idna/*.pyz",
   "_idna/*.json",
   "_idna/*.md",

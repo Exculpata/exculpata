@@ -144,6 +144,8 @@
   [["GET"], "/matters/{slug}/production-summary"],
   [["GET"], "/matters/{slug}/production-summary/export"],
   [["GET"], "/matters/{slug}/production"],
+  [["GET"], "/matters/{slug}/production/items/{token}"],
+  [["POST"], "/matters/{slug}/production/view"],
   [["GET"], "/matters/{slug}/connections"],
   [["GET"], "/matters/{slug}/purpose"],
   [["PUT"], "/matters/{slug}/purpose"],

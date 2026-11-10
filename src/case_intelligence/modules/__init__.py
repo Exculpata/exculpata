@@ -24,7 +24,13 @@ class ModuleDatabase:
 
 @dataclass(frozen=True, slots=True)
 class ModuleContext:
-    """Shared capabilities; modules do not acquire application authority."""
+    """Shared capabilities; modules do not acquire application authority.
+
+    ``ensure_capacity`` checks protected disk capacity together with admitted
+    upload, playback and archive-staging reservations. It takes the storage
+    reservation lock before the database lock, so callers must hold neither
+    ``db.lock`` nor a module lock when they call it.
+    """
 
     db: ModuleDatabase
     membership: Callable[[str, str], Any]
@@ -39,7 +45,9 @@ class RouteHook(Protocol):
     def __call__(
         self, app: Any, *, context: ModuleContext,
         authorized_matter: Callable[[Any, str], Any],
-        auth_context: Callable[[Any], Any], templates: Any,
+        auth_context: Callable[[Any], Any],
+        require_csrf: Callable[..., Any], require_csrf_header: Callable[..., Any],
+        templates: Any, audit: Callable[..., None],
         base_context: Callable[..., dict[str, Any]],
         require_response_lease: Callable[..., Iterator[None]],
         transfer_response_lease: Callable[..., Any],

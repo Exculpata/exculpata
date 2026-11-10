@@ -98,6 +98,7 @@ workbench_case_purge_authority:purge_id,exit_id,mode,export_id,archive_digest,sn
 workbench_case_session_binding:session_id,binding_digest
 workbench_case_oidc_request:state_digest,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,created_at
 workbench_case_oidc_authorization:authorization_id,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,authenticated_at,expires_at,state,purge_id
+workbench_discovery_view:matter_id,scope,principal_id,columns,item_fields,updated_at
 """
 SCHEMA = {name: tuple(columns.split(',')) for name, columns in
           (line.split(':') for line in _SCHEMA.strip().splitlines())}
@@ -127,6 +128,7 @@ EXCLUDED_TABLES = {
     'workbench_case_oidc_authorization': 'Ephemeral SSO deletion authority and session bindings; excluded from archive and content snapshot',
     'workbench_job_matter_schedule': 'Operational scheduler position',
     'workbench_matter_activity': 'Ephemeral UI activity locators',
+    'workbench_discovery_view': 'Rebuildable review-list view choices (field keys only, no document content)',
 }
 # Child tables without matter_id have exactly one explicitly scoped parent.
 CHILD_SCOPES = {
