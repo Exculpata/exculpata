@@ -107,7 +107,7 @@ def test_open_item_views_fields_and_email_only_fields(production):
     email = client.get(base + token_for(bench, matter, "note.eml") + "?view=fields").text
     assert ">Email<" in email and "sender@example.test" in email and "Synthetic delivery note" in email
     memo = client.get(base + token_for(bench, matter, "memo.txt") + "?view=fields").text
-    assert "No Bates" in memo and "No load-file row is attached to this item." in memo
+    assert "No identifier" in memo and "No load-file row is attached to this item." in memo
     text = client.get(base + token_for(bench, matter, "ledger.txt") + "?view=text").text
     assert "Synthetic ledger line two." in text and "Text extracted by" in text
     # A view the item does not have falls back to one it has instead of a blank pane.
@@ -231,6 +231,49 @@ def test_load_file_rows_attach_only_when_unambiguous():
     assert len(short.rows) == 1 and "Line 3" in short.problem
 
 
+def test_team_identifiers_number_unlabelled_items_without_touching_produced_bates(production):
+    client, bench, matter = production
+    url = f"/matters/{matter.slug}/production"
+
+    def assign(**data):
+        response = client.post(url + "/identifiers", data=data, follow_redirects=False)
+        assert response.status_code == 303
+        return response.headers["location"].rsplit("notice=", 1)[1]
+
+    def team_ids():
+        page = client.get(url, params={"sort": "name"})
+        shown = headers(page.text)
+        if "Team ID" not in shown:
+            return {}
+        return {row[shown.index("Name")]: row[shown.index("Team ID")] for row in rows(page.text)}
+
+    assert team_ids() == {}  # the empty standard column stays out of the way
+    assert assign(prefix="9bad", start=1, digits=4) == "invalid"
+    assert assign(prefix="DEF", start=99, digits=2) == "invalid"  # two digits cannot hold item 100
+    assert assign(prefix="syn", start=10, digits=6) == "conflict"  # SYN000010 is a produced Bates number
+    assert team_ids() == {}
+    assert assign(prefix="DEF", start=1, digits=4, sort="name") == "assigned"
+    # Only the two items no load file names are numbered, in the listed (name) order.
+    assert team_ids() == {"ledger.txt": "", "load.csv": "DEF0001", "memo.txt": "DEF0002", "note.eml": ""}
+    memo = client.get(f"{url}/items/{token_for(bench, matter, 'memo.txt')}?view=fields").text
+    assert "DEF0002" in memo and "No identifier" not in memo
+    ledger = client.get(f"{url}/items/{token_for(bench, matter, 'ledger.txt')}?view=fields").text
+    assert "SYN000010 – SYN000012" in ledger and "DEF0" not in ledger
+    assert assign(prefix="DEF", start=1, digits=4) == "nothing"
+    assert assign(prefix="DEF", start=2, digits=4, include_produced="1") == "conflict"
+    assert assign(prefix="DEF", start=3, digits=4, include_produced="1", q="ledger") == "assigned"
+    assert team_ids()["ledger.txt"] == "DEF0003" and team_ids()["note.eml"] == ""
+    assert assign(action="clear") == "confirm"
+    assert team_ids()["memo.txt"] == "DEF0002"
+    assert assign(action="clear", confirm="1", q="memo") == "cleared"
+    assert team_ids() == {"ledger.txt": "DEF0003", "load.csv": "DEF0001", "memo.txt": "", "note.eml": ""}
+    count = "SELECT COUNT(*) FROM workbench_discovery_identifier WHERE matter_id=?"
+    assert bench.workspace.connection.execute(count, (matter.matter_id,)).fetchone()[0] == 2
+    prepared, lifecycle = claim_bench_exit(bench, matter)
+    assert bench.execute_matter_purge(prepared, lifecycle).state == "deleted"
+    assert bench.workspace.connection.execute(count, (matter.matter_id,)).fetchone()[0] == 0
+
+
 def test_review_reads_never_change_originals_and_deletion_leaves_no_view_state(production):
     client, bench, matter = production
     store = bench.source_store(matter)
@@ -253,5 +296,6 @@ def test_review_reads_never_change_originals_and_deletion_leaves_no_view_state(p
 
 
 def test_migration_mirror_matches_packaged_copy():
-    name = "migrations/sqlite/0045_discovery_review_view.sql"
-    assert (ROOT / name).read_bytes() == (ROOT / "src/case_intelligence" / name).read_bytes()
+    for name in ("0045_discovery_review_view.sql", "0046_discovery_review_identifier.sql"):
+        path = "migrations/sqlite/" + name
+        assert (ROOT / path).read_bytes() == (ROOT / "src/case_intelligence" / path).read_bytes()

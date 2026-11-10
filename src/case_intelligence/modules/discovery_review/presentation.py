@@ -54,20 +54,30 @@ def cell(definition: Definition, chosen: Field, item: Item) -> dict:
 def heading(definition: Definition, item: Item) -> dict:
     begin, end = (item.value(key) for key in definition.heading_range)
     label = f"{begin} – {end}" if begin and end and end != begin else begin
+    label = label or (item.value(definition.heading_fallback) if definition.heading_fallback else "")
     return {"label": label or definition.heading_missing, "missing": not label,
             "title": item.value(definition.heading_title)}
+
+
+def ordered(definition: Definition, index: Index, choice: Choice, *, q: str, sort: str,
+            descending: bool) -> tuple[int, ...]:
+    """Item positions in the order and filter the reviewer is looking at."""
+    sort = sort if definition.field(sort) is not None else definition.default_sort
+    positions = index.order(definition, sort, descending)
+    needle = q.strip().casefold()
+    if not needle:
+        return positions
+    searched = tuple(dict.fromkeys((*choice.columns, definition.heading_title)))
+    return tuple(p for p in positions
+                 if any(needle in index.items[p].value(key).casefold() for key in searched))
 
 
 def list_page(definition: Definition, index: Index, choice: Choice, *, base: str, q: str, sort: str,
               descending: bool, page: int, doc: str, edge: str, show_all: bool) -> dict:
     sort = sort if definition.field(sort) is not None else definition.default_sort
     columns = [definition.field(key) for key in choice.columns]
-    positions = index.order(definition, sort, descending)
     needle = q.strip().casefold()
-    if needle:
-        searched = tuple(dict.fromkeys((*choice.columns, definition.heading_title)))
-        positions = tuple(p for p in positions
-                          if any(needle in index.items[p].value(key).casefold() for key in searched))
+    positions = ordered(definition, index, choice, q=q, sort=sort, descending=descending)
     size, matching = definition.page_size, len(positions)
     pages = max(1, -(-matching // size))
     selected = index.by_token.get(doc)

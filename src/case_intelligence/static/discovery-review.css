@@ -85,3 +85,6 @@
 }
 .dr-pager a:not([href]) { color: var(--x-text-muted); }
 .discovery-review [hidden] { display: none; }
+.dr-identifiers { margin-top: 1rem; }
+.dr-identifier-inputs { display: flex; flex-wrap: wrap; gap: .75rem; margin: .5rem 0; }
+.dr-identifier-inputs input { display: block; width: 9rem; padding: .35rem .5rem; color: var(--x-text); background: var(--x-bg); border: 1px solid var(--x-border-strong); border-radius: 6px; font: inherit; }

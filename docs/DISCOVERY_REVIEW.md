@@ -7,10 +7,12 @@ the keyboard. Everything is read from this install; nothing is sent elsewhere.
 ## Reading the list
 
 - Each row is one stored item. The standard columns lead with Begin Bates, End
-  Bates, name, type, pages, custodian and date.
+  Bates, Team ID, name, folder, type, pages, custodian and date.
 - Bates numbers, custodians and dates come only from a load file and are shown
-  exactly as produced. An item no load file names shows **No Bates**. Nothing
-  is computed or guessed.
+  exactly as produced. Nothing is computed or guessed. An item with neither
+  produced Bates nor a team identifier shows **No identifier**.
+- A matter of plain file and folder uploads lists by folder and name; the
+  empty Bates columns stay hidden.
 - A standard column that no item has a value for is hidden, and the page says
   which ones. **Show anyway** brings them back.
 - Click a header to sort. Bates and names sort naturally (`ABC2` before
@@ -53,6 +55,27 @@ Rows past the first for one item are counted and not used.
 
 Concordance DAT and Opticon OPT volumes are not read here yet; that intake is
 tracked separately.
+
+## Team identifiers
+
+Items that arrive without Bates numbers can be given the team's own
+identifiers. Open **Columns and fields**, then under **Team identifiers** enter
+a prefix, a starting number and the number of digits, and assign.
+
+- Items are numbered in the order the list shows at that moment, so sort and
+  filter first. Only items without a team identifier are numbered, and items
+  with produced Bates are skipped unless you include them.
+- A team identifier appears in the **Team ID** column and in the item heading
+  when the item has no produced Bates. It is never shown as Bates and is not
+  written onto the document or its file.
+- No two items in a matter share an identifier. If any number in the batch is
+  already a team identifier or a produced Bates number in the matter, nothing
+  is assigned and the page says so.
+- **Remove team identifiers** clears them from the items listed now, after a
+  confirmation tick.
+
+Team identifiers are the team's work product. They are kept in preservation
+archives and deleted with the matter.
 
 ## Changing what shows
 

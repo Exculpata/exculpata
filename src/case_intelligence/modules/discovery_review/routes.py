@@ -6,6 +6,9 @@ from fastapi.responses import RedirectResponse
 
 from case_intelligence.modules import ModuleContext
 from case_intelligence.modules.discovery_review import fields, presentation, reader
+from case_intelligence.modules.discovery_review.identifiers import (
+    IdentifierConflict, IdentifierRepository, IdentifierUnavailable, sequence,
+)
 from case_intelligence.modules.discovery_review.views import SCOPES, ViewRepository, ViewUnavailable
 
 TOKEN = "^[0-9a-f]{32}$"
@@ -17,6 +20,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                require_response_lease, transfer_response_lease):
     fields.load_definition()  # a malformed field definition stops startup, not a reviewer mid-case
     repository = ViewRepository(context.db)
+    identifiers = IdentifierRepository(context.db)
 
     def membership(matter, actor):
         try:
@@ -30,7 +34,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         membership(matter, actor)
         definition = fields.load_definition()
         store = context.source_store(matter)
-        index = reader.index_for(matter.matter_id, store, definition)
+        index = reader.index_for(matter.matter_id, store, definition, identifiers)
         choice = presentation.choose(definition, repository.read(matter.matter_id, actor), index,
                                      show_all=show_all)
         return matter, actor, definition, store, index, choice
@@ -55,7 +59,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         view: str = Query("", pattern=VIEW),
         unit: int = Query(1, ge=1, le=1_000_000),
         all_columns: str = Query("", pattern="^(|1)$"),
-        notice: str = Query("", pattern="^(|saved|shared|reset|unavailable)$"),
+        notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm)$"),
     ):
         matter, actor, definition, store, index, choice = current(request, slug, show_all=bool(all_columns))
         base = f"/matters/{matter.slug}/production"
@@ -114,4 +118,58 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         audit(request, f"discovery_review.{action}", "failure" if outcome == "unavailable" else "success",
               context=auth_context(request), matter=matter, object_type="matter", object_id=matter.matter_id)
         return RedirectResponse(f"/matters/{matter.slug}/production?notice={outcome}", status_code=303,
+                                headers={"Cache-Control": "no-store"})
+
+    @app.post("/matters/{slug}/production/identifiers", dependencies=[Depends(require_csrf)])
+    def assign_production_identifiers(
+        request: Request, slug: str,
+        prefix: str = Form("", max_length=40), start: int = Form(1, ge=0, le=10**12),
+        digits: int = Form(6, ge=1, le=12), include_produced: str = Form(""),
+        action: str = Form("assign"), confirm: str = Form(""),
+        q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
+        sort: str = Form("", max_length=fields.MAX_HEADER_CHARS + 3), dir: str = Form(""),
+    ):
+        matter, actor, definition, store, index, choice = current(request, slug)
+        if action not in {"assign", "clear"} or not definition.heading_fallback:
+            raise HTTPException(400, "Choose what to do with team identifiers")
+        own, produced = definition.heading_fallback, definition.heading_range
+        listed = [index.items[p] for p in presentation.ordered(
+            definition, index, choice, q=q, sort=sort, descending=dir == "desc")]
+        count = 0
+        try:
+            if action == "clear":
+                marked = [item.document_id for item in listed if item.value(own)]
+                outcome = "confirm" if confirm != "1" else "cleared" if marked else "nothing"
+                if outcome == "cleared":
+                    count = identifiers.clear(matter.matter_id, marked)
+            else:
+                targets = [item for item in listed if not item.value(own)
+                           and (include_produced or not item.value(produced[0]))]
+                taken = {item.value(key).strip().casefold() for item in index.items for key in (own, *produced)}
+                if not targets:
+                    outcome = "nothing"
+                else:
+                    try:
+                        labels = sequence(prefix.strip(), start, digits, len(targets))
+                    except ValueError:
+                        labels = None
+                    if labels is None:
+                        outcome = "invalid"
+                    elif any(label.casefold() in taken for label in labels):
+                        outcome = "conflict"
+                    else:
+                        count = identifiers.assign(matter.matter_id, actor, zip(
+                            (item.document_id for item in targets), labels))
+                        outcome = "assigned"
+        except IdentifierConflict:
+            outcome = "conflict"
+        except IdentifierUnavailable:
+            outcome = "unavailable"
+        membership(matter, actor)
+        if outcome in {"assigned", "cleared", "unavailable"}:
+            audit(request, "discovery_review.identifier_" + ("clear" if action == "clear" else "assign"),
+                  "failure" if outcome == "unavailable" else "success", context=auth_context(request),
+                  matter=matter, object_type="matter", object_id=matter.matter_id, details={"count": count})
+        query = {key: value for key, value in (("q", q.strip()), ("sort", sort), ("dir", dir), ("notice", outcome)) if value}
+        return RedirectResponse(f"/matters/{matter.slug}/production?{urlencode(query)}", status_code=303,
                                 headers={"Cache-Control": "no-store"})

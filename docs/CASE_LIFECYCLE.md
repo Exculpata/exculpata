@@ -101,6 +101,9 @@ and is not stored as a separate result.
 Production document list views (`workbench_discovery_view`) hold only the
 field keys a reviewer or matter chose to show. They are rebuildable view state,
 are excluded from the archive, and are deleted with the matter.
+Team identifiers assigned to items (`workbench_discovery_identifier`) are
+retained in the archive with matter-local actor attribution and are deleted
+with the matter.
 Raw authored text and stale historical citations are retained. Missing current
 originals, unresolved staging/quarantine, unknown schema fields, unsupported
 payload shapes, corrupt bytes or capacity limits block certification; they do

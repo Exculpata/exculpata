@@ -57,6 +57,7 @@ class Item:
 class Index:
     store: Any
     revision: int
+    assigned_mark: int
     definition: Definition
     items: tuple[Item, ...]
     by_token: Mapping[str, int]
@@ -197,7 +198,9 @@ def read_load_files(store, documents, definition: Definition, earlier: Mapping, 
     return found
 
 
-def build(store, revision: int, documents, definition: Definition, previous: Index | None = None) -> Index:
+def build(store, revision: int, documents, definition: Definition, previous: Index | None = None,
+          assigned: Mapping[str, str] | None = None, assigned_mark: int = 0) -> Index:
+    assigned = assigned or {}
     earlier = previous.reads if previous is not None and previous.definition is definition else {}
     reads: dict[tuple, Any] = {}
     tables = read_load_files(store, documents, definition, earlier, reads)
@@ -213,6 +216,7 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
         folder = PurePosixPath(d.relative_path).parent.as_posix()
         paged = d.media_type == "application/pdf" and d.page_count > 0  # other types record sections, not pages
         values = {
+            "assigned_id": assigned.get(d.document_id, ""),
             "name": PurePosixPath(d.display_name).name or d.display_name,
             "type": suffix[1:].upper() or d.media_type,
             "pages": str(d.page_count) if paged else "",
@@ -253,7 +257,7 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
             embedded=("image" if d.media_type.startswith("image/") else "pdf")
             if d.origin == "upload" and d.media_type in EMBEDDED_MEDIA_TYPES else "",
             has_text=d.has_text, values=values, numbers={"size": d.size, "pages": d.page_count} if paged else {"size": d.size}, load_file=produced))
-    return Index(weakref.ref(store), revision, definition, tuple(items), {item.token: position for position, item in enumerate(items)},
+    return Index(weakref.ref(store), revision, assigned_mark, definition, tuple(items), {item.token: position for position, item in enumerate(items)},
                  tuple(headers), frozenset(filled), reports, reads)
 
 
@@ -261,16 +265,18 @@ _cache: OrderedDict[str, Index] = OrderedDict()
 _cache_lock = threading.Lock()
 
 
-def index_for(matter_id: str, store, definition: Definition) -> Index:
-    """Return the current index, rebuilding only when the source registry changed."""
+def index_for(matter_id: str, store, definition: Definition, identifiers=None) -> Index:
+    """Return the current index, rebuilding only when sources or team identifiers changed."""
+    mark = identifiers.mark(matter_id) if identifiers is not None else 0
     with _cache_lock:
         cached = _cache.get(matter_id)
         if (cached is not None and cached.store() is store and cached.revision == store.revision
-                and cached.definition is definition):
+                and cached.definition is definition and cached.assigned_mark == mark):
             _cache.move_to_end(matter_id)
             return cached
     revision, documents = snapshot(store)
-    built = build(store, revision, documents, definition, cached)
+    assigned = identifiers.read(matter_id) if identifiers is not None else {}
+    built = build(store, revision, documents, definition, cached, assigned, mark)
     with _cache_lock:
         _cache[matter_id] = built
         _cache.move_to_end(matter_id)

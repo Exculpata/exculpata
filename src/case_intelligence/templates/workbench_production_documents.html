@@ -6,7 +6,7 @@
   <header class="notebook-heading"><div><p class="eyebrow">{{ matter.display_name }}</p><h1>Production documents</h1></div>
     <p><a href="/matters/{{ matter.slug }}/setup?view=list&amp;page_size=100#source-library">Back to Review</a></p></header>
   {% with active='production' %}{% include 'workbench_matter_tabs.html' %}{% endwith %}
-  {% if notice %}<p class="dr-notice{% if notice == 'unavailable' %} dr-notice-warning{% endif %}" role="status">{{ {'saved': 'Your view is saved for this matter.', 'shared': 'This is now the starting view for everyone on this matter. A reviewer\'s own saved view still takes priority for them.', 'reset': 'The view was reset.', 'unavailable': 'The view could not be saved. This matter may no longer accept changes.'}[notice] }}</p>{% endif %}
+  {% if notice %}<p class="dr-notice{% if notice in ('unavailable', 'conflict', 'invalid', 'confirm') %} dr-notice-warning{% endif %}" role="status">{{ {'saved': 'Your view is saved for this matter.', 'shared': 'This is now the starting view for everyone on this matter. A reviewer\'s own saved view still takes priority for them.', 'reset': 'The view was reset.', 'unavailable': 'The change could not be saved. This matter may no longer accept changes.', 'assigned': 'Team identifiers were assigned.', 'cleared': 'Team identifiers were removed from the listed items.', 'conflict': 'Nothing was assigned: at least one of those identifiers is already used in this matter. Choose another prefix or starting number.', 'nothing': 'No listed item needed a change.', 'invalid': 'Nothing was assigned: use a prefix that starts with a letter (letters, digits, hyphen or underscore, up to 20) and enough digits for every item.', 'confirm': 'Nothing was removed: tick the confirmation box to remove team identifiers.'}[notice] }}</p>{% endif %}
   <div class="dr-toolbar">
     <form class="dr-filter" method="get" action="{{ base_url }}" role="search">
       {% for key, value in listing.state.items() %}{% if value and key != 'q' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
@@ -94,6 +94,24 @@
         <button class="button button-primary" type="submit" name="action" value="save">Save view</button>
         <button class="button button-secondary" type="submit" name="action" value="reset">Reset to standard</button>
       </footer>
+    </form>
+    <form class="dr-identifiers" method="post" action="{{ base_url }}/identifiers">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% for key in ('q', 'sort', 'dir') %}<input type="hidden" name="{{ key }}" value="{{ listing.state[key] }}">{% endfor %}
+      <fieldset><legend>Team identifiers</legend>
+        <p class="dr-muted">Number items that arrived without an identifier, in the order the list shows now{% if listing.filtered %} ({{ listing.matching }} match the filter){% endif %}. A team identifier is your own label: it is shown as Team ID, never as produced Bates, is not written onto the document, and no two items in a matter share one.</p>
+        <div class="dr-identifier-inputs">
+          <label>Prefix <input type="text" name="prefix" maxlength="20" pattern="[A-Za-z][A-Za-z0-9_\-]{0,19}" placeholder="DEF" autocomplete="off"></label>
+          <label>Start at <input type="number" name="start" value="1" min="0"></label>
+          <label>Digits <input type="number" name="digits" value="6" min="1" max="12"></label>
+        </div>
+        <label><input type="checkbox" name="include_produced" value="1"> Also number items that already have produced Bates</label>
+        <footer><button class="button button-primary" type="submit" name="action" value="assign">Assign identifiers</button></footer>
+        <details><summary>Remove team identifiers</summary>
+          <label><input type="checkbox" name="confirm" value="1"> Remove team identifiers from the items listed now. Removed identifiers can be assigned again.</label>
+          <footer><button class="button button-danger" type="submit" name="action" value="clear">Remove</button></footer>
+        </details>
+      </fieldset>
     </form>
   </aside>
 </main>

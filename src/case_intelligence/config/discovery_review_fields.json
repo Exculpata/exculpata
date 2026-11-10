@@ -18,6 +18,7 @@
      "load_file_headers": ["ENDBATES", "ENDDOC", "ENDDOC#", "ENDNO", "END BATES", "BATES END", "BATESEND", "PRODEND", "PRODENDBATES", "ENDPRODBATES"]},
     {"key": "control_number", "label": "Control no.", "group": "identity", "sort": "natural",
      "load_file_headers": ["CONTROLNUMBER", "CONTROL NUMBER", "CONTROLNO", "DOCID", "DOCUMENTID", "DOC ID", "DOCNO"]},
+    {"key": "assigned_id", "label": "Team ID", "group": "identity", "computed": "assigned_id", "sort": "natural"},
     {"key": "name", "label": "Name", "group": "identity", "computed": "name", "sort": "natural"},
     {"key": "type", "label": "Type", "group": "identity", "computed": "type"},
     {"key": "pages", "label": "Pages", "group": "identity", "computed": "pages", "sort": "number", "align": "end"},
@@ -69,16 +70,16 @@
     {"key": "sha256", "label": "SHA-256", "group": "file", "computed": "sha256"},
     {"key": "path", "label": "Path", "group": "file", "computed": "path", "sort": "natural"}
   ],
-  "default_columns": ["begin_bates", "end_bates", "name", "type", "pages", "custodian", "document_date"],
+  "default_columns": ["begin_bates", "end_bates", "assigned_id", "name", "folder", "type", "pages", "custodian", "document_date"],
   "default_item_fields": [
-    "begin_bates", "end_bates", "control_number", "name", "type", "pages",
+    "begin_bates", "end_bates", "assigned_id", "control_number", "name", "type", "pages",
     "custodian", "produced_by", "volume", "folder",
     "email_from", "email_to", "email_cc", "email_subject", "email_sent",
     "document_date", "begin_attachment", "end_attachment"
   ],
   "show_load_file_fields_by_default": true,
   "default_sort": "begin_bates",
-  "item_heading": {"range": ["begin_bates", "end_bates"], "missing": "No Bates", "title": "name"},
+  "item_heading": {"range": ["begin_bates", "end_bates"], "fallback": "assigned_id", "missing": "No identifier", "title": "name"},
   "load_file_path_headers": ["PATH", "NATIVE", "NATIVEPATH", "NATIVE PATH", "NATIVELINK", "NATIVE LINK", "NATIVEFILE", "NATIVE FILE", "FILEPATH", "FILE PATH", "ITEMPATH", "DOCLINK", "LINK", "FILENAME", "FILE NAME"],
   "email_media_types": ["message/rfc822", "application/vnd.ms-outlook", "application/mbox"],
   "email_suffixes": [".eml", ".msg", ".mbox"],

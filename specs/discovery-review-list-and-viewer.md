@@ -65,6 +65,13 @@ existing Production summary reads one fixed three-column CSV per request.
    and matter in `workbench_discovery_view`. A matter may hold one shared
    starting view. Order of preference: own view, matter view, the definition.
 
+6. **Team identifiers.** Most matters are plain file and folder uploads with
+   no Bates. A team can number such items with its own prefix and sequence,
+   in the listed order. Identifiers live in `workbench_discovery_identifier`,
+   are unique within the matter, never collide with a produced Bates number,
+   are shown as Team ID and never as Bates, and do not touch the file. They
+   are work product: archived with the matter and deleted with it.
+
 ## What it could break
 
 - **Deletion and archive guards.** A new `workbench_` table must be purged and

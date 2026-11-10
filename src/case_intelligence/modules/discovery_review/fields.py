@@ -16,7 +16,7 @@ from typing import Any, Mapping
 LOAD_FILE_PREFIX = "lf:"
 LOAD_FILE_GROUP = "load_file"
 COMPUTED = frozenset({
-    "name", "type", "pages", "folder", "load_file", "size", "text_status",
+    "assigned_id", "name", "type", "pages", "folder", "load_file", "size", "text_status",
     "status", "stored_from", "sha256", "path",
 })
 _SORTS = frozenset({"text", "natural", "number"})
@@ -74,6 +74,7 @@ class Definition:
     email_suffixes: frozenset[str]
     email_evidence_fields: tuple[str, ...]
     heading_range: tuple[str, ...]
+    heading_fallback: str
     heading_missing: str
     heading_title: str
 
@@ -151,6 +152,7 @@ def parse_definition(data: Any) -> Definition:
         raise DefinitionError("page_size or max_columns is out of range")
     heading = data.get("item_heading")
     if (not isinstance(heading, dict) or heading.get("title") not in by_key
+            or heading.get("fallback", "") not in {"", *by_key}
             or not isinstance(heading.get("missing"), str)):
         raise DefinitionError("item_heading needs a title field and a missing label")
     heading_range = _strings(heading.get("range", []), "item_heading.range")
@@ -171,7 +173,7 @@ def parse_definition(data: Any) -> Definition:
         email_media_types=frozenset(_strings(data.get("email_media_types", []), "email_media_types")),
         email_suffixes=frozenset(s.casefold() for s in _strings(data.get("email_suffixes", []), "email_suffixes")),
         email_evidence_fields=known("email_evidence_fields"),
-        heading_range=heading_range, heading_missing=heading["missing"], heading_title=heading["title"],
+        heading_range=heading_range, heading_fallback=heading.get("fallback", ""), heading_missing=heading["missing"], heading_title=heading["title"],
     )
 
 

@@ -123,6 +123,7 @@
   "case_intelligence.modules": "core.contracts",
   "case_intelligence.modules.discovery_review": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.fields": "modules.discovery_review",
+  "case_intelligence.modules.discovery_review.identifiers": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.load_files": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.presentation": "modules.discovery_review",
   "case_intelligence.modules.discovery_review.purge": "modules.discovery_review",
