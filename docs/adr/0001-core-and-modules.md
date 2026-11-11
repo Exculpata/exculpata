@@ -46,7 +46,7 @@ precedence over broader families such as `timeline_*`.
 | `core.lifecycle` | Retention, deletion, recovery and durable jobs: `case_lifecycle*`, `lifecycle`, `matter_archive*`, `managed_storage`, retention/purge paths, `jobs`. |
 | `core.sources` | Intake, extraction, original references and exact search: `ingestion`, `pilot_uploads`, `pilot_source_access`, `intake_receipts`, `malware_scan`, `*_preflight`, `derived_text`, `text_records`, `source_*`, `pdf_*`, `docx_*`, `ocr_*`, `exact_search*`, `source_find`. |
 | `core.contracts` | Shared validation and stable naming: `contracts`, `legacy_names`, `compat_env`, `branding`, the stdlib-only `modules` contract (`ModuleContext`, `RouteHook`, `PurgeHook`), and the core citation-resolution contract (`cite()`). |
-| Module: discovery_review | `modules/discovery_review`: authorized document count page and derived render-cache purge hook. |
+| Module: discovery_review | `modules/discovery_review`: authorized document list, open-item views, saved list views, the field definition reader and the derived-state purge hook. |
 | Module: transcription | `services/transcription`, `media_*`, `transcript_search`, `video_frame_ocr`. Transcription already has a separate service. |
 | Module: retrieval | `retrieval*`, `embedding_index`, `unit_stream`. |
 | Module: answers | `generation`, `generator_*`, `external_generator`, `answer_*`, `question_*`, `ask_router`. |

@@ -253,7 +253,7 @@ information live in [`config/models.json`](config/models.json).
 | **nginx, local accounts, OIDC, or Kerberos** | Provide HTTPS and selectable identity options for different organizations. |
 | **Docker Compose and restic** | Package the services and provide encrypted backup and restore tooling. |
 
-Models are run locally after a one-time staging step. Runtime model containers
+Bundled models run locally after a one-time staging step. Runtime model containers
 are configured for offline operation. Diarization is optional because its
 upstream model terms require separate acceptance.
 
@@ -280,8 +280,10 @@ RFC1918/ULA destinations require explicit reviewed `--generator-egress-pins`.
 Host loopback servers, including `127.0.0.1:11434`, are unreachable from the
 containerized app. No host-gateway alias is installed. External HTTP URLs and
 generator configuration values containing `$` are rejected.
-Embeddings and reranking stay inside Exculpata. `CASE_REVIEW_MODEL_DEVICE=cpu`
-runs them on CPU. Startup and `doctor` send a small schema check and report
+Embeddings and reranking use local processing by default; operators can configure
+external endpoints that receive extracted text, queries or candidate passages.
+`CASE_REVIEW_MODEL_DEVICE=cpu` runs the bundled retrieval worker on CPU.
+Startup and `doctor` send a small schema check and report
 whether the server enforced it. Answers from a model with no recorded
 claim-evaluation pass are labeled `unvalidated model`. Limits and the remaining
 keys are in

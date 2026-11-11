@@ -8,8 +8,9 @@ transaction, and lifecycle contracts.
 
 The internal module extension point defines a small contract and a fixed,
 reviewed registry with one entry, `discovery_review`. One generic step in
-`create_workbench_app` mounts its authorized Production documents count page under
-Review using `ModuleContext`. One generic purge step invokes module cleanup hooks
+`create_workbench_app` mounts its authorized Production documents list, open-item
+views and saved list views under Review using `ModuleContext`
+(see [Discovery review](DISCOVERY_REVIEW.md)). One generic purge step invokes module cleanup hooks
 after clip cleanup; a failure records a storage failure and stops deletion. The
 context carries shared database, membership, source-store, storage and scanner
 bindings plus a reservation-aware capacity closure with no caller in this slice.
