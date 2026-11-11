@@ -50,9 +50,6 @@ REVIEWED_COMMIT_EMAIL_IDENTITIES = {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
     },
 }
-# Attribution address fields protect only this personal address. Content keeps
-# the complete MAINTAINER_EMAIL_DIGESTS set and all other rules keep original bytes.
-PERSONAL_EMAIL_DIGEST = "ae7295bb836bc214423bd65843665313b0507c8cf74439c95dcaed2db2d426cd"
 # Exact media blobs whose raw bytes were reviewed. Local
 # --allow-reviewed-media-digest values are added to this set at scan time.
 # docs/assets/exculpata-launch-16x9.mp4 and site/assets/exculpata-launch-16x9.mp4.
@@ -63,7 +60,7 @@ REVIEWED_MEDIA_DIGESTS = (
 )
 ATTRIBUTION_TRAILER = re.compile(
     rb"(?m)^[A-Za-z0-9-]+[ \t]*:[ \t]+[^<>\s\0][^<>\r\n\0]*[ \t]+"
-    rb"<[ \t]*([^<>\s\0]+)[ \t]*>[ \t]*\r?$"
+    rb"<[ \t]*([^<>\s\0:;@]+@[^<>\s\0:;@]+)[ \t]*>[ \t]*\r?$"
 )
 
 
@@ -79,8 +76,7 @@ def _trailer_address_spans(message: bytes, trailers: bytes) -> tuple[tuple[int, 
         return ()
     offset = len(message) - len(trailers)
     return tuple((offset + match.start(1), offset + match.end(1))
-                 for match in ATTRIBUTION_TRAILER.finditer(trailers)
-                 if EMAIL.fullmatch(match.group(1)))
+                 for match in ATTRIBUTION_TRAILER.finditer(trailers))
 
 
 IGNORED_DIRECTORIES = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
@@ -315,9 +311,14 @@ def _scan_bytes(
         return any(start <= match.start() and match.end() <= end
                    for start, end in attribution_email_spans)
 
-    if any(hashlib.sha256(match.group(0).lower()).hexdigest() in (
-        {PERSONAL_EMAIL_DIGEST} if attribution_address(match) else MAINTAINER_EMAIL_DIGESTS
-    ) for match in EMAIL.finditer(data)):
+    # Attribution fields use the whole MAINTAINER_EMAIL_DIGESTS set. Hash their
+    # complete address spans too, independently of the content scanner's tokens.
+    addresses = (data[start:end].strip() for start, end in attribution_email_spans)
+    if any(hashlib.sha256(address.lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
+           for address in addresses) or any(
+        hashlib.sha256(match.group(0).lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
+        for match in EMAIL.finditer(data)
+    ):
         findings.append(Finding(location, "maintainer-email-address"))
     pem_rules: set[str] = set()
     for rule, marker in PEM_MARKERS:

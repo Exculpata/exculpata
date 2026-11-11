@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- Publication scanning now blocks only one maintainer personal address in author,
-  committer and commit-message trailer address fields, allowing other addresses
-  there. Body text, file content and all non-email checks remain unchanged.
+- Publication scanning blocks the maintainer addresses (the
+  `MAINTAINER_EMAIL_DIGESTS` set) in author, committer and commit-message trailer
+  address fields, allowing other addresses there. Body text, file content and all
+  non-email checks remain unchanged.
 
 - Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
   and source-coverage rows plus coverage/schema columns. Importers must select

@@ -83,8 +83,8 @@ email or privacy settings.
 ## Contributor attribution and protected addresses
 
 The author and committer **address fields**, and address spans inside
-`Key: Name <email>` lines in Git's final trailer paragraph, block only the one
-personal address identified by `PERSONAL_EMAIL_DIGEST` in
+`Key: Name <email>` lines in Git's final trailer paragraph, block the maintainer
+addresses in the `MAINTAINER_EMAIL_DIGESTS` set in
 `scripts/publication-check.py`. All other addresses are allowed in those fields
 without per-contributor or provider allowlists. Trailer tokens are case-insensitive;
 `Co-Authored-By`, `Signed-off-by`, and `Reviewed-by` follow the same rule.

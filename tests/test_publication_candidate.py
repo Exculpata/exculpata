@@ -1,6 +1,8 @@
 """CI candidate isolation retains the real outgoing-history publication guard."""
 
+import hashlib
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -84,16 +86,34 @@ def test_pull_request_workflow_passes_actual_source_branch_metadata():
 
 
 @pytest.mark.parametrize('entrypoint', ['candidate', 'pre-push'])
-@pytest.mark.parametrize('payload', ['other-trailer', 'personal-trailer', 'body'])
-def test_candidate_and_pre_push_share_trailer_email_policy(tmp_path, entrypoint, payload):
-    from tests.test_publication_pre_push import inspect as inspect_push
+@pytest.mark.parametrize('payload', ['other-trailer', 'apostrophe-trailer', 'first-maintainer-trailer', 'second-maintainer-trailer', 'body'])
+def test_candidate_and_pre_push_share_trailer_email_policy(tmp_path, monkeypatch, entrypoint, payload):
+    from tests import test_publication_pre_push as pre_push
 
     root = repository(tmp_path)
+    addresses = ('maintainer-one@' + 'synthetic.invalid', 'maintainer-two@' + 'synthetic.invalid')
+    digests = frozenset(hashlib.sha256(address.encode()).hexdigest() for address in addresses)
+    scanner = root / 'scripts/publication-check.py'
+    source = scanner.read_text()
+    start = source.index('MAINTAINER_EMAIL_DIGESTS = ')
+    end = source.index('# Owner-reviewed public attribution', start)
+    # fixture-write: configure only synthetic maintainer digests in the isolated scanner copy.
+    scanner.write_text(source[:start] + f'MAINTAINER_EMAIL_DIGESTS = {digests!r}\n' + source[end:])
+    for script in ('check-publication-candidate.py', 'pre-push-publication.py'):
+        # fixture-write: real entry points beside the isolated synthetic scanner configuration.
+        shutil.copyfile(ROOT / 'scripts' / script, root / 'scripts' / script)
+    commit(root)
+    monkeypatch.setattr(sys.modules[__name__], 'ROOT', root)
+    monkeypatch.setattr(pre_push, 'ROOT', root)
     address = 'person@' + 'synthetic.invalid'
-    if payload == 'personal-trailer':
-        address = 'ne' + 'il@' + 'ne' + 'ilofneils.com'
+    if payload == 'first-maintainer-trailer':
+        address = addresses[0]
+    elif payload == 'second-maintainer-trailer':
+        address = addresses[1]
+    elif payload == 'apostrophe-trailer':
+        address = "o'connor@" + 'synthetic.invalid'
     message = 'Synthetic\n\n'
     message += address if payload == 'body' else 'Signed-off-by: Synthetic Person <' + address + '>'
     assert command(root, 'git', 'commit', '--allow-empty', '-qm', message).returncode == 0
-    result = inspect(root) if entrypoint == 'candidate' else inspect_push(root)
-    assert result.returncode == (0 if payload == 'other-trailer' else 1)
+    result = inspect(root) if entrypoint == 'candidate' else pre_push.inspect(root)
+    assert result.returncode == (0 if payload in ('other-trailer', 'apostrophe-trailer') else 1)

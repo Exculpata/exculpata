@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import re
@@ -369,7 +370,6 @@ def test_history_scan_checks_author_and_committer_identity(tmp_path, monkeypatch
     monkeypatch.setattr(publication, "MAINTAINER_EMAIL_DIGESTS", frozenset({
         hashlib.sha256(b"maintainer@" + b"agency.example.org").hexdigest(),
     }))
-    monkeypatch.setattr(publication, "PERSONAL_EMAIL_DIGEST", next(iter(publication.MAINTAINER_EMAIL_DIGESTS)))
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     subprocess.run(
         ["git", "config", "user.name", "Synthetic Maintainer"],
@@ -469,7 +469,6 @@ def test_dependabot_commit_identity_is_public_and_denied_mail_still_blocks(tmp_p
     monkeypatch.setattr(publication, "MAINTAINER_EMAIL_DIGESTS", frozenset({
         hashlib.sha256(b"ada@" + b"personal.example").hexdigest(),
     }))
-    monkeypatch.setattr(publication, "PERSONAL_EMAIL_DIGEST", next(iter(publication.MAINTAINER_EMAIL_DIGESTS)))
 
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     bot = {
@@ -544,7 +543,6 @@ def test_reviewed_email_disposition_is_exact_and_metadata_only(tmp_path, monkeyp
     monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
         hashlib.sha256(email.encode().lower()).hexdigest(),
     }))
-    monkeypatch.setattr(publication, "PERSONAL_EMAIL_DIGEST", next(iter(publication.MAINTAINER_EMAIL_DIGESTS)))
     expected = publication.Finding('git-metadata', 'maintainer-email-address')
     assert expected in publication.scan_history(tmp_path, ())
     monkeypatch.setattr(publication, 'REVIEWED_COMMIT_EMAIL_IDENTITIES', {commit: {digest}})
@@ -631,8 +629,6 @@ def test_reviewed_attribution_does_not_cover_other_metadata(tmp_path, monkeypatc
     monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset(
         hashlib.sha256(value.encode().lower()).hexdigest() for value in (email, other_email)
     ))
-    protected = other_email if unreviewed_field in ('author-email', 'committer') else email
-    monkeypatch.setattr(publication, 'PERSONAL_EMAIL_DIGEST', hashlib.sha256(protected.encode()).hexdigest())
     monkeypatch.setattr(publication, 'REVIEWED_COMMIT_EMAIL_IDENTITIES', {commit: {digest}})
     assert publication.Finding('git-metadata', 'maintainer-email-address') in publication.scan_history(tmp_path, ())
 
@@ -705,7 +701,6 @@ def test_maintainer_addresses_block_each_identity_field(tmp_path, monkeypatch, r
     monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
         hashlib.sha256(denied.encode()).hexdigest(),
     }))
-    monkeypatch.setattr(publication, "PERSONAL_EMAIL_DIGEST", next(iter(publication.MAINTAINER_EMAIL_DIGESTS)))
     denied = getattr(denied, case)()
     contributor = 'contributor@' + 'synthetic.invalid'
     _contributor_repo(tmp_path, 'Arbitrary Name', denied if role == 'author' else contributor,
@@ -723,7 +718,6 @@ def test_maintainer_hash_check_cannot_be_masked_by_other_email_exceptions(tmp_pa
     monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
         hashlib.sha256(email.encode()).hexdigest(),
     }))
-    monkeypatch.setattr(publication, "PERSONAL_EMAIL_DIGEST", next(iter(publication.MAINTAINER_EMAIL_DIGESTS)))
     name = 'Synthetic Contributor'
     value = 'allowed@' + 'synthetic.invalid' + '\n' + email.upper()
     message = 'synthetic'
@@ -796,14 +790,22 @@ def test_general_trailer_policy_preserves_multiple_attributions_and_deny_terms(t
         tmp_path, (b'Synthetic Contributor',))
 
 
-def _personal_address():
-    return 'ne' + 'il@' + 'ne' + 'ilofneils.com'
+@pytest.fixture
+def maintainer_addresses(monkeypatch):
+    addresses = ('maintainer-one@' + 'synthetic.invalid', 'maintainer-two@' + 'synthetic.invalid')
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset(
+        hashlib.sha256(address.encode()).hexdigest() for address in addresses
+    ))
+    return addresses
 
 
 @pytest.mark.parametrize('role', ['author', 'committer', 'Co-Authored-By', 'Signed-off-by'])
 @pytest.mark.parametrize('variant', ['plain', 'mixed-padding'])
-def test_personal_address_blocks_identity_and_trailer_fields(tmp_path, role, variant):
-    address = _personal_address()
+@pytest.mark.parametrize('address_index', [0, 1])
+def test_maintainer_addresses_block_identity_and_trailer_fields(
+    tmp_path, maintainer_addresses, role, variant, address_index,
+):
+    address = maintainer_addresses[address_index]
     if variant == 'mixed-padding':
         address = '  ' + address.swapcase() + '  '
     ordinary = 'contributor@' + 'synthetic.invalid'
@@ -822,27 +824,11 @@ def test_personal_address_blocks_identity_and_trailer_fields(tmp_path, role, var
     'Signed-off-by: Synthetic Person <person@' + 'synthetic.invalid>',
     'rEvIeWeD-bY :   Synthetic Person   <  person@' + 'synthetic.invalid  >',
     'Custom-token: Synthetic Person <person@' + 'synthetic.invalid>',
+    "Signed-off-by: Synthetic Person <o'connor@" + 'synthetic.invalid>',
 ])
 def test_final_trailer_addresses_are_allowed(tmp_path, trailer):
     _contributor_repo(tmp_path, 'Synthetic Author', 'author@example.com', 'Synthetic\n\n' + trailer)
     assert publication.scan_history(tmp_path, ()) == []
-
-
-@pytest.mark.parametrize('role', ['author', 'committer', 'trailer'])
-def test_other_protected_digest_is_allowed_only_in_address_fields(tmp_path, monkeypatch, role):
-    import hashlib
-    address = 'other@' + 'synthetic.invalid'
-    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS',
-                        publication.MAINTAINER_EMAIL_DIGESTS | {hashlib.sha256(address.encode()).hexdigest()})
-    message = 'Synthetic'
-    if role == 'trailer':
-        message += '\n\nSigned-off-by: Synthetic Person <' + address + '>'
-    _contributor_repo(tmp_path, 'Synthetic Author', address if role == 'author' else 'author@example.com',
-                      message, committer=('Synthetic Committer', address if role == 'committer' else 'commit@example.com'))
-    assert publication.scan_history(tmp_path, ()) == []
-    assert publication._scan_bytes(address.encode(), location='fixture', deny=()) == [
-        publication.Finding('fixture', 'maintainer-email-address'),
-        publication.Finding('fixture', 'non-example-email-address')]
 
 
 @pytest.mark.parametrize('layout', [
@@ -855,12 +841,14 @@ def test_other_protected_digest_is_allowed_only_in_address_fields(tmp_path, monk
     'Co-Authored-By: Person <{address}>',
     'Synthetic\n\nCo-Authored-By: {address} <other@example.com>',
 ])
-@pytest.mark.parametrize('personal', [False, True])
-def test_non_trailer_email_content_retains_all_email_rules(tmp_path, layout, personal):
-    address = _personal_address() if personal else 'person@' + 'synthetic.invalid'
+@pytest.mark.parametrize('address_index', [None, 0, 1])
+def test_non_trailer_email_content_retains_all_email_rules(
+    tmp_path, maintainer_addresses, layout, address_index,
+):
+    address = maintainer_addresses[address_index] if address_index is not None else 'person@' + 'synthetic.invalid'
     _contributor_repo(tmp_path, 'Synthetic Author', 'author@example.com', layout.format(address=address))
     expected = [publication.Finding('git-metadata', 'non-example-email-address')]
-    if personal:
+    if address_index is not None:
         expected.insert(0, publication.Finding('git-metadata', 'maintainer-email-address'))
     assert publication.scan_history(tmp_path, ()) == expected
 
@@ -890,6 +878,7 @@ def test_non_email_rules_inspect_original_trailer_address(tmp_path, address, rul
 
 @pytest.mark.parametrize('value', [
     '  <{address}>', 'Person <mailto:{address}>', 'Person <{address};>',
+    'Person <<{address}>>', 'Person <extra {address}>',
 ])
 def test_malformed_trailer_values_keep_content_email_rules(tmp_path, value):
     address = 'person@' + 'synthetic.invalid'
@@ -897,3 +886,59 @@ def test_malformed_trailer_values_keep_content_email_rules(tmp_path, value):
     _contributor_repo(tmp_path, 'Synthetic Author', 'author@example.com', message)
     assert publication.scan_history(tmp_path, ()) == [
         publication.Finding('git-metadata', 'non-example-email-address')]
+
+
+@pytest.mark.parametrize('address_index', [0, 1])
+def test_maintainer_file_content_retains_both_email_rules(tmp_path, maintainer_addresses, address_index):
+    # fixture-write: synthetic address content for the working-tree scanner.
+    (tmp_path / 'fixture.txt').write_text(maintainer_addresses[address_index])
+    assert publication.scan_tree(tmp_path, ()) == [
+        publication.Finding('fixture.txt', 'maintainer-email-address'),
+        publication.Finding('fixture.txt', 'non-example-email-address'),
+    ]
+
+
+@pytest.mark.parametrize('blocked', [False, True])
+def test_crlf_trailers_preserve_raw_commit_bytes(tmp_path, maintainer_addresses, blocked):
+    git = _contributor_repo(tmp_path, 'Synthetic Author', 'author@example.com', 'Synthetic')
+    address = maintainer_addresses[1] if blocked else "o'connor@" + 'synthetic.invalid'
+    message = ('Synthetic\r\n\r\nSigned-off-by: Synthetic Person <' + address + '>\r\n').encode()
+    original = subprocess.check_output(['git', 'cat-file', 'commit', 'HEAD'], cwd=tmp_path)
+    raw = original.split(b'\n\n', 1)[0] + b'\n\n' + message
+    # fixture-write: raw synthetic commit object with deliberately preserved CRLF bytes.
+    oid = subprocess.check_output(['git', 'hash-object', '-t', 'commit', '-w', '--stdin'],
+                                  cwd=tmp_path, input=raw).decode().strip()
+    git('update-ref', 'HEAD', oid)
+    assert subprocess.check_output(['git', 'cat-file', 'commit', 'HEAD'], cwd=tmp_path) == raw
+    expected = [publication.Finding('git-metadata', 'maintainer-email-address')] if blocked else []
+    assert publication.scan_history(tmp_path, ()) == expected
+
+
+def test_nul_inside_trailer_address_is_not_exempted():
+    trailer = b'Signed-off-by: Synthetic Person <person@' + b'synthetic.invalid\0>'
+    assert publication._trailer_address_spans(b'Synthetic\n\n' + trailer, trailer) == ()
+
+
+@pytest.mark.parametrize('role', ['author', 'committer'])
+@pytest.mark.parametrize('address', ['noreply@' + 'anthropic.com', "o'connor@" + 'synthetic.invalid'])
+def test_other_address_syntax_is_allowed_in_identity_fields(tmp_path, role, address):
+    _contributor_repo(tmp_path, 'Synthetic Author', address if role == 'author' else 'author@example.com',
+                      'Synthetic', committer=('Synthetic Committer',
+                                              address if role == 'committer' else 'commit@example.com'))
+    assert publication.scan_history(tmp_path, ()) == []
+
+
+@pytest.mark.parametrize('role', ['author', 'committer', 'trailer'])
+def test_complete_attribution_address_is_hashed(tmp_path, monkeypatch, role):
+    address = "o'connor@" + 'synthetic.invalid'
+    monkeypatch.setattr(publication, 'MAINTAINER_EMAIL_DIGESTS', frozenset({
+        hashlib.sha256(address.encode()).hexdigest(),
+    }))
+    message = 'Synthetic'
+    if role == 'trailer':
+        message += '\n\nSigned-off-by: Synthetic Person <' + address.upper() + '>'
+    _contributor_repo(tmp_path, 'Synthetic Author', address if role == 'author' else 'author@example.com',
+                      message, committer=('Synthetic Committer',
+                                          address if role == 'committer' else 'commit@example.com'))
+    assert publication.scan_history(tmp_path, ()) == [
+        publication.Finding('git-metadata', 'maintainer-email-address')]
