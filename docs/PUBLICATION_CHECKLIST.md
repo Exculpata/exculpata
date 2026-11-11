@@ -25,6 +25,13 @@ Never commit that deny file or copy its matched values into a report. The
 scanner reports only rule names and redacted locations. `--skip-history` is for
 diagnosing a proposed clean tree; it is not a publication gate.
 
+The shared scanner blocks only one maintainer personal address in author and
+committer address fields and bracketed addresses in Git's final trailer block.
+Other addresses are permitted there. Case and surrounding whitespace do not
+bypass the personal-address check. Free-text messages and file content retain
+their existing email rules, and all non-email rules inspect the original bytes.
+See [contributor attribution](PUBLIC_ALPHA.md#contributor-attribution-and-protected-addresses).
+
 If an owner deny term also appears inside the repository's exact public GitHub
 clone URL or verified GitHub no-reply identity, keep the deny term and pass an
 explicit, owner-approved adjudication. `--allow-public-clone-url` applies only

@@ -82,28 +82,29 @@ email or privacy settings.
 
 ## Contributor attribution and protected addresses
 
-The author and committer **address fields** accept contributor email addresses
-without a per-contributor allowlist or commit exception. This includes new
-merge-queue squash commits. Names, commit messages, files, extracted metadata,
-archive members and refs retain their existing content-email rules; the existing
-exact reviewed co-author trailer dispositions are unchanged.
+The author and committer **address fields**, and address spans inside
+`Key: Name <email>` lines in Git's final trailer paragraph, block only the one
+personal address identified by `PERSONAL_EMAIL_DIGEST` in
+`scripts/publication-check.py`. All other addresses are allowed in those fields
+without per-contributor or provider allowlists. Trailer tokens are case-insensitive;
+`Co-Authored-By`, `Signed-off-by`, and `Reviewed-by` follow the same rule.
+Address matching is ASCII case-insensitive and ignores surrounding whitespace,
+including padding inside angle brackets and extra spacing in the trailer line.
 
-`MAINTAINER_EMAIL_DIGESTS` in `scripts/publication-check.py` contains the complete
-three-address set privately supplied for #345. Each value is SHA-256 of the
-ASCII-lowercased address bytes (both local part and domain). The address alone
-is hashed; the identity name is irrelevant. No whitespace trimming, Unicode
-normalization, plus-alias stripping or provider-specific rewriting is performed.
-Matching uses the scanner's existing ASCII email-token grammar and reports only
-`maintainer-email-address`, never the matched address. All configured entries
-are checked before example-domain, bot or contributor-trailer exceptions.
+Only the bracketed address receives the trailer disposition. Names, subjects,
+free-text message paragraphs, files, extracted metadata, archive members and
+refs retain their existing content-email rules. `MAINTAINER_EMAIL_DIGESTS`
+continues to protect the complete three-address set in those contexts. Each
+digest is SHA-256 of the ASCII-lowercased address bytes; no Unicode normalization,
+plus-alias stripping or provider-specific rewriting is performed. Findings report
+`maintainer-email-address`, never the matched address.
 
-The already reviewed exact historical commit-and-identity dispositions above
-remain in force for their original author/committer fields only. They cannot
-admit a protected address on a new commit, in a name under another identity, or
-in content/messages. Operator deny terms and every non-email publication rule
-continue to apply, including secret scanning and metadata inspection. The hash
-list adds no general exception to those controls. Keep future denylist inputs
-private and commit only their normalized digests, with synthetic test fixtures.
+All six reviewed exact historical commit-and-identity dispositions remain in
+force for their original author/committer fields only. Operator deny terms,
+secrets, paths and every other non-email rule still inspect the original bytes,
+including the trailer address. CI and the local pre-push guard use this one
+shared scanner. Keep future denylist inputs private and commit only normalized
+digests, with synthetic test fixtures.
 
 ## Prevent disclosure before publishing
 

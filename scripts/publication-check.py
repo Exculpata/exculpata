@@ -50,18 +50,9 @@ REVIEWED_COMMIT_EMAIL_IDENTITIES = {
         "33a1b1226f681d54071f794ee5d2b2cb226c4d91efbe954997eab68adcd3f35b",
     },
 }
-# Existing reviewed Co-authored-by trailer dispositions. Author/committer
-# addresses now follow MAINTAINER_EMAIL_DIGESTS independently. Exact SHA-256
-# of name + NUL + email bytes; suppresses only the generic content-email rule
-# for an exact trailer line. Deny terms, protected address hashes, secrets and
-# every other rule still apply. No case or whitespace folding.
-# Maintainer identities must stay no-reply and never belong here.
-REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES = frozenset(
-    {
-        # Fire162: owner review Oct 13 2026, outside contributor PR #234.
-        "4fda816440a2b260c0f98662327e8ad67c3e2351a39e0300deb8d8e778ecccb5",
-    }
-)
+# Attribution address fields protect only this personal address. Content keeps
+# the complete MAINTAINER_EMAIL_DIGESTS set and all other rules keep original bytes.
+PERSONAL_EMAIL_DIGEST = "ae7295bb836bc214423bd65843665313b0507c8cf74439c95dcaed2db2d426cd"
 # Exact media blobs whose raw bytes were reviewed. Local
 # --allow-reviewed-media-digest values are added to this set at scan time.
 # docs/assets/exculpata-launch-16x9.mp4 and site/assets/exculpata-launch-16x9.mp4.
@@ -70,8 +61,9 @@ REVIEWED_MEDIA_DIGESTS = (
     "764e069b47c7fb122f7907376868e79498594710745247f0e46416e9f59bd7ca",
     "b82dceab0752282f7442eba2c8630f7f01e4bcd0ec46948c091aba4f8098a62d",
 )
-COAUTHOR_TRAILER = re.compile(
-    rb"(?m)^Co-authored-by: ([^<>\r\n\0]+) <([^<>\s\0]+)>\r?$"
+ATTRIBUTION_TRAILER = re.compile(
+    rb"(?m)^[A-Za-z0-9-]+[ \t]*:[ \t]+[^<>\s\0][^<>\r\n\0]*[ \t]+"
+    rb"<[ \t]*([^<>\s\0]+)[ \t]*>[ \t]*\r?$"
 )
 
 
@@ -79,16 +71,18 @@ def _identity_digest(name: bytes, email: bytes) -> str:
     return hashlib.sha256(name + b"\0" + email).hexdigest()
 
 
-def _mask_reviewed_contributor_trailers(message: bytes) -> bytes:
-    """Replace only exact listed Co-authored-by addresses, for the email rule."""
-    def replace(match: re.Match[bytes]) -> bytes:
-        if _identity_digest(match.group(1), match.group(2)) not in REVIEWED_CONTRIBUTOR_EMAIL_IDENTITIES:
-            return match.group(0)
-        start, end = match.span(2)
-        base = match.start()
-        whole = match.group(0)
-        return whole[: start - base] + b"reviewed@example.invalid" + whole[end - base :]
-    return COAUTHOR_TRAILER.sub(replace, message)
+def _trailer_address_spans(message: bytes, trailers: bytes) -> tuple[tuple[int, int], ...]:
+    """Admit only address spans in Git's raw final trailer paragraph."""
+    message = message.rstrip(b"\r\n")
+    trailers = trailers.rstrip(b"\r\n")
+    if not trailers or not message.endswith(trailers):
+        return ()
+    offset = len(message) - len(trailers)
+    return tuple((offset + match.start(1), offset + match.end(1))
+                 for match in ATTRIBUTION_TRAILER.finditer(trailers)
+                 if EMAIL.fullmatch(match.group(1)))
+
+
 IGNORED_DIRECTORIES = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
 FORBIDDEN_SUFFIXES = {
     ".db",
@@ -312,11 +306,18 @@ def _scan_bytes(
     location: str,
     deny: tuple[bytes, ...],
     allowed_deny_literals: tuple[bytes, ...] = (),
+    attribution_email_spans: tuple[tuple[int, int], ...] = (),
 ) -> list[Finding]:
     findings: list[Finding] = []
     lowered = data.lower()
-    if any(hashlib.sha256(match.group(0).lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
-           for match in EMAIL.finditer(data)):
+
+    def attribution_address(match: re.Match[bytes]) -> bool:
+        return any(start <= match.start() and match.end() <= end
+                   for start, end in attribution_email_spans)
+
+    if any(hashlib.sha256(match.group(0).lower()).hexdigest() in (
+        {PERSONAL_EMAIL_DIGEST} if attribution_address(match) else MAINTAINER_EMAIL_DIGESTS
+    ) for match in EMAIL.finditer(data)):
         findings.append(Finding(location, "maintainer-email-address"))
     pem_rules: set[str] = set()
     for rule, marker in PEM_MARKERS:
@@ -348,6 +349,8 @@ def _scan_bytes(
             findings.append(Finding(location, "private-network-address"))
             break
     for match in EMAIL.finditer(data):
+        if attribution_address(match):
+            continue
         if _recognized_public_automation_email(data, match):
             continue  # Exact public bot identity or Dependabot sign-off; deny rules still apply.
         domain = match.group(1).decode("ascii", "ignore").casefold()
@@ -785,7 +788,7 @@ def scan_history(
                 "git",
                 "show",
                 "-s",
-                "--format=%an%x00%ae%x00%cn%x00%ce%x00%B",
+                "--format=%an%x00%ae%x00%cn%x00%ce%x00%B%x00%(trailers:unfold=false)",
                 commit,
             ],
             cwd=root,
@@ -797,7 +800,11 @@ def scan_history(
         if metadata.returncode != 0 or len(parts) != 5:
             findings.append(Finding("git-metadata", "history-scan-failed"))
             continue
-        author_name, author_email, committer_name, committer_email, message = parts
+        author_name, author_email, committer_name, committer_email, message_block = parts
+        message, separator, trailers = message_block.rpartition(b"\0")
+        if not separator:
+            findings.append(Finding("git-metadata", "history-scan-failed"))
+            continue
         allowed_identities = set(public_git_identities)
         allowed_identities.update(baseline_identities.get(commit, set()))
         for name, email in (
@@ -808,19 +815,11 @@ def scan_history(
                 name + b"\0" + email,
                 location="git-metadata",
                 deny=deny,
+                attribution_email_spans=((len(name) + 1, len(name) + 1 + len(email)),),
                 allowed_deny_literals=(
                     (name, email) if (name, email) in allowed_identities else ()
                 ),
             )
-            # Contributor addresses are allowed only in the author/committer
-            # address fields. Names and all other metadata retain content rules.
-            identity_findings = [
-                item for item in identity_findings
-                if item.rule != "non-example-email-address"
-            ] + [
-                item for item in _scan_bytes(name, location="git-metadata", deny=())
-                if item.rule == "non-example-email-address"
-            ]
             identity_digest = _identity_digest(name, email)
             if identity_digest in REVIEWED_COMMIT_EMAIL_IDENTITIES.get(commit, ()):
                 # Retain only the already reviewed exact historical attribution.
@@ -845,18 +844,10 @@ def scan_history(
                 allowed_spans.extend(match.span(1) for match in re.finditer(trailer, message))
         # Scan generic rules against the original bytes. Only deny matches wholly
         # inside the exact reviewed attribution username may be adjudicated.
-        message_findings = _scan_bytes(message, location="git-metadata", deny=())
-        masked = _mask_reviewed_contributor_trailers(message)
-        if masked != message:
-            # Every other rule keeps the original bytes; only the email rule
-            # is re-judged with exact reviewed contributor trailers masked.
-            message_findings = [
-                item for item in message_findings if item.rule != "non-example-email-address"
-            ] + [
-                item for item in _scan_bytes(masked, location="git-metadata", deny=())
-                if item.rule == "non-example-email-address"
-            ]
-        findings.extend(message_findings)
+        findings.extend(_scan_bytes(
+            message, location="git-metadata", deny=(),
+            attribution_email_spans=_trailer_address_spans(message, trailers),
+        ))
         lowered = message.lower()
         for term in deny:
             offset = 0

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Publication scanning now blocks only one maintainer personal address in author,
+  committer and commit-message trailer address fields, allowing other addresses
+  there. Body text, file content and all non-email checks remain unchanged.
+
 - Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
   and source-coverage rows plus coverage/schema columns. Importers must select
   `row_type == 'citation'` when importing timeline citations. Exact totals are
