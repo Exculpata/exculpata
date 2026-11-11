@@ -111,10 +111,16 @@ The [repair design](500-fix-design.md) tightens the existing guarantees:
 accepted metadata remains complete, duplicate headings receive collision-free
 display ordinals, and decimal sorting never changes displayed values. Oversized
 email headers are explicitly refused rather than shown as partial metadata.
+Oversized, malformed, invalidly encoded or unreadable candidate load files remain
+in the load-file report and refuse identifier assignment because collision safety
+cannot be established. Accepted values and original files remain unchanged.
 Team IDs have storage-enforced ASCII-domain, case-insensitive uniqueness; full
 supported produced intervals and unmatched load-file rows participate in collision
-checks. Unsupported unequal ranges refuse assignment visibly. Authorization and
-mutation share one explicit write transaction. A purged identity stays retired
+checks. Unsupported unequal ranges refuse assignment visibly. Persistent domain
+triggers abort the invalid statement, leaving rollback to the transaction owner;
+migration replay replaces old trigger definitions and refuses conflicting legacy rows.
+Authorization and mutation share one explicit write transaction. A purged identity stays retired
 for the process, including pending builds and later restored identities. Explicit
 URL view, session preference and server default define navigation precedence;
-keyboard pagination and no-script links preserve the selected view.
+keyboard pagination and no-script links preserve the selected view. Deliberate view
+changes update pagination, sorting and filter navigation before those controls are used.

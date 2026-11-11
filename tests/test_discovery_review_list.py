@@ -455,6 +455,91 @@ def test_identifier_storage_rejects_case_equivalent_insert_and_update(production
 
 
 
+@pytest.mark.parametrize('installed', [False, True])
+@pytest.mark.parametrize('operation', ['insert', 'update'])
+def test_identifier_domain_rejection_preserves_caller_transaction(production, installed, operation):
+    import sqlite3
+    from tests.fixture_write import fixture_write
+    _, bench, matter = production
+    workspace = bench.workspace
+    sql = (ROOT / 'migrations/sqlite/0047_discovery_identifier_case_uniqueness.sql').read_text()
+    if installed:
+        # fixture-write: recreate the previous persistent trigger bodies on synthetic storage.
+        workspace.connection.executescript(
+            'DROP TRIGGER discovery_identifier_domain_insert;'
+            'DROP TRIGGER discovery_identifier_domain_update;'
+            + sql.replace('RAISE(ABORT,', 'RAISE(ROLLBACK,'))
+    # fixture-write: exercise real migration replay, including replacement of installed triggers.
+    workspace.connection.executescript('BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
+    with fixture_write(workspace) as connection:
+        connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                           (matter.matter_id, 'pending', 'Def001', ACTOR, 'synthetic'))
+        with pytest.raises(sqlite3.IntegrityError, match='Unsupported Team ID'):
+            if operation == 'insert':
+                connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                                   (matter.matter_id, 'invalid', 'bad', ACTOR, 'synthetic'))
+            else:
+                connection.execute("UPDATE workbench_discovery_identifier SET identifier='bad' WHERE document_id='pending'")
+        assert connection.in_transaction
+        with fixture_write(workspace) as nested:
+            assert [row[0] for row in nested.execute(
+                'SELECT identifier FROM workbench_discovery_identifier')] == ['Def001']
+    assert [row[0] for row in workspace.connection.execute(
+        'SELECT identifier FROM workbench_discovery_identifier')] == ['Def001']
+
+
+@pytest.mark.parametrize('rejection', ['bytes', 'header-length', 'header-syntax', 'header-empty', 'encoding', 'unreadable', 'valid'])
+def test_rejected_load_file_blocks_assignment_and_reports_incomplete_read(production, monkeypatch, rejection):
+    from case_intelligence.modules.discovery_review.identifiers import RangeUnavailable, produced_collisions
+    client, bench, matter = production
+    raw = b'BEGBATES,ENDBATES,NATIVEPATH,Note\nSYN010,SYN012,missing.txt,synthetic\n'
+    if rejection == 'bytes':
+        monkeypatch.setattr(load_files, 'MAX_LOAD_FILE_BYTES', 512)
+        raw += b'SYN020,SYN022,missing-too.txt,' + b'x' * 512 + b'\n'
+    elif rejection == 'header-length':
+        raw = raw.replace(b'Note', b'x' * (fields.MAX_HEADER_CHARS + 1))
+    elif rejection == 'header-syntax':
+        raw = b'"' + raw
+    elif rejection == 'header-empty':
+        raw = raw.replace(b'Note', b'')
+    elif rejection == 'encoding':
+        raw = raw.replace(b'synthetic', b'\xff')
+    definition = fields.load_definition()
+    parsed = load_files.parse(raw, document_id='synthetic', name='candidate.csv', definition=definition)
+    assert parsed is not None
+    assert bool(parsed.problem) == (rejection not in {'valid', 'unreadable'})
+    add_files(client, bench, matter, {'Synthetic/candidate.csv': raw}, key='b')
+    store = bench.source_store(matter)
+    candidate = next(d for d in store.documents.values() if d.display_name.endswith('candidate.csv'))
+    original = store.source_path(candidate.document_id)
+    assert original.read_bytes() == raw
+    source_path = store.source_path
+    if rejection == 'unreadable':
+        def unavailable(document_id, **kwargs):
+            if document_id == candidate.document_id:
+                raise OSError('synthetic unreadable load file')
+            return source_path(document_id, **kwargs)
+        monkeypatch.setattr(store, 'source_path', unavailable)
+    index = reader.index_for(matter.matter_id, store, definition)
+    if rejection == 'valid':
+        assert produced_collisions(index, definition, ['SYN011'])
+        assert not produced_collisions(index, definition, ['SYN013'])
+    else:
+        with pytest.raises(RangeUnavailable, match='not completely read'):
+            produced_collisions(index, definition, ['SYN011'])
+    report = next(report for report in index.reports if report.document_id == candidate.document_id)
+    assert bool(report.problem) == (rejection != 'valid')
+    page = client.get(f'/matters/{matter.slug}/production')
+    assert page.status_code == 200
+    if report.problem:
+        assert report.problem in page.text
+    response = client.post(f'/matters/{matter.slug}/production/identifiers',
+                           data={'prefix': 'SYN', 'start': 11, 'digits': 3, 'q': 'memo'}, follow_redirects=False)
+    assert 'notice=' + ('conflict' if rejection == 'valid' else 'range') in response.headers['location']
+    assert not list(bench.workspace.connection.execute('SELECT * FROM workbench_discovery_identifier'))
+    assert original.read_bytes() == raw
+
+
 def test_fields_view_renders_complete_accepted_load_file_values(production):
     client, bench, matter = production
     value = 'Z' * 5000 + 'END'

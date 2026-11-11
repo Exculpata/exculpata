@@ -69,22 +69,29 @@ def unique_headers(headers) -> tuple[str, ...]:
     return tuple(named)
 
 
+def rejected(document_id: str, name: str, reason: str) -> LoadFile:
+    """Retain an unread candidate in reports and collision safety checks."""
+    return LoadFile(document_id, name, (), (), "", "", f"Load file was not read: {reason}.")
+
+
 def parse(raw: bytes, *, document_id: str, name: str, definition: Definition) -> LoadFile | None:
-    """Return a load file, or None when the table has no way to name an item."""
+    """Return a table or explicit refusal; None means a recognized non-load table."""
     delimiter = DELIMITERS.get(PurePosixPath(name).suffix.casefold())
     if delimiter is None:
         return None
+    if len(raw) > MAX_LOAD_FILE_BYTES:
+        return rejected(document_id, name, "file exceeds the byte limit")
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return None
+        return rejected(document_id, name, "invalid UTF-8 encoding")
     reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
     try:
         produced = next(reader, None)
     except csv.Error:
-        return None
+        return rejected(document_id, name, "header could not be parsed")
     if not produced or any(not header or len(header) > MAX_HEADER_CHARS for header in produced):
-        return None
+        return rejected(document_id, name, "header is empty or exceeds the length limit")
     headers = unique_headers(produced)
     bates = {normalize_header(h) for h in definition.by_key[definition.default_sort].headers}
     path_header = next((h for h in headers if normalize_header(h) in definition.path_headers), "")

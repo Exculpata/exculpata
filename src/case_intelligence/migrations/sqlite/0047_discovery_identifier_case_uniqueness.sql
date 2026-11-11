@@ -1,12 +1,14 @@
-CREATE TRIGGER IF NOT EXISTS discovery_identifier_domain_insert
+DROP TRIGGER IF EXISTS discovery_identifier_domain_insert;
+CREATE TRIGGER discovery_identifier_domain_insert
 BEFORE INSERT ON workbench_discovery_identifier
 WHEN length(NEW.identifier) NOT BETWEEN 2 AND 32
  OR NEW.identifier GLOB '*[^A-Za-z0-9_-]*' OR instr(NEW.identifier, char(0)) > 0
  OR substr(NEW.identifier,1,1) NOT GLOB '[A-Za-z]'
  OR substr(NEW.identifier,-1) NOT GLOB '[0-9]'
  OR (length(NEW.identifier)>21 AND substr(NEW.identifier,21) GLOB '*[^0-9]*')
-BEGIN SELECT RAISE(ROLLBACK, 'Unsupported Team ID; resolve stored values before retrying upgrade'); END;
-CREATE TRIGGER IF NOT EXISTS discovery_identifier_domain_update
+BEGIN SELECT RAISE(ABORT, 'Unsupported Team ID; resolve stored values before retrying upgrade'); END;
+DROP TRIGGER IF EXISTS discovery_identifier_domain_update;
+CREATE TRIGGER discovery_identifier_domain_update
 BEFORE UPDATE ON workbench_discovery_identifier
 WHEN length(NEW.identifier) NOT BETWEEN 2 AND 32
  OR NEW.identifier GLOB '*[^A-Za-z0-9_-]*' OR instr(NEW.identifier, char(0)) > 0
@@ -14,7 +16,7 @@ WHEN length(NEW.identifier) NOT BETWEEN 2 AND 32
  OR substr(NEW.identifier,-1) NOT GLOB '[0-9]'
  OR (length(NEW.identifier)>21 AND substr(NEW.identifier,21) GLOB '*[^0-9]*')
 
-BEGIN SELECT RAISE(ROLLBACK, 'Unsupported Team ID'); END;
+BEGIN SELECT RAISE(ABORT, 'Unsupported Team ID'); END;
 CREATE TEMP TABLE IF NOT EXISTS discovery_identifier_validation (identifier TEXT);
 CREATE TEMP TRIGGER IF NOT EXISTS discovery_identifier_validate
 BEFORE INSERT ON discovery_identifier_validation

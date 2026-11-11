@@ -9,11 +9,12 @@
   {% if notice %}<p class="dr-notice{% if notice in ('unavailable', 'conflict', 'invalid', 'confirm', 'range', 'retry') %} dr-notice-warning{% endif %}" role="status">{{ {'range': 'Nothing was assigned: range collision safety could not be established from the produced metadata. Review the load-file report and original ranges.', 'retry': 'Nothing was assigned: sources changed. Reload the list and try again.', 'saved': 'Your view is saved for this matter.', 'shared': 'This is now the starting view for everyone on this matter. A reviewer\'s own saved view still takes priority for them.', 'reset': 'The view was reset.', 'unavailable': 'The change could not be saved. This matter may no longer accept changes.', 'assigned': 'Team identifiers were assigned.', 'cleared': 'Team identifiers were removed from the listed items.', 'conflict': 'Nothing was assigned: at least one of those identifiers is already used in this matter. Choose another prefix or starting number.', 'nothing': 'No listed item needed a change.', 'invalid': 'Nothing was assigned: use a prefix that starts with a letter (letters, digits, hyphen or underscore, up to 20) and enough digits for every item.', 'confirm': 'Nothing was removed: tick the confirmation box to remove team identifiers.'}[notice] }}</p>{% endif %}
   <div class="dr-toolbar">
     <form class="dr-filter" method="get" action="{{ base_url }}" role="search">
-      {% for key, value in listing.state.items() %}{% if value and key != 'q' %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+      {% for key, value in listing.state.items() %}{% if value and key not in ('q', 'view') %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}{% endfor %}
+      <input type="hidden" name="view" value="{{ listing.state.view }}" data-review-view-input>
       <label for="dr-filter-input" class="visually-hidden">Filter the list</label>
       <input id="dr-filter-input" type="search" name="q" value="{{ listing.state.q }}" maxlength="200" placeholder="Filter by Bates, name or any shown column" autocomplete="off" data-review-filter>
       <button class="button button-secondary" type="submit">Filter</button>
-      {% if listing.filtered %}<a href="{{ listing.clear_filter }}">Clear</a>{% endif %}
+      {% if listing.filtered %}<a href="{{ listing.clear_filter }}" data-review-navigation>Clear</a>{% endif %}
     </form>
     <p class="discovery-review-count" role="status">{{ document_count }} {{ 'document' if document_count == 1 else 'documents' }} in this matter{% if listing.filtered %} · {{ listing.matching }} {{ 'matches' if listing.matching == 1 else 'match' }} the filter{% endif %}</p>
     <button class="button button-secondary" type="button" data-review-chooser-open aria-controls="dr-chooser" aria-expanded="false">Columns and fields</button>
@@ -24,7 +25,7 @@
   {% if document_count and not load_files|selectattr('matched')|list %}
   <p class="dr-load-file dr-muted">No load file is matched to these items, so Bates, custodian and other load-file fields are empty. Add the production's CSV load file to this matter with its files and those fields fill in.</p>
   {% endif %}
-  {% if listing.hidden %}<p class="dr-load-file dr-muted">Hidden because no item has a value: {{ listing.hidden|join(', ') }}. <a href="{{ listing.show_all }}">Show anyway</a></p>{% endif %}
+  {% if listing.hidden %}<p class="dr-load-file dr-muted">Hidden because no item has a value: {{ listing.hidden|join(', ') }}. <a href="{{ listing.show_all }}" data-review-navigation>Show anyway</a></p>{% endif %}
 
   {% if not document_count %}
   <p class="dr-state">No documents in this matter yet. <a href="/matters/{{ matter.slug }}/setup">Add sources</a> to start reviewing.</p>
@@ -34,24 +35,24 @@
       <div class="dr-table-scroll" tabindex="-1" data-review-list>
         <table class="dr-table">
           <thead><tr>{% for column in listing.columns %}
-            <th scope="col" class="dr-align-{{ column.field.align }}"{% if column.sorted %} aria-sort="{{ 'descending' if column.descending else 'ascending' }}"{% endif %}><a href="{{ column.url }}" title="Sort by {{ column.field.label }}">{{ column.field.label }}{% if column.sorted %}<span aria-hidden="true"> {{ '▼' if column.descending else '▲' }}</span>{% endif %}</a></th>{% endfor %}
+            <th scope="col" class="dr-align-{{ column.field.align }}"{% if column.sorted %} aria-sort="{{ 'descending' if column.descending else 'ascending' }}"{% endif %}><a href="{{ column.url }}" data-review-navigation title="Sort by {{ column.field.label }}">{{ column.field.label }}{% if column.sorted %}<span aria-hidden="true"> {{ '▼' if column.descending else '▲' }}</span>{% endif %}</a></th>{% endfor %}
           </tr></thead>
           <tbody>
             {% for row in listing.rows %}
             <tr data-review-row data-token="{{ row.item.token }}" data-position-label="{{ listing.first_row + loop.index0 }} of {{ listing.matching }}" data-url="{{ row.url }}" data-fragment="{{ base_url }}/items/{{ row.item.token }}"{% if row.selected %} class="selected" aria-current="true"{% endif %}>
-              {% for value in row.cells %}<td class="dr-align-{{ listing.columns[loop.index0].field.align }}{% if value.state != 'value' %} dr-cell-{{ value.state }}{% endif %}"{% if value.note %} title="{{ value.note }}"{% endif %}>{% if loop.first %}<a href="{{ row.url }}" title="Open {{ row.heading.title }}">{{ value.value or '—' }}</a>{% elif value.state == 'absent' %}<span aria-label="{{ value.note }}">–</span>{% else %}{{ value.value }}{% endif %}</td>{% endfor %}
+              {% for value in row.cells %}<td class="dr-align-{{ listing.columns[loop.index0].field.align }}{% if value.state != 'value' %} dr-cell-{{ value.state }}{% endif %}"{% if value.note %} title="{{ value.note }}"{% endif %}>{% if loop.first %}<a href="{{ row.url }}" data-review-navigation title="Open {{ row.heading.title }}">{{ value.value or '—' }}</a>{% elif value.state == 'absent' %}<span aria-label="{{ value.note }}">–</span>{% else %}{{ value.value }}{% endif %}</td>{% endfor %}
             </tr>
             {% endfor %}
           </tbody>
         </table>
-        {% if not listing.rows %}<p class="dr-state">No documents match this filter. <a href="{{ listing.clear_filter }}">Clear the filter</a></p>{% endif %}
+        {% if not listing.rows %}<p class="dr-state">No documents match this filter. <a href="{{ listing.clear_filter }}" data-review-navigation>Clear the filter</a></p>{% endif %}
       </div>
       <footer class="dr-list-footer">
         <span>{% if listing.rows %}{{ listing.first_row }}–{{ listing.last_row }} of {{ listing.matching }}{% endif %}</span>
         <nav aria-label="List pages">
-          {% if listing.previous_page %}<a href="{{ listing.previous_page }}" data-review-page="previous">Previous page</a>{% endif %}
+          {% if listing.previous_page %}<a href="{{ listing.previous_page }}" data-review-navigation data-review-page="previous">Previous page</a>{% endif %}
           <span>Page {{ listing.page }} of {{ listing.pages }}</span>
-          {% if listing.next_page %}<a href="{{ listing.next_page }}" data-review-page="next">Next page</a>{% endif %}
+          {% if listing.next_page %}<a href="{{ listing.next_page }}" data-review-navigation data-review-page="next">Next page</a>{% endif %}
         </nav>
       </footer>
     </section>

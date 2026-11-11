@@ -142,7 +142,8 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
 
     def links(**query) -> dict:
         encoded = urlencode({key: value for key, value in query.items() if value})
-        return {"url": urlunsplit(parsed_url._replace(query=urlencode({**dict(parse_qsl(parsed_url.query)), **query}))),
+        return {"url": urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path,
+                                  urlencode({**dict(parse_qsl(parsed_url.query)), **query}), parsed_url.fragment)),
                 "fragment": f"{fragment}?{encoded}"}
 
     panel = {

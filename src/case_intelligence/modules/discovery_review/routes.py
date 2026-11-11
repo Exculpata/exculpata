@@ -56,7 +56,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     def production_documents(
         request: Request, slug: str,
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
-        sort: str = Query("", max_length=fields.MAX_FIELD_KEY_CHARS),
+        sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
         page: int = Query(1, ge=1, le=1_000_000),
         doc: str = Query("", pattern="^(|[0-9a-f]{32})$"),
@@ -134,7 +134,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         digits: int = Form(6, ge=1, le=12), include_produced: str = Form(""),
         action: str = Form("assign"), confirm: str = Form(""),
         q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
-        sort: str = Form("", max_length=fields.MAX_FIELD_KEY_CHARS), dir: str = Form(""),
+        sort: str = Form("", max_length=fields.MAX_KEY_CHARS), dir: str = Form(""),
     ):
         matter, actor, definition, store, index, choice = current(request, slug)
         if action not in {"assign", "clear"} or not definition.heading_fallback:

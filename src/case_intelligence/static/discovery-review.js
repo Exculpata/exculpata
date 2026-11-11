@@ -24,6 +24,10 @@
     if (preferred) target.searchParams.set("view", preferred);
     return target.toString();
   };
+  const syncNavigation = () => {
+    root.querySelectorAll("[data-review-navigation]").forEach((link) => { link.href = withView(link.href); });
+    root.querySelectorAll("[data-review-view-input]").forEach((input) => { input.value = preferred; });
+  };
   const pageLink = (forward) => root.querySelector(forward ? '[data-review-page="next"]' : '[data-review-page="previous"]');
   const neighbor = (row, forward) => {
     const other = forward ? row?.nextElementSibling : row?.previousElementSibling;
@@ -89,10 +93,12 @@
     const row = current();
     if (!row || !panel) return;
     preferred = name;
+    syncNavigation();
     try { sessionStorage.setItem("discovery-review-view", name); } catch { /* the choice lasts for this page */ }
     history.replaceState(null, "", withView(row.dataset.url));
     show(withView(row.dataset.fragment), withView(row.dataset.url), name);
   };
+  syncNavigation();
   if (!explicit && preferred && current()) select(current(), false);
   const shownToken = () => panel?.querySelector("[data-review-item]")?.dataset.token;
 

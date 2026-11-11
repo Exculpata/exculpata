@@ -189,18 +189,23 @@ def read_load_files(store, documents, definition: Definition, earlier: Mapping, 
     found = []
     for d in sorted(documents, key=lambda d: natural_key(d.relative_path)):
         suffix = PurePosixPath(d.display_name).suffix.casefold()
-        if (suffix not in load_files.DELIMITERS or d.origin != "upload" or d.state != "ready"
-                or d.size > load_files.MAX_LOAD_FILE_BYTES):
+        if suffix not in load_files.DELIMITERS or d.origin != "upload":
             continue
-        key = ("table", d.document_id, d.version_id)
-        if key in earlier:
+        key = ("table", d.document_id, d.version_id, d.state)
+        if d.state != "ready":
+            parsed = load_files.rejected(d.document_id, d.display_name, "source is not ready for review")
+        elif key in earlier:
             parsed = earlier[key]
+        elif d.size > load_files.MAX_LOAD_FILE_BYTES:
+            parsed = load_files.rejected(d.document_id, d.display_name, "file exceeds the byte limit")
         else:
             try:
-                raw = store.source_path(d.document_id, verify_digest=True).read_bytes()
+                with store.source_path(d.document_id, verify_digest=True).open("rb") as source:
+                    raw = source.read(load_files.MAX_LOAD_FILE_BYTES + 1)
             except (OSError, ValueError, KeyError):
-                continue
-            parsed = load_files.parse(raw, document_id=d.document_id, name=d.display_name, definition=definition)
+                parsed = load_files.rejected(d.document_id, d.display_name, "source could not be read")
+            else:
+                parsed = load_files.parse(raw, document_id=d.document_id, name=d.display_name, definition=definition)
         reads[key] = parsed
         if parsed is not None:
             found.append(parsed)
