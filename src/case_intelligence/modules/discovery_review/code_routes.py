@@ -48,7 +48,7 @@ def mount(app, *, context, current, codes, require_csrf):
     def record_production_code(request: Request, slug: str, token: str, code_id: str,
                                action: str = Form(""), view: str = Form("", pattern="^(|document|text|fields)$"),
                                q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
-                               sort: str = Form("", max_length=fields.MAX_HEADER_CHARS + 3),
+                               sort: str = Form("", max_length=fields.MAX_KEY_CHARS),
                                dir: str = Form("", pattern="^(|asc|desc)$"),
                                unit: int = Form(1, ge=1, le=1_000_000),
                                all_columns: str = Form("", pattern="^(|1)$")):

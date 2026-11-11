@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
@@ -20,6 +20,19 @@ class ModuleDatabase:
 
     connection: Connection
     lock: AbstractContextManager
+
+    @contextmanager
+    def authorized_write(self, authority, matter_id: str, actor_id: str):
+        """Serialize current authority and mutation in one owned transaction."""
+        with self.lock:
+            self.connection.execute("BEGIN IMMEDIATE")
+            try:
+                authority(matter_id, actor_id)
+                yield self.connection
+                self.connection.commit()
+            except BaseException:
+                self.connection.rollback()
+                raise
 
 
 @dataclass(frozen=True, slots=True)

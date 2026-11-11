@@ -17,7 +17,6 @@ from case_intelligence.modules.discovery_review.fields import (
 
 MAX_LOAD_FILE_BYTES = 64 * 1024 * 1024
 MAX_LOAD_FILE_ROWS = 2_000_000
-MAX_VALUE_CHARS = 4000
 DELIMITERS = {".csv": ",", ".tsv": "\t"}
 
 
@@ -58,30 +57,41 @@ class Report:
 
 def unique_headers(headers) -> tuple[str, ...]:
     """Keep headers as produced; a repeated header gains a visible ordinal."""
-    seen: dict[str, int] = {}
+    reserved, allocated = set(headers), set()
     named = []
     for header in headers:
-        seen[header] = seen.get(header, 0) + 1
-        named.append(header if seen[header] == 1 else f"{header} ({seen[header]})")
+        label, ordinal = header, 2
+        while label in allocated or (label != header and label in reserved):
+            label = f"{header} ({ordinal})"
+            ordinal += 1
+        allocated.add(label)
+        named.append(label)
     return tuple(named)
 
 
+def rejected(document_id: str, name: str, reason: str) -> LoadFile:
+    """Retain an unread candidate in reports and collision safety checks."""
+    return LoadFile(document_id, name, (), (), "", "", f"Load file was not read: {reason}.")
+
+
 def parse(raw: bytes, *, document_id: str, name: str, definition: Definition) -> LoadFile | None:
-    """Return a load file, or None when the table has no way to name an item."""
+    """Return a table or explicit refusal; None means a recognized non-load table."""
     delimiter = DELIMITERS.get(PurePosixPath(name).suffix.casefold())
     if delimiter is None:
         return None
+    if len(raw) > MAX_LOAD_FILE_BYTES:
+        return rejected(document_id, name, "file exceeds the byte limit")
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
-        return None
+        return rejected(document_id, name, "invalid UTF-8 encoding")
     reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
     try:
         produced = next(reader, None)
     except csv.Error:
-        return None
+        return rejected(document_id, name, "header could not be parsed")
     if not produced or any(not header or len(header) > MAX_HEADER_CHARS for header in produced):
-        return None
+        return rejected(document_id, name, "header is empty or exceeds the length limit")
     headers = unique_headers(produced)
     bates = {normalize_header(h) for h in definition.by_key[definition.default_sort].headers}
     path_header = next((h for h in headers if normalize_header(h) in definition.path_headers), "")
@@ -100,7 +110,7 @@ def parse(raw: bytes, *, document_id: str, name: str, definition: Definition) ->
                 problem = f"Only the first {MAX_LOAD_FILE_ROWS} rows were read."
                 break
             rows.append(Row(reader.line_num, {
-                header: value[:MAX_VALUE_CHARS] for header, value in zip(headers, values)}))
+                header: value for header, value in zip(headers, values)}))
     except csv.Error:
         problem = f"Line {reader.line_num} could not be parsed; later rows were not read."
     return LoadFile(document_id, name, headers, tuple(rows), path_header, bates_header, problem)

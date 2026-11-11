@@ -7,7 +7,7 @@ Exculpata is a free, local-first discovery review workspace for criminal defense
 - **It reasons across the discovery.** It doesn't just answer and link to a file. It pulls the pieces together and connects them, shows its work, and cites every piece.
   - The test case: "Did the client or any party ever own more than 10% of this stock?" A good answer finds each filing, statement, and transaction, works out the ownership over time, shows the math, cites each source, and says plainly where the record has gaps.
 - **Honest.** When the record doesn't support an answer, it says so instead of guessing.
-- **Local-first.** Case data stays on the machine. No case data goes to the cloud.
+- **Local-first.** Case processing is local by default. External AI processing is optional and requires explicit operator configuration.
 
 ## Never
 - Never add a "mode" or a single-use feature. Make the one assistant better instead.

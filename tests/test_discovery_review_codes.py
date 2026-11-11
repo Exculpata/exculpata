@@ -185,7 +185,7 @@ def test_archive_keeps_codes_and_events_with_attribution(archive_case):
 
 
 def test_code_migration_mirror():
-    name = "migrations/sqlite/0047_discovery_review_codes.sql"
+    name = "migrations/sqlite/0048_discovery_review_codes.sql"
     assert (ROOT / name).read_bytes() == (ROOT / "src/case_intelligence" / name).read_bytes()
 
 
@@ -315,7 +315,7 @@ def test_code_posts_keep_validated_review_position(production, fragment):
         assert parse_qs(target.query) == {key: [value] for key, value in
                                          {**state, "doc": token, "all_columns": "1"}.items()}
     for bad in ({"view": "https://example.test"}, {"dir": "sideways"}, {"unit": "0"},
-                {"unit": "1000001"}, {"q": "x" * 201}, {"sort": "x" * 204}):
+                {"unit": "1000001"}, {"q": "x" * 201}, {"sort": "x" * (fields.MAX_KEY_CHARS + 1)}):
         assert client.post(f"{base}/items/{token}/codes/{code.code_id}",
                            data={**state, **bad, "action": "apply"}).status_code == 422
     assert len(history(bench.workspace, matter.matter_id)) == 2

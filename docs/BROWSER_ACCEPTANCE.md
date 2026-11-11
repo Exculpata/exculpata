@@ -182,8 +182,12 @@ symlink.
 
 ### Hosted dependency setup
 
-The Ubuntu 24.04 x86_64 GitHub Actions job uses `install-ci-browser-deps.py` to
-bound APT index refresh to 60 seconds and package download to 180 seconds, with
+The Ubuntu 24.04 x86_64 GitHub Actions job restores main-produced APT lists and
+archives through the shared `apt-deps` action. `install-ci-browser-deps.py` first
+simulates a no-download install with the same package-selection flags as the
+real install. A passing simulation installs offline; a failed simulation takes
+the online path. Main scheduled runs force an online refresh. Online acquisition
+bounds APT index refresh to 120 seconds and package download to 180 seconds, with
 up to 10 seconds to kill remaining acquisition processes. If either fails or
 times out, it retries acquisition once using only the official HTTPS Ubuntu
 mirrors already listed on the runner. It restores the original mirror list
@@ -200,8 +204,8 @@ the helper sets `Dir::Etc::sourcelist` to the validated `ubuntu.sources` file an
 package candidates; those files are not modified. Refresh errors still fail the
 attempt via `--error-on=any`.
 
-Only after successful acquisition does it install the complete dependency list
-with `--no-download`. Package unpacking has no helper timeout or retry; missing
+After successful preflight or online acquisition, it installs the complete
+dependency list with `--no-download`. Package unpacking has no helper timeout or retry; missing
 archives and install failures fail the job. The existing 20-minute job limit,
 FFmpeg executable checks, browser archive verification and all journeys remain
 required. Setup failure is not a browser acceptance result. The helper is for

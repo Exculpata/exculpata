@@ -13,11 +13,19 @@
   let request = 0;
   try { preferred = sessionStorage.getItem("discovery-review-view") || ""; } catch { preferred = ""; }
 
+  const validView = (value) => ["document", "text", "fields"].includes(value) ? value : "";
+  const explicit = validView(new URL(window.location.href).searchParams.get("view"));
+  preferred = explicit || validView(preferred) || panel?.querySelector("[data-review-item]")?.dataset.view || "";
+
   const say = (message) => { if (status) status.textContent = message; };
   const withView = (url) => {
     const target = new URL(url, window.location.origin);
-    if (preferred && !target.searchParams.has("view")) target.searchParams.set("view", preferred);
+    if (preferred) target.searchParams.set("view", preferred);
     return target.toString();
+  };
+  const syncNavigation = () => {
+    root.querySelectorAll("[data-review-navigation]").forEach((link) => { link.href = withView(link.href); });
+    root.querySelectorAll("[data-review-view-input]").forEach((input) => { input.value = preferred; });
   };
   const pageLink = (forward) => root.querySelector(forward ? '[data-review-page="next"]' : '[data-review-page="previous"]');
   const neighbor = (row, forward) => {
@@ -62,14 +70,14 @@
     all.forEach((other) => { other.classList.toggle("selected", other === row); other.removeAttribute("aria-current"); });
     row.setAttribute("aria-current", "true");
     row.scrollIntoView({ block: "nearest" });
-    history.replaceState(null, "", row.dataset.url);
+    history.replaceState(null, "", withView(row.dataset.url));
     root.querySelectorAll("[data-review-step]").forEach((link) => {
       const forward = link.dataset.reviewStep === "next";
       const target = neighbor(row, forward)?.dataset.url || pageLink(forward)?.href;
-      if (target) link.href = target; else link.removeAttribute("href");
+      if (target) link.href = withView(target); else link.removeAttribute("href");
     });
     if (position) position.textContent = row.dataset.positionLabel;
-    show(withView(row.dataset.fragment), row.dataset.url);
+    show(withView(row.dataset.fragment), withView(row.dataset.url), preferred);
     if (focusList) root.querySelector("[data-review-list]")?.focus({ preventScroll: true });
   };
   const step = (forward) => {
@@ -77,7 +85,7 @@
     const target = selected ? neighbor(selected, forward) : rows()[0];
     if (target) return select(target, true);
     const edge = pageLink(forward);
-    if (edge) window.location.assign(edge.href);
+    if (edge) window.location.assign(withView(edge.href));
     else say(forward ? "This is the last document in the list." : "This is the first document in the list.");
   };
   const missingView = {
@@ -90,9 +98,13 @@
     const row = current();
     if (!row || !panel) return;
     preferred = name;
+    syncNavigation();
     try { sessionStorage.setItem("discovery-review-view", name); } catch { /* the choice lasts for this page */ }
-    show(withView(row.dataset.fragment), row.dataset.url, name);
+    history.replaceState(null, "", withView(row.dataset.url));
+    show(withView(row.dataset.fragment), withView(row.dataset.url), name);
   };
+  syncNavigation();
+  if (!explicit && preferred && current()) select(current(), false);
   const shownToken = () => panel?.querySelector("[data-review-item]")?.dataset.token;
 
   root.addEventListener("submit", (event) => {
@@ -107,7 +119,12 @@
     if (fragment && panel?.contains(fragment)) {
       event.preventDefault();
       if (fragment.dataset.reviewView) openView(fragment.dataset.reviewView);
-      else if (shownToken() === current()?.dataset.token) show(fragment.dataset.reviewFragment, fragment.href);
+      else if (shownToken() === current()?.dataset.token) {
+        const fallback = new URL(window.location.href);
+        const unit = new URL(fragment.dataset.reviewFragment, window.location.origin).searchParams.get("unit");
+        if (unit) fallback.searchParams.set("unit", unit);
+        show(withView(fragment.dataset.reviewFragment), withView(fallback), preferred);
+      }
       return;
     }
     const stepper = event.target.closest("[data-review-step]");

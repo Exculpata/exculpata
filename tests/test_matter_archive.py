@@ -730,3 +730,20 @@ def test_download_purge_and_session_authority_are_not_exported_or_snapshot_input
                 assert canary.encode() not in material
     finally:
         cleanup_archive(artifact)
+
+
+def test_archive_preserves_team_identifier_spelling(archive_case):
+    from case_intelligence.modules import ModuleDatabase
+    from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository
+    bench, matter, store = archive_case
+    repository = IdentifierRepository(ModuleDatabase(bench.workspace.connection, bench.workspace._lock), bench.workspace.membership)
+    repository.assign(matter.matter_id, OWNER, [('synthetic-a', 'Def001'), ('synthetic-b', 'dEF002')])
+    close(bench, matter)
+    artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
+    try:
+        assert sorted(row['identifier'] for row in records(artifact, 'workbench_discovery_identifier')) == ['Def001', 'dEF002']
+        assert verify_matter_archive(artifact.path)['coverage']['workbench_discovery_view']['disposition'].startswith('Rebuildable')
+        with zipfile.ZipFile(artifact.path) as archive:
+            assert 'records/workbench_discovery_view.jsonl' not in archive.namelist()
+    finally:
+        cleanup_archive(artifact)

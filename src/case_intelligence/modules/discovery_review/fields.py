@@ -22,6 +22,7 @@ COMPUTED = frozenset({
 _SORTS = frozenset({"text", "natural", "number"})
 _KEY = re.compile(r"[a-z][a-z0-9_]{0,39}")
 MAX_HEADER_CHARS = 200
+MAX_KEY_CHARS = MAX_HEADER_CHARS + 3 + 12
 
 
 class DefinitionError(ValueError):
@@ -82,7 +83,7 @@ class Definition:
         """Resolve a defined field or a load-file header kept as produced."""
         if key.startswith(LOAD_FILE_PREFIX):
             header = key[len(LOAD_FILE_PREFIX):]
-            if not header or len(header) > MAX_HEADER_CHARS:
+            if not header or len(key) > MAX_KEY_CHARS:
                 return None
             return Field(key, header, LOAD_FILE_GROUP, sort="natural")
         return self.by_key.get(key)

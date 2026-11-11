@@ -8,7 +8,7 @@ from case_intelligence.modules import ModuleContext
 from case_intelligence.modules.discovery_review import code_routes, fields, presentation, reader
 from case_intelligence.modules.discovery_review.codes import CodeRepository
 from case_intelligence.modules.discovery_review.identifiers import (
-    IdentifierConflict, IdentifierRepository, IdentifierUnavailable, sequence,
+    IdentifierConflict, IdentifierRepository, IdentifierUnavailable, RangeUnavailable, produced_collisions, sequence,
 )
 from case_intelligence.modules.discovery_review.views import SCOPES, ViewRepository, ViewUnavailable
 
@@ -20,8 +20,8 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                require_csrf, require_csrf_header, templates, base_context, audit,
                require_response_lease, transfer_response_lease):
     fields.load_definition()  # a malformed field definition stops startup, not a reviewer mid-case
-    repository = ViewRepository(context.db)
-    identifiers = IdentifierRepository(context.db)
+    repository = ViewRepository(context.db, context.membership)
+    identifiers = IdentifierRepository(context.db, context.membership)
     codes = CodeRepository(context.db)
 
     def membership(matter, actor):
@@ -36,7 +36,12 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         membership(matter, actor)
         definition = fields.load_definition()
         store = context.source_store(matter)
-        index = reader.index_for(matter.matter_id, store, definition, identifiers)
+        try:
+            index = reader.index_for(matter.matter_id, store, definition, identifiers)
+        except reader.IndexUnavailable as exc:
+            raise HTTPException(404, "Matter is no longer available") from exc
+        except reader.MetadataUnavailable as exc:
+            raise HTTPException(422, str(exc)) from exc
         index = codes.project(matter.matter_id, index)
         choice = presentation.choose(definition, repository.read(matter.matter_id, actor), index,
                                      show_all=show_all)
@@ -54,7 +59,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     def production_documents(
         request: Request, slug: str,
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
-        sort: str = Query("", max_length=fields.MAX_HEADER_CHARS + 3),
+        sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
         page: int = Query(1, ge=1, le=1_000_000),
         doc: str = Query("", pattern="^(|[0-9a-f]{32})$"),
@@ -62,13 +67,13 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         view: str = Query("", pattern=VIEW),
         unit: int = Query(1, ge=1, le=1_000_000),
         all_columns: str = Query("", pattern="^(|1)$"),
-        notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm)$"),
+        notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm|range|retry)$"),
     ):
         matter, actor, definition, store, index, choice = current(request, slug, show_all=bool(all_columns))
         base = f"/matters/{matter.slug}/production"
         listing = presentation.list_page(
             definition, index, choice, base=base, q=q, sort=sort, descending=dir == "desc",
-            page=page, doc=doc, edge=edge, show_all=bool(all_columns))
+            page=page, doc=doc, edge=edge, show_all=bool(all_columns), view=view)
         selected = listing["selected"]
         state = {key: value for key, value in listing["state"].items() if value}
         panel = presentation.item_panel(
@@ -88,7 +93,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         request: Request, slug: str, token: str,
         view: str = Query("", pattern=VIEW), unit: int = Query(1, ge=1, le=1_000_000),
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
-        sort: str = Query("", max_length=fields.MAX_HEADER_CHARS + 3),
+        sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
         all_columns: str = Query("", pattern="^(|1)$"),
     ):
@@ -124,23 +129,25 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
             else:
                 repository.save(matter.matter_id, scope, actor, chosen, definition.clean(item_fields))
                 outcome = "shared" if scope == "matter" else "saved"
+        except KeyError as exc:
+            raise HTTPException(404, "Matter is no longer available") from exc
         except ViewUnavailable:
             outcome = "unavailable"
-        membership(matter, actor)
         action = {"saved": "view_save", "shared": "view_share", "reset": f"view_reset_{scope}"}.get(outcome, "view_save")
         audit(request, f"discovery_review.{action}", "failure" if outcome == "unavailable" else "success",
               context=auth_context(request), matter=matter, object_type="matter", object_id=matter.matter_id)
+        membership(matter, actor)
         return RedirectResponse(f"/matters/{matter.slug}/production?notice={outcome}", status_code=303,
                                 headers={"Cache-Control": "no-store"})
 
-    @app.post("/matters/{slug}/production/identifiers", dependencies=[Depends(require_csrf)])
+    @app.post("/matters/{slug}/production/identifiers", dependencies=[Depends(require_csrf), Depends(require_response_lease)])
     def assign_production_identifiers(
         request: Request, slug: str,
         prefix: str = Form("", max_length=40), start: int = Form(1, ge=0, le=10**12),
         digits: int = Form(6, ge=1, le=12), include_produced: str = Form(""),
         action: str = Form("assign"), confirm: str = Form(""),
         q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
-        sort: str = Form("", max_length=fields.MAX_HEADER_CHARS + 3), dir: str = Form(""),
+        sort: str = Form("", max_length=fields.MAX_KEY_CHARS), dir: str = Form(""),
     ):
         matter, actor, definition, store, index, choice = current(request, slug)
         if action not in {"assign", "clear"} or not definition.heading_fallback:
@@ -154,11 +161,10 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                 marked = [item.document_id for item in listed if item.value(own)]
                 outcome = "confirm" if confirm != "1" else "cleared" if marked else "nothing"
                 if outcome == "cleared":
-                    count = identifiers.clear(matter.matter_id, marked)
+                    count = identifiers.clear(matter.matter_id, actor, marked)
             else:
                 targets = [item for item in listed if not item.value(own)
                            and (include_produced or not item.value(produced[0]))]
-                taken = {item.value(key).strip().casefold() for item in index.items for key in (own, *produced)}
                 if not targets:
                     outcome = "nothing"
                 else:
@@ -168,21 +174,29 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
                         labels = None
                     if labels is None:
                         outcome = "invalid"
-                    elif any(label.casefold() in taken for label in labels):
+                    elif produced_collisions(index, definition, labels):
                         outcome = "conflict"
                     else:
-                        count = identifiers.assign(matter.matter_id, actor, zip(
-                            (item.document_id for item in targets), labels))
-                        outcome = "assigned"
+                        with store.mutation_guard():
+                            if store.revision != index.revision:
+                                outcome = "retry"
+                            else:
+                                count = identifiers.assign(matter.matter_id, actor, zip(
+                                    (item.document_id for item in targets), labels))
+                                outcome = "assigned"
+        except KeyError as exc:
+            raise HTTPException(404, "Matter is no longer available") from exc
+        except RangeUnavailable:
+            outcome = "range"
         except IdentifierConflict:
             outcome = "conflict"
         except IdentifierUnavailable:
             outcome = "unavailable"
-        membership(matter, actor)
         if outcome in {"assigned", "cleared", "unavailable"}:
             audit(request, "discovery_review.identifier_" + ("clear" if action == "clear" else "assign"),
                   "failure" if outcome == "unavailable" else "success", context=auth_context(request),
                   matter=matter, object_type="matter", object_id=matter.matter_id, details={"count": count})
+        membership(matter, actor)
         query = {key: value for key, value in (("q", q.strip()), ("sort", sort), ("dir", dir), ("notice", outcome)) if value}
         return RedirectResponse(f"/matters/{matter.slug}/production?{urlencode(query)}", status_code=303,
                                 headers={"Cache-Control": "no-store"})
