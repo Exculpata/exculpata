@@ -1,14 +1,16 @@
 """Acceptance contract for the fictional stock case, part 1 only."""
-import gc
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import threading
 import tracemalloc
 from collections import defaultdict
 from datetime import date, timedelta
 from fractions import Fraction
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,12 @@ from pypdf import PdfReader
 from case_intelligence import fraud_case_gold as fraud
 from case_intelligence.stock_case_gold import BROKERS, COMPANIES, build_case
 from case_intelligence.stock_case_render import render
+from tests.streaming_memory import assert_flat_peaks as _assert_flat_peaks, streaming_peaks
+
+
+_streaming_peaks = partial(
+    streaming_peaks, module=__name__, counts=(100, 400), count_keyword="document_limit",
+)
 
 
 # Reference digest measured from the complete seed-7 build.
@@ -230,20 +238,66 @@ def test_private_terms_absent_from_new_sources_and_fresh_build(rendered):
         assert not pattern.search(path.read_bytes().decode("latin-1")), path.name
 
 
+def _render_buffered(out, *, document_limit):
+    render(out, seed=7, document_limit=document_limit)
+    content = [path.read_bytes() for path in (out / "artifacts").iterdir()]
+    # fixture-write: synthetic stock-case copy under the temporary directory.
+    (out / "buffered.bin").write_bytes(b"".join(content))
+
+
+def _record_streaming_call(out, *, document_limit):
+    call = [out.name, document_limit, tracemalloc.is_tracing(), os.getpid()]
+    # fixture-write: child call observations in the synthetic temporary directory.
+    with (out.parent / "calls.jsonl").open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(call) + "\n")
+
+
+def test_streaming_memory_warms_before_tracing(tmp_path):
+    _streaming_peaks(tmp_path, _record_streaming_call)
+    calls = rows(tmp_path, "calls.jsonl")
+    assert [call[:3] for call in calls] == [
+        ["warm-100", 20, False], ["measured-100", 100, True],
+        ["warm-400", 20, False], ["measured-400", 400, True],
+    ]
+    assert calls[0][3] == calls[1][3]
+    assert calls[2][3] == calls[3][3]
+    assert len({os.getpid(), calls[0][3], calls[2][3]}) == 3
+    assert not tracemalloc.is_tracing()
+
+
 def test_streaming_memory(tmp_path):
-    peaks = []
+    peaks = _streaming_peaks(tmp_path, render)
+    print(f"streaming peaks (bytes): {peaks}")
+    _assert_flat_peaks(peaks)
     for count in (100, 400):
-        # fixture-write: warm caches with a small synthetic build before tracing.
-        render(tmp_path / f"warm-{count}", seed=7, document_limit=20)
-        gc.collect()
-        tracemalloc.start()
-        try:
-            tracemalloc.reset_peak()
-            out = tmp_path / f"measured-{count}"
-            render(out, seed=7, document_limit=count)  # fixture-write: synthetic measured build.
-            peaks.append(tracemalloc.get_traced_memory()[1])
-        finally:
-            tracemalloc.stop()
-        assert len(rows(out, "sources.jsonl")) == count
-    # Four times the documents may use 25% or 256 KB more for allocator noise.
-    assert peaks[1] <= max(peaks[0] * 1.25, peaks[0] + 256_000), peaks
+        assert len(rows(tmp_path / f"measured-{count}", "sources.jsonl")) == count
+
+
+def test_streaming_memory_ignores_parent_allocations(tmp_path):
+    stop = threading.Event()
+    allocated = threading.Event()
+
+    def hold_parent_allocation():
+        while not stop.wait(0.001):
+            if (tmp_path / "measured-400").exists():
+                pressure = bytearray(4_000_000)
+                allocated.set()
+                stop.wait()
+                assert len(pressure) == 4_000_000
+                return
+
+    neighbor = threading.Thread(target=hold_parent_allocation)
+    neighbor.start()
+    try:
+        test_streaming_memory(tmp_path)
+        assert allocated.is_set(), "parent pressure must overlap measurement"
+    finally:
+        stop.set()
+        neighbor.join()
+
+
+def test_streaming_memory_rejects_buffering(tmp_path):
+    peaks = _streaming_peaks(tmp_path, _render_buffered)
+    print(f"buffered peaks (bytes): {peaks}")
+    with pytest.raises(AssertionError):
+        _assert_flat_peaks(peaks)
