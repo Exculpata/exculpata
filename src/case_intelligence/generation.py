@@ -209,7 +209,7 @@ ANSWER_SCHEMA: dict[str, object] = {
                 "additionalProperties": False,
                 "required": ["text", "evidence_ids"],
                 "properties": {
-                    "calculation_ids": {"type": "array", "uniqueItems": True,
+                    "calculation_ids": {"type": "array", "maxItems": 8,
                                         "items": {"type": "string", "pattern": "^C[1-9][0-9]*$"}},
                     "text": {"type": "string", "minLength": 1, "maxLength": 800},
                     "evidence_ids": {
@@ -857,7 +857,7 @@ def _tokens(value: str) -> tuple[str, ...]:
 def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, EvidenceItem], *,
                  calculation_ids: object = (), calculations: tuple[CalculationRecord, ...] = (),
                  stored_text: StoredText | None = None, opened_ids: set[str] | None = None,
-                 verified_ids: frozenset[str] = frozenset()) -> VerifiedClaim | None:
+                 verified_ids: frozenset[str] = frozenset(), verified: dict[str, bool] | None = None) -> VerifiedClaim | None:
     if not isinstance(text, str):
         return None
     normalized = " ".join(text.split()).strip()
@@ -901,7 +901,7 @@ def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, Evid
     if not verify_claim_numbers(normalized.casefold(), source_numbers, _NUMBER,
                                 calculation_ids=calculation_ids, records=calculations,
                                 cited_ids=frozenset(identifiers) | verified_ids,
-                                stored_text=stored_text, opened_ids=opened_ids):
+                                stored_text=stored_text, opened_ids=opened_ids, verified=verified):
         return None
     claim_tokens = _tokens(coverage_text)
     claim_terms = [
@@ -1391,6 +1391,7 @@ class GroundedGenerationService:
                 elapsed_ms,
                 generator_answerable=False,
             )
+        verified: dict[str, bool] = {}
         accepted: list[VerifiedClaim] = []
         accepted_keys: set[tuple[str, frozenset[str]]] = set()
         omitted = 0
@@ -1402,7 +1403,7 @@ class GroundedGenerationService:
             claim = _verify_text(value.get("text"), value.get("evidence_ids"), evidence_map,
                                  calculation_ids=value.get("calculation_ids", ()), calculations=calculations,
                                  stored_text=stored_text, opened_ids=opened_ids,
-                                 verified_ids=frozenset(i for claim in accepted for i in claim.evidence_ids))
+                                 verified_ids=frozenset(i for claim in accepted for i in claim.evidence_ids), verified=verified)
             if strict_originals:
                 claim = _exact_original_span(claim, evidence_map)
             if claim is None:
