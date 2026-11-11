@@ -1,0 +1,38 @@
+name: CI apt dependencies
+description: Restore main-produced apt state and install with bounded online acquisition on a miss.
+inputs:
+  name:
+    description: Cache prefix for this package set
+    required: true
+  packages:
+    description: Space-separated packages; empty selects the browser defaults
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Restore main apt state
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/apt-state
+        key: apt-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
+        restore-keys: apt-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-
+    - name: Install apt dependencies
+      id: install
+      shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        REFRESH: ${{ github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+      run: |
+        read -r -a packages <<< "$PACKAGES"
+        options=(--state "$RUNNER_TEMP/apt-state")
+        if [[ "$REFRESH" == true ]]; then options+=(--refresh); fi
+        python3 scripts/install-ci-browser-deps.py "${options[@]}" "${packages[@]}"
+        if [[ -f "$RUNNER_TEMP/apt-state/online" ]]; then
+          echo 'online=true' >> "$GITHUB_OUTPUT"
+        fi
+    - name: Save main apt state after online acquisition
+      if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule') && steps.install.outputs.online == 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/apt-state
+        key: apt-${{ inputs.name }}-${{ runner.os }}-${{ runner.arch }}-${{ github.run_id }}
