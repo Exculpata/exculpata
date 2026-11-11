@@ -30,12 +30,23 @@
     const html = await response.text();
     return html;
   };
+  const localTimes = (scope) => scope.querySelectorAll("[data-review-time]").forEach((time) => {
+    const date = new Date(time.dateTime);
+    if (!Number.isNaN(date.getTime())) time.textContent = date.toLocaleString(undefined, { timeZoneName: "short" });
+  });
+  localTimes(root);
   const show = async (url, fallback, wanted) => {
     const mine = ++request;
     try {
-      const html = await load(url);
+      const target = new URL(url, window.location.origin);
+      const selected = new URL(current()?.dataset.url || window.location.href, window.location.origin);
+      ["q", "sort", "dir", "all_columns"].forEach((key) => {
+        if (selected.searchParams.has(key)) target.searchParams.set(key, selected.searchParams.get(key));
+      });
+      const html = await load(target.toString());
       if (mine !== request) return;
       panel.innerHTML = html;
+      localTimes(panel);
       const shown = panel.querySelector("[data-review-item]")?.dataset.view;
       say(wanted && shown !== wanted ? missingView[wanted] : "");
     } catch {

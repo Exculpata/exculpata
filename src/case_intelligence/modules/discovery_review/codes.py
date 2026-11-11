@@ -22,6 +22,7 @@ class Code:
     label: str
     position: int
     active: bool
+    digit: int | None
 
 
 class CodeRepository:
@@ -31,29 +32,31 @@ class CodeRepository:
     def list(self, matter_id: str, *, include_retired: bool = False) -> list[Code]:
         with self.db.lock:
             return [Code(*row) for row in self.db.connection.execute(
-                "SELECT code_id,label,position,active FROM workbench_discovery_code "
+                "SELECT code_id,label,position,active,digit FROM workbench_discovery_code "
                 "WHERE matter_id=? AND (active=1 OR ?) ORDER BY position,code_id",
                 (matter_id, include_retired))]
 
-    def define(self, matter_id: str, actor_id: str, label: str) -> Code:
+    def define(self, matter_id: str, actor_id: str, label: str, *, digit: int | None = None) -> Code:
         label = label.strip()
         if not label or len(label) > MAX_LABEL:
             raise ValueError("Use a label of 1 to 80 characters.")
+        if digit is not None and (type(digit) is not int or not 1 <= digit <= 9):
+            raise ValueError("Choose a shortcut from 1 to 9, or leave it empty.")
         code_id = uuid4().hex
         try:
             with self.db.lock, self.db.connection:
                 self.db.connection.execute("BEGIN IMMEDIATE")
                 self.db.connection.execute(
                     "INSERT INTO workbench_discovery_code "
-                    "(code_id,matter_id,label,position,active,created_by,created_at) "
-                    "SELECT ?,?,?,COALESCE(MAX(position),0)+1,1,?,? "
+                    "(code_id,matter_id,label,position,active,digit,created_by,created_at) "
+                    "SELECT ?,?,?,COALESCE(MAX(position),0)+1,1,?,?,? "
                     "FROM workbench_discovery_code WHERE matter_id=?",
-                    (code_id, matter_id, label, actor_id,
+                    (code_id, matter_id, label, digit, actor_id,
                      datetime.now(timezone.utc).isoformat(timespec="seconds"), matter_id))
                 return next(c for c in self.list(matter_id) if c.code_id == code_id)
         except sqlite3.IntegrityError as exc:
             if exc.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_UNIQUE:
-                raise ValueError("That label is already defined in this matter.") from exc
+                raise ValueError("That label or shortcut is already defined in this matter.") from exc
             raise CodeUnavailable("This matter does not accept code changes.") from exc
         except sqlite3.DatabaseError as exc:
             raise CodeUnavailable("This matter does not accept code changes.") from exc
@@ -95,7 +98,7 @@ class CodeRepository:
     def current_rows(self, matter_id: str):
         with self.db.lock:
             return tuple(self.db.connection.execute(
-                "SELECT e.document_id,e.code_id,c.label FROM workbench_discovery_code_event e "
+                "SELECT e.document_id,e.code_id,c.label,c.active,e.created_by,e.created_at FROM workbench_discovery_code_event e "
                 "JOIN workbench_discovery_code c ON c.matter_id=e.matter_id AND c.code_id=e.code_id "
                 "WHERE e.matter_id=? AND e.action='apply' AND e.event_id=("
                 "SELECT MAX(n.event_id) FROM workbench_discovery_code_event n "
@@ -104,7 +107,7 @@ class CodeRepository:
 
     def applied(self, matter_id: str) -> dict[str, tuple[str, ...]]:
         found: dict[str, list[str]] = {}
-        for document_id, code_id, label in self.current_rows(matter_id):
+        for document_id, code_id, *_ in self.current_rows(matter_id):
             found.setdefault(document_id, []).append(code_id)
         return {document: tuple(codes) for document, codes in found.items()}
 
@@ -112,16 +115,23 @@ class CodeRepository:
         with self.db.lock:
             applied = self.applied(matter_id).get(document_id, ())
             return [{"id": code.code_id, "label": code.label, "applied": code.code_id in applied,
-                     "key": str(number) if number <= 9 else ""}
-                    for number, code in enumerate(self.list(matter_id), 1)]
+                     "key": str(code.digit) if code.digit is not None else ""}
+                    for code in self.list(matter_id)]
 
     def project(self, matter_id: str, index):
         """Overlay live labels without mutating the shared source index or its sort cache."""
-        labels: dict[str, list[str]] = {}
-        for document_id, code_id, label in self.current_rows(matter_id):
-            labels.setdefault(document_id, []).append(label)
+        entries: dict[str, list[dict]] = {}
+        for document_id, code_id, label, active, created_by, created_at in self.current_rows(matter_id):
+            entries.setdefault(document_id, []).append({
+                "value": label if active else f"{label} (retired)", "active": bool(active),
+                "created_by": created_by, "created_at": created_at,
+            })
         keys = [f.key for f in index.definition.fields if f.computed == "review_codes"]
-        items = tuple(replace(item, values={**item.values, **dict.fromkeys(keys, ", ".join(
-            labels.get(item.document_id, ())))}) for item in index.items)
+        items = []
+        for item in index.items:
+            details = tuple(entries.get(item.document_id, ()))
+            value = ", ".join(entry["value"] for entry in details)
+            items.append(replace(item, values={**item.values, **dict.fromkeys(keys, value)},
+                                 details={**item.details, **dict.fromkeys(keys, details)}))
         filled = frozenset(key for item in items for key, value in item.values.items() if value)
-        return replace(index, items=items, filled=filled, orders=OrderedDict())
+        return replace(index, items=tuple(items), filled=filled, orders=OrderedDict())

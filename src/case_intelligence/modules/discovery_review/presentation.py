@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from case_intelligence.modules.discovery_review.fields import (
     LOAD_FILE_GROUP, LOAD_FILE_PREFIX, Definition, Field,
@@ -147,6 +147,7 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     panel = {
         "item": item, "heading": heading(definition, item), "active": active, "source_url": source_url,
         "kind": item.kind, "fragment": fragment,
+        "state": {**dict(parse_qsl(urlsplit(list_url).query)), "view": active, "unit": unit},
         "views": [{"key": key, "label": label, "current": key == active, **links(view=key)}
                   for key, label in ITEM_VIEWS if key in available],
         "unavailable": [label for key, label in ITEM_VIEWS if key not in available],
@@ -181,7 +182,8 @@ def item_fields(definition: Definition, item: Item, choice: Choice) -> dict:
         shaped = []
         for group in definition.groups:
             members = [f for f in candidates if f.group == group.key and applies(definition, f, item)]
-            filled = [{"label": f.label, "value": item.value(f.key)} for f in members if item.value(f.key)]
+            filled = [{"label": f.label, "value": item.value(f.key), "details": item.details.get(f.key, ())}
+                      for f in members if item.value(f.key)]
             empty = [f.label for f in members if not item.value(f.key)]
             if filled or empty:
                 shaped.append({"label": group.label, "rows": filled, "empty": empty})

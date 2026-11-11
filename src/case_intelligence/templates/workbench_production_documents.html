@@ -78,6 +78,7 @@
     <form method="post" action="{{ base_url }}/codes">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>New label <input name="label" required maxlength="80"></label>
+      <label>Shortcut (optional) <input name="digit" inputmode="numeric" pattern="[1-9]" maxlength="1" size="1" aria-label="Shortcut digit 1 to 9"></label>
       <button type="submit">Add code</button>
     </form>
     {% for code in codes %}<form method="post" action="{{ base_url }}/codes/{{ code.code_id }}/retire">

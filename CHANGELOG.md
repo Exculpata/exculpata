@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Matter members can define and retire review codes, apply or remove them on an open item with clicks or digit keys, and preserve their append-only history in matter archives.
+- Matter members can define and retire review codes, apply or remove them with stable optional digit keys while keeping their review position, and preserve their append-only history in matter archives. Default Coding fields identify retired codes and show who applied them and when.
 
 - Production documents (under Review) is now a review list: every item with its
   Bates range, custodian and other load-file fields when a CSV or TSV load file

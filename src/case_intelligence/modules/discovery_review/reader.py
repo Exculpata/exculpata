@@ -42,6 +42,7 @@ class Item:
     values: Mapping[str, str]
     numbers: Mapping[str, int]
     load_file: Mapping[str, str]
+    details: Mapping[str, tuple[dict, ...]] = field(default_factory=dict)
 
     def value(self, key: str) -> str:
         if key.startswith(LOAD_FILE_PREFIX):

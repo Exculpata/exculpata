@@ -87,6 +87,10 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     def production_document_item(
         request: Request, slug: str, token: str,
         view: str = Query("", pattern=VIEW), unit: int = Query(1, ge=1, le=1_000_000),
+        q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
+        sort: str = Query("", max_length=fields.MAX_HEADER_CHARS + 3),
+        dir: str = Query("", pattern="^(|asc|desc)$"),
+        all_columns: str = Query("", pattern="^(|1)$"),
     ):
         matter, actor, definition, store, index, choice = current(request, slug)
         position = index.by_token.get(token)
@@ -94,7 +98,9 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
             raise HTTPException(404, "This item is no longer in the matter. Reload the list.")
         base = f"/matters/{matter.slug}/production"
         panel = presentation.item_panel(definition, index.items[position], choice, store, slug=matter.slug,
-                                        view=view, unit=unit, list_url=f"{base}?doc={token}")
+                                        view=view, unit=unit, list_url=base + "?" + urlencode({
+                                            "doc": token, "q": q.strip(), "dir": dir, "all_columns": all_columns,
+                                            "sort": sort if definition.field(sort) is not None else ""}))
         panel["codes"] = codes.controls(matter.matter_id, index.items[position].document_id)
         return respond(request, matter, actor, "workbench_production_document_item.html", {"panel": panel})
 

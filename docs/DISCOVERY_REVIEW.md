@@ -105,9 +105,14 @@ characters. Codes stay in creation order. Retiring hides a code's button and
 preserves its history and existing assignments in the Coding field.
 
 On the open item, click a code to apply or remove it. Keys `1` through `9`
-toggle the first nine active codes in list order when not typing in a field.
+toggle codes with those stored optional shortcuts when not typing in a field.
+Choose a digit when adding a code; active codes in a matter cannot share a digit.
+Retirement never moves another code to a different key.
 The buttons also work as ordinary form posts without script. **Coding** is
-available in the column and field chooser; the standard selections are unchanged.
+included in the default columns and item fields; the empty default column stays
+hidden until an item has a code. Retired labels show "(retired)". Fields shows
+who applied each code and when, with local time when script is available.
+Applying or removing a code preserves the filter, sort, item, view and text page.
 
 Each actual apply or remove appends an event with the signed-in member and UTC
 time. Repeating the current state stores nothing. The latest event decides the

@@ -4,11 +4,12 @@ from urllib.parse import urlencode
 from fastapi import Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from case_intelligence.modules.discovery_review import fields, presentation
 from case_intelligence.modules.discovery_review.codes import CodeUnavailable, MAX_LABEL
 
 
 def mount(app, *, context, current, codes, require_csrf):
-    def change(request, slug, action, *, token="", view=""):
+    def change(request, slug, action, *, token="", state=None):
         try:
             matter, actor, definition, store, index, choice = current(request, slug)
             with context.db.lock:
@@ -26,13 +27,18 @@ def mount(app, *, context, current, codes, require_csrf):
             raise HTTPException(400, str(exc)) from exc
         except CodeUnavailable as exc:
             raise HTTPException(409, str(exc)) from exc
-        query = urlencode({"doc": token, "view": view})
+        state = dict(state or {})
+        if state.get("sort") and definition.field(state["sort"]) is None:
+            state["sort"] = ""
+        query = urlencode({key: value for key, value in {**state, "doc": token}.items() if value})
         return RedirectResponse(f"/matters/{matter.slug}/production?{query}", status_code=303,
                                 headers={"Cache-Control": "no-store"})
 
     @app.post("/matters/{slug}/production/codes", dependencies=[Depends(require_csrf)])
-    def define_production_code(request: Request, slug: str, label: str = Form("", max_length=MAX_LABEL)):
-        return change(request, slug, lambda matter, actor, item: codes.define(matter.matter_id, actor, label))
+    def define_production_code(request: Request, slug: str, label: str = Form("", max_length=MAX_LABEL),
+                               digit: str = Form("", pattern="^[1-9]?$")):
+        return change(request, slug, lambda matter, actor, item: codes.define(
+            matter.matter_id, actor, label, digit=int(digit) if digit else None))
 
     @app.post("/matters/{slug}/production/codes/{code_id}/retire", dependencies=[Depends(require_csrf)])
     def retire_production_code(request: Request, slug: str, code_id: str):
@@ -40,6 +46,12 @@ def mount(app, *, context, current, codes, require_csrf):
 
     @app.post("/matters/{slug}/production/items/{token}/codes/{code_id}", dependencies=[Depends(require_csrf)])
     def record_production_code(request: Request, slug: str, token: str, code_id: str,
-                               action: str = Form(""), view: str = Form("", pattern="^(|document|text|fields)$")):
+                               action: str = Form(""), view: str = Form("", pattern="^(|document|text|fields)$"),
+                               q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
+                               sort: str = Form("", max_length=fields.MAX_HEADER_CHARS + 3),
+                               dir: str = Form("", pattern="^(|asc|desc)$"),
+                               unit: int = Form(1, ge=1, le=1_000_000),
+                               all_columns: str = Form("", pattern="^(|1)$")):
         return change(request, slug, lambda matter, actor, item: codes.record(
-            matter.matter_id, item.document_id, code_id, actor, action), token=token, view=view)
+            matter.matter_id, item.document_id, code_id, actor, action), token=token, state={
+                "q": q.strip(), "sort": sort, "dir": dir, "view": view, "unit": unit, "all_columns": all_columns})
