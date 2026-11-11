@@ -60,8 +60,29 @@ REVIEWED_MEDIA_DIGESTS = (
 )
 ATTRIBUTION_TRAILER = re.compile(
     rb"(?m)^[A-Za-z0-9-]+[ \t]*:[ \t]+[^<>\s\0][^<>\r\n\0]*[ \t]+"
-    rb"<[ \t]*([^<>\s\0:;@]+@[^<>\s\0:;@]+)[ \t]*>[ \t]*\r?$"
+    rb"<([^\r\n]*)>[ \t]*\r?$"
 )
+
+UNSUPPORTED_ATTRIBUTION_ADDRESS = (
+    "unsupported-attribution-address; use parse_attribution_address() "
+    "with one RFC 5322 dot-atom address"
+)
+
+
+def parse_attribution_address(value: bytes) -> bytes | None:
+    """Parse one exact ASCII dot-atom address, including bracketed bot atoms."""
+    if value.count(b"@") != 1:
+        return None
+    local, domain = value.split(b"@")
+    if not 1 <= len(local) <= 64 or not 1 <= len(domain) <= 253:
+        return None
+    atom = rb"[A-Za-z0-9!#$%&'*+/=?^_`{|}~\[\]-]+"
+    label = rb"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    if re.fullmatch(atom + rb"(?:\." + atom + rb")*", local) is None:
+        return None
+    if re.fullmatch(label + rb"(?:\." + label + rb")+", domain) is None:
+        return None
+    return value
 
 
 def _identity_digest(name: bytes, email: bytes) -> str:
@@ -69,14 +90,21 @@ def _identity_digest(name: bytes, email: bytes) -> str:
 
 
 def _trailer_address_spans(message: bytes, trailers: bytes) -> tuple[tuple[int, int], ...]:
-    """Admit only address spans in Git's raw final trailer paragraph."""
+    """Locate bracket contents in Git's raw final trailer paragraph."""
     message = message.rstrip(b"\r\n")
     trailers = trailers.rstrip(b"\r\n")
     if not trailers or not message.endswith(trailers):
         return ()
     offset = len(message) - len(trailers)
-    return tuple((offset + match.start(1), offset + match.end(1))
-                 for match in ATTRIBUTION_TRAILER.finditer(trailers))
+    spans = []
+    for match in ATTRIBUTION_TRAILER.finditer(trailers):
+        start, end = match.span(1)
+        while start < end and trailers[start] in b" \t":
+            start += 1
+        while end > start and trailers[end - 1] in b" \t":
+            end -= 1
+        spans.append((offset + start, offset + end))
+    return tuple(spans)
 
 
 IGNORED_DIRECTORIES = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
@@ -307,17 +335,27 @@ def _scan_bytes(
     findings: list[Finding] = []
     lowered = data.lower()
 
-    def attribution_address(match: re.Match[bytes]) -> bool:
-        return any(start <= match.start() and match.end() <= end
-                   for start, end in attribution_email_spans)
+    granted_spans = []
+    addresses = []
+    unsupported = False
+    for start, end in attribution_email_spans:
+        address = parse_attribution_address(data[start:end])
+        if address is None:
+            unsupported = True
+        else:
+            granted_spans.append((start, end))
+            addresses.append(address)
+    if unsupported:
+        findings.append(Finding(location, UNSUPPORTED_ATTRIBUTION_ADDRESS))
 
-    # Attribution fields use the whole MAINTAINER_EMAIL_DIGESTS set. Hash their
-    # complete address spans too, independently of the content scanner's tokens.
-    addresses = (data[start:end].strip() for start, end in attribution_email_spans)
+    def granted(match: re.Match[bytes]) -> bool:
+        return any(start <= match.start() and match.end() <= end
+                   for start, end in granted_spans)
+
     if any(hashlib.sha256(address.lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
            for address in addresses) or any(
         hashlib.sha256(match.group(0).lower()).hexdigest() in MAINTAINER_EMAIL_DIGESTS
-        for match in EMAIL.finditer(data)
+        for match in EMAIL.finditer(data) if not granted(match)
     ):
         findings.append(Finding(location, "maintainer-email-address"))
     pem_rules: set[str] = set()
@@ -350,7 +388,7 @@ def _scan_bytes(
             findings.append(Finding(location, "private-network-address"))
             break
     for match in EMAIL.finditer(data):
-        if attribution_address(match):
+        if granted(match):
             continue
         if _recognized_public_automation_email(data, match):
             continue  # Exact public bot identity or Dependabot sign-off; deny rules still apply.

@@ -1,6 +1,8 @@
 """CI candidate isolation retains the real outgoing-history publication guard."""
 
+import ast
 import hashlib
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -9,6 +11,7 @@ import sys
 import pytest
 
 from tests.test_publication_pre_push import command, commit, repository
+from tests.test_publication_gate import SYNTHETIC_ADDRESSES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -86,19 +89,14 @@ def test_pull_request_workflow_passes_actual_source_branch_metadata():
 
 
 @pytest.mark.parametrize('entrypoint', ['candidate', 'pre-push'])
-@pytest.mark.parametrize('payload', ['other-trailer', 'apostrophe-trailer', 'first-maintainer-trailer', 'second-maintainer-trailer', 'body'])
+@pytest.mark.parametrize('payload', [*range(len(SYNTHETIC_ADDRESSES)), 'substring', 'malformed', 'body', 'other-trailer', 'apostrophe-trailer'])
 def test_candidate_and_pre_push_share_trailer_email_policy(tmp_path, monkeypatch, entrypoint, payload):
     from tests import test_publication_pre_push as pre_push
 
     root = repository(tmp_path)
-    addresses = ('maintainer-one@' + 'synthetic.invalid', 'maintainer-two@' + 'synthetic.invalid')
+    addresses = SYNTHETIC_ADDRESSES
     digests = frozenset(hashlib.sha256(address.encode()).hexdigest() for address in addresses)
-    scanner = root / 'scripts/publication-check.py'
-    source = scanner.read_text()
-    start = source.index('MAINTAINER_EMAIL_DIGESTS = ')
-    end = source.index('# Owner-reviewed public attribution', start)
-    # fixture-write: configure only synthetic maintainer digests in the isolated scanner copy.
-    scanner.write_text(source[:start] + f'MAINTAINER_EMAIL_DIGESTS = {digests!r}\n' + source[end:])
+    _inject_synthetic_digests(root / 'scripts/publication-check.py', digests)
     for script in ('check-publication-candidate.py', 'pre-push-publication.py'):
         # fixture-write: real entry points beside the isolated synthetic scanner configuration.
         shutil.copyfile(ROOT / 'scripts' / script, root / 'scripts' / script)
@@ -106,14 +104,28 @@ def test_candidate_and_pre_push_share_trailer_email_policy(tmp_path, monkeypatch
     monkeypatch.setattr(sys.modules[__name__], 'ROOT', root)
     monkeypatch.setattr(pre_push, 'ROOT', root)
     address = 'person@' + 'synthetic.invalid'
-    if payload == 'first-maintainer-trailer':
-        address = addresses[0]
-    elif payload == 'second-maintainer-trailer':
-        address = addresses[1]
+    if isinstance(payload, int):
+        address = addresses[payload]
+    elif payload == 'substring':
+        address = "other'" + addresses[0]
+    elif payload == 'malformed':
+        address += ','
     elif payload == 'apostrophe-trailer':
         address = "o'connor@" + 'synthetic.invalid'
     message = 'Synthetic\n\n'
     message += address if payload == 'body' else 'Signed-off-by: Synthetic Person <' + address + '>'
     assert command(root, 'git', 'commit', '--allow-empty', '-qm', message).returncode == 0
     result = inspect(root) if entrypoint == 'candidate' else pre_push.inspect(root)
-    assert result.returncode == (0 if payload in ('other-trailer', 'apostrophe-trailer') else 1)
+    assert result.returncode == (0 if payload in ('other-trailer', 'apostrophe-trailer', 'substring') else 1)
+
+
+def _inject_synthetic_digests(scanner, digests):
+    source, count = re.subn(r'MAINTAINER_EMAIL_DIGESTS = frozenset\(\{[^}]*\}\)',
+                            f'MAINTAINER_EMAIL_DIGESTS = {digests!r}', scanner.read_text())
+    assert count == 1
+    # fixture-write: inject synthetic digests into the isolated real scanner.
+    scanner.write_text(source)
+    assignment = next(node for node in ast.parse(scanner.read_text()).body
+                      if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                      and node.targets[0].id == 'MAINTAINER_EMAIL_DIGESTS')
+    assert frozenset(ast.literal_eval(assignment.value.args[0])) == digests

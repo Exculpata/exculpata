@@ -4,8 +4,13 @@
 
 - Publication scanning blocks the maintainer addresses (the
   `MAINTAINER_EMAIL_DIGESTS` set) in author, committer and commit-message trailer
-  address fields, allowing other addresses there. Body text, file content and all
-  non-email checks remain unchanged.
+  address fields. Other addresses require ASCII RFC 5322 dot-atoms (plus `[` and
+  `]`) and at least two letter/digit/hyphen domain labels without edge hyphens;
+  local/domain/label limits are 64/253/63 bytes. Unsupported spans report
+  `unsupported-attribution-address` naming `parse_attribution_address()` and
+  retain content checks. Only trailer bracket space/tab padding is removed.
+  Nameless, continued, non-final or non-line-ending layouts use content rules.
+  Body text, file content and all non-email checks remain unchanged.
 
 - Draft timeline exports use `exculpata-timeline-draft-v2`. CSV includes metadata
   and source-coverage rows plus coverage/schema columns. Importers must select

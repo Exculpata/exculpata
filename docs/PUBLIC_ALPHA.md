@@ -85,11 +85,24 @@ email or privacy settings.
 The author and committer **address fields**, and address spans inside
 `Key: Name <email>` lines in Git's final trailer paragraph, block the maintainer
 addresses in the `MAINTAINER_EMAIL_DIGESTS` set in
-`scripts/publication-check.py`. All other addresses are allowed in those fields
-without per-contributor or provider allowlists. Trailer tokens are case-insensitive;
-`Co-Authored-By`, `Signed-off-by`, and `Reviewed-by` follow the same rule.
-Address matching is ASCII case-insensitive and ignores surrounding whitespace,
-including padding inside angle brackets and extra spacing in the trailer line.
+`scripts/publication-check.py`. Other addresses must pass
+`parse_attribution_address()`: an ASCII RFC 5322 dot-atom local part (1-64 bytes),
+with `[` and `]` also allowed as atom characters, followed by an ASCII domain
+of at least two letter/digit/hyphen labels. Labels are 1-63 bytes, cannot start
+or end with a hyphen, and the domain is at most 253 bytes. The last label may
+be numeric. Leading, trailing and doubled local dots, quoted strings, whitespace,
+NUL and non-ASCII bytes are unsupported. No provider or bot bypass applies.
+Trailer keys are case-insensitive; the locator removes only ASCII space and tab
+padding inside brackets. Identity fields are parsed exactly as Git returns them.
+Protected whole addresses are hashed after ASCII lowercasing.
+
+A failed parse reports `unsupported-attribution-address; use
+parse_attribution_address() with one RFC 5322 dot-atom address`, without the value.
+Original-byte content rules still run: a non-ASCII domain tail can leave an ASCII
+email token and therefore produce an additional content finding. Only the
+specific fixture with a non-ASCII first domain character has no email token.
+Nameless brackets, brackets followed by text, continuation lines and non-final
+paragraphs receive no attribution span and retain content rules only.
 
 Only the bracketed address receives the trailer disposition. Names, subjects,
 free-text message paragraphs, files, extracted metadata, archive members and

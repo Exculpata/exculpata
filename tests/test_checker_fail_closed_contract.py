@@ -64,6 +64,15 @@ def _publication(monkeypatch, unsupported):
     )]
 
 
+def _attribution(monkeypatch, unsupported):
+    domain = b'synthetic' if unsupported else b'synthetic.invalid'
+    trailer = b'Signed-off-by: Synthetic Person <person@' + domain + b'>'
+    return [str(item) for item in publication._scan_bytes(
+        trailer, location='git-metadata', deny=(),
+        attribution_email_spans=publication._trailer_address_spans(trailer, trailer),
+    )]
+
+
 def _gateway_logging(monkeypatch, unsupported):
     from tests.test_gateway_nginx import ROOT, assert_gateway_logging
 
@@ -99,6 +108,7 @@ def _canary_frame(monkeypatch, unsupported):
 
 
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_attribution, "parse_attribution_address", id="publication-malformed-attribution-address"),
     pytest.param(_canary_frame, "classify_frame", id="canary-unsupported-frame"),
     pytest.param(_law_gate, "run", id="law-gate-invalid-sha"),
     pytest.param(_pr_body, "check_body", id="pr-body-invalid-head"),
