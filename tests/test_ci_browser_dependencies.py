@@ -32,7 +32,9 @@ SIGNED_SOURCES = (
 @pytest.fixture
 def apt(tmp_path, monkeypatch):
     mirrors, sources = tmp_path / "apt-mirrors.txt", tmp_path / "ubuntu.sources"
+    # fixture-write: synthetic input in the temporary test directory.
     mirrors.write_text(MIRROR_LIST)
+    # fixture-write: synthetic input in the temporary test directory.
     sources.write_text(SIGNED_SOURCES)
     calls, acquisition_results, install_results = [], [], []
 
@@ -40,6 +42,7 @@ def apt(tmp_path, monkeypatch):
         calls.append((command, kwargs, mirrors.read_text(), sources.read_bytes()))
         if command[:2] == ["sudo", "tee"]:
             assert command[2] == str(mirrors)
+            # fixture-write: synthetic input in the temporary test directory.
             mirrors.write_bytes(kwargs["input"])
             result = 0
         elif command[:2] == ["sudo", "timeout"]:
@@ -70,7 +73,7 @@ def assert_full_packages(command):
 def test_primary_success_installs_only_after_bounded_acquisition(apt):
     deps.install_dependencies(*apt[:2])
     update, download, install = commands(apt)
-    assert update[:7] == ["sudo", "timeout", "--signal=TERM", "--kill-after=10s", "60s", "apt-get", "-o"]
+    assert update[:7] == ["sudo", "timeout", "--signal=TERM", "--kill-after=10s", "120s", "apt-get", "-o"]
     assert update[-2:] == ["update", "--error-on=any"]
     assert download[:6] == ["sudo", "timeout", "--signal=TERM", "--kill-after=10s", "180s", "apt-get"]
     assert "--download-only" in download
@@ -94,8 +97,10 @@ def test_fallback_excludes_extra_sources_from_each_apt_phase(apt, monkeypatch, e
     parts = apt_root / "sources.list.d"
     parts.mkdir()
     ubuntu = parts / "ubuntu.sources"
+    # fixture-write: synthetic input in the temporary test directory.
     ubuntu.write_text(SIGNED_SOURCES)
     extra = apt_root / extra_location if extra_location == "sources.list" else parts / extra_location
+    # fixture-write: synthetic input in the temporary test directory.
     extra.write_text(
         SIGNED_SOURCES.replace("mirror+file:/etc/apt/apt-mirrors.txt", "https://third-party.example.test/ubuntu/")
         if extra.suffix == ".sources" else "deb https://third-party.example.test/ubuntu/ noble main\n"
@@ -185,11 +190,14 @@ def test_installation_failure_is_not_retried_or_timed_out(apt, fallback):
 def test_fallback_refuses_unrecognized_runner_configuration(apt, invalid):
     apt[3].append(124)
     if invalid == "missing-official":
+        # fixture-write: synthetic input in the temporary test directory.
         apt[0].write_text("http://azure.archive.ubuntu.com/ubuntu/\n")
     else:
+        # fixture-write: synthetic input in the temporary test directory.
         apt[1].write_text(SIGNED_SOURCES.replace("mirror+file:/etc/apt/apt-mirrors.txt", "https://archive.ubuntu.com/ubuntu/"))
         if invalid == "commented-source":
             with apt[1].open("a") as stream:
+                # fixture-write: synthetic input in the temporary test directory.
                 stream.write("# URIs: mirror+file:/etc/apt/apt-mirrors.txt\n")
     with pytest.raises(ValueError):
         deps.install_dependencies(*apt[:2])
@@ -204,6 +212,7 @@ def test_fallback_refuses_unrecognized_runner_configuration(apt, invalid):
 ], ids=["mixed-uris", "disabled-expected-active-unknown"])
 def test_fallback_rejects_mixed_uris_and_disabled_expected_stanza(apt, layout):
     apt[3].append(124)
+    # fixture-write: synthetic input in the temporary test directory.
     apt[1].write_text(layout)
     with pytest.raises(ValueError):
         deps.install_dependencies(*apt[:2])
@@ -236,6 +245,7 @@ def test_fallback_rejects_mixed_uris_and_disabled_expected_stanza(apt, layout):
 ])
 def test_fallback_rejects_ambiguous_or_malformed_sources_before_mutation(apt, layout):
     apt[3].append(124)
+    # fixture-write: synthetic input in the temporary test directory.
     apt[1].write_text(layout)
     with pytest.raises(ValueError):
         deps.install_dependencies(*apt[:2])
@@ -251,6 +261,7 @@ def test_fallback_preserves_multiple_active_folded_stanzas_and_disabled_sources(
     security = SIGNED_SOURCES.replace("noble noble-updates noble-backports noble-security", "noble-security")
     disabled = SIGNED_SOURCES.replace("mirror+file:/etc/apt/apt-mirrors.txt", "https://unused.example.test/ubuntu/")
     layout = "# Synthetic Ubuntu source configuration\nEnabled: yes\n" + primary + "\n" + security + "\nEnabled: no\n" + disabled
+    # fixture-write: synthetic input in the temporary test directory.
     apt[1].write_text(layout)
     apt[3].append(124)
     deps.install_dependencies(*apt[:2])
@@ -269,6 +280,7 @@ def test_partial_mirror_write_failure_restores_original_without_installing(apt, 
         nonlocal failed
         if command[:2] == ["sudo", "tee"] and not failed:
             failed = True
+            # fixture-write: synthetic input in the temporary test directory.
             apt[0].write_bytes(kwargs["input"][:15])
             raise subprocess.CalledProcessError(1, command)
         return original_run(command, **kwargs)
@@ -334,7 +346,7 @@ def test_custom_packages_and_archives_cover_every_phase(apt, fallback, failure):
         assert phases[-1] == "install" and commands(apt)[-1] == chowns[0]
 
 
-@pytest.mark.parametrize("custom", [False, True])
+@pytest.mark.parametrize("custom", [None, "--archives", "--state"])
 def test_cli_preserves_defaults_and_accepts_packages_and_archives(apt, monkeypatch, custom):
     monkeypatch.setattr(deps.sys, "platform", "linux")
     monkeypatch.setattr(deps.platform, "machine", lambda: "x86_64")
@@ -342,14 +354,88 @@ def test_cli_preserves_defaults_and_accepts_packages_and_archives(apt, monkeypat
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     archives = apt[0].parent / "apt archives"
     monkeypatch.setattr(deps.sys, "argv", ["install-ci-browser-deps.py"] + (
-        ["--archives", str(archives), "synthetic-package"] if custom else []))
+        [custom, str(archives), "synthetic-package"] + (["--refresh"] if custom == "--state" else [])
+        if custom else []))
     assert deps.main() == 0
     update, download, install = commands(apt)[:3]
     if custom:
-        assert f"Dir::Cache::archives={archives}" in update
+        cache = archives / "archives" if custom == "--state" else archives
+        assert f"Dir::Cache::archives={cache}" in update
+        if custom == "--state":
+            assert f"Dir::State::lists={archives / 'lists'}" in update
         assert download[-1] == install[-1] == "synthetic-package"
         assert commands(apt)[-1][:2] == ["sudo", "chown"]
     else:
         assert_full_packages(download)
         assert_full_packages(install)
         assert len(commands(apt)) == 3
+
+
+def test_cached_preflight_matches_real_install_package_selection(apt):
+    state = apt[0].parent / "apt-state"
+    deps.install_dependencies(*apt[:2], state=state)
+    simulate, install, chown = commands(apt)
+    assert "--simulate" in simulate
+    assert [arg for arg in simulate if arg != "--simulate"] == install
+    assert_full_packages([arg for arg in simulate if arg != "--simulate"])
+    assert "--no-download" in simulate
+    assert f"Dir::State::lists={state / 'lists'}" in simulate
+    assert f"Dir::Cache::archives={state / 'archives'}" in simulate
+    assert chown[-1] == str(state)
+    assert not (state / "online").exists()
+
+
+@pytest.mark.parametrize("refresh", [False, True])
+def test_cached_miss_or_refresh_acquires_online_and_marks_state(apt, refresh):
+    state = apt[0].parent / "apt-state"
+    if not refresh:
+        apt[4].append(100)
+    deps.install_dependencies(*apt[:2], state=state, refresh=refresh)
+    calls = commands(apt)
+    assert sum("--simulate" in call for call in calls) == (0 if refresh else 1)
+    assert sum("update" in call for call in calls) == 1
+    assert sum("--download-only" in call for call in calls) == 1
+    assert (state / "online").is_file()
+    assert (state / "lists/partial").is_dir()
+    assert (state / "archives/partial").is_dir()
+    for call in calls:
+        if "apt-get" in call:
+            assert f"Dir::State::lists={state / 'lists'}" in call
+            assert f"Dir::Cache::archives={state / 'archives'}" in call
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_cached_install_never_retries_and_clears_restored_marker(apt, failure):
+    state = apt[0].parent / "apt-state"
+    state.mkdir()
+    # fixture-write: synthetic marker restored from a previous producer.
+    (state / "online").write_text("online\n")
+    apt[4].extend([0, 100 if failure else 0])
+    if failure:
+        with pytest.raises(subprocess.CalledProcessError):
+            deps.install_dependencies(*apt[:2], state=state)
+    else:
+        deps.install_dependencies(*apt[:2], state=state)
+    installs = [call for call in commands(apt) if "apt-get" in call]
+    assert len(installs) == 2
+    assert "--simulate" in installs[0] and "--simulate" not in installs[1]
+    assert all("--no-download" in call and "timeout" not in call for call in installs)
+    assert not (state / "online").exists()
+
+
+@pytest.mark.parametrize("failure", [None, "acquisition", "install"])
+def test_state_fallback_preserves_paths_and_marks_only_success(apt, failure):
+    state = apt[0].parent / "apt-state"
+    apt[4].extend([100, 100 if failure == "install" else 0])
+    apt[3].extend([124, 100] if failure == "acquisition" else [124])
+    if failure:
+        with pytest.raises((RuntimeError, subprocess.CalledProcessError)):
+            deps.install_dependencies(*apt[:2], state=state)
+    else:
+        deps.install_dependencies(*apt[:2], state=state)
+    assert (state / "online").exists() is (not failure)
+    assert apt[0].read_text() == MIRROR_LIST
+    for call in commands(apt):
+        if "apt-get" in call:
+            assert f"Dir::State::lists={state / 'lists'}" in call
+            assert f"Dir::Cache::archives={state / 'archives'}" in call

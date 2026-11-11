@@ -105,6 +105,7 @@ def browser_path(path: bytes) -> bool:
     parts = path.split(b"/")
     return (
         path in BROWSER_DEPENDENCIES
+        or path.startswith(b".github/actions/apt-deps/")
         or (parts[0] == b"scripts" and b"browser" in path)
         or (parts[0] == b"src" and any(
             part in {b"static", b"templates"} for part in parts[1:-1]
