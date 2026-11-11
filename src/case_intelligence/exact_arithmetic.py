@@ -374,14 +374,12 @@ def verify_calculations(records, *, stored_text=None, opened_ids=None):
 
 
 def verify_claim_numbers(text, source_numbers, number_pattern, *, calculation_ids=(), records=(),
-                         cited_ids=frozenset(), stored_text=None, opened_ids=None, verified=None):
+                         cited_ids=frozenset(), stored_text=None, opened_ids=None, verified=None, source_texts=None):
     if (not isinstance(calculation_ids, (tuple, list)) or len(calculation_ids) > 8
             or any(not isinstance(i, str) for i in calculation_ids)
             or len(set(calculation_ids)) != len(calculation_ids)):
         return False
     matches = tuple(number_pattern.finditer(text))
-    if not calculation_ids:
-        return all(m.group() in source_numbers for m in matches)
     results = set()
     for identifier in calculation_ids:
         selected = [r for r in records if isinstance(r, CalculationRecord) and r.calculation_id == identifier]
@@ -397,10 +395,21 @@ def verify_claim_numbers(text, source_numbers, number_pattern, *, calculation_id
             return False
         results.add(_fraction(record.exact_value))
     tokens = numeric_tokens(text)
+    modified = tuple(t for t in tokens if t.exponent or t.scale or t.percent)
+    if modified:
+        source_values = {t.value for raw in (source_texts if source_texts is not None else source_numbers)
+                         for t in numeric_tokens(raw) if not t.ambiguous and not t.attached_prefix}
+        if any(t.ambiguous or t.attached_prefix or t.form == 'fraction'
+               or t.value not in results | source_values for t in modified):
+            return False
+    if not calculation_ids:
+        return all(m.group() in source_numbers or any(t.start <= m.start() and t.end >= m.end()
+                                                     for t in modified) for m in matches)
     if any(t.context_ambiguous for t in tokens):
         return False
     for match in matches:
-        if match.group() in source_numbers:
+        if (match.group() in source_numbers
+                or any(t.start <= match.start() and t.end >= match.end() for t in modified)):
             continue
         token = next((t for t in tokens if t.core_start <= match.start() and t.core_end >= match.end()), None)
         if (token is None or token.attached_prefix or token.ambiguous or token.form == 'compound'
@@ -1343,8 +1352,7 @@ _CLAIM_CORE = re.compile(r'(?:\.\d+|\d(?:\d|[' + re.escape('.,:/_' + DASHES) + r
 def _claim_token(text, match, *, rendered=True):
     a, b = match.span()
     core = match[0]
-    if len(core) > WINDOW: raise CalculationError("Numeric token length bound")
-    form = ('plain' if re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', core) else
+    form = ('compound' if len(core) > WINDOW else 'plain' if re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', core) else
             'grouped' if re.fullmatch(CORE, core) else
             'fraction' if re.fullmatch(r'[0-9]+/[0-9]+', core) else
             'leading_decimal' if re.fullmatch(r'\.[0-9]+', core) else 'compound')
@@ -1388,7 +1396,7 @@ def _claim_token(text, match, *, rendered=True):
     ambiguous |= len(signs) > 1 or paren and bool(signs) or len(currency) > 1
     attached_prefix = start > 0 and (text[start - 1].isalnum() or text[start - 1] == '_')
     attached_suffix = end < len(text) and (text[end].isalnum() or text[end] == '_')
-    if end - start > WINDOW: raise CalculationError("Numeric token length bound")
+    if end - start > WINDOW: ambiguous = True
     value = None if ambiguous else _token_value(core) * factor * (-1 if paren or signs and signs != '+' else 1)
     return NumericToken(start, end, value, bool(scale), pct, a, b, form, bool(signs), paren,
                         currency, bool(exponent), scale_name, attached_prefix, attached_suffix,
@@ -1452,6 +1460,7 @@ def numeric_tokens(text: str, *, span: tuple[int, int] | None = None) -> tuple[N
                 cursor += 1
                 continue
             start, end = match.span() if match else (cursor, cursor + 1)
+            seed = NumericToken(start, end)
             try:
                 seed = _claim_token(text, match, rendered=False) if match else NumericToken(start, end)
                 start, end = seed.start, seed.end
@@ -1461,6 +1470,7 @@ def numeric_tokens(text: str, *, span: tuple[int, int] | None = None) -> tuple[N
                 token = _numeric_span(text, start, end, evidence=span is not None)
             except Exception as error:
                 token = NumericToken(start, end, core_start=start, core_end=end,
+                                     exponent=seed.exponent, scale=seed.scale, percent=seed.percent,
                                      ambiguous=True, context_ambiguous=True, reason=str(error))
             if span is None or start < span[1] and end > span[0]:
                 tokens.append(token)

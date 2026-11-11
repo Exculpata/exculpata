@@ -62,7 +62,7 @@ MAX_WORKING_CONTEXT_CHARS = 12_000
 MAX_RESPONSE_BYTES = 1024 * 1024
 DEFAULT_TIMEOUT_SECONDS = 90.0
 _TOKEN = re.compile(r"[a-z0-9]+")
-_NUMBER = re.compile(r"\b\d[\d:./-]*\b")
+_NUMBER = re.compile(r"\b\d[\d:./-]*(?:[eE][+-]?\d+)?\b")
 _QUOTE = re.compile(r"[\"“]([^\"”]{4,240})[\"”]")
 _SINGLE_QUOTE = re.compile(r"['‘]([^'’]{4,240})['’]")
 _EVIDENCE_MARKER = re.compile(r"\[(?:S|E)\d+\]", re.IGNORECASE)
@@ -857,7 +857,7 @@ def _tokens(value: str) -> tuple[str, ...]:
 def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, EvidenceItem], *,
                  calculation_ids: object = (), calculations: tuple[CalculationRecord, ...] = (),
                  stored_text: StoredText | None = None, opened_ids: set[str] | None = None,
-                 verified_ids: frozenset[str] = frozenset(), verified: dict[str, bool] | None = None) -> VerifiedClaim | None:
+                 verified: dict[str, bool] | None = None) -> VerifiedClaim | None:
     if not isinstance(text, str):
         return None
     normalized = " ".join(text.split()).strip()
@@ -900,7 +900,7 @@ def _verify_text(text: object, evidence_ids: object, evidence: Mapping[str, Evid
     source_numbers = set(_NUMBER.findall(source_text))
     if not verify_claim_numbers(normalized.casefold(), source_numbers, _NUMBER,
                                 calculation_ids=calculation_ids, records=calculations,
-                                cited_ids=frozenset(identifiers) | verified_ids,
+                                cited_ids=frozenset(identifiers), source_texts=tuple(item.excerpt.casefold() for item in cited),
                                 stored_text=stored_text, opened_ids=opened_ids, verified=verified):
         return None
     claim_tokens = _tokens(coverage_text)
@@ -1403,7 +1403,7 @@ class GroundedGenerationService:
             claim = _verify_text(value.get("text"), value.get("evidence_ids"), evidence_map,
                                  calculation_ids=value.get("calculation_ids", ()), calculations=calculations,
                                  stored_text=stored_text, opened_ids=opened_ids,
-                                 verified_ids=frozenset(i for claim in accepted for i in claim.evidence_ids), verified=verified)
+                                 verified=verified)
             if strict_originals:
                 claim = _exact_original_span(claim, evidence_map)
             if claim is None:

@@ -236,14 +236,13 @@ def test_generation_run_level_result_without_claim_link_is_refused(calculation_c
 
 
 @pytest.mark.parametrize("earlier", [True, False])
-def test_generation_only_earlier_verified_claims_supply_input_citations(calculation_case, earlier):
+def test_generation_other_claims_cannot_supply_input_citations(calculation_case, earlier):
     evidence, context = calculation_case
     support = calculation_claim("Combined holdings were 125 shares.", ["S2"])
     result = calculation_claim(ids=["S1"], calculation_ids=["C1"])
     answer = verify_answer([support, result] if earlier else [result, support], evidence, **context)
-    assert [claim.text for claim in answer.claims] == (
-        [support["text"], result["text"]] if earlier else [support["text"]])
-    assert answer.omitted_claims == (0 if earlier else 1)
+    assert [claim.text for claim in answer.claims] == [support["text"]]
+    assert answer.omitted_claims == 1
 
 
 def test_generation_rejected_claim_cannot_supply_input_citations(calculation_case):
@@ -2157,15 +2156,14 @@ def test_claim_number_forms(calculation_case, number, value, accepted):
                                 opened_ids=context['opened_ids']) is accepted
 
 
-def test_no_calculation_path_never_reads_records_or_lexer(monkeypatch):
+def test_no_calculation_path_never_reads_records(monkeypatch):
     import case_intelligence.exact_arithmetic as arithmetic
     from case_intelligence.generation import _NUMBER
     def forbidden(*args, **kwargs):
         pytest.fail('Path A called the computed path')
-    monkeypatch.setattr(arithmetic, 'numeric_tokens', forbidden)
     monkeypatch.setattr(arithmetic, 'verify_record', forbidden)
     for ids in ((), []):
-        assert arithmetic.verify_claim_numbers('5 million shares', {'5'}, _NUMBER,
+        assert arithmetic.verify_claim_numbers('5 shares', {'5'}, _NUMBER,
                                               calculation_ids=ids, records=(object(),))
         assert not arithmetic.verify_claim_numbers('6 shares', {'5'}, _NUMBER, calculation_ids=ids)
 
@@ -2698,11 +2696,10 @@ def test_joint_fixtures_bind_rebind_and_printed_claim_precheck(name, calculation
             _, exact, display = _evaluate('x', {'x': Fraction(printed)})
             forged = CalculationRecord('C1', 'x', exact, display, (item,))
             assert not verify_calculations((forged,), stored_text={'S1': raw}.__getitem__, opened_ids={'S1'})
-            printed_complete_scale_residual = (name, identifier) == ('r13', 'W44')
             assert verify_claim_numbers(raw, set(_NUMBER.findall(raw)), _NUMBER,
                                         calculation_ids=['C1'], records=context['calculations'],
                                         stored_text=context['stored_text'], opened_ids=context['opened_ids'],
-                                        cited_ids={'S1', 'S2'}) is printed_complete_scale_residual, (name, identifier, start, end)
+                                        cited_ids={'S1', 'S2'}) is False, (name, identifier, start, end)
             checked += 1
     assert checked >= 100
 
@@ -2720,11 +2717,11 @@ def test_joined_scale_word_boundary_refuses_printed_claim(raw, ambiguous, calcul
                 stored_text=context['stored_text'], opened_ids=context['opened_ids'],
                 cited_ids={'S1', 'S2'})
     assert not verify_claim_numbers(raw, set(), _NUMBER, **args)
-    assert verify_claim_numbers(raw, {'5'}, _NUMBER, **args) is not ambiguous
+    assert not verify_claim_numbers(raw, {'5'}, _NUMBER, **args)
     for complete_scale in ('5 million dollars', '5 mil dollars'):
         token, = numeric_tokens(complete_scale)
         assert token.value == 5000000 and not token.context_ambiguous
-        assert verify_claim_numbers(complete_scale, {'5'}, _NUMBER, **args)
+        assert not verify_claim_numbers(complete_scale, {'5'}, _NUMBER, **args)
 
 
 def test_unresolved_grounding_stops_at_point_budget(monkeypatch):
@@ -2742,3 +2739,96 @@ def test_unresolved_grounding_stops_at_point_budget(monkeypatch):
         arithmetic._ground(expression, values)
     assert calls == 3855
     assert calls <= arithmetic.MAX_POINTS == 4096
+
+
+@pytest.mark.parametrize("input_kind,claim_kind", [("document", "transcript"),
+                                                  ("transcript", "document")])
+def test_generation_calculation_cannot_borrow_other_evidence_kind(input_kind, claim_kind):
+    texts = {"E1": "The total was 75 shares.", "T1": "The total was recorded in shares."}
+    item = bind_input("x", Decimal(75), "E1", (14, 16), "75",
+                      stored_text=texts.__getitem__, opened_ids=set(texts))
+    record = Calculator(stored_text=texts.__getitem__, opened_ids=set(texts)).calculate("x * 2", (item,))
+    evidence = {key: EvidenceItem(key, "Synthetic source", "page 1", text,
+                                  evidence_kind=input_kind if key == "E1" else claim_kind)
+                for key, text in texts.items()}
+    context = dict(calculations=(record,), stored_text=texts.__getitem__, opened_ids=set(texts))
+    def claim(number, identifier, kind, **extra):
+        prefix = "The machine transcript appears to say that the total was" if kind == "transcript" else "The total was"
+        return calculation_claim(f"{prefix} {number} shares.", [identifier], **extra)
+    support = claim("75", "E1", input_kind)
+    borrowed = claim("150", "T1", claim_kind, calculation_ids=["C1"])
+    answer = verify_answer([support, borrowed], evidence, **context)
+    assert [c.text for c in answer.claims] == [support["text"]]
+    assert answer.omitted_claims == 1
+    own = claim("150", "E1", input_kind, calculation_ids=["C1"])
+    assert verify_answer([own], evidence, **context).claims[0].text == own["text"]
+    mixed = dict(borrowed, evidence_ids=["T1", "E1"])
+    assert _verify_text(**mixed, evidence=evidence, **context) is None
+
+
+@pytest.mark.parametrize("number", ["1e5", "1e+5", "1e-3", "1E+5"])
+def test_generation_number_pattern_keeps_whole_exponent(number):
+    from case_intelligence.exact_arithmetic import numeric_tokens
+    from case_intelligence.generation import _NUMBER
+    assert _NUMBER.findall(f"{number} shares") == [number]
+    token, = numeric_tokens(f"{number} shares")
+    assert token.exponent and token.value == Fraction(number)
+    assert (token.start, token.end) == (0, len(number))
+
+
+@pytest.mark.parametrize("number,value", [("1e5", "100000"), ("1e+5", "100000"),
+                                          ("1e-3", "0.001"), ("5 million", "5000000"),
+                                          ("10.4%", "10.4")])
+@pytest.mark.parametrize("source_form", ["digits_only", "identical", "equivalent", "different_scale"])
+@pytest.mark.parametrize("calculation", ["none", "unrelated", "exact"])
+def test_generation_modified_numbers_require_exact_support(number, value, source_form, calculation):
+    source_number = {"digits_only": "1 and 5", "identical": number,
+                     "equivalent": value, "different_scale": "1 million and 5 thousand"}[source_form]
+    raw = f"Combined holdings were {source_number} shares. Basis was 1."
+    texts = {"S1": raw}
+    start = raw.rindex("1")
+    item = bind_input("x", Decimal(1), "S1", (start, start + 1), "1",
+                      stored_text=texts.__getitem__, opened_ids={"S1"})
+    record = Calculator(stored_text=texts.__getitem__, opened_ids={"S1"}).calculate(
+        f"x * {value if calculation == 'exact' else '2'}", (item,))
+    evidence = {"S1": EvidenceItem("S1", "Synthetic filing", "page 1", raw)}
+    claim = calculation_claim(f"Combined holdings were {number} shares.", ["S1"],
+                              calculation_ids=[] if calculation == "none" else ["C1"])
+    context = dict(calculations=(record,), stored_text=texts.__getitem__, opened_ids={"S1"})
+    expected = source_form in {"identical", "equivalent"} or calculation == "exact"
+    assert (_verify_text(**claim, evidence=evidence, **context) is not None) is expected
+    if expected:
+        assert verify_answer([claim], evidence, **context).omitted_claims == 0
+    else:
+        with pytest.raises(GenerationGroundingRejected):
+            verify_answer([claim], evidence, **context)
+
+
+@pytest.mark.parametrize("number", ["1e+99", "1e+" + "9" * 140,
+                                     "5" * 130 + " million", "5" * 130 + "%"])
+@pytest.mark.parametrize("with_calculation", [False, True])
+def test_unverifiable_modified_numbers_cannot_use_literal_source_match(calculation_case, number, with_calculation):
+    from case_intelligence.exact_arithmetic import verify_claim_numbers
+    from case_intelligence.generation import _NUMBER
+    _, context = calculation_case
+    raw = number + " shares"
+    assert not verify_claim_numbers(raw, set(_NUMBER.findall(raw)), _NUMBER, source_texts=(raw,),
+                                    calculation_ids=["C1"] if with_calculation else [],
+                                    records=context['calculations'], cited_ids={'S1', 'S2'},
+                                    stored_text=context['stored_text'], opened_ids=context['opened_ids'])
+
+
+@pytest.mark.parametrize("with_calculation", [False, True])
+def test_modified_source_value_must_come_from_one_excerpt(with_calculation):
+    texts = {"S1": "Combined holdings were 5", "S2": "million shares."}
+    start = texts['S1'].index('5')
+    item = bind_input('x', Decimal(5), 'S1', (start, start + 1), '5',
+                      stored_text=texts.__getitem__, opened_ids=set(texts))
+    record = Calculator(stored_text=texts.__getitem__, opened_ids=set(texts)).calculate('x * 2', (item,))
+    evidence = {key: EvidenceItem(key, "Synthetic filing", "page 1", raw) for key, raw in texts.items()}
+    claim = calculation_claim("Combined holdings were 5 million shares.",
+                              calculation_ids=['C1'] if with_calculation else [])
+    context = dict(calculations=(record,), stored_text=texts.__getitem__, opened_ids=set(texts))
+    assert _verify_text(**claim, evidence=evidence, **context) is None
+    evidence['S2'] = replace(evidence['S2'], excerpt="Combined holdings were 5 million shares.")
+    assert _verify_text(**claim, evidence=evidence, **context) is not None
