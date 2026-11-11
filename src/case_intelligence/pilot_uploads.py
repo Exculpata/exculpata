@@ -911,6 +911,8 @@ class PilotStore:
         self.media_file_limit = int(media_file_limit)
         self.upload_session_limit = int(upload_session_limit)
         self._on_change = on_change
+        # Counts committed registry changes so derived views can tell when to rebuild.
+        self.revision = 0
         self.malware_scanner = malware_scanner
         self.malware_scan_mode = malware_scan_mode.strip().casefold()
         if self.malware_scan_mode not in {"disabled", "extended", "all"}:
@@ -1463,6 +1465,7 @@ class PilotStore:
         if set(selected_ids) & set(removed):
             raise RuntimeError("pilot source registry delta is invalid")
         self._persist_registry_delta(tuple(selected), removed)
+        self.revision += 1
         if self._on_change is not None:
             self._on_change(PilotStoreChange(tuple(selected), removed))
 

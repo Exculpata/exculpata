@@ -1,0 +1,48 @@
+<article class="dr-item" data-review-item data-token="{{ panel.item.token }}" data-view="{{ panel.active }}" aria-labelledby="dr-item-heading">
+  <header class="dr-item-header">
+    <div class="dr-item-title">
+      <h2 id="dr-item-heading" tabindex="-1"><span class="dr-bates{% if panel.heading.missing %} dr-muted{% endif %}">{{ panel.heading.label }}</span> <span class="dr-item-name">{{ panel.heading.title }}</span></h2>
+      <a class="dr-item-open" href="{{ panel.source_url }}" title="Open the full source page to add notes or ask about this source">Open source page</a>
+    </div>
+    <nav class="dr-views" aria-label="Item views">
+      {% for option in panel.views %}<a href="{{ option.url }}" data-review-fragment="{{ option.fragment }}" data-review-view="{{ option.key }}"{% if option.current %} aria-current="true"{% endif %}>{{ option.label }}</a>{% endfor %}
+      {% for label in panel.unavailable %}<span class="dr-view-off" title="{{ 'No extracted text is stored for this item' if label == 'Text' else 'This file type opens from the source page' }}">{{ label }}</span>{% endfor %}
+    </nav>
+  </header>
+  {% if panel.active == 'document' %}
+  <div class="dr-document">
+    {% if panel.embed.kind == 'image' %}<img src="{{ panel.embed.url }}" alt="{{ panel.heading.title }}">
+    {% else %}<iframe src="{{ panel.embed.url }}#view=FitH&amp;navpanes=0" title="{{ panel.heading.title }}"></iframe>{% endif %}
+  </div>
+  {% elif panel.active == 'text' %}
+  <div class="dr-text-bar">
+    <span class="dr-provenance">Text extracted by {{ product_name }} from the stored file</span>
+    {% if panel.text.available %}<span class="dr-position">{{ panel.text.position }}</span>
+    <span class="dr-pager">
+      {% if panel.text.previous %}<a href="{{ panel.text.previous.url }}" data-review-fragment="{{ panel.text.previous.fragment }}" data-review-unit="previous">Previous</a>{% else %}<span class="dr-muted">Previous</span>{% endif %}
+      {% if panel.text.next %}<a href="{{ panel.text.next.url }}" data-review-fragment="{{ panel.text.next.fragment }}" data-review-unit="next">Next</a>{% else %}<span class="dr-muted">Next</span>{% endif %}
+    </span>{% endif %}
+  </div>
+  {% if panel.text.available %}<pre class="dr-text" tabindex="0">{{ panel.text.body }}</pre>
+  {% else %}<p class="dr-state">The extracted text could not be read. Open the source page to check this item.</p>{% endif %}
+  {% else %}
+  <div class="dr-fields" data-review-fields>
+    <label class="dr-field-filter"><span class="visually-hidden">Filter this item's fields</span><input type="search" placeholder="Filter fields" autocomplete="off" data-field-filter></label>
+    {% macro field_groups(groups) %}{% for group in groups %}
+    <section class="dr-field-group"><h3>{{ group.label }}</h3>
+      <dl>{% for row in group.rows %}<div data-field-row><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>
+      {% if group.empty %}<p class="dr-muted dr-empty-fields" data-field-row>No value: {{ group.empty|join(', ') }}</p>{% endif %}
+    </section>{% endfor %}{% endmacro %}
+    {{ field_groups(panel.fields.primary) }}
+    {% if panel.fields.picked %}<section class="dr-field-group"><h3>Chosen load-file fields</h3><dl>{% for row in panel.fields.picked %}<div data-field-row><dt>{{ row.label }}</dt><dd{% if row.absent %} class="dr-muted"{% endif %}>{{ '(absent)' if row.absent else row.value }}</dd></div>{% endfor %}</dl></section>{% endif %}
+    <details class="dr-field-more"{% if panel.fields.load_file_open %} open{% endif %}>
+      <summary>Load file{% if panel.fields.load_file %} ({{ panel.fields.load_file|length }} fields, as produced; duplicate headings have display ordinals){% endif %}</summary>
+      {% if panel.fields.load_file %}
+      <p class="dr-muted">{{ panel.fields.load_file_source }}</p>
+      <dl>{% for row in panel.fields.load_file %}<div data-field-row><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>
+      {% else %}<p class="dr-muted">No load-file row is attached to this item.</p>{% endif %}
+    </details>
+    {% if panel.fields.more %}<details class="dr-field-more"><summary>More fields</summary>{{ field_groups(panel.fields.more) }}</details>{% endif %}
+  </div>
+  {% endif %}
+</article>

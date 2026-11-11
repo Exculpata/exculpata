@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
@@ -21,10 +21,29 @@ class ModuleDatabase:
     connection: Connection
     lock: AbstractContextManager
 
+    @contextmanager
+    def authorized_write(self, authority, matter_id: str, actor_id: str):
+        """Serialize current authority and mutation in one owned transaction."""
+        with self.lock:
+            self.connection.execute("BEGIN IMMEDIATE")
+            try:
+                authority(matter_id, actor_id)
+                yield self.connection
+                self.connection.commit()
+            except BaseException:
+                self.connection.rollback()
+                raise
+
 
 @dataclass(frozen=True, slots=True)
 class ModuleContext:
-    """Shared capabilities; modules do not acquire application authority."""
+    """Shared capabilities; modules do not acquire application authority.
+
+    ``ensure_capacity`` checks protected disk capacity together with admitted
+    upload, playback and archive-staging reservations. It takes the storage
+    reservation lock before the database lock, so callers must hold neither
+    ``db.lock`` nor a module lock when they call it.
+    """
 
     db: ModuleDatabase
     membership: Callable[[str, str], Any]
@@ -39,7 +58,9 @@ class RouteHook(Protocol):
     def __call__(
         self, app: Any, *, context: ModuleContext,
         authorized_matter: Callable[[Any, str], Any],
-        auth_context: Callable[[Any], Any], templates: Any,
+        auth_context: Callable[[Any], Any],
+        require_csrf: Callable[..., Any], require_csrf_header: Callable[..., Any],
+        templates: Any, audit: Callable[..., None],
         base_context: Callable[..., dict[str, Any]],
         require_response_lease: Callable[..., Iterator[None]],
         transfer_response_lease: Callable[..., Any],

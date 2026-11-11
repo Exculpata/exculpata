@@ -268,9 +268,24 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
         for name in ('0034_evidence_assertions.sql', '0035_matter_context_selection.sql',
                      '0036_answer_context.sql', '0037_automatic_entity_discovery.sql', '0038_matter_purpose.sql',
-                     '0044_witness_inconsistency.sql'):
+                     '0044_witness_inconsistency.sql', '0045_discovery_review_view.sql',
+                     '0046_discovery_review_identifier.sql', '0047_discovery_identifier_case_uniqueness.sql'):
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
-            self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+            try:
+                self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
+            except sqlite3.DatabaseError as exc:
+                self.connection.rollback()
+                if name == '0047_discovery_identifier_case_uniqueness.sql':
+                    rows = list(self.connection.execute(
+                        "SELECT matter_id,identifier FROM workbench_discovery_identifier"))
+                    counts = {}
+                    for matter_id, value in rows:
+                        key = (matter_id, value.casefold())
+                        counts[key] = counts.get(key, 0) + 1
+                    invalid = [(matter_id, value) for matter_id, value in rows
+                               if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,19}[0-9]{1,12}", value) is None or counts[(matter_id, value.casefold())] > 1]
+                    raise RuntimeError(f"Team ID upgrade refused; resolve conflicting or unsupported values: {invalid!r}") from exc
+                raise
         from .appearance import migrate_appearance
         migrate_appearance(self.connection)
         from .source_roles import migrate_source_roles
@@ -2198,6 +2213,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute('DELETE FROM workbench_matter_purpose WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_context_selection WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_witness_inconsistency_review WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_view WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_identifier WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_assertion WHERE matter_id=?', (matter_id,))
             self.connection.execute(
                 "DELETE FROM workbench_entity WHERE matter_id=?", (matter_id,)

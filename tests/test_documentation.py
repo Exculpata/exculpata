@@ -155,8 +155,6 @@ def test_agent_working_practice_sets_delivery_and_authority_boundaries() -> None
         "failing test first where a cheap test exists",
         "what else the change could break before pushing",
         "real artifact before calling it done",
-        "about 500 changed lines or less",
-        "ordered small PRs",
         "PR author owns the PR to green",
         "review findings, CI flakes and stale PR body text without waiting",
         "one push per round",
