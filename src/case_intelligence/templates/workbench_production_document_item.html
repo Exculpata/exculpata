@@ -36,7 +36,7 @@
     {{ field_groups(panel.fields.primary) }}
     {% if panel.fields.picked %}<section class="dr-field-group"><h3>Chosen load-file fields</h3><dl>{% for row in panel.fields.picked %}<div data-field-row><dt>{{ row.label }}</dt><dd{% if row.absent %} class="dr-muted"{% endif %}>{{ '(absent)' if row.absent else row.value }}</dd></div>{% endfor %}</dl></section>{% endif %}
     <details class="dr-field-more"{% if panel.fields.load_file_open %} open{% endif %}>
-      <summary>Load file{% if panel.fields.load_file %} ({{ panel.fields.load_file|length }} fields, as produced){% endif %}</summary>
+      <summary>Load file{% if panel.fields.load_file %} ({{ panel.fields.load_file|length }} fields, as produced; duplicate headings have display ordinals){% endif %}</summary>
       {% if panel.fields.load_file %}
       <p class="dr-muted">{{ panel.fields.load_file_source }}</p>
       <dl>{% for row in panel.fields.load_file %}<div data-field-row><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>

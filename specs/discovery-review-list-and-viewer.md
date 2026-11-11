@@ -87,8 +87,8 @@ existing Production summary reads one fixed three-column CSV per request.
   hundreds of thousands of items. A persisted index is the follow-up for the
   million-item target.
 - **Email headers.** Stored `.eml` sources are read for header values at index
-  build. Only the first 256 KiB is read and a malformed header is an absent
-  value.
+  build. The 256 KiB read boundary refuses incomplete headers explicitly; a
+  malformed header is an absent value.
 
 ## Not in this change
 
@@ -104,3 +104,17 @@ email items only; every load-file header reachable; ambiguous rows attach to
 nothing; a swapped definition changes defaults with no code change; saved
 view precedence and reset; other matters and non-members see nothing;
 originals keep their digests; deletion leaves no view row or cached index.
+
+## Integrity repair contract (#500)
+
+The [repair design](500-fix-design.md) tightens the existing guarantees:
+accepted metadata remains complete, duplicate headings receive collision-free
+display ordinals, and decimal sorting never changes displayed values. Oversized
+email headers are explicitly refused rather than shown as partial metadata.
+Team IDs have storage-enforced ASCII-domain, case-insensitive uniqueness; full
+supported produced intervals and unmatched load-file rows participate in collision
+checks. Unsupported unequal ranges refuse assignment visibly. Authorization and
+mutation share one explicit write transaction. A purged identity stays retired
+for the process, including pending builds and later restored identities. Explicit
+URL view, session preference and server default define navigation precedence;
+keyboard pagination and no-script links preserve the selected view.

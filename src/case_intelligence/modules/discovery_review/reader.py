@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import weakref
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from email import policy
@@ -90,18 +91,24 @@ class Index:
         return result
 
 
+def decimal_key(text: str) -> tuple:
+    digits = "".join(str(unicodedata.decimal(char)) for char in text).lstrip("0") or "0"
+    return len(digits), digits
+
+
 def natural_key(text: str) -> tuple:
     """Order ABC2 before ABC10 while leaving the shown label untouched."""
-    return tuple((0, int(part), "") if part.isdigit() else (1, 0, part.casefold())
+    return tuple((0, decimal_key(part), "") if part.isdecimal() else (1, (), part.casefold())
                  for part in _DIGITS.split(text) if part)
 
 
 def sort_key(chosen: Field, item: Item):
     if chosen.sort == "number":
         if chosen.key in item.numbers:
-            return item.numbers[chosen.key]
-        digits = item.value(chosen.key).replace(",", "").strip()
-        return int(digits) if digits.isdigit() else None
+            return (0, decimal_key(str(item.numbers[chosen.key])))
+        value = item.value(chosen.key).strip()
+        digits = value.replace(",", "")
+        return ((0, decimal_key(digits)) if digits.isdecimal() else (1, natural_key(value))) if value else None
     value = item.value(chosen.key)
     if not value.strip():
         return None
@@ -132,20 +139,22 @@ def email_headers(path, names) -> dict[str, str]:
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
         try:
-            raw = os.read(descriptor, MAX_EMAIL_HEADER_BYTES)
+            raw = os.read(descriptor, MAX_EMAIL_HEADER_BYTES + 1)
+            if len(raw) > MAX_EMAIL_HEADER_BYTES and not re.search(br"\r?\n\r?\n", raw[:MAX_EMAIL_HEADER_BYTES]):
+                raise MetadataUnavailable("Email headers exceed the complete-read limit; no partial header values were accepted.")
         finally:
             os.close(descriptor)
         message = BytesHeaderParser(policy=policy.default).parsebytes(raw)
-    except (OSError, ValueError):
+    except OSError:
         return {}
     found = {}
     for name in names:
         try:
-            value = " ".join(str(message.get(name, "")).split())
+            value = str(message.get(name, ""))
         except Exception:  # a malformed header is an absent value, never a failed page
             value = ""
         if value:
-            found[name] = value[:load_files.MAX_VALUE_CHARS]
+            found[name] = value
     return found
 
 
@@ -263,12 +272,24 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
 
 _cache: OrderedDict[str, Index] = OrderedDict()
 _cache_lock = threading.Lock()
+_retired: dict[str, int] = {}
+
+
+class MetadataUnavailable(RuntimeError):
+    """A bounded read cannot supply complete produced metadata."""
+
+
+class IndexUnavailable(RuntimeError):
+    """The matter identity was permanently retired in this process."""
 
 
 def index_for(matter_id: str, store, definition: Definition, identifiers=None) -> Index:
     """Return the current index, rebuilding only when sources or team identifiers changed."""
     mark = identifiers.mark(matter_id) if identifiers is not None else 0
     with _cache_lock:
+        generation = _retired.get(matter_id, 0)
+        if generation:
+            raise IndexUnavailable("Matter is no longer available")
         cached = _cache.get(matter_id)
         if (cached is not None and cached.store() is store and cached.revision == store.revision
                 and cached.definition is definition and cached.assigned_mark == mark):
@@ -278,6 +299,8 @@ def index_for(matter_id: str, store, definition: Definition, identifiers=None) -
     assigned = identifiers.read(matter_id) if identifiers is not None else {}
     built = build(store, revision, documents, definition, cached, assigned, mark)
     with _cache_lock:
+        if _retired.get(matter_id, 0) != generation:
+            raise IndexUnavailable("Matter is no longer available")
         _cache[matter_id] = built
         _cache.move_to_end(matter_id)
         while len(_cache) > MAX_CACHED_MATTERS:
@@ -286,6 +309,7 @@ def index_for(matter_id: str, store, definition: Definition, identifiers=None) -
 
 
 def forget(matter_id: str) -> None:
-    """Drop derived view state when its matter is deleted."""
+    """Retire the opaque identity permanently, including pending builders."""
     with _cache_lock:
+        _retired[matter_id] = _retired.get(matter_id, 0) + 1
         _cache.pop(matter_id, None)

@@ -17,7 +17,6 @@ from case_intelligence.modules.discovery_review.fields import (
 
 MAX_LOAD_FILE_BYTES = 64 * 1024 * 1024
 MAX_LOAD_FILE_ROWS = 2_000_000
-MAX_VALUE_CHARS = 4000
 DELIMITERS = {".csv": ",", ".tsv": "\t"}
 
 
@@ -58,11 +57,15 @@ class Report:
 
 def unique_headers(headers) -> tuple[str, ...]:
     """Keep headers as produced; a repeated header gains a visible ordinal."""
-    seen: dict[str, int] = {}
+    reserved, allocated = set(headers), set()
     named = []
     for header in headers:
-        seen[header] = seen.get(header, 0) + 1
-        named.append(header if seen[header] == 1 else f"{header} ({seen[header]})")
+        label, ordinal = header, 2
+        while label in allocated or (label != header and label in reserved):
+            label = f"{header} ({ordinal})"
+            ordinal += 1
+        allocated.add(label)
+        named.append(label)
     return tuple(named)
 
 
@@ -100,7 +103,7 @@ def parse(raw: bytes, *, document_id: str, name: str, definition: Definition) ->
                 problem = f"Only the first {MAX_LOAD_FILE_ROWS} rows were read."
                 break
             rows.append(Row(reader.line_num, {
-                header: value[:MAX_VALUE_CHARS] for header, value in zip(headers, values)}))
+                header: value for header, value in zip(headers, values)}))
     except csv.Error:
         problem = f"Line {reader.line_num} could not be parsed; later rows were not read."
     return LoadFile(document_id, name, headers, tuple(rows), path_header, bates_header, problem)

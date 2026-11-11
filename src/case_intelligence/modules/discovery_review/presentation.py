@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from case_intelligence.modules.discovery_review.fields import (
     LOAD_FILE_GROUP, LOAD_FILE_PREFIX, Definition, Field,
@@ -73,7 +73,7 @@ def ordered(definition: Definition, index: Index, choice: Choice, *, q: str, sor
 
 
 def list_page(definition: Definition, index: Index, choice: Choice, *, base: str, q: str, sort: str,
-              descending: bool, page: int, doc: str, edge: str, show_all: bool) -> dict:
+              descending: bool, page: int, doc: str, edge: str, show_all: bool, view: str = "") -> dict:
     sort = sort if definition.field(sort) is not None else definition.default_sort
     columns = [definition.field(key) for key in choice.columns]
     needle = q.strip().casefold()
@@ -86,7 +86,7 @@ def list_page(definition: Definition, index: Index, choice: Choice, *, base: str
     window = positions[(page - 1) * size:page * size]
     if where is None and window:
         where = (page - 1) * size + (len(window) - 1 if edge == "last" else 0)
-    state = {"q": q.strip(), "sort": sort if sort != definition.default_sort or descending else "",
+    state = {"view": view, "q": q.strip(), "sort": sort if sort != definition.default_sort or descending else "",
              "dir": "desc" if descending else "", "all_columns": "1" if show_all else ""}
 
     def url(**changes) -> str:
@@ -138,11 +138,12 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
     active = view if view in available else available[0]
     source_url = f"/matters/{slug}/sources/{item.token}"
     fragment = f"/matters/{slug}/production/items/{item.token}"
-    joiner = "&" if "?" in list_url else "?"
+    parsed_url = urlsplit(list_url)
 
     def links(**query) -> dict:
         encoded = urlencode({key: value for key, value in query.items() if value})
-        return {"url": f"{list_url}{joiner}{encoded}", "fragment": f"{fragment}?{encoded}"}
+        return {"url": urlunsplit(parsed_url._replace(query=urlencode({**dict(parse_qsl(parsed_url.query)), **query}))),
+                "fragment": f"{fragment}?{encoded}"}
 
     panel = {
         "item": item, "heading": heading(definition, item), "active": active, "source_url": source_url,

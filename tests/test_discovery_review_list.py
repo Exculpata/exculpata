@@ -166,7 +166,7 @@ def test_saved_views_change_columns_and_reset_restores_the_definition(production
     assert ["Rivera, Alex", "Hot", "ledger.txt"] in rows(page.text)
     # An item without that load-file field shows it as absent, not as an empty value.
     assert "has no such field" in page.text
-    repository = ViewRepository(ModuleDatabase(bench.workspace.connection, bench.workspace._lock))
+    repository = ViewRepository(ModuleDatabase(bench.workspace.connection, bench.workspace._lock), bench.workspace.membership)
     repository.save(matter.matter_id, "matter", ACTOR, ("name",), ())
     assert headers(client.get(url).text) == ["Custodian", "Review Tag", "Name"]  # own view wins
     assert client.post(url + "/view", data={"action": "reset", "scope": "user"}, follow_redirects=False).status_code == 303
@@ -296,6 +296,387 @@ def test_review_reads_never_change_originals_and_deletion_leaves_no_view_state(p
 
 
 def test_migration_mirror_matches_packaged_copy():
-    for name in ("0045_discovery_review_view.sql", "0046_discovery_review_identifier.sql"):
+    for name in ("0045_discovery_review_view.sql", "0046_discovery_review_identifier.sql", "0047_discovery_identifier_case_uniqueness.sql"):
         path = "migrations/sqlite/" + name
         assert (ROOT / path).read_bytes() == (ROOT / "src/case_intelligence" / path).read_bytes()
+
+
+@pytest.mark.parametrize('delimiter,suffix', [(',', 'csv'), ('\t', 'tsv')])
+def test_load_file_preserves_complete_values_in_every_column(delimiter, suffix):
+    import csv
+    import io
+    value = '  ' + '7' * 5000 + '\nend  '
+    stream = io.StringIO(newline='')
+    writer = csv.writer(stream, delimiter=delimiter)
+    writer.writerow(['PATH', 'BEGBATES', 'Note'])
+    writer.writerow([value, value, value])
+    parsed = load_files.parse(stream.getvalue().encode(), document_id='synthetic',
+                              name='load.' + suffix, definition=fields.load_definition())
+    assert not parsed.problem
+    assert list(parsed.rows[0].values.values()) == [value] * 3
+
+
+def test_duplicate_headers_preserve_all_columns_with_reserved_ordinal_names():
+    for headings in [('PATH', 'Note', 'Note', 'Note (2)'), ('PATH', 'Note (2)', 'Note', 'Note')]:
+        parsed = load_files.parse((','.join(headings) + '\na,b,c,d\n').encode(), document_id='synthetic',
+                                  name='load.csv', definition=fields.load_definition())
+        assert len(set(parsed.headers)) == 4
+        assert list(parsed.rows[0].values.values()) == ['a', 'b', 'c', 'd']
+        assert parsed.headers == load_files.unique_headers(headings)
+    long = 'N' * fields.MAX_HEADER_CHARS
+    assert fields.load_definition().clean(['lf:' + h for h in load_files.unique_headers([long, long])]) == (
+        'lf:' + long, 'lf:' + long + ' (2)')
+
+
+def test_email_header_values_are_not_silently_truncated(tmp_path):
+    path = tmp_path / 'synthetic.eml'
+    value = 'x' * 5000 + 'END'
+    # fixture-write: synthetic email input for the production header reader.
+    path.write_bytes(('Subject: ' + value + '\r\n\r\nBody').encode())
+    assert reader.email_headers(path, ['Subject']) == {'Subject': value}
+    # fixture-write: oversized synthetic header must be refused, never shortened.
+    path.write_bytes(b'Subject: ' + b'x' * reader.MAX_EMAIL_HEADER_BYTES + b'END')
+    with pytest.raises(reader.MetadataUnavailable, match='no partial header'):
+        reader.email_headers(path, ['Subject'])
+
+
+def test_natural_sort_handles_long_decimal_runs_without_integer_conversion():
+    assert reader.natural_key('S' + '9' * 5000) < reader.natural_key('S1' + '0' * 5000)
+    assert reader.natural_key('²')
+    assert reader.natural_key('S٢') < reader.natural_key('S10')
+
+
+@pytest.mark.parametrize('value', ['²', 'x', ',', '٢', '9' * 5000])
+def test_numeric_metadata_sort_handles_nondecimal_unicode_as_text(value):
+    from dataclasses import replace
+    item = reader.Item('t', 'd', 'v', 'document', '', '', False, {'pages': value}, {}, {})
+    key = reader.sort_key(replace(fields.load_definition().by_key['pages'], sort='number'), item)
+    assert key is not None
+
+
+@pytest.mark.parametrize('number', [11, 900, 901])
+def test_identifier_assignment_rejects_interior_and_unmatched_produced_bates(production, number):
+    client, bench, matter = production
+    response = client.post(f'/matters/{matter.slug}/production/identifiers',
+                           data={'prefix': 'syn', 'start': number, 'digits': 6, 'q': 'memo'}, follow_redirects=False)
+    assert response.headers['location'].endswith('notice=conflict')
+    assert not list(bench.workspace.connection.execute('SELECT * FROM workbench_discovery_identifier'))
+
+
+def test_index_build_cannot_publish_after_real_purge_hook(production, monkeypatch, tmp_path):
+    from case_intelligence.modules.discovery_review.purge import purge_hook
+    client, bench, matter = production
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    import uuid
+    ready, resume = threading.Event(), threading.Event()
+    original = reader.build
+    def purge_during_build(*args, **kwargs):
+        built = original(*args, **kwargs)
+        assert any('memo' in item.value('name') for item in built.items)
+        ready.set()
+        assert resume.wait(10)
+        return built
+    monkeypatch.setattr(reader, 'build', purge_during_build)
+    with ThreadPoolExecutor(1) as pool:
+        pending = pool.submit(reader.index_for, matter.matter_id, bench.source_store(matter), fields.load_definition())
+        try:
+            assert ready.wait(10)
+            purge_hook(tmp_path / matter.matter_id, matter.matter_id)
+        finally:
+            resume.set()
+        with pytest.raises(RuntimeError):
+            pending.result(timeout=10)
+    assert matter.matter_id not in reader._cache
+    monkeypatch.setattr(reader, 'build', original)
+    for _ in range(reader.MAX_CACHED_MATTERS + 1):
+        reader.index_for('ci-matter-' + uuid.uuid4().hex, bench.source_store(matter), fields.load_definition())
+    for _ in range(2):
+        purge_hook(tmp_path / matter.matter_id, matter.matter_id)
+        with pytest.raises(RuntimeError):
+            reader.index_for(matter.matter_id, bench.source_store(matter), fields.load_definition())
+
+
+@pytest.mark.parametrize('scope,action', [('matter', 'save'), ('matter', 'reset'), ('user', 'save'),
+                                         ('user', 'reset'), ('identifiers', 'assign'), ('identifiers', 'clear')])
+def test_review_write_rechecks_revoked_membership_inside_transaction(production, monkeypatch, scope, action):
+    from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository
+    client, bench, _ = production
+    workspace = bench.workspace
+    owner = workspace.upsert_principal('test', 'synthetic-owner', 'Synthetic owner', 'synthetic-owner').principal_id
+    matter = workspace.create_matter('Synthetic revocation', 'Generated', owner)
+    workspace.add_member(matter.matter_id, ACTOR, owner)
+    add_files(client, bench, matter, {'memo.txt': b'Synthetic content'}, key='b')
+    base = f'/matters/{matter.slug}/production'
+    client.post(base + '/view', data={'scope': scope if scope != 'identifiers' else 'user', 'columns': ['name']})
+    client.post(base + '/identifiers', data={'prefix': 'DEF', 'digits': 4})
+    table = 'workbench_discovery_identifier' if scope == 'identifiers' else 'workbench_discovery_view'
+    before = [tuple(row) for row in workspace.connection.execute('SELECT * FROM ' + table)]
+    repository = IdentifierRepository if scope == 'identifiers' else ViewRepository
+    method = action if scope == 'identifiers' else 'clear' if action == 'reset' else 'save'
+    original = getattr(repository, method)
+    def revoked(self, *args, **kwargs):
+        workspace.revoke_member(matter.matter_id, ACTOR, owner)
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(repository, method, revoked)
+    data = {'scope': scope, 'action': action, 'columns': ['custodian'], 'prefix': 'NEW', 'confirm': '1'}
+    if action == 'assign':
+        client.post(base + '/identifiers', data={'action': 'clear', 'confirm': '1'})
+        before = []
+    audits = list(workspace.connection.execute(
+        "SELECT action,outcome FROM workbench_audit_event WHERE action LIKE 'discovery_review.%'"))
+    response = client.post(base + ('/identifiers' if scope == 'identifiers' else '/view'), data=data)
+    assert response.status_code == 404
+    assert list(workspace.connection.execute(
+        "SELECT action,outcome FROM workbench_audit_event WHERE action LIKE 'discovery_review.%'")) == audits
+    assert [tuple(row) for row in workspace.connection.execute('SELECT * FROM ' + table)] == before
+
+
+def test_identifier_storage_rejects_case_equivalent_insert_and_update(production):
+    import sqlite3
+    from tests.fixture_write import fixture_write
+    _, bench, matter = production
+    workspace = bench.workspace
+    with fixture_write(workspace) as connection:
+        connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                           (matter.matter_id, 'one', 'DEF001', ACTOR, 'synthetic'))
+    with pytest.raises(sqlite3.IntegrityError):
+        with fixture_write(workspace) as connection:
+            connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                               (matter.matter_id, 'two', 'def001', ACTOR, 'synthetic'))
+    with fixture_write(workspace) as connection:
+        connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                           (matter.matter_id, 'two', 'DEF002', ACTOR, 'synthetic'))
+    for value in ('def001', 'DÉF003', 'X', 'A' * 33, 'A' * 21 + '1'):
+        with pytest.raises(sqlite3.IntegrityError):
+            with fixture_write(workspace) as connection:
+                connection.execute("UPDATE workbench_discovery_identifier SET identifier=? WHERE document_id='two'",
+                                   (value,))
+
+
+
+def test_fields_view_renders_complete_accepted_load_file_values(production):
+    client, bench, matter = production
+    value = 'Z' * 5000 + 'END'
+    add_files(client, bench, matter, {'long.txt': b'Synthetic text', 'long.csv':
+        ('PATH,BEGBATES,Note\nlong.txt,' + value + ',' + value + '\n').encode()}, key='c')
+    html = client.get(f'/matters/{matter.slug}/production/items/{token_for(bench, matter, "long.txt")}?view=fields').text
+    assert unescape(re.sub('<[^>]+>', '', html)).count(value) >= 2
+
+
+def test_load_file_parser_limit_reports_rejected_row_without_partial_values():
+    import csv
+    parsed = load_files.parse(b'PATH,Note\na,' + b'x' * (csv.field_size_limit() + 1),
+                              document_id='synthetic', name='load.csv', definition=fields.load_definition())
+    assert parsed.problem and not parsed.rows
+
+
+def test_bates_range_collision_check_preserves_original_strings(production):
+    from case_intelligence.modules.discovery_review.identifiers import produced_collisions, RangeUnavailable
+    from dataclasses import replace
+    _, bench, matter = production
+    definition = fields.load_definition()
+    index = reader.index_for(matter.matter_id, bench.source_store(matter), definition)
+    before = [dict(item.values) for item in index.items]
+    assert produced_collisions(index, definition, ['sYn11'])
+    assert not produced_collisions(index, definition, ['SYN13'])
+    huge = '0' * 5000
+    item = replace(index.items[0], values=dict(zip(definition.heading_range, ['Big' + huge + '1', 'bIG' + huge + '3'])))
+    changed = replace(index, items=(item,), reads={})
+    assert produced_collisions(changed, definition, ['BIG2'])
+    invalid = replace(item, values=dict(zip(definition.heading_range, ['SYN010', 'Other012'])))
+    with pytest.raises(RangeUnavailable):
+        produced_collisions(replace(changed, items=(invalid,)), definition, ['SAFE001'])
+    assert before == [dict(item.values) for item in index.items]
+
+
+def test_source_revision_change_invalidates_identifier_collision_check(production, monkeypatch):
+    from case_intelligence.modules.discovery_review import routes
+    client, bench, matter = production
+    original = routes.produced_collisions
+    def changed(*args):
+        result = original(*args)
+        bench.source_store(matter).revision += 1
+        return result
+    monkeypatch.setattr(routes, 'produced_collisions', changed)
+    response = client.post(f'/matters/{matter.slug}/production/identifiers', data={'prefix': 'DEF'}, follow_redirects=False)
+    assert response.headers['location'].endswith('notice=retry')
+    assert not list(bench.workspace.connection.execute('SELECT * FROM workbench_discovery_identifier'))
+
+
+def test_server_pagination_links_preserve_explicit_view(production, monkeypatch):
+    from dataclasses import replace
+    client, _, matter = production
+    definition = replace(fields.load_definition(), page_size=2)
+    monkeypatch.setattr(fields, 'load_definition', lambda: definition)
+    html = client.get(f'/matters/{matter.slug}/production?view=fields').text
+    link = unescape(re.search(r'href="([^"]+)"[^>]*data-review-page="next"', html).group(1))
+    assert 'view=fields' in link
+    assert all('view=fields' in unescape(url) for url in re.findall(r'data-url="([^"]+)"', html))
+
+
+def test_identifier_batch_failure_rolls_back_every_insert(production):
+    from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository, IdentifierConflict
+    _, bench, matter = production
+    repository = IdentifierRepository(ModuleDatabase(bench.workspace.connection, bench.workspace._lock), bench.workspace.membership)
+    with pytest.raises(IdentifierConflict):
+        repository.assign(matter.matter_id, ACTOR, [('a', 'DEF001'), ('b', 'def001')])
+    assert repository.read(matter.matter_id) == {} and repository.mark(matter.matter_id) == 0
+    other = bench.workspace.create_matter('Synthetic other numbering', 'Generated', ACTOR)
+    for identity in (matter.matter_id, other.matter_id):
+        assert repository.assign(identity, ACTOR, [('synthetic', 'Def001')]) == 1
+
+
+@pytest.mark.parametrize("legacy", ["def001", "DÉF002", "bad"])
+def test_identifier_migration_preserves_spelling_and_rejects_existing_collisions(tmp_path, legacy):
+    import sqlite3
+    from tests.fixture_write import fixture_write
+    from case_intelligence.workspace_store import WorkspaceStore
+    path = tmp_path / 'synthetic.sqlite'
+    workspace = WorkspaceStore(path)
+    actor = workspace.upsert_principal('test', 'synthetic', 'Synthetic', 'synthetic').principal_id
+    matter = workspace.create_matter('Synthetic migration', 'Generated', actor)
+    with fixture_write(workspace) as connection:
+        connection.execute('DROP INDEX discovery_identifier_nocase')
+        connection.execute('DROP TRIGGER discovery_identifier_domain_insert')
+        connection.execute('DROP TRIGGER discovery_identifier_domain_update')
+        connection.executemany('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
+                              [(matter.matter_id, 'a', 'Def001', actor, 'synthetic'),
+                               (matter.matter_id, 'b', legacy, actor, 'synthetic')])
+    sql = (ROOT / 'migrations/sqlite/0047_discovery_identifier_case_uniqueness.sql').read_text()
+    with pytest.raises(sqlite3.IntegrityError):
+        # fixture-write: real migration transaction rollback on synthetic legacy rows.
+        workspace.connection.executescript('BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
+    assert not workspace.connection.in_transaction
+    assert not list(workspace.connection.execute("SELECT name FROM sqlite_master WHERE name='discovery_identifier_domain_update'"))
+    with pytest.raises(RuntimeError, match='Team ID upgrade refused'):
+        WorkspaceStore(path)
+    with fixture_write(workspace) as connection:
+        connection.execute("UPDATE workbench_discovery_identifier SET identifier='def002' WHERE document_id='b'")
+    workspace.close()
+    for _ in range(2):
+        workspace = WorkspaceStore(path)
+        assert [r[0] for r in workspace.connection.execute('SELECT identifier FROM workbench_discovery_identifier ORDER BY document_id')] == ['Def001', 'def002']
+        workspace.close()
+
+
+def test_concurrent_case_equivalent_identifier_batches_have_one_winner(production):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from case_intelligence.workspace_store import WorkspaceStore
+    from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository, IdentifierConflict
+    _, bench, matter = production
+    stores = [WorkspaceStore(bench.workspace.path) for _ in range(2)]
+    barrier = threading.Barrier(2)
+    def assign(position):
+        workspace = stores[position]
+        repository = IdentifierRepository(ModuleDatabase(workspace.connection, workspace._lock), workspace.membership)
+        assert repository.read(matter.matter_id) == {}
+        barrier.wait(timeout=10)
+        try:
+            repository.assign(matter.matter_id, ACTOR, [(str(position), ['Def001', 'def001'][position])])
+            return 'won'
+        except IdentifierConflict:
+            return 'conflict'
+    try:
+        with ThreadPoolExecutor(2) as pool:
+            assert sorted(pool.map(assign, range(2))) == ['conflict', 'won']
+    finally:
+        for workspace in stores:
+            workspace.close()
+
+
+def test_review_write_serializes_with_membership_revocation(production):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from case_intelligence.workspace_store import WorkspaceStore
+    _, bench, _ = production
+    workspace = bench.workspace
+    owner = workspace.upsert_principal('test', 'synthetic-owner', 'Synthetic owner', 'synthetic-owner').principal_id
+    matter = workspace.create_matter('Synthetic transaction', 'Generated', owner)
+    workspace.add_member(matter.matter_id, ACTOR, owner)
+    other = WorkspaceStore(workspace.path)
+    checked, release, started = threading.Event(), threading.Event(), threading.Event()
+    def authority(matter_id, actor):
+        assert workspace.connection.in_transaction
+        workspace.membership(matter_id, actor)
+        checked.set()
+        assert release.wait(10)
+    repository = ViewRepository(ModuleDatabase(workspace.connection, workspace._lock), authority)
+    def revoke():
+        started.set()
+        other.revoke_member(matter.matter_id, ACTOR, owner)
+    try:
+        with ThreadPoolExecutor(2) as pool:
+            saved = pool.submit(repository.save, matter.matter_id, 'matter', ACTOR, ['name'], [])
+            assert checked.wait(10)
+            revoked = pool.submit(revoke)
+            assert started.wait(10) and not revoked.done()
+            release.set()
+            saved.result(timeout=10)
+            revoked.result(timeout=10)
+        assert repository.read(matter.matter_id, ACTOR)['matter'].columns == ('name',)
+        with pytest.raises(KeyError):
+            repository.clear(matter.matter_id, 'matter', ACTOR)
+    finally:
+        release.set()
+        other.close()
+
+
+def test_identifier_migration_replays_for_frozen_matter_and_clean_backup(production, tmp_path):
+    import sqlite3
+    from case_intelligence.workspace_store import WorkspaceStore
+    from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository
+    _, bench, matter = production
+    workspace = bench.workspace
+    repository = IdentifierRepository(ModuleDatabase(workspace.connection, workspace._lock), workspace.membership)
+    repository.assign(matter.matter_id, ACTOR, [('synthetic', 'Def001')])
+    claim_bench_exit(bench, matter)
+    backup_path = tmp_path / 'synthetic-backup.sqlite'
+    # fixture-write: SQLite backup of a synthetic workspace for an isolated clean restore drill.
+    with workspace._lock, sqlite3.connect(backup_path) as backup:
+        workspace.connection.backup(backup)
+    restored = WorkspaceStore(backup_path)
+    try:
+        assert list(restored.connection.execute('PRAGMA integrity_check'))[0][0] == 'ok'
+        assert [row[0] for row in restored.connection.execute('SELECT identifier FROM workbench_discovery_identifier')] == ['Def001']
+    finally:
+        restored.close()
+
+
+def test_success_audit_precedes_response_time_revocation(production, monkeypatch):
+    client, bench, _ = production
+    workspace = bench.workspace
+    owner = workspace.upsert_principal('test', 'synthetic-owner', 'Synthetic owner', 'synthetic-owner').principal_id
+    matter = workspace.create_matter('Synthetic audit ordering', 'Generated', owner)
+    workspace.add_member(matter.matter_id, ACTOR, owner)
+    original = ViewRepository.save
+    def revoke_after_commit(self, *args, **kwargs):
+        result = original(self, *args, **kwargs)
+        workspace.revoke_member(matter.matter_id, ACTOR, owner)
+        return result
+    monkeypatch.setattr(ViewRepository, 'save', revoke_after_commit)
+    assert client.post(f'/matters/{matter.slug}/production/view', data={'columns': ['name']}).status_code == 404
+    assert list(workspace.connection.execute(
+        "SELECT 1 FROM workbench_audit_event WHERE matter_id=? AND action='discovery_review.view_save' AND outcome='success'",
+        (matter.matter_id,)))
+
+
+def test_duplicate_maximum_length_header_remains_selectable_and_sortable(production):
+    client, bench, matter = production
+    header = 'N' * fields.MAX_HEADER_CHARS
+    add_files(client, bench, matter, {'duplicate.txt': b'Synthetic text', 'duplicate.csv':
+        ('PATH,' + header + ',' + header + '\nduplicate.txt,one,two\n').encode()}, key='d')
+    base = f'/matters/{matter.slug}/production'
+    key = 'lf:' + header + ' (2)'
+    assert client.post(base + '/view', data={'columns': [key, 'name']}).status_code == 200
+    page = client.get(base, params={'sort': key})
+    assert page.status_code == 200 and ['two', 'duplicate.txt'] in rows(page.text)
+
+
+def test_unicode_bates_metadata_does_not_break_default_list_sort(production):
+    client, bench, matter = production
+    add_files(client, bench, matter, {'unicode.txt': b'Synthetic text', 'unicode.csv':
+        'PATH,BEGBATES\nunicode.txt,²\n'.encode()}, key='e')
+    page = client.get(f'/matters/{matter.slug}/production')
+    assert page.status_code == 200 and '²' in page.text

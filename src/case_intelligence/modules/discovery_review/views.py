@@ -37,18 +37,18 @@ def _keys(text: str) -> tuple[str, ...]:
 
 
 class ViewRepository:
-    def __init__(self, db: ModuleDatabase):
-        self.db = db
+    def __init__(self, db: ModuleDatabase, authority):
+        self.db, self.authority = db, authority
 
     def read(self, matter_id: str, principal_id: str) -> dict[str, SavedView]:
         """Return the reviewer's own view and the matter's shared view, when saved."""
         found = {}
         with self.db.lock:
             for scope, owner in (("user", principal_id), ("matter", "")):
-                row = self.db.connection.execute(
+                row = next(iter(self.db.connection.execute(
                     "SELECT columns,item_fields,updated_at FROM workbench_discovery_view "
                     "WHERE matter_id=? AND scope=? AND principal_id=?", (matter_id, scope, owner),
-                ).fetchone()
+                )), None)
                 if row is not None:
                     found[scope] = SavedView(scope, _keys(row[0]), _keys(row[1]), row[2])
         return found
@@ -57,7 +57,7 @@ class ViewRepository:
         stored = [json.dumps(list(keys), ensure_ascii=False) for keys in (columns, item_fields)]
         if scope not in SCOPES or sum(map(len, stored)) > MAX_STORED_CHARS:
             raise ViewUnavailable("view is invalid")
-        self.write(
+        self._write(matter_id, principal_id,
             "INSERT INTO workbench_discovery_view(matter_id,scope,principal_id,columns,item_fields,updated_at) "
             "VALUES (?,?,?,?,?,?) ON CONFLICT(matter_id,scope,principal_id) DO UPDATE SET "
             "columns=excluded.columns,item_fields=excluded.item_fields,updated_at=excluded.updated_at",
@@ -67,12 +67,12 @@ class ViewRepository:
     def clear(self, matter_id: str, scope: str, principal_id: str) -> None:
         if scope not in SCOPES:
             raise ViewUnavailable("view is invalid")
-        self.write("DELETE FROM workbench_discovery_view WHERE matter_id=? AND scope=? AND principal_id=?",
+        self._write(matter_id, principal_id, "DELETE FROM workbench_discovery_view WHERE matter_id=? AND scope=? AND principal_id=?",
                     (matter_id, scope, principal_id if scope == "user" else ""))
 
-    def write(self, statement: str, values: tuple) -> None:
+    def _write(self, matter_id: str, actor_id: str, statement: str, values: tuple) -> None:
         try:
-            with self.db.lock, self.db.connection:
+            with self.db.authorized_write(self.authority, matter_id, actor_id):
                 self.db.connection.execute(statement, values)
         except sqlite3.DatabaseError as exc:
             raise ViewUnavailable("matter does not accept view changes") from exc

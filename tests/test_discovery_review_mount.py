@@ -180,3 +180,25 @@ def test_purge_is_idempotent_and_refuses_symlinks(tmp_path):
     with pytest.raises(RuntimeError):
         purge_hook(root, root.name)
     assert sources.is_dir()
+
+
+@pytest.mark.parametrize('outcome', ['success', 'conflict', 'denied', 'parse'])
+def test_identifier_post_holds_and_releases_response_lease(review, monkeypatch, outcome):
+    from case_intelligence.modules.discovery_review import reader
+    client, bench, matter, captured = review
+    original = reader.index_for
+    def inspect_lease(*args, **kwargs):
+        assert bench._active_matter_response_count(matter.matter_id) == 1
+        if outcome == 'parse':
+            raise reader.MetadataUnavailable('Synthetic incomplete metadata')
+        if outcome == 'denied':
+            raise reader.IndexUnavailable('Synthetic retired identity')
+        return original(*args, **kwargs)
+    monkeypatch.setattr(reader, 'index_for', inspect_lease)
+    assert client.post(f'/matters/{matter.slug}/uploads', files={'files': ('one.txt', b'Synthetic', 'text/plain')}).status_code == 200
+    if outcome == 'conflict':
+        from case_intelligence.modules.discovery_review import routes
+        monkeypatch.setattr(routes, 'produced_collisions', lambda *args: True)
+    response = client.post(f'/matters/{matter.slug}/production/identifiers', data={'prefix': 'DEF'}, follow_redirects=False)
+    assert response.status_code == {'denied': 404, 'parse': 422}.get(outcome, 303)
+    assert bench._active_matter_response_count(matter.matter_id) == 0
