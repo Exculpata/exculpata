@@ -25,6 +25,7 @@ def git(*args):
 def save(path, content="Synthetic documentation\n"):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    # fixture-write: synthetic input in the temporary test directory.
     path.write_text(content)
 
 
@@ -139,6 +140,7 @@ def test_cli_falls_back_to_full_when_comparison_is_unavailable(history, tmp_path
         ref = "refs/heads/feature"
         git("update-ref", "-d", "refs/remotes/origin/main")
     event_path = tmp_path / "event.json"
+    # fixture-write: synthetic input in the temporary test directory.
     event_path.write_text("{" if problem == "invalid-json" else json.dumps(event))
     output = tmp_path / "outputs"
     result = subprocess.run([sys.executable, str(SCRIPT)], env={**os.environ,
@@ -181,6 +183,7 @@ def test_required_application_check_cannot_succeed_after_classification_or_publi
 
 @pytest.mark.parametrize("change", ["added", "modified", "deleted", "renamed-in", "renamed-out"])
 @pytest.mark.parametrize("path", [
+    ".github/actions/apt-deps/action.yml", ".github/actions/apt-deps/nested/helper.sh",
     "scripts/browser-accept-synthetic.py", "scripts/run-browser-acceptance.py",
     "scripts/synthetic_browser_environment.py", "scripts/browser_appearance.py",
     "scripts/browser_case_exit.py", "scripts/install-ci-browser-deps.py",
@@ -265,6 +268,7 @@ def test_browser_scope_cli_outputs(history, tmp_path, path, expected):
     save(path)
     head = commit()
     event = tmp_path / "event.json"
+    # fixture-write: synthetic input in the temporary test directory.
     event.write_text(json.dumps({"pull_request": {
         "base": {"sha": history}, "head": {"sha": head},
     }}))
@@ -293,6 +297,7 @@ def test_browser_pr_cli_requires_coverage_when_comparison_unavailable(history, t
     if problem == "missing-base":
         event["pull_request"]["base"]["sha"] = "f" * 40
     event_path = tmp_path / "event.json"
+    # fixture-write: synthetic input in the temporary test directory.
     event_path.write_text("{" if problem == "invalid-json" else json.dumps(event))
     output = tmp_path / "outputs"
     subprocess.run([sys.executable, str(SCRIPT)], env={**os.environ,
@@ -366,3 +371,13 @@ def test_browser_regression_file_lists(history, monkeypatch, paths, expected):
     monkeypatch.setattr(scope, "git", complete_diff)
     event = {"pull_request": {"base": {"sha": history}, "head": {"sha": history}}}
     assert scope.browser_changed("pull_request", event, history) is expected
+
+
+@pytest.mark.parametrize("path", [
+    b".github/actions/apt-deps/action.yml",
+    b".github/actions/apt-deps/nested/helper.sh",
+    b".github/actions/apt-deps/README.md",
+    b".github/actions/apt-deps/deleted-file",
+])
+def test_every_apt_action_path_requires_browser_coverage(path):
+    assert scope.browser_path(path)

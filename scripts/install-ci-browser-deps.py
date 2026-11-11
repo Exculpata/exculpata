@@ -78,7 +78,6 @@ def validate_sources(text: str) -> None:
 
 
 def archive_options(archives: Path | None) -> tuple[str, ...]:
-    # APT verifies cached packages against freshly downloaded signed indexes.
     return () if archives is None else (
         "-o", f"Dir::Cache::archives={archives}", "-o", "APT::Keep-Downloaded-Packages=true",
     )
@@ -89,7 +88,7 @@ def acquire(source_options: tuple[str, ...] = (), packages: tuple[str, ...] = PA
     # Only acquisition is terminated by these deadlines, never dpkg unpacking.
     # Connection/data timeouts alone do not bound a continuously slow download.
     for seconds, arguments in (
-        (60, ("update", "--error-on=any")),
+        (120, ("update", "--error-on=any")),
         (180, ("install", "--yes", "--no-install-recommends", "--download-only", *packages)),
     ):
         result = subprocess.run([
@@ -128,37 +127,64 @@ def official_mirrors(mirrors: Path, sources: Path):
                        stdout=subprocess.DEVNULL, check=True)
 
 
+def install_command(source_options: tuple[str, ...] = (), packages: tuple[str, ...] = PACKAGES,
+            archives: Path | None = None) -> list[str]:
+    return [
+        "sudo", "apt-get", "install", *source_options, *archive_options(archives), "--yes", "--no-install-recommends",
+        "--no-download", *packages,
+    ]
+
+
 def install(source_options: tuple[str, ...] = (), packages: tuple[str, ...] = PACKAGES,
             archives: Path | None = None) -> None:
     # No timeout/fallback around unpacking. Missing archives remain a hard error.
-    subprocess.run([
-        "sudo", "apt-get", "install", *source_options, *archive_options(archives), "--yes", "--no-install-recommends",
-        "--no-download", *packages,
-    ], check=True)
+    subprocess.run(install_command(source_options, packages, archives), check=True)
 
 
 def install_dependencies(mirrors: Path = MIRRORS, sources: Path = SOURCES,
-                         packages: tuple[str, ...] = PACKAGES, archives: Path | None = None) -> None:
+                         packages: tuple[str, ...] = PACKAGES, archives: Path | None = None,
+                         state: Path | None = None, refresh: bool = False) -> None:
+    if state is not None and archives is not None:
+        raise ValueError("Use --state or --archives, not both.")
+    source_options: tuple[str, ...] = ()
+    if state is not None:
+        archives = state / "archives"
+        (state / "lists/partial").mkdir(parents=True, exist_ok=True)
+        (state / "online").unlink(missing_ok=True)
+        source_options = ("-o", f"Dir::State::lists={state / 'lists'}")
     if archives is not None:
         (archives / "partial").mkdir(parents=True, exist_ok=True)
+    if state is not None and not refresh:
+        print("Checking cached CI dependencies without downloads.", flush=True)
+        preflight = subprocess.run([
+            *install_command(source_options, packages, archives), "--simulate",
+        ], check=False)
+        if preflight.returncode == 0:
+            install(source_options, packages, archives)
+            subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(state)], check=True)
+            return
+        print(f"Cached dependencies unavailable (simulate status {preflight.returncode}); going online.", flush=True)
     print("Acquiring CI dependencies with bounded downloads.", flush=True)
-    if acquire(packages=packages, archives=archives):
-        install(packages=packages, archives=archives)
+    if acquire(source_options, packages, archives):
+        install(source_options, packages, archives)
     else:
         print("Retrying acquisition once with the existing official HTTPS mirrors.", flush=True)
         with official_mirrors(mirrors, sources):
             # APT parses the .sources main file as Deb822. /dev/null disables the
             # source-parts directory, excluding unrelated sources during refresh,
             # package selection/download and offline installation alike.
-            source_options = (
+            source_options += (
                 "-o", f"Dir::Etc::sourcelist={sources.resolve()}",
                 "-o", "Dir::Etc::sourceparts=/dev/null",
             )
             if not acquire(source_options, packages, archives):
                 raise RuntimeError("CI dependency acquisition failed on both attempts; nothing installed.")
             install(source_options, packages, archives)
+    if state is not None:
+        (state / "online").write_text("online\n")
     if archives is not None:
-        subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(archives)], check=True)
+        subprocess.run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}",
+                        str(state if state is not None else archives)], check=True)
 
 
 def main() -> int:
@@ -169,10 +195,14 @@ def main() -> int:
     if release.get("ID") != "ubuntu" or release.get("VERSION_ID") != "24.04":
         raise RuntimeError("This helper requires Ubuntu 24.04.")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--archives", type=Path)
+    cache = parser.add_mutually_exclusive_group()
+    cache.add_argument("--archives", type=Path)
+    cache.add_argument("--state", type=Path)
+    parser.add_argument("--refresh", action="store_true")
     parser.add_argument("packages", nargs="*")
     args = parser.parse_args()
-    install_dependencies(packages=tuple(args.packages) or PACKAGES, archives=args.archives)
+    install_dependencies(packages=tuple(args.packages) or PACKAGES, archives=args.archives,
+                         state=args.state, refresh=args.refresh)
     return 0
 
 
