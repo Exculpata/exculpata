@@ -9,7 +9,6 @@
   const opener = root.querySelector("[data-review-chooser-open]");
   const rows = () => Array.from(root.querySelectorAll("[data-review-row]"));
   const current = () => root.querySelector("[data-review-row].selected");
-  const remembered = new Map();
   let preferred = "";
   let request = 0;
   try { preferred = sessionStorage.getItem("discovery-review-view") || ""; } catch { preferred = ""; }
@@ -26,12 +25,9 @@
     return other?.matches("[data-review-row]") ? other : null;
   };
   const load = async (url) => {
-    if (remembered.has(url)) return remembered.get(url);
     const response = await fetch(url, { cache: "no-store", credentials: "same-origin", headers: { Accept: "text/html" } });
     if (!response.ok) throw new Error(String(response.status));
     const html = await response.text();
-    remembered.set(url, html);
-    while (remembered.size > 6) remembered.delete(remembered.keys().next().value);
     return html;
   };
   const show = async (url, fallback, wanted) => {
@@ -63,8 +59,6 @@
     });
     if (position) position.textContent = row.dataset.positionLabel;
     show(withView(row.dataset.fragment), row.dataset.url);
-    const next = neighbor(row, true);
-    if (next) load(withView(next.dataset.fragment)).catch(() => {});
     if (focusList) root.querySelector("[data-review-list]")?.focus({ preventScroll: true });
   };
   const step = (forward) => {
@@ -89,6 +83,13 @@
     show(withView(row.dataset.fragment), row.dataset.url, name);
   };
   const shownToken = () => panel?.querySelector("[data-review-item]")?.dataset.token;
+
+  root.addEventListener("submit", (event) => {
+    if (event.target.matches("[data-code-form]") && shownToken() !== current()?.dataset.token) {
+      event.preventDefault();
+      say("Wait for the selected item to open before applying a code.");
+    }
+  });
 
   root.addEventListener("click", (event) => {
     const fragment = event.target.closest("[data-review-fragment]");
@@ -139,6 +140,13 @@
     const target = event.target;
     if (target.closest("input, textarea, select, [contenteditable], [data-review-chooser]")) return;
     if (target.closest("button, summary, a") && (event.key === " " || event.key === "Enter")) return;
+    if (/^[1-9]$/.test(event.key)) {
+      if (event.repeat || shownToken() !== current()?.dataset.token) return;
+      const button = Array.from(panel?.querySelectorAll("[data-code-key]") || [])
+        .find((candidate) => candidate.dataset.codeKey === event.key);
+      if (button) { event.preventDefault(); button.click(); }
+      return;
+    }
     const actions = {
       j: () => step(true), ArrowDown: () => step(true), k: () => step(false), ArrowUp: () => step(false),
       d: () => openView("document"), t: () => openView("text"), f: () => openView("fields"),

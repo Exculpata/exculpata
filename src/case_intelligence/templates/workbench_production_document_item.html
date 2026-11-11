@@ -9,6 +9,16 @@
       {% for label in panel.unavailable %}<span class="dr-view-off" title="{{ 'No extracted text is stored for this item' if label == 'Text' else 'This file type opens from the source page' }}">{{ label }}</span>{% endfor %}
     </nav>
   </header>
+  <div class="dr-codes" aria-label="Review codes">
+    {% for code in panel.codes %}
+    <form method="post" action="{{ panel.fragment }}/codes/{{ code.id }}" data-code-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="{{ 'remove' if code.applied else 'apply' }}">
+      <input type="hidden" name="view" value="{{ panel.active }}">
+      <button type="submit" data-code-id="{{ code.id }}"{% if code.key %} data-code-key="{{ code.key }}"{% endif %} aria-pressed="{{ 'true' if code.applied else 'false' }}">{% if code.key %}<kbd>{{ code.key }}</kbd> {% endif %}{{ code.label }}</button>
+    </form>
+    {% else %}<p class="dr-muted">No review codes defined. Add labels under Review codes.</p>{% endfor %}
+  </div>
   {% if panel.active == 'document' %}
   <div class="dr-document">
     {% if panel.embed.kind == 'image' %}<img src="{{ panel.embed.url }}" alt="{{ panel.heading.title }}">

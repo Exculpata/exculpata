@@ -5,7 +5,8 @@ from fastapi import Depends, Form, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 
 from case_intelligence.modules import ModuleContext
-from case_intelligence.modules.discovery_review import fields, presentation, reader
+from case_intelligence.modules.discovery_review import code_routes, fields, presentation, reader
+from case_intelligence.modules.discovery_review.codes import CodeRepository
 from case_intelligence.modules.discovery_review.identifiers import (
     IdentifierConflict, IdentifierRepository, IdentifierUnavailable, sequence,
 )
@@ -21,6 +22,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     fields.load_definition()  # a malformed field definition stops startup, not a reviewer mid-case
     repository = ViewRepository(context.db)
     identifiers = IdentifierRepository(context.db)
+    codes = CodeRepository(context.db)
 
     def membership(matter, actor):
         try:
@@ -35,6 +37,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         definition = fields.load_definition()
         store = context.source_store(matter)
         index = reader.index_for(matter.matter_id, store, definition, identifiers)
+        index = codes.project(matter.matter_id, index)
         choice = presentation.choose(definition, repository.read(matter.matter_id, actor), index,
                                      show_all=show_all)
         return matter, actor, definition, store, index, choice
@@ -71,7 +74,10 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         panel = presentation.item_panel(
             definition, selected, choice, store, slug=matter.slug, view=view, unit=unit,
             list_url=base + "?" + urlencode({**state, "doc": selected.token})) if selected else None
+        if panel is not None:
+            panel["codes"] = codes.controls(matter.matter_id, selected.document_id)
         return respond(request, matter, actor, "workbench_production_documents.html", {
+            "codes": codes.list(matter.matter_id),
             "document_count": len(index.items), "listing": listing, "panel": panel,
             "chooser": presentation.chooser(definition, index, choice), "load_files": index.reports,
             "notice": notice, "base_url": base,
@@ -89,6 +95,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         base = f"/matters/{matter.slug}/production"
         panel = presentation.item_panel(definition, index.items[position], choice, store, slug=matter.slug,
                                         view=view, unit=unit, list_url=f"{base}?doc={token}")
+        panel["codes"] = codes.controls(matter.matter_id, index.items[position].document_id)
         return respond(request, matter, actor, "workbench_production_document_item.html", {"panel": panel})
 
     @app.post("/matters/{slug}/production/view", dependencies=[Depends(require_csrf)])
@@ -173,3 +180,5 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         query = {key: value for key, value in (("q", q.strip()), ("sort", sort), ("dir", dir), ("notice", outcome)) if value}
         return RedirectResponse(f"/matters/{matter.slug}/production?{urlencode(query)}", status_code=303,
                                 headers={"Cache-Control": "no-store"})
+
+    code_routes.mount(app, context=context, current=current, codes=codes, require_csrf=require_csrf)

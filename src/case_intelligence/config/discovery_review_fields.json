@@ -8,10 +8,12 @@
     {"key": "origin", "label": "Who it came from"},
     {"key": "email", "label": "Email", "applies_to": "email"},
     {"key": "dates", "label": "Dates"},
+    {"key": "coding", "label": "Coding"},
     {"key": "family", "label": "Family"},
     {"key": "file", "label": "File"}
   ],
   "fields": [
+    {"key": "coding", "label": "Coding", "group": "coding", "computed": "review_codes"},
     {"key": "begin_bates", "label": "Begin Bates", "group": "identity", "sort": "natural",
      "load_file_headers": ["BEGBATES", "BEGDOC", "BEGDOC#", "BEGNO", "BEGIN BATES", "BATES BEGIN", "BATESBEG", "PRODBEG", "PRODBEGBATES", "BEGPRODBATES"]},
     {"key": "end_bates", "label": "End Bates", "group": "identity", "sort": "natural",

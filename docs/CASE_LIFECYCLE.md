@@ -104,6 +104,10 @@ are excluded from the archive, and are deleted with the matter.
 Team identifiers assigned to items (`workbench_discovery_identifier`) are
 retained in the archive with matter-local actor attribution and are deleted
 with the matter.
+Review code definitions (`workbench_discovery_code`) and append-only item events
+(`workbench_discovery_code_event`) are included with matter-local actor attribution.
+Retired codes and their events remain in the archive. Both tables are deleted
+with the matter.
 Raw authored text and stale historical citations are retained. Missing current
 originals, unresolved staging/quarantine, unknown schema fields, unsupported
 payload shapes, corrupt bytes or capacity limits block certification; they do

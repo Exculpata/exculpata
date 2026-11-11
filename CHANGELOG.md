@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Matter members can define and retire review codes, apply or remove them on an open item with clicks or digit keys, and preserve their append-only history in matter archives.
+
 - Production documents (under Review) is now a review list: every item with its
   Bates range, custodian and other load-file fields when a CSV or TSV load file
   is stored in the matter, the selected item open beside the list (document,

@@ -69,8 +69,22 @@
       <p class="dr-status" role="status" data-review-status></p>
     </section>
   </div>
-  <p class="dr-keys">Keys: <kbd>j</kbd>/<kbd>↓</kbd> next, <kbd>k</kbd>/<kbd>↑</kbd> previous, <kbd>d</kbd> document, <kbd>t</kbd> text, <kbd>f</kbd> fields, <kbd>Space</kbd> next page of text, <kbd>/</kbd> filter, <kbd>c</kbd> columns. Everything on this page is read from this install; nothing is sent elsewhere.</p>
+  <p class="dr-keys">Keys: <kbd>j</kbd>/<kbd>↓</kbd> next, <kbd>k</kbd>/<kbd>↑</kbd> previous, <kbd>d</kbd> document, <kbd>t</kbd> text, <kbd>f</kbd> fields, <kbd>Space</kbd> next page of text, <kbd>/</kbd> filter, <kbd>c</kbd> columns, <kbd>1</kbd>–<kbd>9</kbd> apply or remove a code. Everything on this page is read from this install; nothing is sent elsewhere.</p>
   {% endif %}
+
+  <details class="dr-code-settings">
+    <summary>Review codes</summary>
+    <p>Any member can add or retire labels. Retiring hides its button and keeps existing assignments and history.</p>
+    <form method="post" action="{{ base_url }}/codes">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>New label <input name="label" required maxlength="80"></label>
+      <button type="submit">Add code</button>
+    </form>
+    {% for code in codes %}<form method="post" action="{{ base_url }}/codes/{{ code.code_id }}/retire">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <span>{{ code.label }}</span> <button type="submit">Retire</button>
+    </form>{% endfor %}
+  </details>
 
   <aside class="dr-chooser" id="dr-chooser" data-review-chooser aria-labelledby="dr-chooser-heading">
     <form method="post" action="{{ base_url }}/view">

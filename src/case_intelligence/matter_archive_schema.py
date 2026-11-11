@@ -99,6 +99,8 @@ workbench_case_session_binding:session_id,binding_digest
 workbench_case_oidc_request:state_digest,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,created_at
 workbench_case_oidc_authorization:authorization_id,actor_id,session_id,subject_digest,configuration_digest,matter_id,exit_id,mode,action,authenticated_at,expires_at,state,purge_id
 workbench_discovery_view:matter_id,scope,principal_id,columns,item_fields,updated_at
+workbench_discovery_code:code_id,matter_id,label,position,active,created_by,created_at
+workbench_discovery_code_event:event_id,matter_id,document_id,code_id,action,created_by,created_at
 workbench_discovery_identifier:matter_id,document_id,identifier,created_by,created_at
 """
 SCHEMA = {name: tuple(columns.split(',')) for name, columns in
