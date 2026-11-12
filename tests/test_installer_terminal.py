@@ -461,11 +461,17 @@ def test_spinner_frames_fit_cells_and_clear_without_blank_line(monkeypatch, tty,
 
 
 def test_width_uses_real_stdout_instead_of_stale_columns(monkeypatch, tty):
+    original_get_terminal_size = os.get_terminal_size
     monkeypatch.setattr(sys, "stdout", tty)
     monkeypatch.setattr(tty, "fileno", lambda: 123)
     monkeypatch.setenv("COLUMNS", "200")
-    monkeypatch.setattr(terminal.os, "get_terminal_size", lambda fd: os.terminal_size((40, 24)) if fd == 123 else pytest.fail("wrong fd"))
+    def stdout_size(fd):
+        assert fd == tty.fileno()
+        return os.terminal_size((40, 24))
+
+    monkeypatch.setattr(terminal, "os", SimpleNamespace(get_terminal_size=stdout_size))
     assert terminal.terminal_width() == 40
+    assert os.get_terminal_size is original_get_terminal_size
 
 
 def test_large_child_output_has_no_pipe_deadlock_and_bounded_tail(synthetic_docker, monkeypatch, capsys):
