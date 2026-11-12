@@ -75,16 +75,17 @@ def declaration_names(source, filename):
                     and literal(expression.left) == PREFIX):
                 prefix, expression = PREFIX, expression.right
             parent = parents.get(node)
-            while parent is not None and not isinstance(parent, ast.For):
+            while parent is not None and not isinstance(parent, (ast.For, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 parent = parents.get(parent)
-            if (not isinstance(expression, ast.Name) or parent is None
+            if (not isinstance(expression, ast.Name) or not isinstance(parent, ast.For)
                     or not isinstance(parent.target, ast.Name) or parent.target.id != expression.id
                     or not isinstance(parent.iter, ast.Tuple)
                     or not parent.iter.elts or any(literal(item) is None for item in parent.iter.elts)):
                 unsupported(node)
                 continue
-            if any(isinstance(item, ast.Name) and item.id == expression.id
-                   and isinstance(item.ctx, (ast.Store, ast.Del)) and item is not parent.target
+            if any((isinstance(item, ast.Name) and item.id == expression.id
+                    and isinstance(item.ctx, (ast.Store, ast.Del)) and item is not parent.target)
+                   or (isinstance(item, ast.arg) and item.arg == expression.id)
                    for item in ast.walk(parent)):
                 unsupported(node)
                 continue
@@ -210,6 +211,52 @@ def test_unsupported_declarations_name_location_and_supported_form(declaration):
                                   {'case_intelligence': ['migrations/sqlite/*.sql']})
     assert any('synthetic.py:' in item and 'unsupported' in item
                and 'literal names/tuples' in item and 'validate_inventory' in item for item in findings)
+
+
+@pytest.mark.parametrize('prefix', ['', PREFIX])
+@pytest.mark.parametrize('body,line', [
+    ("    def load(name):\n        return {read}\n    load(computed_name)", 3),
+    ("    async def load(name):\n        return {read}\n    load(computed_name)", 3),
+    ("    load = lambda name: {read}\n    load(computed_name)", 2),
+    ("    def load(name):\n        name = computed_name\n        return {read}\n    load(computed_name)", 4),
+    ("    def load():\n        return {read}", 3),
+    ("    async def load():\n        return {read}", 3),
+    ("    load = lambda: {read}", 2),
+])
+def test_function_scopes_cannot_supply_loop_declarations(prefix, body, line):
+    expression = 'name' if prefix else repr(PREFIX) + ' + name'
+    read = f"resources.files('case_intelligence').joinpath({expression}).read_text()"
+    source = (f'for name in {(prefix + "0001_synthetic.sql",)!r}:\n'
+              + body.format(read=read))
+    names, findings = declaration_names(source, 'synthetic.py')
+    assert findings == [f'synthetic.py:{line}: unsupported migration declaration; '
+                        'use literal names/tuples with validate_inventory']
+    assert names == set()
+
+
+@pytest.mark.parametrize('parameters', ['name', 'name, /', '*, name', '*name', '**name'])
+@pytest.mark.parametrize('definition', [
+    '    def load({parameters}):\n        pass',
+    '    async def load({parameters}):\n        pass',
+    '    load = lambda {parameters}: None',
+])
+def test_function_arguments_count_as_loop_name_stores(parameters, definition):
+    source = ("for name in ('migrations/sqlite/0001_synthetic.sql',):\n"
+              + definition.format(parameters=parameters) + '\n'
+              "    resources.files('case_intelligence').joinpath(name).read_text()")
+    names, findings = declaration_names(source, 'synthetic.py')
+    line = len(source.splitlines())
+    assert findings == [f'synthetic.py:{line}: unsupported migration declaration; '
+                        'use literal names/tuples with validate_inventory']
+    assert names == set()
+
+
+@pytest.mark.parametrize('prefix', ['', PREFIX])
+def test_both_literal_tuple_forms_are_supported(prefix):
+    expression = 'name' if prefix else repr(PREFIX) + ' + name'
+    source = (f'for name in {(prefix + "0001_synthetic.sql",)!r}:\n'
+              f"    resources.files('case_intelligence').joinpath({expression}).read_text()")
+    assert declaration_names(source, 'synthetic.py') == ({'0001_synthetic.sql'}, [])
 
 
 @pytest.mark.parametrize('prefix', ['', PREFIX])
