@@ -14,6 +14,12 @@ _active_scopes = local()
 _LEGACY_TRANSACTION_CONTROL = getattr(sqlite3, "LEGACY_TRANSACTION_CONTROL", -1)
 
 
+def fixture_script(workspace, sql_script):
+    """Hold the workspace lock while running a synthetic fixture script."""
+    with workspace._lock:
+        return workspace.connection.executescript(sql_script)
+
+
 def _current_scopes():
     return getattr(_active_scopes, "stack", ())
 

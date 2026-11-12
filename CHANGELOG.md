@@ -3,6 +3,15 @@
 ## Unreleased
 
 - Matter members can define and retire review codes, apply or remove them with stable optional digit keys while keeping their review position, and preserve their append-only history in matter archives. Default Coding fields identify retired codes and show who applied them and when.
+- Publication scanning blocks the maintainer addresses (the
+  `MAINTAINER_EMAIL_DIGESTS` set) in author, committer and commit-message trailer
+  address fields. Other addresses require ASCII RFC 5322 dot-atoms (plus `[` and
+  `]`) and at least two letter/digit/hyphen domain labels without edge hyphens;
+  local/domain/label limits are 64/253/63 bytes. Unsupported spans report
+  `unsupported-attribution-address` naming `parse_attribution_address()` and
+  retain content checks. Only trailer bracket space/tab padding is removed.
+  Nameless, continued, non-final or non-line-ending layouts use content rules.
+  Body text, file content and all non-email checks remain unchanged.
 
 - Production documents (under Review) is now a review list: every item with its
   Bates range, custodian and other load-file fields when a CSV or TSV load file
