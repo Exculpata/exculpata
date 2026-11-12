@@ -16,7 +16,7 @@ from typing import Any, Mapping
 LOAD_FILE_PREFIX = "lf:"
 LOAD_FILE_GROUP = "load_file"
 COMPUTED = frozenset({
-    "assigned_id", "name", "type", "pages", "folder", "load_file", "size", "text_status",
+    "review_codes", "assigned_id", "name", "type", "pages", "folder", "load_file", "size", "text_status",
     "status", "stored_from", "sha256", "path",
 })
 _SORTS = frozenset({"text", "natural", "number"})

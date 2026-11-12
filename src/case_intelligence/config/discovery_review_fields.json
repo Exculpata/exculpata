@@ -8,10 +8,12 @@
     {"key": "origin", "label": "Who it came from"},
     {"key": "email", "label": "Email", "applies_to": "email"},
     {"key": "dates", "label": "Dates"},
+    {"key": "coding", "label": "Coding"},
     {"key": "family", "label": "Family"},
     {"key": "file", "label": "File"}
   ],
   "fields": [
+    {"key": "coding", "label": "Coding", "group": "coding", "computed": "review_codes"},
     {"key": "begin_bates", "label": "Begin Bates", "group": "identity", "sort": "natural",
      "load_file_headers": ["BEGBATES", "BEGDOC", "BEGDOC#", "BEGNO", "BEGIN BATES", "BATES BEGIN", "BATESBEG", "PRODBEG", "PRODBEGBATES", "BEGPRODBATES"]},
     {"key": "end_bates", "label": "End Bates", "group": "identity", "sort": "natural",
@@ -70,12 +72,12 @@
     {"key": "sha256", "label": "SHA-256", "group": "file", "computed": "sha256"},
     {"key": "path", "label": "Path", "group": "file", "computed": "path", "sort": "natural"}
   ],
-  "default_columns": ["begin_bates", "end_bates", "assigned_id", "name", "folder", "type", "pages", "custodian", "document_date"],
+  "default_columns": ["begin_bates", "end_bates", "assigned_id", "name", "folder", "type", "pages", "custodian", "document_date", "coding"],
   "default_item_fields": [
     "begin_bates", "end_bates", "assigned_id", "control_number", "name", "type", "pages",
     "custodian", "produced_by", "volume", "folder",
     "email_from", "email_to", "email_cc", "email_subject", "email_sent",
-    "document_date", "begin_attachment", "end_attachment"
+    "document_date", "begin_attachment", "end_attachment", "coding"
   ],
   "show_load_file_fields_by_default": true,
   "default_sort": "begin_bates",

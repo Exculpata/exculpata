@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Matter members can define and retire review codes, apply or remove them with stable optional digit keys while keeping their review position, and preserve their append-only history in matter archives. Default Coding fields identify retired codes and show who applied them and when.
 - Publication scanning blocks the maintainer addresses (the
   `MAINTAINER_EMAIL_DIGESTS` set) in author, committer and commit-message trailer
   address fields. Other addresses require ASCII RFC 5322 dot-atoms (plus `[` and

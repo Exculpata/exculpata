@@ -96,3 +96,25 @@ archives and deleted with the matter.
 
 Saved views store field keys only. They are deleted with the matter and are
 not part of preservation archives.
+
+## Review codes
+
+Any active matter member can add labels under **Review codes**. Labels are
+trimmed, unique within the matter (including retired labels), and at most 80
+characters. Codes stay in creation order. Retiring hides a code's button and
+preserves its history and existing assignments in the Coding field.
+
+On the open item, click a code to apply or remove it. Keys `1` through `9`
+toggle codes with those stored optional shortcuts when not typing in a field.
+Choose a digit when adding a code; active codes in a matter cannot share a digit.
+Retirement never moves another code to a different key.
+The buttons also work as ordinary form posts without script. **Coding** is
+included in the default columns and item fields; the empty default column stays
+hidden until an item has a code. Retired labels show "(retired)". Fields shows
+who applied each code and when, with local time when script is available.
+Applying or removing a code preserves the filter, sort, item, view and text page.
+
+Each actual apply or remove appends an event with the signed-in member and UTC
+time. Repeating the current state stores nothing. The latest event decides the
+current state. Definitions and events are preserved in archives and deleted
+only with the matter.
