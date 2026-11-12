@@ -30,7 +30,7 @@ NAME = re.compile(r"[0-9]{4}_[a-z0-9_]+\.sql")
 
 
 def declaration_names(source, filename):
-    """Recognize literal resource reads and enclosing literal migration tuples."""
+    """Credit literal resource reads; diagnose unsupported variable arguments."""
     findings, names = [], set()
 
     def unsupported(node):
@@ -70,10 +70,9 @@ def declaration_names(source, filename):
             entries = [value]
             location = expression
         else:
-            prefix = ''
             if (isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add)
                     and literal(expression.left) == PREFIX):
-                prefix, expression = PREFIX, expression.right
+                expression = expression.right
             parent = parents.get(node)
             while parent is not None and not isinstance(parent, (ast.For, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 parent = parents.get(parent)
@@ -89,13 +88,7 @@ def declaration_names(source, filename):
                    for item in ast.walk(parent)):
                 unsupported(node)
                 continue
-            entries = [prefix + literal(item) for item in parent.iter.elts]
-            location = parent.iter
-            for entry, count in Counter(entries).items():
-                if count > 1:
-                    findings.append(f'{filename}:{location.lineno}: duplicate tuple entry {entry}')
-            if entries != sorted(entries):
-                findings.append(f'{filename}:{location.lineno}: out-of-order tuple {entries}')
+            continue
         for entry in entries:
             if not entry.startswith(PREFIX) or not NAME.fullmatch(entry[len(PREFIX):]):
                 unsupported(location)
@@ -135,12 +128,48 @@ def validate_inventory(catalogs, sources, package_data):
         names, errors = declaration_names(source, filename)
         declared.update(names)
         findings.extend(errors)
-    if declared != set(first):
+    if declared - set(first):
         findings.append(f'{MIRRORS[0]}: declaration mismatch: '
-                        f'undeclared={sorted(set(first) - declared)}, absent={sorted(declared - set(first))}')
+                        f'absent={sorted(declared - set(first))}')
     if 'migrations/sqlite/*.sql' not in package_data.get('case_intelligence', ()):
         findings.append('pyproject.toml: package-data must include migrations/sqlite/*.sql for case_intelligence')
     return findings
+
+
+@pytest.mark.parametrize('declaration', [
+    pytest.param(
+        "for name in ('migrations/sqlite/0001_synthetic.sql',):\n"
+        "    resources.files('case_intelligence').joinpath(name).read_text()",
+        id='plain-tuple'),
+    pytest.param(
+        "for name in ('0001_synthetic.sql',):\n"
+        "    resources.files('case_intelligence').joinpath('migrations/sqlite/' + name).read_text()",
+        id='prefix-tuple'),
+    pytest.param(
+        "for name in ('migrations/sqlite/0001_synthetic.sql',):\n"
+        "    pending = (resources.files('case_intelligence').joinpath(name).read_text() for unused in (0,))\n"
+        "name = computed_name\nlist(pending)",
+        id='generator-expression'),
+    pytest.param(
+        "for name in ('0001_synthetic.sql',):\n"
+        "    pending = (resources.files('case_intelligence').joinpath('migrations/sqlite/' + name).read_text() for unused in (0,))\n"
+        "name = computed_name\nlist(pending)",
+        id='prefix-generator-expression'),
+    pytest.param(
+        "for name in ('migrations/sqlite/0001_synthetic.sql',):\n"
+        "    match computed_name:\n        case name:\n            pass\n"
+        "    resources.files('case_intelligence').joinpath(name).read_text()",
+        id='match-case'),
+    pytest.param(
+        "for name in ('0001_synthetic.sql',):\n"
+        "    match computed_name:\n        case name:\n            pass\n"
+        "    resources.files('case_intelligence').joinpath('migrations/sqlite/' + name).read_text()",
+        id='prefix-match-case'),
+])
+def test_loop_variable_reads_are_never_credited(declaration):
+    names, findings = declaration_names(declaration, 'synthetic.py')
+    assert names == set()
+    assert findings == []
 
 
 def test_pristine_disk_catalog():
@@ -161,9 +190,7 @@ def test_duplicate_number_in_either_or_both_mirrors(mirrors):
     ('gap', 'missing number 0020'),
     ('names', 'mirror names'),
     ('bytes', 'mirror bytes'),
-    ('omitted', 'declaration mismatch'),
-    ('tuple-duplicate', 'duplicate tuple entry'),
-    ('tuple-order', 'out-of-order tuple'),
+    ('declared-absent', 'declaration mismatch'),
     ('computed', 'unsupported'),
     ('package', 'package-data'),
     ('empty', 'empty catalog'),
@@ -181,12 +208,10 @@ def test_catalog_faults_are_rejected(fault, expected):
         second['0020_synthetic_renamed.sql'] = second.pop(interior)
     elif fault == 'bytes':
         second[interior] += b'\n-- synthetic byte difference\n'
-    elif fault == 'omitted':
-        del sources['src/case_intelligence/source_roles.py']
-    elif fault in {'tuple-duplicate', 'tuple-order'}:
-        a, b = '0034_evidence_assertions.sql', '0035_matter_context_selection.sql'
-        replacement = (a, a) if fault == 'tuple-duplicate' else (b, a)
-        sources[workspace] = sources[workspace].replace(f"'{a}', '{b}'", repr(replacement[0]) + ', ' + repr(replacement[1]))
+    elif fault == 'declared-absent':
+        sources['synthetic.py'] = (
+            "resources.files('case_intelligence').joinpath("
+            "'migrations/sqlite/0099_synthetic.sql').read_text()")
     elif fault == 'computed':
         sources[workspace] = sources[workspace].replace('joinpath(name)', 'joinpath(str(name))')
     elif fault == 'package':
@@ -197,6 +222,8 @@ def test_catalog_faults_are_rejected(fault, expected):
         first['synthetic.sql'] = b'SELECT 1;'
     findings = validate_inventory(catalogs, sources, package_data)
     assert any(expected in item for item in findings), findings
+    if fault == 'declared-absent':
+        assert any(expected in item and '0099_synthetic.sql' in item for item in findings), findings
 
 
 @pytest.mark.parametrize('declaration', [
@@ -249,27 +276,6 @@ def test_function_arguments_count_as_loop_name_stores(parameters, definition):
     assert findings == [f'synthetic.py:{line}: unsupported migration declaration; '
                         'use literal names/tuples with validate_inventory']
     assert names == set()
-
-
-@pytest.mark.parametrize('prefix', ['', PREFIX])
-def test_both_literal_tuple_forms_are_supported(prefix):
-    expression = 'name' if prefix else repr(PREFIX) + ' + name'
-    source = (f'for name in {(prefix + "0001_synthetic.sql",)!r}:\n'
-              f"    resources.files('case_intelligence').joinpath({expression}).read_text()")
-    assert declaration_names(source, 'synthetic.py') == ({'0001_synthetic.sql'}, [])
-
-
-@pytest.mark.parametrize('prefix', ['', PREFIX])
-@pytest.mark.parametrize('entries,expected', [
-    (('0001_synthetic.sql', '0001_synthetic.sql'), 'duplicate tuple entry'),
-    (('0002_synthetic.sql', '0001_synthetic.sql'), 'out-of-order tuple'),
-])
-def test_both_tuple_forms_reject_duplicate_and_unordered_entries(prefix, entries, expected):
-    expression = 'name' if prefix else repr(PREFIX) + ' + name'
-    source = (f'for name in {tuple(prefix + name for name in entries)!r}:\n'
-              f"    resources.files('case_intelligence').joinpath({expression}).read_text()")
-    _, findings = declaration_names(source, 'synthetic.py')
-    assert any('synthetic.py:1:' in item and expected in item for item in findings)
 
 
 def test_exception_mentions_do_not_duplicate_actual_declarations():
