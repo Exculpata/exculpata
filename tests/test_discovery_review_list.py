@@ -459,18 +459,16 @@ def test_identifier_storage_rejects_case_equivalent_insert_and_update(production
 @pytest.mark.parametrize('operation', ['insert', 'update'])
 def test_identifier_domain_rejection_preserves_caller_transaction(production, installed, operation):
     import sqlite3
-    from tests.fixture_write import fixture_write
+    from tests.fixture_write import fixture_script, fixture_write
     _, bench, matter = production
     workspace = bench.workspace
     sql = (ROOT / 'migrations/sqlite/0047_discovery_identifier_case_uniqueness.sql').read_text()
     if installed:
-        # fixture-write: recreate the previous persistent trigger bodies on synthetic storage.
-        workspace.connection.executescript(
+        fixture_script(workspace,
             'DROP TRIGGER discovery_identifier_domain_insert;'
             'DROP TRIGGER discovery_identifier_domain_update;'
             + sql.replace('RAISE(ABORT,', 'RAISE(ROLLBACK,'))
-    # fixture-write: exercise real migration replay, including replacement of installed triggers.
-    workspace.connection.executescript('BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
+    fixture_script(workspace, 'BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
     with fixture_write(workspace) as connection:
         connection.execute('INSERT INTO workbench_discovery_identifier VALUES (?,?,?,?,?)',
                            (matter.matter_id, 'pending', 'Def001', ACTOR, 'synthetic'))
@@ -615,7 +613,7 @@ def test_identifier_batch_failure_rolls_back_every_insert(production):
 @pytest.mark.parametrize("legacy", ["def001", "DÉF002", "bad"])
 def test_identifier_migration_preserves_spelling_and_rejects_existing_collisions(tmp_path, legacy):
     import sqlite3
-    from tests.fixture_write import fixture_write
+    from tests.fixture_write import fixture_script, fixture_write
     from case_intelligence.workspace_store import WorkspaceStore
     path = tmp_path / 'synthetic.sqlite'
     workspace = WorkspaceStore(path)
@@ -630,8 +628,7 @@ def test_identifier_migration_preserves_spelling_and_rejects_existing_collisions
                                (matter.matter_id, 'b', legacy, actor, 'synthetic')])
     sql = (ROOT / 'migrations/sqlite/0047_discovery_identifier_case_uniqueness.sql').read_text()
     with pytest.raises(sqlite3.IntegrityError):
-        # fixture-write: real migration transaction rollback on synthetic legacy rows.
-        workspace.connection.executescript('BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
+        fixture_script(workspace, 'BEGIN IMMEDIATE;\n' + sql + '\nCOMMIT;')
     assert not workspace.connection.in_transaction
     assert not list(workspace.connection.execute("SELECT name FROM sqlite_master WHERE name='discovery_identifier_domain_update'"))
     with pytest.raises(RuntimeError, match='Team ID upgrade refused'):
