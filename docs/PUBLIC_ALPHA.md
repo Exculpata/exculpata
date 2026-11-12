@@ -82,28 +82,42 @@ email or privacy settings.
 
 ## Contributor attribution and protected addresses
 
-The author and committer **address fields** accept contributor email addresses
-without a per-contributor allowlist or commit exception. This includes new
-merge-queue squash commits. Names, commit messages, files, extracted metadata,
-archive members and refs retain their existing content-email rules; the existing
-exact reviewed co-author trailer dispositions are unchanged.
+The author and committer **address fields**, and address spans inside
+`Key: Name <email>` lines in Git's final trailer paragraph, block the maintainer
+addresses in the `MAINTAINER_EMAIL_DIGESTS` set in
+`scripts/publication-check.py`. Other addresses must pass
+`parse_attribution_address()`: an ASCII RFC 5322 dot-atom local part (1-64 bytes),
+with `[` and `]` also allowed as atom characters, followed by an ASCII domain
+of at least two letter/digit/hyphen labels. Labels are 1-63 bytes, cannot start
+or end with a hyphen, and the domain is at most 253 bytes. The last label may
+be numeric. Leading, trailing and doubled local dots, quoted strings, whitespace,
+NUL and non-ASCII bytes are unsupported. No provider or bot bypass applies.
+Trailer keys are case-insensitive; the locator removes only ASCII space and tab
+padding inside brackets. Identity fields are parsed exactly as Git returns them.
+Protected whole addresses are hashed after ASCII lowercasing.
 
-`MAINTAINER_EMAIL_DIGESTS` in `scripts/publication-check.py` contains the complete
-three-address set privately supplied for #345. Each value is SHA-256 of the
-ASCII-lowercased address bytes (both local part and domain). The address alone
-is hashed; the identity name is irrelevant. No whitespace trimming, Unicode
-normalization, plus-alias stripping or provider-specific rewriting is performed.
-Matching uses the scanner's existing ASCII email-token grammar and reports only
-`maintainer-email-address`, never the matched address. All configured entries
-are checked before example-domain, bot or contributor-trailer exceptions.
+A failed parse reports `unsupported-attribution-address; use
+parse_attribution_address() with one RFC 5322 dot-atom address`, without the value.
+Original-byte content rules still run: a non-ASCII domain tail can leave an ASCII
+email token and therefore produce an additional content finding. Only the
+specific fixture with a non-ASCII first domain character has no email token.
+Nameless brackets, brackets followed by text, continuation lines and non-final
+paragraphs receive no attribution span and retain content rules only.
 
-The already reviewed exact historical commit-and-identity dispositions above
-remain in force for their original author/committer fields only. They cannot
-admit a protected address on a new commit, in a name under another identity, or
-in content/messages. Operator deny terms and every non-email publication rule
-continue to apply, including secret scanning and metadata inspection. The hash
-list adds no general exception to those controls. Keep future denylist inputs
-private and commit only their normalized digests, with synthetic test fixtures.
+Only the bracketed address receives the trailer disposition. Names, subjects,
+free-text message paragraphs, files, extracted metadata, archive members and
+refs retain their existing content-email rules. `MAINTAINER_EMAIL_DIGESTS`
+continues to protect the complete three-address set in those contexts. Each
+digest is SHA-256 of the ASCII-lowercased address bytes; no Unicode normalization,
+plus-alias stripping or provider-specific rewriting is performed. Findings report
+`maintainer-email-address`, never the matched address.
+
+All six reviewed exact historical commit-and-identity dispositions remain in
+force for their original author/committer fields only. Operator deny terms,
+secrets, paths and every other non-email rule still inspect the original bytes,
+including the trailer address. CI and the local pre-push guard use this one
+shared scanner. Keep future denylist inputs private and commit only normalized
+digests, with synthetic test fixtures.
 
 ## Prevent disclosure before publishing
 

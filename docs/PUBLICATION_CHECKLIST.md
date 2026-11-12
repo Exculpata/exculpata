@@ -25,6 +25,20 @@ Never commit that deny file or copy its matched values into a report. The
 scanner reports only rule names and redacted locations. `--skip-history` is for
 diagnosing a proposed clean tree; it is not a publication gate.
 
+The shared scanner blocks the maintainer addresses (the
+`MAINTAINER_EMAIL_DIGESTS` set) in author and committer address fields and
+bracketed addresses in Git's final trailer block.
+Other addresses must parse as ASCII RFC 5322 dot-atoms (also allowing `[` and
+`]`) with at least two letter/digit/hyphen domain labels and no edge hyphens.
+Local, domain and label limits are 64, 253 and 63 bytes respectively; empty atoms,
+quoted strings and non-ASCII bytes are unsupported. Failed parses report
+`unsupported-attribution-address` naming `parse_attribution_address()` and still
+receive content checks. Only trailer bracket space/tab padding is removed;
+whole-address hashing ignores ASCII case. Nameless, continued, non-final or
+non-line-ending bracket layouts retain content rules only. Free-text messages and
+file content retain their email rules; non-email rules inspect original bytes.
+See [contributor attribution](PUBLIC_ALPHA.md#contributor-attribution-and-protected-addresses).
+
 If an owner deny term also appears inside the repository's exact public GitHub
 clone URL or verified GitHub no-reply identity, keep the deny term and pass an
 explicit, owner-approved adjudication. `--allow-public-clone-url` applies only

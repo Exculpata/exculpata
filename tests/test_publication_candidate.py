@@ -1,10 +1,17 @@
 """CI candidate isolation retains the real outgoing-history publication guard."""
 
+import ast
+import hashlib
+import re
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
+import pytest
+
 from tests.test_publication_pre_push import command, commit, repository
+from tests.test_publication_gate import SYNTHETIC_ADDRESSES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,6 +27,7 @@ def test_unrelated_fetched_branch_does_not_block_clean_candidate(tmp_path):
     root = repository(tmp_path)
     clean = command(root, "git", "rev-parse", "HEAD").stdout.strip()
     command(root, "git", "checkout", "-qb", "unrelated")
+    # fixture-write: synthetic candidate content in the temporary repository.
     (root / "synthetic-residue.txt").write_text("fixture." + "internal")
     commit(root)
     command(root, "git", "checkout", "--detach", clean)
@@ -28,6 +36,7 @@ def test_unrelated_fetched_branch_does_not_block_clean_candidate(tmp_path):
 
 def test_removed_residue_in_candidate_ancestry_still_blocks(tmp_path):
     root = repository(tmp_path)
+    # fixture-write: synthetic candidate content in the temporary repository.
     (root / "synthetic-residue.txt").write_text("fixture." + "internal")
     commit(root)
     (root / "synthetic-residue.txt").unlink()
@@ -41,6 +50,7 @@ def test_unexpected_head_modified_checkout_and_invalid_ref_fail_closed(tmp_path)
     root = repository(tmp_path)
     assert inspect(root, head="f" * 40).returncode != 0
     assert inspect(root, ref="--all").returncode != 0
+    # fixture-write: synthetic candidate content in the temporary repository.
     (root / "README.md").write_text("Uncommitted candidate change")
     assert inspect(root).returncode != 0
 
@@ -55,6 +65,7 @@ def test_clean_tag_and_wrong_target_tag_are_distinguished(tmp_path):
     root = repository(tmp_path)
     command(root, "git", "tag", "-a", "v-synthetic", "-m", "Synthetic release")
     assert inspect(root, ref="refs/tags/v-synthetic").returncode == 0
+    # fixture-write: synthetic candidate content in the temporary repository.
     (root / "README.md").write_text("Another synthetic candidate")
     commit(root)
     assert inspect(root, ref="refs/tags/v-synthetic").returncode != 0
@@ -75,3 +86,46 @@ def test_deleted_ref_events_skip_candidate_inspection():
 def test_pull_request_workflow_passes_actual_source_branch_metadata():
     workflow = (ROOT / ".github/workflows/quality-gates.yml").read_text()
     assert "PUBLICATION_REF: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}" in workflow
+
+
+@pytest.mark.parametrize('entrypoint', ['candidate', 'pre-push'])
+@pytest.mark.parametrize('payload', [*range(len(SYNTHETIC_ADDRESSES)), 'substring', 'malformed', 'body', 'other-trailer', 'apostrophe-trailer'])
+def test_candidate_and_pre_push_share_trailer_email_policy(tmp_path, monkeypatch, entrypoint, payload):
+    from tests import test_publication_pre_push as pre_push
+
+    root = repository(tmp_path)
+    addresses = SYNTHETIC_ADDRESSES
+    digests = frozenset(hashlib.sha256(address.encode()).hexdigest() for address in addresses)
+    _inject_synthetic_digests(root / 'scripts/publication-check.py', digests)
+    for script in ('check-publication-candidate.py', 'pre-push-publication.py'):
+        # fixture-write: real entry points beside the isolated synthetic scanner configuration.
+        shutil.copyfile(ROOT / 'scripts' / script, root / 'scripts' / script)
+    commit(root)
+    monkeypatch.setattr(sys.modules[__name__], 'ROOT', root)
+    monkeypatch.setattr(pre_push, 'ROOT', root)
+    address = 'person@' + 'synthetic.invalid'
+    if isinstance(payload, int):
+        address = addresses[payload]
+    elif payload == 'substring':
+        address = "other'" + addresses[0]
+    elif payload == 'malformed':
+        address += ','
+    elif payload == 'apostrophe-trailer':
+        address = "o'connor@" + 'synthetic.invalid'
+    message = 'Synthetic\n\n'
+    message += address if payload == 'body' else 'Signed-off-by: Synthetic Person <' + address + '>'
+    assert command(root, 'git', 'commit', '--allow-empty', '-qm', message).returncode == 0
+    result = inspect(root) if entrypoint == 'candidate' else pre_push.inspect(root)
+    assert result.returncode == (0 if payload in ('other-trailer', 'apostrophe-trailer', 'substring') else 1)
+
+
+def _inject_synthetic_digests(scanner, digests):
+    source, count = re.subn(r'MAINTAINER_EMAIL_DIGESTS = frozenset\(\{[^}]*\}\)',
+                            f'MAINTAINER_EMAIL_DIGESTS = {digests!r}', scanner.read_text())
+    assert count == 1
+    # fixture-write: inject synthetic digests into the isolated real scanner.
+    scanner.write_text(source)
+    assignment = next(node for node in ast.parse(scanner.read_text()).body
+                      if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                      and node.targets[0].id == 'MAINTAINER_EMAIL_DIGESTS')
+    assert frozenset(ast.literal_eval(assignment.value.args[0])) == digests
