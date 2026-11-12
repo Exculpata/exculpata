@@ -88,6 +88,12 @@ def declaration_names(source, filename):
                    for item in ast.walk(parent)):
                 unsupported(node)
                 continue
+            for item in parent.iter.elts:
+                entry = literal(item)
+                if expression is not join.args[0]:
+                    entry = PREFIX + entry
+                if not entry.startswith(PREFIX) or not NAME.fullmatch(entry[len(PREFIX):]):
+                    unsupported(parent.iter)
             continue
         for entry in entries:
             if not entry.startswith(PREFIX) or not NAME.fullmatch(entry[len(PREFIX):]):
@@ -170,6 +176,27 @@ def test_loop_variable_reads_are_never_credited(declaration):
     names, findings = declaration_names(declaration, 'synthetic.py')
     assert names == set()
     assert findings == []
+
+
+@pytest.mark.parametrize('declaration', [
+    pytest.param(
+        "for name in ('migrations/sqlite/not_a_migration.sql',):\n"
+        "    resources.files('case_intelligence').joinpath(name).read_text()",
+        id='plain-malformed-path'),
+    pytest.param(
+        "for name in ('not_a_migration.sql',):\n"
+        "    resources.files('case_intelligence').joinpath('migrations/sqlite/' + name).read_text()",
+        id='prefix-malformed-name'),
+    pytest.param(
+        "for name in ('other/0001_synthetic.sql',):\n"
+        "    resources.files('case_intelligence').joinpath(name).read_text()",
+        id='plain-wrong-prefix'),
+])
+def test_malformed_loop_entries_stay_unsupported(declaration):
+    names, findings = declaration_names(declaration, 'synthetic.py')
+    assert names == set()
+    assert findings == ['synthetic.py:1: unsupported migration declaration; '
+                        'use literal names/tuples with validate_inventory']
 
 
 def test_pristine_disk_catalog():
