@@ -15,7 +15,8 @@ const links = Object.fromEntries(['next', 'previous', 'sort', 'clear', 'show'].m
 const viewInput = {value: new URLSearchParams(input.query || '').get('view') || ''};
 const row = {dataset: {url: '/production?doc=one&q=synthetic', fragment: '/items/one', token: 'one'},
   classList: {toggle() {}}, setAttribute() {}, removeAttribute() {}, scrollIntoView() {}};
-const panel = {contains: () => true, querySelector: () => ({dataset: {view: input.shown || 'text', token: 'one'}})};
+const panel = {contains: () => true, querySelectorAll: () => [],
+  querySelector: () => ({dataset: {view: input.shown || 'text', token: 'one'}})};
 const root = {querySelector(s) {
   if (s === '[data-review-panel]') return panel;
   if (s === '[data-review-row].selected') return row;
