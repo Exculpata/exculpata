@@ -68,6 +68,16 @@ minutes per process. Container binding without a gateway trust setting also
 warns once per process. Warnings contain no addresses, header values, usernames
 or tokens. Browser-supplied forwarded prefixes never select a key.
 
+Outside Compose, setting `EXCULPATA_LOCAL_LOGIN_TRUST_GATEWAY=1` still resolves
+the bare name `gateway` through the process's system resolver, including host
+file mappings, DNS and search domains. The app does not check that it runs in
+Compose, and `EXCULPATA_ALLOW_CONTAINER_BIND=1` does not limit the lookup.
+Use the setting only with an operator-controlled resolver and the intended
+gateway peer; otherwise leave it unset or pass an explicit `local_gateway_peers`
+tuple, where an empty tuple disables trust. A failed lookup or an untrusted peer
+still falls back to the direct peer. Name resolution can itself produce DNS
+traffic, but the app opens no connection to the returned address.
+
 IPv4 clients use their full address. IPv4-mapped IPv6 addresses use the mapped
 IPv4 address. Other IPv6 clients share a client budget within their /64, whether
 the address came from the direct peer or a trusted header. Non-IP keys such as
