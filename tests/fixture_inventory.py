@@ -10,7 +10,7 @@ from tests.fixture_write_policy import Violation, check_fixture_writes
 REVIEWED_DYNAMIC_PROBES = {
     'tests/fixture_probe.py': '351e19742e54024b04505a3b856bcffc4ad055eb6b8aaa4618ea75ddf58fd1c7',
     'tests/runtime_probes.py': '26bc85282c1953dbe16f2f7fc809063ec1bb700fd6197ffc3247b9fa369d57bc',
-    'tests/test_sandbox_probe.py': '1dad030cec7f4bb8fef7e27d1ce2282225769d0f463abc474f1be9883f97554e',
+    'tests/test_sandbox_probe.py': '295015f538780aad251aa574f27687d59200f9da929e0e63148615de4f74dfa7',
 }
 DYNAMIC_RULE = 'dynamic execution is unsupported; use fixed-input reviewed probes or fixture_write()'
 
