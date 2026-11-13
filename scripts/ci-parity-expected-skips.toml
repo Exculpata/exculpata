@@ -1,0 +1,239 @@
+# Exact unavailable workflow steps. Every omission is reported, never a passing check.
+
+[[skip]]
+workflow = "corpus"
+job = "fast"
+step = "python -m pip install --disable-pip-version-check -e '.[dev]'"
+category = "install"
+reason = "This unnamed step installs the editable dev extras; its complete command is its exact step name."
+
+[[skip]]
+workflow = "corpus"
+job = "full"
+step = "Install corpus apt dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "corpus"
+job = "full"
+step = "Install independent CPU recognizer dependencies (not production service runtime)"
+category = "install"
+reason = "The step installs pinned independent recognition packages."
+
+[[skip]]
+workflow = "corpus"
+job = "full"
+step = "Stage and verify pinned OCR data"
+category = "download"
+reason = "The step downloads pinned language data and installs it with sudo."
+
+[[skip]]
+workflow = "corpus"
+job = "full"
+step = "Stage pinned ASR snapshot for independent recognition"
+category = "download"
+reason = "--stage-models acquires the pinned ASR snapshot over the network."
+
+[[skip]]
+workflow = "corpus"
+job = "full"
+step = "Product OCR and independent faster-whisper corpus (production service not exercised)"
+category = "binary-missing"
+reason = "Full recognition requires the pinned OCR data, independent ASR runtime and model snapshot from unavailable setup."
+
+[[skip]]
+workflow = "network-smoke"
+job = "network-smoke"
+step = "Install locked smoke harness dependencies"
+category = "install"
+reason = "The step installs the hash-locked smoke harness dependencies."
+
+[[skip]]
+workflow = "network-smoke"
+job = "network-smoke"
+step = "Exercise isolated synthetic OIDC and direct-egress denials"
+category = "docker"
+reason = "The live isolation acceptance builds and runs Docker containers and exercises their networks."
+
+[[skip]]
+workflow = "network-smoke"
+job = "network-smoke"
+step = "Retain content-free smoke summary"
+category = "github-only"
+reason = "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+
+[[skip]]
+workflow = "quality-gates"
+job = "publication-scan"
+step = "Install publication-scan apt dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "quality-gates"
+job = "publication-scan"
+step = "Install publication inspection dependencies"
+category = "install"
+reason = "The workflow invokes pip install; the existing venv is checked without installing."
+
+[[skip]]
+workflow = "quality-gates"
+job = "secret-scan"
+step = "Install checksum-verified secret scanner"
+category = "download"
+reason = "The workflow downloads a pinned release archive; no network acquisition is permitted."
+
+[[skip]]
+workflow = "quality-gates"
+job = "secret-scan"
+step = "Scan fetched history without publishing matched values"
+category = "binary-missing"
+reason = "The workflow requires /tmp/gitleaks from its download step; that binary is not provisioned."
+
+[[skip]]
+workflow = "quality-gates"
+job = "secret-scan"
+step = "Verify exact historical exception and synthetic detection controls"
+category = "binary-missing"
+reason = "GITLEAKS points to /tmp/gitleaks from the unavailable download step."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-shards"
+step = "Install lightweight documentation test dependencies"
+category = "install"
+reason = "The workflow installs hash-pinned packages; preflight checks the existing environment instead."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-shards"
+step = "Install document and media test dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-shards"
+step = "Bootstrap contributor environment"
+category = "install"
+reason = "make bootstrap creates and installs an environment and hooks; bootstrap is not exercised offline."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-shards"
+step = "Verify repeatable setup"
+category = "install"
+reason = "The scheduled repeatability step invokes make bootstrap; it remains unavailable if its condition changes."
+
+[[skip]]
+workflow = "quality-gates"
+job = "application-shards"
+step = "Retain application test report"
+category = "github-only"
+reason = "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+
+[[skip]]
+workflow = "quality-gates"
+job = "postgres-integration"
+step = "Install database test dependencies"
+category = "install"
+reason = "The workflow installs editable application and PostgreSQL extras."
+
+[[skip]]
+workflow = "quality-gates"
+job = "postgres-integration"
+step = "Run existing PostgreSQL and pgvector acceptance"
+category = "service"
+reason = "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client."
+
+[[skip]]
+workflow = "quality-gates"
+job = "defense-eval"
+step = "Write lexical stub and product retrieval scorecards plus main delta"
+category = "install"
+reason = "--locked-environments provisions dependencies; the workflow also declares a PostgreSQL service."
+
+[[skip]]
+workflow = "quality-gates"
+job = "defense-eval"
+step = "Retain scorecards, comparison and provenance even on failure"
+category = "github-only"
+reason = "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+
+[[skip]]
+workflow = "quality-gates"
+job = "transcription"
+step = "Install media test dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "quality-gates"
+job = "transcription"
+step = "Install transcription test environment"
+category = "install"
+reason = "The workflow installs transcription dev extras; local checks reuse the existing dependency superset."
+
+[[skip]]
+workflow = "quality-gates"
+job = "deployment-contract"
+step = "Validate standard and Kerberos Compose graphs"
+category = "docker"
+reason = "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities."
+
+[[skip]]
+workflow = "quality-gates"
+job = "deployment-contract"
+step = "Verify real gateway strips forged authentication headers"
+category = "docker"
+reason = "The gateway acceptance invokes the real nginx container, not a synthetic replacement."
+
+[[skip]]
+workflow = "quality-gates"
+job = "deployment-contract"
+step = "Install deployment-contract apt dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "quality-gates"
+job = "deployment-contract"
+step = "Install encrypted restore drill dependencies"
+category = "install"
+reason = "The step installs dependencies and pulls/tags the pgvector image."
+
+[[skip]]
+workflow = "quality-gates"
+job = "deployment-contract"
+step = "Run both encrypted restore naming generations without skips"
+category = "service"
+reason = "The encrypted restore acceptance requires restic and the PostgreSQL container; skips are forbidden by its receipt check."
+
+[[skip]]
+workflow = "quality-gates"
+job = "synthetic-browser"
+step = "Install synthetic-browser apt dependencies"
+category = "install"
+reason = "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+
+[[skip]]
+workflow = "quality-gates"
+job = "synthetic-browser"
+step = "Install browser and media runtimes and contributor dependencies"
+category = "install"
+reason = "The workflow installs application dev dependencies after checking media tools."
+
+[[skip]]
+workflow = "quality-gates"
+job = "synthetic-browser"
+step = "Run pinned synthetic intake and Report journeys"
+category = "browser"
+reason = "The journey runner requires the hosted browser runtime and synthetic browser environment."
+
+[[skip]]
+workflow = "quality-gates"
+job = "synthetic-browser"
+step = "Retain bounded synthetic diagnostics"
+category = "github-only"
+reason = "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
