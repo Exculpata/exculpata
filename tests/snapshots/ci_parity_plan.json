@@ -1,0 +1,3869 @@
+{
+  "definition": {
+    "notes": [
+      "checkout: detached HEAD with existing complete local history; no credential persistence or fetching",
+      "job.permissions: local execution has no hosted token permissions",
+      "job.runs-on: local machine, not the hosted runner image",
+      "job.services: services are not started; dependent checks must be explicit NOT RUN entries",
+      "local composite action: explicitly NOT RUN, including nested actions",
+      "setup-python cache: NOT RUN; existing venv only, no cache network access",
+      "workflow.concurrency: one local invocation runs serially; hosted cancellation is not reproduced",
+      "workflow.permissions: local execution has no hosted token permissions"
+    ],
+    "python_versions": [
+      "3.12"
+    ],
+    "skips": [
+      {
+        "category": "install",
+        "job": "fast",
+        "reason": "This unnamed step installs the editable dev extras; its complete command is its exact step name.",
+        "step": "python -m pip install --disable-pip-version-check -e '.[dev]'",
+        "workflow": "corpus"
+      },
+      {
+        "category": "install",
+        "job": "full",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install corpus apt dependencies",
+        "workflow": "corpus"
+      },
+      {
+        "category": "install",
+        "job": "full",
+        "reason": "The step installs pinned independent recognition packages.",
+        "step": "Install independent CPU recognizer dependencies (not production service runtime)",
+        "workflow": "corpus"
+      },
+      {
+        "category": "download",
+        "job": "full",
+        "reason": "The step downloads pinned language data and installs it with sudo.",
+        "step": "Stage and verify pinned OCR data",
+        "workflow": "corpus"
+      },
+      {
+        "category": "download",
+        "job": "full",
+        "reason": "--stage-models acquires the pinned ASR snapshot over the network.",
+        "step": "Stage pinned ASR snapshot for independent recognition",
+        "workflow": "corpus"
+      },
+      {
+        "category": "binary-missing",
+        "job": "full",
+        "reason": "Full recognition requires the pinned OCR data, independent ASR runtime and model snapshot from unavailable setup.",
+        "step": "Product OCR and independent faster-whisper corpus (production service not exercised)",
+        "workflow": "corpus"
+      },
+      {
+        "category": "install",
+        "job": "network-smoke",
+        "reason": "The step installs the hash-locked smoke harness dependencies.",
+        "step": "Install locked smoke harness dependencies",
+        "workflow": "network-smoke"
+      },
+      {
+        "category": "docker",
+        "job": "network-smoke",
+        "reason": "The live isolation acceptance builds and runs Docker containers and exercises their networks.",
+        "step": "Exercise isolated synthetic OIDC and direct-egress denials",
+        "workflow": "network-smoke"
+      },
+      {
+        "category": "github-only",
+        "job": "network-smoke",
+        "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+        "step": "Retain content-free smoke summary",
+        "workflow": "network-smoke"
+      },
+      {
+        "category": "install",
+        "job": "publication-scan",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install publication-scan apt dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "publication-scan",
+        "reason": "The workflow invokes pip install; the existing venv is checked without installing.",
+        "step": "Install publication inspection dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "download",
+        "job": "secret-scan",
+        "reason": "The workflow downloads a pinned release archive; no network acquisition is permitted.",
+        "step": "Install checksum-verified secret scanner",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "binary-missing",
+        "job": "secret-scan",
+        "reason": "The workflow requires /tmp/gitleaks from its download step; that binary is not provisioned.",
+        "step": "Scan fetched history without publishing matched values",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "binary-missing",
+        "job": "secret-scan",
+        "reason": "GITLEAKS points to /tmp/gitleaks from the unavailable download step.",
+        "step": "Verify exact historical exception and synthetic detection controls",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "application-shards",
+        "reason": "The workflow installs hash-pinned packages; preflight checks the existing environment instead.",
+        "step": "Install lightweight documentation test dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "application-shards",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install document and media test dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "application-shards",
+        "reason": "make bootstrap creates and installs an environment and hooks; bootstrap is not exercised offline.",
+        "step": "Bootstrap contributor environment",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "application-shards",
+        "reason": "The scheduled repeatability step invokes make bootstrap; it remains unavailable if its condition changes.",
+        "step": "Verify repeatable setup",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "github-only",
+        "job": "application-shards",
+        "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+        "step": "Retain application test report",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "postgres-integration",
+        "reason": "The workflow installs editable application and PostgreSQL extras.",
+        "step": "Install database test dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "service",
+        "job": "postgres-integration",
+        "reason": "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client.",
+        "step": "Run existing PostgreSQL and pgvector acceptance",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "defense-eval",
+        "reason": "--locked-environments provisions dependencies; the workflow also declares a PostgreSQL service.",
+        "step": "Write lexical stub and product retrieval scorecards plus main delta",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "github-only",
+        "job": "defense-eval",
+        "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+        "step": "Retain scorecards, comparison and provenance even on failure",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "transcription",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install media test dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "transcription",
+        "reason": "The workflow installs transcription dev extras; local checks reuse the existing dependency superset.",
+        "step": "Install transcription test environment",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "docker",
+        "job": "deployment-contract",
+        "reason": "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities.",
+        "step": "Validate standard and alternate-auth Compose graphs",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "docker",
+        "job": "deployment-contract",
+        "reason": "The gateway acceptance invokes the real nginx container, not a synthetic replacement.",
+        "step": "Verify real gateway strips forged authentication headers",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "deployment-contract",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install deployment-contract apt dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "deployment-contract",
+        "reason": "The step installs dependencies and pulls/tags the pgvector image.",
+        "step": "Install encrypted restore drill dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "service",
+        "job": "deployment-contract",
+        "reason": "The encrypted restore acceptance requires restic and the PostgreSQL container; skips are forbidden by its receipt check.",
+        "step": "Run both encrypted restore naming generations without skips",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "synthetic-browser",
+        "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+        "step": "Install synthetic-browser apt dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "install",
+        "job": "synthetic-browser",
+        "reason": "The workflow installs application dev dependencies after checking media tools.",
+        "step": "Install browser and media runtimes and contributor dependencies",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "browser",
+        "job": "synthetic-browser",
+        "reason": "The journey runner requires the hosted browser runtime and synthetic browser environment.",
+        "step": "Run pinned synthetic intake and Report journeys",
+        "workflow": "quality-gates"
+      },
+      {
+        "category": "github-only",
+        "job": "synthetic-browser",
+        "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+        "step": "Retain bounded synthetic diagnostics",
+        "workflow": "quality-gates"
+      }
+    ],
+    "stale": [],
+    "unexpected": [],
+    "workflows": [
+      {
+        "definition": {
+          "concurrency": {
+            "cancel-in-progress": true,
+            "group": "corpus-${{ github.workflow }}-${{ github.ref }}"
+          },
+          "jobs": {
+            "fast": {
+              "outputs": {
+                "full_required": "${{ steps.scope.outputs.full_required }}"
+              },
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "persist-credentials": false,
+                    "ref": "${{ github.event.pull_request.head.sha || github.sha }}"
+                  }
+                },
+                {
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "env": {
+                    "BASE_SHA": "${{ github.event.pull_request.base.sha }}"
+                  },
+                  "id": "scope",
+                  "name": "Classify full corpus changes conservatively",
+                  "run": "f6a2562232bb5f5618a259ab3964ca4e37bbe1f1a57e5ae2726207a37529c9ab"
+                },
+                {
+                  "run": "5d80c6bfdddb78dcf8750aebad3a3981fc2e6b281b6fc780b3203edde71aa6ae"
+                },
+                {
+                  "name": "Protect reviewed corpus inputs",
+                  "run": "458ead24b5f2b32bdfa79cf2165c1fdc08bec43768833810b28af0f23e37f1d9"
+                },
+                {
+                  "env": {
+                    "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0",
+                    "CASE_INTELLIGENCE_TEST_MODE": "1",
+                    "OMP_NUM_THREADS": "1"
+                  },
+                  "name": "Fast product corpus and historical failure proofs",
+                  "run": "da38cd54801cd47c354a30f400274ce6532cb565ef8ec6d1aa5ac543d4814308"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Verify reviewed corpus inputs are unchanged",
+                  "run": "a6ba23aea7c854940db83e866c66ed299ce5dc87ba5e8821564a8f55f3c24c97"
+                }
+              ],
+              "timeout-minutes": 10
+            },
+            "full": {
+              "if": "github.event_name != 'pull_request' || needs.fast.outputs.full_required == 'true'",
+              "needs": "fast",
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "uses": "actions/checkout",
+                  "with": {
+                    "persist-credentials": false,
+                    "ref": "${{ github.event.pull_request.head.sha || github.sha }}"
+                  }
+                },
+                {
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install corpus apt dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "corpus",
+                    "packages": "ffmpeg poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa"
+                  }
+                },
+                {
+                  "name": "Install independent CPU recognizer dependencies (not production service runtime)",
+                  "run": "8f425ea2c00c2e2b6de601b72a8117939dd1bf4a83bc22aa89165b0cda9c3544",
+                  "timeout-minutes": 10
+                },
+                {
+                  "name": "Stage and verify pinned OCR data",
+                  "run": "90d00912f4e5f84d2acf42c1397d72dd485cb72dcfcc25a24ec6aab7eeeec5d0"
+                },
+                {
+                  "name": "Stage pinned ASR snapshot for independent recognition",
+                  "run": "749fb195a0e15bbdd078b080d578648dbc9b195c9e89d1e903ce34b9ed36c676"
+                },
+                {
+                  "name": "Protect reviewed corpus inputs",
+                  "run": "458ead24b5f2b32bdfa79cf2165c1fdc08bec43768833810b28af0f23e37f1d9"
+                },
+                {
+                  "env": {
+                    "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0",
+                    "CASE_INTELLIGENCE_TEST_MODE": "1",
+                    "HF_HUB_OFFLINE": "1",
+                    "OMP_NUM_THREADS": "2"
+                  },
+                  "name": "Product OCR and independent faster-whisper corpus (production service not exercised)",
+                  "run": "47dcfdebd3d20acd9e703d918313d0b8923a4116fbc4077904a1bfaeccf66757"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Verify reviewed corpus inputs are unchanged",
+                  "run": "a6ba23aea7c854940db83e866c66ed299ce5dc87ba5e8821564a8f55f3c24c97"
+                }
+              ],
+              "timeout-minutes": 45
+            }
+          },
+          "name": "Synthetic discovery corpus",
+          "on": {
+            "pull_request": null,
+            "schedule": [
+              {
+                "cron": "43 4 * * *"
+              }
+            ],
+            "workflow_dispatch": null
+          },
+          "permissions": {
+            "contents": "read"
+          }
+        },
+        "jobs": [
+          {
+            "cells": [
+              {}
+            ],
+            "job": "fast",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Classify full corpus changes conservatively",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "fast",
+                  "reason": "This unnamed step installs the editable dev extras; its complete command is its exact step name.",
+                  "step": "python -m pip install --disable-pip-version-check -e '.[dev]'",
+                  "workflow": "corpus"
+                },
+                "name": "python -m pip install --disable-pip-version-check -e '.[dev]'",
+                "unavailable": [
+                  "install",
+                  "This unnamed step installs the editable dev extras; its complete command is its exact step name."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Protect reviewed corpus inputs",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Fast product corpus and historical failure proofs",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify reviewed corpus inputs are unchanged",
+                "unavailable": null
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "full",
+            "needs": [
+              "fast"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "full",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install corpus apt dependencies",
+                  "workflow": "corpus"
+                },
+                "name": "Install corpus apt dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "full",
+                  "reason": "The step installs pinned independent recognition packages.",
+                  "step": "Install independent CPU recognizer dependencies (not production service runtime)",
+                  "workflow": "corpus"
+                },
+                "name": "Install independent CPU recognizer dependencies (not production service runtime)",
+                "unavailable": [
+                  "install",
+                  "The step installs pinned independent recognition packages."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "download",
+                  "job": "full",
+                  "reason": "The step downloads pinned language data and installs it with sudo.",
+                  "step": "Stage and verify pinned OCR data",
+                  "workflow": "corpus"
+                },
+                "name": "Stage and verify pinned OCR data",
+                "unavailable": [
+                  "download",
+                  "The step downloads pinned language data and installs it with sudo."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "download",
+                  "job": "full",
+                  "reason": "--stage-models acquires the pinned ASR snapshot over the network.",
+                  "step": "Stage pinned ASR snapshot for independent recognition",
+                  "workflow": "corpus"
+                },
+                "name": "Stage pinned ASR snapshot for independent recognition",
+                "unavailable": [
+                  "download",
+                  "--stage-models acquires the pinned ASR snapshot over the network."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Protect reviewed corpus inputs",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "binary-missing",
+                  "job": "full",
+                  "reason": "Full recognition requires the pinned OCR data, independent ASR runtime and model snapshot from unavailable setup.",
+                  "step": "Product OCR and independent faster-whisper corpus (production service not exercised)",
+                  "workflow": "corpus"
+                },
+                "name": "Product OCR and independent faster-whisper corpus (production service not exercised)",
+                "unavailable": [
+                  "binary-missing",
+                  "Full recognition requires the pinned OCR data, independent ASR runtime and model snapshot from unavailable setup."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Verify reviewed corpus inputs are unchanged",
+                "unavailable": null
+              }
+            ]
+          }
+        ],
+        "reason": "event filters match",
+        "triggered": true,
+        "triggers": [
+          "pull_request",
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "corpus"
+      },
+      {
+        "definition": null,
+        "jobs": [],
+        "reason": "not triggered by pull_request",
+        "triggered": false,
+        "triggers": [
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "deps-audit"
+      },
+      {
+        "definition": null,
+        "jobs": [],
+        "reason": "not triggered by pull_request",
+        "triggered": false,
+        "triggers": [
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "flake-ledger"
+      },
+      {
+        "definition": null,
+        "jobs": [],
+        "reason": "not triggered by pull_request",
+        "triggered": false,
+        "triggers": [
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "hygiene-report"
+      },
+      {
+        "definition": {
+          "concurrency": {
+            "cancel-in-progress": true,
+            "group": "network-smoke-${{ github.event.pull_request.number || github.ref }}"
+          },
+          "jobs": {
+            "network-smoke": {
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "env": {
+                    "FORCE_SMOKE": "${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'network-smoke') }}",
+                    "PR_BASE": "${{ github.event.pull_request.base.sha }}",
+                    "PR_HEAD": "${{ github.event.pull_request.head.sha }}"
+                  },
+                  "id": "scope",
+                  "name": "Select smoke coverage",
+                  "run": "18a9dc2a0a3ad15a392807ebed8df5766fb4daa5aaef5c8a68c7c59264e84ae3"
+                },
+                {
+                  "if": "steps.scope.outputs.run != 'true'",
+                  "name": "Report unrelated change",
+                  "run": "544a005cc21681af7a340f3e63bfc0aef0ba1899c485174034144ae4f9e73f01"
+                },
+                {
+                  "if": "steps.scope.outputs.run == 'true'",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "if": "steps.scope.outputs.run == 'true'",
+                  "name": "Install locked smoke harness dependencies",
+                  "run": "2e2df873fc1a52fa630178a5fa99ba57b95de6c2ffd2756669ae4cdcc1e263e3"
+                },
+                {
+                  "env": {
+                    "NETWORK_SMOKE_DOCKER_CONTEXT": "default",
+                    "NETWORK_SMOKE_OUTPUT": "network-smoke-results",
+                    "RUN_NETWORK_SMOKE": "1"
+                  },
+                  "if": "steps.scope.outputs.run == 'true'",
+                  "name": "Exercise isolated synthetic OIDC and direct-egress denials",
+                  "run": "77d5c8b0ea83fdbe1092ade2754353a5f2abe8487c7d6dcac647f57b6a947f11"
+                },
+                {
+                  "if": "always() && steps.scope.outputs.run == 'true'",
+                  "name": "Retain content-free smoke summary",
+                  "uses": "actions/upload-artifact",
+                  "with": {
+                    "if-no-files-found": "warn",
+                    "name": "network-smoke-summary",
+                    "path": "network-smoke-results/summary.json",
+                    "retention-days": 7
+                  }
+                }
+              ],
+              "timeout-minutes": 25
+            }
+          },
+          "name": "Network isolation smoke",
+          "on": {
+            "merge_group": null,
+            "pull_request": {
+              "types": [
+                "opened",
+                "synchronize",
+                "reopened",
+                "labeled"
+              ]
+            },
+            "schedule": [
+              {
+                "cron": "43 6 * * 1"
+              }
+            ],
+            "workflow_dispatch": null
+          },
+          "permissions": {
+            "contents": "read"
+          }
+        },
+        "jobs": [
+          {
+            "cells": [
+              {}
+            ],
+            "job": "network-smoke",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select smoke coverage",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Report unrelated change",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "network-smoke",
+                  "reason": "The step installs the hash-locked smoke harness dependencies.",
+                  "step": "Install locked smoke harness dependencies",
+                  "workflow": "network-smoke"
+                },
+                "name": "Install locked smoke harness dependencies",
+                "unavailable": [
+                  "install",
+                  "The step installs the hash-locked smoke harness dependencies."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "docker",
+                  "job": "network-smoke",
+                  "reason": "The live isolation acceptance builds and runs Docker containers and exercises their networks.",
+                  "step": "Exercise isolated synthetic OIDC and direct-egress denials",
+                  "workflow": "network-smoke"
+                },
+                "name": "Exercise isolated synthetic OIDC and direct-egress denials",
+                "unavailable": [
+                  "docker",
+                  "The live isolation acceptance builds and runs Docker containers and exercises their networks."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "github-only",
+                  "job": "network-smoke",
+                  "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+                  "step": "Retain content-free smoke summary",
+                  "workflow": "network-smoke"
+                },
+                "name": "Retain content-free smoke summary",
+                "unavailable": [
+                  "github-only",
+                  "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+                ]
+              }
+            ]
+          }
+        ],
+        "reason": "event filters match",
+        "triggered": true,
+        "triggers": [
+          "merge_group",
+          "pull_request",
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "network-smoke"
+      },
+      {
+        "definition": {
+          "concurrency": {
+            "cancel-in-progress": true,
+            "group": "quality-${{ github.workflow }}-${{ github.ref }}"
+          },
+          "jobs": {
+            "application": {
+              "if": "${{ always() }}",
+              "needs": [
+                "change-scope",
+                "application-shards"
+              ],
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}",
+                    "SHARD_RESULT": "${{ needs.application-shards.result }}"
+                  },
+                  "name": "Require successful classification and both application shards",
+                  "run": "cb99b82d688786d181d8ab61b5d6a913af9f3c0eec22eb756b5d0ab3b84ef2dc"
+                }
+              ],
+              "timeout-minutes": 5
+            },
+            "application-shards": {
+              "if": "${{ always() }}",
+              "needs": [
+                "change-scope"
+              ],
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}"
+                  },
+                  "name": "Require successful classification",
+                  "run": "20561d340f82e349ebe49bbdca4b0c2c34b45bdbf7a3d9b590d793a7476370c9"
+                },
+                {
+                  "name": "Check out integration candidate",
+                  "uses": "actions/checkout"
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "name": "Select Python 3.12",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "cache": "pip",
+                    "cache-dependency-path": "pyproject.toml\nservices/transcription/pyproject.toml\n",
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Protect reviewed corpus inputs",
+                  "run": "458ead24b5f2b32bdfa79cf2165c1fdc08bec43768833810b28af0f23e37f1d9"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only == 'true' }}",
+                  "name": "Install lightweight documentation test dependencies",
+                  "run": "1444dad5b444ec811dc46b34846f354f3df903fda5f987c74fb8c21c98bf2d59"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only == 'true' }}",
+                  "name": "Run documentation and scope contracts",
+                  "run": "15ad5cdab79bc1efbd742714f079a9702899de849cf7922f1498fd4e7b3ea157"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only == 'true' }}",
+                  "name": "Record documentation-only acceptance",
+                  "run": "5f775e011d690f11801210d0f6832bebf2cb9be25edd076f362895b9c7bc998a"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Install document and media test dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "application",
+                    "packages": "ffmpeg imagemagick poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-spa"
+                  }
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Bootstrap contributor environment",
+                  "run": "d8b1c081378f1af191b6fb64623c30eeab58b9e175505bc26ec052da173c1274"
+                },
+                {
+                  "if": "${{ github.event_name == 'schedule' }}",
+                  "name": "Verify repeatable setup",
+                  "run": "d8b1c081378f1af191b6fb64623c30eeab58b9e175505bc26ec052da173c1274"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Compile Python sources",
+                  "run": "fc659c786aa927b8d839f1e7c25676aa35094ecbd37731e8cae103fbe8e9efc3"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Check unused imports and locals",
+                  "run": "bbf91af7ecff6fede08249196741e2f99a6384e4cea540198ad8bac995f03ab4"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Enforce repository network contract",
+                  "run": "09342aee0463c050910b7676a5a8d6dd68de1136e16954d3434b05c349212f2d"
+                },
+                {
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Select application test shard",
+                  "run": "6d28697f42b1532efddcb9df7657aab3d75143c5858d0408758a7b5ac93d8439"
+                },
+                {
+                  "env": {
+                    "CASE_INTELLIGENCE_STORAGE_RESERVE_GIB": "0",
+                    "CASE_INTELLIGENCE_TEST_MODE": "1",
+                    "OMP_NUM_THREADS": "1",
+                    "OMP_THREAD_LIMIT": "1",
+                    "OPENBLAS_NUM_THREADS": "1",
+                    "PYTEST_XDIST_AUTO_NUM_WORKERS": "6"
+                  },
+                  "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Run application suite",
+                  "run": "67daeff836155fb136091f580158fedc8557277c4c26cebe2109eb9c84fc5e50"
+                },
+                {
+                  "continue-on-error": true,
+                  "env": {
+                    "TEST_RUN_STATUS": "${{ job.status }}"
+                  },
+                  "if": "${{ (failure() || cancelled()) && needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Summarize interrupted application tests",
+                  "run": "54b02fea3f82f785f89111b9d146af88187cfc6054ba311a54ff4cc6d220dc19"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Verify reviewed corpus inputs are unchanged",
+                  "run": "a6ba23aea7c854940db83e866c66ed299ce5dc87ba5e8821564a8f55f3c24c97"
+                },
+                {
+                  "if": "${{ always() && needs.change-scope.outputs.docs_only != 'true' }}",
+                  "name": "Retain application test report",
+                  "uses": "actions/upload-artifact",
+                  "with": {
+                    "if-no-files-found": "warn",
+                    "name": "application-results-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}",
+                    "path": "${{ runner.temp }}/application-results.xml\n${{ runner.temp }}/application-workers/*.json\n",
+                    "retention-days": 5
+                  }
+                }
+              ],
+              "strategy": {
+                "fail-fast": false,
+                "matrix": {
+                  "shard": [
+                    0,
+                    1
+                  ]
+                }
+              },
+              "timeout-minutes": 45
+            },
+            "change-scope": {
+              "outputs": {
+                "browser_changed": "${{ steps.scope.outputs.browser_changed }}",
+                "docs_only": "${{ steps.scope.outputs.docs_only }}"
+              },
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "id": "scope",
+                  "name": "Classify complete change conservatively",
+                  "run": "1be82db283ef458a50169e18940300ed979c0641450329d1e4c74d900f5e15db"
+                }
+              ],
+              "timeout-minutes": 5
+            },
+            "defense-eval": {
+              "env": {
+                "CASE_REVIEW_POSTGRES_TEST_DSN": "postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test"
+              },
+              "if": "${{ always() }}",
+              "permissions": {
+                "contents": "read"
+              },
+              "runs-on": "ubuntu-24.04",
+              "services": {
+                "postgres": {
+                  "env": {
+                    "POSTGRES_DB": "exculpata_test",
+                    "POSTGRES_PASSWORD": "synthetic-ci-only",
+                    "POSTGRES_USER": "exculpata"
+                  },
+                  "image": "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f",
+                  "options": "--health-cmd \"pg_isready -U exculpata -d exculpata_test\" --health-interval 5s --health-timeout 5s --health-retries 12",
+                  "ports": [
+                    "127.0.0.1:5432:5432"
+                  ]
+                }
+              },
+              "steps": [
+                {
+                  "name": "Check out candidate and complete base history",
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_BASE_SHA": "${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}"
+                  },
+                  "name": "Write lexical stub and product retrieval scorecards plus main delta",
+                  "run": "a0d56e051e74b9601787a03bb7cec8b43fabe8e356c1d84e2e8b30b49d56468a"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Retain scorecards, comparison and provenance even on failure",
+                  "uses": "actions/upload-artifact",
+                  "with": {
+                    "if-no-files-found": "error",
+                    "name": "defense-eval-${{ github.run_id }}-${{ github.run_attempt }}",
+                    "path": "${{ runner.temp }}/defense-eval-artifacts",
+                    "retention-days": 5
+                  }
+                }
+              ],
+              "timeout-minutes": 30
+            },
+            "deployment-contract": {
+              "if": "${{ always() && (needs.change-scope.result != 'success' || needs.publication-scan.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}",
+              "needs": [
+                "change-scope",
+                "publication-scan"
+              ],
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "PUBLICATION_RESULT": "${{ needs.publication-scan.result }}",
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}"
+                  },
+                  "name": "Require successful classification and publication scan",
+                  "run": "b827786c460fa8a4d64c1262e49914956241cca4ebcc4151155eb573a91d211a"
+                },
+                {
+                  "uses": "actions/checkout"
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "name": "Validate standard and alternate-auth Compose graphs",
+                  "run": "b957ff35b0465eb34e7c622f95aef5defd3bc20e0d4260382282f9ce8c8d6dc4"
+                },
+                {
+                  "name": "Verify real gateway strips forged authentication headers",
+                  "run": "0373138dee112291ad38ff429f9c56344d0584c4dd399b54f2945203d2bafe64"
+                },
+                {
+                  "name": "Select Python 3.12 for restore acceptance",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install deployment-contract apt dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "deployment-contract",
+                    "packages": "restic"
+                  }
+                },
+                {
+                  "name": "Install encrypted restore drill dependencies",
+                  "run": "a0f75bb260fdc618f839bd235077b89d328ef6ff172f7d65b5c25724c8698803",
+                  "timeout-minutes": 8
+                },
+                {
+                  "env": {
+                    "EXCULPATA_BACKUP_INTEGRATION": "1"
+                  },
+                  "name": "Run both encrypted restore naming generations without skips",
+                  "run": "b4730c8e86a2344c020ca5fc64ff6437e2e7baa90357130b66aa1ad6ef99d7c5"
+                },
+                {
+                  "name": "Exercise read-only installer diagnostics",
+                  "run": "c76f57ef1e22836da3c88543428ae9173c8f2b160a610832307ba2841b7cc7da"
+                }
+              ],
+              "timeout-minutes": 20
+            },
+            "postgres-integration": {
+              "env": {
+                "CASE_REVIEW_POSTGRES_TEST_DSN": "postgresql://exculpata:synthetic-ci-only@127.0.0.1:5432/exculpata_test"
+              },
+              "if": "${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}",
+              "needs": "change-scope",
+              "runs-on": "ubuntu-24.04",
+              "services": {
+                "postgres": {
+                  "env": {
+                    "POSTGRES_DB": "exculpata_test",
+                    "POSTGRES_PASSWORD": "synthetic-ci-only",
+                    "POSTGRES_USER": "exculpata"
+                  },
+                  "image": "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f",
+                  "options": "--health-cmd \"pg_isready -U exculpata -d exculpata_test\" --health-interval 5s --health-timeout 5s --health-retries 12",
+                  "ports": [
+                    "127.0.0.1:5432:5432"
+                  ]
+                }
+              },
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}"
+                  },
+                  "name": "Require successful classification",
+                  "run": "20561d340f82e349ebe49bbdca4b0c2c34b45bdbf7a3d9b590d793a7476370c9"
+                },
+                {
+                  "name": "Check out integration candidate",
+                  "uses": "actions/checkout",
+                  "with": {
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "name": "Select Python 3.12",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "cache": "pip",
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install database test dependencies",
+                  "run": "c0a2dbbb78a52ba861a60d07c3498293c1beefb36098a0c7e90c84bd4cfd5c0f"
+                },
+                {
+                  "env": {
+                    "CASE_REVIEW_POSTGRES_CLIENT_PREFIX": "docker exec -i ${{ job.services.postgres.id }}"
+                  },
+                  "name": "Run existing PostgreSQL and pgvector acceptance",
+                  "run": "60c63c2f70053bd1378b36c643e68cb312a73d94ab29980051d726f627726e76"
+                }
+              ],
+              "timeout-minutes": 15
+            },
+            "publication-scan": {
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "name": "Check out exact publication head separately",
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "ref": "${{ github.event.pull_request.head.sha || github.sha }}"
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_PUBLICATION_SHA": "${{ github.event.pull_request.head.sha || github.sha }}"
+                  },
+                  "name": "Verify exact publication checkout",
+                  "run": "5ae1b5ce59b1f895cb515d02a9087976fed555e4d32bd11b83bc48d8077a8bbb"
+                },
+                {
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install publication-scan apt dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "publication-scan",
+                    "packages": "ffmpeg"
+                  }
+                },
+                {
+                  "name": "Install publication inspection dependencies",
+                  "run": "2f827135eccbed38514850a01d36c2bede75a70de004c4d4bfed8409bbf48426",
+                  "timeout-minutes": 8
+                },
+                {
+                  "env": {
+                    "EXPECTED_PUBLICATION_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+                    "PUBLICATION_REF": "${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}"
+                  },
+                  "if": "${{ !github.event.deleted }}",
+                  "name": "Scan exact candidate tree and complete reachable history",
+                  "run": "62e15484a4cd4d34d755c30f477731bf3f3c2d295d8b6c4a8b25dc474b746f4d"
+                }
+              ],
+              "timeout-minutes": 30
+            },
+            "secret-scan": {
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "uses": "actions/checkout",
+                  "with": {
+                    "fetch-depth": 0,
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "name": "Install checksum-verified secret scanner",
+                  "run": "916034f0b78e1f5b726fa4b923ed652ed89d3f89a11d5fd90c5015d01cd9c66f"
+                },
+                {
+                  "name": "Scan fetched history without publishing matched values",
+                  "run": "5eb6f0cffac510c787cb93c6ecb5780f0b041b7bcd9f7d181195864065a98018"
+                },
+                {
+                  "env": {
+                    "GITLEAKS": "/tmp/gitleaks"
+                  },
+                  "name": "Verify exact historical exception and synthetic detection controls",
+                  "run": "b10258f5837c1cc1cb7042e4ec899ffe816fb7200b74c3527a84bac41927011c"
+                }
+              ],
+              "timeout-minutes": 10
+            },
+            "synthetic-browser": {
+              "if": "${{ always() && (\n  (contains(fromJSON('[\"merge_group\", \"schedule\", \"workflow_dispatch\"]'), github.event_name) &&\n    (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true')) ||\n  (github.event_name == 'pull_request' &&\n    (needs.change-scope.result != 'success' || needs.change-scope.outputs.browser_changed != 'false'))\n) }}",
+              "needs": "change-scope",
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}"
+                  },
+                  "name": "Require successful classification",
+                  "run": "20561d340f82e349ebe49bbdca4b0c2c34b45bdbf7a3d9b590d793a7476370c9"
+                },
+                {
+                  "name": "Check out integration candidate",
+                  "uses": "actions/checkout",
+                  "with": {
+                    "persist-credentials": false
+                  }
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "name": "Select Python 3.12",
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "cache": "pip",
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install synthetic-browser apt dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "synthetic-browser"
+                  }
+                },
+                {
+                  "name": "Install browser and media runtimes and contributor dependencies",
+                  "run": "be40f18111bda92f0832505f776c915771a71d9d00df03e678b9b9f813133337",
+                  "timeout-minutes": 10
+                },
+                {
+                  "name": "Verify browser runner failure contracts",
+                  "run": "201cdab00079cf71c9fe64343001b585b5d99a85016ee9da1ff79680d79efdf5"
+                },
+                {
+                  "name": "Run pinned synthetic intake and Report journeys",
+                  "run": "39c03e7e2a1022244c427ad40297a27b8f56039ba052c55afa30f16d86ea7786"
+                },
+                {
+                  "if": "${{ always() }}",
+                  "name": "Retain bounded synthetic diagnostics",
+                  "uses": "actions/upload-artifact",
+                  "with": {
+                    "if-no-files-found": "warn",
+                    "name": "synthetic-browser-${{ github.run_id }}-${{ github.run_attempt }}",
+                    "path": "${{ runner.temp }}/exculpata-browser-artifacts",
+                    "retention-days": 5
+                  }
+                }
+              ],
+              "timeout-minutes": 20
+            },
+            "transcription": {
+              "if": "${{ always() && (needs.change-scope.result != 'success' || needs.change-scope.outputs.docs_only != 'true') }}",
+              "needs": "change-scope",
+              "runs-on": "ubuntu-24.04",
+              "steps": [
+                {
+                  "env": {
+                    "SCOPE_RESULT": "${{ needs.change-scope.result }}"
+                  },
+                  "name": "Require successful classification",
+                  "run": "20561d340f82e349ebe49bbdca4b0c2c34b45bdbf7a3d9b590d793a7476370c9"
+                },
+                {
+                  "uses": "actions/checkout"
+                },
+                {
+                  "env": {
+                    "EXPECTED_INTEGRATION_SHA": "${{ github.sha }}"
+                  },
+                  "name": "Verify integration checkout",
+                  "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
+                },
+                {
+                  "uses": "actions/setup-python",
+                  "with": {
+                    "cache": "pip",
+                    "cache-dependency-path": "services/transcription/pyproject.toml",
+                    "python-version": "3.12"
+                  }
+                },
+                {
+                  "name": "Install media test dependencies",
+                  "timeout-minutes": 8,
+                  "uses": "./.github/actions/apt-deps",
+                  "with": {
+                    "name": "transcription",
+                    "packages": "ffmpeg"
+                  }
+                },
+                {
+                  "name": "Install transcription test environment",
+                  "run": "5a722c7e63ad31a4e2f39969f475e9f6842e0d0755b7ae1486ce83eb031f0938"
+                },
+                {
+                  "name": "Run bundled transcription suite",
+                  "run": "80f093aa4066510496f7808386932f405f0309512697ebd923cbd32050977ccb",
+                  "working-directory": "services/transcription"
+                }
+              ],
+              "timeout-minutes": 30
+            }
+          },
+          "name": "Quality gates",
+          "on": {
+            "merge_group": null,
+            "pull_request": null,
+            "push": {
+              "branches": [
+                "main"
+              ]
+            },
+            "schedule": [
+              {
+                "cron": "17 7 * * *"
+              }
+            ],
+            "workflow_dispatch": null
+          },
+          "permissions": {
+            "contents": "read"
+          }
+        },
+        "jobs": [
+          {
+            "cells": [
+              {}
+            ],
+            "job": "change-scope",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Classify complete change conservatively",
+                "unavailable": null
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "publication-scan",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Check out exact publication head separately",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify exact publication checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "publication-scan",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install publication-scan apt dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install publication-scan apt dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "publication-scan",
+                  "reason": "The workflow invokes pip install; the existing venv is checked without installing.",
+                  "step": "Install publication inspection dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install publication inspection dependencies",
+                "unavailable": [
+                  "install",
+                  "The workflow invokes pip install; the existing venv is checked without installing."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Scan exact candidate tree and complete reachable history",
+                "unavailable": null
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "secret-scan",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "download",
+                  "job": "secret-scan",
+                  "reason": "The workflow downloads a pinned release archive; no network acquisition is permitted.",
+                  "step": "Install checksum-verified secret scanner",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install checksum-verified secret scanner",
+                "unavailable": [
+                  "download",
+                  "The workflow downloads a pinned release archive; no network acquisition is permitted."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "binary-missing",
+                  "job": "secret-scan",
+                  "reason": "The workflow requires /tmp/gitleaks from its download step; that binary is not provisioned.",
+                  "step": "Scan fetched history without publishing matched values",
+                  "workflow": "quality-gates"
+                },
+                "name": "Scan fetched history without publishing matched values",
+                "unavailable": [
+                  "binary-missing",
+                  "The workflow requires /tmp/gitleaks from its download step; that binary is not provisioned."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "binary-missing",
+                  "job": "secret-scan",
+                  "reason": "GITLEAKS points to /tmp/gitleaks from the unavailable download step.",
+                  "step": "Verify exact historical exception and synthetic detection controls",
+                  "workflow": "quality-gates"
+                },
+                "name": "Verify exact historical exception and synthetic detection controls",
+                "unavailable": [
+                  "binary-missing",
+                  "GITLEAKS points to /tmp/gitleaks from the unavailable download step."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {
+                "shard": 0
+              },
+              {
+                "shard": 1
+              }
+            ],
+            "job": "application-shards",
+            "needs": [
+              "change-scope"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Check out integration candidate",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select Python 3.12",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Protect reviewed corpus inputs",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "application-shards",
+                  "reason": "The workflow installs hash-pinned packages; preflight checks the existing environment instead.",
+                  "step": "Install lightweight documentation test dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install lightweight documentation test dependencies",
+                "unavailable": [
+                  "install",
+                  "The workflow installs hash-pinned packages; preflight checks the existing environment instead."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Run documentation and scope contracts",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Record documentation-only acceptance",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "application-shards",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install document and media test dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install document and media test dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "application-shards",
+                  "reason": "make bootstrap creates and installs an environment and hooks; bootstrap is not exercised offline.",
+                  "step": "Bootstrap contributor environment",
+                  "workflow": "quality-gates"
+                },
+                "name": "Bootstrap contributor environment",
+                "unavailable": [
+                  "install",
+                  "make bootstrap creates and installs an environment and hooks; bootstrap is not exercised offline."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "application-shards",
+                  "reason": "The scheduled repeatability step invokes make bootstrap; it remains unavailable if its condition changes.",
+                  "step": "Verify repeatable setup",
+                  "workflow": "quality-gates"
+                },
+                "name": "Verify repeatable setup",
+                "unavailable": [
+                  "install",
+                  "The scheduled repeatability step invokes make bootstrap; it remains unavailable if its condition changes."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Compile Python sources",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Check unused imports and locals",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Enforce repository network contract",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select application test shard",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Run application suite",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Summarize interrupted application tests",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify reviewed corpus inputs are unchanged",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "github-only",
+                  "job": "application-shards",
+                  "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+                  "step": "Retain application test report",
+                  "workflow": "quality-gates"
+                },
+                "name": "Retain application test report",
+                "unavailable": [
+                  "github-only",
+                  "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "postgres-integration",
+            "needs": [
+              "change-scope"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Check out integration candidate",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select Python 3.12",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "postgres-integration",
+                  "reason": "The workflow installs editable application and PostgreSQL extras.",
+                  "step": "Install database test dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install database test dependencies",
+                "unavailable": [
+                  "install",
+                  "The workflow installs editable application and PostgreSQL extras."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "service",
+                  "job": "postgres-integration",
+                  "reason": "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client.",
+                  "step": "Run existing PostgreSQL and pgvector acceptance",
+                  "workflow": "quality-gates"
+                },
+                "name": "Run existing PostgreSQL and pgvector acceptance",
+                "unavailable": [
+                  "service",
+                  "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "defense-eval",
+            "needs": [],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Check out candidate and complete base history",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "defense-eval",
+                  "reason": "--locked-environments provisions dependencies; the workflow also declares a PostgreSQL service.",
+                  "step": "Write lexical stub and product retrieval scorecards plus main delta",
+                  "workflow": "quality-gates"
+                },
+                "name": "Write lexical stub and product retrieval scorecards plus main delta",
+                "unavailable": [
+                  "install",
+                  "--locked-environments provisions dependencies; the workflow also declares a PostgreSQL service."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "github-only",
+                  "job": "defense-eval",
+                  "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+                  "step": "Retain scorecards, comparison and provenance even on failure",
+                  "workflow": "quality-gates"
+                },
+                "name": "Retain scorecards, comparison and provenance even on failure",
+                "unavailable": [
+                  "github-only",
+                  "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "transcription",
+            "needs": [
+              "change-scope"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/setup-python",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "transcription",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install media test dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install media test dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "transcription",
+                  "reason": "The workflow installs transcription dev extras; local checks reuse the existing dependency superset.",
+                  "step": "Install transcription test environment",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install transcription test environment",
+                "unavailable": [
+                  "install",
+                  "The workflow installs transcription dev extras; local checks reuse the existing dependency superset."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Run bundled transcription suite",
+                "unavailable": null
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "deployment-contract",
+            "needs": [
+              "change-scope",
+              "publication-scan"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification and publication scan",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "actions/checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "docker",
+                  "job": "deployment-contract",
+                  "reason": "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities.",
+                  "step": "Validate standard and alternate-auth Compose graphs",
+                  "workflow": "quality-gates"
+                },
+                "name": "Validate standard and alternate-auth Compose graphs",
+                "unavailable": [
+                  "docker",
+                  "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "docker",
+                  "job": "deployment-contract",
+                  "reason": "The gateway acceptance invokes the real nginx container, not a synthetic replacement.",
+                  "step": "Verify real gateway strips forged authentication headers",
+                  "workflow": "quality-gates"
+                },
+                "name": "Verify real gateway strips forged authentication headers",
+                "unavailable": [
+                  "docker",
+                  "The gateway acceptance invokes the real nginx container, not a synthetic replacement."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Select Python 3.12 for restore acceptance",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "deployment-contract",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install deployment-contract apt dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install deployment-contract apt dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "deployment-contract",
+                  "reason": "The step installs dependencies and pulls/tags the pgvector image.",
+                  "step": "Install encrypted restore drill dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install encrypted restore drill dependencies",
+                "unavailable": [
+                  "install",
+                  "The step installs dependencies and pulls/tags the pgvector image."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "service",
+                  "job": "deployment-contract",
+                  "reason": "The encrypted restore acceptance requires restic and the PostgreSQL container; skips are forbidden by its receipt check.",
+                  "step": "Run both encrypted restore naming generations without skips",
+                  "workflow": "quality-gates"
+                },
+                "name": "Run both encrypted restore naming generations without skips",
+                "unavailable": [
+                  "service",
+                  "The encrypted restore acceptance requires restic and the PostgreSQL container; skips are forbidden by its receipt check."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Exercise read-only installer diagnostics",
+                "unavailable": null
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "synthetic-browser",
+            "needs": [
+              "change-scope"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Check out integration candidate",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Verify integration checkout",
+                "unavailable": null
+              },
+              {
+                "expected": null,
+                "name": "Select Python 3.12",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "synthetic-browser",
+                  "reason": "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs.",
+                  "step": "Install synthetic-browser apt dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install synthetic-browser apt dependencies",
+                "unavailable": [
+                  "install",
+                  "The local composite restores hosted apt cache and runs package acquisition on a miss; it cannot execute with no network or installs."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "install",
+                  "job": "synthetic-browser",
+                  "reason": "The workflow installs application dev dependencies after checking media tools.",
+                  "step": "Install browser and media runtimes and contributor dependencies",
+                  "workflow": "quality-gates"
+                },
+                "name": "Install browser and media runtimes and contributor dependencies",
+                "unavailable": [
+                  "install",
+                  "The workflow installs application dev dependencies after checking media tools."
+                ]
+              },
+              {
+                "expected": null,
+                "name": "Verify browser runner failure contracts",
+                "unavailable": null
+              },
+              {
+                "expected": {
+                  "category": "browser",
+                  "job": "synthetic-browser",
+                  "reason": "The journey runner requires the hosted browser runtime and synthetic browser environment.",
+                  "step": "Run pinned synthetic intake and Report journeys",
+                  "workflow": "quality-gates"
+                },
+                "name": "Run pinned synthetic intake and Report journeys",
+                "unavailable": [
+                  "browser",
+                  "The journey runner requires the hosted browser runtime and synthetic browser environment."
+                ]
+              },
+              {
+                "expected": {
+                  "category": "github-only",
+                  "job": "synthetic-browser",
+                  "reason": "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report.",
+                  "step": "Retain bounded synthetic diagnostics",
+                  "workflow": "quality-gates"
+                },
+                "name": "Retain bounded synthetic diagnostics",
+                "unavailable": [
+                  "github-only",
+                  "The step uploads retained artifacts to the hosted workflow service; local per-step logs remain beside the report."
+                ]
+              }
+            ]
+          },
+          {
+            "cells": [
+              {}
+            ],
+            "job": "application",
+            "needs": [
+              "change-scope",
+              "application-shards"
+            ],
+            "steps": [
+              {
+                "expected": null,
+                "name": "Require successful classification and both application shards",
+                "unavailable": null
+              }
+            ]
+          }
+        ],
+        "reason": "event filters match",
+        "triggered": true,
+        "triggers": [
+          "merge_group",
+          "pull_request",
+          "push",
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "quality-gates"
+      },
+      {
+        "definition": null,
+        "jobs": [],
+        "reason": "not triggered by pull_request",
+        "triggered": false,
+        "triggers": [
+          "schedule",
+          "workflow_dispatch"
+        ],
+        "workflow": "stale-report"
+      }
+    ]
+  },
+  "scenarios": {
+    "browser": {
+      "plan": [
+        {
+          "job": "fast",
+          "matrix": {},
+          "outputs": {
+            "full_required": "true"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify full corpus changes conservatively"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "python -m pip install --disable-pip-version-check -e '.[dev]'"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "RUN",
+              "step": "Fast product corpus and historical failure proofs"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "full",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install corpus apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install independent CPU recognizer dependencies (not production service runtime)"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Stage and verify pinned OCR data"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Stage pinned ASR snapshot for independent recognition"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Product OCR and independent faster-whisper corpus (production service not exercised)"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "network-smoke",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Select smoke coverage"
+            },
+            {
+              "state": "RUN",
+              "step": "Report unrelated change"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install locked smoke harness dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Exercise isolated synthetic OIDC and direct-egress denials"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain content-free smoke summary"
+            }
+          ],
+          "workflow": "network-smoke"
+        },
+        {
+          "job": "change-scope",
+          "matrix": {},
+          "outputs": {
+            "browser_changed": "true",
+            "docs_only": "false"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify complete change conservatively"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "publication-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out exact publication head separately"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify exact publication checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication-scan apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication inspection dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Scan exact candidate tree and complete reachable history"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "secret-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install checksum-verified secret scanner"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Scan fetched history without publishing matched values"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Verify exact historical exception and synthetic detection controls"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 0
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "RUN",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "RUN",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "RUN",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "RUN",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "RUN",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 1
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "RUN",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "RUN",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "RUN",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "RUN",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "RUN",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "postgres-integration",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install database test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Run existing PostgreSQL and pgvector acceptance"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "defense-eval",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out candidate and complete base history"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Write lexical stub and product retrieval scorecards plus main delta"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain scorecards, comparison and provenance even on failure"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "transcription",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install transcription test environment"
+            },
+            {
+              "state": "RUN",
+              "step": "Run bundled transcription suite"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "deployment-contract",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and publication scan"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Validate standard and alternate-auth Compose graphs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Verify real gateway strips forged authentication headers"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12 for restore acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install deployment-contract apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install encrypted restore drill dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Run both encrypted restore naming generations without skips"
+            },
+            {
+              "state": "RUN",
+              "step": "Exercise read-only installer diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "synthetic-browser",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install synthetic-browser apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install browser and media runtimes and contributor dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify browser runner failure contracts"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Run pinned synthetic intake and Report journeys"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain bounded synthetic diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            }
+          ],
+          "workflow": "quality-gates"
+        }
+      ],
+      "supplied": {
+        "corpus:fast:scope": {
+          "full_required": "true"
+        },
+        "network-smoke:network-smoke:scope": {
+          "run": "false"
+        },
+        "quality-gates:change-scope:scope": {
+          "browser_changed": "true",
+          "docs_only": "false"
+        }
+      }
+    },
+    "code": {
+      "plan": [
+        {
+          "job": "fast",
+          "matrix": {},
+          "outputs": {
+            "full_required": "true"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify full corpus changes conservatively"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "python -m pip install --disable-pip-version-check -e '.[dev]'"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "RUN",
+              "step": "Fast product corpus and historical failure proofs"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "full",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install corpus apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install independent CPU recognizer dependencies (not production service runtime)"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Stage and verify pinned OCR data"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Stage pinned ASR snapshot for independent recognition"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Product OCR and independent faster-whisper corpus (production service not exercised)"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "network-smoke",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Select smoke coverage"
+            },
+            {
+              "state": "RUN",
+              "step": "Report unrelated change"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install locked smoke harness dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Exercise isolated synthetic OIDC and direct-egress denials"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain content-free smoke summary"
+            }
+          ],
+          "workflow": "network-smoke"
+        },
+        {
+          "job": "change-scope",
+          "matrix": {},
+          "outputs": {
+            "browser_changed": "false",
+            "docs_only": "false"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify complete change conservatively"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "publication-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out exact publication head separately"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify exact publication checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication-scan apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication inspection dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Scan exact candidate tree and complete reachable history"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "secret-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install checksum-verified secret scanner"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Scan fetched history without publishing matched values"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Verify exact historical exception and synthetic detection controls"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 0
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "RUN",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "RUN",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "RUN",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "RUN",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "RUN",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 1
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "RUN",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "RUN",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "RUN",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "RUN",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "RUN",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "postgres-integration",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install database test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Run existing PostgreSQL and pgvector acceptance"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "defense-eval",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out candidate and complete base history"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Write lexical stub and product retrieval scorecards plus main delta"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain scorecards, comparison and provenance even on failure"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "transcription",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install media test dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install transcription test environment"
+            },
+            {
+              "state": "RUN",
+              "step": "Run bundled transcription suite"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "deployment-contract",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and publication scan"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Validate standard and alternate-auth Compose graphs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Verify real gateway strips forged authentication headers"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12 for restore acceptance"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install deployment-contract apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install encrypted restore drill dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Run both encrypted restore naming generations without skips"
+            },
+            {
+              "state": "RUN",
+              "step": "Exercise read-only installer diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "synthetic-browser",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "SKIP",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install synthetic-browser apt dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install browser and media runtimes and contributor dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify browser runner failure contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run pinned synthetic intake and Report journeys"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain bounded synthetic diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            }
+          ],
+          "workflow": "quality-gates"
+        }
+      ],
+      "supplied": {
+        "corpus:fast:scope": {
+          "full_required": "true"
+        },
+        "network-smoke:network-smoke:scope": {
+          "run": "false"
+        },
+        "quality-gates:change-scope:scope": {
+          "browser_changed": "false",
+          "docs_only": "false"
+        }
+      }
+    },
+    "docs": {
+      "plan": [
+        {
+          "job": "fast",
+          "matrix": {},
+          "outputs": {
+            "full_required": "false"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify full corpus changes conservatively"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "python -m pip install --disable-pip-version-check -e '.[dev]'"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "RUN",
+              "step": "Fast product corpus and historical failure proofs"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "full",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install corpus apt dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install independent CPU recognizer dependencies (not production service runtime)"
+            },
+            {
+              "state": "SKIP",
+              "step": "Stage and verify pinned OCR data"
+            },
+            {
+              "state": "SKIP",
+              "step": "Stage pinned ASR snapshot for independent recognition"
+            },
+            {
+              "state": "SKIP",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Product OCR and independent faster-whisper corpus (production service not exercised)"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            }
+          ],
+          "workflow": "corpus"
+        },
+        {
+          "job": "network-smoke",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Select smoke coverage"
+            },
+            {
+              "state": "RUN",
+              "step": "Report unrelated change"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install locked smoke harness dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Exercise isolated synthetic OIDC and direct-egress denials"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain content-free smoke summary"
+            }
+          ],
+          "workflow": "network-smoke"
+        },
+        {
+          "job": "change-scope",
+          "matrix": {},
+          "outputs": {
+            "browser_changed": "false",
+            "docs_only": "true"
+          },
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "RUN",
+              "step": "Classify complete change conservatively"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "publication-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out exact publication head separately"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify exact publication checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication-scan apt dependencies"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install publication inspection dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Scan exact candidate tree and complete reachable history"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "secret-scan",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install checksum-verified secret scanner"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Scan fetched history without publishing matched values"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Verify exact historical exception and synthetic detection controls"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 0
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "RUN",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "SKIP",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "SKIP",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "SKIP",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application-shards",
+          "matrix": {
+            "shard": 1
+          },
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "RUN",
+              "step": "Protect reviewed corpus inputs"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Install lightweight documentation test dependencies"
+            },
+            {
+              "state": "RUN",
+              "step": "Run documentation and scope contracts"
+            },
+            {
+              "state": "RUN",
+              "step": "Record documentation-only acceptance"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install document and media test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Bootstrap contributor environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify repeatable setup"
+            },
+            {
+              "state": "SKIP",
+              "step": "Compile Python sources"
+            },
+            {
+              "state": "SKIP",
+              "step": "Check unused imports and locals"
+            },
+            {
+              "state": "SKIP",
+              "step": "Enforce repository network contract"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select application test shard"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run application suite"
+            },
+            {
+              "state": "SKIP",
+              "step": "Summarize interrupted application tests"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify reviewed corpus inputs are unchanged"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain application test report"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "postgres-integration",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "SKIP",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install database test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run existing PostgreSQL and pgvector acceptance"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "defense-eval",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "HARNESS",
+              "step": "Check out candidate and complete base history"
+            },
+            {
+              "state": "RUN",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "HARNESS",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Write lexical stub and product retrieval scorecards plus main delta"
+            },
+            {
+              "state": "NOT RUN",
+              "step": "Retain scorecards, comparison and provenance even on failure"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "transcription",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/setup-python"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install media test dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install transcription test environment"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run bundled transcription suite"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "deployment-contract",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "Require successful classification and publication scan"
+            },
+            {
+              "state": "SKIP",
+              "step": "actions/checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Validate standard and alternate-auth Compose graphs"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify real gateway strips forged authentication headers"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select Python 3.12 for restore acceptance"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install deployment-contract apt dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install encrypted restore drill dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run both encrypted restore naming generations without skips"
+            },
+            {
+              "state": "SKIP",
+              "step": "Exercise read-only installer diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "synthetic-browser",
+          "matrix": {},
+          "outputs": {},
+          "state": "SKIP",
+          "steps": [
+            {
+              "state": "SKIP",
+              "step": "Require successful classification"
+            },
+            {
+              "state": "SKIP",
+              "step": "Check out integration candidate"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify integration checkout"
+            },
+            {
+              "state": "SKIP",
+              "step": "Select Python 3.12"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install synthetic-browser apt dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Install browser and media runtimes and contributor dependencies"
+            },
+            {
+              "state": "SKIP",
+              "step": "Verify browser runner failure contracts"
+            },
+            {
+              "state": "SKIP",
+              "step": "Run pinned synthetic intake and Report journeys"
+            },
+            {
+              "state": "SKIP",
+              "step": "Retain bounded synthetic diagnostics"
+            }
+          ],
+          "workflow": "quality-gates"
+        },
+        {
+          "job": "application",
+          "matrix": {},
+          "outputs": {},
+          "state": "RUN",
+          "steps": [
+            {
+              "state": "RUN",
+              "step": "Require successful classification and both application shards"
+            }
+          ],
+          "workflow": "quality-gates"
+        }
+      ],
+      "supplied": {
+        "corpus:fast:scope": {
+          "full_required": "false"
+        },
+        "network-smoke:network-smoke:scope": {
+          "run": "false"
+        },
+        "quality-gates:change-scope:scope": {
+          "browser_changed": "false",
+          "docs_only": "true"
+        }
+      }
+    }
+  }
+}

@@ -65,6 +65,31 @@ and `CASE_REVIEW_POSTGRES_TEST_DSN` pointing to a disposable synthetic PostgreSQ
 journeys run separately as described in [browser validation](BROWSER_ACCEPTANCE.md).
 No GPU or model weights are required for the contributor suites.
 
+## Local parity
+
+Run `python scripts/ci_parity.py <worktree> <out-file> <venv>` on a clean committed
+checkout. It discovers pull-request workflows, validates the complete plan before
+execution, runs their classification and shard-selection commands, and gives every
+job/matrix cell its own detached checkout and temporary directory. `--plan` inspects
+the graph without running checks; `--base-ref`, `--workflows` and `--jobs` select the
+comparison and jobs (including dependencies). Only `pull_request` is supported.
+Preflight checks the workflow Python version and declared dev dependencies without
+installing anything. Unknown syntax, keys or actions exit 5; missing prerequisites
+exit 2, failed checks 1, unlisted unavailable steps 3, and missing selections or no
+executed steps 4. Exit 0 with only expected NOT RUN steps reports **GREEN OVERALL**;
+each unavailable step remains visible in the report.
+
+Exact unavailable steps and evidence are recorded in
+[`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed
+in every report. HEAD differs from the hosted integration candidate; runner images,
+services, browser/model runtimes, installs/downloads and hosted timing remain gaps.
+[`test_ci_parity.py`](../tests/test_ci_parity.py), discovered by the existing
+application shards on non-documentation PRs, rejects missing/stale mappings and
+compares plans using real synthetic classification outputs. After reviewing drift,
+regenerate with `CI_PARITY_UPDATE_SNAPSHOT=1 python -m pytest -q tests/test_ci_parity.py::test_golden_plan`.
+Full per-step logs accompany the report; its final `SUMMARY` line is the launcher
+contract. The tool does not acquire the launcher's pytest lock.
+
 ## CI scope
 
 The [Quality workflow](../.github/workflows/quality-gates.yml) runs on PRs,
