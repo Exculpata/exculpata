@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .pilot_source_changes import SourceChanges, registry_documents
+
 from case_intelligence.legacy_names import (
     LEGACY_STEM,
 )
@@ -942,6 +944,7 @@ class PilotStore:
         if read_only:
             from .pilot_source_access import load_readonly_registry
             load_readonly_registry(self)
+            self.source_changes = SourceChanges(self)
             return
         self._ensure_writable()
         self.root.mkdir(parents=True, exist_ok=True)
@@ -961,6 +964,7 @@ class PilotStore:
                 raise RuntimeError("pilot storage directory is unsafe")
         self._reconcile_staging()
         self._load()
+        self.source_changes = SourceChanges(self)
 
     @contextmanager
     def mutation_guard(self):
@@ -1233,21 +1237,7 @@ class PilotStore:
             temporary.unlink(missing_ok=True)
 
     def _registry_documents(self) -> list[PilotDocument]:
-        if self._registry is None:
-            raise RuntimeError("pilot source registry is unavailable")
-        try:
-            rows = self._registry.execute(
-                "SELECT document_id,payload FROM source_document ORDER BY ordinal"
-            ).fetchall()
-            loaded: list[PilotDocument] = []
-            for document_id, encoded in rows:
-                document = self._decode_document(json.loads(encoded))
-                if document.document_id != document_id:
-                    raise ValueError
-                loaded.append(document)
-            return loaded
-        except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError) as exc:
-            raise RuntimeError("pilot source registry could not be loaded") from exc
+        return registry_documents(self)
 
     def _persist_registry_delta(
         self,
@@ -1466,8 +1456,11 @@ class PilotStore:
             raise RuntimeError("pilot source registry delta is invalid")
         self._persist_registry_delta(tuple(selected), removed)
         self.revision += 1
-        if self._on_change is not None:
-            self._on_change(PilotStoreChange(tuple(selected), removed))
+        try:
+            if self._on_change is not None:
+                self._on_change(PilotStoreChange(tuple(selected), removed))
+        finally:
+            self.source_changes.publish(selected, removed)
 
     @staticmethod
     def validate_name(name: str) -> tuple[str, str, str]:

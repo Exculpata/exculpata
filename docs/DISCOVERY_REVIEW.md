@@ -118,3 +118,41 @@ Each actual apply or remove appends an event with the signed-in member and UTC
 time. Repeating the current state stores nothing. The latest event decides the
 current state. Definitions and events are preserved in archives and deleted
 only with the matter.
+
+
+## Stored list index
+
+List and item reads advance a rebuildable matter-local projection. A GET attempts
+at most 128 steps, each limited to 256 logical row touches, including reads,
+parser records and mutations. Progress is persisted with a versioned phase
+cursor. There is no index background execution; use the pending notice's refresh
+link to continue the requested view. Progress survives interrupted requests.
+A new source-store epoch starts bounded reconciliation and reuses verified caches.
+
+Until every phase finishes, the list shows every source in document identity
+order, with exact indexed, pending and error coverage. The requested sort and
+filter remain pending. Unknown metadata reads "Metadata pending"; failed
+projections read "Metadata unavailable: indexing error". These labels are
+presentation state, separate from source values. Completed empty and absent
+fields retain their usual wording and parser diagnostics remain visible.
+
+Completed lists use authenticated, matter- and generation-scoped keyset pages.
+Changed sources or human work restart old navigation. Numeric deep links restart
+at the beginning. Literal substring filters examine one candidate window per
+page, including empty windows. Coverage counts distinguish examined candidates
+and matches from the unexamined population; reverse navigation does not count
+items twice. Selected columns and the heading title define the search fields.
+
+Identifier assignment and clearing still evaluate their complete requested order
+and filter through the existing reader, including items beyond displayed scan
+windows. The projection only reads identifiers and Coding events. The four index
+tables are excluded from preservation archives and deleted during matter purge;
+identifiers and review-code events retain their existing preservation treatment.
+
+The step budget bounds logical row work, not bytes, database-plan cost or elapsed
+time. Large individual values, source integrity reads and decoding, Coding change
+aggregates, and equal-prefix sort buckets can cost more. Cold source-store opening
+still loads the registry. Completion within one GET is guaranteed only when the
+stable target's work and preparation boundaries fit the documented 128-step
+work envelope. Large matters and heavily coded items may need further reads.
+The million-item 300 ms qualification is opt-in and separate from CI correctness.

@@ -120,7 +120,17 @@ def _migration_inventory(monkeypatch, unsupported):
     )
 
 
+def _discovery_index_execution(monkeypatch, unsupported):
+    from tests.test_discovery_review_boundaries import check_no_background_execution
+
+    handler = "except*" if unsupported else "except"
+    source = ("try:\n    pass\nexcept* Exception:\n    pass\n" if unsupported else
+              f"from threading import Lock as L\nlock = L()\ntry:\n    with lock:\n        pass\n{handler} Exception:\n    pass\n")
+    return check_no_background_execution(source, "synthetic.py")
+
+
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_discovery_index_execution, "stored_index.rebuild.Service.advance", id="discovery-index-execution"),
     pytest.param(_migration_inventory, "validate_inventory", id="migration-computed-name"),
     pytest.param(_attribution, "parse_attribution_address", id="publication-malformed-attribution-address"),
     pytest.param(_canary_frame, "classify_frame", id="canary-unsupported-frame"),

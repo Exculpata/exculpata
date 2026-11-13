@@ -16,13 +16,19 @@
       <button class="button button-secondary" type="submit">Filter</button>
       {% if listing.filtered %}<a href="{{ listing.clear_filter }}" data-review-navigation>Clear</a>{% endif %}
     </form>
-    <p class="discovery-review-count" role="status">{{ document_count }} {{ 'document' if document_count == 1 else 'documents' }} in this matter{% if listing.filtered %} · {{ listing.matching }} {{ 'matches' if listing.matching == 1 else 'match' }} the filter{% endif %}</p>
+    <p class="discovery-review-count" role="status">{{ document_count }} {{ 'document' if document_count == 1 else 'documents' }} in this matter{% if listing.filter_complete %} · {{ listing.matching }} {{ 'matches' if listing.matching == 1 else 'match' }} the filter{% endif %}</p>
     <button class="button button-secondary" type="button" data-review-chooser-open aria-controls="dr-chooser" aria-expanded="false">Columns and fields</button>
   </div>
+  {% if listing.notice %}<p class="dr-notice" role="status">{{ listing.notice }}</p>{% endif %}
+  <p class="dr-load-file" role="status">{% if listing.last_known %}Last-known coverage: {% endif %}Indexed {{ listing.indexed }} of {{ document_count }}; {{ listing.pending }} pending; {{ listing.errors }} errors.</p>
+  {% if not listing.complete %}<p class="dr-notice">Showing all items in source order while indexing; requested sort/filter is pending. <a href="{{ listing.refresh }}">Refresh requested view</a></p>{% endif %}
+  {% if listing.index_error %}<p class="dr-notice">{{ listing.index_error }}</p>{% endif %}
+  {% if listing.filtered and listing.complete %}<p class="dr-load-file">Filter covers {{ listing.coverage }} of {{ document_count }} items; {{ listing.matches_so_far }} matches found in that coverage. Current scan window: {{ listing.first_row }}–{{ listing.last_row }}.{% if not listing.filter_complete %} Continue through the remaining windows to complete the filter.{% endif %}</p>{% endif %}
+  {% if index_summary.report_total|default(0) > load_files|length %}<p class="dr-load-file">Showing {{ load_files|length }} of {{ index_summary.report_total }} load-file reports. Open each load-file item for its metadata.</p>{% endif %}
   {% for report in load_files %}{% if report.matched or report.problem %}
   <p class="dr-load-file{% if report.problem %} dr-notice-warning{% endif %}">Load file <strong>{{ report.name }}</strong>: {{ report.matched }} of {{ report.rows }} rows matched an item{% if report.extra %}; {{ report.extra }} more rows named an item that already had a row and were not used{% endif %}.{% if report.problem %} {{ report.problem }}{% endif %}</p>
   {% endif %}{% endfor %}
-  {% if document_count and not load_files|selectattr('matched')|list %}
+  {% if document_count and listing.complete and not index_summary.matched %}
   <p class="dr-load-file dr-muted">No load file is matched to these items, so Bates, custodian and other load-file fields are empty. Add the production's CSV load file to this matter with its files and those fields fill in.</p>
   {% endif %}
   {% if listing.hidden %}<p class="dr-load-file dr-muted">Hidden because no item has a value: {{ listing.hidden|join(', ') }}. <a href="{{ listing.show_all }}" data-review-navigation>Show anyway</a></p>{% endif %}
@@ -39,19 +45,19 @@
           </tr></thead>
           <tbody>
             {% for row in listing.rows %}
-            <tr data-review-row data-token="{{ row.item.token }}" data-position-label="{{ listing.first_row + loop.index0 }} of {{ listing.matching }}" data-url="{{ row.url }}" data-fragment="{{ base_url }}/items/{{ row.item.token }}"{% if row.selected %} class="selected" aria-current="true"{% endif %}>
+            <tr data-review-row data-token="{{ row.item.token }}" data-position-label="{% if listing.positions_known %}{{ listing.first_row + loop.index0 }} of {{ listing.matching }}{% endif %}" data-url="{{ row.url }}" data-fragment="{{ base_url }}/items/{{ row.item.token }}"{% if row.selected %} class="selected" aria-current="true"{% endif %}>
               {% for value in row.cells %}<td class="dr-align-{{ listing.columns[loop.index0].field.align }}{% if value.state != 'value' %} dr-cell-{{ value.state }}{% endif %}"{% if value.note %} title="{{ value.note }}"{% endif %}>{% if loop.first %}<a href="{{ row.url }}" data-review-navigation title="Open {{ row.heading.title }}">{{ value.value or '—' }}</a>{% elif value.state == 'absent' %}<span aria-label="{{ value.note }}">–</span>{% else %}{{ value.value }}{% endif %}</td>{% endfor %}
             </tr>
             {% endfor %}
           </tbody>
         </table>
-        {% if not listing.rows %}<p class="dr-state">No documents match this filter. <a href="{{ listing.clear_filter }}" data-review-navigation>Clear the filter</a></p>{% endif %}
+        {% if not listing.rows %}<p class="dr-state">{% if listing.filter_complete %}No documents match this filter.{% else %}No matches in this scan window; continue to examine the remaining items.{% endif %} <a href="{{ listing.clear_filter }}" data-review-navigation>Clear the filter</a></p>{% endif %}
       </div>
       <footer class="dr-list-footer">
-        <span>{% if listing.rows %}{{ listing.first_row }}–{{ listing.last_row }} of {{ listing.matching }}{% endif %}</span>
+        <span>{% if listing.rows and not listing.filtered %}{{ listing.first_row }}–{{ listing.last_row }} of {{ listing.matching }}{% endif %}</span>
         <nav aria-label="List pages">
           {% if listing.previous_page %}<a href="{{ listing.previous_page }}" data-review-navigation data-review-page="previous">Previous page</a>{% endif %}
-          <span>Page {{ listing.page }} of {{ listing.pages }}</span>
+          <span>Scan window {{ listing.page }}{% if not listing.filtered %} of {{ listing.pages }}{% endif %}</span>
           {% if listing.next_page %}<a href="{{ listing.next_page }}" data-review-navigation data-review-page="next">Next page</a>{% endif %}
         </nav>
       </footer>
@@ -115,7 +121,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% for key in ('q', 'sort', 'dir') %}<input type="hidden" name="{{ key }}" value="{{ listing.state[key] }}">{% endfor %}
       <fieldset><legend>Team identifiers</legend>
-        <p class="dr-muted">Number items that arrived without an identifier, in the order the list shows now{% if listing.filtered %} ({{ listing.matching }} match the filter){% endif %}. A team identifier is your own label: it is shown as Team ID, never as produced Bates, is not written onto the document, and no two items in a matter share one.</p>
+        <p class="dr-muted">Assign and remove evaluates the full requested filter and sort, including matches beyond displayed scan windows. A team identifier is your own label: it is shown as Team ID, never as produced Bates, is not written onto the document, and no two items in a matter share one.</p>
         <div class="dr-identifier-inputs">
           <label>Prefix <input type="text" name="prefix" maxlength="20" pattern="[A-Za-z][A-Za-z0-9_\-]{0,19}" placeholder="DEF" autocomplete="off"></label>
           <label>Start at <input type="number" name="start" value="1" min="0"></label>

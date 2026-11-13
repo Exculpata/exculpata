@@ -50,6 +50,7 @@
       {% if panel.fields.load_file %}
       <p class="dr-muted">{{ panel.fields.load_file_source }}</p>
       <dl>{% for row in panel.fields.load_file %}<div data-field-row><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>{% endfor %}</dl>
+      {% elif panel.fields.load_file_state %}<p class="dr-muted">{{ panel.fields.load_file_state }}</p>
       {% else %}<p class="dr-muted">No load-file row is attached to this item.</p>{% endif %}
     </details>
     {% if panel.fields.more %}<details class="dr-field-more"><summary>More fields</summary>{{ field_groups(panel.fields.more) }}</details>{% endif %}

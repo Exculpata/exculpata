@@ -762,3 +762,65 @@ def test_unicode_bates_metadata_does_not_break_default_list_sort(production):
         'PATH,BEGBATES\nunicode.txt,²\n'.encode()}, key='e')
     page = client.get(f'/matters/{matter.slug}/production')
     assert page.status_code == 200 and '²' in page.text
+
+
+@pytest.mark.parametrize('status,note', [('pending', 'Metadata pending'), ('error', 'Metadata unavailable: indexing error')])
+def test_direct_item_pending_metadata_is_not_absence(production, monkeypatch, status, note):
+    _pending_fields_surface(production, monkeypatch, status, note, embedded=False)
+
+
+@pytest.mark.parametrize('status,note', [('pending', 'Metadata pending'), ('error', 'Metadata unavailable: indexing error')])
+def test_embedded_panel_pending_metadata_is_not_absence(production, monkeypatch, status, note):
+    _pending_fields_surface(production, monkeypatch, status, note, embedded=True)
+
+
+def _pending_fields_surface(production, monkeypatch, status, note, *, embedded):
+    from case_intelligence.modules.discovery_review.stored_index.rebuild import Service
+    from case_intelligence.modules.discovery_review.stored_index.query import lookup
+    from tests.test_discovery_review_index import service_for
+    client, bench, matter = production
+    def pending(service, job, max_steps):
+        job.error = note if status == 'error' else ''
+        return 0
+    monkeypatch.setattr(Service, 'advance', pending)
+    base = f'/matters/{matter.slug}/production'
+    token = token_for(bench, matter, 'memo.txt')
+    client.post(base + '/view', data={'columns': ['name'], 'item_fields': ['bates_begin', 'coding', 'lf:Unknown synthetic header']})
+    url = base + '?view=fields&doc=' + token if embedded else base + '/items/' + token + '?view=fields'
+    page = client.get(url)
+    assert page.status_code == 200 and note in page.text
+    assert 'No value:' not in page.text and '(absent)' not in page.text
+    assert 'No load-file row is attached to this item.' not in page.text
+    service = service_for(bench)
+    view = service.current(matter.matter_id, bench.source_store(matter), fields.load_definition())
+    item = lookup(view, token)
+    assert note not in str(item.values) and note not in str(item.load_file)
+    assert item.metadata_state == status
+
+
+def test_completed_item_keeps_confirmed_absence_text(production):
+    client, bench, matter = production
+    base = f'/matters/{matter.slug}/production'
+    token = token_for(bench, matter, 'memo.txt')
+    client.post(base + '/view', data={'columns': ['name'], 'item_fields': ['coding', 'lf:Unknown synthetic header']})
+    for url in (base + '?view=fields&doc=' + token, base + '/items/' + token + '?view=fields'):
+        page = client.get(url)
+        assert page.status_code == 200
+        assert 'No value:' in page.text and '(absent)' in page.text
+        assert 'No load-file row is attached to this item.' in page.text
+        assert 'Metadata pending' not in page.text
+
+
+def test_pending_notice_adds_requested_query_refresh_link(production, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+    from case_intelligence.modules.discovery_review.stored_index.rebuild import Service
+    client, bench, matter = production
+    monkeypatch.setattr(Service, 'advance', lambda self, job, max_steps: 0)
+    token = token_for(bench, matter, 'memo.txt')
+    query = {'q': 'literal %_', 'sort': 'name', 'dir': 'desc', 'doc': token, 'view': 'fields', 'unit': '2', 'all_columns': '1'}
+    page = client.get(f'/matters/{matter.slug}/production', params=query)
+    link = unescape(re.search(r'<a href="([^"]+)">Refresh requested view</a>', page.text)[1])
+    parsed = urlsplit(link)
+    assert not parsed.scheme and not parsed.netloc
+    assert parse_qs(parsed.query) == {key: [value] for key, value in query.items()}
+    assert 'http-equiv="refresh"' not in page.text.lower()

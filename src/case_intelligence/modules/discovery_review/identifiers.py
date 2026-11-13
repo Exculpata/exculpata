@@ -5,6 +5,8 @@ Bates numbers, never overwrites one, and is unique within a matter.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -15,6 +17,7 @@ IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,19}[0-9]{1,12}")
 PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,19}")
 MAX_DIGITS = 12
 MAX_BATCH = 250_000
+_READ_DOCUMENTS_MAX = 500
 
 
 class IdentifierConflict(ValueError):
@@ -47,6 +50,17 @@ class IdentifierRepository:
             return {row[0]: row[1] for row in self.db.connection.execute(
                 "SELECT document_id,identifier FROM workbench_discovery_identifier WHERE matter_id=?",
                 (matter_id,))}
+
+    def read_documents(self, matter_id: str, document_ids: Sequence[str]) -> dict[str, str]:
+        if len(document_ids) > _READ_DOCUMENTS_MAX:
+            raise ValueError("identifier read accepts at most 500 document ids")
+        if not document_ids:
+            return {}
+        with self.db.lock:
+            marks = ",".join("?" for _ in document_ids)
+            return {row[0]: row[1] for row in self.db.connection.execute(
+                "SELECT document_id,identifier FROM workbench_discovery_identifier "
+                f"WHERE matter_id=? AND document_id IN ({marks})", (matter_id, *document_ids))}
 
     def assign(self, matter_id: str, actor_id: str, pairs) -> int:
         """Record every pair or none; an identifier already in use refuses the batch."""
