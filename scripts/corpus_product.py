@@ -147,6 +147,7 @@ def _citation(bench, matter, citation, aliases):
                 if unit.number == value["unit_number"])
     excerpt = unit.text
     valid = (canonical is not None and value.get("chunk_id") == canonical["chunk_id"]
+             and value.get("source_name") == document.display_name
              and document.state == "ready" and document.version_id == value["source_version_id"]
              and unit.excerpt_digest == value["excerpt_digest"]
              and all(field in value and type(value[field]) is type(locator)

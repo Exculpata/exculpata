@@ -158,8 +158,10 @@ def test_observation_rejects_persisted_citation_locator_corruption(
 @pytest.mark.parametrize('corruption', [
     'answer-kind', 'citation-locator', 'chunk-wrong', 'chunk-empty',
     'chunk-missing', 'chunk-null', 'chunk-nonstring',
+    'source-name-missing', 'source-name-empty', 'source-name-wrong',
 ])
 def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corruption):
+    original_ask = product.CaseIntelligenceWorkbench.ask
     original_answer = product.CaseIntelligenceWorkbench._answer_payload
     original_citation = product.CaseIntelligenceWorkbench._saved_answer_citation_payload
     modified = []
@@ -171,9 +173,15 @@ def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corrupti
         return payload
 
     def changed_citation(citation):
-        payload = original_citation(citation)
+        payload = dict(citation) if isinstance(citation, dict) else original_citation(citation)
         if corruption == 'citation-locator':
             payload['line_start'], payload['line_end'] = 999999, 1000000
+        elif corruption == 'source-name-missing':
+            del payload['source_name']
+        elif corruption == 'source-name-empty':
+            payload['source_name'] = ''
+        elif corruption == 'source-name-wrong':
+            payload['source_name'] = 'Synthetic wrong source'
         elif corruption == 'chunk-missing':
             del payload['chunk_id']
         else:
@@ -184,7 +192,15 @@ def test_actual_corpus_rejects_corrupted_persisted_answers(monkeypatch, corrupti
         modified.append(payload)
         return payload
 
-    if corruption == 'answer-kind':
+    def changed_saved_answer(bench, *args, **kwargs):
+        answer = original_ask(bench, *args, **kwargs)
+        for claim in answer.payload['claims']:
+            claim['citations'] = [changed_citation(citation) for citation in claim['citations']]
+        return answer
+
+    if corruption in {'source-name-empty', 'source-name-wrong'}:
+        monkeypatch.setattr(product.CaseIntelligenceWorkbench, 'ask', changed_saved_answer)
+    elif corruption == 'answer-kind':
         monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_answer_payload', staticmethod(changed_answer))
     else:
         monkeypatch.setattr(product.CaseIntelligenceWorkbench, '_saved_answer_citation_payload',
