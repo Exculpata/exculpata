@@ -218,6 +218,36 @@ printf 'value=cell\\n' >> "$GITHUB_OUTPUT"
         assert not Path(line.split('checkout=')[1].split(' RUNNER_TEMP=')[0]).exists()
 
 
+@pytest.mark.parametrize('exit_code', [0, 1])
+def test_cell_storage_belongs_to_report_directory_and_is_reclaimed(tmp_path, exit_code):
+    import subprocess
+
+    command = '''printf '%s\\n' "$GITHUB_WORKSPACE" "$RUNNER_TEMP" "$TMPDIR" \
+"$GITHUB_EVENT_PATH" "$GITHUB_OUTPUT" "$GITHUB_ENV" "$GITHUB_PATH" "$GITHUB_STEP_SUMMARY"
+mkdir "$RUNNER_TEMP/application-workers"
+exit ''' + str(exit_code)
+    data = document([{'run': command}],
+                    strategy={'fail-fast': False, 'matrix': {'cell': [0, 1]}})
+    root, _ = repository(tmp_path, data)
+    output = tmp_path / 'reports'
+    output.mkdir()
+    result, report = cli(root, output)
+    assert result.returncode == exit_code, report
+    assert f'ran=2 failed={2 * exit_code}' in report
+    logs = sorted(output.glob('parity-*.log'))
+    assert len(logs) == 2
+    for log in logs:
+        paths = [Path(line) for line in log.read_text().splitlines()]
+        assert len(paths) == 8
+        assert all(path.is_relative_to(output) for path in paths)
+        assert paths[1] == paths[2]
+        assert all(not path.exists() for path in paths)
+        assert not paths[0].parent.exists()
+    assert not list(output.glob('ci-parity-*'))
+    registered = subprocess.check_output(['git', 'worktree', 'list', '--porcelain'], cwd=root, text=True)
+    assert registered.count('worktree ') == 1
+
+
 def test_outputs_env_path_and_real_needs_plumbing(tmp_path):
     data = document([
         {'id': 'first', 'run': '''printf 'value<<END\\nfirst\\nsecond\\nEND\\n' >> "$GITHUB_OUTPUT"
@@ -589,7 +619,7 @@ def test_isolated_cell_cleans_after_exception(tmp_path):
 
     root, head = repository(tmp_path, document())
     with pytest.raises(RuntimeError, match='synthetic'):
-        with isolated_cell(root, head) as (tree, temporary):
+        with isolated_cell(root, head, tmp_path) as (tree, temporary):
             raise RuntimeError('synthetic interruption')
     assert not tree.exists() and not temporary.exists()
     registered = subprocess.check_output(['git', 'worktree', 'list', '--porcelain'], cwd=root, text=True)

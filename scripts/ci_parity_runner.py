@@ -26,8 +26,8 @@ def git(root, *args):
 
 
 @contextmanager
-def isolated_cell(source, head):
-    with tempfile.TemporaryDirectory(prefix='ci-parity-') as directory:
+def isolated_cell(source, head, output_directory):
+    with tempfile.TemporaryDirectory(prefix='ci-parity-', dir=output_directory) as directory:
         home = Path(directory)
         tree, temporary = home / 'checkout', home / 'temp'
         temporary.mkdir()
@@ -44,6 +44,7 @@ def isolated_cell(source, head):
                     if not path.is_symlink():
                         path.chmod(path.stat().st_mode | 0o200)
                 git(source, 'worktree', 'remove', '--force', str(tree))
+                git(source, 'worktree', 'prune')
 
 
 def file_commands(path):
@@ -158,7 +159,7 @@ class Runner:
 
     def cell(self, workflow, job, matrix, context, ancestor_failure=False):
         tag = f'{workflow.name}:{job.name}' + (f'[{json.dumps(matrix, sort_keys=True)}]' if matrix else '')
-        with isolated_cell(self.source, self.head) as (tree, temporary):
+        with isolated_cell(self.source, self.head, self.log_directory) as (tree, temporary):
             self.emit(f'CELL {tag} checkout={tree} RUNNER_TEMP={temporary}')
             event_path = temporary / 'event.json'
             event_path.write_text(json.dumps(context['github']['event']))
