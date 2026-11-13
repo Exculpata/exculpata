@@ -108,6 +108,19 @@ def _canary_frame(monkeypatch, unsupported):
     return []
 
 
+def _migration_inventory(monkeypatch, unsupported):
+    from tests.test_migration_inventory import MIRRORS, validate_inventory
+
+    name = '0001_synthetic.sql'
+    expression = "'migrations/sqlite/' + name" if unsupported else repr('migrations/sqlite/' + name)
+    source = f"resources.files('case_intelligence').joinpath({expression}).read_text()"
+    return validate_inventory(
+        {directory: {name: b'SELECT 1;'} for directory in MIRRORS},
+        {'synthetic.py': source},
+        {'case_intelligence': ['migrations/sqlite/*.sql']},
+    )
+
+
 def _spec_rule(monkeypatch, unsupported):
     from tools.check_spec import Report, Spec, check_import_boundary
 
@@ -129,6 +142,7 @@ def _spec_rule(monkeypatch, unsupported):
 
 
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_migration_inventory, "validate_inventory", id="migration-computed-name"),
     pytest.param(_spec_rule, "load_forbidden", id="spec-rule-unsupported-comparison"),
     pytest.param(_attribution, "parse_attribution_address", id="publication-malformed-attribution-address"),
     pytest.param(_canary_frame, "classify_frame", id="canary-unsupported-frame"),
