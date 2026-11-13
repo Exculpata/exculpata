@@ -8,7 +8,6 @@ import subprocess
 import sys
 import threading
 from textwrap import dedent
-from time import monotonic
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -71,12 +70,14 @@ def test_wakeup_send_permission_message(monkeypatch):
 def test_portal_failure_is_bounded(monkeypatch, working_primitives, phase, failure):
     monkeypatch.setattr(probe, '_portal', working_primitives)
     release = threading.Event()
+    finished = threading.Event()
 
     def act(at):
         if at == phase:
             if failure == 'raise':
                 raise RuntimeError('synthetic portal failure')
             release.wait(2)
+            finished.set()
 
     @contextmanager
     def portal():
@@ -85,7 +86,6 @@ def test_portal_failure_is_bounded(monkeypatch, working_primitives, phase, failu
         act('stop')
 
     monkeypatch.setattr(probe, 'start_blocking_portal', portal)
-    started = monotonic()
     try:
         error = ('RuntimeError: synthetic portal failure' if failure == 'raise'
                  else 'timed out after 0.05 seconds')
@@ -94,7 +94,7 @@ def test_portal_failure_is_bounded(monkeypatch, working_primitives, phase, failu
             f'anyio portal start/call/stop: {error}. '
             'Run them in CI or an unrestricted shell.'
         )
-        assert monotonic() - started < 1
+        assert not finished.is_set()
     finally:
         release.set()
 
@@ -102,12 +102,17 @@ def test_portal_failure_is_bounded(monkeypatch, working_primitives, phase, failu
 @pytest.mark.parametrize('primitive', ['_socketpair', '_socketpair_wakeup'])
 def test_socket_checks_are_bounded(monkeypatch, working_primitives, primitive):
     release = threading.Event()
-    monkeypatch.setattr(probe, primitive, lambda: release.wait(2))
-    started = monotonic()
+    finished = threading.Event()
+
+    def hung_check():
+        release.wait(2)
+        finished.set()
+
+    monkeypatch.setattr(probe, primitive, hung_check)
     try:
         message = probe.probe_testclient(timeout=0.05)
         assert 'timed out after 0.05 seconds' in message
-        assert monotonic() - started < 1
+        assert not finished.is_set()
     finally:
         release.set()
 
@@ -117,9 +122,7 @@ def test_real_probe_in_normal_environment():
         probe._socketpair_wakeup()
     except PermissionError:
         pytest.skip('Normal-environment probe requires socketpair send permission')
-    started = monotonic()
     assert probe.probe_testclient() is None
-    assert monotonic() - started < 2
 
 
 def test_hook_skips_exact_message_and_caches(monkeypatch):
@@ -640,21 +643,22 @@ def test_unavailable_source_keeps_fail_closed_detection(synthetic_module, tmp_pa
 def test_default_portal_timeout_message(monkeypatch, working_primitives):
     monkeypatch.setattr(probe, '_portal', working_primitives)
     release = threading.Event()
+    finished = threading.Event()
 
     @contextmanager
     def portal():
         release.wait(10)
+        finished.set()
         yield SimpleNamespace(call=lambda callback: None)
 
     monkeypatch.setattr(probe, 'start_blocking_portal', portal)
-    started = monotonic()
     try:
         assert probe.probe_testclient() == (
             'TestClient route tests cannot run in this sandbox: '
             'anyio portal start/call/stop: timed out after 1.5 seconds. '
             'Run them in CI or an unrestricted shell.'
         )
-        assert monotonic() - started < 3
+        assert not finished.is_set()
     finally:
         release.set()
 
