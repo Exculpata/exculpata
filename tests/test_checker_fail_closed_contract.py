@@ -8,6 +8,7 @@ import json
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 from textwrap import dedent
 
 import pytest
@@ -107,7 +108,28 @@ def _canary_frame(monkeypatch, unsupported):
     return []
 
 
+def _spec_rule(monkeypatch, unsupported):
+    from tools.check_spec import Report, Spec, check_import_boundary
+
+    comparison = "!=" if unsupported else "=="
+    with tempfile.TemporaryDirectory() as directory:
+        repo = Path(directory)
+        snapshots = repo / "tests/snapshots"
+        snapshots.mkdir(parents=True)
+        (snapshots / "import_layers.json").write_text('{}')
+        (repo / "tests/test_boundary.py").write_text(
+            '# import_layers.json\ndef _forbidden(source, target, layers):\n'
+            f'    return source {comparison} target\n'
+        )
+        note = repo / "note.md"
+        note.write_text('# Synthetic rule check\n')
+        report = Report()
+        check_import_boundary(Spec.load(note), repo, report)
+        return [line for line in report.lines if line.startswith(("FLAG", "UNCHECKED"))]
+
+
 @pytest.mark.parametrize("check,helper", [
+    pytest.param(_spec_rule, "load_forbidden", id="spec-rule-unsupported-comparison"),
     pytest.param(_attribution, "parse_attribution_address", id="publication-malformed-attribution-address"),
     pytest.param(_canary_frame, "classify_frame", id="canary-unsupported-frame"),
     pytest.param(_law_gate, "run", id="law-gate-invalid-sha"),
