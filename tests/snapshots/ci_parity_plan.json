@@ -193,7 +193,7 @@
         "category": "docker",
         "job": "deployment-contract",
         "reason": "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities.",
-        "step": "Validate standard and Kerberos Compose graphs",
+        "step": "Validate standard and alternate-auth Compose graphs",
         "workflow": "quality-gates"
       },
       {
@@ -1048,7 +1048,7 @@
                   "run": "b4d103939243e967f395288c5a43ba0190659e12a40e7cbd4d645c1bce120b41"
                 },
                 {
-                  "name": "Validate standard and Kerberos Compose graphs",
+                  "name": "Validate standard and alternate-auth Compose graphs",
                   "run": "b957ff35b0465eb34e7c622f95aef5defd3bc20e0d4260382282f9ce8c8d6dc4"
                 },
                 {
@@ -1868,10 +1868,10 @@
                   "category": "docker",
                   "job": "deployment-contract",
                   "reason": "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities.",
-                  "step": "Validate standard and Kerberos Compose graphs",
+                  "step": "Validate standard and alternate-auth Compose graphs",
                   "workflow": "quality-gates"
                 },
-                "name": "Validate standard and Kerberos Compose graphs",
+                "name": "Validate standard and alternate-auth Compose graphs",
                 "unavailable": [
                   "docker",
                   "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities."
@@ -2574,7 +2574,7 @@
             },
             {
               "state": "NOT RUN",
-              "step": "Validate standard and Kerberos Compose graphs"
+              "step": "Validate standard and alternate-auth Compose graphs"
             },
             {
               "state": "NOT RUN",
@@ -3169,7 +3169,7 @@
             },
             {
               "state": "NOT RUN",
-              "step": "Validate standard and Kerberos Compose graphs"
+              "step": "Validate standard and alternate-auth Compose graphs"
             },
             {
               "state": "NOT RUN",
@@ -3764,7 +3764,7 @@
             },
             {
               "state": "SKIP",
-              "step": "Validate standard and Kerberos Compose graphs"
+              "step": "Validate standard and alternate-auth Compose graphs"
             },
             {
               "state": "SKIP",

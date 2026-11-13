@@ -178,7 +178,7 @@ reason = "The workflow installs transcription dev extras; local checks reuse the
 [[skip]]
 workflow = "quality-gates"
 job = "deployment-contract"
-step = "Validate standard and Kerberos Compose graphs"
+step = "Validate standard and alternate-auth Compose graphs"
 category = "docker"
 reason = "compose-check invokes Docker Compose; Docker execution is outside local parity capabilities."
 
