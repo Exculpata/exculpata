@@ -76,7 +76,8 @@ comparison and jobs (including dependencies). Only `pull_request` is supported.
 Preflight checks the workflow Python version and declared dev dependencies without
 installing anything. Unknown syntax, keys or actions exit 5; missing prerequisites
 exit 2, failed checks 1, unlisted unavailable steps 3, and missing selections or no
-executed steps 4. Exit 0 with NOT RUN steps is **not green overall**.
+executed steps 4. Exit 0 with only expected NOT RUN steps reports **GREEN OVERALL**;
+each unavailable step remains visible in the report.
 
 Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed

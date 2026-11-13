@@ -462,14 +462,35 @@ def test_unmapped_late_step_executes_nothing(tmp_path):
     assert not list(tmp_path.glob('parity-*.log'))
 
 
-def test_expected_skip_is_visible_and_never_called_green(tmp_path):
+def test_expected_skip_is_visible_and_green_overall(tmp_path):
     root, _ = repository(tmp_path, document([{'run': 'true'}, {'name': 'Install synthetic', 'run': 'pip install synthetic'}]))
     write_skips(root, [skip_entry()])
     git_commit(root)
     result, report = cli(root, tmp_path)
     assert result.returncode == 0, report
-    assert 'NOT GREEN OVERALL' in report and 'not_run=1' in report
+    assert 'NOT GREEN' not in report
+    assert report.splitlines()[-1] == (
+        'SUMMARY ran=1 failed=0 not_run=1 not_run_unexpected=0 RESULT: '
+        'ran steps passed; GREEN OVERALL: every NOT RUN step is on the expected-skip list above'
+    )
     assert 'EXPECTED NOT RUN: synthetic:build:Install synthetic' in report
+
+
+@pytest.mark.parametrize(('listed', 'command', 'exit_code', 'result_message'), [
+    (False, 'true', 3, 'NOT GREEN, UNEXPECTED NOT RUN STEPS'),
+    (True, 'false', 1, 'NOT GREEN, FAILURES'),
+])
+def test_unlisted_skip_or_failure_is_not_green_overall(tmp_path, listed, command, exit_code, result_message):
+    root, _ = repository(tmp_path, document([
+        {'run': command}, {'name': 'Install synthetic', 'run': 'pip install synthetic'},
+    ]))
+    if listed:
+        write_skips(root, [skip_entry()])
+        git_commit(root)
+    result, report = cli(root, tmp_path)
+    assert result.returncode == exit_code, report
+    assert 'GREEN OVERALL' not in report
+    assert report.splitlines()[-1].endswith('RESULT: ' + result_message)
 
 
 def test_job_selection_includes_needs(tmp_path):
