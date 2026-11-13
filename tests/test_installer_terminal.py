@@ -464,8 +464,9 @@ def test_width_uses_real_stdout_instead_of_stale_columns(monkeypatch, tty):
     monkeypatch.setattr(sys, "stdout", tty)
     monkeypatch.setattr(tty, "fileno", lambda: 123)
     monkeypatch.setenv("COLUMNS", "200")
-    monkeypatch.setattr(terminal.os, "get_terminal_size", lambda fd: os.terminal_size((40, 24)) if fd == 123 else pytest.fail("wrong fd"))
-    assert terminal.terminal_width() == 40
+    with monkeypatch.context() as width_probe:
+        width_probe.setattr(terminal.os, "get_terminal_size", lambda fd: os.terminal_size((40, 24)) if fd == 123 else pytest.fail("wrong fd"))
+        assert terminal.terminal_width() == 40
 
 
 def test_large_child_output_has_no_pipe_deadlock_and_bounded_tail(synthetic_docker, monkeypatch, capsys):

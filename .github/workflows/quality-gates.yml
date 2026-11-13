@@ -449,7 +449,7 @@ jobs:
         env:
           EXPECTED_INTEGRATION_SHA: ${{ github.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_INTEGRATION_SHA"
-      - name: Validate standard and Kerberos Compose graphs
+      - name: Validate standard and alternate-auth Compose graphs
         run: ./scripts/compose-check.sh
       - name: Verify real gateway strips forged authentication headers
         run: PYTHONPATH=src python3 -m unittest tests.test_gateway_nginx -v
