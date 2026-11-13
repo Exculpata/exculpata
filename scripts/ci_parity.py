@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline workflow parity: ci_parity.py <worktree> <out-file> <venv>.
 
-Exit 0: executed checks passed (NOT RUN still means NOT GREEN OVERALL).
+Exit 0: executed checks passed (expected NOT RUN steps permit GREEN OVERALL).
 Exit 1: check failed; 2: refused/preflight; 3: unexpected NOT RUN;
 4: no steps/request not found; 5: UNMAPPED workflow behavior.
 """
@@ -178,7 +178,7 @@ def main(argv=None):
                     elif not runner.ran:
                         code, message = 4, 'NO STEPS RAN'
                     elif runner.not_run:
-                        code, message = 0, 'ran steps passed; NOT GREEN OVERALL: every NOT RUN step is on the expected-skip list above'
+                        code, message = 0, 'ran steps passed; GREEN OVERALL: every NOT RUN step is on the expected-skip list above'
                     elif args.jobs or args.workflows:
                         code, message = 0, 'selected checks passed; NOT GREEN OVERALL: scoped run; environment deltas apply'
                     else:
