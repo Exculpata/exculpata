@@ -1150,7 +1150,7 @@
                     "CASE_REVIEW_POSTGRES_CLIENT_PREFIX": "docker exec -i ${{ job.services.postgres.id }}"
                   },
                   "name": "Run existing PostgreSQL and pgvector acceptance",
-                  "run": "60c63c2f70053bd1378b36c643e68cb312a73d94ab29980051d726f627726e76"
+                  "run": "65979243bb22284ede211e66009c75028ae1684da42af6a1192bdbbc5bf36393"
                 }
               ],
               "timeout-minutes": 15
