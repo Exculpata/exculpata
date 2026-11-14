@@ -11,12 +11,12 @@ Outcome: reviewers can upload files or browser-selected folders, see truthful sa
 - **RULED (Exculpata 8:25 PM ET):** Administrator wording stays neutral and policy-aware; exact proposed text appears in A4.
 - **RULED (Exculpata 8:25 PM ET):** Place the PostgreSQL regression in `tests/test_review_bench_v2_postgres.py`, already selected by Makefile and CI.
 - **RULED (Exculpata 8:25 PM ET):** Attribute the separate Codex high review to an Exculpata project decision, not `QUALITY_GATES.md`.
-- **RULED (Exculpata 8:25 PM ET):** Parent: `codex/discovery-review-stored-index-114-s2`; branch: `codex/discovery-intake-load-files-114-s3a`; migration: **none**.
+- **RULED (Exculpata 8:25 PM ET):** Parent: `codex/discovery-review-stored-index-114-s2`; branch: `codex/discovery-intake-load-files-114-s3a`; migration: originally **none**, superseded by the PostgreSQL correction below.
 - **RULED (Exculpata 8:25 PM ET):** Diff size is not a blocker; all builder scratch and browser output stays inside its worktree.
 - **RULED (Exculpata 9:01 PM ET):** Persist a short actionable rejection reason through the unchanged 240-character bound; display the complete explanation in browser errors and receipts. D12 specifies a tested construction ceiling of 222 characters.
 - Stack: `s1 -> s2 -> s3a -> s3 -> 4a -> s4 -> 5a -> 5b`.
 - PR split: **single intake PR**, separate from slice 3; admission, serving denial and truthful readiness stay together.
-- Fence: **4 new, 13 modified files**, unchanged; admission package, upload owner, readiness owners, intake/admin UI, documentation, tests and import inventory.
+- Original fence: **4 new, 13 modified files**, extended only by the PostgreSQL correction below; admission package, upload owner, readiness owners, intake/admin UI, documentation, tests and import inventory.
 - Headline proofs: baseline DAT rejection; both upload paths; malicious/oversized inputs; scanner dispatch; GET/HEAD/Range denial; terminal rejection/reopen/full explanation; completion/restart coverage; real PostgreSQL zero-unit projection.
 - Known limits: configured document size limit; bounded grammar/encoding subset; no metadata import, previews, registered-folder expansion or ZIP intake.
 - Open: no unresolved maintainer question; unruled implementation recommendations D1–D8, D10 and D12 remain reviewable in A10.
@@ -190,7 +190,7 @@ Document these limits in `docs/DISCOVERY_REVIEW.md`; discovery adapter/field JSO
 Use `UploadProblem`: `workbench.upload_sources` returns its message/status and rolls back new files; `finalize_uploaded_source` returns JSON `message`, records the separate bounded reason specified in D12 and attempts incoming cleanup.
 Verify browser selection, preflight and durable receipt outcomes all retain rejection reasons, with full display wording reconstructed after reopen.
 
-No new table/column means the four lifecycle obligations do not apply: migration plus byte-identical SQLite mirror; hard-coded registration; purge DELETE; archive-schema row.
+No new table/column requires a SQLite migration, hard-coded SQLite registration, purge DELETE or archive-schema row. PostgreSQL still requires the constraint-only migration below.
 Verified example: packaged `0046_discovery_review_identifier.sql` matches `migrations/sqlite/0046_discovery_review_identifier.sql`; registration is at `workspace_store.py:272`, deletion at 2203, schema entry at `matter_archive_schema.py:102`.
 Handoff corrections: `complete_matter_purge` is in `workspace_store.py`; discovery `purge.py:9–16` owns derived-cache cleanup. Field JSON is under `src/case_intelligence/config/`.
 Add `core.sources` rows for both new production Python files to `tests/snapshots/import_layers.json`; test files are outside that inventory.
@@ -304,7 +304,7 @@ Modified files, exactly thirteen:
 The r4 rejection fix adds **no file** to this fence: reason construction/display helpers belong in the already proposed admission package, exception transport in `pilot_uploads.py`, persistence selection and display projection in `workbench.py`, and regressions in the already proposed admission test file. `fail_upload_item`, `_safe_text`, `intake_receipts.py` and `workbench_intake_receipt.html` remain unchanged; the store’s readiness-only fence still holds.
 
 Must NOT touch: `source_load_files.py`, `source_load_file_qc.py`, `source_locations.py`, `ingestion.py`, `review_bench.py`, `review_bench_v2.py`, `pilot_source_access.py`, `templates/workspace.html`, `templates/workbench_workspace.html`, any discovery-review package file or its field JSON.
-Also excluded: migrations, `matter_archive_schema.py`, archive/purge/lifecycle implementations, malware-scanner implementation/configuration, auth/deployment/egress settings, Makefile, CI workflows, rename receipts, API snapshots and import-graph/source-size baseline increases.
+Also excluded: migrations other than the authorized 0007 PostgreSQL pair below, `matter_archive_schema.py`, archive/purge/lifecycle implementations, malware-scanner implementation/configuration, auth/deployment/egress settings, Makefile, CI workflows, rename receipts, API snapshots and import-graph/source-size baseline increases.
 All paths outside the positive fence remain excluded; do not commit `.design-inputs/`, review working files or scratch/browser artifacts.
 
 The combined note, implementation and tests will likely exceed 500 changed lines; implementation/tests may also exceed that preference.
@@ -315,7 +315,7 @@ Recheck parent head; use narrow replacement/extraction within this fence and nev
 ### A9. Stacking
 
 **DECISION D9 — RULED (Exculpata 8:25 PM ET):** Branch `codex/discovery-intake-load-files-114-s3a` on `codex/discovery-review-stored-index-114-s2`; reason: isolate sensitive admission review before parser integration.
-Migration: **none**.
+Migration: **0007_stored_only_document_page_count.sql**, as corrected below.
 Fixed stack: `s1 -> s2 -> s3a -> s3 -> 4a -> s4 -> 5a -> 5b`; migration numbers elsewhere in the stack remain provisional.
 Assume only handoff-listed slice-1 additions: per-matter codes, append-only events, Coding field/group, digit keys and archive inclusion.
 Slice 2’s stored index is an intended parent contract, not inspected implementation; neither parent implementation exists at this baseline.
@@ -333,7 +333,7 @@ Slice 3 connects retained bytes to `source_load_files.parse_dat` / `parse_opt` a
 - **DECISION D6:** Recommend workbench file/browser-folder scope and explicit other-path limits; **RULED** administrator wording stays neutral.
 - **DECISION D7:** Recommend the focused synthetic test allocation; **RULED** PostgreSQL regression moves into the already selected database file.
 - **DECISION D8:** Recommend the exact fence and single intake PR; **RULED** diff size is not a blocker.
-- **DECISION D9:** **RULED** branch, parent and no migration; preserves the supplied stack.
+- **DECISION D9:** **RULED** branch and parent preserve the supplied stack; the original no-migration premise is superseded below.
 - **DECISION D10:** Recommend derived stored-only counts and truthful exclusions; **RULED** readiness-owner changes are accepted.
 - **DECISION D11:** This PR gets its own **Codex high review before merge**, separate from slice 3’s parser review; reason: Exculpata’s project decision for this sensitive intake boundary.
 - **DECISION D12:** Recommend the exact bounded reason format, typed transport and shared display reconstruction in A4; preserves actionable durable failure within the existing fence. **RULED (Exculpata 9:01 PM ET):** Keep the 240-character store bound unchanged, display the complete explanation and prove terminal failure/reopen/cleanup.
@@ -399,3 +399,37 @@ Repeat publication checks before publishing, preserve the installed pre-push gua
 - **Slice rulings 4–6:** Corrected database-test placement, review attribution and ruled branch/parent/no-migration status in A7–A11.
 - **Common structure/refs/output rulings:** Added the compact decision summary and A1–A12 appendix; updated REFS and the kickoff issue link to #503, removed answered questions, and confined builder output to worktree-local paths.
 - **r3 P2 → r4, overlong durable rejection:** Verified the 240-character rejection and swallowed persistence failure in A2/A3; A4/D12 separates the bounded reason from complete display wording, A7 adds fail-first terminal/reopen/cleanup/display proofs, and A8 retains the unchanged 4-new/13-modified fence under the **RULED (Exculpata 9:01 PM ET)** contract.
+
+### A13. PostgreSQL correction after integration failure
+
+The original no-migration premise was wrong: PostgreSQL migration 0001 requires
+`review_document.page_count > 0`, while D5 intentionally projects zero pages.
+The unchanged `test_load_file_empty_projection_postgres` failed on baseline
+`18ac4f00763bc82f55ade6dae823422b744d1b65` in GitHub integration. After merging
+current main, the same test reproduced the constraint violation on a disposable
+local PostgreSQL 17.11 database before this correction.
+
+The authorized forward-only `0007_stored_only_document_page_count.sql` drops and
+re-adds only `review_document_page_count_check` with `page_count >= 0`, in one
+transaction, and records migration version 7. Negative counts remain invalid.
+The operator and packaged copies are byte-identical. Ordered package discovery
+and the existing package-data glob register the file without a production-code
+change. The only version-pin updates are in `tests/test_case_theory_schema.py`
+and `tests/test_postgres_fresh_schema.py`; the former also pins the new mirror.
+These four paths extend A8; the existing design note records this correction.
+SQLite migrations and all source-size ceilings remain unchanged.
+
+Inspection of migrations 0001 through 0006 and `upsert_postgres_document` found
+no further zero-unit constraint conflict. Page and chunk constraints apply only
+to rows that exist; the temporary citation-staging page uses a positive number
+and is removed. Source versions accept `text/plain`, nonnegative byte sizes and
+`ready`; processing accepts `ready` with 0/0 units. Product page-count consumers
+contain no division by the review-document count or positive-count requirement
+on stored-only rows. PDF-only guards and empty-unit exclusions remain valid.
+
+The unchanged PostgreSQL regression is the fail/pass check for ingestion,
+identity preservation, empty page/chunk tables, processing 0/0, search exclusion
+and reopen. The migration-pin upgrade test also checks a clean dump/restore.
+Local parity cannot execute `postgres-integration`; its postgres replay skips
+DB-dependent test bodies and cannot establish database-constraint acceptance.
+GitHub PostgreSQL integration remains required on the eventual pushed head.

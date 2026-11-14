@@ -60,7 +60,7 @@ def test_applied_stale_schema_does_not_hide_current_columns(postgres_test_dsn, p
         ).fetchone() == (1,)
         # fixture-write: Reopening the already migrated synthetic schema must remain idempotent.
         with connection.cursor() as cursor:
-            assert apply_postgres_migrations(cursor) == (1, 2, 3, 4, 5, 6)
+            assert apply_postgres_migrations(cursor) == (1, 2, 3, 4, 5, 6, 7)
     with psycopg.connect(postgres_base_dsn) as stale:
         assert stale.execute("SELECT current_schema()").fetchone()[0] != schema
         assert stale.execute(

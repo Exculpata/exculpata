@@ -126,12 +126,13 @@ def test_upgrade_from_0005_and_clean_dump_restore(db, isolated_theory_dsn):
     assert db.execute("SELECT max(version) FROM review_schema_migration").fetchone() == (5,)
     sources = rows(db, "review_chunk")
     with db.cursor() as cursor:  # fixture-write: upgrade the populated synthetic version 5 database with packaged migrations.
-        assert apply_postgres_migrations(cursor) == tuple(range(1, 7))
-        assert apply_postgres_migrations(cursor) == tuple(range(1, 7))
-    assert db.execute("SELECT max(version) FROM review_schema_migration").fetchone() == (6,)
+        assert apply_postgres_migrations(cursor) == tuple(range(1, 8))
+        assert apply_postgres_migrations(cursor) == tuple(range(1, 8))
+    assert db.execute("SELECT max(version) FROM review_schema_migration").fetchone() == (7,)
     operator = Path(__file__).resolve().parents[1] / "migrations/postgresql"
-    assert not list(operator.glob("0007*.sql")) and not any(p.name.startswith("0007") for p in MIGRATIONS.iterdir())
+    assert not list(operator.glob("0008*.sql")) and not any(p.name.startswith("0008") for p in MIGRATIONS.iterdir())
     assert (operator / "0006_case_theory.sql").read_bytes() == MIGRATIONS.joinpath("0006_case_theory.sql").read_bytes()
+    assert (operator / "0007_stored_only_document_page_count.sql").read_bytes() == MIGRATIONS.joinpath("0007_stored_only_document_page_count.sql").read_bytes()
     assert rows(db, "review_chunk") == sources
     seed_theory(db)
     dump = subprocess.run(postgres_client_command("pg_dump", "--dbname", isolated_theory_dsn, "--no-owner", "--no-privileges"), capture_output=True)
