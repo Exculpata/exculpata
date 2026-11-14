@@ -144,6 +144,7 @@ reason = "The workflow installs editable application and PostgreSQL extras."
 workflow = "quality-gates"
 job = "postgres-integration"
 step = "Run existing PostgreSQL and pgvector acceptance"
+replay = "pytest-service-stub"
 category = "service"
 reason = "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client."
 

@@ -90,6 +90,20 @@ regenerate with `CI_PARITY_UPDATE_SNAPSHOT=1 python -m pytest -q tests/test_ci_p
 Full per-step logs accompany the report; its final `SUMMARY` line is the launcher
 contract. The tool does not acquire the launcher's pytest lock.
 
+Service entries may declare `replay = "pytest-service-stub"`; currently only the
+PostgreSQL acceptance step does. Parity extracts its pytest commands, omits
+heredoc bodies and other commands, and loads its own fixture-stubbing plugin.
+Replay uses the hosted environment with DSN `ci-parity-replay-stub-dsn`, omits
+service-derived env entries, removes inherited test mode, and sets the hostile
+storage reserve to `16384` GiB unless a workflow/job/step layer declares a value.
+Both session DSN fixtures are stubbed so other fixtures run; bodies depending on
+those stubs remain skipped. Other tests run normally. `REPLAY` lines name setup,
+call and collection failures, database-dependent gaps, body skips, omitted
+commands and counts; ordinary failures make parity red. Fixtures after a failing
+database fixture, database bodies and non-pytest commands still need hosted CI.
+Encrypted restore drill and defense-eval service steps remain blanket NOT RUN
+follow-ups. The final `SUMMARY` contract is unchanged.
+
 ## CI scope
 
 The [Quality workflow](../.github/workflows/quality-gates.yml) runs on PRs,

@@ -14,7 +14,7 @@ import time
 
 from scripts import ci_parity_expr as expr
 from scripts.ci_parity_environment import Refused, local_environment, overrides
-from scripts.ci_parity_plan import action_name
+from scripts.ci_parity_plan import action_name, extract_pytest, service_context
 
 
 def git(root, *args):
@@ -157,6 +157,76 @@ class Runner:
                 self.emit(f'JOB {tag} result={results[job.name]["result"]} outputs={json.dumps(outputs, sort_keys=True)}')
         return self.results
 
+    def replay(self, workflow, job, step, tag, tree, temporary, env, context, defaults, deadline):
+        commands, omitted = extract_pytest(step.raw['run'], tag)
+        layers = (workflow.raw.get('env', {}), job.raw.get('env', {}), step.raw.get('env', {}))
+        declared = {name for layer in layers for name in layer}
+        replay_env = dict(env)
+        dsn = 'CASE_REVIEW_POSTGRES_TEST_DSN'
+        reserve = 'CASE_INTELLIGENCE_STORAGE_RESERVE_GIB'
+        replay_env[dsn] = 'ci-parity-replay-stub-dsn'
+        for name, value in step.raw.get('env', {}).items():
+            if service_context(value):
+                replay_env.pop(name, None)
+                self.emit(f'REPLAY OMITTED ENV {name}: job.services unavailable')
+            elif name != dsn:
+                replay_env[name] = expr.render(value, {**context, 'env': replay_env})
+        if reserve not in declared:
+            replay_env[reserve] = '16384'
+        if 'CASE_INTELLIGENCE_TEST_MODE' not in declared:
+            replay_env.pop('CASE_INTELLIGENCE_TEST_MODE', None)
+        plugins = replay_env.get('PYTEST_PLUGINS', '') if 'PYTEST_PLUGINS' in declared else ''
+        replay_env['PYTEST_PLUGINS'] = ','.join(filter(None, ['ci_parity_service_replay', plugins]))
+        replay_env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(Path(__file__).resolve().parent), replay_env.get('PYTHONPATH', '')]))
+        replay_env['PYTHONSAFEPATH'] = '1'
+        replay_env = overrides(replay_env)
+        run_context = {**context, 'env': replay_env}
+        cwd = (tree / expr.render(step.raw.get('working-directory', defaults.get('working-directory', '.')), run_context)).resolve()
+        if not cwd.is_relative_to(tree):
+            raise expr.Unmapped(f'{tag}: working-directory escapes checkout; extend ci_parity_runner explicitly')
+        self.emit(f'REPLAY {tag} reserve={replay_env[reserve]} ({"declared" if reserve in declared else "hostile"}) dsn=stub')
+        for command in omitted:
+            self.emit(f'REPLAY NOT REPLAYED {command[:80]}')
+        totals = dict(stubbed_setup_ok=0, body_skipped=0, ran=0, passed=0,
+                      skipped=0, unreplayable=0, failed=0)
+        failed = False
+        deadline = min(deadline, time.monotonic() + step.raw.get('timeout-minutes', 360) * 60)
+        for command in commands:
+            self.serial += 1
+            report_directory = temporary / str(self.serial)
+            report_directory.mkdir()
+            report_path = report_directory / 'replay.json'
+            replay_env['CI_PARITY_REPLAY_REPORT'] = str(report_path)
+            log = self.log_directory / f'parity-{self.serial:04d}-replay.log'
+            rendered = expr.render(command, run_context)
+            code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log)
+            self.emit(f'REPLAY PYTEST exit={code} timeout={timed_out} log={log.name}')
+            try:
+                report = json.loads(report_path.read_text())
+                counts, events = report['counts'], report['events']
+                if set(counts) != set(totals) or any(type(value) is not int or value < 0 for value in counts.values()):
+                    raise ValueError('invalid counters')
+                for event in events:
+                    kind, test, phase = event['kind'], event['test'], event['phase']
+                    if kind == 'body_skipped':
+                        self.emit(f'REPLAY BODY SKIPPED test={test} phase={phase}')
+                    elif kind == 'unreplayable':
+                        self.emit(f'REPLAY UNREPLAYABLE test={test} phase={phase} reason={event["reason"]}')
+                    elif kind == 'failed':
+                        self.emit(f'REPLAY FAIL test={test} phase={phase} {event["reason"]}: {event["message"]}')
+                    else:
+                        raise ValueError('invalid event kind')
+                for key, value in counts.items():
+                    totals[key] += value
+                failed |= bool(counts['failed']) or code not in (0, 1) or (code == 1 and not (counts['failed'] or counts['unreplayable']))
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                self.emit(f'REPLAY REPORT FAILED {type(error).__name__}: missing or invalid pytest report')
+                failed = True
+        self.emit('REPLAY RESULT ' + ' '.join(f'{key}={value}' for key, value in totals.items()))
+        self.ran += 1
+        self.failed += int(failed)
+        return 'failure' if failed else 'success'
+
     def cell(self, workflow, job, matrix, context, ancestor_failure=False):
         tag = f'{workflow.name}:{job.name}' + (f'[{json.dumps(matrix, sort_keys=True)}]' if matrix else '')
         with isolated_cell(self.source, self.head, self.log_directory) as (tree, temporary):
@@ -191,6 +261,11 @@ class Runner:
                 elif step.unavailable:
                     self.not_run += 1
                     self.emit(f'NOT RUN (expected-skip) {step_tag} category={step.unavailable[0]} reason={step.unavailable[1]}')
+                    if step.expected and step.expected.get('replay'):
+                        outcome = self.replay(workflow, job, step, step_tag, tree, temporary, env, context, defaults, deadline)
+                        step_state.update(outcome=outcome, conclusion=outcome)
+                        if outcome == 'failure':
+                            status = 'failure'
                 elif 'uses' in step.raw:
                     action = action_name(step.raw['uses'])
                     if action == 'actions/checkout':

@@ -611,7 +611,7 @@ against suppressed occurrences from the real repository inventory.
 
 Additional local parity occurrences introduced after the baseline are numbered
 separately below. These Path divisions read development requirements, read the
-expected-skip data, and write the synthetic event file, respectively. They do not
+expected-skip data, and write synthetic event and replay report files. They do not
 name network destinations; the same exact multiset test verifies their exclusion.
 
 | Parity occurrence | Path | Digest | Detail | Extension | Context |
@@ -619,3 +619,4 @@ name network destinations; the same exact multiset test verifies their exclusion
 | 1 | `scripts/ci_parity_environment.py` | `50c86b7ed8ac2cf95bd48334961bf0530cdc77b5a56f852c5c61b89d735fd711` | `pyproject.toml` | toml | division |
 | 2 | `scripts/ci_parity_plan.py` | `c53b3d28d865bd84a336bece60274b6a01fc4a899cf0514ba42a7112d8b1671c` | `ci-parity-expected-skips.toml` | toml | division |
 | 3 | `scripts/ci_parity_runner.py` | `6ffa4ae6c03880f53aab1689dbb5bf3aaf3d2cbbfb3a8004366c88e8b668bcee` | `event.json` | json | division |
+| 4 | `scripts/ci_parity_runner.py` | `f78f32472473425c803a088f85a18951151cc20da828b30bd2e5948b1ce327b3` | `replay.json` | json | division |

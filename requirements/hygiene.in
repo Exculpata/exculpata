@@ -1,4 +1,4 @@
-ruff==0.14.3
-vulture==2.14
-deptry==0.24.0
-pip-audit==2.9.0
+ruff==0.17.3
+vulture==2.16
+deptry==0.25.1
+pip-audit==2.10.1

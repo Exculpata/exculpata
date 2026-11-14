@@ -158,6 +158,7 @@
         "category": "service",
         "job": "postgres-integration",
         "reason": "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client.",
+        "replay": "pytest-service-stub",
         "step": "Run existing PostgreSQL and pgvector acceptance",
         "workflow": "quality-gates"
       },
@@ -1711,6 +1712,7 @@
                   "category": "service",
                   "job": "postgres-integration",
                   "reason": "This acceptance requires the declared PostgreSQL/pgvector service and docker exec client.",
+                  "replay": "pytest-service-stub",
                   "step": "Run existing PostgreSQL and pgvector acceptance",
                   "workflow": "quality-gates"
                 },
