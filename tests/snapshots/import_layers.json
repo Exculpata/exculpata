@@ -182,6 +182,8 @@
   "case_intelligence.service_endpoints": "app_shell",
   "case_intelligence.slice1_evaluation": "evals",
   "case_intelligence.slice1_workflow": "modules.workflows",
+  "case_intelligence.source_admission": "core.sources",
+  "case_intelligence.source_admission.load_files": "core.sources",
   "case_intelligence.source_cache": "core.sources",
   "case_intelligence.source_email_threads": "core.sources",
   "case_intelligence.source_find": "core.sources",

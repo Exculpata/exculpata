@@ -747,3 +747,60 @@ def test_archive_preserves_team_identifier_spelling(archive_case):
             assert 'records/workbench_discovery_view.jsonl' not in archive.namelist()
     finally:
         cleanup_archive(artifact)
+
+
+@pytest.fixture
+def load_file_archive_case(archive_case, monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+    return archive_case
+
+
+def test_archive_preserves_admitted_load_files(load_file_archive_case):
+    from case_intelligence.malware_scan import MalwareScanResult
+
+    class CleanLoadFileScanner:
+        def __init__(self):
+            self.digests = []
+
+        def scan(self, path):
+            self.digests.append(hashlib.sha256(path.read_bytes()).hexdigest())
+            return MalwareScanResult('clean', 'synthetic')
+
+    bench, matter, store = load_file_archive_case
+    scanner = CleanLoadFileScanner()
+    store.malware_scanner = scanner
+    store.malware_scan_mode = 'extended'
+    originals = (
+        ('generated.DAT', b'Control\x14Description\r\nGEN-1\x14Generated metadata\r\n'),
+        ('generated.OPT', b'GEN-1,VOL,Images/page.tif,Y,,,1\r\n'),
+    )
+    admitted = []
+    for name, raw in originals:
+        document, used = store.store_stream(name, 'text/plain', io.BytesIO(raw))
+        assert used == len(raw)
+        assert document.state == 'ready'
+        assert document.parsed_units() == ()
+        assert document.page_count == 0
+        assert document.digest == hashlib.sha256(raw).hexdigest()
+        admitted.append((document, raw))
+    assert scanner.digests == [hashlib.sha256(raw).hexdigest() for _name, raw in originals]
+    close(bench, matter)
+    artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
+    try:
+        verify_matter_archive(artifact.path, expected_sha256=artifact.sha256)
+        with zipfile.ZipFile(artifact.path) as archive:
+            for document, raw in admitted:
+                preserved = archive.read('originals/' + document.document_id)
+                assert preserved == raw
+                assert hashlib.sha256(preserved).hexdigest() == document.digest
+                extracted = 'extracted/' + document.document_id + '.jsonl'
+                assert extracted not in archive.namelist() or archive.read(extracted) == b''
+    finally:
+        cleanup_archive(artifact)
+    document, raw = admitted[0]
+    changed = store.files / document.stored_name
+    changed.write_bytes(raw.replace(b'GEN-1', b'GEN-2'))
+    with pytest.raises(ArchiveProblem):
+        build_matter_archive(bench, matter, OWNER, source_store=store)
+    assert not list((bench.storage.root / 'preservation-exports').iterdir())
+    assert len(scanner.digests) == 2

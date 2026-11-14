@@ -308,3 +308,90 @@ def test_pending_upload_coverage_retains_recording_review_recovery(tmp_path, rec
     assert 'still uploading or processing' in coverage['notice']
     assert 'remain available for playback and review' in coverage['notice']
     store.close()
+
+
+@pytest.mark.parametrize('uppercase', [False, True])
+@pytest.mark.parametrize('scenario', [
+    'load-files', 'mixed', 'text', 'queued', 'indexing', 'failed',
+    'changed', 'missing', 'classification',
+])
+def test_stored_load_file_readiness_does_not_claim_text(tmp_path, uppercase, scenario):
+    from case_intelligence.source_admission import is_stored_load_file
+
+    store, matter = _seed_store(tmp_path)
+    specifications = [('generated.dat', 'text/plain', 'upload'),
+                      ('generated.opt', 'text/plain', 'upload')]
+    if scenario == 'mixed':
+        specifications = [('generated.txt', 'text/plain', 'upload'),
+                          ('generated.dat', 'text/plain', 'upload')]
+    elif scenario == 'text':
+        specifications = [('generated.txt', 'text/plain', 'upload')]
+    elif scenario == 'classification':
+        specifications.extend([
+            ('registered.dat', 'text/plain', 'registered'),
+            ('different-media.opt', 'application/octet-stream', 'upload'),
+            ('generated.txt', 'text/plain', 'upload'),
+            ('generated.dat.txt', 'text/plain', 'upload'),
+            ('generated', 'text/plain', 'upload'),
+        ])
+
+    source_rows = []
+    for ordinal, (name, media_type, origin) in enumerate(specifications, 1):
+        name = name.upper() if uppercase else name
+        document_id = f'{ordinal:032x}'
+        source = _catalog_source(document_id, tone='ready', state='ready')
+        source.update(display_name=name, relative_path=f'Generated/{name}',
+                      media_type=media_type, origin=origin, completed_units=0,
+                      total_units=0, state_label='Generated mutable status')
+        if scenario in {'changed', 'missing'}:
+            source.update(source_state=scenario, tone='attention')
+        source_rows.append(source)
+    store.upsert_source_catalog(matter.matter_id, source_rows)
+
+    try:
+        for source in source_rows:
+            queued = store.queue_upload(matter.matter_id, source['document_id'])
+            if scenario == 'queued':
+                continue
+            claimed = store.claim_ingest_job('generated-readiness-worker')
+            assert claimed is not None and claimed.job_id == queued.job_id
+            store.update_ingest_job(queued.job_id, stage='Indexing for search')
+            if scenario != 'indexing':
+                store.finish_ingest_job(
+                    queued.job_id, succeeded=scenario != 'failed',
+                    message='Generated terminal status',
+                )
+
+        classified = [is_stored_load_file(str(row['origin']), str(row['media_type']),
+                                         str(row['relative_path'])) for row in source_rows]
+        expected_classified = ([False, True] if scenario == 'mixed' else
+                               [False] if scenario == 'text' else
+                               [True, True, False, False, False, False, False]
+                               if scenario == 'classification' else [True, True])
+        assert classified == expected_classified
+        total = len(source_rows)
+        active = scenario in {'queued', 'indexing'}
+        unavailable = scenario in {'failed', 'changed', 'missing'}
+        expected_stored = 0 if active or unavailable else sum(classified)
+        expected_searchable = 0 if active or unavailable else total - sum(classified)
+        expected_attention = 0 if active else total - expected_searchable
+
+        for reopened in (False, True):
+            if reopened:
+                path = store.path
+                store.close()
+                store = WorkspaceStore(path)
+            readiness = store.matter_readiness(matter.matter_id)
+            assert readiness.total_count == readiness.saved_count == total
+            assert readiness.extracted_count == total - sum(classified)
+            assert readiness.searchable_count == expected_searchable
+            assert readiness.processing_count == (total if active else 0)
+            assert readiness.attention_count == expected_attention
+            assert readiness.stored_only_count == expected_stored
+            assert readiness.can_query is bool(expected_searchable and not active)
+            assert readiness.partial_query is bool(expected_searchable and expected_attention)
+            assert readiness.indexing_count == (total if scenario == 'indexing' else 0)
+            assert readiness.state == ('preparing' if active else 'attention'
+                                       if expected_attention else 'ready')
+    finally:
+        store.close()
