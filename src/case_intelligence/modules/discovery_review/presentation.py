@@ -29,7 +29,7 @@ def choose(definition: Definition, saved: dict, index: Index, *, show_all: bool 
         if columns:
             return Choice(columns, definition.clean(view.item_fields) or definition.default_item_fields, origin)
     columns, hidden = definition.default_columns, ()
-    if definition.hide_empty_default_columns and index.items and not show_all:
+    if definition.hide_empty_default_columns and index.total and index.complete and not show_all:
         hidden = tuple(key for key in columns if key not in index.filled)
         columns = tuple(key for key in columns if key in index.filled) or columns
     return Choice(columns, definition.default_item_fields, "default", hidden if len(hidden) < len(definition.default_columns) else ())
@@ -42,7 +42,18 @@ def applies(definition: Definition, chosen: Field, item: Item) -> bool:
     return not needs or needs == item.kind
 
 
+def unresolved(item, chosen=None):
+    if item.metadata_state == 'complete':
+        return ''
+    if (chosen is not None and chosen.computed in {'name', 'type', 'pages', 'folder', 'size', 'text_status', 'status', 'stored_from', 'sha256', 'path'}
+            and item.value(chosen.key)):
+        return ''
+    return 'Metadata pending' if item.metadata_state == 'pending' else 'Metadata unavailable: indexing error'
+
+
 def cell(definition: Definition, chosen: Field, item: Item) -> dict:
+    if note := unresolved(item, chosen):
+        return {"value": note, "state": item.metadata_state, "note": note}
     if not applies(definition, chosen, item):
         return {"value": "", "state": "na", "note": f"Shown only for {chosen.applies_to or 'matching'} items"}
     if not item.has(chosen.key):
@@ -52,6 +63,8 @@ def cell(definition: Definition, chosen: Field, item: Item) -> dict:
 
 
 def heading(definition: Definition, item: Item) -> dict:
+    if note := unresolved(item):
+        return {"label": note, "missing": True, "title": item.value(definition.heading_title)}
     begin, end = (item.value(key) for key in definition.heading_range)
     label = f"{begin} – {end}" if begin and end and end != begin else begin
     label = label or (item.value(definition.heading_fallback) if definition.heading_fallback else "")
@@ -183,10 +196,10 @@ def item_fields(definition: Definition, item: Item, choice: Choice) -> dict:
     def groups(candidates) -> list[dict]:
         shaped = []
         for group in definition.groups:
-            members = [f for f in candidates if f.group == group.key and applies(definition, f, item)]
-            filled = [{"label": f.label, "value": item.value(f.key), "details": item.details.get(f.key, ())}
-                      for f in members if item.value(f.key)]
-            empty = [f.label for f in members if not item.value(f.key)]
+            members = [f for f in candidates if f.group == group.key and (unresolved(item) or applies(definition, f, item))]
+            filled = [{"label": f.label, "value": unresolved(item, f) or item.value(f.key), "details": () if unresolved(item, f) else item.details.get(f.key, ())}
+                      for f in members if unresolved(item, f) or item.value(f.key)]
+            empty = [f.label for f in members if not unresolved(item, f) and not item.value(f.key)]
             if filled or empty:
                 shaped.append({"label": group.label, "rows": filled, "empty": empty})
         return shaped
@@ -195,8 +208,8 @@ def item_fields(definition: Definition, item: Item, choice: Choice) -> dict:
     produced = [{"label": header, "value": value} for header, value in item.load_file.items()]
     return {
         "primary": groups(chosen), "more": groups(rest),
-        "picked": [{"label": f.label, "value": item.value(f.key), "absent": not item.has(f.key)} for f in extra],
-        "load_file": produced, "load_file_open": definition.show_load_file_fields_by_default,
+        "picked": [{"label": f.label, "value": unresolved(item, f) or item.value(f.key), "absent": not unresolved(item, f) and not item.has(f.key)} for f in extra],
+        "load_file_state": unresolved(item), "load_file": [] if unresolved(item) else produced, "load_file_open": definition.show_load_file_fields_by_default,
         "load_file_source": item.values.get("load_file", ""),
     }
 

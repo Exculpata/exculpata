@@ -7,6 +7,8 @@ from fastapi.responses import RedirectResponse
 from case_intelligence.modules import ModuleContext
 from case_intelligence.modules.discovery_review import code_routes, fields, presentation, reader
 from case_intelligence.modules.discovery_review.codes import CodeRepository
+from case_intelligence.modules.discovery_review.stored_index import Service
+from case_intelligence.modules.discovery_review.stored_index import query as stored_query
 from case_intelligence.modules.discovery_review.identifiers import (
     IdentifierConflict, IdentifierRepository, IdentifierUnavailable, RangeUnavailable, produced_collisions, sequence,
 )
@@ -23,26 +25,29 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     repository = ViewRepository(context.db, context.membership)
     identifiers = IdentifierRepository(context.db, context.membership)
     codes = CodeRepository(context.db)
-
+    stored = Service(context, identifiers, codes)
     def membership(matter, actor):
         try:
             context.membership(matter.matter_id, actor)
         except KeyError as exc:
             raise HTTPException(404, "Matter is no longer available") from exc
 
-    def current(request, slug, *, show_all=False):
+    def current(request, slug, *, show_all=False, complete=False):
         matter = authorized_matter(request, slug)
         actor = auth_context(request).principal_id
         membership(matter, actor)
         definition = fields.load_definition()
         store = context.source_store(matter)
         try:
-            index = reader.index_for(matter.matter_id, store, definition, identifiers)
+            if complete:
+                index = reader.index_for(matter.matter_id, store, definition, identifiers)
+                index = codes.project(matter.matter_id, index)
+            else:
+                index = stored.current(matter.matter_id, store, definition)
         except reader.IndexUnavailable as exc:
             raise HTTPException(404, "Matter is no longer available") from exc
         except reader.MetadataUnavailable as exc:
             raise HTTPException(422, str(exc)) from exc
-        index = codes.project(matter.matter_id, index)
         choice = presentation.choose(definition, repository.read(matter.matter_id, actor), index,
                                      show_all=show_all)
         return matter, actor, definition, store, index, choice
@@ -62,6 +67,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
         page: int = Query(1, ge=1, le=1_000_000),
+        cursor: str = Query("", max_length=4096),
         doc: str = Query("", pattern="^(|[0-9a-f]{32})$"),
         edge: str = Query("", pattern="^(|last)$"),
         view: str = Query("", pattern=VIEW),
@@ -71,9 +77,9 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     ):
         matter, actor, definition, store, index, choice = current(request, slug, show_all=bool(all_columns))
         base = f"/matters/{matter.slug}/production"
-        listing = presentation.list_page(
+        listing = stored_query.list_page(
             definition, index, choice, base=base, q=q, sort=sort, descending=dir == "desc",
-            page=page, doc=doc, edge=edge, show_all=bool(all_columns), view=view)
+            page=page, doc=doc, edge=edge, show_all=bool(all_columns), cursor=cursor, selected_view=view, unit=unit)
         selected = listing["selected"]
         state = {key: value for key, value in listing["state"].items() if value}
         panel = presentation.item_panel(
@@ -83,9 +89,9 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
             panel["codes"] = codes.controls(matter.matter_id, selected.document_id)
         return respond(request, matter, actor, "workbench_production_documents.html", {
             "codes": codes.list(matter.matter_id),
-            "document_count": len(index.items), "listing": listing, "panel": panel,
+            "document_count": index.total, "listing": listing, "panel": panel,
             "chooser": presentation.chooser(definition, index, choice), "load_files": index.reports,
-            "notice": notice, "base_url": base,
+            "notice": notice, "base_url": base, "index_summary": index.summaries,
         })
 
     @app.get("/matters/{slug}/production/items/{token}", dependencies=[Depends(require_response_lease)])
@@ -98,15 +104,16 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         all_columns: str = Query("", pattern="^(|1)$"),
     ):
         matter, actor, definition, store, index, choice = current(request, slug)
-        position = index.by_token.get(token)
-        if position is None:
-            raise HTTPException(404, "This item is no longer in the matter. Reload the list.")
+        try:
+            item = stored_query.lookup(index, token)
+        except KeyError as exc:
+            raise HTTPException(404, "This item is no longer in the matter. Reload the list.") from exc
         base = f"/matters/{matter.slug}/production"
-        panel = presentation.item_panel(definition, index.items[position], choice, store, slug=matter.slug,
+        panel = presentation.item_panel(definition, item, choice, store, slug=matter.slug,
                                         view=view, unit=unit, list_url=base + "?" + urlencode({
                                             "doc": token, "q": q.strip(), "dir": dir, "all_columns": all_columns,
                                             "sort": sort if definition.field(sort) is not None else ""}))
-        panel["codes"] = codes.controls(matter.matter_id, index.items[position].document_id)
+        panel["codes"] = codes.controls(matter.matter_id, item.document_id)
         return respond(request, matter, actor, "workbench_production_document_item.html", {"panel": panel})
 
     @app.post("/matters/{slug}/production/view", dependencies=[Depends(require_csrf)])
@@ -149,7 +156,7 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         q: str = Form("", max_length=presentation.MAX_QUERY_CHARS),
         sort: str = Form("", max_length=fields.MAX_KEY_CHARS), dir: str = Form(""),
     ):
-        matter, actor, definition, store, index, choice = current(request, slug)
+        matter, actor, definition, store, index, choice = current(request, slug, complete=True)
         if action not in {"assign", "clear"} or not definition.heading_fallback:
             raise HTTPException(400, "Choose what to do with team identifiers")
         own, produced = definition.heading_fallback, definition.heading_range
@@ -201,4 +208,5 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         return RedirectResponse(f"/matters/{matter.slug}/production?{urlencode(query)}", status_code=303,
                                 headers={"Cache-Control": "no-store"})
 
-    code_routes.mount(app, context=context, current=current, codes=codes, require_csrf=require_csrf)
+    code_routes.mount(app, context=context, current=lambda request, slug: current(request, slug, complete=True),
+                      codes=codes, require_csrf=require_csrf, committed=stored.invalidate)

@@ -339,11 +339,21 @@ jobs:
           CASE_REVIEW_POSTGRES_CLIENT_PREFIX: docker exec -i ${{ job.services.postgres.id }}
         # Learned-model acceptance remains a separate, explicitly excluded gate.
         run: |
-          python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py \
+          python -m pytest -q tests/test_review_bench_v2_postgres.py tests/test_defense_eval_postgres.py tests/test_discovery_review_index_postgres.py \
             tests/test_case_theory_schema.py tests/test_case_theory_reindex.py tests/test_case_theory.py \
             --deselect tests/test_review_bench_v2_postgres.py::test_live_learned_dense_only_paraphrase_and_unsupported_abstention \
             --junitxml="$RUNNER_TEMP/postgres-results.xml"
           python scripts/check-postgres-test-report.py "$RUNNER_TEMP/postgres-results.xml"
+          python - "$RUNNER_TEMP/postgres-results.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          cases = [case for case in ET.parse(sys.argv[1]).getroot().iter("testcase")
+                   if case.get("classname") == "tests.test_discovery_review_index_postgres"
+                   and case.get("name") == "test_portable_migration_and_queries_match_sqlite"]
+          assert len(cases) == 1, "Discovery index portability case missing from executed report"
+          assert not any(cases[0].find(tag) is not None for tag in ("skipped", "failure", "error"))
+          print("Executed and passed:", cases[0].get("classname"), cases[0].get("name"))
+          PY
 
   defense-eval:
     # Independent of change-scope: even documentation-only PRs get scorecards.

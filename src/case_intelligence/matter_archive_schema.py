@@ -102,6 +102,10 @@ workbench_discovery_view:matter_id,scope,principal_id,columns,item_fields,update
 workbench_discovery_code:code_id,matter_id,label,position,digit,active,created_by,created_at
 workbench_discovery_code_event:event_id,matter_id,document_id,code_id,action,created_by,created_at
 workbench_discovery_identifier:matter_id,document_id,identifier,created_by,created_at
+workbench_discovery_index_item:matter_id,document_id,version_id,token,fingerprint,projection_fingerprint,source_payload,payload,cache_payload,path_key,name_key,stem_key,path_hash,name_hash,stem_hash,readiness,seen_generation,ready_generation,is_loadfile
+workbench_discovery_index_value:matter_id,document_id,field_key,direction,leading_key,sort_key,value,present
+workbench_discovery_index_load_row:matter_id,source_id,line,source_order,order_prefix,path_value,bates_value,path_name_hash,bates_hash,values_json,attached_document,basis
+workbench_discovery_index_state:matter_id,epoch,revision,generation,definition_digest,key_version,total,indexed,pending,errors,phase,summaries,checkpoint
 """
 SCHEMA = {name: tuple(columns.split(',')) for name, columns in
           (line.split(':') for line in _SCHEMA.strip().splitlines())}
@@ -131,6 +135,10 @@ EXCLUDED_TABLES = {
     'workbench_case_oidc_authorization': 'Ephemeral SSO deletion authority and session bindings; excluded from archive and content snapshot',
     'workbench_job_matter_schedule': 'Operational scheduler position',
     'workbench_matter_activity': 'Ephemeral UI activity locators',
+    'workbench_discovery_index_item': 'Rebuildable discovery review index',
+    'workbench_discovery_index_value': 'Rebuildable discovery review index',
+    'workbench_discovery_index_load_row': 'Rebuildable discovery review index',
+    'workbench_discovery_index_state': 'Rebuildable discovery review index',
     'workbench_discovery_view': 'Rebuildable review-list view choices (field keys only, no document content)',
 }
 # Child tables without matter_id have exactly one explicitly scoped parent.

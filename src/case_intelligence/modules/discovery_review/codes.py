@@ -135,3 +135,35 @@ class CodeRepository:
                                  details={**item.details, **dict.fromkeys(keys, details)}))
         filled = frozenset(key for item in items for key, value in item.values.items() if value)
         return replace(index, items=tuple(items), filled=filled, orders=OrderedDict())
+
+    def current_page(self, matter_id: str, document_ids, *, after=None, limit: int = 500):
+        """Seek effective events for a bounded document batch, including retired labels."""
+        if len(document_ids) > 500 or type(limit) is not int or not 1 <= limit <= 500:
+            raise ValueError("effective code reads accept at most 500 documents and rows")
+        if not document_ids:
+            return ()
+        marks = ",".join("?" for _ in document_ids)
+        boundary, args = "", [matter_id, *document_ids]
+        if after is not None:
+            position, code_id, document_id = after
+            boundary = " AND (c.position>? OR (c.position=? AND c.code_id>?) OR (c.position=? AND c.code_id=? AND e.document_id>?))"
+            args.extend((position, position, code_id, position, code_id, document_id))
+        with self.db.lock:
+            return tuple(self.db.connection.execute(
+                "SELECT e.document_id,e.code_id,c.label,c.active,e.created_by,e.created_at,c.position "
+                "FROM workbench_discovery_code_event e JOIN workbench_discovery_code c "
+                "ON c.matter_id=e.matter_id AND c.code_id=e.code_id "
+                f"WHERE e.matter_id=? AND e.document_id IN ({marks}) AND e.action='apply' "
+                "AND e.event_id=(SELECT MAX(n.event_id) FROM workbench_discovery_code_event n "
+                "WHERE n.matter_id=e.matter_id AND n.document_id=e.document_id AND n.code_id=e.code_id)" + boundary +
+                " ORDER BY c.position,c.code_id,e.document_id LIMIT ?", (*args, limit)))
+
+    def change_token(self, matter_id: str):
+        """Read the event watermark and definition state without materializing events."""
+        with self.db.lock:
+            event = next(iter(self.db.connection.execute(
+                "SELECT event_id FROM workbench_discovery_code_event WHERE matter_id=? ORDER BY event_id DESC LIMIT 1",
+                (matter_id,))), (0,))[0]
+            definitions = tuple(next(iter(self.db.connection.execute(
+                "SELECT COUNT(*),COALESCE(SUM(active),0) FROM workbench_discovery_code WHERE matter_id=?", (matter_id,)))))
+            return (event, *definitions)

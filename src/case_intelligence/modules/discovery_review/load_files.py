@@ -170,3 +170,53 @@ def attach(load_files, paths: dict[str, str]) -> tuple[dict[str, Match], tuple[R
         reports.append(Report(load_file.document_id, load_file.name, len(load_file.rows),
                               matched, extra, load_file.problem))
     return matches, tuple(reports)
+
+
+def resume_record(text, name, definition, state=None):
+    """Consume exactly one physical CSV record boundary, without replaying records."""
+    state = dict(state or {'offset': 0, 'line': 0, 'count': 0, 'headers': [],
+                           'path_header': '', 'bates_header': '', 'problem': '', 'eof': False,
+                           'recognized': False})
+    if state['eof']:
+        return state, None, 0
+    content = io.StringIO(text, newline='')
+    content.seek(state['offset'])
+
+    def lines():
+        while line := content.readline():
+            yield line
+
+    reader = csv.reader(lines(), delimiter=DELIMITERS[PurePosixPath(name).suffix.casefold()], strict=True)
+    try:
+        values = next(reader, None)
+    except csv.Error:
+        state.update(offset=content.tell(), line=state['line'] + reader.line_num, eof=True)
+        state['problem'] = (f"Line {state['line']} could not be parsed; later rows were not read."
+                            if state['headers'] else 'Load file was not read: header could not be parsed.')
+        return state, None, 1
+    state.update(offset=content.tell(), line=state['line'] + reader.line_num)
+    if not state['headers']:
+        if not values or any(not value or len(value) > MAX_HEADER_CHARS for value in values):
+            state.update(eof=True, problem='Load file was not read: header is empty or exceeds the length limit.')
+        else:
+            headers = unique_headers(values)
+            bates = {normalize_header(h) for h in definition.by_key[definition.default_sort].headers}
+            state['headers'] = list(headers)
+            state['path_header'] = next((h for h in headers if normalize_header(h) in definition.path_headers), '')
+            state['bates_header'] = next((h for h in headers if normalize_header(h) in bates), '')
+            state['recognized'] = bool(state['path_header'] or state['bates_header'])
+            state['eof'] = not state['recognized']
+        return state, None, 1
+    if values is None:
+        state['eof'] = True
+        return state, None, 0
+    if not any(values):
+        return state, None, 1
+    if len(values) != len(state['headers']):
+        state.update(eof=True, problem=f"Line {state['line']} has {len(values)} values for {len(state['headers'])} headers; later rows were not read.")
+        return state, None, 1
+    if state['count'] >= MAX_LOAD_FILE_ROWS:
+        state.update(eof=True, problem=f'Only the first {MAX_LOAD_FILE_ROWS} rows were read.')
+        return state, None, 1
+    state['count'] += 1
+    return state, Row(state['line'], dict(zip(state['headers'], values))), 1

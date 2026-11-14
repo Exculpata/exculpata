@@ -44,6 +44,7 @@ class Item:
     numbers: Mapping[str, int]
     load_file: Mapping[str, str]
     details: Mapping[str, tuple[dict, ...]] = field(default_factory=dict)
+    metadata_state: str = "complete"
 
     def value(self, key: str) -> str:
         if key.startswith(LOAD_FILE_PREFIX):
@@ -69,6 +70,14 @@ class Index:
     reads: Mapping[tuple, Any] = field(default_factory=dict, compare=False)
     orders: OrderedDict = field(default_factory=OrderedDict, compare=False)
     lock: Any = field(default_factory=threading.Lock, compare=False)
+
+    @property
+    def total(self):
+        return len(self.items)
+
+    @property
+    def complete(self):
+        return True
 
     def order(self, definition: Definition, sort: str, descending: bool) -> tuple[int, ...]:
         """Positions in display order; blanks sort last in either direction."""
@@ -222,36 +231,14 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
     table_ids = {table.document_id for table in tables}
     matches, reports = load_files.attach(
         tables, {d.document_id: d.relative_path for d in documents if d.document_id not in table_ids})
-    aliases = {normalize_header(header): f.key for f in definition.fields for header in f.headers}
     wanted = {f.email_header: f.key for f in definition.fields if f.email_header}
     items, headers, filled = [], {}, set()
     for d in documents:
+        stored = {}
+        item = project_item(d, definition, assigned, matches.get(d.document_id))
         suffix = PurePosixPath(d.display_name).suffix.casefold()
-        match = matches.get(d.document_id)
-        folder = PurePosixPath(d.relative_path).parent.as_posix()
-        paged = d.media_type == "application/pdf" and d.page_count > 0  # other types record sections, not pages
-        values = {
-            "assigned_id": assigned.get(d.document_id, ""),
-            "name": PurePosixPath(d.display_name).name or d.display_name,
-            "type": suffix[1:].upper() or d.media_type,
-            "pages": str(d.page_count) if paged else "",
-            "folder": "" if folder == "." else folder,
-            "size": format_size(d.size),
-            "text_status": "Extracted text available" if d.has_text else "No extracted text",
-            "status": "Ready" if d.state == "ready" else " · ".join(part for part in (d.state.capitalize(), d.message) if part),
-            "stored_from": "Copy stored in this matter" if d.origin == "upload" else "Linked source location",
-            "sha256": d.digest,
-            "path": d.relative_path,
-            "load_file": f"{match.name}, line {match.line} (matched by {match.basis})" if match else "",
-        }
-        produced = match.values if match else {}
-        for header, value in produced.items():
-            headers.setdefault(header, None)
-            key = aliases.get(normalize_header(header))
-            if key and value.strip() and not values.get(key):
-                values[key] = value
-        is_email = d.media_type in definition.email_media_types or suffix in definition.email_suffixes
-        if is_email and d.origin == "upload" and any(not values.get(key) for key in wanted.values()):
+        if (d.origin == "upload" and (d.media_type in definition.email_media_types or suffix in definition.email_suffixes)
+                and any(not item.value(key) for key in wanted.values())):
             key = ("email", d.document_id, d.version_id)
             if key in earlier:
                 stored = earlier[key]
@@ -261,22 +248,15 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
                 except (OSError, ValueError, KeyError):
                     stored = {}
             reads[key] = stored
-            for name, value in stored.items():
-                values.setdefault(wanted[name], value)
-        if not is_email:
-            is_email = any(values.get(key) for key in definition.email_evidence_fields)
-        filled.update(key for key, value in values.items() if value)
-        items.append(Item(
-            token=action_token(d.document_id, d.version_id), document_id=d.document_id,
-            version_id=d.version_id, kind="email" if is_email else "document", media_type=d.media_type,
-            embedded=("image" if d.media_type.startswith("image/") else "pdf")
-            if d.origin == "upload" and d.media_type in EMBEDDED_MEDIA_TYPES else "",
-            has_text=d.has_text, values=values, numbers={"size": d.size, "pages": d.page_count} if paged else {"size": d.size}, load_file=produced))
+        item = project_item(d, definition, assigned, matches.get(d.document_id), stored)
+        items.append(item)
+        headers.update(dict.fromkeys(item.load_file))
+        filled.update(key for key, value in item.values.items() if value)
     return Index(weakref.ref(store), revision, assigned_mark, definition, tuple(items), {item.token: position for position, item in enumerate(items)},
                  tuple(headers), frozenset(filled), reports, reads)
 
 
-_cache: OrderedDict[str, Index] = OrderedDict()
+_cache: OrderedDict[str, Index | None] = OrderedDict()
 _cache_lock = threading.Lock()
 _retired: dict[str, int] = {}
 
@@ -287,6 +267,17 @@ class MetadataUnavailable(RuntimeError):
 
 class IndexUnavailable(RuntimeError):
     """The matter identity was permanently retired in this process."""
+
+
+def retain(matter_id: str) -> None:
+    """Register a live cache scope without materializing the legacy population."""
+    with _cache_lock:
+        if _retired.get(matter_id, 0):
+            raise IndexUnavailable("Matter is no longer available")
+        _cache.setdefault(matter_id, None)
+        _cache.move_to_end(matter_id)
+        while len(_cache) > MAX_CACHED_MATTERS:
+            _cache.popitem(last=False)
 
 
 def index_for(matter_id: str, store, definition: Definition, identifiers=None) -> Index:
@@ -319,3 +310,44 @@ def forget(matter_id: str) -> None:
     with _cache_lock:
         _retired[matter_id] = _retired.get(matter_id, 0) + 1
         _cache.pop(matter_id, None)
+
+
+def project_item(d, definition, assigned, match=None, stored=None):
+    """Project one captured source and its already-read metadata without I/O."""
+    stored = stored or {}
+    aliases = {normalize_header(header): f.key for f in definition.fields for header in f.headers}
+    wanted = {f.email_header: f.key for f in definition.fields if f.email_header}
+    suffix = PurePosixPath(d.display_name).suffix.casefold()
+    folder = PurePosixPath(d.relative_path).parent.as_posix()
+    paged = d.media_type == "application/pdf" and d.page_count > 0  # other types record sections, not pages
+    values = {
+        "assigned_id": assigned.get(d.document_id, ""),
+        "name": PurePosixPath(d.display_name).name or d.display_name,
+        "type": suffix[1:].upper() or d.media_type,
+        "pages": str(d.page_count) if paged else "",
+        "folder": "" if folder == "." else folder,
+        "size": format_size(d.size),
+        "text_status": "Extracted text available" if d.has_text else "No extracted text",
+        "status": "Ready" if d.state == "ready" else " · ".join(part for part in (d.state.capitalize(), d.message) if part),
+        "stored_from": "Copy stored in this matter" if d.origin == "upload" else "Linked source location",
+        "sha256": d.digest,
+        "path": d.relative_path,
+        "load_file": f"{match.name}, line {match.line} (matched by {match.basis})" if match else "",
+    }
+    produced = match.values if match else {}
+    for header, value in produced.items():
+        key = aliases.get(normalize_header(header))
+        if key and value.strip() and not values.get(key):
+            values[key] = value
+    is_email = d.media_type in definition.email_media_types or suffix in definition.email_suffixes
+    if is_email:
+        for name, value in stored.items():
+            values.setdefault(wanted[name], value)
+    if not is_email:
+        is_email = any(values.get(key) for key in definition.email_evidence_fields)
+    return Item(
+        token=action_token(d.document_id, d.version_id), document_id=d.document_id,
+        version_id=d.version_id, kind="email" if is_email else "document", media_type=d.media_type,
+        embedded=("image" if d.media_type.startswith("image/") else "pdf")
+        if d.origin == "upload" and d.media_type in EMBEDDED_MEDIA_TYPES else "",
+        has_text=d.has_text, values=values, numbers={"size": d.size, "pages": d.page_count} if paged else {"size": d.size}, load_file=produced)

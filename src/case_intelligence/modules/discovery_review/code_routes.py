@@ -8,7 +8,7 @@ from case_intelligence.modules.discovery_review import fields, presentation
 from case_intelligence.modules.discovery_review.codes import CodeUnavailable, MAX_LABEL
 
 
-def mount(app, *, context, current, codes, require_csrf):
+def mount(app, *, context, current, codes, require_csrf, committed):
     def change(request, slug, action, *, token="", state=None):
         try:
             matter, actor, definition, store, index, choice = current(request, slug)
@@ -21,6 +21,7 @@ def mount(app, *, context, current, codes, require_csrf):
                         raise KeyError(token)
                     item = index.items[position]
                 action(matter, actor, item)
+            committed(matter.matter_id)
         except KeyError as exc:
             raise HTTPException(404, "This item or code is no longer in the matter.") from exc
         except ValueError as exc:
