@@ -49,7 +49,9 @@ def add_files(client, bench, matter, files, key="a"):
 
 
 @pytest.fixture
-def production(tmp_path):
+def production(tmp_path, monkeypatch):
+    # Hosted runners are smaller than supported nodes.
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
     app = create_workbench_app(tmp_path / "runtime", generator=UnavailableGenerator(), auth_mode="test",
                                malware_scan_mode="disabled", background_ingestion=True, ingestion_workers=1)
     with TestClient(app) as client:
