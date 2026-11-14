@@ -283,12 +283,11 @@ def test_purge_retry_and_late_step_leave_no_rows(production, monkeypatch):
 def test_archive_excludes_index_preserves_human_work(archive_case):
     import io
     import zipfile
-    from types import SimpleNamespace
-    from case_intelligence.modules import ModuleDatabase
+    from case_intelligence.modules import ModuleContext, ModuleDatabase
     from case_intelligence.modules.discovery_review import fields
     from case_intelligence.modules.discovery_review.codes import CodeRepository
     from case_intelligence.modules.discovery_review.identifiers import IdentifierRepository
-    from case_intelligence.modules.discovery_review.stored_index.rebuild import Service
+    from case_intelligence.modules.discovery_review.stored_index.rebuild import Service, cancel
     from case_intelligence.matter_archive import build_matter_archive, cleanup_archive, matter_snapshot_digest
     bench, matter, store = archive_case
     document, _ = store.store_stream('synthetic.txt', 'text/plain', io.BytesIO(b'Synthetic text'))
@@ -297,10 +296,15 @@ def test_archive_excludes_index_preserves_human_work(archive_case):
     identifiers.assign(matter.matter_id, OWNER, [(document.document_id, 'SYN001')])
     code = codes.define(matter.matter_id, OWNER, 'Synthetic code')
     codes.record(matter.matter_id, document.document_id, code.code_id, OWNER, 'apply')
-    service = Service(SimpleNamespace(db=db, ensure_capacity=bench.storage.ensure_capacity), identifiers, codes)
+    context = ModuleContext(db=db, membership=bench.workspace.membership,
+                            source_store=lambda matter: store, matters_root=bench.storage.root,
+                            scanner=None, scan_mode='disabled', ensure_capacity=bench.storage.ensure_capacity)
+    service = Service(context, identifiers, codes)
     before = matter_snapshot_digest(bench, matter, store)
     assert service.current(matter.matter_id, store, fields.load_definition()).complete
     assert matter_snapshot_digest(bench, matter, store) == before
+    cancel(bench.storage.root / 'unrelated' / matter.matter_id, matter.matter_id)
+    assert matter.matter_id in service.jobs
     close(bench, matter)
     artifact = build_matter_archive(bench, matter, OWNER, source_store=store)
     try:
@@ -310,6 +314,8 @@ def test_archive_excludes_index_preserves_human_work(archive_case):
         assert records(artifact, 'workbench_discovery_code_event')[0]['action'] == 'apply'
     finally:
         cleanup_archive(artifact)
+        cancel(bench.storage.root / matter.matter_id, matter.matter_id)
+    assert matter.matter_id not in service.jobs
 
 
 def test_unknown_schema_still_blocks_archive(archive_case):
@@ -423,3 +429,36 @@ def test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume(
     assert item.metadata_state == 'complete'
     values = next(value for key, value in item.values.items() if 'Tag 000000' in value)
     assert values.count('Tag ') == population and 'Tag 014999' in values
+
+
+def test_capacity_replay_reserves_room_for_following_writes(production):
+    from case_intelligence.modules.discovery_review.stored_index.models import Budget, CapacityPlan
+    from case_intelligence.modules.discovery_review.stored_index.rebuild import MIN_CAPACITY, MAX_REQUEST_STEPS
+    client, bench, matter = production
+    drive(production, manifest(4))
+    service = service_for(bench)
+    repository = service.repository
+    document_id = min(bench.source_store(matter).documents)
+    before = repository.document_read(matter.matter_id, document_id)
+    oversized = {'synthetic': 'x' * (MIN_CAPACITY // 4)}
+    capacity, reservations = MIN_CAPACITY, []
+    for _ in range(MAX_REQUEST_STEPS):
+        service.context.ensure_capacity(capacity)
+        reservations.append(capacity)
+        budget = Budget(256, 224)
+        try:
+            with repository.transaction(budget, capacity) as tx:
+                repository.cache(tx, matter.matter_id, document_id, oversized)
+                for number in range(160):
+                    repository.cache(tx, matter.matter_id, document_id, {'synthetic': number})
+        except CapacityPlan as needed:
+            assert repository.document_read(matter.matter_id, document_id) == before
+            capacity = needed.size
+        else:
+            break
+        assert budget.touches <= 256
+    else:
+        pytest.fail('capacity replay exhausted the request budget without committing')
+    assert len(reservations) == 2
+    assert budget.touches == 161
+    assert json.loads(repository.document_read(matter.matter_id, document_id)[2]) == {'synthetic': 159}

@@ -142,3 +142,59 @@ pass is claimed.
 No merge, push, release, public message or PR publication is authorized by the
 launcher. This local candidate retains the review gate and does not claim the
 missing portability, browser, publication or fail-first evidence.
+
+## Retry 3: capacity replay progress
+
+Root cause: exact-prefix capacity reservations replayed a large projection once
+per following write, allowing 128 attempts to expire without a cursor commit;
+random document-ID ordering changed the number of following writes.
+
+The repository now requests at least twice the previous reservation when an
+encoded write exceeds it. The existing service still performs every capacity
+check outside ownership and storage locks, rolls back the failed transaction,
+and revalidates the target and cursor before replay. This conservative byte
+estimate grows geometrically instead of one write at a time. Capacity refusal
+still leaves honest pending/error metadata. Row and request budgets, complete
+values, atomic cursor publication and the monotonic-progress assertion are
+unchanged. The larger reservation can exceed the final encoded step estimate;
+it does not allocate a buffer or bypass the real storage-capacity check.
+
+The small synthetic regression failed against starting product code 24d5044587a4:
+one oversized cache write followed by 160 small writes exhausted 128 attempts
+without committing. With the fix, the same transaction commits in two attempts,
+with 161 row touches; the failed attempt leaves the original cache intact.
+The existing heavy-item test, its setup, 15,000 codes, progress assertion and
+complete-value checks remain unchanged. No frozen/shared test was changed, and
+no timeout or assertion was relaxed.
+
+The ordered shard also exposed an independent fixture defect: the archive test
+registered a partial namespace without `matters_root` as a service context.
+Its subscription cycle could outlive the test, so a later unrelated purge raised
+AttributeError while traversing the service registry. A new cross-root
+cancellation check reproduced that failure directly against the fixture from
+24d5044587a4. The fixture now constructs the real ModuleContext, whose constructor
+requires the root, and cancels its job after the archive checks. The same test
+proves that another root cannot cancel its job and its own root can. Production
+already receives ModuleContext; weakening its purge boundary would mask an
+invalid test input. The shared archive fixture and existing list tests are unchanged.
+
+Retry validation: the unchanged named test passed alone and in the complete
+ordered four-worker shard. The capacity and archive-context regressions failed
+before their respective corrections and passed afterwards. The focused feature
+run passed 252 tests; parity/checker/fixture/database gates passed 2,203 tests,
+additional boundaries passed 14, and the final fixture/parity run passed 2,125.
+The archive regression plus its three affected list/purge cases passed together.
+Ruff, rename contracts/artifacts, diff checks, added-lines private-terms scanning
+and working-tree publication scanning passed. These counts describe separate,
+overlapping selections, not an aggregate test count.
+
+Validation is BLOCKED before five consecutive acceptance runs. The complete
+shard returned 14,627 passed, 10 failed, 13 skipped and two existing expected
+failures, with 34 passing subtests. The named resume test passed. Nine failures
+in `tests/test_time_to_briefing_benchmark.py` and `tests/test_verify_exculpata.py`
+require temporary artifacts outside the checkout; one in
+`tests/test_worker_diagnostics.py` expects a temporary test node outside this
+repository's pytest root. The parent task requires all scratch data inside this
+worktree. These test files and their supporting scripts are outside the fence;
+none was edited, skipped or weakened. Earlier interrupted diagnostic runs are
+not acceptance passes. The launcher retains responsibility for full CI parity.

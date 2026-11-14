@@ -47,7 +47,7 @@ class Transaction:
         estimate = sum(len(value) if isinstance(value, bytes) else len(str(value).encode()) for value in args)
         self.encoded_bytes += estimate * 4 + 4096
         if self.encoded_bytes > self.capacity:
-            raise CapacityPlan(self.encoded_bytes)
+            raise CapacityPlan(max(self.encoded_bytes, 2 * self.capacity))
         cursor = self.repository.db.connection.execute(self.repository.sql(statement), args)
         affected = cursor.rowcount
         if affected not in (0, 1):
