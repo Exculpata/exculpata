@@ -29,6 +29,10 @@ from typing import BinaryIO, Callable, Iterable, Sequence
 
 from .managed_storage import format_bytes
 from .malware_scan import MalwareScanner, scanner_status
+from .source_admission import (
+    LOAD_FILE_COMPLETION_MESSAGE, LOAD_FILE_MEDIA_TYPE, LOAD_FILE_SUFFIXES,
+    LoadFileAdmissionError, is_stored_load_file, validate_load_file,
+)
 
 MAX_FILES = 10
 MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -69,6 +73,7 @@ OCR_REORIENT_DEGREES = (180, 90, 270)
 MAX_OCR_TSV_BYTES = 16 * 1024 * 1024
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 DOCUMENT_MEDIA_TYPES = {
+    **dict.fromkeys(LOAD_FILE_SUFFIXES, LOAD_FILE_MEDIA_TYPE),
     ".pdf": "application/pdf",
     ".docx": DOCX_MEDIA_TYPE,
     ".txt": "text/plain",
@@ -90,6 +95,7 @@ SPREADSHEET_MEDIA_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 EXTENDED_SOURCE_SUFFIXES = {
+    *LOAD_FILE_SUFFIXES,
     ".jpg",
     ".jpeg",
     ".png",
@@ -115,6 +121,7 @@ VIDEO_MEDIA_TYPES = {
 MEDIA_TYPES = {**AUDIO_MEDIA_TYPES, **VIDEO_MEDIA_TYPES}
 _ALLOWED = {**DOCUMENT_MEDIA_TYPES, **MEDIA_TYPES}
 _MEDIA_TYPE_ALIASES = {
+    **{suffix: {"", LOAD_FILE_MEDIA_TYPE, "application/octet-stream"} for suffix in LOAD_FILE_SUFFIXES},
     ".wav": {"audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"},
     ".mp3": {"audio/mpeg", "audio/mp3"},
     ".m4a": {"audio/mp4", "audio/x-m4a", "video/mp4"},
@@ -149,6 +156,22 @@ class UploadProblem(ValueError):
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class LoadFileUploadProblem(UploadProblem):
+    """Transport full load-file feedback separately from its bounded ledger value."""
+
+    def __init__(self, error: LoadFileAdmissionError) -> None:
+        super().__init__(str(error), 422)
+        self.durable_reason = error.durable_reason
+
+
+def _validate_load_file(path: Path, suffix: str) -> None:
+    if suffix in LOAD_FILE_SUFFIXES:
+        try:
+            validate_load_file(path, suffix=suffix)
+        except LoadFileAdmissionError as exc:
+            raise LoadFileUploadProblem(exc) from None
 
 
 def is_media_type(media_type: str) -> bool:
@@ -1484,7 +1507,7 @@ class PilotStore:
         if suffix not in _ALLOWED:
             raise UploadProblem(
                 "Supported sources are PDF, DOCX, UTF-8 TXT, JPEG, PNG, TIFF, "
-                "EML, CSV, TSV, XLSX, WAV, MP3, M4A, OGG, Opus, MP4, MOV, and WebM."
+                "EML, CSV, TSV, XLSX, DAT, OPT, WAV, MP3, M4A, OGG, Opus, MP4, MOV, and WebM."
             )
         key = normalized.rstrip(" .").casefold()
         return normalized, suffix, key
@@ -1646,6 +1669,7 @@ class PilotStore:
                 raise UploadProblem("A different file already uses that name. Rename this file and upload it again.", 409)
             self._scan_staged(stage, suffix)
             self._validate_file_signature(suffix, first)
+            _validate_load_file(stage, suffix)
             duration_ms = 0
             has_video = False
             browser_compatible = True
@@ -1915,6 +1939,7 @@ class PilotStore:
                 return legacy
             self._scan_staged(path, suffix)
             self._validate_file_signature(suffix, first)
+            _validate_load_file(path, suffix)
             duration_ms = 0
             has_video = False
             browser_compatible = True
@@ -2067,6 +2092,13 @@ class PilotStore:
         progress: Callable[[str, int, int], None] | None = None,
     ) -> None:
         source = path or (self.files / document.stored_name)
+        if is_stored_load_file(document.origin, document.media_type, document.display_name):
+            self._drop_units(document)
+            document.page_count = document.completed_units = document.total_units = 0
+            document.state = "ready"
+            document.message = LOAD_FILE_COMPLETION_MESSAGE
+            document.processing_stage = "Stored without searchable text"
+            return
         if is_media_type(document.media_type):
             raise UploadProblem("Media sources must use the transcription queue.")
         if document.media_type in IMAGE_MEDIA_TYPES:
@@ -2816,7 +2848,8 @@ class PilotStore:
             raise
         with self._lock:
             self._ensure_writable()
-            document.processing_stage = "Ready"
+            document.processing_stage = ("Stored without searchable text" if is_stored_load_file(
+                document.origin, document.media_type, document.display_name) else "Ready")
             self._save((document_id,))
         return document
 

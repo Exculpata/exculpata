@@ -465,20 +465,20 @@
   let activePreflight = null;
   let preflightAbortController = null;
   let preflightVersion = 0;
-  const securityCheckedSuffixes = new Set(["jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx"]);
-  const requiresSecurityCheck = (name) => {
+  const securityCheckedSuffixes = new Set(["jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt"]);
+  const requiresSecurityCheck = (name, policy = "extended") => {
+    if (policy === "disabled") return false;
+    if (policy === "all") return true;
     const normalized = String(name || "").toLowerCase();
     const dot = normalized.lastIndexOf(".");
     return dot >= 0 && securityCheckedSuffixes.has(normalized.slice(dot + 1));
   };
-
   if (folderInput && folderChooser) {
     folderInput.removeAttribute("hidden");
     folderInput.removeAttribute("disabled");
     folderInput.removeAttribute("tabindex");
     folderChooser.hidden = false;
   }
-
   const formatBytes = (value) => {
     if (!Number.isFinite(value) || value <= 0) return "0 B";
     const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -1283,7 +1283,7 @@
     const terminal = ["complete", "partial", "cancelled"].includes(session.state);
     const finalBatch = activeUploadBatchIndex >= batchCount - 1;
     const finalizing = (session.items || []).some((item) => item.state === "uploaded");
-    const securityChecking = (session.items || []).filter((item) => item.state === "uploaded" && requiresSecurityCheck(item.relative_path));
+    const securityChecking = (session.items || []).filter((item) => item.state === "uploaded" && requiresSecurityCheck(item.relative_path, uploadForm?.dataset.malwareScanMode));
     const activeWork = (session.items || []).find((item) => ["queued", "processing"].includes(item.work_state));
     const workProgress = total
       ? (session.items || []).reduce((sum, item) => sum + Math.max(0, Math.min(1, Number(item.work_progress || 0))), 0) / total
@@ -1509,7 +1509,7 @@
       const path = file.webkitRelativePath || file.name;
       const suffix = file.name.toLocaleLowerCase().split(".").pop();
       const mediaSuffixes = ["wav", "mp3", "m4a", "ogg", "opus", "mp4", "mov", "webm"];
-      const reviewSuffixes = ["pdf", "docx", "txt", "jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx"];
+      const reviewSuffixes = ["pdf", "docx", "txt", "jpg", "jpeg", "png", "tif", "tiff", "eml", "csv", "tsv", "xlsx", "dat", "opt"];
       if (![...reviewSuffixes, ...mediaSuffixes].includes(suffix)) throw new Error(`${file.name} is not a supported review source.`);
       if (!file.size) throw new Error(`${file.name} is empty.`);
       const maximum = mediaSuffixes.includes(suffix) ? maximumMediaFileBytes : maximumUploadFileBytes;

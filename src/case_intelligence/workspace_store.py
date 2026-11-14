@@ -23,6 +23,7 @@ from typing import Callable, Mapping, Sequence
 from .contracts import validate_relative_path
 from .derived_text import presentation_text
 from .source_locations import SourcePreflight
+from .source_admission import LOAD_FILE_MEDIA_TYPE, LOAD_FILE_SUFFIXES
 from .store.knowledge_services import KnowledgeServicesMixin
 from .store.answer_scope import AnswerScopeMixin
 from .store import (
@@ -5164,9 +5165,16 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             cached = self._matter_readiness_cache.get(matter_id)
             if cached is not None and cached[0] == cache_token:
                 return cached[1]
+            suffix_parameters = {
+                f"load_suffix_{index}": suffix for index, suffix in enumerate(sorted(LOAD_FILE_SUFFIXES))
+            }
+            suffix_predicate = " OR ".join(
+                f"lower(substr(c.display_name,-length(:{key})))=:{key}" for key in suffix_parameters
+            )
             row = self.connection.execute(
                 "WITH catalog_base AS ("
-                "SELECT c.document_id,c.kind,c.tone,c.updated_at AS catalog_updated_at,"
+                "SELECT c.document_id,c.kind,c.tone,c.source_state,c.updated_at AS catalog_updated_at,"
+                "(c.origin='upload' AND c.media_type=:load_media_type AND (" + suffix_predicate + ")) AS stored_load_file,"
                 "ij.state AS ingest_state,ij.stage AS ingest_stage,"
                 "ij.updated_at AS ingest_updated_at,mj.state AS media_state,"
                 "mj.updated_at AS media_updated_at "
@@ -5178,7 +5186,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "WHERE c.matter_id=:matter_id),"
                 "catalog_effective AS ("
                 "SELECT document_id,1 AS saved_count,"
-                "CASE WHEN tone='ready' OR ingest_state='succeeded' "
+                "CASE WHEN stored_load_file THEN 0 WHEN tone='ready' OR ingest_state='succeeded' "
                 "OR media_state IN ('succeeded','degraded') "
                 "OR (ingest_state='running' AND instr(lower(ingest_stage),'index')>0) "
                 "THEN 1 ELSE 0 END AS extracted_count,"
@@ -5187,6 +5195,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "OR media_state IN ('queued','running') THEN 'processing' "
                 "WHEN ingest_state IN ('failed','cancelled') "
                 "OR media_state IN ('failed','cancelled') THEN 'attention' "
+                "WHEN stored_load_file AND source_state IN ('queued','processing') THEN 'processing' "
+                "WHEN stored_load_file THEN 'attention' "
                 "WHEN tone='attention' THEN 'attention' "
                 "WHEN tone='processing' THEN 'processing' "
                 "WHEN tone='ready' THEN 'ready' ELSE 'processing' END AS effective_state,"
@@ -5195,10 +5205,18 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AND instr(lower(ingest_stage),'index')>0 THEN 'indexing' "
                 "WHEN ingest_state IN ('queued','running') THEN 'extracting' "
                 "WHEN media_state IN ('queued','running') THEN 'transcribing' "
+                "WHEN stored_load_file AND (COALESCE(ingest_state,'') IN ('failed','cancelled') "
+                "OR COALESCE(media_state,'') IN ('failed','cancelled')) THEN '' "
+                "WHEN stored_load_file AND source_state IN ('queued','processing') THEN 'extracting' "
+                "WHEN stored_load_file THEN '' "
                 "WHEN tone='processing' AND kind IN ('AUDIO','VIDEO') THEN 'transcribing' "
                 "WHEN tone='processing' THEN 'extracting' ELSE '' END AS activity,"
                 "max(catalog_updated_at,COALESCE(ingest_updated_at,catalog_updated_at),"
-                "COALESCE(media_updated_at,catalog_updated_at)) AS updated_at "
+                "COALESCE(media_updated_at,catalog_updated_at)) AS updated_at,"
+                "CASE WHEN stored_load_file AND source_state='ready' "
+                "AND COALESCE(ingest_state,'') NOT IN ('queued','running','failed','cancelled') "
+                "AND COALESCE(media_state,'') NOT IN ('queued','running','failed','cancelled') "
+                "THEN 1 ELSE 0 END AS stored_only_count "
                 "FROM catalog_base),"
                 "orphan_upload_state AS ("
                 "SELECT i.upload_item_id AS document_id,"
@@ -5223,7 +5241,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AND (i.document_id IS NULL OR c.document_id IS NULL)),"
                 "orphan_upload AS (SELECT document_id,saved_count,extracted_count,effective_state,"
                 "CASE WHEN effective_state='attention' THEN '' ELSE 'uploading' END AS activity,"
-                "updated_at FROM orphan_upload_state),"
+                "updated_at,0 AS stored_only_count FROM orphan_upload_state),"
                 "combined AS (SELECT * FROM catalog_effective UNION ALL SELECT * FROM orphan_upload) "
                 "SELECT COUNT(*) AS total_count,"
                 "COALESCE(SUM(saved_count),0) AS saved_count,"
@@ -5235,6 +5253,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "COALESCE(SUM(activity='extracting'),0) AS extracting_count,"
                 "COALESCE(SUM(activity='indexing'),0) AS indexing_count,"
                 "COALESCE(SUM(activity='transcribing'),0) AS transcribing_count,"
+                "COALESCE(SUM(stored_only_count),0) AS stored_only_count,"
                 "(SELECT COUNT(*) FROM workbench_media_summary "
                 "WHERE matter_id=:matter_id AND state IN ('queued','running','stale')) "
                 "AS overview_processing_count,"
@@ -5250,7 +5269,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AND media_type='application/pdf') AS pdf_count,"
                 "COALESCE(MAX(updated_at),(SELECT updated_at FROM workbench_matter "
                 "WHERE matter_id=:matter_id)) AS updated_at FROM combined",
-                {"matter_id": matter_id},
+                {"matter_id": matter_id, "load_media_type": LOAD_FILE_MEDIA_TYPE, **suffix_parameters},
             ).fetchone()
             if row is None:
                 raise KeyError(matter_id)
@@ -5289,6 +5308,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 recording_review_count=int(row["recording_review_count"] or 0),
                 email_count=int(row["email_count"] or 0),
                 pdf_count=int(row["pdf_count"] or 0),
+                stored_only_count=int(row["stored_only_count"] or 0),
             )
             self._matter_readiness_cache[matter_id] = (cache_token, record)
             return record
@@ -5963,11 +5983,21 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
 
         session = self.upload_session_record(matter_id, actor_id, session_id)
         with self._lock:
+            suffix_parameters = {
+                f"load_suffix_{index}": suffix for index, suffix in enumerate(sorted(LOAD_FILE_SUFFIXES))
+            }
+            suffix_predicate = " OR ".join(
+                f"lower(substr(c.display_name,-length(:{key})))=:{key}" for key in suffix_parameters
+            )
             row = self.connection.execute(
                 "WITH projected AS (SELECT i.received_size,i.state,i.media_type,"
                 "CASE "
                 "WHEN i.state IN ('failed','cancelled') THEN 'attention' "
                 "WHEN i.document_id IS NULL THEN i.state "
+                "WHEN c.origin='upload' AND c.media_type=:load_media_type AND (" + suffix_predicate + ") THEN CASE "
+                "WHEN ij.state IN ('queued','running') OR mj.state IN ('queued','running') THEN 'processing' "
+                "WHEN ij.state IN ('failed','cancelled') OR mj.state IN ('failed','cancelled') THEN 'attention' "
+                "WHEN c.source_state IN ('queued','processing') THEN 'processing' ELSE 'attention' END "
                 "WHEN c.source_state='ready' THEN 'ready' "
                 "WHEN c.source_state='playback_only' THEN 'playback_only' "
                 "WHEN c.source_state IN ('failed','needs_ocr','changed','missing','needs_review') "
@@ -5986,7 +6016,7 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AND ij.document_id=i.document_id "
                 "LEFT JOIN workbench_media_job mj ON mj.matter_id=i.matter_id "
                 "AND mj.document_id=i.document_id AND mj.source_version_id=c.version_id "
-                "WHERE i.matter_id=? AND i.upload_session_id=?) "
+                "WHERE i.matter_id=:matter_id AND i.upload_session_id=:session_id) "
                 "SELECT COUNT(*) AS item_count,COALESCE(SUM(received_size),0) AS received_bytes,"
                 "COALESCE(SUM(state='queued'),0) AS queued_count,"
                 "COALESCE(SUM(state IN ('failed','cancelled')),0) AS failed_count,"
@@ -5998,7 +6028,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                 "AS media_count,"
                 "COALESCE(SUM(state IN ('queued','failed','cancelled')),0) AS terminal_count "
                 "FROM projected",
-                (matter_id, session_id),
+                {"matter_id": matter_id, "session_id": session_id,
+                 "load_media_type": LOAD_FILE_MEDIA_TYPE, **suffix_parameters},
             ).fetchone()
         item_count = int(row["item_count"])
         processing_count = int(row["processing_count"])

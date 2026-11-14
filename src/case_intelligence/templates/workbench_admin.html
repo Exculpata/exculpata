@@ -115,19 +115,26 @@
 
   <section class="administrator-panel administrator-security-panel" aria-labelledby="admin-security-heading">
     <div class="administrator-panel-heading">
-      <div><p class="eyebrow">Secure intake</p><h2 id="admin-security-heading">{{ 'Security scanner ready' if malware_status.ready else 'Security scanner needs attention' }}</h2></div>
-      <span class="storage-health {{ 'ready' if malware_status.ready else 'attention' }}">{{ 'Fail-closed checks active' if malware_status.ready else 'Extended intake protected' }}</span>
+      <div><p class="eyebrow">Secure intake</p><h2 id="admin-security-heading">{{ 'Security scanning disabled' if malware_scan_mode == 'disabled' else 'Security scanner ready' if malware_status.ready else 'Security scanning needs setup' }}</h2></div>
+      <span class="storage-health{% if malware_scan_mode != 'disabled' and malware_status.ready %} ready{% endif %}">{{ 'Scanning disabled by policy' if malware_scan_mode == 'disabled' else 'Required scans available' if malware_status.ready else 'Required scans unavailable' }}</span>
     </div>
-    {% if malware_status.ready %}
+    {% if malware_scan_mode == 'disabled' %}
+    <div class="notice notice-neutral" role="status"><strong>Security scanning is disabled.</strong> Files are not scanned for malware before they enter this matter.</div>
+    {% elif malware_status.ready %}
     <div class="administrator-security-grid">
       <article><strong>ClamAV {{ malware_status.engine_version or 'available' }}</strong><span>Scanning engine</span></article>
       <article><strong>{{ malware_status.signature_version or 'Loaded' }}</strong><span>Signature database</span></article>
       <article><strong>{{ malware_status.signature_updated_at[:16]|replace('T', ' ') if malware_status.signature_updated_at else 'Update managed automatically' }}</strong><span>Signature release (UTC)</span></article>
       <article><strong>{{ malware_scan_mode|capitalize }}</strong><span>Scanning policy</span></article>
     </div>
-    <p>Selected intake types are streamed to a loopback-only scanner before extraction. The scanner receives bytes, never matter paths, and unavailable or detected files do not enter the searchable record.</p>
+    <p>Files requiring a scan are streamed to a local scanner before admission. The scanner receives bytes, never matter paths. Unavailable, inconclusive, failed, or detected scans block admission.</p>
     {% else %}
-    <div class="notice notice-error" role="alert"><strong>Images, email, and spreadsheets are temporarily blocked.</strong> {{ malware_status.message }} Documents, audio, and video remain available under the current extended scanning policy.</div>
+    <div class="notice notice-neutral" role="status"><strong>Security scanning needs setup.</strong> Files that require a malware scan cannot be added until scanning is available.</div>
+    {% endif %}
+    {% if malware_scan_mode == 'all' %}
+    <p>The current policy requires scanning for every uploaded file.</p>
+    {% elif malware_scan_mode == 'extended' %}
+    <p>The current policy requires scanning for images, email, spreadsheets, and {{ load_file_scan_types }} load files.</p>
     {% endif %}
   </section>
 

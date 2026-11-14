@@ -53,8 +53,46 @@ A row that could name two items attaches to neither. The page reports how many
 rows matched, and each item shows the load file, line and how it matched.
 Rows past the first for one item are counted and not used.
 
-Concordance DAT and Opticon OPT volumes are not read here yet; that intake is
-tracked separately.
+### Saved DAT and OPT load files
+
+Use **Choose files** or **Choose a folder** on the workbench's Add sources
+surface to add supported `.dat` and `.opt` files, including uppercase suffixes.
+DAT and OPT files are saved without a preview or searchable text; metadata import is not available yet.
+Original bytes and their digests are retained. These files have no Document or
+Text preview, and their contents cannot be opened through the source-content
+route. Authorized preservation archives retain the originals, and ordinary
+matter deletion removes them.
+
+DAT support requires at least two nonempty, distinct column headers and one data record, U+0014 field separators, optional thorn (þ) quoting, and the same number of fields in every record. OPT support requires no header, exactly seven comma-separated fields per record, and at least one nonblank record; quoted commas are not supported. Supported encodings are UTF-8 with an optional BOM, UTF-16 LE or BE with a BOM, and Windows-1252 detected from the first 64 KiB; later decoding errors are rejected. Each record must fit the 1 MiB record limit.
+
+DAT header names are arbitrary; no particular Bates or path columns are
+required. Windows-1252 detection is a heuristic: a file whose first 64 KiB is
+valid UTF-8 can still be rejected for incompatible bytes later in the file.
+Malformed, empty, header-only, binary, and oversized inputs are rejected in
+full. The configured document-size limit shown beside the intake explanation
+applies to the entire file; its default is 25 MiB. No content is truncated to
+fit a limit. References inside load files remain data and are never opened.
+
+Selection review checks names, declared sizes, and scanner availability; it
+does not attest file readability or a completed malware scan. Full content
+validation and any required scanning occur after transfer. The extended policy
+requires scans for DAT/OPT, as does the all-files policy. Missing, unavailable,
+failed, or inconclusive required scanning blocks admission. With scanning
+disabled, files are not scanned for malware. Neither valid structure nor a
+clean scan makes arbitrary text safe to preview or execute.
+
+Completed load files count as saved and stored-only, with no extracted or
+searchable units. They remain visible as exclusions from searchable coverage.
+A matter containing only these files needs searchable sources before search
+and questions become available. Failed or active work retains its own status.
+Structural rejection shows the supported subset and an actionable diagnostic;
+the same complete explanation remains available after refresh and in the
+selected-file receipt.
+
+Registered-folder ingestion still supports only PDF, DOCX, and TXT. The legacy
+pilot selector remains limited to PDF and TXT; its default extended scanning
+policy does not provide DAT/OPT admission without a scanner. Browser-selected
+folders do not expand ZIP archives, and ZIP files are not admitted.
 
 ## Team identifiers
 
