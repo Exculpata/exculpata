@@ -9,6 +9,7 @@ import json
 import math
 from pathlib import Path
 import re
+import shlex
 import tomllib
 
 from scripts import ci_parity_expr as expr
@@ -263,17 +264,60 @@ def load_skips(root):
     keys(data, {'skip'}, 'skips')
     result, seen = [], set()
     for entry in data.get('skip', []):
-        keys(entry, {'workflow', 'job', 'step', 'category', 'reason'}, 'skips')
-        if set(entry) != {'workflow', 'job', 'step', 'category', 'reason'} or not all(isinstance(value, str) and value.strip() for value in entry.values()):
+        keys(entry, {'workflow', 'job', 'step', 'category', 'reason', 'replay'}, 'skips')
+        if set(entry) - {'replay'} != {'workflow', 'job', 'step', 'category', 'reason'} or not all(isinstance(value, str) and value.strip() for value in entry.values()):
             fail('skips', 'every entry requires workflow, job, step, category and reason strings')
         if entry['category'] not in CATEGORIES:
             fail('skips', f'unknown category {entry["category"]}')
+        if 'replay' in entry and (entry['category'] != 'service' or entry['replay'] != 'pytest-service-stub'):
+            fail('skips', 'replay requires category service and value pytest-service-stub')
         identity = tuple(entry[key] for key in ('workflow', 'job', 'step'))
         if identity in seen:
             fail(':'.join(identity), 'duplicate expected skip')
         seen.add(identity)
         result.append(entry)
     return result
+
+
+def extract_pytest(source, location='replay'):
+    """Extract standalone pytest commands; heredoc content is never executable."""
+    commands, omitted, heredocs = [], [], []
+    logical = ''
+    for line in source.splitlines():
+        if heredocs:
+            delimiter, tabs = heredocs[0]
+            if (line.lstrip('\t') if tabs else line) == delimiter:
+                heredocs.pop(0)
+            continue
+        logical += line
+        if logical.endswith('\\'):
+            logical = logical[:-1] + ' '
+            continue
+        command, logical = logical.strip(), ''
+        if not command or command.startswith('#'):
+            continue
+        try:
+            tokens = shlex.split(command, comments=True)
+        except ValueError:
+            fail(location, 'unsupported shell quoting; use standalone python -m pytest commands')
+        documents = list(re.finditer(r"<<(-)?\s*(?:'([^']+)'|\"([^\"]+)\"|([A-Za-z_][A-Za-z_0-9]*))", command))
+        if '<<' in command:
+            if not documents or command.count('<<') != len(documents):
+                fail(location, 'unsupported heredoc; use a literal delimiter')
+            heredocs.extend((match[2] or match[3] or match[4], bool(match[1])) for match in documents)
+        if tokens[:3] in (['python', '-m', 'pytest'], ['python3', '-m', 'pytest']):
+            lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>()')
+            lexer.whitespace_split = True
+            if documents or any(token and all(c in ';&|<>()' for c in token) for token in lexer) or '`' in command or '$(' in command:
+                fail(location, 'unsupported compound pytest command; use standalone python -m pytest commands')
+            commands.append(command)
+        else:
+            omitted.append(command)
+    if heredocs or logical:
+        fail(location, 'unterminated heredoc or continuation in replay')
+    if not commands:
+        fail(location, 'replay has no standalone python -m pytest command')
+    return commands, omitted
 
 
 def glob_regex(pattern, location):
@@ -481,6 +525,8 @@ def build(root: Path, event='pull_request', changed_files=None, branch='main', a
                             if re.search(pattern, searchable):
                                 unavailable = (category, 'command requires ' + category + ' capability')
                                 break
+                    if expected and 'replay' in expected:
+                        extract_pytest(step_raw.get('run', ''), step_location)
                     if expected:
                         unavailable = (expected['category'], expected['reason'])
                     elif service_context(step_raw):
