@@ -32,27 +32,29 @@
     {% if capabilities.malware_scan == 'not required' %}
     <div class="notice notice-neutral" role="status"><strong>Security scanning is disabled.</strong> Files are not scanned for malware before they enter this matter.</div>
     {% elif capabilities.malware_scan == 'ready' %}
-    <div class="intake-security-ready" role="status"><span aria-hidden="true">&#10003;</span><span><strong>Private security checks are active.</strong> Images, email, and spreadsheets are scanned before they enter the matter.</span></div>
+    <div class="intake-security-ready" role="status"><span aria-hidden="true">&#10003;</span><span><strong>Private security checks are active.</strong> {% if malware_scan_mode == 'all' %}The current policy requires scanning for every uploaded file.{% else %}The current policy requires scanning for images, email, spreadsheets, and DAT/OPT load files.{% endif %}</span></div>
     {% else %}
-    <div class="notice notice-neutral" role="status"><strong>Security scanning needs setup.</strong> Files that require a malware scan cannot enter the matter until the private security scanner and signatures are available.</div>
+    <div class="notice notice-neutral" role="status"><strong>Security scanning needs setup.</strong> Files that require a malware scan cannot be added until scanning is available. {% if malware_scan_mode == 'all' %}The current policy requires scanning for every uploaded file.{% else %}The current policy requires scanning for images, email, spreadsheets, and DAT/OPT load files.{% endif %}</div>
     {% endif %}
-    <form class="upload-zone scalable-upload" method="post" action="/matters/{{ matter.slug }}/uploads" enctype="multipart/form-data" data-upload-form data-preflight-url="/matters/{{ matter.slug }}/upload-preflight" data-session-url="/matters/{{ matter.slug }}/upload-sessions" data-intake-url="/matters/{{ matter.slug }}/intake-receipts" data-matter-slug="{{ matter.slug }}" data-max-upload-items="{{ upload_limits['items'] }}" data-max-upload-batch-items="{{ upload_limits.batch_items }}" data-max-preflight-request-bytes="{{ upload_limits.preflight_request_bytes }}" data-max-document-bytes="{{ upload_limits.document_bytes }}" data-max-media-bytes="{{ upload_limits.media_bytes }}" data-max-collection-bytes="{{ upload_limits.collection_bytes }}" data-document-limit-label="{{ upload_limits.document_label }}" data-media-limit-label="{{ upload_limits.media_label }}" data-collection-limit-label="{{ upload_limits.collection_label }}">
+    <form class="upload-zone scalable-upload" method="post" action="/matters/{{ matter.slug }}/uploads" enctype="multipart/form-data" data-upload-form data-malware-scan-mode="{{ malware_scan_mode }}" data-preflight-url="/matters/{{ matter.slug }}/upload-preflight" data-session-url="/matters/{{ matter.slug }}/upload-sessions" data-intake-url="/matters/{{ matter.slug }}/intake-receipts" data-matter-slug="{{ matter.slug }}" data-max-upload-items="{{ upload_limits['items'] }}" data-max-upload-batch-items="{{ upload_limits.batch_items }}" data-max-preflight-request-bytes="{{ upload_limits.preflight_request_bytes }}" data-max-document-bytes="{{ upload_limits.document_bytes }}" data-max-media-bytes="{{ upload_limits.media_bytes }}" data-max-collection-bytes="{{ upload_limits.collection_bytes }}" data-document-limit-label="{{ upload_limits.document_label }}" data-media-limit-label="{{ upload_limits.media_label }}" data-collection-limit-label="{{ upload_limits.collection_label }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="upload-collection-name">
         <label for="upload-collection-name">Collection name</label>
         <input id="upload-collection-name" name="collection_name" type="text" maxlength="160" required pattern=".*\S.*" aria-describedby="upload-collection-help" autocomplete="off" data-upload-collection-name>
         <span id="upload-collection-help">Name this group of uploads so your team can find and review it together.</span>
       </div>
-      <input id="source-files" class="visually-hidden" name="files" type="file" multiple required accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.tif,.tiff,.eml,.csv,.tsv,.xlsx,.wav,.mp3,.m4a,.ogg,.opus,.mp4,.mov,.webm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,message/rfc822,text/plain,text/csv,text/tab-separated-values,image/*,audio/*,video/*" data-file-input>
-      <input id="source-folder" class="visually-hidden" type="file" multiple hidden disabled tabindex="-1" webkitdirectory directory accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.tif,.tiff,.eml,.csv,.tsv,.xlsx,.wav,.mp3,.m4a,.ogg,.opus,.mp4,.mov,.webm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,message/rfc822,text/plain,text/csv,text/tab-separated-values,image/*,audio/*,video/*" data-folder-input>
+      <input id="source-files" class="visually-hidden" name="files" type="file" multiple required accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.tif,.tiff,.eml,.csv,.tsv,.xlsx,.dat,.opt,.wav,.mp3,.m4a,.ogg,.opus,.mp4,.mov,.webm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,message/rfc822,text/plain,text/csv,text/tab-separated-values,image/*,audio/*,video/*" data-file-input>
+      <input id="source-folder" class="visually-hidden" type="file" multiple hidden disabled tabindex="-1" webkitdirectory directory accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.tif,.tiff,.eml,.csv,.tsv,.xlsx,.dat,.opt,.wav,.mp3,.m4a,.ogg,.opus,.mp4,.mov,.webm,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,message/rfc822,text/plain,text/csv,text/tab-separated-values,image/*,audio/*,video/*" data-folder-input>
       <div class="upload-drop" data-upload-drop>
         <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 22V6m0 0-6 6m6-6 6 6M7 19v5.5A2.5 2.5 0 0 0 9.5 27h13a2.5 2.5 0 0 0 2.5-2.5V19"/></svg>
         <strong>Drop files here</strong>
-        <span>Documents, images, email, spreadsheets, audio, and video · up to {{ upload_limits.item_label }} selected records, saved in resumable {{ upload_limits.batch_item_label }}-item batches</span>
+        <span>Documents, images, email, spreadsheets, DAT/OPT load files, audio, and video · up to {{ upload_limits.item_label }} selected records, saved in resumable {{ upload_limits.batch_item_label }}-item batches</span>
         <div class="upload-picker-actions"><button type="button" class="button button-primary" data-file-chooser hidden>Choose files</button><button type="button" class="button button-primary" data-folder-chooser hidden>Choose a folder</button></div>
         <noscript><label for="source-files" class="button button-primary">Choose files</label></noscript>
         <small data-file-summary>Only records you deliberately select are copied into this temporary matter.</small>
       </div>
+      <p>DAT and OPT files are saved without a preview or searchable text; metadata import is not available yet. The configured document limit is {{ upload_limits.document_label }} per file.</p>
+      <p>DAT support requires at least two nonempty, distinct column headers and one data record, U+0014 field separators, optional thorn (þ) quoting, and the same number of fields in every record. OPT support requires no header, exactly seven comma-separated fields per record, and at least one nonblank record; quoted commas are not supported. Supported encodings are UTF-8 with an optional BOM, UTF-16 LE or BE with a BOM, and Windows-1252 detected from the first 64 KiB; later decoding errors are rejected. Each record must fit the 1 MiB record limit.</p>
       <section class="upload-preflight" data-upload-preflight hidden aria-labelledby="upload-preflight-title">
         <div class="upload-preflight-heading">
           <div>
@@ -308,7 +310,7 @@
           </div>
         </div>
         {% else %}
-        <div class="source-table-empty" role="row"><span role="cell" aria-colspan="6">{% if source_library.stats.total %}No sources match these filters.{% else %}Selected records will appear here as a searchable collection.{% endif %}</span></div>
+        <div class="source-table-empty" role="row"><span role="cell" aria-colspan="6">{% if source_library.stats.total %}No sources match these filters.{% else %}Selected records will appear here with their preparation status.{% endif %}</span></div>
         {% endfor %}
       </div>
 
@@ -395,9 +397,9 @@
   <aside class="next-steps" aria-labelledby="next-steps-heading">
     <h2 id="next-steps-heading">What happens next</h2>
     <ol>
-      <li><b>1</b><span>We read each source</span></li>
-      <li><b>2</b><span>Search becomes available source by source</span></li>
-      <li><b>3</b><span>You can retry anything that needs attention</span></li>
+      <li><b>1</b><span>We prepare each source for review</span></li>
+      <li><b>2</b><span>Sources with extracted text become searchable</span></li>
+      <li><b>3</b><span>Check source status for available next steps</span></li>
     </ol>
   </aside>
 </main>

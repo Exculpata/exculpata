@@ -125,6 +125,11 @@ from .media_evidence import (
 from .managed_storage import ManagedMatterStorage, StoragePolicy, format_bytes, storage_reserve_notice
 from .malware_scan import MalwareScanner, scanner_from_environment, scanner_status
 from .loose_file_preflight import evaluate_loose_file_preflight
+from .source_admission import (
+    LOAD_FILE_COMPLETION_MESSAGE, LOAD_FILE_COVERAGE_MESSAGE,
+    LOAD_FILE_METADATA_STATUS, LOAD_FILE_SCAN_TYPES,
+    display_load_file_reason, is_stored_load_file,
+)
 from .intake_receipts import IntakeReceipts, IntakeUploadResumeMismatch
 from .intake_receipt_exports import export_intake_receipt, LABELS as INTAKE_LABELS
 from .matter_analysis import MAX_ANALYSIS_UNITS, analyze_candidates
@@ -147,6 +152,7 @@ from .pilot_uploads import (
     PilotUnit,
     RawUploadLimitMiddleware,
     UploadProblem,
+    LoadFileUploadProblem,
     canonical_media_type,
     is_media_type,
     maximum_file_bytes,
@@ -328,7 +334,7 @@ def _source_coverage(
             f"{readiness.total_count:,} sources. {excluded:,} {source_word} "
             f"{need_word} attention and {excluded_word} excluded."
         )
-    if partial and (readiness.playback_only_count or readiness.recording_review_count):
+    if partial and (readiness.playback_only_count or readiness.recording_review_count or readiness.stored_only_count):
         notice = (
             f"Searchable text is available for {readiness.searchable_count:,} of {readiness.total_count:,} sources. "
             f"{excluded:,} sources are not searchable and are excluded."
@@ -344,6 +350,12 @@ def _source_coverage(
             notice += f" {attention:,} other source{' needs' if attention == 1 else 's need'} attention and cannot be searched."
     if partial and (readiness.playback_only_count or readiness.recording_review_count):
         notice += " Recordings without a transcript remain available for playback and review."
+    if readiness.stored_only_count:
+        count = readiness.stored_only_count
+        notice += (
+            f" {count:,} load file{' is' if count == 1 else 's are'} saved without searchable text. "
+            f"{LOAD_FILE_METADATA_STATUS}"
+        )
     if readiness.email_count:
         from .extended_extract import EMAIL_COVERAGE_NOTICE
 
@@ -2119,6 +2131,8 @@ class CaseIntelligenceWorkbench(AnswerQuestionDrafts):
     @staticmethod
     def _source_state(document: PilotDocument) -> tuple[str, str]:
         if document.state == "ready":
+            if is_stored_load_file(document.origin, document.media_type, document.display_name):
+                return LOAD_FILE_COMPLETION_MESSAGE, "attention"
             if document.media_type == "application/pdf" and document.message:
                 return document.message, "ready"
             if "remain unreadable" in document.message or "no searchable text" in document.message:
@@ -6908,6 +6922,7 @@ def create_workbench_app(
             readiness.state == "attention" and readiness.attention_count > 0 and
             readiness.playback_only_count + readiness.recording_review_count == readiness.attention_count
         )
+        load_files_only = readiness.total_count > 0 and readiness.stored_only_count == readiness.total_count
         if readiness.state == "empty":
             headline = "Add sources to begin"
             summary = "Upload the records you want Exculpata to prepare for review."
@@ -6928,6 +6943,12 @@ def create_workbench_app(
             )
             action_label = "View processing details"
             action_url = ""
+        elif load_files_only:
+            headline = "Load files saved"
+            summary = f"0 of {readiness.total_count:,} sources searchable · {readiness.stored_only_count:,} saved only"
+            guidance = LOAD_FILE_COVERAGE_MESSAGE
+            action_label = "Add searchable sources"
+            action_url = f"/matters/{matter.slug}/setup"
         elif recording_hold_only:
             headline = "Sources available for review"
             summary = (
@@ -6956,6 +6977,8 @@ def create_workbench_app(
                     "No source is searchable yet. Retry or remove an affected "
                     "source to begin search and conversation."
                 )
+                if readiness.stored_only_count:
+                    guidance = str(_source_coverage(readiness)["notice"]) + " Review other sources or add searchable sources to use search and questions."
             action_label = "Review issues"
             action_url = _query_url(
                 f"/matters/{matter.slug}/setup", view="list", status="attention"
@@ -7133,6 +7156,7 @@ def create_workbench_app(
             "state": "review" if recording_hold_only else readiness.state,
             "recording_review_count": readiness.recording_review_count,
             "playback_only_count": readiness.playback_only_count,
+            "stored_only_count": readiness.stored_only_count,
             "can_query": readiness.can_query,
             "partial_query": readiness.partial_query,
             "excluded_count": int(coverage["excluded_count"]),
@@ -7769,8 +7793,11 @@ def create_workbench_app(
         failed = sum(item.state in {"failed", "cancelled"} for item in items)
         projected_items: list[dict[str, object]] = []
         for item in items:
+            display_message = item.message
+            if item.state == "failed" and is_stored_load_file("upload", item.media_type, item.display_name):
+                display_message = display_load_file_reason(item.message)
             work_state = item.state
-            work_stage = item.message or "Waiting for upload"
+            work_stage = display_message or "Waiting for upload"
             work_progress = (
                 item.received_size / item.expected_size if item.expected_size else 0.0
             )
@@ -7821,9 +7848,11 @@ def create_workbench_app(
                                 else 0.0
                             )
                     if document.state == "ready":
-                        work_state = "ready"
-                        work_stage = document.processing_stage or "Searchable"
-                        work_progress = 1.0
+                        stored_only = is_stored_load_file(document.origin, document.media_type, document.display_name)
+                        if not stored_only or job is None or job.state == "succeeded":
+                            work_state = "attention" if stored_only else "ready"
+                            work_stage = LOAD_FILE_COMPLETION_MESSAGE if stored_only else document.processing_stage or "Searchable"
+                            work_progress = 1.0
                     elif document.state == "playback_only":
                         work_state = "playback_only"
                         work_stage = "Available for playback"
@@ -7831,12 +7860,15 @@ def create_workbench_app(
                     elif document.state in {"failed", "needs_ocr"}:
                         work_state = "attention"
                         work_stage = document.processing_stage or "Needs attention"
+                    elif document.state in {"changed", "missing"}:
+                        work_state = "attention"
+                        work_stage = document.message or "Source unavailable"
                 except KeyError:
                     work_state = "attention"
                     work_stage = "Source status unavailable"
             if item.state in {"failed", "cancelled"}:
                 work_state = "attention"
-                work_stage = item.message or "Upload needs attention"
+                work_stage = display_message or "Upload needs attention"
             projected_items.append(
                 {
                     "upload_item_id": item.upload_item_id,
@@ -7847,7 +7879,7 @@ def create_workbench_app(
                     "expected_size": item.expected_size,
                     "received_size": item.received_size,
                     "state": item.state,
-                    "message": item.message,
+                    "message": display_message,
                     "is_media": media_source,
                     "work_state": work_state,
                     "work_stage": work_stage,
@@ -8860,6 +8892,7 @@ def create_workbench_app(
                 "backup_status": backup_status,
                 "malware_status": malware_status,
                 "malware_scan_mode": bench.malware_scan_mode,
+                "load_file_scan_types": LOAD_FILE_SCAN_TYPES,
                 "model_portfolio": model_portfolio,
                 "ingest_counts": bench.workspace.ingest_counts(),
                 "media_counts": bench.workspace.media_job_counts(),
@@ -9548,6 +9581,7 @@ def create_workbench_app(
                 "source_sets": source_sets,
                 "matter_storage": bench.matter_storage_projection(matter),
                 "storage_policy": bench.storage_policy,
+                "malware_scan_mode": bench.malware_scan_mode,
                 "upload_limits": {
                     "items": MAX_UPLOAD_INTAKE_ITEMS,
                     "item_label": f"{MAX_UPLOAD_INTAKE_ITEMS:,}",
@@ -11500,6 +11534,8 @@ def create_workbench_app(
             store = bench.source_store(matter)
             for row in rows:
                 row["source_url"] = ""
+                if row["availability"] == "failed" and is_stored_load_file("upload", row["expected_type"], row["display_name"]):
+                    row["upload_message"] = display_load_file_reason(row["upload_message"])
                 if row["catalog_document_id"]:
                     try:
                         document = store.get(row["catalog_document_id"])
@@ -12120,7 +12156,7 @@ def create_workbench_app(
                     context.principal_id,
                     session_id,
                     item_id,
-                    str(exc),
+                    exc.durable_reason if isinstance(exc, LoadFileUploadProblem) else str(exc),
                 )
             except Exception:
                 pass
@@ -13642,6 +13678,8 @@ def create_workbench_app(
             raise HTTPException(404, "Source not found") from exc
         if document.origin != "upload" or not document.stored_name:
             raise HTTPException(404, "The original is not stored in this workbench.")
+        if is_stored_load_file(document.origin, document.media_type, document.display_name):
+            raise HTTPException(404, "Load files have no preview or direct download.")
         response_media_type = document.media_type
         expected_size = document.size
         compatible_copy = False

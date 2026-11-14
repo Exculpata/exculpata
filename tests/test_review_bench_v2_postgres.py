@@ -378,3 +378,175 @@ def test_live_learned_dense_only_paraphrase_and_unsupported_abstention():
         assert semantic and semantic[0].page_number == 2
         assert retriever.search("matter-alpha", "unfindable zephyr term") == ()
         assert retriever.search("matter-alpha", "blood alcohol level") == ()
+
+
+@pytest.fixture
+def load_file_projection_upload_storage(monkeypatch):
+    monkeypatch.setenv("CASE_INTELLIGENCE_STORAGE_RESERVE_GIB", "0")
+
+
+def test_load_file_empty_projection_postgres(tmp_path, load_file_projection_upload_storage):
+    import hashlib
+    import time
+
+    import psycopg
+    from fastapi.testclient import TestClient
+
+    from case_intelligence.generation import UnavailableGenerator
+    from case_intelligence.malware_scan import MalwareScanResult, MalwareScannerStatus
+    from case_intelligence.managed_storage import StoragePolicy
+    from case_intelligence.source_locations import SourceLocationRegistry
+    from case_intelligence.workbench import create_workbench_app
+
+    class CleanProjectionScanner:
+        def __init__(self):
+            self.calls = 0
+
+        def status(self, *, force=False):
+            return MalwareScannerStatus('ready', 'synthetic')
+
+        def scan(self, path):
+            assert path.is_file()
+            self.calls += 1
+            return MalwareScanResult('clean', 'synthetic')
+
+    scanner = CleanProjectionScanner()
+    dsn = os.environ['CASE_REVIEW_POSTGRES_TEST_DSN']
+    runtime = tmp_path / 'runtime'
+    sources = (
+        ('generated.DAT', b'Control\x14Description\nGEN-1\x14Metadata cedar canary\n'),
+        ('generated.OPT', b'GEN-1,VOL,Images/page.tif,Y,,,1\n'),
+        ('generated.txt', b'Generated searchable turquoise lantern passage.\n'),
+    )
+    actor = 'development-taylor-morgan'
+    assert DeterministicEmbeddingAdapter().embed(()) == ()
+
+    def application(connection):
+        return create_workbench_app(
+            runtime, generator=UnavailableGenerator(), auth_mode='test',
+            postgres_connection=connection, learned_retrieval=False,
+            embedding=DeterministicEmbeddingAdapter(), reranker=DeterministicReranker(),
+            source_registry=SourceLocationRegistry(), background_ingestion=True,
+            ingestion_workers=1, malware_scanner=scanner, malware_scan_mode='extended',
+            storage_policy=StoragePolicy(reserve_bytes=0),
+        )
+
+    def assert_projection(connection, matter_id, identities):
+        # fixture-write: Read zero-unit counts and identities from the isolated PostgreSQL projection; no writes.
+        with connection.cursor() as cursor:
+            for name, raw in sources:
+                document_id, version_id = identities[name]
+                is_load_file = name != 'generated.txt'
+                cursor.execute(
+                    'SELECT media_type,page_count,current_source_version_id '
+                    'FROM review_document WHERE matter_id=%s AND document_id=%s',
+                    (matter_id, document_id),
+                )
+                row = cursor.fetchone()
+                assert row is not None and row[0] == 'text/plain' and row[2] == version_id
+                assert row[1] == (0 if is_load_file else 1)
+                cursor.execute(
+                    'SELECT count(*) FROM review_page WHERE matter_id=%s AND document_id=%s',
+                    (matter_id, document_id),
+                )
+                assert cursor.fetchone() == ((0 if is_load_file else 1),)
+                cursor.execute(
+                    'SELECT count(*) FROM review_chunk WHERE matter_id=%s AND document_id=%s',
+                    (matter_id, document_id),
+                )
+                assert cursor.fetchone() == ((0 if is_load_file else 1),)
+                cursor.execute(
+                    'SELECT content_digest,byte_size,status FROM review_source_version '
+                    'WHERE matter_id=%s AND document_id=%s AND source_version_id=%s',
+                    (matter_id, document_id, version_id),
+                )
+                assert cursor.fetchone() == (hashlib.sha256(raw).hexdigest(), len(raw), 'ready')
+                cursor.execute(
+                    'SELECT state,completed_units,total_units FROM review_processing_state '
+                    'WHERE matter_id=%s AND document_id=%s AND stage=%s',
+                    (matter_id, document_id, 'native extraction'),
+                )
+                expected_units = 0 if is_load_file else 1
+                assert cursor.fetchone() == ('ready', expected_units, expected_units)
+        backend = PostgresHybridBackend(connection)
+        assert backend.lexical(matter_id, 'metadata cedar canary', 10) == ()
+        found = backend.lexical(matter_id, 'turquoise lantern passage', 10)
+        assert len(found) == 1 and found[0].document_id == identities['generated.txt'][0]
+        assert backend.lexical('generated-unrelated-matter', 'turquoise lantern passage', 10) == ()
+
+    matter_id = None
+    try:
+        with TestClient(application(psycopg.connect(dsn))) as client:
+            bench = client.app.state.workbench
+            assert bench.postgres_ready
+            created = client.post('/matters', data={'name': 'Generated load-file projection'},
+                                  follow_redirects=False)
+            assert created.status_code == 303
+            slug = created.headers['location'].split('/')[2]
+            matter = bench.matter(slug, actor)
+            matter_id = matter.matter_id
+            identities = {}
+            for ordinal, (name, raw) in enumerate(sources, 1):
+                session = client.post(f'/matters/{slug}/upload-sessions', json={'files': [
+                    {'name': name, 'relative_path': name, 'size': len(raw),
+                     'media_type': 'text/plain'}]})
+                assert session.status_code in (200, 201), session.text
+                item = session.json()['items'][0]
+                transferred = client.put(item['chunk_url'], content=raw, headers={
+                    'Content-Type': 'application/octet-stream', 'X-Upload-Offset': '0'})
+                assert transferred.status_code == 200, transferred.text
+                finalized = client.post(item['finalize_url'])
+                assert finalized.status_code == 200, finalized.text
+                source_store = bench.source_store(matter)
+                document = next(value for value in source_store.documents.values()
+                                if value.display_name == name)
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    job = bench.workspace.ingest_job(matter_id, document.document_id)
+                    if job is not None and job.state in {'succeeded', 'failed', 'cancelled'}:
+                        break
+                    time.sleep(0.02)
+                job = bench.workspace.ingest_job(matter_id, document.document_id)
+                assert job is not None and job.state == 'succeeded', job
+                document = source_store.get(document.document_id)
+                assert document.state == 'ready'
+                assert document.digest == hashlib.sha256(raw).hexdigest()
+                assert (source_store.files / document.stored_name).read_bytes() == raw
+                identities[name] = (document.document_id, document.version_id)
+                if ordinal <= 2:
+                    assert document.parsed_units() == () and document.page_count == 0
+                    readiness = bench.workspace.matter_readiness(matter_id)
+                    assert readiness.total_count == readiness.saved_count == ordinal
+                    assert readiness.searchable_count == readiness.extracted_count == 0
+                    assert readiness.processing_count == 0
+                    assert readiness.attention_count == readiness.stored_only_count == ordinal
+                    assert not readiness.can_query
+            assert scanner.calls == 2
+            with psycopg.connect(dsn) as inspection:
+                assert_projection(inspection, matter_id, identities)
+
+        with TestClient(application(psycopg.connect(dsn))) as client:
+            bench = client.app.state.workbench
+            assert bench.postgres_ready
+            matter = bench.matter(slug, actor)
+            source_store = bench.source_store(matter)
+            for name, raw in sources:
+                document = source_store.get(identities[name][0])
+                assert document.version_id == identities[name][1]
+                assert document.state == 'ready'
+                assert (source_store.files / document.stored_name).read_bytes() == raw
+                job = bench.workspace.ingest_job(matter_id, document.document_id)
+                assert job is not None and job.state == 'succeeded'
+            readiness = bench.workspace.matter_readiness(matter_id)
+            assert readiness.total_count == readiness.saved_count == 3
+            assert readiness.extracted_count == readiness.searchable_count == 1
+            assert readiness.processing_count == 0
+            assert readiness.stored_only_count == readiness.attention_count == 2
+            assert readiness.can_query and readiness.partial_query
+            with psycopg.connect(dsn) as inspection:
+                assert_projection(inspection, matter_id, identities)
+            assert scanner.calls == 2
+    finally:
+        if matter_id is not None:
+            with psycopg.connect(dsn) as cleanup:
+                delete_postgres_matter(cleanup, matter_id=matter_id)

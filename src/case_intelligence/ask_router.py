@@ -18,7 +18,7 @@ class RouteDecision:
 # Consume complete quoted phrases and their escapes before matching operator tokens.
 _BOOLEAN_OR_PHRASE = re.compile(r'"(?:[^"\\]|\\["\\])*"|(?<![^\s()])(?P<operator>AND|OR|NOT)(?![^\s()])')
 # These are natural-language retrieval cues, not an exact-search grammar.
-_FORMAT = r"\.?(?:pdf|docx|txt|jpg|jpeg|png|tif|tiff|eml|csv|tsv|xlsx|wav|mp3|m4a|ogg|opus|mp4|mov|webm)"
+_FORMAT = r"\.?(?:pdf|docx|txt|jpg|jpeg|png|tif|tiff|eml|csv|tsv|xlsx|dat|opt|wav|mp3|m4a|ogg|opus|mp4|mov|webm)"
 _RECORD = (
     r"(?:documents?|records?|sources?|files?|e-?mails?|messages?|texts?|reports?|"
     r"transcripts?|statements?|interviews?|recordings?|notes?|memos?|exhibits?|"

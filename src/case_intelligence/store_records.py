@@ -489,6 +489,7 @@ class MatterReadinessRecord:
     recording_review_count: int = 0
     email_count: int = 0
     pdf_count: int = 0
+    stored_only_count: int = 0
 
     @property
     def can_query(self) -> bool:
