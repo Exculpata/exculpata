@@ -1,5 +1,8 @@
 """Read-only DAT and OPT parsing with bounded, source-cited diagnostics."""
 import codecs
+import hashlib
+import json
+import os
 import re
 from collections import namedtuple
 from dataclasses import dataclass
@@ -9,6 +12,7 @@ from typing import Mapping
 
 DatRow = namedtuple("DatRow", "values headers file line")
 OptPage = namedtuple("OptPage", "values file line")
+LoadFileLine = namedtuple("LoadFileLine", "text file line")
 _MAX_RECORD = 1024 * 1024
 _FIELD_ALIASES = {
     "BEGDOC": "begin_bates", "BEGBATES": "begin_bates", "ENDDOC": "end_bates",
@@ -16,6 +20,22 @@ _FIELD_ALIASES = {
     "TEXT": "text_path", "TEXTPATH": "text_path", "NATIVE": "native_path",
     "NATIVEPATH": "native_path", "DATE": "date", "MD5": "md5", "SHA1": "sha1", "SHA256": "sha256",
 }
+
+
+@dataclass(frozen=True)
+class RecordEvent:
+    """One lossless source record, observed before legacy diagnostic capping."""
+
+    kind: str
+    category: str
+    source_format: str
+    ordinal: int
+    line: int
+    headers: tuple[str, ...] | None = None
+    cells: tuple[str, ...] | None = None
+    diagnostics: tuple[str, ...] = ()
+    optional_values: tuple[tuple[str, str], ...] = ()
+    next_cursor: Mapping | None = None
 
 class LoadFileError(ValueError):
     def __init__(self, code, file, line):
@@ -114,57 +134,127 @@ def _decode_chunk(decoder, raw, final):
             decoder.setstate((b"", decoder.getstate()[1]))
             raw = error.object[error.end:]
 
-def _physical_chunks(stream, encoding):
-    if encoding == "utf-8-sig":
-        stream.read(len(codecs.BOM_UTF8))
-        encoding = "utf-8"
-    decoder = codecs.getincrementaldecoder(encoding)()
-    pending_cr = ""
-    while True:
-        raw = stream.read(8192)
-        text = pending_cr + _decode_chunk(decoder, raw, final=not raw)
-        pending_cr = "\r" if text.endswith("\r") and raw else ""
-        if pending_cr:
-            text = text[:-1]
-        yield from re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+", text)
-        if not raw:
-            return
+def _decode_error(error):
+    """Mark damaged bytes while retaining following quotes and physical lines."""
+    return "\udcff", error.end
 
-def _records(path, dat=False):
-    """Discard damaged record text until its quote parity closes, citing it once."""
-    line, start, parts, size, quoted, skipping, seen = 1, 1, [], 0, False, False, False
+
+codecs.register_error("load_file_damaged_record", _decode_error)
+
+
+def _source_identity(metadata):
+    return [metadata.st_dev, metadata.st_ino, metadata.st_size,
+            metadata.st_mtime_ns, metadata.st_ctime_ns]
+
+
+def _cursor_digest(cursor):
+    return hashlib.sha256(json.dumps(cursor, sort_keys=True, ensure_ascii=True,
+        separators=(",", ":")).encode("ascii")).hexdigest()
+
+
+def _checkpoint(state, source_format, ordinal, headers):
+    if state is None:
+        return None
+    result = dict(state, source_format=source_format, ordinal=ordinal,
+                  headers=list(headers) if headers is not None else None, version=1)
+    result["checksum"] = _cursor_digest(result)
+    return result
+
+
+def _resume_cursor(path, cursor, source_format, identity):
+    """Accept only intact, version-bound internal completed-record checkpoints."""
+    keys = {"version", "source_format", "encoding", "cookie", "line", "ordinal", "headers", "source", "checksum"}
+    invalid = (not isinstance(cursor, Mapping) or set(cursor) != keys)
+    if not invalid:
+        data = dict(cursor)
+        checksum = data.pop("checksum")
+        invalid = (
+            type(data["version"]) is not int or data["version"] != 1 or data["source_format"] != source_format
+            or not isinstance(data["encoding"], str)
+            or data["encoding"] not in {"utf-8", "utf-8-sig", "utf-16", "cp1252"}
+            or any(type(data[key]) is not int or data[key] < minimum
+                   for key, minimum in (("cookie", 0), ("line", 1), ("ordinal", 1)))
+            or (isinstance(data["cookie"], int) and data["cookie"].bit_length() > 256)
+            or not isinstance(data["source"], list) or len(data["source"]) != 5
+            or any(type(value) is not int or value < 0 for value in data["source"])
+            or (source_format == "opt" and data["headers"] is not None)
+            or (source_format == "dat" and (not isinstance(data["headers"], list)
+                or any(not isinstance(value, str) for value in data["headers"])))
+        )
+        if not invalid:
+            invalid = (sum(len(value) for value in data["headers"] or ()) > _MAX_RECORD
+                       or checksum != _cursor_digest(data))
+    if invalid:
+        raise LoadFileError("invalid_cursor", path, 1)
+    if data["source"] != identity:
+        raise LoadFileError("source_changed", path, data["line"])
+    return data
+
+
+def _physical_chunks(stream):
+    while raw := stream.readline(8192):
+        if raw.endswith("\r"):
+            boundary = stream.tell()
+            following = stream.read(1)
+            if following == "\n":
+                raw += following
+            else:
+                stream.seek(boundary)
+        yield raw
+
+
+def _records(path, dat=False, cursor=None):
+    """Resume at a decoded record boundary; bound even damaged physical lines."""
+    line = start = cursor["line"] if isinstance(cursor, Mapping) and type(cursor.get("line")) is int else 1
+    parts, size, quoted, error, seen = [], 0, False, "", False
     try:
-        encoding = _encoding(path)
+        identity = _source_identity(Path(path).stat())
+        resumed = _resume_cursor(path, cursor, "dat" if dat else "opt", identity) if cursor is not None else None
+        encoding = resumed["encoding"] if resumed else _encoding(path)
         byte_encoding = {"utf-16": "utf-16-le", "utf-8-sig": "utf-8"}.get(encoding, encoding)
-        with Path(path).open("rb") as stream:
-            for raw in _physical_chunks(stream, encoding):
+        with Path(path).open("r", encoding=encoding, errors="load_file_damaged_record", newline="") as stream:
+            if _source_identity(os.fstat(stream.fileno())) != identity:
+                raise LoadFileError("source_changed", path, max(1, line))
+            if resumed:
+                try:
+                    stream.seek(resumed["cookie"])
+                except (ValueError, OverflowError, OSError) as failure:
+                    raise LoadFileError("invalid_cursor", path, line) from failure
+                if stream.tell() != resumed["cookie"]:
+                    raise LoadFileError("invalid_cursor", path, line)
+            def checkpoint():
+                return {"encoding": encoding, "cookie": stream.tell(), "line": line, "source": identity}
+            for raw in _physical_chunks(stream):
                 seen = True
                 quoted ^= dat and bool(raw.count("þ") % 2)
-                if not skipping:
-                    bad = "mixed_encoding" if "\udcff" in raw else ""
-                    size += len(raw.encode(byte_encoding)) if not bad else 0
-                    if size > _MAX_RECORD and not bad:
-                        bad = "record_too_large"
-                    if bad:
+                if not error:
+                    error = "mixed_encoding" if "\udcff" in raw else ""
+                    size += len(raw.encode(byte_encoding)) if not error else 0
+                    if size > _MAX_RECORD and not error:
+                        error = "record_too_large"
+                    if error:
                         parts.clear()
-                        skipping = True
-                        yield start, None, bad
                     else:
                         parts.append(raw)
                 if raw.endswith(("\r", "\n")):
                     line += 1
                     if not quoted:
-                        if not skipping:
-                            yield start, "".join(parts).removesuffix("\n").removesuffix("\r"), ""
-                        parts, size, skipping, start = [], 0, False, line
-            if dat and not seen:
-                yield 1, None, "invalid_header"
-            if parts:
-                yield start, None if quoted else "".join(parts), "truncated_row" if quoted else ""
-    except LoadFileError as error:
-        yield error.line, None, error.code
-    except OSError:
-        yield max(1, start), None, "read_error"
+                        yield start, None if error else "".join(parts).removesuffix("\n").removesuffix("\r"), error, checkpoint()
+                        parts, size, error, start = [], 0, "", line
+            if dat and not seen and cursor is None:
+                yield 1, None, "invalid_header", None
+            if parts or error:
+                error = error or ("truncated_row" if quoted else "")
+                yield start, None if error else "".join(parts), error, None if quoted else checkpoint()
+            if (_source_identity(os.fstat(stream.fileno())) != identity
+                    or _source_identity(Path(path).stat()) != identity):
+                raise LoadFileError("source_changed", path, max(1, line))
+    except LoadFileError as failure:
+        if cursor is not None and failure.code in {"invalid_cursor", "source_changed"}:
+            raise
+        yield failure.line, None, failure.code, None
+    except (OSError, UnicodeError):
+        yield max(1, start), None, "read_error", None
 
 def _dat_values(raw):
     values = raw.split("\x14")
@@ -186,40 +276,83 @@ def _dat_values(raw):
         return None
     return tuple(v[1:-1] if v.startswith("þ") else v for v in values)
 
-def parse_dat(path, *, findings=None, headers_out=None):
-    """Stream unchanged rows; append header cells to headers_out; exhaust for findings."""
-    sink, headers = _Findings(findings, path), None
-    for line, raw, error in _records(path, dat=True):
-        if error:
-            sink.add("invalid_header" if headers is None and error not in {"unsupported_encoding", "read_error"} else error, line)
-            headers = () if headers is None else headers
+
+def iter_load_file_lines(path):
+    """Yield unchanged physical-line text using the shared bounded decoder.
+
+    Only physical terminators are removed. Thorn, commas, and other text have no
+    field meaning here. Unsupported encoding, a damaged later line, changed
+    source, or a line beyond the record bound raises its source-cited error;
+    consumers never receive a lossy or clipped successful line.
+    """
+    records = _records(path)
+    try:
+        for line, raw, error, state in records:
+            if error:
+                raise LoadFileError(error, path, line)
+            yield LoadFileLine(raw, str(path), line)
+    finally:
+        records.close()
+
+
+def _publish_event(event, on_event, sink):
+    if on_event is not None:
+        on_event(event)
+    if sink.target is not None or on_event is None:
+        for code in event.diagnostics:
+            sink.add(code, event.line)
+
+
+def parse_dat(path, *, findings=None, headers_out=None, on_event=None, cursor=None):
+    """Stream legacy rows and optional complete events from one bounded pass."""
+    sink = _Findings(findings, path)
+    headers = tuple(cursor["headers"]) if isinstance(cursor, Mapping) and isinstance(cursor.get("headers"), list) else None
+    ordinal = cursor.get("ordinal", 1) if isinstance(cursor, Mapping) else 1
+    if headers_out is not None and headers is not None:
+        headers_out.extend(headers)
+    for line, raw, error, state in _records(path, dat=True, cursor=cursor):
+        file_failure = error in {"unsupported_encoding", "read_error", "source_changed"}
+        values = _dat_values(raw) if raw is not None else None
+        if file_failure:
+            _publish_event(RecordEvent("file_failure", "document", "dat", ordinal, line,
+                headers, None, (error,)), on_event, sink)
             continue
-        values = _dat_values(raw)
-        if values is None:
-            sink.add("invalid_header" if headers is None else "invalid_quoting", line)
-            headers = () if headers is None else headers
-        elif headers is None:
-            headers = values
+        if headers is None:
+            diagnostics = ("invalid_header",) if error or values is None else tuple(
+                code for code, bad in (("duplicate_header", len(set(values)) != len(values)),
+                                      ("empty_header", not all(values))) if bad)
+            headers = values if values is not None else ()
             if headers_out is not None:
                 headers_out.extend(headers)
-            for code, bad in (("duplicate_header", len(set(headers)) != len(headers)),
-                              ("empty_header", not all(headers))):
-                if bad:
-                    sink.add(code, line)
-        elif headers and len(values) != len(headers):
-            sink.add("field_count_mismatch", line)
-        else:
+            event = RecordEvent("header", "document", "dat", 0, line,
+                values, values, diagnostics, next_cursor=_checkpoint(state, "dat", ordinal, headers))
+            _publish_event(event, on_event, sink)
+            continue
+        diagnostics = ((error,) if error else ("invalid_quoting",) if values is None
+                       else ("field_count_mismatch",) if headers and len(values) != len(headers) else ())
+        event = RecordEvent("rejected" if diagnostics else "accepted", "document", "dat", ordinal,
+            line, headers, values, diagnostics, next_cursor=_checkpoint(state, "dat", ordinal + 1, headers))
+        _publish_event(event, on_event, sink)
+        ordinal += 1
+        if not diagnostics:
             yield DatRow(values, headers, str(path), line)
 
-def parse_opt(path, *, findings=None):
-    """Stream seven unchanged fields; exhaust the iterator to finalize findings."""
+
+def parse_opt(path, *, findings=None, on_event=None, cursor=None):
+    """Stream unchanged positional rows and optional uncapped record events."""
     sink = _Findings(findings, path)
-    for line, raw, error in _records(path):
-        if error:
-            sink.add(error, line)
-        elif len(values := tuple(raw.split(","))) != 7:
-            sink.add("field_count_mismatch", line)
-        else:
+    ordinal = cursor.get("ordinal", 1) if isinstance(cursor, Mapping) else 1
+    for line, raw, error, state in _records(path, cursor=cursor):
+        values = tuple(raw.split(",")) if raw is not None else None
+        diagnostics = (error,) if error else ("field_count_mismatch",) if len(values) != 7 else ()
+        kind = ("file_failure" if error in {"unsupported_encoding", "read_error", "source_changed"}
+                else "rejected" if diagnostics else "accepted")
+        event = RecordEvent(kind, "page", "opt", ordinal, line, None, values, diagnostics,
+            next_cursor=_checkpoint(state, "opt", ordinal + 1, None))
+        _publish_event(event, on_event, sink)
+        if kind != "file_failure":
+            ordinal += 1
+        if not diagnostics:
             yield OptPage(values, str(path), line)
 
 def resolve_volume_path(volume, value, file, line):

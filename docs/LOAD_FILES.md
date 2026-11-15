@@ -13,3 +13,33 @@ Findings retain at most 1,000 entries per code plus one summary of the dropped c
 Dates accept YYYY-MM-DD, YYYYMMDD, and month/day/year, optionally followed by
 a space or T and HH:MM or HH:MM:SS. Blank or whitespace-only cells are missing dates.
 Invalid dates are cited without changing the value.
+
+## Streaming production import
+
+The discovery importer consumes the public DAT and OPT parsers directly; it
+does not call the volume-walking QC routine. Embedded paths remain inert strings
+and do not authorize opening, locating or importing another file.
+
+The optional synchronous `on_event` callback receives a frozen `RecordEvent`
+for the header, each accepted or rejected logical record, and file-level
+failures. Events retain ordered cells, starting physical lines and uncapped
+logical ordinals before the legacy diagnostic examples are capped. An
+unrecoverable value stays absent. Callback failure aborts the attempt. Existing
+iterator shapes, `headers_out`, strict calls and bounded `findings` behavior
+remain supported. Internal validated cursors resume at completed record
+boundaries; a changed source cannot reuse the old checkpoint.
+
+The production repository preserves complete events in matter-scoped attempts,
+using ordered JSON arrays for supplied headers and values. Batches are bounded
+by both 256 records and 4 MiB of decoded UTF-8 payload. A single larger event is
+persisted alone; batch limits never truncate the total record population.
+Capacity, read or persistence failures retain explicit incomplete coverage.
+
+Record-oriented family checks compare only actual declared records. They do
+not enumerate numerical label ranges or walk source directories. Literal
+registered marks remain literal. Supplied page counts, extracted page counts,
+page-record ordinals and produced page labels have separate meanings.
+
+Archive schema coverage includes the three production tables and the exact raw
+arrays. Backup and database restore are distinct from preservation export.
+Both require complete schema and source integrity validation.

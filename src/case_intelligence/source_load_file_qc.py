@@ -3,6 +3,7 @@ import hashlib
 import os
 import re
 from collections import Counter, defaultdict, namedtuple
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from .source_load_files import Finding, LoadFileError, parse_dat, parse_opt, resolve_volume_path
@@ -13,6 +14,85 @@ QCReport = namedtuple("QCReport", "document_count page_count documents pages ran
 def parse_plain_label(label):
     match = re.fullmatch(r"([A-Za-z]+)([0-9]{1,18})", label)
     return (match[1], int(match[2]), len(match[2])) if match else None
+
+
+@dataclass(frozen=True)
+class FamilyRecord:
+    """Literal member and declared family bounds; no inferred membership."""
+
+    begin_bates: str
+    end_bates: str
+    begin_attachment: str
+    end_attachment: str
+    bounds: tuple[str, int, int] | None
+    attachment_bounds: tuple[str, int, int] | None
+    diagnostics: tuple[str, ...]
+
+    @property
+    def declared(self):
+        return bool(self.begin_attachment or self.end_attachment)
+
+
+def _plain_range(begin, end):
+    first, last = parse_plain_label(begin), parse_plain_label(end)
+    if first and last and first[0] == last[0] and first[1] <= last[1]:
+        return first[0], first[1], last[1]
+    return None
+
+
+def family_record(values):
+    """Validate only this actual member; collection facts belong to its store."""
+    begin, end = values.get("begin_bates", ""), values.get("end_bates", "")
+    first, last = values.get("begin_attachment", ""), values.get("end_attachment", "")
+    bounds, attachment = _plain_range(begin, end), _plain_range(first, last)
+    invalid = bool(first or last) and (not bounds or not attachment
+        or bounds[0] != attachment[0] or bounds[1] < attachment[1] or bounds[2] > attachment[2])
+    return FamilyRecord(begin, end, first, last, bounds, attachment,
+                        ("invalid_family_range",) if invalid else ())
+
+
+def family_diagnostics(record, *, parent_count, terminal_count, competing_parent=False,
+                       overlap=False, nested=False, cyclic=False):
+    """Combine one member with bounded, database-computed relationship facts."""
+    if not record.declared:
+        return ()
+    codes = list(record.diagnostics)
+    if not record.diagnostics:
+        if parent_count == 0 or terminal_count == 0:
+            codes.append("orphan_attachment")
+        if parent_count > 1 or terminal_count > 1 or competing_parent or nested:
+            codes.append("family_conflict")
+        if overlap:
+            codes.append("family_overlap")
+        if cyclic:
+            codes.append("family_cycle")
+    return tuple(dict.fromkeys(codes))
+
+
+def family_pair_diagnostics(left, right):
+    """Compare two declared intervals without enumerating their numeric spans."""
+    first, second = left.attachment_bounds, right.attachment_bounds
+    if not first or not second or first[0] != second[0]:
+        return ()
+    if (left.begin_attachment, left.end_attachment) == (right.begin_attachment, right.end_attachment):
+        return ()
+    if first[1] > second[2] or second[1] > first[2]:
+        return ()
+    nested = ((first[1] <= second[1] and first[2] >= second[2])
+              or (second[1] <= first[1] and second[2] >= first[2]))
+    return ("family_overlap", "family_conflict") if nested else ("family_overlap",)
+
+
+def natural_order(label):
+    """A bounded comparison key, leaving each supplied label unchanged."""
+    parsed = parse_plain_label(label)
+    return (*parsed, label) if parsed else (label, 0, 0, label)
+
+
+def family_order_key(record, source_id="", ordinal=0):
+    """Sort declared parents first, then actual children with stable ties."""
+    return (0 if record.declared and record.begin_bates == record.begin_attachment else 1,
+            natural_order(record.begin_bates), source_id, ordinal)
 
 def _valid_date(value):
     if not value.strip():

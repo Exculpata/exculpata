@@ -19,6 +19,7 @@
     <p class="discovery-review-count" role="status">{{ document_count }} {{ 'document' if document_count == 1 else 'documents' }} in this matter{% if listing.filter_complete %} · {{ listing.matching }} {{ 'matches' if listing.matching == 1 else 'match' }} the filter{% endif %}</p>
     <button class="button button-secondary" type="button" data-review-chooser-open aria-controls="dr-chooser" aria-expanded="false">Columns and fields</button>
   </div>
+  {% for source_format, counts in production_coverage.items() %}<p class="dr-load-file" data-production-coverage data-production-format="{{ source_format }}">{{ source_format|upper }} records{% for name, count in counts.items() %} · {{ name }}: {{ count }}{% endfor %}</p>{% endfor %}
   {% if listing.notice %}<p class="dr-notice" role="status">{{ listing.notice }}</p>{% endif %}
   <p class="dr-load-file" role="status">{% if listing.last_known %}Last-known coverage: {% endif %}Indexed {{ listing.indexed }} of {{ document_count }}; {{ listing.pending }} pending; {{ listing.errors }} errors.</p>
   {% if not listing.complete %}<p class="dr-notice">Showing all items in source order while indexing; requested sort/filter is pending. <a href="{{ listing.refresh }}">Refresh requested view</a></p>{% endif %}
@@ -28,7 +29,7 @@
   {% for report in load_files %}{% if report.matched or report.problem %}
   <p class="dr-load-file{% if report.problem %} dr-notice-warning{% endif %}">Load file <strong>{{ report.name }}</strong>: {{ report.matched }} of {{ report.rows }} rows matched an item{% if report.extra %}; {{ report.extra }} more rows named an item that already had a row and were not used{% endif %}.{% if report.problem %} {{ report.problem }}{% endif %}</p>
   {% endif %}{% endfor %}
-  {% if document_count and listing.complete and not index_summary.matched %}
+  {% if document_count and listing.complete and not index_summary.matched and not production_coverage %}
   <p class="dr-load-file dr-muted">No load file is matched to these items, so Bates, custodian and other load-file fields are empty. Add the production's CSV load file to this matter with its files and those fields fill in.</p>
   {% endif %}
   {% if listing.hidden %}<p class="dr-load-file dr-muted">Hidden because no item has a value: {{ listing.hidden|join(', ') }}. <a href="{{ listing.show_all }}" data-review-navigation>Show anyway</a></p>{% endif %}
@@ -46,7 +47,7 @@
           <tbody>
             {% for row in listing.rows %}
             <tr data-review-row data-token="{{ row.item.token }}" data-position-label="{% if listing.positions_known %}{{ listing.first_row + loop.index0 }} of {{ listing.matching }}{% endif %}" data-url="{{ row.url }}" data-fragment="{{ base_url }}/items/{{ row.item.token }}"{% if row.selected %} class="selected" aria-current="true"{% endif %}>
-              {% for value in row.cells %}<td class="dr-align-{{ listing.columns[loop.index0].field.align }}{% if value.state != 'value' %} dr-cell-{{ value.state }}{% endif %}"{% if value.note %} title="{{ value.note }}"{% endif %}>{% if loop.first %}<a href="{{ row.url }}" data-review-navigation title="Open {{ row.heading.title }}">{{ value.value or '—' }}</a>{% elif value.state == 'absent' %}<span aria-label="{{ value.note }}">–</span>{% else %}{{ value.value }}{% endif %}</td>{% endfor %}
+              {% for value in row.cells %}<td class="dr-align-{{ listing.columns[loop.index0].field.align }}{% if value.state != 'value' %} dr-cell-{{ value.state }}{% endif %}"{% if value.note %} title="{{ value.note }}"{% endif %}>{% if loop.first %}<a href="{{ row.url }}" data-review-navigation title="Open {{ row.heading.title }}">{{ value.value or '—' }}</a>{% if row.family_context and not row.family_context.parent %}<span class="dr-family-context" data-family-context>Family parent: <a href="{{ row.family_context.url }}">{{ row.family_context.name }}</a>{% if listing.filtered %} · context only{% endif %}</span>{% endif %}{% elif value.state == 'absent' %}<span aria-label="{{ value.note }}">–</span>{% else %}{{ value.value }}{% endif %}</td>{% endfor %}
             </tr>
             {% endfor %}
           </tbody>

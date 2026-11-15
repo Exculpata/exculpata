@@ -13,7 +13,7 @@ import threading
 import weakref
 import unicodedata
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email import policy
 from email.parser import BytesHeaderParser
 from pathlib import PurePosixPath
@@ -46,6 +46,11 @@ class Item:
     details: Mapping[str, tuple[dict, ...]] = field(default_factory=dict)
     metadata_state: str = "complete"
 
+
+    family: Mapping[str, Any] = field(default_factory=dict)
+    production_state: str = "complete"
+    production_diagnostics: tuple[str, ...] = ()
+
     def value(self, key: str) -> str:
         if key.startswith(LOAD_FILE_PREFIX):
             return self.load_file.get(key[len(LOAD_FILE_PREFIX):], "")
@@ -70,6 +75,8 @@ class Index:
     reads: Mapping[tuple, Any] = field(default_factory=dict, compare=False)
     orders: OrderedDict = field(default_factory=OrderedDict, compare=False)
     lock: Any = field(default_factory=threading.Lock, compare=False)
+    production_mark: Any = None
+    production_coverage: Mapping[str, Mapping[str, int]] = field(default_factory=dict)
 
     @property
     def total(self):
@@ -86,14 +93,22 @@ class Index:
             if key in self.orders:
                 self.orders.move_to_end(key)
                 return self.orders[key]
-        chosen = definition.field(sort) or definition.by_key[definition.default_sort]
-        filled, blank = [], []
+        parents = {item.document_id: item for item in self.items}
+        groups = {}
         for position, item in enumerate(self.items):
-            value = sort_key(chosen, item)
-            (blank if value is None else filled).append((value, tie_key(item), position))
+            parent = parents.get(str(item.family.get('root', '')))
+            components = production_order_components(definition, item, parent, sort)
+            group = groups.setdefault(components['root'], {
+                'value': components['group'], 'tie': tie_key(parent or item), 'members': []})
+            group['members'].append((components['member'], position))
+        filled, blank = [], []
+        for root, group in groups.items():
+            value = group['value']
+            (blank if value is None else filled).append((value, group['tie'], root))
         filled.sort(key=lambda entry: entry[:2], reverse=descending)
         blank.sort(key=lambda entry: entry[1])
-        result = tuple(entry[2] for entry in (*filled, *blank))
+        result = tuple(position for entry in (*filled, *blank)
+                       for _, position in sorted(groups[entry[2]]['members']))
         with self.lock:
             self.orders[key] = result
             while len(self.orders) > MAX_CACHED_ORDERS:
@@ -127,6 +142,54 @@ def sort_key(chosen: Field, item: Item):
 
 def tie_key(item: Item) -> tuple:
     return natural_key(item.values.get("path") or item.values.get("name", "")), item.document_id
+
+
+def project_production_item(definition: Definition, item: Item, projection: Mapping) -> Item:
+    """Apply a completed document projection without treating status as evidence."""
+    state = str(projection.get('state', 'pending'))
+    diagnostics = tuple(str(value) for value in projection.get('diagnostics', ()))
+    if state != 'complete':
+        return replace(item, production_state=state, production_diagnostics=diagnostics)
+    references = projection.get('references', ())
+    if references and all(reference.get('source_format') in {'csv', 'tsv'} for reference in references):
+        return replace(item, family=dict(projection.get('family') or {}),
+                       production_state=state, production_diagnostics=diagnostics)
+    values = dict(item.values)
+    for key, value in projection.get('values', {}).items():
+        chosen = definition.by_key.get(key)
+        if chosen is not None and not chosen.computed and isinstance(value, str):
+            values[key] = value
+    produced = dict(item.load_file)
+    raw_fields = tuple(projection.get('raw_fields', ()))
+    labels = load_files.unique_headers(tuple(str(pair[0]) for pair in raw_fields))
+    for label, pair in zip(labels, raw_fields):
+        produced[label] = str(pair[1])
+    return replace(item, values=values, load_file=produced,
+                   family=dict(projection.get('family') or {}), production_state=state,
+                   production_diagnostics=diagnostics)
+
+
+def production_order_components(definition: Definition, item: Item, parent: Item | None,
+                                sort: str) -> dict:
+    """Separate parent group sort from member order for persisted direction keys."""
+    family = item.family
+    root = str(family.get('root', ''))
+    if not root:
+        return {'root': item.document_id, 'group': sort_key(
+            definition.field(sort) or definition.by_key[definition.default_sort], item),
+            'member': (0, (), item.document_id), 'context': None}
+    if parent is None or parent.document_id != root:
+        raise MetadataUnavailable('Family parent projection is not current.')
+    chosen = definition.field(sort) or definition.by_key[definition.default_sort]
+    order = family.get('order', 0)
+    if not isinstance(order, (str, int)) or isinstance(order, bool):
+        raise MetadataUnavailable('Family member order is not current.')
+    return {'root': root, 'group': sort_key(chosen, parent),
+            'member': (0 if item.document_id == root else 1, natural_key(str(order)),
+                       item.document_id),
+            'context': {'document_id': root, 'token': parent.token,
+                        'name': parent.values.get('name', ''),
+                        'parent': item.document_id == root}}
 
 
 def action_token(document_id: str, version_id: str) -> str:
@@ -223,7 +286,8 @@ def read_load_files(store, documents, definition: Definition, earlier: Mapping, 
 
 
 def build(store, revision: int, documents, definition: Definition, previous: Index | None = None,
-          assigned: Mapping[str, str] | None = None, assigned_mark: int = 0) -> Index:
+          assigned: Mapping[str, str] | None = None, assigned_mark: int = 0,
+          production_projection=None, production_mark=None) -> Index:
     assigned = assigned or {}
     earlier = previous.reads if previous is not None and previous.definition is definition else {}
     reads: dict[tuple, Any] = {}
@@ -249,11 +313,13 @@ def build(store, revision: int, documents, definition: Definition, previous: Ind
                     stored = {}
             reads[key] = stored
         item = project_item(d, definition, assigned, matches.get(d.document_id), stored)
+        if production_projection is not None:
+            item = project_production_item(definition, item, production_projection(d.document_id, d.version_id))
         items.append(item)
         headers.update(dict.fromkeys(item.load_file))
         filled.update(key for key, value in item.values.items() if value)
     return Index(weakref.ref(store), revision, assigned_mark, definition, tuple(items), {item.token: position for position, item in enumerate(items)},
-                 tuple(headers), frozenset(filled), reports, reads)
+                 tuple(headers), frozenset(filled), reports, reads, production_mark=production_mark)
 
 
 _cache: OrderedDict[str, Index | None] = OrderedDict()
@@ -280,7 +346,8 @@ def retain(matter_id: str) -> None:
             _cache.popitem(last=False)
 
 
-def index_for(matter_id: str, store, definition: Definition, identifiers=None) -> Index:
+def index_for(matter_id: str, store, definition: Definition, identifiers=None, *,
+              production_projection=None, production_mark=None) -> Index:
     """Return the current index, rebuilding only when sources or team identifiers changed."""
     mark = identifiers.mark(matter_id) if identifiers is not None else 0
     with _cache_lock:
@@ -289,12 +356,14 @@ def index_for(matter_id: str, store, definition: Definition, identifiers=None) -
             raise IndexUnavailable("Matter is no longer available")
         cached = _cache.get(matter_id)
         if (cached is not None and cached.store() is store and cached.revision == store.revision
-                and cached.definition is definition and cached.assigned_mark == mark):
+                and cached.definition is definition and cached.assigned_mark == mark
+                and cached.production_mark == production_mark):
             _cache.move_to_end(matter_id)
             return cached
     revision, documents = snapshot(store)
     assigned = identifiers.read(matter_id) if identifiers is not None else {}
-    built = build(store, revision, documents, definition, cached, assigned, mark)
+    built = build(store, revision, documents, definition, cached, assigned, mark,
+                  production_projection, production_mark)
     with _cache_lock:
         if _retired.get(matter_id, 0) != generation:
             raise IndexUnavailable("Matter is no longer available")

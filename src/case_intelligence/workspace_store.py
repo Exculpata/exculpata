@@ -272,7 +272,8 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
                      '0044_witness_inconsistency.sql', '0045_discovery_review_view.sql',
                      '0046_discovery_review_identifier.sql', '0047_discovery_identifier_case_uniqueness.sql',
                      '0048_discovery_review_codes.sql',
-                     '0049_discovery_review_index.sql'):
+                     '0049_discovery_review_index.sql',
+                     '0050_discovery_dat_opt.sql'):
             migration = resources.files("case_intelligence").joinpath("migrations/sqlite/" + name).read_text(encoding="utf-8")
             try:
                 self.connection.executescript('BEGIN IMMEDIATE;\n' + migration + '\nCOMMIT;')
@@ -2224,6 +2225,9 @@ class WorkspaceStore(NotebookStoreMixin, ReportsStoreMixin, AnswerScopeMixin, Kn
             self.connection.execute('DELETE FROM workbench_discovery_code_event WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_discovery_code WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_discovery_identifier WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_dat_record WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_opt_page WHERE matter_id=?', (matter_id,))
+            self.connection.execute('DELETE FROM workbench_discovery_production WHERE matter_id=?', (matter_id,))
             self.connection.execute('DELETE FROM workbench_assertion WHERE matter_id=?', (matter_id,))
             self.connection.execute(
                 "DELETE FROM workbench_entity WHERE matter_id=?", (matter_id,)

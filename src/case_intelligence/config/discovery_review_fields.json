@@ -2,6 +2,15 @@
   "version": 1,
   "page_size": 100,
   "max_columns": 20,
+  "opt_columns": [
+    {"key": "bates", "label": "Supplied page Bates", "position": 0},
+    {"key": "volume", "label": "Supplied volume", "position": 1},
+    {"key": "path", "label": "Supplied image path", "position": 2},
+    {"key": "document_break", "label": "Document break", "position": 3},
+    {"key": "unused_1", "label": "Supplied position 5", "position": 4},
+    {"key": "unused_2", "label": "Supplied position 6", "position": 5},
+    {"key": "page_count", "label": "Supplied page count", "position": 6}
+  ],
   "hide_empty_default_columns": true,
   "groups": [
     {"key": "identity", "label": "Identification"},

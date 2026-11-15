@@ -804,3 +804,100 @@ def test_archive_preserves_admitted_load_files(load_file_archive_case):
         build_matter_archive(bench, matter, OWNER, source_store=store)
     assert not list((bench.storage.root / 'preservation-exports').iterdir())
     assert len(scanner.digests) == 2
+
+
+def test_dat_opt_metadata_is_preserved_and_scoped(tmp_path):
+    from case_intelligence.modules.discovery_review.production.repository import ProductionRepository
+    from case_intelligence.modules import ModuleDatabase
+    from tests.case_lifecycle_helpers import lifecycle_session
+    from tests.test_discovery_review_dat_opt_storage import (
+        ACTOR, dat_line, historical_store, parse_into, source_identity, storage_case,
+    )
+
+    headers = ("path", "headers", "Unrecognized® supplied header", "BEGDOC")
+    first_cells = ("/generated/literal supplied text", "headers", "®\r\nExact second line", "GEN-A")
+    last_cells = ("token=generated authored value", "path", "  exact tail  ", "GEN-Z")
+    raw_dat = io.BytesIO()
+    raw_dat.write(dat_line(headers))
+    raw_dat.write(dat_line(first_cells))
+    for ordinal in range(2501):
+        raw_dat.write(dat_line((f"Generated bad {ordinal}", "path", "Generated\r\nmultiline", "GEN-X", "extra")))
+    raw_dat.write(dat_line(last_cells))
+    dat_bytes = raw_dat.getvalue()
+    opt_cells = ("GEN-A", "Supplied volume®", "Images/literal page.tif", "Y",
+                 "  unused field five  ", "unused field six®", "1")
+    opt_bytes = (",".join(opt_cells) + "\r\n").encode("utf-8")
+    with storage_case(tmp_path, count=1,
+                      extra_files=(("arbitrary.dat", dat_bytes), ("literal.opt", opt_bytes))) as case:
+        production = {}
+        originals = {}
+        for document in case.store.documents.values():
+            if Path(document.display_name).suffix.lower() not in {".dat", ".opt"}:
+                continue
+            path = case.store.source_path(document.document_id, verify_digest=True)
+            production[document.display_name] = parse_into(case.repository, case.matter.matter_id,
+                source_identity(document, case.repository, case.matter), path)
+            originals[document.document_id] = (document, path.read_bytes())
+        neighboring = case.workspace.create_matter("Generated neighboring preservation matter",
+                                                    "Generated orientation", ACTOR)
+        other_store = historical_store(case.workspace, neighboring, tmp_path / "neighbor-sources", count=1,
+            extra_files=(("foreign.dat", dat_line(("path",)) + dat_line(("FOREIGN-PRODUCTION-CANARY",))),))
+        try:
+            foreign_repository = ProductionRepository(ModuleDatabase(case.workspace.connection, case.workspace._lock))
+            for document in other_store.documents.values():
+                if document.display_name.endswith(".dat"):
+                    parse_into(foreign_repository, neighboring.matter_id,
+                        source_identity(document, foreign_repository, neighboring),
+                        other_store.source_path(document.document_id, verify_digest=True))
+            bench = SimpleNamespace(workspace=case.workspace,
+                storage=SimpleNamespace(root=tmp_path, ensure_capacity=case.context.ensure_capacity),
+                storage_policy=StoragePolicy(reserve_bytes=0), source_registry=None,
+                archive_source_store=lambda unused: case.store,
+                _storage_reservation_lock=threading.RLock(), _preservation_reservations={})
+            bench._playback_reserved_bytes = lambda matter_id=None: sum(bench._preservation_reservations.values()) if matter_id is None else 0
+            session = lifecycle_session(case.workspace, ACTOR)
+            case.workspace.case_lifecycle.begin_exit(case.matter.slug, ACTOR, session_id=session.session_id)
+            artifact = build_matter_archive(bench, case.matter, ACTOR, source_store=case.store)
+            try:
+                manifest = verify_matter_archive(artifact.path, expected_sha256=artifact.sha256)
+                for table in ("workbench_discovery_production", "workbench_discovery_dat_record", "workbench_discovery_opt_page"):
+                    assert manifest["coverage"][table]["disposition"] == "included"
+                    assert all(row["matter_id"] == case.matter.matter_id for row in records(artifact, table))
+                attempts = {row["attempt_id"]: row for row in records(artifact, "workbench_discovery_production")}
+                assert set(attempts) == set(production.values())
+                assert attempts[production["arbitrary.dat"]]["headers_json"] == list(headers)
+                assert attempts[production["arbitrary.dat"]]["accepted_count"] == 2
+                assert attempts[production["arbitrary.dat"]]["rejected_count"] == 2501
+                dat_records = [row for row in records(artifact, "workbench_discovery_dat_record")
+                               if row["attempt_id"] == production["arbitrary.dat"]]
+                assert len(dat_records) == 2503
+                assert dat_records[0]["headers_json"] == list(headers)
+                assert dat_records[0]["cells_json"] == list(first_cells)
+                assert dat_records[-1]["cells_json"] == list(last_cells)
+                for ordinal, row in enumerate(dat_records[1:-1]):
+                    assert row["kind"] == "rejected"
+                    assert (row["ordinal"], row["line"]) == (ordinal + 2, ordinal * 2 + 4)
+                    assert row["headers_json"] == list(headers)
+                    assert row["cells_json"] == [f"Generated bad {ordinal}", "path", "Generated\r\nmultiline", "GEN-X", "extra"]
+                    assert row["diagnostics_json"]
+                opt_records = records(artifact, "workbench_discovery_opt_page")
+                assert len(opt_records) == 1
+                assert opt_records[0]["cells_json"] == list(opt_cells)
+                assert (opt_records[0]["ordinal"], opt_records[0]["line"]) == (1, 1)
+                with zipfile.ZipFile(artifact.path) as archive:
+                    for document_id, (document, raw) in originals.items():
+                        assert archive.read("originals/" + document_id) == raw
+                        assert hashlib.sha256(raw).hexdigest() == document.digest
+                    material = b"\n".join(archive.read(name) for name in archive.namelist())
+                    assert b"FOREIGN-PRODUCTION-CANARY" not in material
+                    assert neighboring.matter_id.encode() not in material
+            finally:
+                cleanup_archive(artifact)
+            document, raw = next(pair for pair in originals.values() if pair[0].display_name == "arbitrary.dat")
+            changed = case.store.files / document.stored_name
+            changed.write_bytes(raw.replace(b"GEN-A", b"GEN-B", 1))
+            with pytest.raises(ArchiveProblem):
+                build_matter_archive(bench, case.matter, ACTOR, source_store=case.store)
+            assert not list((tmp_path / "preservation-exports").iterdir())
+        finally:
+            other_store.close()

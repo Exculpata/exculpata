@@ -94,3 +94,20 @@
 .dr-codes button[aria-pressed="true"] { outline: 2px solid currentColor; font-weight: bold; }
 .dr-code-settings { margin-block: 1rem; }
 .dr-code-settings form { display: flex; align-items: center; gap: .5rem; margin-block: .5rem; }
+
+.dr-item-records { display: block; overflow: auto; }
+.dr-production-records { padding: 1rem; border-bottom: 1px solid var(--border, #d3d8df); }
+.dr-record-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .75rem; }
+.dr-record-bar p { margin: 0; overflow-wrap: anywhere; }
+.dr-production-record { margin-block: 1rem; }
+.dr-production-record h3 { margin-block: .5rem; font-size: 1rem; }
+.dr-production-record dl { margin: .75rem 0; }
+.dr-production-record dl > div { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr); gap: .75rem; padding-block: .4rem; border-bottom: 1px solid var(--border, #d3d8df); }
+.dr-production-record dt, .dr-production-record dd { margin: 0; min-width: 0; }
+.dr-production-record pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.dr-production-findings { padding: .75rem 1.75rem; margin: 0; }
+.dr-family-context, .dr-native-document { margin: .75rem 1rem; overflow-wrap: anywhere; }
+.dr-family-context { font-size: .875rem; }
+@media (max-width: 42rem) {
+  .dr-production-record dl > div { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+}

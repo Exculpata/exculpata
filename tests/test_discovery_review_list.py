@@ -826,3 +826,51 @@ def test_pending_notice_adds_requested_query_refresh_link(production, monkeypatc
     assert not parsed.scheme and not parsed.netloc
     assert parse_qs(parsed.query) == {key: [value] for key, value in query.items()}
     assert 'http-equiv="refresh"' not in page.text.lower()
+
+
+@pytest.mark.parametrize('damage', [
+    lambda data: data.pop('opt_columns'),
+    lambda data: data['opt_columns'].pop(),
+    lambda data: data['opt_columns'][1].update(position=0),
+    lambda data: data['opt_columns'][1].update(position=True),
+    lambda data: data['opt_columns'][0].update(position=-1),
+    lambda data: data['opt_columns'][0].update(position=7),
+    lambda data: data['opt_columns'][0].update(label=''),
+    lambda data: data['opt_columns'][0].update(key='unknown'),
+    lambda data: data['opt_columns'].append(dict(data['opt_columns'][0])),
+    lambda data: data['fields'][0].update(load_file_headers=['GENERATED']),
+])
+def test_malformed_opt_definition_is_rejected_whole(damage):
+    data = json.loads((ROOT / 'src/case_intelligence/config/discovery_review_fields.json').read_text())
+    definition = fields.parse_definition(data)
+    assert tuple(column.position for column in definition.opt_columns) == tuple(range(7))
+    assert tuple(column.key for column in definition.opt_columns) == (
+        'bates', 'volume', 'path', 'document_break', 'unused_1', 'unused_2', 'page_count')
+    assert not any(field.key.startswith('opt:') for field in definition.fields)
+    damage(data)
+    with pytest.raises(fields.DefinitionError):
+        fields.parse_definition(data)
+
+
+def test_page_record_panel_preserves_supplied_headers_and_empty_cells():
+    from case_intelligence.modules.discovery_review.presentation import record_panel
+
+    definition = fields.load_definition()
+    supplied = ('Literal ® heading', '', 'Literal ® heading')
+    records = (
+        {'ordinal': 1, 'headers': supplied, 'cells': ('one', '', 'three', 'extra')},
+        {'ordinal': 2, 'headers': (), 'cells': ('unlabelled',)},
+        {'ordinal': 3, 'headers': None, 'cells': ('B®-7', 'V', 'image.tif', 'Y', '', '', '1')},
+    )
+    window = {'category': 'page', 'attempt': {'attempt_id': 'a' * 32, 'source_format': 'opt'},
+              'records': records, 'current': records[0], 'total': 3}
+    panel = record_panel(definition, window, lambda **values: values, view='document')
+    custom, empty, positional = [row['display_cells'] for row in panel['rows']]
+    assert [cell['label'] for cell in custom] == [*supplied, None]
+    assert [cell['value'] for cell in custom] == ['one', '', 'three', 'extra']
+    assert custom[1]['has_header'] and custom[1]['has_value']
+    assert not custom[3]['has_header'] and custom[3]['has_value']
+    assert len(empty) == 1 and empty[0]['label'] is None and empty[0]['value'] == 'unlabelled'
+    assert [cell['label'] for cell in positional] == [column.label for column in definition.opt_columns]
+    assert [cell['value'] for cell in positional] == list(records[2]['cells'])
+    assert panel['current_cursor'] == 'opt:' + 'a' * 32 + ':1'

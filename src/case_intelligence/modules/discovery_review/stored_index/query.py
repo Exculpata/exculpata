@@ -45,14 +45,25 @@ def decode_cursor(value, scope, total):
         raise CursorInvalid('The list changed. Navigation restarted with the current view.') from exc
 
 
-def items(view, sources):
+def items(view, sources, field_keys=None):
     stored = view.repository.read_items(view.matter_id, [source.document_id for source in sources])
     found = {}
     for source in sources:
         row = stored.get(source.document_id)
-        if (row and row[0] and row[1] == digest(asdict(source)) and row[3] == view.generation
+        if (row and row[0] and row[2] != 'pending' and row[1] == digest(asdict(source)) and row[3] == view.generation
                 and view.state.get('generation') == view.generation):
-            item = reader.Item(**json.loads(row[0]))
+            if field_keys is None:
+                item = reader.Item(**view.repository.full_item(view.matter_id, source.document_id))
+            else:
+                item = reader.Item(**json.loads(row[0]))
+                values, load_file = {}, {}
+                for key, value, present in view.repository.display_values(view.matter_id, source.document_id, field_keys):
+                    if key.startswith('lf:'):
+                        if present:
+                            load_file[key[3:]] = value
+                    else:
+                        values[key] = value
+                item = replace(item, values=values, load_file=load_file)
         else:
             item = replace(reader.project_item(source, view.definition, {}),
                            metadata_state='error' if view.error else 'pending')
@@ -141,7 +152,9 @@ def captured_page(definition, view, choice, *, base, q, sort, descending, page, 
                          page=2, doc='', edge=edge, show_all=show_all, cursor='') | {'notice': str(exc)}
     if previous:
         identities.reverse()
-    resolved = items(view, sources)
+    fields = tuple(dict.fromkeys((*choice.columns, definition.heading_title,
+                                  *definition.heading_range, definition.heading_fallback)))
+    resolved = items(view, sources, fields)
     if len(resolved) != len(identities):
         raise CursorInvalid('The source population changed. Reload the list.')
     searched = tuple(dict.fromkeys((*choice.columns, definition.heading_title)))
@@ -175,6 +188,7 @@ def captured_page(definition, view, choice, *, base, q, sort, descending, page, 
     window_cursor = encode_cursor({**progress, 'anchor': anchor, 'previous': previous})
     rows = [{'item': item, 'heading': presentation.heading(definition, item),
              'url': url(cursor=window_cursor, doc=item.token), 'selected': item is selected,
+             'family_context': {**item.family['context'], 'url': url(q='', doc=item.family['context']['token'])} if item.family.get('context') else None,
              'cells': [presentation.cell(definition, column, item) for column in columns]} for item in visible]
     return {'columns': [{'field': column, 'sorted': column.key == sort and view.complete, 'descending': descending,
                          'url': url(sort=column.key, dir='desc' if column.key == sort and not descending else '')} for column in columns],
@@ -187,7 +201,7 @@ def captured_page(definition, view, choice, *, base, q, sort, descending, page, 
             'page': progress['start'] // size + 1, 'pages': max(1, (view.total + size - 1) // size),
             'first_row': progress['start'] + 1 if identities else 0,
             'last_row': progress['start'] + len(identities), 'previous_page': before, 'next_page': after,
-            'selected': selected, 'position': 0 if filtered or not progress['origin'] or position is None else progress['start'] + position + 1,
+            'selected': lookup(view, selected.token) if selected is not None else None, 'position': 0 if filtered or not progress['origin'] or position is None else progress['start'] + position + 1,
             'previous_item': rows[position - 1]['url'] if position else before,
             'next_item': rows[position + 1]['url'] if position is not None and position + 1 < len(rows) else after,
             'refresh': url(doc=requested_doc), 'clear_filter': url(q=''), 'show_all': url(all_columns='1'), 'state': state,
