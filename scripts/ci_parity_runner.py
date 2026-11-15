@@ -97,13 +97,27 @@ def base_context(head, base, branch, base_branch, event=None):
             'needs': {}, 'steps': {}, 'matrix': {}, 'job': {'status': 'success'}, 'env': {}}
 
 
-def run_shell(command, cwd, env, explicit_bash, timeout, log):
+def run_shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
     flags = ['--noprofile', '--norc', '-e', '-o', 'pipefail'] if explicit_bash else ['-e']
     with log.open('w') as output:
+        if cancelled is not None and cancelled.is_set():
+            raise InterruptedError('parity execution cancelled')
         process = subprocess.Popen(['bash', *flags, '-c', command], cwd=cwd, env=env,
                                    stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
         try:
-            return process.wait(timeout=max(0.001, timeout)), False
+            if cancelled is None:
+                return process.wait(timeout=max(0.001, timeout)), False
+            deadline = time.monotonic() + max(0.001, timeout)
+            while True:
+                if cancelled.is_set():
+                    raise InterruptedError('parity execution cancelled')
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(process.args, timeout)
+                try:
+                    return process.wait(timeout=min(0.1, remaining)), False
+                except subprocess.TimeoutExpired:
+                    continue
         except subprocess.TimeoutExpired:
             output.write('\nTIMEOUT: terminating the complete step process group\n')
             return 124, True
@@ -179,6 +193,7 @@ class Runner:
         self.serial = 0
         self.log_prefix = 'parity'
         self.concurrent = False
+        self.cancelled = None
 
     def run(self, plan):
         if os.environ.get('CI_PARITY_SERIAL') == '1':
@@ -193,10 +208,12 @@ class Runner:
                                        cells={}, logs={}, next=0, running=0, done=False,
                                        workers=cell_workers(workflow, job, budget)))
         indexed = {(state['workflow'].name, state['job'].name): state for state in states}
-        running, used = {}, 0
-        with ThreadPoolExecutor(max_workers=budget) as pool:
+        running, used, children = {}, 0, []
+        self.cancelled = threading.Event()
+        pool = ThreadPoolExecutor(max_workers=budget)
+        try:
             while any(not state['done'] for state in states):
-                for state in states:
+                for position, state in enumerate(states):
                     if state['done']:
                         continue
                     workflow, job = state['workflow'], state['job']
@@ -228,7 +245,8 @@ class Runner:
                         child = copy(self)
                         child.ran = child.failed = child.not_run = child.serial = 0
                         child.concurrent = True
-                        child.log_prefix = f'parity-cell-{states.index(state):04d}-{index:04d}'
+                        child.log_prefix = f'parity-cell-{position:04d}-{index:04d}'
+                        children.append(child)
                         messages = state['logs'][index] = []
                         child.emit = messages.append
                         future = pool.submit(child.cell, workflow, job, job.cells[index], state['context'], state['ancestor'])
@@ -250,15 +268,21 @@ class Runner:
                     for future in completed:
                         state, index, child = running.pop(future)
                         state['cells'][index] = future.result()
-                        self.ran += child.ran
-                        self.failed += child.failed
-                        self.not_run += child.not_run
                         state['running'] -= 1
                         used -= state['workers']
-        for state in states:
-            for index in sorted(state['logs']):
-                for line in state['logs'][index]:
-                    self.emit(line)
+        except BaseException:
+            self.cancelled.set()
+            raise
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+            for child in children:
+                self.ran += child.ran
+                self.failed += child.failed
+                self.not_run += child.not_run
+            for state in states:
+                for index in sorted(state['logs']):
+                    for line in state['logs'][index]:
+                        self.emit(line)
         return self.results
 
     def run_serial(self, plan):
@@ -335,7 +359,7 @@ class Runner:
             replay_env['CI_PARITY_REPLAY_REPORT'] = str(report_path)
             log = self.log_directory / f'{self.log_prefix}-{self.serial:04d}-replay.log'
             rendered = expr.render(command, run_context)
-            code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log)
+            code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log, self.cancelled)
             self.emit(f'REPLAY PYTEST exit={code} timeout={timed_out} log={log.name}')
             try:
                 report = json.loads(report_path.read_text())
@@ -432,7 +456,7 @@ class Runner:
                     budget = min(deadline - time.monotonic(), step.raw.get('timeout-minutes', 360) * 60)
                     started = time.monotonic()
                     self.emit(f'RUN {step_tag} log={log.name}')
-                    code, timed_out = run_shell(command, cwd, step_env, step.raw.get('shell', defaults.get('shell')) == 'bash', budget, log)
+                    code, timed_out = run_shell(command, cwd, step_env, step.raw.get('shell', defaults.get('shell')) == 'bash', budget, log, self.cancelled)
                     self.ran += 1
                     outcome = 'failure' if code else 'success'
                     tolerated = step.raw.get('continue-on-error', False)

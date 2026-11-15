@@ -173,7 +173,7 @@ def test_real_cells_own_paths_caches_and_environment(tmp_path, monkeypatch):
     gate = threading.Barrier(2)
     mutex = threading.Lock()
 
-    def shell(command, cwd, env, explicit_bash, timeout, log):
+    def shell(command, cwd, env, explicit_bash, timeout, log, cancelled=None):
         assert 'PYTEST_ADDOPTS' not in env if command == 'first' else env['PYTEST_ADDOPTS'] == str(cwd)
         paths = {Path(env[key]) for key in (
             'HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
@@ -229,3 +229,31 @@ def test_unknown_worker_expression_fails_closed(tmp_path):
     workflow = plan.build(root).workflows[0]
     with pytest.raises(execution.expr.Unmapped, match='use a literal count or -n auto'):
         execution.cell_workers(workflow, workflow.jobs[0], 8)
+
+
+def test_interrupt_drains_cells_and_terminates_descendants(tmp_path, monkeypatch):
+    monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
+    data = document([{'run': 'sleep 3 & echo $!; wait'}],
+                    strategy={'fail-fast': False, 'matrix': {'cell': [0, 1]}})
+    pids = []
+
+    def interrupt_when_started(*args, **kwargs):
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            values = [path.read_text().strip() for path in tmp_path.glob('parity-*.log')]
+            if len(values) == 2 and all(value.isdecimal() for value in values):
+                pids.extend(int(value) for value in values)
+                raise KeyboardInterrupt
+            time.sleep(0.01)
+        pytest.fail('both shell processes must start')
+
+    monkeypatch.setattr(execution, 'wait', interrupt_when_started)
+    started = time.monotonic()
+    with pytest.raises(KeyboardInterrupt):
+        run_repository(tmp_path, data)
+    assert time.monotonic() - started < 2
+    assert len(pids) == 2
+    for pid in pids:
+        status = Path('/proc') / str(pid) / 'stat'
+        assert not status.exists() or status.read_text().split()[2] == 'Z'
+    assert not list(tmp_path.glob('ci-parity-*'))
