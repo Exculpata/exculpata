@@ -101,6 +101,17 @@ cache lookup for Python processes that ignore environment variables. Set
 serial execution when measuring equivalence. The external pytest lock still covers
 one complete invocation; it is not acquired or changed by the scheduler.
 
+On 2026-11-15, paired measurements of
+`bfc017dd7128241804ddf14aef96a28e61e0fc67` under one lock hold took **2,715 seconds
+before (serial)** and **1,766 seconds after (concurrent)**. Concurrent/serial was
+**0.650460 (65.05%)**, above the 60% goal; the longest cell was application shard 1,
+whose suite step took 1,412.7 seconds concurrently versus 1,286.4 seconds serially.
+Lock wait was zero measured seconds and excluded from both wall times. Both runs
+exited 0 with identical results: 39 PASS, 0 FAIL, 15 SKIP, 28 NOT RUN, 21 HARNESS
+and one service replay (`ran=40`, `failed=0`, `not_run_unexpected=0`). One test
+newly exceeded 108 seconds (104.906 seconds serial, 120.413 seconds concurrent),
+so the timing acceptance was not met despite both parity runs being green.
+
 Service entries may declare `replay = "pytest-service-stub"`; currently only the
 PostgreSQL acceptance step does. Parity extracts its pytest commands, omits
 heredoc bodies and other commands, and loads its own fixture-stubbing plugin.
