@@ -24,7 +24,7 @@ ENVIRONMENT = {
         'existing venv is a shared dependency superset; bootstrap is NOT RUN',
         'Postgres/pgvector services, Docker, browsers and model downloads are not provisioned',
         'network installs/downloads and hosted artifacts/cache are NOT RUN',
-        'cells run serially; hosted parallelism, scheduling and timing are not reproduced',
+        'independent cells share a local CPU budget; hosted runner capacity, cancellation and timing are not reproduced',
         'only pull_request is supported; other events are NOT RUN',
     ),
 }

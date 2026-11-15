@@ -1,8 +1,10 @@
-"""Serial job execution with per-cell Git and filesystem ownership."""
+"""Budgeted job execution with per-cell Git and filesystem ownership."""
 
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
+from copy import copy
 import json
 import os
 from pathlib import Path
@@ -10,11 +12,15 @@ import re
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 
 from scripts import ci_parity_expr as expr
-from scripts.ci_parity_environment import Refused, local_environment, overrides
+from scripts.ci_parity_environment import ENVIRONMENT, Refused, local_environment, overrides
 from scripts.ci_parity_plan import action_name, extract_pytest, service_context
+
+
+WORKTREE_LOCK = threading.Lock()
 
 
 def git(root, *args):
@@ -33,7 +39,8 @@ def isolated_cell(source, head, output_directory):
         temporary.mkdir()
         created = False
         try:
-            git(source, 'worktree', 'add', '--detach', str(tree), head)
+            with WORKTREE_LOCK:
+                git(source, 'worktree', 'add', '--detach', str(tree), head)
             created = True
             yield tree, temporary
         finally:
@@ -43,8 +50,9 @@ def isolated_cell(source, head, output_directory):
                 for path in tree.rglob('*'):
                     if not path.is_symlink():
                         path.chmod(path.stat().st_mode | 0o200)
-                git(source, 'worktree', 'remove', '--force', str(tree))
-                git(source, 'worktree', 'prune')
+                with WORKTREE_LOCK:
+                    git(source, 'worktree', 'remove', '--force', str(tree))
+                    git(source, 'worktree', 'prune')
 
 
 def file_commands(path):
@@ -117,6 +125,51 @@ def result_status(results):
     return 'success'
 
 
+def cell_environment(env, temporary):
+    """Own writable user caches; the installed dependency environment is read-only."""
+    env = dict(env)
+    for name in ('HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
+                 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'HF_HOME', 'TORCH_HOME',
+                 'MPLCONFIGDIR', 'NUMBA_CACHE_DIR', 'PYTHONPYCACHEPREFIX'):
+        path = temporary / name.lower()
+        path.mkdir(mode=0o700)
+        env[name] = str(path)
+    return env
+
+
+def cpu_budget():
+    count = os.cpu_count() or 1
+    if hasattr(os, 'sched_getaffinity'):
+        count = min(count, len(os.sched_getaffinity(0)))
+    return max(1, count)
+
+
+def cell_workers(workflow, job, budget):
+    """Reserve bounded worker declarations; reject opaque worker expressions."""
+    workers = 1
+    for step in job.steps:
+        if step.unavailable and not (step.expected and step.expected.get('replay')):
+            continue
+        command = step.raw.get('run', '')
+        layers = (workflow.raw.get('env', {}), job.raw.get('env', {}), step.raw.get('env', {}))
+        declared = {key: value for layer in layers for key, value in layer.items()}
+        if ENVIRONMENT['worker_variable'] in declared:
+            workers = max(workers, int(overrides(declared)[ENVIRONMENT['worker_variable']]))
+        options = command + ' ' + str(declared.get('PYTEST_ADDOPTS', ''))
+        for match in re.finditer(r'(?<![\w-])(?:-n\s*|--numprocesses(?:=|\s+))([^\s;]+)', options):
+            value = match[1].strip('"\'')
+            if value == 'auto':
+                count = ENVIRONMENT['worker_cap']
+            elif value.isdecimal():
+                count = max(1, int(value))
+            else:
+                raise expr.Unmapped(f'{workflow.name}:{job.name}: unsupported worker count {value!r}; use a literal count or -n auto in ci_parity_runner.cell_workers')
+            workers = max(workers, count)
+    if workers > budget:
+        raise Refused(f'{workflow.name}:{job.name}: {workers} workers exceed CPU budget {budget}')
+    return workers
+
+
 class Runner:
     def __init__(self, source, venv, head, context, emit, log_directory):
         self.source, self.venv, self.head = source, venv, head
@@ -124,8 +177,91 @@ class Runner:
         self.ran = self.failed = self.not_run = 0
         self.results = {}
         self.serial = 0
+        self.log_prefix = 'parity'
+        self.concurrent = False
 
     def run(self, plan):
+        if os.environ.get('CI_PARITY_SERIAL') == '1':
+            return self.run_serial(plan)
+        budget = cpu_budget()
+        states = []
+        for workflow in plan.workflows:
+            if workflow.triggered:
+                self.results[workflow.name] = {}
+                for job in workflow.jobs:
+                    states.append(dict(workflow=workflow, job=job, context=None, ancestor=False,
+                                       cells={}, logs={}, next=0, running=0, done=False,
+                                       workers=cell_workers(workflow, job, budget)))
+        indexed = {(state['workflow'].name, state['job'].name): state for state in states}
+        running, used = {}, 0
+        with ThreadPoolExecutor(max_workers=budget) as pool:
+            while any(not state['done'] for state in states):
+                for state in states:
+                    if state['done']:
+                        continue
+                    workflow, job = state['workflow'], state['job']
+                    results = self.results[workflow.name]
+                    if not all(name in results for name in job.needs):
+                        continue
+                    if state['context'] is None:
+                        needs = {name: results[name] for name in job.needs}
+                        status = 'success' if all(item['result'] == 'success' for item in needs.values()) else 'failure' if any(item['result'] == 'failure' for item in needs.values()) else 'skipped'
+                        state['ancestor'] = any(indexed[workflow.name, name]['ancestor'] for name in job.needs)
+                        state['context'] = {**self.context, 'needs': needs,
+                                            'github': {**self.context['github'], 'workflow': workflow.raw.get('name', workflow.name)}}
+                        if not expr.condition(job.raw.get('if'), state['context'], status, state['ancestor']):
+                            state['logs'][-1] = [f'SKIP (condition) {workflow.name}:{job.name}']
+                            results[job.name] = {'result': 'skipped', 'outputs': {}}
+                            state['done'] = True
+                            continue
+                    strategy = job.raw.get('strategy', {})
+                    limit = 1 if strategy.get('fail-fast', True) else strategy.get('max-parallel', budget)
+                    while state['next'] < len(job.cells) and state['running'] < limit:
+                        index = state['next']
+                        if strategy.get('fail-fast', True) and any(result[0] == 'failure' for result in state['cells'].values()):
+                            state['cells'][index] = ('cancelled', {})
+                            state['logs'][index] = [f'SKIP (matrix fail-fast) {workflow.name}:{job.name} {job.cells[index]}']
+                            state['next'] += 1
+                            continue
+                        if used + state['workers'] > budget:
+                            break
+                        child = copy(self)
+                        child.ran = child.failed = child.not_run = child.serial = 0
+                        child.concurrent = True
+                        child.log_prefix = f'parity-cell-{states.index(state):04d}-{index:04d}'
+                        messages = state['logs'][index] = []
+                        child.emit = messages.append
+                        future = pool.submit(child.cell, workflow, job, job.cells[index], state['context'], state['ancestor'])
+                        running[future] = (state, index, child)
+                        state['next'] += 1
+                        state['running'] += 1
+                        used += state['workers']
+                    if len(state['cells']) == len(job.cells):
+                        outputs = {}
+                        for index in range(len(job.cells)):
+                            outputs.update(state['cells'][index][1])
+                        result = result_status([state['cells'][index][0] for index in range(len(job.cells))])
+                        results[job.name] = {'result': result, 'outputs': outputs}
+                        state['ancestor'] |= result == 'failure'
+                        state['done'] = True
+                        state['logs'][len(job.cells)] = [f'JOB {workflow.name}:{job.name} result={result} outputs={json.dumps(outputs, sort_keys=True)}']
+                if running:
+                    completed, _ = wait(running, return_when=FIRST_COMPLETED)
+                    for future in completed:
+                        state, index, child = running.pop(future)
+                        state['cells'][index] = future.result()
+                        self.ran += child.ran
+                        self.failed += child.failed
+                        self.not_run += child.not_run
+                        state['running'] -= 1
+                        used -= state['workers']
+        for state in states:
+            for index in sorted(state['logs']):
+                for line in state['logs'][index]:
+                    self.emit(line)
+        return self.results
+
+    def run_serial(self, plan):
         for workflow in plan.workflows:
             if not workflow.triggered:
                 continue
@@ -197,7 +333,7 @@ class Runner:
             report_directory.mkdir()
             report_path = report_directory / 'replay.json'
             replay_env['CI_PARITY_REPLAY_REPORT'] = str(report_path)
-            log = self.log_directory / f'parity-{self.serial:04d}-replay.log'
+            log = self.log_directory / f'{self.log_prefix}-{self.serial:04d}-replay.log'
             rendered = expr.render(command, run_context)
             code, timed_out = run_shell(rendered, cwd, replay_env, step.raw.get('shell', defaults.get('shell')) == 'bash', deadline - time.monotonic(), log)
             self.emit(f'REPLAY PYTEST exit={code} timeout={timed_out} log={log.name}')
@@ -234,6 +370,8 @@ class Runner:
             event_path = temporary / 'event.json'
             event_path.write_text(json.dumps(context['github']['event']))
             env = local_environment(tree, temporary, self.venv, self.head, context['github']['head_ref'], event_path)
+            if self.concurrent:
+                env = cell_environment(env, temporary)
             context = {**context, 'matrix': matrix, 'steps': {},
                        'runner': {**context['runner'], 'temp': str(temporary)},
                        'github': {**context['github'], 'workspace': str(tree)},
@@ -290,7 +428,7 @@ class Runner:
                     if not cwd.is_relative_to(tree):
                         raise expr.Unmapped(f'{step_tag}: working-directory escapes checkout; extend ci_parity_runner explicitly')
                     slug = re.sub(r'[^A-Za-z0-9]+', '-', step_tag).strip('-')[:100]
-                    log = self.log_directory / f'parity-{self.serial:04d}-{slug}.log'
+                    log = self.log_directory / f'{self.log_prefix}-{self.serial:04d}-{slug}.log'
                     budget = min(deadline - time.monotonic(), step.raw.get('timeout-minutes', 360) * 60)
                     started = time.monotonic()
                     self.emit(f'RUN {step_tag} log={log.name}')

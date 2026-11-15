@@ -90,6 +90,14 @@ regenerate with `CI_PARITY_UPDATE_SNAPSHOT=1 python -m pytest -q tests/test_ci_p
 Full per-step logs accompany the report; its final `SUMMARY` line is the launcher
 contract. The tool does not acquire the launcher's pytest lock.
 
+Independent jobs and non-fail-fast matrix entries run concurrently within the
+operating-system CPU budget; xdist workers reserve their declared capacity and
+other cells reserve one unit. Dependencies and per-cell step order are retained,
+with complete cell reports emitted in plan order. Fail-fast matrices remain serial
+so cancellation outcomes stay identical. Set `CI_PARITY_SERIAL=1` for the original
+serial execution when measuring equivalence. The external pytest lock still covers
+one complete invocation; it is not acquired or changed by the scheduler.
+
 Service entries may declare `replay = "pytest-service-stub"`; currently only the
 PostgreSQL acceptance step does. Parity extracts its pytest commands, omits
 heredoc bodies and other commands, and loads its own fixture-stubbing plugin.
