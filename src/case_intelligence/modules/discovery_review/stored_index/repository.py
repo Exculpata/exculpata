@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import hashlib
 import json
 import sqlite3
@@ -193,16 +193,33 @@ class Repository:
                         (matter_id, document_id, bytes(prefix[0][0])), constituents=2)
         return found[0] if found else None
 
-    def value(self, tx, matter_id, item, chosen, descending):
-        order = keys.order_key(chosen, item, descending)
+    def value(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
+        order = keys.production_key(chosen, item, parent, components, descending) if components is not None else keys.order_key(chosen, item, descending)
         tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)',
                  (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
-                  item.value(chosen.key).casefold(), int(item.has(chosen.key))))
+                  item.value(chosen.key), int(item.has(chosen.key))))
 
     def publish(self, tx, matter_id, item, generation, fingerprint, cache):
+        cache['display'] = asdict(item)
+        summary = replace(item, values={key: item.values[key] for key in item.details}, load_file={})
         tx.write('UPDATE workbench_discovery_index_item SET payload=?,cache_payload=?,projection_fingerprint=?,readiness=?,ready_generation=? '
-                 'WHERE matter_id=? AND document_id=?', (packed(asdict(item)), packed(cache), fingerprint, item.metadata_state,
+                 'WHERE matter_id=? AND document_id=?', (packed(asdict(summary)), packed(cache), fingerprint, 'pending',
                                                         generation, matter_id, item.document_id))
+    def full_item(self, matter_id, document_id):
+        found = self.rows('SELECT cache_payload FROM workbench_discovery_index_item WHERE matter_id=? AND document_id=?',
+                          (matter_id, document_id))
+        return json.loads(found[0][0])['display'] if found else None
+
+    def display_values(self, matter_id, document_id, fields):
+        if len(fields) > 500:
+            raise ValueError('field reads accept at most 500 keys')
+        if not fields:
+            return ()
+        marks = ','.join('?' for unused in fields)
+        return self.rows('SELECT field_key,value,present FROM workbench_discovery_index_value '
+                         f'WHERE matter_id=? AND document_id=? AND direction=0 AND field_key IN ({marks})',
+                         (matter_id, document_id, *fields))
+
     def read_items(self, matter_id, document_ids):
         if len(document_ids) > 500:
             raise ValueError('item read accepts at most 500 document ids')

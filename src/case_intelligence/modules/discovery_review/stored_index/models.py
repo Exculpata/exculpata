@@ -54,6 +54,7 @@ class Job:
     iterator: object = None
     attempts: int = 0
     last_budget: Budget | None = None
+    production: dict | None = None
 
 
 @dataclass(frozen=True)

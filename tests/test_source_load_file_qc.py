@@ -266,3 +266,51 @@ def test_parse_dat_exposes_headers_without_valid_rows(tmp_path, rows):
     headers = []
     tuple(parse_dat(root / "DATA/volume.dat", findings=[], headers_out=headers))
     assert headers == ["BEGDOC"]
+
+
+def test_family_parent_order_and_invalid_relationships():
+    from case_intelligence.source_load_file_qc import (
+        family_diagnostics, family_order_key, family_pair_diagnostics, family_record,
+    )
+
+    def member(begin, end, first="A1", last="A12"):
+        return family_record({"begin_bates": begin, "end_bates": end,
+            "begin_attachment": first, "end_attachment": last})
+    rows = [member("A10", "A12"), member("A2", "A9"), member("A1", "A1")]
+    assert [row.begin_bates for row in sorted(rows, key=family_order_key)] == ["A1", "A2", "A10"]
+    assert all(not family_diagnostics(row, parent_count=1, terminal_count=1) for row in rows)
+    assert family_diagnostics(rows[0], parent_count=0, terminal_count=1) == ("orphan_attachment",)
+    assert family_diagnostics(rows[0], parent_count=2, terminal_count=1) == ("family_conflict",)
+    assert "invalid_family_range" in member("A2", "A1").diagnostics
+    assert "invalid_family_range" in member("A1", "A2", "A1", "B2").diagnostics
+    assert "invalid_family_range" in member("A1", "A2", "A1", "").diagnostics
+    assert "invalid_family_range" in member("A1", "A20").diagnostics
+    assert "invalid_family_range" in member("A-1", "A-2").diagnostics
+    other = member("A10", "A20", "A10", "A20")
+    assert "family_overlap" in family_pair_diagnostics(rows[0], other)
+    nested = member("A3", "A5", "A3", "A5")
+    assert "family_conflict" in family_pair_diagnostics(rows[0], nested)
+    assert "family_cycle" in family_diagnostics(rows[0], parent_count=1, terminal_count=1, cyclic=True)
+    undeclared = family_record({"begin_bates": "A4", "end_bates": "A5"})
+    assert not undeclared.declared and undeclared.attachment_bounds is None
+    assert family_pair_diagnostics(rows[0], undeclared) == ()
+
+
+def test_family_ranges_never_expand_numeric_spans(monkeypatch):
+    from case_intelligence import source_load_file_qc
+
+    calls = []
+    original = source_load_file_qc.parse_plain_label
+    def counted(value):
+        calls.append(value)
+        return original(value)
+    monkeypatch.setattr(source_load_file_qc, "parse_plain_label", counted)
+    values = {"begin_bates": "A1", "end_bates": "A2", "begin_attachment": "A1",
+              "end_attachment": "A999999999999999999"}
+    record = source_load_file_qc.family_record(values)
+    assert record.attachment_bounds == ("A", 1, 999999999999999999)
+    assert not source_load_file_qc.family_diagnostics(record, parent_count=1, terminal_count=1)
+    assert len(calls) == 4
+    invalid = source_load_file_qc.family_record(dict(values, end_bates="B2"))
+    assert invalid.diagnostics == ("invalid_family_range",)
+    assert len(calls) == 8

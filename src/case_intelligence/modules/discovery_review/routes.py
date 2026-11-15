@@ -1,4 +1,6 @@
 """Mount the production document list, the open item and the view chooser."""
+import re
+from dataclasses import dataclass
 from urllib.parse import urlencode
 
 from fastapi import Depends, Form, HTTPException, Query, Request
@@ -13,9 +15,35 @@ from case_intelligence.modules.discovery_review.identifiers import (
     IdentifierConflict, IdentifierRepository, IdentifierUnavailable, RangeUnavailable, produced_collisions, sequence,
 )
 from case_intelligence.modules.discovery_review.views import SCOPES, ViewRepository, ViewUnavailable
+from case_intelligence.modules.discovery_review.production import ProductionService, ProductionStale
 
 TOKEN = "^[0-9a-f]{32}$"
 VIEW = "^(|document|text|fields)$"
+MAX_POSITION = 9_223_372_036_854_775_807
+RECORD = re.compile(r'(dat|opt):([0-9a-f]{32}):([1-9][0-9]{0,18})')
+
+
+@dataclass(frozen=True, slots=True)
+class RecordCursor:
+    kind: str
+    attempt_id: str
+    ordinal: int
+
+
+def parse_record_cursor(value: str, direction: str, view: str) -> RecordCursor | None:
+    """Validate the entire locator before any source or database work."""
+    if direction not in {'at', 'next', 'previous'}:
+        raise HTTPException(422, 'Choose a valid record direction.')
+    if not value:
+        if direction != 'at':
+            raise HTTPException(422, 'A record direction requires a record locator.')
+        return None
+    matched = RECORD.fullmatch(value) if len(value) <= 56 else None
+    if matched is None or int(matched[3]) > MAX_POSITION:
+        raise HTTPException(422, 'The record locator is invalid.')
+    if view != ('fields' if matched[1] == 'dat' else 'document'):
+        raise HTTPException(422, 'Choose Fields for document records or Document for page records.')
+    return RecordCursor(matched[1], matched[2], int(matched[3]))
 
 
 def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
@@ -25,7 +53,9 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     repository = ViewRepository(context.db, context.membership)
     identifiers = IdentifierRepository(context.db, context.membership)
     codes = CodeRepository(context.db)
-    stored = Service(context, identifiers, codes)
+    production = ProductionService(context)
+    stored = Service(context, identifiers, codes, production=production)
+
     def membership(matter, actor):
         try:
             context.membership(matter.matter_id, actor)
@@ -39,11 +69,14 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         definition = fields.load_definition()
         store = context.source_store(matter)
         try:
+            bounded = stored.current(matter.matter_id, store, definition, matter=matter)
             if complete:
-                index = reader.index_for(matter.matter_id, store, definition, identifiers)
+                index = reader.index_for(matter.matter_id, store, definition, identifiers,
+                    production_projection=lambda document_id, version_id: production.document_projection(
+                        matter.matter_id, document_id, version_id), production_mark=production.revision(matter.matter_id))
                 index = codes.project(matter.matter_id, index)
             else:
-                index = stored.current(matter.matter_id, store, definition)
+                index = bounded
         except reader.IndexUnavailable as exc:
             raise HTTPException(404, "Matter is no longer available") from exc
         except reader.MetadataUnavailable as exc:
@@ -51,6 +84,43 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         choice = presentation.choose(definition, repository.read(matter.matter_id, actor), index,
                                      show_all=show_all)
         return matter, actor, definition, store, index, choice
+
+    def production_panel(matter, selected, view, cursor, direction):
+        try:
+            projection = production.document_projection(
+                matter.matter_id, selected.document_id, selected.version_id)
+            references = tuple(projection.get('references', ()))
+            if cursor is not None:
+                attempt_id = cursor.attempt_id
+                category = 'document' if cursor.kind == 'dat' else 'page'
+                ordinal = cursor.ordinal
+            else:
+                category = 'page' if view == 'document' or (
+                    not view and any(ref['category'] == 'page' for ref in references)) else 'document'
+                reference = next((ref for ref in references if ref['category'] == category), None)
+                if reference is None or view == 'text':
+                    return projection, None
+                counts = reference.get('counts', {})
+                if not (counts.get('accepted', 0) + counts.get('rejected', 0)):
+                    return projection, None
+                if (reference.get('source_format') in {'csv', 'tsv'}
+                        and reference['source_id'] != selected.document_id):
+                    return projection, None
+                if (projection.get('state') != 'complete'
+                        and reference['source_id'] != selected.document_id):
+                    return projection, None
+                attempt_id, ordinal = reference['attempt_id'], 0
+            window = production.record_window(
+                matter.matter_id, attempt_id, category=category, ordinal=ordinal,
+                direction=direction, document_id=selected.document_id,
+                limit=1 if category == 'page' else 100)
+            return projection, window
+        except ProductionStale as exc:
+            raise HTTPException(409, 'These production records changed. Reload the list.') from exc
+        except KeyError as exc:
+            raise HTTPException(404, 'This production record is not available for this item.') from exc
+        except ValueError as exc:
+            raise HTTPException(422, 'The production record request is invalid.') from exc
 
     def respond(request, matter, actor, name, values):
         response = templates.TemplateResponse(
@@ -66,30 +136,40 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
         sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
-        page: int = Query(1, ge=1, le=1_000_000),
+        page: int = Query(1, ge=1, le=MAX_POSITION),
         cursor: str = Query("", max_length=4096),
         doc: str = Query("", pattern="^(|[0-9a-f]{32})$"),
         edge: str = Query("", pattern="^(|last)$"),
         view: str = Query("", pattern=VIEW),
-        unit: int = Query(1, ge=1, le=1_000_000),
+        unit: int = Query(1, ge=1, le=MAX_POSITION),
+        record: str = Query('', max_length=56),
+        record_dir: str = Query('at', pattern='^(at|next|previous)$'),
         all_columns: str = Query("", pattern="^(|1)$"),
         notice: str = Query("", pattern="^(|saved|shared|reset|unavailable|assigned|cleared|conflict|nothing|invalid|confirm|range|retry)$"),
     ):
+        record_cursor = parse_record_cursor(record, record_dir, view)
+        if record_cursor is not None and not doc:
+            raise HTTPException(422, 'Select an item before opening a production record.')
         matter, actor, definition, store, index, choice = current(request, slug, show_all=bool(all_columns))
         base = f"/matters/{matter.slug}/production"
         listing = stored_query.list_page(
             definition, index, choice, base=base, q=q, sort=sort, descending=dir == "desc",
             page=page, doc=doc, edge=edge, show_all=bool(all_columns), cursor=cursor, selected_view=view, unit=unit)
         selected = listing["selected"]
+        if record_cursor is not None and (selected is None or selected.token != doc):
+            raise HTTPException(404, 'This item is not available in the current list.')
         state = {key: value for key, value in listing["state"].items() if value}
+        projection, window = production_panel(matter, selected, view, record_cursor, record_dir) if selected else ({}, None)
         panel = presentation.item_panel(
             definition, selected, choice, store, slug=matter.slug, view=view, unit=unit,
-            list_url=base + "?" + urlencode({**state, "doc": selected.token})) if selected else None
+            list_url=base + "?" + urlencode({**state, "doc": selected.token}),
+            production=projection, record_window=window) if selected else None
         if panel is not None:
             panel["codes"] = codes.controls(matter.matter_id, selected.document_id)
         return respond(request, matter, actor, "workbench_production_documents.html", {
             "codes": codes.list(matter.matter_id),
             "document_count": index.total, "listing": listing, "panel": panel,
+            "production_coverage": index.summaries.get("production", {}).get("counts", {}),
             "chooser": presentation.chooser(definition, index, choice), "load_files": index.reports,
             "notice": notice, "base_url": base, "index_summary": index.summaries,
         })
@@ -97,22 +177,27 @@ def route_hook(app, *, context: ModuleContext, authorized_matter, auth_context,
     @app.get("/matters/{slug}/production/items/{token}", dependencies=[Depends(require_response_lease)])
     def production_document_item(
         request: Request, slug: str, token: str,
-        view: str = Query("", pattern=VIEW), unit: int = Query(1, ge=1, le=1_000_000),
+        view: str = Query("", pattern=VIEW), unit: int = Query(1, ge=1, le=MAX_POSITION),
+        record: str = Query('', max_length=56),
+        record_dir: str = Query('at', pattern='^(at|next|previous)$'),
         q: str = Query("", max_length=presentation.MAX_QUERY_CHARS),
         sort: str = Query("", max_length=fields.MAX_KEY_CHARS),
         dir: str = Query("", pattern="^(|asc|desc)$"),
         all_columns: str = Query("", pattern="^(|1)$"),
     ):
+        record_cursor = parse_record_cursor(record, record_dir, view)
         matter, actor, definition, store, index, choice = current(request, slug)
         try:
             item = stored_query.lookup(index, token)
         except KeyError as exc:
             raise HTTPException(404, "This item is no longer in the matter. Reload the list.") from exc
         base = f"/matters/{matter.slug}/production"
+        projection, window = production_panel(matter, item, view, record_cursor, record_dir)
         panel = presentation.item_panel(definition, item, choice, store, slug=matter.slug,
                                         view=view, unit=unit, list_url=base + "?" + urlencode({
                                             "doc": token, "q": q.strip(), "dir": dir, "all_columns": all_columns,
-                                            "sort": sort if definition.field(sort) is not None else ""}))
+                                            "sort": sort if definition.field(sort) is not None else ""}),
+                                        production=projection, record_window=window)
         panel["codes"] = codes.controls(matter.matter_id, item.document_id)
         return respond(request, matter, actor, "workbench_production_document_item.html", {"panel": panel})
 

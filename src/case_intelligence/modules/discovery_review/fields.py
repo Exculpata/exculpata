@@ -23,6 +23,7 @@ _SORTS = frozenset({"text", "natural", "number"})
 _KEY = re.compile(r"[a-z][a-z0-9_]{0,39}")
 MAX_HEADER_CHARS = 200
 MAX_KEY_CHARS = MAX_HEADER_CHARS + 3 + 12
+OPT_POSITIONS = ('bates', 'volume', 'path', 'document_break', 'unused_1', 'unused_2', 'page_count')
 
 
 class DefinitionError(ValueError):
@@ -59,6 +60,13 @@ class Field:
 
 
 @dataclass(frozen=True, slots=True)
+class OptColumn:
+    key: str
+    label: str
+    position: int
+
+
+@dataclass(frozen=True, slots=True)
 class Definition:
     groups: tuple[Group, ...]
     fields: tuple[Field, ...]
@@ -78,6 +86,7 @@ class Definition:
     heading_fallback: str
     heading_missing: str
     heading_title: str
+    opt_columns: tuple[OptColumn, ...]
 
     def field(self, key: str) -> Field | None:
         """Resolve a defined field or a load-file header kept as produced."""
@@ -107,6 +116,20 @@ def parse_definition(data: Any) -> Definition:
     """Validate the definition so a bad edit is reported, never half-applied."""
     if not isinstance(data, dict) or data.get("version") != 1:
         raise DefinitionError("field definition version must be 1")
+    positional = data.get('opt_columns')
+    if not isinstance(positional, list) or len(positional) != len(OPT_POSITIONS):
+        raise DefinitionError('opt_columns must define all seven supplied positions')
+    opt = {}
+    for raw in positional:
+        if not isinstance(raw, dict) or set(raw) != {'key', 'label', 'position'}:
+            raise DefinitionError('each OPT position needs a key, label and position')
+        position = raw['position']
+        if (not isinstance(position, int) or isinstance(position, bool)
+                or not 0 <= position < len(OPT_POSITIONS) or position in opt
+                or raw['key'] != OPT_POSITIONS[position]
+                or not isinstance(raw['label'], str) or not raw['label'].strip()):
+            raise DefinitionError('OPT positions must be complete, unique and correctly identified')
+        opt[position] = OptColumn(raw['key'], raw['label'], position)
     groups = []
     for raw in data.get("groups") or ():
         if not isinstance(raw, dict) or not _KEY.fullmatch(str(raw.get("key", ""))) or not raw.get("label"):
@@ -175,6 +198,7 @@ def parse_definition(data: Any) -> Definition:
         email_suffixes=frozenset(s.casefold() for s in _strings(data.get("email_suffixes", []), "email_suffixes")),
         email_evidence_fields=known("email_evidence_fields"),
         heading_range=heading_range, heading_fallback=heading.get("fallback", ""), heading_missing=heading["missing"], heading_title=heading["title"],
+        opt_columns=tuple(opt[position] for position in range(len(OPT_POSITIONS))),
     )
 
 

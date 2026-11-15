@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import zip_longest
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from case_intelligence.modules.discovery_review.fields import (
     LOAD_FILE_GROUP, LOAD_FILE_PREFIX, Definition, Field,
 )
-from case_intelligence.modules.discovery_review.reader import Index, Item
+from case_intelligence.modules.discovery_review.reader import Index, Item, action_token
 
 ITEM_VIEWS = (("document", "Document"), ("text", "Text"), ("fields", "Fields"))
 MAX_QUERY_CHARS = 200
@@ -56,6 +57,10 @@ def cell(definition: Definition, chosen: Field, item: Item) -> dict:
         return {"value": note, "state": item.metadata_state, "note": note}
     if not applies(definition, chosen, item):
         return {"value": "", "state": "na", "note": f"Shown only for {chosen.applies_to or 'matching'} items"}
+    if (item.production_state != 'complete' and not chosen.computed
+            and not item.value(chosen.key)):
+        return {'value': '', 'state': item.production_state,
+                'note': 'Production metadata is not currently available.'}
     if not item.has(chosen.key):
         return {"value": "", "state": "absent", "note": "This item's load file has no such field"}
     value = item.value(chosen.key)
@@ -111,7 +116,12 @@ def list_page(definition: Definition, index: Index, choice: Choice, *, base: str
 
     rows = [{"item": index.items[p], "heading": heading(definition, index.items[p]), "url": item_url(p),
              "selected": where is not None and positions[where] == p,
+             "family_context": index.items[p].family.get('context'),
              "cells": [cell(definition, column, index.items[p]) for column in columns]} for p in window]
+    for row in rows:
+        if row['family_context']:
+            row['family_context'] = {**row['family_context'],
+                                     'url': base + '?' + urlencode({'doc': row['family_context']['token']})}
     headers = [{"field": column, "sorted": column.key == sort, "descending": descending,
                 "url": url(sort=column.key, dir="desc" if column.key == sort and not descending else "")}
                for column in columns]
@@ -145,18 +155,25 @@ def read_unit(store, item: Item, number: int):
 
 
 def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slug: str, view: str,
-               unit: int, list_url: str) -> dict:
-    available = [key for key, offered in (("document", bool(item.embedded)), ("text", item.has_text),
+               unit: int, list_url: str, production: dict | None = None,
+               record_window: dict | None = None) -> dict:
+    production = production or {}
+    references = tuple(production.get('references', ()))
+    page_records = any(reference['category'] == 'page' for reference in references)
+    available = [key for key, offered in (("document", bool(item.embedded) or page_records), ("text", item.has_text),
                                           ("fields", True)) if offered]
     active = view if view in available else available[0]
     source_url = f"/matters/{slug}/sources/{item.token}"
     fragment = f"/matters/{slug}/production/items/{item.token}"
     parsed_url = urlsplit(list_url)
+    base_query = {key: value for key, value in parse_qsl(parsed_url.query)
+                  if key not in {'record', 'record_dir', 'unit'}}
 
     def links(**query) -> dict:
-        encoded = urlencode({key: value for key, value in query.items() if value})
+        merged = {key: value for key, value in {**base_query, **query}.items() if value}
+        encoded = urlencode(merged)
         return {"url": urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path,
-                                  urlencode({**dict(parse_qsl(parsed_url.query)), **query}), parsed_url.fragment)),
+                                  encoded, parsed_url.fragment)),
                 "fragment": f"{fragment}?{encoded}"}
 
     panel = {
@@ -166,9 +183,26 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
         "views": [{"key": key, "label": label, "current": key == active, **links(view=key)}
                   for key, label in ITEM_VIEWS if key in available],
         "unavailable": [label for key, label in ITEM_VIEWS if key not in available],
+        "production": production, "family": item.family,
+        "record_sources": [{"name": reference['source_name'], "status": reference.get('status', ''),
+            "url": f'/matters/{slug}/production?' + urlencode({
+                'doc': action_token(reference['source_id'], reference['source_version_id']),
+                'view': 'document' if reference['category'] == 'page' else 'fields'})}
+            for reference in references if reference['source_id'] != item.document_id],
     }
+    if item.family.get('context'):
+        panel['family'] = {**item.family, 'context': {**item.family['context'],
+            'url': f'/matters/{slug}/production?' + urlencode({'doc': item.family['context']['token']})}}
     if active == "document":
-        panel["embed"] = {"kind": item.embedded, "url": f"{source_url}/content"}
+        panel["embed"] = {"kind": item.embedded, "url": f"{source_url}/content"} if item.embedded else None
+        if record_window is not None and record_window['category'] == 'page':
+            panel['records'] = record_panel(definition, record_window, links, view='document')
+            panel['native_embed'], panel['embed'] = panel['embed'], None
+            current = record_window.get('current') or {}
+            image = current.get('image') or {}
+            if image.get('media_type') in {'image/jpeg', 'image/png'}:
+                image_token = action_token(image['document_id'], image['version_id'])
+                panel['embed'] = {'kind': 'image', 'url': f'/matters/{slug}/sources/{image_token}/content'}
     elif active == "text":
         try:
             found, number, total = read_unit(store, item, max(unit, 1))
@@ -185,7 +219,39 @@ def item_panel(definition: Definition, item: Item, choice: Choice, store, *, slu
         }
     else:
         panel["fields"] = item_fields(definition, item, choice)
+        if record_window is not None and record_window['category'] == 'document':
+            panel['records'] = record_panel(definition, record_window, links, view='fields')
+    if panel.get('records') and panel['records']['current_cursor']:
+        panel['state'].update(record=panel['records']['current_cursor'], record_dir='at')
     return panel
+
+
+def record_panel(definition: Definition, window: dict, links, *, view: str) -> dict:
+    """Render bounded stored records exactly, including unrecoverable values."""
+    kind = 'dat' if window['category'] == 'document' else 'opt'
+    attempt = window['attempt']
+    attempt_id = attempt['attempt_id']
+    rows = []
+    for record in window['records']:
+        supplied = record.get('cells')
+        headings = record.get('headers')
+        if kind == 'opt' and headings is None:
+            headings = tuple(column.label for column in definition.opt_columns)
+        cells = []
+        for ordinal, (label, value) in enumerate(zip_longest(
+                headings or (), supplied or (), fillvalue=None), 1):
+            cells.append({'position': ordinal, 'label': label, 'value': value,
+                          'has_header': label is not None, 'has_value': value is not None})
+        rows.append({**record, 'display_cells': cells, 'recoverable': supplied is not None,
+                     'source_format': str(record.get('source_format') or attempt['source_format']).upper()})
+    current = window.get('current')
+    cursor = f"{kind}:{attempt_id}:{current['ordinal']}" if current else ''
+    return {'kind': kind, 'attempt': attempt, 'rows': rows, 'current_cursor': cursor,
+            'counts': window.get('counts', {}), 'total': window.get('total', 0),
+            'previous': links(view=view, record=window['previous'], record_dir='at')
+            if window.get('previous') else None,
+            'next': links(view=view, record=window['next'], record_dir='at')
+            if window.get('next') else None}
 
 
 def item_fields(definition: Definition, item: Item, choice: Choice) -> dict:
@@ -211,6 +277,7 @@ def item_fields(definition: Definition, item: Item, choice: Choice) -> dict:
         "picked": [{"label": f.label, "value": unresolved(item, f) or item.value(f.key), "absent": not unresolved(item, f) and not item.has(f.key)} for f in extra],
         "load_file_state": unresolved(item), "load_file": [] if unresolved(item) else produced, "load_file_open": definition.show_load_file_fields_by_default,
         "load_file_source": item.values.get("load_file", ""),
+        "metadata_state": item.metadata_state if unresolved(item) else item.production_state,
     }
 
 

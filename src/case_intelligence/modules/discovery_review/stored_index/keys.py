@@ -1,7 +1,7 @@
 """Complete binary ordering keys with bounded B-tree prefixes."""
 from case_intelligence.modules.discovery_review.reader import sort_key, tie_key
 
-VERSION = 1
+VERSION = 2
 PREFIX_BYTES = 128
 
 
@@ -23,3 +23,15 @@ def order_key(chosen, item, descending=False):
         return b'\x01' + encode(tie)
     complete = encode((value, tie))
     return b'\x00' + (bytes(255 - byte for byte in complete) if descending else complete)
+
+
+def production_key(chosen, item, parent, components, descending=False):
+    if not item.family.get('root'):
+        return order_key(chosen, item, descending)
+    group = components['group']
+    anchor = parent or item
+    tie = (*tie_key(anchor), anchor.version_id)
+    group_key = encode(tie) if group is None else encode((group, tie))
+    if descending and group is not None:
+        group_key = bytes(255 - byte for byte in group_key)
+    return (b'\x01' if group is None else b'\x00') + group_key + encode(components['member'])
