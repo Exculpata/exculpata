@@ -22,15 +22,22 @@ def near_limit(command, log_text, *, step_tag='pytest', emit=print):
 
     Both timeout argument forms and shell quoting are supported. If a step has
     multiple pytest commands, use its smallest positive timeout conservatively.
+    Unparsable timeout text is reported explicitly as unchecked evidence.
     A zero timeout disables pytest's timer and supplies no duration limit.
     There is deliberately no caller override for the fraction.
     """
+    command = command.replace('\\\n', '')
     if '--timeout' not in command:
         return []
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
-    tokens = iter(lexer)
+    try:
+        tokens = iter(token.strip() for token in list(lexer))
+    except ValueError:
+        emit(f'DURATIONS UNCHECKED {step_tag}: cannot split pytest --timeout command')
+        return []
     timeouts = []
+    parsed = invalid = False
     for token in tokens:
         if token == '--timeout':
             value = next(tokens, '')
@@ -38,11 +45,18 @@ def near_limit(command, log_text, *, step_tag='pytest', emit=print):
             value = token.partition('=')[2]
         else:
             continue
-        timeout = float(value)
-        if not math.isfinite(timeout) or timeout < 0:
-            raise ValueError('Use a finite nonnegative pytest --timeout value.')
+        try:
+            timeout = float(value)
+            if not math.isfinite(timeout) or timeout < 0:
+                raise ValueError
+        except ValueError:
+            invalid = True
+            continue
+        parsed = True
         if timeout:
             timeouts.append(timeout)
+    if invalid or not parsed:
+        emit(f'DURATIONS UNCHECKED {step_tag}: use a finite nonnegative pytest --timeout value')
     if not timeouts:
         return []
     timeout = min(timeouts)

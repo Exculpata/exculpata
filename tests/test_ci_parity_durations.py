@@ -1,9 +1,10 @@
 """Synthetic duration reports and the runner's failure propagation."""
 
 import pytest
+import yaml
 
 from scripts.ci_parity_durations import NEAR_LIMIT_FRACTION, near_limit
-from tests.test_ci_parity import document, run_repository
+from tests.test_ci_parity import ROOT, document, run_repository
 
 
 HEADER = '============================= slowest 25 durations ============================='
@@ -35,9 +36,72 @@ def test_sums_all_phases_inside_duration_section():
 
 def test_no_timeout_has_no_result_or_note():
     messages = []
-    assert near_limit('pytest --timeout-method=signal', HEADER + '\n999s call tests/x.py::t',
+    assert near_limit('pytest -q', HEADER + '\n999s call tests/x.py::t',
                       emit=messages.append) == []
     assert messages == []
+
+
+@pytest.fixture
+def application_command():
+    workflow = yaml.safe_load((ROOT / '.github/workflows/quality-gates.yml').read_text())
+    return next(step['run'] for step in workflow['jobs']['application-shards']['steps']
+                if step.get('name') == 'Run application suite')
+
+
+def test_application_command_timeout_is_found(application_command):
+    messages = []
+    assert near_limit(application_command, '1 passed', emit=messages.append) == []
+    assert messages == ['DURATIONS UNCHECKED pytest: no durations section for pytest timeout 360s']
+
+
+@pytest.mark.parametrize('seconds', [120, 107])
+def test_application_command_duration_limit(application_command, seconds):
+    messages = []
+    result = near_limit(application_command, f'{HEADER}\n{seconds}s call tests/x.py::t',
+                        emit=messages.append)
+    assert result == ([('tests/x.py::t', 120.0)] if seconds == 120 else [])
+    assert messages == (['NEAR TIMEOUT pytest: tests/x.py::t took 120.00s of 360s (limit 0.30)']
+                        if seconds == 120 else [])
+
+
+@pytest.mark.parametrize('command', [
+    'pytest --timeout', 'pytest --timeout=', 'pytest --timeout unknown',
+    'pytest --timeout=nan', 'pytest --timeout=inf', 'pytest --timeout=-1',
+    'pytest --timeout-method=signal', 'pytest "--timeout=360',
+])
+def test_unparsable_timeout_is_explicitly_unchecked(command):
+    messages = []
+    assert near_limit(command, HEADER, emit=messages.append) == []
+    assert len(messages) == 1 and messages[0].startswith('DURATIONS UNCHECKED pytest:')
+
+
+def test_continuations_and_token_whitespace():
+    command = 'pytest --time\\\nout " 360 "'
+    assert near_limit(command, f'{HEADER}\n120s call tests/x.py::t', emit=lambda message: None) == [
+        ('tests/x.py::t', 120.0)]
+
+
+def test_zero_timeout_disables_limit():
+    messages = []
+    assert near_limit('pytest --timeout=0', f'{HEADER}\n999s call tests/x.py::t',
+                      emit=messages.append) == []
+    assert messages == []
+
+
+def test_runner_rejects_real_application_command(tmp_path, monkeypatch, application_command):
+    from scripts import ci_parity_runner
+
+    def fake_shell(command, cwd, env, explicit_bash, timeout, log):
+        log.write_text(f'{HEADER}\n120s call tests/x.py::t\n')
+        return 0, False
+
+    monkeypatch.setattr(ci_parity_runner, 'run_shell', fake_shell)
+    # Resolve the workflow expressions without changing its shell command shape.
+    command = application_command.replace('${{ runner.temp }}', 'synthetic-temp')
+    runner, messages, _ = run_repository(tmp_path, document([{'run': command}]))
+    assert runner.failed == 1
+    assert runner.results['synthetic']['build']['result'] == 'failure'
+    assert any(message.startswith('NEAR TIMEOUT ') and 'of 360s' in message for message in messages)
 
 
 def test_timeout_without_section_is_explicitly_unchecked():
