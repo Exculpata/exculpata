@@ -149,7 +149,7 @@
   "case_intelligence.pilot_source_access": "core.access",
   "case_intelligence.pilot_source_changes": "core.sources",
   "case_intelligence.pilot_uploads": "core.sources",
-  "case_intelligence.playback_process_helper": "modules.transcription",
+  "case_intelligence.playback_process_helper": "core.sources",
   "case_intelligence.production_summary": "modules.deliverables",
   "case_intelligence.production_summary_routes": "app_shell",
   "case_intelligence.projections": "modules.workflows",
