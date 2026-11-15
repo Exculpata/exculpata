@@ -66,19 +66,61 @@ class Repository:
         return statement if self.sqlite else statement.replace('?', '%s')
 
     @contextmanager
-    def transaction(self, budget, capacity):
+    def transaction(self, budget, capacity, checkpoint_bytes=0):
         with self.db.lock:
             tx = Transaction(self, budget, capacity)
             try:
                 if self.sqlite:
-                    with self.db.connection:
-                        self.db.connection.execute('BEGIN IMMEDIATE')
-                        yield tx
+                    with self.checkpoint_window(budget, checkpoint_bytes):
+                        with self.db.connection:
+                            self.db.connection.execute('BEGIN IMMEDIATE')
+                            yield tx
                 else:
                     with self.db.connection.transaction():
                         yield tx
             finally:
                 tx.active = False
+
+    def checkpoint_metadata(self, budget, statement):
+        in_control = budget.in_control
+        budget.in_control = True
+        try:
+            rows = self.rows(statement)
+            budget.charge(len(rows))
+            return rows
+        finally:
+            budget.in_control = in_control
+
+    @contextmanager
+    def checkpoint_window(self, budget, byte_limit):
+        if not byte_limit:
+            yield
+            return
+        mode = self.checkpoint_metadata(budget, 'PRAGMA journal_mode')[0][0]
+        if mode != 'wal':
+            yield
+            return
+        prior = self.checkpoint_metadata(budget, 'PRAGMA wal_autocheckpoint')[0][0]
+        if prior <= 0:
+            yield
+            return
+        page_size = self.checkpoint_metadata(budget, 'PRAGMA page_size')[0][0]
+        target = byte_limit // (page_size + 24)
+        if target <= prior:
+            yield
+            return
+        in_control = budget.in_control
+        budget.in_control = True
+        try:
+            restore_rows = 1
+            budget.charge(restore_rows)
+        finally:
+            budget.in_control = in_control
+        try:
+            self.checkpoint_metadata(budget, f'PRAGMA wal_autocheckpoint={target}')
+            yield
+        finally:
+            self.rows(f'PRAGMA wal_autocheckpoint={prior}')
 
     def rows(self, statement, args=()):
         with self.db.lock:

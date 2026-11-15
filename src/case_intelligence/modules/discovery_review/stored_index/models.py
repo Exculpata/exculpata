@@ -55,6 +55,8 @@ class Job:
     attempts: int = 0
     last_budget: Budget | None = None
     production: dict | None = None
+    order_checkpoint_window: bool = False
+    reserved_checkpoint_bytes: int = 0
 
 
 @dataclass(frozen=True)

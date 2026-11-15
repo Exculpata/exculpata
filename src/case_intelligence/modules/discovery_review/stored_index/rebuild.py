@@ -27,6 +27,7 @@ ORDER_VALUE_ROWS = PROJECTION_PRIMITIVE_ROWS - 4
 SERVICES = WeakSet()
 PHASES = ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports', 'project', 'order')
 MIN_CAPACITY = 2 * 1024 * 1024
+ORDER_CHECKPOINT_BYTES = 1024 * 1024 * 1024
 
 
 def cancel(matter_root, matter_id):
@@ -259,11 +260,21 @@ class Service:
             with self.jobs_lock:
                 plan = job.plan
                 cancelled = job.cancelled
+                order_checkpoint_window = job.order_checkpoint_window
             if cancelled:
                 break
             capacity = max(MIN_CAPACITY, plan[2] if plan else 0)
+            checkpoint_bytes = 0
+            if self.repository.sqlite and order_checkpoint_window:
+                try:
+                    self.context.ensure_capacity(capacity + 2 * ORDER_CHECKPOINT_BYTES)
+                except (OSError, RuntimeError, ValueError):
+                    pass
+                else:
+                    checkpoint_bytes = ORDER_CHECKPOINT_BYTES
             try:
-                self.context.ensure_capacity(capacity)
+                if not checkpoint_bytes:
+                    self.context.ensure_capacity(capacity)
             except (OSError, RuntimeError, ValueError):
                 job.error = 'Metadata unavailable: indexing error'
                 break
@@ -271,6 +282,7 @@ class Service:
                 break
             budget = Budget(MAX_STEP_ROWS, MAX_STEP_ROWS - STEP_CONTROL_ROWS)
             job.last_budget = budget
+            job.reserved_checkpoint_bytes = checkpoint_bytes
             try:
                 done = self.step(job, budget, capacity, raw, plan)
                 if done:
@@ -289,6 +301,7 @@ class Service:
                 self.failure = str(exc)
                 break
             finally:
+                job.reserved_checkpoint_bytes = 0
                 self.step_lock.release()
         job.attempts = attempts + production_steps
         return job.attempts
@@ -328,7 +341,8 @@ class Service:
         prepared = {} if initializing else self.prepare(job, cursor, budget, raw)
         if initializing:
             budget.charge(0, credit=True)
-        with self.commit(job, target, expected, cursor, budget, capacity) as tx:
+        checkpoint_bytes = job.reserved_checkpoint_bytes if cursor['phase'] == 'order' else 0
+        with self.commit(job, target, expected, cursor, budget, capacity, checkpoint_bytes) as tx:
             if prepared.get('records') is not None:
                 self.parsed(tx, job, cursor, summaries, prepared)
             while not initializing and cursor['phase'] != 'complete':
@@ -336,8 +350,10 @@ class Service:
                 active = cursor['active']
                 ordering = prepared.get('order_document')
                 writing_values = (cursor['phase'] == 'order' and active is not None and active['value_eof']
+                                  and active['value_position'] < 2 * (1 + len(job.definition.fields) + len(summaries['headers']))
                                   and ordering is not None and ordering[0] == active['document_id'])
-                if budget.remaining < (3 if writing_values else primitive_rows + 1):
+                selecting_order_document = cursor['phase'] == 'order' and active is None
+                if budget.remaining < (2 if selecting_order_document else 3 if writing_values else primitive_rows + 1):
                     break
                 before = budget.work
                 before_phase = cursor['phase']
@@ -362,13 +378,14 @@ class Service:
         with self.jobs_lock:
             job.plan = None
             job.error = ''
+            job.order_checkpoint_window = cursor['phase'] == 'order'
         return cursor['phase'] == 'complete'
 
     @contextmanager
-    def commit(self, job, target, expected, cursor, budget, capacity):
+    def commit(self, job, target, expected, cursor, budget, capacity, checkpoint_bytes=0):
         locked = False
         try:
-            with job.store.mutation_guard(), self.repository.transaction(budget, capacity) as tx:
+            with job.store.mutation_guard(), self.repository.transaction(budget, capacity, checkpoint_bytes) as tx:
                 budget.in_control = True
                 actual = self.repository.state(job.matter_id, tx)
                 observed = (actual.get('generation'), actual.get('checkpoint')) if actual else None
@@ -819,8 +836,13 @@ class Service:
             row = repo.document(tx, mid, rows[0][0])
             active = active_document(rows[0][0], row, 'values')
             cursor['active'] = active
+            prepared['order_row'] = (active['document_id'], row)
+            return
         cached = prepared.get('order_document')
         if cached is None or cached[0] != active['document_id']:
+            selected = prepared.pop('order_row', None)
+            if selected is not None and selected[0] == active['document_id']:
+                row = selected[1]
             if row is None:
                 row = repo.document(tx, mid, active['document_id'])
             cache = json.loads(row[2])
@@ -853,14 +875,15 @@ class Service:
         choices = [Field('', '', '', sort='natural'), *job.definition.fields,
                    *(job.definition.field('lf:' + header) for header in summaries['headers'])]
         start = active['value_position']
+        if start == 2 * len(choices):
+            self.finish_order(tx, job, cursor, prepared, cache, item, fingerprint)
+            return
         value_rows = min(ORDER_VALUE_ROWS, tx.budget.remaining - 2)
         for position in range(start, min(start + value_rows, 2 * len(choices))):
             chosen = choices[position // 2]
             components = reader.production_order_components(job.definition, item, parent, chosen.key)
             repo.value(tx, mid, item, chosen, bool(position % 2), components=components, parent=parent)
             active['value_position'] = position + 1
-        if active['value_position'] == 2 * len(choices):
-            self.finish_order(tx, job, cursor, prepared, cache, item, fingerprint)
 
     def finish_order(self, tx, job, cursor, prepared, cache, item, fingerprint):
         if cache.get('order_fingerprint') != fingerprint:
