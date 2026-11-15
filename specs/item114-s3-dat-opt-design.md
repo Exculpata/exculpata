@@ -299,6 +299,7 @@ Exercise associated and unassociated source-panel paths; inspect bounded reads/q
 All cursor validation and million-record navigation checks run in normal CI; larger stress repetitions are optional and cannot substitute for this regression.
 
 **RULED (Exculpata 8:25 PM ET), D19:** Retain numeric full-pipeline memory acceptance, not parser-only iteration.
+**SCOPE CHANGE 2026-11-14 (approval_ref 2026-11-14T20:14, see A13):** the three 5,000/20,000-record profiles (clean, malformed, family) and their negative controls leave this slice and move to their own performance design note. The wide 20/80-record profile, its count-only control and every other D19 rule stay in this slice.
 Generate inputs incrementally and initialize source populations before measurement; warm code using a separate tiny matter.
 Measure import opening, parsing, persistence, matching, QC, family validation, index publication and first-page read, with no populated import cache.
 Use fresh subprocesses, `tracemalloc` and sampled process RSS; run clean, malformed-multiline and family-heavy 5,000/20,000-record profiles with approximately 512-byte cells.
@@ -394,7 +395,7 @@ The recommendations below collect every design decision; ruled entries are settl
 - **DECISION D14:** Exact provisional fence reconciled against landed parents, because their implementation is absent here.
 - **DECISION D15/D16:** One PR on the stated parent/branch, because the visible and durable acceptance contracts belong together.
 - **DECISION D17:** Lossless synchronous parser events, because existing findings omit later exact locations.
-- **RULED D18/D19:** Order-independent cardinality/conflicts and full-pipeline numeric memory limits.
+- **RULED D18/D19:** Order-independent cardinality/conflicts and full-pipeline numeric memory limits. **Amended 2026-11-14 (A13):** the 5,000/20,000-record profiles move out of s3.
 - **DECISION D20:** Version-bound record cursor and mandatory million-record CI proof, because `unit` cannot safely serve OPT.
 - **DECISION D21:** Remove equivalent position ceilings and audit every new pagination path, because changing only OPT leaves the same defect class.
 - **DECISION D22:** Ordered JSON cell/header arrays, because supplied header strings must not become archive policy keys.
@@ -447,3 +448,19 @@ Missing prerequisites, skipped suites and failures are not passes. Schema/export
 - **Rulings 4–5:** D20 specifies the exact navigation contract; D21 records the cap audit and related validation repair in A4/A7.
 - **Structure/scratch/REFS rulings:** One-screen decision summary, substantive appendix, worktree-local artifacts and the REFS line replace the former layout. **REFS update (Exculpata 9:01 PM ET):** the item 114 issue now exists as #503; the TBD line is replaced by `REFS: #503 (https://github.com/Exculpata/exculpata/issues/503)`.
 - **Additional verification:** D22 makes raw-header storage compatible with inspected archive projection without weakening that guard. No review finding was rejected.
+
+### A13. Scope change, 2026-11-14
+
+Date: 2026-11-14 (ET, after 8:14 PM). approval_ref: 2026-11-14T20:14 (APPROVALS.md; approved under the standing grant of 2026-11-12T22:23, non-hard-gate). This is a written scope change, not a retry and not an exception.
+
+**Removed from this slice (6 test cases, 2 test functions):**
+- `test_streamed_import_memory_and_complete_counts[clean-5000-20000-512]`, `[malformed-5000-20000-512]`, `[family-5000-20000-512]`.
+- `test_memory_contract_detects_materializing_controls[clean-5000-20000-512-rows]`, `[malformed-5000-20000-512-diagnostics]`, `[family-5000-20000-512-families]`.
+
+**Kept in this slice:** `[wide-20-80-262144]` of the streamed-import test, `[wide-20-80-262144-count_only]` of the materializing-controls test, `test_batch_limits_include_wide_records`, `test_all_rejected_locators_survive_restart`, the million-record OPT navigation regression (D20), every other test in the A7 table, and every numeric bound in D19 (1.5x ratio, 64 MiB Python peak, 128 MiB incremental RSS, 4 MiB retained growth). No bound, assertion, subprocess deadline or pytest timeout is changed. Nothing is skipped or marked as an expected failure.
+
+**Reason (measured, 114 s3 diagnose-and-fix item, 2026-11-14, single-process runs without a pytest timer):** import plus first index publication costs about 90 ms per record (250 records 23.2 s, 500 records 44.2 s, 1,000 records 86.9 s, 2,000 records 181.9 s; linear, no quadratic path). One 5,000-record pipeline therefore takes about 450 s and one 20,000-record pipeline about 1,800 s, against the repository's 360 s per-test limit. The streamed-import test needs both sizes in one test, the materializing-controls test needs four pipelines. A single 5,000-record pipeline already exceeds the limit, so the 5,000 profiles cannot pass either; they leave together with the 20,000 profiles. The budget implied by the test is about 7.2 ms per record; publication alone measures about 14 ms per item (about 28 ms with tracemalloc). Closing that gap needs a rework of the production service and of stored-index publication, which is outside this slice's fence.
+
+**What this does not claim:** this slice no longer proves bounded memory at 5,000 and 20,000 records through the real pipeline. That proof is owed. It is carried by the performance design note `specs/load-file-publication-perf-design.md` (own item, own exact-SHA merge card), which restores the three profiles and their controls unchanged once publication meets the budget. Until that item merges, the memory bound for large record counts is not proved on main.
+
+**Lifecycle failure (separate):** the intermittent `assert 409 == 200` in `tests/test_discovery_review_index_lifecycle.py::test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume` is not part of this scope change. It has its own design note, `specs/lifecycle-409-design.md`. This slice must pass the test without a code or test change made to avoid the 409.

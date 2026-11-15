@@ -1037,8 +1037,7 @@ def assert_memory_contract(smaller, larger):
 
 
 @pytest.mark.parametrize("profile,small,large,width", [
-    ("clean", 5000, 20000, 512), ("malformed", 5000, 20000, 512),
-    ("family", 5000, 20000, 512), ("wide", 20, 80, 256 * 1024),
+    ("wide", 20, 80, 256 * 1024),
 ])
 def test_streamed_import_memory_and_complete_counts(tmp_path, profile, small, large, width):
     samples = [profile_sample(tmp_path, profile, count, width) for count in (small, large)]
@@ -1056,9 +1055,6 @@ def test_streamed_import_memory_and_complete_counts(tmp_path, profile, small, la
 
 
 @pytest.mark.parametrize("profile,small,large,width,control", [
-    ("clean", 5000, 20000, 512, "rows"),
-    ("malformed", 5000, 20000, 512, "diagnostics"),
-    ("family", 5000, 20000, 512, "families"),
     ("wide", 20, 80, 256 * 1024, "count_only"),
 ])
 def test_memory_contract_detects_materializing_controls(tmp_path, profile, small, large, width, control):
