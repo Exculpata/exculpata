@@ -14,7 +14,7 @@ from scripts.ci_parity_expr import Unmapped
 
 # Keep local overrides together. Workflow env still supplies suite-specific limits.
 ENVIRONMENT = {
-    'remove': ('PYTEST_ADDOPTS', 'CASE_REVIEW_POSTGRES_TEST_DSN'),
+    'remove': ('PYTEST_ADDOPTS', 'CASE_REVIEW_POSTGRES_TEST_DSN', 'PYTHONPYCACHEPREFIX'),
     'set': {'CI': 'true'},
     'worker_variable': 'PYTEST_XDIST_AUTO_NUM_WORKERS',
     'worker_cap': 4,
@@ -25,6 +25,7 @@ ENVIRONMENT = {
         'Postgres/pgvector services, Docker, browsers and model downloads are not provisioned',
         'network installs/downloads and hosted artifacts/cache are NOT RUN',
         'independent cells share a local CPU budget; hosted runner capacity, cancellation and timing are not reproduced',
+        'concurrent cells isolate HOME, XDG directories and model/user caches; serial cells inherit these locations',
         'only pull_request is supported; other events are NOT RUN',
     ),
 }

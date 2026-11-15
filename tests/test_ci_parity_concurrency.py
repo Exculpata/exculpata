@@ -204,9 +204,13 @@ def test_real_cells_own_paths_caches_and_environment(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('serial', ['0', '1'])
-def test_real_cells_preserve_source_adjacent_bytecode_lookup(tmp_path, monkeypatch, serial):
+@pytest.mark.parametrize('inherited_prefix', [False, True])
+def test_real_cells_preserve_source_adjacent_bytecode_lookup(tmp_path, monkeypatch, serial, inherited_prefix):
     monkeypatch.setenv('CI_PARITY_SERIAL', serial)
-    monkeypatch.delenv('PYTHONPYCACHEPREFIX', raising=False)
+    if inherited_prefix:
+        monkeypatch.setenv('PYTHONPYCACHEPREFIX', str(tmp_path / 'caller-cache'))
+    else:
+        monkeypatch.delenv('PYTHONPYCACHEPREFIX', raising=False)
     command = """python - <<'PY'
 import importlib.util
 import os
@@ -215,6 +219,8 @@ import py_compile
 import subprocess
 import sys
 
+assert 'PYTHONPYCACHEPREFIX' not in os.environ
+assert sys.pycache_prefix is None
 source = Path('synthetic_cache.py')
 source.write_text('VALUE = "cached"\\n')
 stamp = source.stat()
@@ -232,6 +238,8 @@ PY
                     strategy={'fail-fast': False, 'matrix': {'cell': [0, 1]}})
     runner, messages, _ = run_repository(tmp_path, data)
     assert runner.ran == 2 and runner.failed == 0, '\n'.join(messages)
+    if inherited_prefix:
+        assert execution.os.environ['PYTHONPYCACHEPREFIX'] == str(tmp_path / 'caller-cache')
 
 
 def test_cli_green_overall_matches_serial(tmp_path, monkeypatch):
