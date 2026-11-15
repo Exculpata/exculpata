@@ -178,7 +178,7 @@ def test_real_cells_own_paths_caches_and_environment(tmp_path, monkeypatch):
         paths = {Path(env[key]) for key in (
             'HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
             'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'HF_HOME', 'TORCH_HOME',
-            'MPLCONFIGDIR', 'NUMBA_CACHE_DIR', 'PYTHONPYCACHEPREFIX',
+            'MPLCONFIGDIR', 'NUMBA_CACHE_DIR',
             'RUNNER_TEMP', 'TMPDIR', 'GITHUB_WORKSPACE', 'GITHUB_EVENT_PATH',
             'GITHUB_OUTPUT', 'GITHUB_ENV', 'GITHUB_PATH', 'GITHUB_STEP_SUMMARY')}
         if command == 'first':
@@ -201,6 +201,37 @@ def test_real_cells_own_paths_caches_and_environment(tmp_path, monkeypatch):
     assert all(not path.exists() for paths in owned for path in paths)
     assert execution.os.environ['PYTEST_ADDOPTS'] == 'inherited-unwanted-option'
     assert len(set(re.findall(r' log=(\S+)', '\n'.join(messages)))) == 4
+
+
+@pytest.mark.parametrize('serial', ['0', '1'])
+def test_real_cells_preserve_source_adjacent_bytecode_lookup(tmp_path, monkeypatch, serial):
+    monkeypatch.setenv('CI_PARITY_SERIAL', serial)
+    monkeypatch.delenv('PYTHONPYCACHEPREFIX', raising=False)
+    command = """python - <<'PY'
+import importlib.util
+import os
+from pathlib import Path
+import py_compile
+import subprocess
+import sys
+
+source = Path('synthetic_cache.py')
+source.write_text('VALUE = "cached"\\n')
+stamp = source.stat()
+py_compile.compile(str(source), doraise=True)
+source.write_text('VALUE = "source"\\n')
+os.utime(source, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+result = subprocess.run([sys.executable, '-I', '-S', '-B', '-c',
+    'import sys; sys.path.insert(0, sys.argv[1]); import synthetic_cache; print(synthetic_cache.VALUE)',
+    str(Path.cwd())], capture_output=True, text=True, check=True)
+assert result.stdout.strip() == 'cached', (result.stdout, sys.pycache_prefix)
+assert Path(importlib.util.cache_from_source(str(source))).resolve().parent == Path.cwd() / '__pycache__'
+PY
+"""
+    data = document([{'run': command}],
+                    strategy={'fail-fast': False, 'matrix': {'cell': [0, 1]}})
+    runner, messages, _ = run_repository(tmp_path, data)
+    assert runner.ran == 2 and runner.failed == 0, '\n'.join(messages)
 
 
 def test_cli_green_overall_matches_serial(tmp_path, monkeypatch):

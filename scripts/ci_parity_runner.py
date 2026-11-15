@@ -140,11 +140,11 @@ def result_status(results):
 
 
 def cell_environment(env, temporary):
-    """Own writable user caches; the installed dependency environment is read-only."""
+    """Own user caches; checkout bytecode keeps source-adjacent lookup semantics."""
     env = dict(env)
     for name in ('HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
                  'XDG_STATE_HOME', 'XDG_RUNTIME_DIR', 'HF_HOME', 'TORCH_HOME',
-                 'MPLCONFIGDIR', 'NUMBA_CACHE_DIR', 'PYTHONPYCACHEPREFIX'):
+                 'MPLCONFIGDIR', 'NUMBA_CACHE_DIR'):
         path = temporary / name.lower()
         path.mkdir(mode=0o700)
         env[name] = str(path)

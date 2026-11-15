@@ -94,7 +94,10 @@ Independent jobs and non-fail-fast matrix entries run concurrently within the
 operating-system CPU budget; xdist workers reserve their declared capacity and
 other cells reserve one unit. Dependencies and per-cell step order are retained,
 with complete cell reports emitted in plan order. Fail-fast matrices remain serial
-so cancellation outcomes stay identical. Set `CI_PARITY_SERIAL=1` for the original
+so cancellation outcomes stay identical. Each checkout owns its source-adjacent
+bytecode caches; parity does not inject `PYTHONPYCACHEPREFIX`, preserving the same
+cache lookup for Python processes that ignore environment variables. Set
+`CI_PARITY_SERIAL=1` for the original
 serial execution when measuring equivalence. The external pytest lock still covers
 one complete invocation; it is not acquired or changed by the scheduler.
 
