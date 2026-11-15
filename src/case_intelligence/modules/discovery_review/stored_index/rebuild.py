@@ -22,6 +22,8 @@ MAX_STEP_ROWS = 256
 MAX_REQUEST_STEPS = 128
 STEP_CONTROL_ROWS = 32
 MAX_PRIMITIVE_ROWS = 32
+PROJECTION_PRIMITIVE_ROWS = 24
+ORDER_VALUE_ROWS = PROJECTION_PRIMITIVE_ROWS - 4
 SERVICES = WeakSet()
 PHASES = ('inventory', 'delete_stale', 'load_sources', 'parse', 'match', 'reports', 'project', 'order')
 MIN_CAPACITY = 2 * 1024 * 1024
@@ -329,7 +331,14 @@ class Service:
         with self.commit(job, target, expected, cursor, budget, capacity) as tx:
             if prepared.get('records') is not None:
                 self.parsed(tx, job, cursor, summaries, prepared)
-            while not initializing and budget.remaining >= MAX_PRIMITIVE_ROWS + 1 and cursor['phase'] != 'complete':
+            while not initializing and cursor['phase'] != 'complete':
+                primitive_rows = PROJECTION_PRIMITIVE_ROWS if cursor['phase'] in ('project', 'order') else MAX_PRIMITIVE_ROWS
+                active = cursor['active']
+                ordering = prepared.get('order_document')
+                writing_values = (cursor['phase'] == 'order' and active is not None and active['value_eof']
+                                  and ordering is not None and ordering[0] == active['document_id'])
+                if budget.remaining < (3 if writing_values else primitive_rows + 1):
+                    break
                 before = budget.work
                 before_phase = cursor['phase']
                 if not self.primitive(tx, job, cursor, summaries, prepared):
@@ -337,7 +346,7 @@ class Service:
                     break
                 if budget.work == before or cursor['phase'] != before_phase:
                     budget.charge(0, credit=True)
-                if budget.work - before > MAX_PRIMITIVE_ROWS:
+                if budget.work - before > primitive_rows:
                     raise RuntimeError('index primitive row budget exceeded')
             pending = prepared.get('pending_cache')
             if pending is not None:
@@ -378,6 +387,31 @@ class Service:
             if locked:
                 self.jobs_lock.release()
 
+    def prepare_requires_io(self, job, source):
+        suffix = PurePosixPath(source.display_name).suffix.casefold()
+        return (source.origin == 'upload' and source.state == 'ready'
+                and (source.media_type in job.definition.email_media_types or suffix in job.definition.email_suffixes))
+
+    def unassociated_projection(self, job, source, tx):
+        if self.production is None or job.matter_id not in self.production.bindings:
+            return {'state': 'complete'}
+        if load_files.source_format(source.display_name):
+            return None
+        production, mid = self.production.repository, job.matter_id
+        with production.counted(tx.budget):
+            current = production.catalog(mid, source.document_id)
+            if current is None or current['version_id'] != source.version_id:
+                raise KeyError(source.document_id)
+            if load_files.source_format(current['display_name']):
+                return None
+            if (production.current_attempt(mid, source.document_id) is not None
+                    or self.repository.has_production_records(tx, mid, source.document_id)
+                    or production.provenance(mid, source.document_id, source.version_id)):
+                return None
+        return {'state': 'complete' if mid in self.production.discovery_done else 'pending',
+                'values': {}, 'raw_fields': (), 'diagnostics': (), 'family': {},
+                'references': (), 'references_next': None}
+
     def prepare(self, job, cursor, budget, raw):
         active = cursor['active']
         if active is None:
@@ -413,9 +447,7 @@ class Service:
             if self.production is not None and job.matter_id in self.production.bindings:
                 with self.production.repository.counted(budget):
                     production = self.production.document_projection(job.matter_id, source.document_id, source.version_id)
-            suffix = PurePosixPath(source.display_name).suffix.casefold()
-            if (source.origin == 'upload' and source.state == 'ready'
-                    and (source.media_type in job.definition.email_media_types or suffix in job.definition.email_suffixes)):
+            if self.prepare_requires_io(job, source):
                 with job.store.mutation_guard(), self.context.db.lock:
                     found = self.repository.document_read(job.matter_id, source.document_id)
                     budget.charge(int(found is not None))
@@ -653,7 +685,15 @@ class Service:
             active = active_document(rows[0][0], row, 'prepare')
             cursor['active'] = active
             source = SourceSnapshot(**active['source'])
-            return False
+            if self.prepare_requires_io(job, source):
+                return False
+            production = self.unassociated_projection(job, source, tx)
+            if production is None:
+                return False
+            prepared.clear()
+            prepared.update(prepared=source.document_id, production=production,
+                            document=(source.document_id, row, json.loads(row[2])))
+            return True
         cached = prepared.get('document')
         if cached is None or cached[0] != active['document_id']:
             row = repo.document(tx, mid, active['document_id'])
@@ -766,6 +806,7 @@ class Service:
 
     def order(self, tx, job, cursor, summaries, prepared):
         repo, mid, active = self.repository, job.matter_id, cursor['active']
+        row = None
         if active is None:
             rows = repo.documents(tx, mid, cursor['after_document'], cursor['generation'])
             if not rows:
@@ -780,7 +821,8 @@ class Service:
             cursor['active'] = active
         cached = prepared.get('order_document')
         if cached is None or cached[0] != active['document_id']:
-            row = repo.document(tx, mid, active['document_id'])
+            if row is None:
+                row = repo.document(tx, mid, active['document_id'])
             cache = json.loads(row[2])
             item = reader.Item(**cache['display'])
             parent, parent_fingerprint = None, ''
@@ -811,7 +853,8 @@ class Service:
         choices = [Field('', '', '', sort='natural'), *job.definition.fields,
                    *(job.definition.field('lf:' + header) for header in summaries['headers'])]
         start = active['value_position']
-        for position in range(start, min(start + 16, 2 * len(choices))):
+        value_rows = min(ORDER_VALUE_ROWS, tx.budget.remaining - 2)
+        for position in range(start, min(start + value_rows, 2 * len(choices))):
             chosen = choices[position // 2]
             components = reader.production_order_components(job.definition, item, parent, chosen.key)
             repo.value(tx, mid, item, chosen, bool(position % 2), components=components, parent=parent)

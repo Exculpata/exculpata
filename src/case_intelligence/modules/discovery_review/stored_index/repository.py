@@ -31,6 +31,7 @@ class Transaction:
         self.repository, self.budget, self.capacity = repository, budget, capacity
         self.active = True
         self.encoded_bytes = 0
+        self.row_keys = {}
 
     def read(self, statement, args=(), *, maximum=1, constituents=1):
         if not self.active or not 1 <= maximum <= 32:
@@ -129,6 +130,10 @@ class Repository:
                           'WHERE matter_id=? AND document_id=?', (matter_id, document_id))
         return found[0] if found else None
 
+    def has_production_records(self, tx, matter_id, document_id):
+        return bool(tx.read('SELECT attempt_id FROM workbench_discovery_dat_record '
+                            'WHERE matter_id=? AND document_id=? LIMIT 1', (matter_id, document_id)))
+
     def documents(self, tx, matter_id, after, generation):
         return tx.read('SELECT document_id FROM workbench_discovery_index_item WHERE matter_id=? AND seen_generation=? '
                        'AND document_id>? ORDER BY document_id LIMIT 1', (matter_id, generation, after))
@@ -194,7 +199,12 @@ class Repository:
         return found[0] if found else None
 
     def value(self, tx, matter_id, item, chosen, descending, *, components=None, parent=None):
-        order = keys.production_key(chosen, item, parent, components, descending) if components is not None else keys.order_key(chosen, item, descending)
+        parent = parent if components is not None and item.family.get('root') else None
+        identity = (matter_id, item.document_id, item.version_id)
+        row_keys = tx.row_keys.get(identity)
+        if row_keys is None or row_keys.item is not item or row_keys.parent is not parent:
+            row_keys = tx.row_keys[identity] = keys.RowKeys(item, parent)
+        order = row_keys.order(chosen, descending, components)
         tx.write('INSERT INTO workbench_discovery_index_value VALUES (?,?,?,?,?,?,?,?)',
                  (matter_id, item.document_id, chosen.key, int(descending), order[:keys.PREFIX_BYTES], order,
                   item.value(chosen.key), int(item.has(chosen.key))))
