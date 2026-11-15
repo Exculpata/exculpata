@@ -27,6 +27,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO, Callable, Iterable, Sequence
 
+from .playback_process_helper import (
+    PlaybackChild, PlaybackProtectionUnavailable, PROTECTION_MESSAGE,
+)
 from .managed_storage import format_bytes
 from .malware_scan import MalwareScanner, scanner_status
 from .source_admission import (
@@ -156,6 +159,10 @@ class UploadProblem(ValueError):
     def __init__(self, message: str, status_code: int = 400) -> None:
         super().__init__(message)
         self.status_code = status_code
+
+
+class PlaybackChildStuck(UploadProblem):
+    """A conversion child may still be writing protected derived output."""
 
 
 class LoadFileUploadProblem(UploadProblem):
@@ -2580,7 +2587,10 @@ class PilotStore:
         )
         final_name = f"{document_id}.playback.mp4"
         final = self.derived / final_name
-        process: subprocess.Popen[bytes] | None = None
+        child = PlaybackChild(
+            temporary, PlaybackChildStuck,
+            lambda message: self.fail_browser_playback(document_id, message),
+        )
         try:
             probe = _probe_media(source, source_media_type)
             if not probe.has_video:
@@ -2626,32 +2636,21 @@ class PilotStore:
                     document.playback_message = _processing_playback_message(method)
                     self._save((document_id,))
                 try:
-                    process = subprocess.Popen(
+                    process = child.start(
                         _browser_playback_command(
                             method,
                             source,
                             temporary,
                             maximum_output_bytes,
                         ),
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                        env={
-                            "PATH": "/usr/bin:/bin",
-                            "LANG": "C.UTF-8",
-                            "LC_ALL": "C.UTF-8",
-                        },
                     )
                     while process.poll() is None:
                         if cancelled():
-                            process.terminate()
-                            try:
-                                process.wait(timeout=2)
-                            except subprocess.TimeoutExpired:
-                                process.kill()
-                                process.wait(timeout=2)
+                            child.stop()
                             raise InterruptedError
                         time.sleep(0.2)
+                    if process.returncode == 125:
+                        raise PlaybackProtectionUnavailable
                     if process.returncode != 0:
                         raise UploadProblem(
                             "A browser-compatible video copy could not be prepared."
@@ -2678,7 +2677,10 @@ class PilotStore:
                         )
                     completed_method = method
                     break
+                except PlaybackChildStuck:
+                    raise
                 except (OSError, UploadProblem, subprocess.SubprocessError) as exc:
+                    child.stop()
                     last_problem = exc
                     if method == methods[-1]:
                         raise
@@ -2708,6 +2710,10 @@ class PilotStore:
                 document.playback_message = _ready_playback_message(completed_method)
                 self._save((document_id,))
                 return document
+        except PlaybackChildStuck:
+            raise
+        except PlaybackProtectionUnavailable:
+            return self.fail_browser_playback(document_id, PROTECTION_MESSAGE)
         except InterruptedError:
             with self._lock:
                 self._ensure_writable()
@@ -2725,13 +2731,7 @@ class PilotStore:
                 "The original video is retained, but a browser-compatible copy could not be prepared. Try again.",
             )
         finally:
-            if process is not None and process.poll() is None:
-                process.kill()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    pass
-            temporary.unlink(missing_ok=True)
+            child.close()
 
     def mark_media_processing(
         self, document_id: str, *, stage: str, progress: float = 0
