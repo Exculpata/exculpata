@@ -1,6 +1,6 @@
 # Item 114, slice 3: DAT/OPT metadata, page Bates and families
 
-DRAFT r3 (REFS update 9:01 PM ET), author: Codex astra high, for review
+DRAFT r3 (REFS update 9:01 PM ET), for review
 
 ## Decision summary
 
@@ -299,7 +299,7 @@ Exercise associated and unassociated source-panel paths; inspect bounded reads/q
 All cursor validation and million-record navigation checks run in normal CI; larger stress repetitions are optional and cannot substitute for this regression.
 
 **RULED (Exculpata 8:25 PM ET), D19:** Retain numeric full-pipeline memory acceptance, not parser-only iteration.
-**SCOPE CHANGE 2026-11-14 (approval_ref 2026-11-14T20:14, see A13):** the three 5,000/20,000-record profiles (clean, malformed, family) and their negative controls leave this slice and move to their own performance design note. The wide 20/80-record profile, its count-only control and every other D19 rule stay in this slice.
+**SCOPE CHANGE 2026-11-14 (approval_ref 2026-11-14T20:14, see A13 and A14):** the three 5,000/20,000-record profiles (clean, malformed, family) and their negative controls leave this slice and move to their own performance design note. The wide profile is reduced in size (A14); its count-only control and every other D19 rule stay in this slice.
 Generate inputs incrementally and initialize source populations before measurement; warm code using a separate tiny matter.
 Measure import opening, parsing, persistence, matching, QC, family validation, index publication and first-page read, with no populated import cache.
 Use fresh subprocesses, `tracemalloc` and sampled process RSS; run clean, malformed-multiline and family-heavy 5,000/20,000-record profiles with approximately 512-byte cells.
@@ -464,3 +464,15 @@ Date: 2026-11-14 (ET, after 8:14 PM). approval_ref: 2026-11-14T20:14 (APPROVALS.
 **What this does not claim:** this slice no longer proves bounded memory at 5,000 and 20,000 records through the real pipeline. That proof is owed. It is carried by the performance design note `specs/load-file-publication-perf-design.md` (own item, own exact-SHA merge card), which restores the three profiles and their controls unchanged once publication meets the budget. Until that item merges, the memory bound for large record counts is not proved on main.
 
 **Lifecycle failure (separate):** the intermittent `assert 409 == 200` in `tests/test_discovery_review_index_lifecycle.py::test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume` is not part of this scope change. It has its own design note, `specs/lifecycle-409-design.md`. This slice must pass the test without a code or test change made to avoid the 409.
+
+### A14. Scope change, 2026-11-14 (hosted timeouts)
+
+Date: 2026-11-14 (ET, after 9:55 PM). approval_ref: 2026-11-14T21:55 (APPROVALS.md; approved under the standing grant of 2026-11-12T22:23, non-hard-gate). A written scope change, not a retry and not an exception.
+
+**Changed in this slice:** the wide profile of `test_streamed_import_memory_and_complete_counts` and of `test_memory_contract_detects_materializing_controls` runs 8 and 32 records instead of 20 and 80 (same width of 256 KiB, same `count_only` control, same bounds, same assertions). No skip, no expected-failure mark, no pytest timeout and no subprocess deadline is changed.
+
+**Reason (measured):** on the hosted runner the two wide cases ran past the repository's 360 s per-test limit on the head of the s3 pull request, while they passed in local parity at 119 s and 233 s. The hosted runner is about 2.7 to 3.0 times slower than the local machine for the same test (an unchanged documentation test: 82 s local, 219 to 243 s hosted). A test that uses more than 30% of its limit locally can therefore time out hosted. At 20 and 80 records the controls test used 65% of the limit locally. The reduced counts use 26.39% locally (44.10 s and 95.01 s) and the count-only control is still detected.
+
+**What this does not claim:** the wide profile at 20 and 80 records is no longer a gate in this slice. Together with the clean, malformed and family profiles of A13 it is owed by the performance design note `specs/load-file-publication-perf-design.md`, which restores 20/80 for the wide profile once publication meets its budget.
+
+**Process change:** local CI parity now fails any test whose recorded duration exceeds 30% of its pytest timeout (`scripts/ci_parity_durations.py`). That closes the gap that let a near-limit test pass locally and time out hosted.

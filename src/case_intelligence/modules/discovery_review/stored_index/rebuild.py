@@ -240,6 +240,13 @@ class Service:
                 job.attempts = max_steps
                 return max_steps
             production_steps = job.production['steps']
+            if job.plan is not None:
+                with job.store.mutation_guard(), self.context.db.lock:
+                    prior = decode_cursor(self.repository.state(job.matter_id))
+                    target = list(self.signature(job))
+                    if prior is not None and prior['target'][:-1] == target[:-1] and prior['target'] != target:
+                        with self.jobs_lock:
+                            job.plan = None
         available = max_steps - production_steps
         if job.production is not None and job.production['state'] == 'pending':
             available = min(available, 1)
@@ -297,12 +304,16 @@ class Service:
             if initializing:
                 previous = cursor
                 cursor = fresh_cursor(target, job.store.source_changes.count())
+                coding_resume = None
                 if previous is not None and previous['phase'] != 'complete' and previous['target'][:-1] == list(target[:-1]):
                     cursor['sequence'] = previous['sequence']
                     cursor['accumulators'] = dict(previous['accumulators'])
+                    coding_resume = json.loads(state['summaries']).get('coding_resume')
+                    if previous['phase'] == 'project' and previous['active'] and previous['active']['subphase'] == 'coding':
+                        coding_resume = {'generation': previous['generation'], 'active': previous['active']}
                 budget.charge(1)
                 summaries = {'headers': [], 'filled': [], 'reports': [], 'report_total': 0, 'matched': 0,
-                             'production': job.production or {}}
+                             'production': job.production or {}, 'coding_resume': coding_resume}
             else:
                 summaries = json.loads(state['summaries'])
             expected = (state.get('generation'), state.get('checkpoint')) if state else None
@@ -669,9 +680,19 @@ class Service:
                 if prepared.get('email_error'):
                     cache['email_error'] = True
             production = prepared.get('production', {'state': 'complete'})
+            coding_resume = summaries.get('coding_resume')
+            codes, coding_after = [], None
+            if coding_resume and coding_resume['active']['document_id'] == source.document_id:
+                prior = coding_resume['active']
+                if prior['fingerprint'] != active['fingerprint']:
+                    raise Superseded('coding source changed')
+                codes = self.checked_projection(cache, coding_resume, prior)['codes']
+                coding_after = prior['coding_after']
+                summaries.pop('coding_resume')
             cache['projection'] = {'production': production, 'generation': cursor['generation'], 'source': active['fingerprint'],
-                                   'attachment': attachment, 'item': None, 'codes': []}
+                                   'attachment': attachment, 'item': None, 'codes': codes}
             active.update(subphase='coding', coding_after=None, coding_eof=False)
+            active['coding_after'] = coding_after
             prepared['pending_cache'] = (source.document_id, cache)
         elif subphase == 'coding':
             projection = cache['projection']

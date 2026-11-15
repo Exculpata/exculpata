@@ -69,7 +69,8 @@ No GPU or model weights are required for the contributor suites.
 
 Run `python scripts/ci_parity.py <worktree> <out-file> <venv>` on a clean committed
 checkout. It discovers pull-request workflows, validates the complete plan before
-execution, runs their classification and shard-selection commands, and gives every
+execution, rejects reported test phase totals above 30% of their pytest timeout,
+runs their classification and shard-selection commands, and gives every
 job/matrix cell its own detached checkout and temporary directory. `--plan` inspects
 the graph without running checks; `--base-ref`, `--workflows` and `--jobs` select the
 comparison and jobs (including dependencies). Only `pull_request` is supported.
