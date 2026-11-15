@@ -102,3 +102,11 @@ The next executable slice is:
 4. Add isolation, source replacement, export, complete matter purge, citation
    resolution, malformed-media, timeout, and browser acceptance tests. Enable
    the capability in staff UX only after all of those gates pass.
+
+Browser playback conversion requires Linux parent-death protection: its isolated
+child exits with the owning application thread, including after abrupt application
+death. Conversion fails closed when that protection is unavailable; the original
+video remains available. Cancellation stops the conversion process group with
+bounded waits. If stopping fails, playback reports `PlaybackChildStuck`, preserves
+the temporary output and capacity reservation, and starts no further conversion
+until restart.
