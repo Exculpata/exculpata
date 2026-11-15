@@ -12,7 +12,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Callable
 
-from .pilot_uploads import PilotDocument, PilotStore, UploadProblem
+from .pilot_uploads import PilotDocument, PilotStore, UploadProblem, PlaybackChildStuck
+from .playback_process_helper import STUCK_MESSAGE
 from .workspace_store import MatterRecord
 
 
@@ -47,6 +48,7 @@ class BrowserPlaybackCoordinator:
         self._cancelled_matters: set[str] = set()
         self._cancelled_documents: set[tuple[str, str]] = set()
         self._active: PlaybackTask | None = None
+        self._stuck: PlaybackTask | None = None
         self._stop = False
         self._thread = threading.Thread(
             target=self._run,
@@ -106,7 +108,8 @@ class BrowserPlaybackCoordinator:
 
         with self._condition:
             return bool(
-                (self._active is not None and self._active.matter_id == matter_id)
+                (self._stuck is not None and self._stuck.matter_id == matter_id)
+                or (self._active is not None and self._active.matter_id == matter_id)
                 or any(task.matter_id == matter_id for task in self._pending)
                 or any(task.matter_id == matter_id for task in self._queue)
             )
@@ -130,6 +133,9 @@ class BrowserPlaybackCoordinator:
                 document = store.get(task.document_id)
                 if document.version_id != task.source_version_id:
                     continue
+                if self._stuck is not None:
+                    store.fail_browser_playback(task.document_id, STUCK_MESSAGE)
+                    continue
                 requested = store.playback_reservation_bytes(task.document_id)
                 self.reserve_capacity(task.matter_id, task.document_id, requested)
                 reserved = True
@@ -142,6 +148,9 @@ class BrowserPlaybackCoordinator:
                     ),
                     force_full=task.force_full,
                 )
+            except PlaybackChildStuck:
+                with self._condition:
+                    self._stuck = task
             except UploadProblem:
                 try:
                     matter = self.resolve_matter(task.matter_id)
@@ -161,7 +170,7 @@ class BrowserPlaybackCoordinator:
                 except Exception:
                     pass
             finally:
-                if reserved:
+                if reserved and self._stuck != task:
                     self.release_capacity(task.matter_id, task.document_id)
                 with self._condition:
                     self._active = None
@@ -183,7 +192,7 @@ class BrowserPlaybackCoordinator:
                 if remaining <= 0:
                     return False
                 self._condition.wait(timeout=remaining)
-        return True
+        return self._stuck is None or self._stuck.matter_id != matter_id
 
     def cancel_document(
         self, matter_id: str, document_id: str, *, timeout: float = 5.0
@@ -210,7 +219,9 @@ class BrowserPlaybackCoordinator:
                 if remaining <= 0:
                     return False
                 self._condition.wait(timeout=remaining)
-        return True
+        return self._stuck is None or (
+            self._stuck.matter_id, self._stuck.document_id
+        ) != key
 
     def close(self) -> None:
         with self._condition:
