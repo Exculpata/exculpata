@@ -80,6 +80,14 @@ exit 2, failed checks 1, unlisted unavailable steps 3, and missing selections or
 executed steps 4. Exit 0 with only expected NOT RUN steps reports **GREEN OVERALL**;
 each unavailable step remains visible in the report.
 
+The literal duration exceptions accept only exact test IDs:
+`tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]`
+up to 135 s (approval 2026-11-15T15:24), and
+`tests/test_discovery_review_index_lifecycle.py::test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume`
+up to 125 s (approval 2026-11-15T17:17). Accepted totals emit `ACCEPTED EXCEPTION`;
+totals above either ceiling still fail. All other tests retain the 30% limit.
+Remove these exceptions when the tests are fixed.
+
 Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed
 in every report. HEAD differs from the hosted integration candidate; runner images,
