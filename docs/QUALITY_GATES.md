@@ -88,14 +88,20 @@ up to 125 s (approval 2026-11-15T17:17). Accepted totals emit `ACCEPTED EXCEPTIO
 totals above either ceiling still fail. All other tests retain the 30% limit.
 Remove these exceptions when the tests are fixed.
 
-The 10,000-row rebuild test is deselected by the application shard argument
-files and runs once in `application-row-budget`, after both shards finish.
-Its `Run isolated row budget test` step invokes only that exact node with
-`-n 0`, the existing pytest timeout and all phase durations. Local parity reads
-this same job and dependency graph; the serial runner waits for each preceding
-cell, so no other pytest work overlaps the isolated step. Hosted CI gives the
-post-shard job its own runner. The other parameters and tests in the file remain
-in the shards; the two approved duration ceilings are unchanged.
+The 10,000-row rebuild and heavily coded item lifecycle resume tests are
+deselected by every application shard argument file and run once, in that order,
+in the serial post-shard `application-row-budget` job. Shard contention measured
+115–143 s for row budget and 125.64 s for lifecycle resume; isolation removes
+that competition without raising either ceiling. The
+`Run isolated row budget and lifecycle resume tests` step invokes exactly these
+two nodes in one pytest invocation with `-n 0`, the existing 360 s timeout and
+all phase durations. The application aggregate requires this job to succeed.
+Local parity reads the same workflow and dependency graph: both shards must
+finish, and the concurrent scheduler reserves its entire worker budget for this
+job so no other cell overlaps it. `CI_PARITY_SERIAL=1` runs the same steps in
+order. Hosted CI gives the post-shard job its own runner. Other parameters and
+tests in both files remain in the shards; the 135 s and 125 s ceilings and the
+30% rule are unchanged.
 
 Exact unavailable steps and evidence are recorded in
 [`ci-parity-expected-skips.toml`](../scripts/ci-parity-expected-skips.toml) and printed

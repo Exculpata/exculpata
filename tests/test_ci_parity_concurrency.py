@@ -2,6 +2,9 @@
 
 from pathlib import Path
 import re
+import shlex
+import subprocess
+import sys
 import threading
 import time
 
@@ -10,6 +13,7 @@ import pytest
 from scripts import ci_parity_plan as plan
 from scripts import ci_parity_runner as execution
 from tests.test_ci_parity import document, repository, run_repository
+from tests.test_application_shards import ROOT, SCRIPT, SERIAL_TESTS, workflow_jobs
 
 
 def test_independent_cells_overlap_with_bounded_workers(tmp_path, monkeypatch):
@@ -102,14 +106,22 @@ def test_needs_waits_for_all_matrix_cells_and_carries_outputs(tmp_path, monkeypa
         'BEGIN 0', 'END 0', 'BEGIN 1', 'END 1']
 
 
+@pytest.mark.parametrize('serial', ['0', '1'])
 @pytest.mark.parametrize('independent_first', [False, True])
-def test_row_budget_waits_for_shards_and_runs_alone(tmp_path, monkeypatch, independent_first):
-    monkeypatch.delenv('CI_PARITY_SERIAL', raising=False)
-    monkeypatch.setattr(execution, 'cpu_budget', lambda: 8)
+def test_serial_tests_wait_for_shards_and_run_alone(tmp_path, monkeypatch, independent_first, serial):
+    monkeypatch.setenv('CI_PARITY_SERIAL', serial)
+    monkeypatch.setattr(execution, 'cpu_budget', lambda: 16)
     data = document()
-    shards = {'strategy': {'fail-fast': False, 'matrix': {'shard': [0, 1]}},
-              'steps': [{'run': 'true'}]}
-    isolated = {'needs': 'application-shards', 'steps': [{'run': 'true'}]}
+    jobs = workflow_jobs()
+    shards = {'strategy': jobs['application-shards']['strategy'], 'steps': [
+        step for step in jobs['application-shards']['steps']
+        if step.get('name') in ('Select application test shard', 'Run application suite')]}
+    isolated = {'needs': 'application-shards', 'steps': [
+        step for step in jobs['application-row-budget']['steps']
+        if '-m pytest' in step.get('run', '')]}
+    assert len(isolated['steps']) == 1
+    assert [token for token in shlex.split(isolated['steps'][0]['run'])
+            if token.startswith('tests/')] == SERIAL_TESTS
     independent = {'steps': [{'run': 'true'}]}
     data['jobs'] = {'application-shards': shards}
     if independent_first:
@@ -127,7 +139,12 @@ def test_row_budget_waits_for_shards_and_runs_alone(tmp_path, monkeypatch, indep
         key = (job.name, matrix.get('shard'))
         start = time.monotonic()
         if job.name == 'application-shards':
-            if independent_first:
+            arguments = subprocess.check_output(
+                [sys.executable, str(SCRIPT), str(matrix['shard'])], cwd=ROOT, text=True,
+            ).splitlines()
+            assert [arg for arg in arguments if arg.startswith('--')] == [
+                f'--deselect={node}' for node in SERIAL_TESTS]
+            if independent_first and serial == '0':
                 assert independent_started.wait(2)
             with lock:
                 finished.add(matrix['shard'])
@@ -136,7 +153,7 @@ def test_row_budget_waits_for_shards_and_runs_alone(tmp_path, monkeypatch, indep
         elif job.name == 'independent':
             independent_started.set()
             assert shards_finished.wait(2)
-            if independent_first:
+            if independent_first and serial == '0':
                 row_started.wait(0.1)
             time.sleep(0.03)
         else:
@@ -153,9 +170,13 @@ def test_row_budget_waits_for_shards_and_runs_alone(tmp_path, monkeypatch, indep
     for (name, _), (start, end) in intervals.items():
         if name == 'application-shards':
             assert end <= row_start
-        assert end <= row_start or start >= row_end, f'{name} overlapped row budget'
+        assert end <= row_start or start >= row_end, f'{name} overlapped serial tests'
 
     schedule = [line for line in messages if line.startswith('SCHEDULE ')]
+    if serial == '1':
+        assert list(intervals)[:2] == [('application-shards', 0), ('application-shards', 1)]
+        assert not schedule
+        return
     assert len(schedule) == 8
     for key, (start, end) in {**intervals, ('application-row-budget', None): (row_start, row_end)}.items():
         name, shard = key

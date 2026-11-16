@@ -15,6 +15,11 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/application-test-shard.py"
 ROW_BUDGET = "tests/test_discovery_review_index.py::test_rebuild_step_row_budget[10000]"
+LIFECYCLE_RESUME = (
+    "tests/test_discovery_review_index_lifecycle.py::"
+    "test_single_heavily_coded_item_stays_pending_with_complete_values_on_resume"
+)
+SERIAL_TESTS = [ROW_BUDGET, LIFECYCLE_RESUME]
 
 
 def workflow_jobs():
@@ -39,7 +44,7 @@ def test_shards_cover_every_application_test_file_exactly_once():
             text=True, capture_output=True, check=True,
         )
         arguments = result.stdout.splitlines()
-        assert [arg for arg in arguments if arg.startswith("--")] == [f"--deselect={ROW_BUDGET}"]
+        assert [arg for arg in arguments if arg.startswith("--")] == [f"--deselect={node}" for node in SERIAL_TESTS]
         shards.append([arg for arg in arguments if not arg.startswith("--")])
     assert all(shards)
     assert Counter(path for shard in shards for path in shard) == Counter(expected)
@@ -77,56 +82,57 @@ def test_aggregate_requires_successful_scope_shards_and_serial_test(scope, shard
     assert (result.returncode == 0) is (scope == shards == serial == "success")
 
 
-def test_row_budget_runs_alone_after_shards():
+def test_serial_tests_run_alone_after_shards():
     job = workflow_jobs()["application-row-budget"]
     assert job["needs"] == ["change-scope", "application-shards"]
     assert job["if"] == "${{ always() }}"
     assert "strategy" not in job
     assert "continue-on-error" not in job
+    assert job["timeout-minutes"] == 15
     steps = job["steps"]
     commands = [step for step in steps if "-m pytest" in step.get("run", "")]
     assert len(commands) == 1
     step = commands[0]
-    assert step["name"] == "Run isolated row budget test"
+    assert step["name"] == "Run isolated row budget and lifecycle resume tests"
     assert step["if"] == "${{ needs.change-scope.outputs.docs_only != 'true' }}"
     assert "continue-on-error" not in step
     tokens = shlex.split(step["run"])
     assert tokens[:7] == ["python", "-u", "-m", "pytest", "-n", "0", "-v"]
-    assert [token for token in tokens if token.startswith("tests/")] == [ROW_BUDGET]
+    assert [token for token in tokens if token.startswith("tests/")] == SERIAL_TESTS
     assert "--timeout=360" in tokens
+    assert "--timeout-method=signal" in tokens
     assert "--durations=0" in tokens
     assert not any(token in tokens for token in ("&", ";", "&&", "||", "--deselect", "--lf"))
     assert step["env"]["CASE_INTELLIGENCE_TEST_MODE"] == "1"
     assert step["env"]["CASE_INTELLIGENCE_STORAGE_RESERVE_GIB"] == "0"
     guard = [step.get("run") for step in steps if "corpus-write-guard.sh" in step.get("run", "")]
     assert guard == ["bash scripts/corpus-write-guard.sh prepare", "bash scripts/corpus-write-guard.sh check"]
+    prepare, check = [entry for entry in steps if entry.get("run") in guard]
+    assert steps.index(prepare) < steps.index(step) < steps.index(check)
+    assert check["if"] == "${{ always() }}"
 
 
-def test_shard_collection_excludes_only_serial_parameter(tmp_path):
-    test_file = ROW_BUDGET.split("::")[0]
-    owning_shards = []
-    for index in (0, 1):
-        arguments = subprocess.check_output([sys.executable, str(SCRIPT), str(index)], text=True).splitlines()
-        if test_file in arguments:
-            owning_shards.append(arguments)
-    assert len(owning_shards) == 1
-    arguments = owning_shards[0]
-    argument_file = tmp_path / "shard.txt"
-    argument_file.write_text("\n".join(arg for arg in arguments if arg == test_file or arg.startswith("--")))
-
+def test_shard_collection_excludes_only_serial_tests(tmp_path):
     def collect(*args):
         result = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", *args],
                                 cwd=ROOT, env={**os.environ, "PYTEST_ADDOPTS": "",
                                                "PYTHONPATH": os.pathsep.join((str(ROOT / "src"), str(ROOT)))},
                                 capture_output=True, text=True, timeout=60)
         assert result.returncode == 0, result.stdout + result.stderr
-        return {line for line in result.stdout.splitlines() if line.startswith(test_file + "::")}
+        return {line for line in result.stdout.splitlines() if line.startswith("tests/") and "::" in line}
 
-    all_nodes = collect(test_file)
-    shard_nodes = collect("@" + str(argument_file))
-    assert ROW_BUDGET in all_nodes
-    assert ROW_BUDGET not in shard_nodes
-    assert shard_nodes == all_nodes - {ROW_BUDGET}
+    all_nodes = collect("tests")
+    shard_nodes = set()
+    for index in (0, 1):
+        arguments = subprocess.check_output([sys.executable, str(SCRIPT), str(index)], text=True)
+        argument_file = tmp_path / f"shard-{index}.txt"
+        argument_file.write_text(arguments)
+        nodes = collect("@" + str(argument_file))
+        assert not set(SERIAL_TESTS) & nodes
+        assert not shard_nodes & nodes
+        shard_nodes.update(nodes)
+    assert set(SERIAL_TESTS) <= all_nodes
+    assert shard_nodes == all_nodes - set(SERIAL_TESTS)
     assert any("test_rebuild_step_row_budget[" in node for node in shard_nodes)
 
 

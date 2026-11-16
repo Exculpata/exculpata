@@ -863,8 +863,8 @@
                     "OPENBLAS_NUM_THREADS": "1"
                   },
                   "if": "${{ needs.change-scope.outputs.docs_only != 'true' }}",
-                  "name": "Run isolated row budget test",
-                  "run": "b7ffef5efa92c1155b7e948702c7a86c178d64f20d326c1826da37fff373e41a"
+                  "name": "Run isolated row budget and lifecycle resume tests",
+                  "run": "5285b6cdb6b6e33a0839e9c8f99e9ed1ec61e71cf0152f4a206fcc1ae4ddcc7b"
                 },
                 {
                   "if": "${{ always() }}",
@@ -1809,7 +1809,7 @@
               },
               {
                 "expected": null,
-                "name": "Run isolated row budget test",
+                "name": "Run isolated row budget and lifecycle resume tests",
                 "unavailable": null
               },
               {
@@ -2659,7 +2659,7 @@
             },
             {
               "state": "RUN",
-              "step": "Run isolated row budget test"
+              "step": "Run isolated row budget and lifecycle resume tests"
             },
             {
               "state": "RUN",
@@ -3299,7 +3299,7 @@
             },
             {
               "state": "RUN",
-              "step": "Run isolated row budget test"
+              "step": "Run isolated row budget and lifecycle resume tests"
             },
             {
               "state": "RUN",
@@ -3939,7 +3939,7 @@
             },
             {
               "state": "SKIP",
-              "step": "Run isolated row budget test"
+              "step": "Run isolated row budget and lifecycle resume tests"
             },
             {
               "state": "RUN",
